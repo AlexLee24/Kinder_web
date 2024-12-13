@@ -1,0 +1,97 @@
+<head>
+    <meta charset="UTF-8">
+    <title>GREAT Lab</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+</head>
+<header>
+    <div class="container">
+        <div class="header-content">
+            <!-- Logo -->
+            <a href="/" class="logo">
+                <p>Kinder</p>
+            </a>
+            <!-- Menu -->
+            <nav class="main-nav">
+                <ul class="nav">
+                    <li>
+                        <a href="/" class="{% if request.path == '/' or request.path == '/index.html' %}active{% endif %}">
+                            Home
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('object_list') }}" class="{% if request.path == '/object_list.html' %}active{% endif %}">
+                            Object list
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/observation.html" class="{% if request.path == '/observation.html' %}active{% endif %}">
+                            Observation
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('object_plot', next=request.path) }}" class="{% if request.path == '/object_plot.html' %}active{% endif %}">
+                            Plot
+                        </a>
+                    </li>
+                    <li>
+                        <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                            About Us
+                        </a>
+                    </li>
+
+                    {% if 'username' in session %}
+                        <li>
+                            <a href="{{ url_for('user_profile') }}" class="{% if request.path == '/user_profile.html' %}active{% endif %}">
+                                User: {{ session['username'] }}
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('logout', next=request.path) }}" class="login-button">Logout</a>
+                        </li>
+                    {% else %}
+                        <li>
+                            <a href="{{ url_for('login_page', next=request.path) }}" class="login-button">Login</a>
+                        </li>
+                    {% endif %}
+
+                    {% if session.get('username') == 'admin' %}
+                        <li>
+                            <a href="{{ url_for('admin_dashboard', next=request.path) }}" class="login-button">admin dashboard</a>
+                        </li>
+                    {% endif %}
+
+                    {% if session.get('username') == 'admin' %}
+                    <li>
+                        <a href="{{ url_for('example') }}" class="login-button">
+                            Flash test
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</header>
+
+<!-- Flash Messages -->
+<div class="flash-message-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div id="flash-message">
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+</div>
+<!-- Flash Messages End -->
+
+<script>
+    setTimeout(function() {
+        const flashMessage = document.getElementById("flash-message");
+        if (flashMessage) {
+            flashMessage.style.display = "none";
+        }
+    }, 3000);
+</script>

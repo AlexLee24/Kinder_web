@@ -1,0 +1,280 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #cccccc;
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================================ */
+/* ============================================================================ */
+/* ============================================================================ */
+/* Banner styling START */
+.main-banner {
+    background-image: url('LMC.jpg'); /* BG image */
+    background-size: cover;
+    background-position: left 50%;
+    padding: 100px; /* Banner height */
+    text-align: center; /* align center */
+    position: relative;
+}
+
+/* adj img */
+.main-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5); 
+    z-index: 1; /* layer */
+}
+
+/* Banner detail */
+.main-banner .container {
+    position: relative;
+    z-index: 2; /* layer */
+}
+
+/* Banner Header */
+.header-text h1 {
+    font-size: 78px;
+    margin-bottom: 30px;
+    letter-spacing: 2px; 
+    color: #fff;
+}
+
+.header-text p {
+    font-size: 24px;
+    margin-bottom: 30px;
+    letter-spacing: 2px; 
+    color: #fff;
+}
+
+/* Search text */
+.searchText {
+    width: 100%;
+    max-width: 500px; 
+    padding: 15px;
+    font-size: 16px;
+    border: none;
+    border-radius: 50px 0 0 50px; /* left circular */
+    outline: none;
+}
+
+/* Search button */
+.main-button {
+    padding: 15px 30px;
+    font-size: 16px;
+    border: none;
+    border-radius: 0 50px 50px 0; /* right circular */
+    background-color: #2ca470; 
+    color: #fff;
+    cursor: pointer;
+}
+
+.main-button:hover {
+    background-color: #238057;
+}
+
+
+/* Search area */
+.search-area {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.search-area input,
+.search-area button {
+    margin: 0;
+}
+
+.search-area input {
+    border-right: none;
+}
+
+.search-area button {
+    border-left: none;
+}
+
+/* adj when max width < 400px */
+@media screen and (max-width: 400px) {
+    .main-banner h1 {
+        font-size: 32px;
+    }
+
+    .search-area {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .search-area input,
+    .search-area button {
+        width: 100%;
+        max-width: 300px;
+        border-radius: 50px;
+        margin-bottom: 10px;
+    }
+
+    .search-area input {
+        border-right: none;
+    }
+
+    .search-area button {
+        border-left: none;
+    }
+}
+/* Banner styling END */
+/* ============================================================================ */
+/* ============================================================================ */
+/* ============================================================================ */
+/* Main styling START */
+.main-content {
+    max-width: 500px;      
+    margin: 100px auto;      
+    padding: 20px;          
+    background-color: #eeeeee;
+    border-radius: 10px;
+}
+
+.main-content h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.form-group input {
+    width: 100%;           
+    max-width: 100%;          
+    box-sizing: border-box;   
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #000000;
+    border-radius: 5px;
+}
+
+.center {
+    display: flex;
+    justify-content: center; 
+    align-items: center; 
+}
+
+.inline {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    justify-content: center; 
+    margin-bottom: 10px;
+}
+
+.inline input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+}
+
+.inline label {
+    margin: 0;
+}
+
+
+/* Button styling */
+.button-group {
+    margin-top: 15px; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    gap: 10px;
+}
+
+.main-button {
+    display: block;
+    width: 70%;           
+    max-width: 70%;       
+    padding: 7px;
+    font-size: 30px;
+    background-color: #2ca470;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    box-sizing: border-box;
+    text-align: center;  
+}
+
+.main-button:hover {
+    background-color: #238057;
+}
+
+.forgot-password-button,
+.register-button {
+    display: block;
+    width: 70%;           
+    max-width: 70%;       
+    padding: 7px;
+    font-size: 14px;
+    background-color: #2ca470;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    box-sizing: border-box;
+    text-align: center;
+    text-decoration: none;
+}
+
+.forgot-password-button:hover,
+.register-button:hover {
+    background-color: #238057;
+}
+
+/* Input styling */
+form input[type="text"],
+form input[type="email"],
+form input[type="email"],
+form input[type="password"] {
+    width: 90%;
+    max-width: 90%;
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    margin-bottom: 15px;
+}
+
+/* Submit button styling */
+form button[type="submit"] {
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #2ca470;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+form button[type="submit"]:hover {
+    background-color: #238057;
+}
+
+.inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.inline label {
+    margin-left: 5px; 
+}

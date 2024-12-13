@@ -1,0 +1,146 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #cccccc;
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================================ */
+/* Banner styling START */
+.main-banner {
+    background-image: url('M101.jpg'); /* BG image */
+    background-size: cover;
+    background-position: top;
+    height: 100vh;
+    padding: 100px; /* Banner height */
+    text-align: center; /* align center */
+    position: relative;
+}
+
+/* adj img */
+.main-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5); 
+    z-index: 1; /* layer */
+}
+
+/* Banner detail */
+.main-banner .container {
+    position: relative;
+    z-index: 2; /* layer */
+}
+
+/* Banner Header */
+.header-text h1 {
+    font-size: 48px;
+    margin-top: 100px;
+    letter-spacing: 2px; 
+    font-weight: bold;
+    color: #fff;
+}
+
+.header-text p {
+    font-size: 24px;
+    margin-bottom: 100px;
+    letter-spacing: 2px; 
+    color: #fff;
+}
+
+.header-text a {
+    color: white; 
+}
+
+.header-text a:hover {
+    color: #2ca470;
+    text-decoration: underline; 
+}
+
+.detail-text p {
+    font-size: 24px;
+    margin-bottom: 30px;
+    letter-spacing: 2px; 
+    color: #fff;
+}
+
+/* Search text */
+.searchText {
+    width: 100%;
+    max-width: 500px; 
+    padding: 15px;
+    font-size: 16px;
+    border: none;
+    border-radius: 50px 0 0 50px; /* left circular */
+    outline: none;
+}
+
+/* Search botton */
+.main-button {
+    padding: 15px 30px;
+    font-size: 16px;
+    border: none;
+    border-radius: 0 50px 50px 0; /* right circular */
+    background-color: #2ca470; 
+    color: #fff;
+    cursor: pointer;
+}
+
+.main-button:hover {
+    background-color: #238057;
+}
+
+
+/* Search area */
+.search-area {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.search-area input,
+.search-area button {
+    margin: 0;
+}
+
+.search-area input {
+    border-right: none;
+}
+
+.search-area button {
+    border-left: none;
+}
+
+/* adj when max width < 400px */
+@media screen and (max-width: 400px) {
+    .main-banner h1 {
+        font-size: 32px;
+    }
+
+    .search-area {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .search-area input,
+    .search-area button {
+        width: 100%;
+        max-width: 300px;
+        border-radius: 50px;
+        margin-bottom: 10px;
+    }
+
+    .search-area input {
+        border-right: none;
+    }
+
+    .search-area button {
+        border-left: none;
+    }
+}
+/* Banner styling END */
+/* ============================================================================ */
+

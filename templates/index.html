@@ -1,0 +1,37 @@
+<!-- Home Page (home.html) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Home - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <meta name="description" content="Kinder data server">
+</head>
+<body>
+    {% include 'header.html' %}
+    
+    <!-- Banner -->
+    <div class="main-banner">
+        <div class="container">
+            <div class="header-text">
+                <h1>Kinder Data Server</h1>
+                <p>
+                    <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                        Great and Rare Exotic Astronomical Transients Laboratory
+                    </a>
+                </p>
+            </div>
+            <!-- Search Form -->
+            <form class="search-area" action="{{ url_for('object_list') }}" method="get">
+                <input type="text" name="search" class="searchText" placeholder="Enter object name or year" autocomplete="off" required>
+                <button type="submit" class="main-button"><i class="search"></i> Search Now</button>
+            </form>
+            <div class="detail-text">
+                <p>Search the transient object</p>
+            </div>
+        </div>
+    </div>
+    
+    {% include 'footer.html' %}
+</body>
+</html>

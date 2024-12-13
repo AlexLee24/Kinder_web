@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>User Profile</title>
+    <link rel="stylesheet" href="/static/user_profile.css">
+</head>
+<body>
+    <!-- Header -->
+    {% include 'header.html' %}
+    <!-- Header -->
+
+    <!-- Main Content -->
+    <div class="container main-banner">
+        <div class="container main-content">
+            <h1>User Profile</h1>
+
+            <!-- Displaying User Information -->
+            <form method="POST" action="{{ url_for('update_profile') }}" enctype="multipart/form-data">
+                
+                <!-- Editable Username -->
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" name="username" id="username" value="{{ username }}" required>
+                </div>
+
+                <!-- Editable First Name -->
+                <div class="form-group">
+                    <label for="first_name">First Name:</label>
+                    <input type="text" name="first_name" id="first_name" value="{{ first_name }}" required>
+                </div>
+
+                <!-- Editable Last Name -->
+                <div class="form-group">
+                    <label for="last_name">Last Name:</label>
+                    <input type="text" name="last_name" id="last_name" value="{{ last_name }}" required>
+                </div>
+
+                <!-- Editable Email -->
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" name="email" id="email" value="{{ email }}" required>
+                </div>
+
+                <!-- Editable Organization -->
+                <div class="form-group">
+                    <label for="organization">Organization:</label>
+                    <input type="text" name="organization" id="organization" value="{{ organization }}">
+                </div>
+
+                <button type="submit" class="update-button">Update Profile</button>
+            </form>
+
+            <!-- Change Password Section -->
+            <h2>Change Password</h2>
+            <form method="POST" action="{{ url_for('change_password') }}">
+                <div class="form-group">
+                    <label for="current_password">Current Password:</label>
+                    <input type="password" name="current_password" id="current_password" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="new_password">New Password:</label>
+                    <input type="password" name="new_password" id="new_password" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_new_password">Confirm New Password:</label>
+                    <input type="password" name="confirm_new_password" id="confirm_new_password" required>
+                </div>
+
+                <div class="form-group inline center">
+                    <input type="checkbox" id="show-password" onclick="togglePasswordVisibility()">
+                    <label for="show-password">Show Password</label>
+                </div>
+
+                <button type="submit" class="change-password-button">Change Password</button>
+            </form>
+        </div>
+    </div>
+    <!-- Main Content -->
+
+    <!-- Footer -->
+    {% include 'footer.html' %}
+    <!-- Footer -->
+    <script>
+        function togglePasswordVisibility() {
+            const passwordFields = document.querySelectorAll('#password, #confirm_password');
+            passwordFields.forEach(field => {
+                field.type = field.type === 'password' ? 'text' : 'password';
+            });
+        }
+    </script>
+</body>
+</html>

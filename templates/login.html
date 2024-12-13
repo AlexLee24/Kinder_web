@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login</title>
+    <link rel="stylesheet" href="/static/login.css">
+</head>
+
+<body>
+    <!-- Header -->
+    {% include 'header.html' %}
+    <!-- Header -->
+
+    <!-- Main Content -->
+    <div class="container main-banner">
+        <div class="container main-content">
+            <h1>Login</h1>
+
+            <!-- error message -->
+            <div id="error-message" style="color: red; margin-bottom:10px;"></div>
+
+            <form method="post" action="/login">
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <div class="form-group inline center">
+                    <input type="checkbox" id="show-password" onclick="togglePasswordVisibility()">
+                    <label for="show-password">Show Password</label>
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="main-button">Login</button>
+                    <a href="{{ url_for('register') }}" class="register-button">Register</a>
+                    <a href="{{ url_for('forgot_password') }}" class="forgot-password-button">Forgot Password</a>
+                </div>
+
+            </form>
+
+            <!-- Register Button -->
+            
+        </div>
+    </div>
+    <!-- Main Content -->
+
+    <!-- Footer -->
+    {% include 'footer.html' %}
+    <!-- Footer -->
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const errorType = urlParams.get('error');
+        const errorDiv = document.getElementById('error-message');
+        console.log("Error type:", errorType);
+        
+        if (errorType === '1') {
+            errorDiv.innerText = 'Invalid username or password';
+        } else if (errorType === 'pending') {
+            errorDiv.innerText = 'Your account is pending approval. Please wait for admin approval.';
+        }
+
+        function togglePasswordVisibility() {
+            const passwordFields = document.querySelectorAll('#password, #confirm_password');
+            passwordFields.forEach(field => {
+                field.type = field.type === 'password' ? 'text' : 'password';
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+/* Header styling START */
+header {    /* Header styling */
+    background-color: #7e7e7e; /* Background color for menu bar */
+    padding: 20px 0;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    z-index: 100;
+}
+header .container {    /* Container styling */
+    width: 90%;
+    max-width: 90%;
+    margin: 0 auto;
+}
+
+.header-content {   /* Content styling */
+    display: flex;              /* Use flex */
+    align-items: center;        /* Center */
+    justify-content: space-between;
+}
+
+.header-content .logo {     /* Logo */
+    text-decoration: none;  /* no line */
+    color: #ffffff;
+}
+
+.header-content .logo p {   /* Logo, <p> */
+    margin: 0;
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.header-content .main-nav ul {  
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+}
+
+.header-content .main-nav ul li {
+    margin-left: 30px;
+}
+
+.header-content .main-nav ul li a {
+    text-decoration: none;
+    color: #ffffff;
+    font-size: 18px;
+}
+
+.header-content .main-nav ul li b {
+    text-decoration: none;
+    color: #ffffff;
+    font-size: 18px;
+}
+
+.header-content .main-nav ul li a.active,
+.header-content .main-nav ul li a:hover {
+    font-weight: bold;
+    color: #46ffaf;
+}
+
+.container-main-header .main-nav {
+    margin-right: 20px;
+}
+
+.nav a.login-button {
+    background-color: #2ca470;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    text-decoration: none;
+    font-size: 18px;
+}
+
+.nav a.login-button:hover {
+    background-color: #238057;
+}
+/* Header styling END */
+
+.flash-message-container {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.flash-message {
+    padding: 15px 25px;
+    margin: 10px;
+    border-radius: 5px;
+    color: #fff;
+    font-size: 16px;
+    text-align: center;
+    animation: fadeInOut 5s ease-in-out;
+}
+
+.flash-message.success {
+    background-color: #4caf50; /* Success color */
+    color: #ffffff;
+}
+
+.flash-message.error {
+    background-color: #ff1100; /* Error color */
+    color: #ffffff;
+}
+
+.flash-message.info {
+    background-color: #2196f3; /* Info color */
+    color: #ffffff;
+}
+
+.flash-message.warning {
+    background-color: #ff9800; /* Warning color */
+    color: #ffffff;
+}
+
+@keyframes fadeInOut {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    10%, 90% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+
+/* Media query for small screens (max-width: 768px) */
+@media (max-width: 768px) {
+    header {
+        padding: 10px 0; /* 減少 header 高度 */
+    }
+
+    .header-content {
+        flex-direction: column; /* 將元素垂直排列 */
+        align-items: flex-start; /* 將項目靠左對齊 */
+    }
+
+    .header-content .logo {
+        margin-bottom: 10px; /* 增加 logo 與導航的間距 */
+        font-size: 20px; /* 調整 logo 大小 */
+    }
+
+    .header-content .main-nav {
+        width: 100%; /* 導航寬度全屏 */
+    }
+
+    .header-content .main-nav ul {
+        flex-direction: column; /* 垂直排列導航項目 */
+        align-items: flex-start; /* 靠左對齊導航項目 */
+        padding-left: 10px; /* 增加內縮 */
+    }
+
+    .header-content .main-nav ul li {
+        margin-left: 0; /* 移除水平間距 */
+        margin-bottom: 10px; /* 垂直間距 */
+    }
+
+    .header-content .main-nav ul li a {
+        font-size: 16px; /* 調整文字大小 */
+    }
+
+    .nav a.login-button {
+        font-size: 16px; /* 調整按鈕大小 */
+        padding: 8px 15px; /* 調整按鈕內縮 */
+    }
+}

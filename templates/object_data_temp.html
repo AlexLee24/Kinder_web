@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Data Server</title>
+    <link rel="stylesheet" href="/static/object_data_temp.css">
+    <meta name="description" content="Data server">
+</head>
+<body>
+    <!-- Include Header -->
+    {% include 'header.html' %}
+    
+    <!-- Banner -->
+    <div class="main-banner">
+        <div class="container">
+            <div class="header-text">
+                <h1>{{ object_name }}</h1>
+                <p>RA: {{ RA }}, DEC: {{ DEC }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="main-content">
+        <h1>Object Details</h1>
+        
+        <div class="object-info">
+            <div><h3>Object Name</h3><p>{{ object_name }}</p></div>
+            <div><h3>RA</h3><p>{{ RA }}</p></div>
+            <div><h3>DEC</h3><p>{{ DEC }}</p></div>
+            <div><h3>Type</h3><p>{{ TNtype }}</p></div>
+            <div>
+                <h3>Last update date (UTC+8):</h3>
+                <p>{{ last_update_date }}</p>
+            </div>
+        </div>
+        
+        <div class="data-display-section">
+            <!-- Left Section ---------------------------------------------------->
+            <!-- Left Section ---------------------------------------------------->
+            <div class="data-selection">
+                <div id="photo-section">
+                    <h3>Photo</h3>
+                    <img src="{{ photo_image }}" alt="Photo">
+                </div>
+
+                <h3>Select Data</h3>
+                <p>Choose data to view</p>
+                <select id="data-select" onchange="loadData(this.value)">
+                    <option value="spectrum">Spectrum</option>
+                    <option value="light_curve">Light Curve</option>
+                </select>
+                
+                <div id="display-data">
+                    <!-- Default display is Spectrum Plot -->
+                    <div id="spectrum-content">
+                        <h3>Spectrum Chart for {{ object_name }}</h3>
+                        <div id="image-container">
+                            <iframe src="{{ spectrum_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
+                        </div>
+                        <a href="{{ dat_file }}" download class="download-button">Download Spectrum Data (.dat)</a>
+                    </div>
+            
+                    <div id="light-curve-content" style="display: none;">
+                        <h3>Light curve for {{ object_name }}</h3>
+                        <div id="image-container">
+                            <iframe src="{{ photometry_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Section ---------------------------------------------->
+            <!-- Right Section ---------------------------------------------->
+            <div class="right-panel">
+                <div id="star-map">
+                    <h3>Star Map</h3>
+                    <!-- import aladin -->
+                    <link rel='stylesheet' href='https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.css' />
+                    <script type='text/javascript' src='https://code.jquery.com/jquery-1.9.1.min.js' charset='utf-8'></script>
+                    <div id='aladin-lite-div' style='width: 500px; height:500px;'></div>
+                    <script type='text/javascript' src='https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js' charset='utf-8'></script>
+                    
+                    <!-- aladin button -->
+                    <div style="margin-top: 10px;">
+                        <button onclick="updateView()">Update View</button>
+                        <button onclick="resetView()">Reset View</button>
+                    </div>
+
+                    <!-- Fov control -->
+                    <div style="margin-top: 10px;">
+                        Field of view: 
+                        <input type="number" id="fov" value="18">
+                        <select id="fovUnit">
+                            <option value="arcmin">arcmin</option>
+                            <option value="arcsec">arcsec</option>
+                            <option value="deg">deg</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="comment-box">
+                    <h3>Comments (in UTC time)</h3>
+                    <div id="comments-list" style="max-height: 300px; overflow-y: auto;">
+                        {% if comments %}
+                            {% for comment in comments %}
+                                <div class="comment" data-id="{{ comment[3] }}">
+                                    <p><strong>{{ comment[0] }}:</strong> {{ comment[1] }}</p>
+                                    <small>{{ comment[2] }}</small>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p>No comments now.</p>
+                        {% endif %}
+                    </div>
+                
+                    <form id="comment-form">
+                        <textarea name="comment" id="comment-textarea" placeholder="Your Comment" required data-tooltip="Comment cannot be empty"></textarea>
+                        <button type="button" onclick="submitComment()">Submit</button>
+                    </form>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    {% include 'footer.html' %}
+
+    <!-- ============================================================================================ -->
+    <!-- ============================================================================================ -->
+    <!-- ============================================================================================ -->
+    <!-- Script -->
+    <script>
+        let currentScale = 1;
+        let currentX = 0;
+        let currentY = 0;
+
+        const spectrumImage = document.getElementById("spectrum-image");
+        const imageContainer = document.getElementById("image-container");
+
+        const ra = "{{ RA }}";
+        const dec = "{{ DEC }}";
+
+        function resetImage() {
+            // Reset scale and position
+            currentScale = 1;
+            currentX = 0;
+            currentY = 0;
+
+            // Apply transformations to reset image
+            spectrumImage.style.transform = `scale(${currentScale}) translate(${currentX}px, ${currentY}px)`;
+        }
+        // DOMContentLoaded
+        document.addEventListener("DOMContentLoaded", function() {
+            loadComments();
+        });
+        
+        // data selection
+        function loadData(selectedValue) {
+            // Get both content divs
+            var spectrumContent = document.getElementById("spectrum-content");
+            var lightCurveContent = document.getElementById("light-curve-content");
+    
+            // Show the relevant content based on the selected value
+            if (selectedValue === "spectrum") {
+                spectrumContent.style.display = "block";
+                lightCurveContent.style.display = "none";
+            } else if (selectedValue === "light_curve") {
+                spectrumContent.style.display = "none";
+                lightCurveContent.style.display = "block";
+            }
+        }
+
+        // Aladin
+        const aladin = A.aladin('#aladin-lite-div', {
+            survey: 'P/DSS2/color',
+            fov: 0.3,  // FOV in degrees
+            target: `${ra} ${dec}`,  
+        });
+
+        // Aladin update RA DEC
+        function updateTarget() {
+            aladin.gotoObject(`${ra} ${dec}`); 
+        }
+
+
+        // Aladin update view
+        function updateView() {
+            let fov = document.getElementById('fov').value;
+            let fovUnit = document.getElementById('fovUnit').value;
+            // convert to degrees
+            if (fovUnit === 'arcmin') {
+                fov = fov / 60;  
+            } else if (fovUnit === 'arcsec') {
+                fov = fov / 3600; 
+            }
+            aladin.setFov(fov);  
+        }
+
+        // Aladin reset
+        const initialRa = "{{ RA }}";
+        const initialDec = "{{ DEC }}";
+        const initialFov = 0.3; 
+
+        function resetView() {
+            aladin.gotoObject(`${initialRa} ${initialDec}`);
+            aladin.setFov(initialFov);
+    
+            document.getElementById('fov').value = 18;
+            document.getElementById('fovUnit').value = 'arcmin';
+        }
+
+        // Comment
+        const objectName = "{{ object_name }}";  
+
+        // load comment
+        function loadComments() {
+            if (!objectName) return; 
+
+            fetch(`/get_comments/${objectName}`)
+                .then(response => response.json())
+                .then(data => {
+                    const commentList = document.getElementById('comments-list');
+                    commentList.innerHTML = data.comments_html;
+                    commentList.scrollTop = commentList.scrollHeight;
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // summit comment
+        function submitComment() {
+            const commentTextarea = document.getElementById('comment-textarea');
+            const commentText = commentTextarea.value.trim();
+            
+            if (!commentText) {
+                commentTextarea.classList.add("error");
+                return;
+            } else {
+                commentTextarea.classList.remove("error");
+            }
+        
+            fetch(`/comments/${objectName}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ comment: commentText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('comments-list').innerHTML = data.comments_html;
+                    commentTextarea.value = '';  
+                    loadComments();
+                    setTimeout(() => {
+                        const commentList = document.getElementById('comments-list');
+                        commentList.scrollTop = commentList.scrollHeight;
+                    }, 100); 
+                } else {
+                    console.error('Failed to submit comment');
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+        
+        document.getElementById('comment-textarea').addEventListener('input', function() {
+            if (this.value.trim()) {
+                this.classList.remove("error");
+            }
+        });
+    </script>
+</body>
+</html>

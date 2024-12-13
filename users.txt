@@ -1,0 +1,3 @@
+admin,pbkdf2:sha256:1000000$4aSI96bpbaO81knP$23c4a6c632e70dba09e7e59f57c60f98301bdf3ce6ac33d45378a24ba77b7dce,GREAT,Lab,admin@example.com,National Central University: GREAT Lab admin,1
+AlexLee,pbkdf2:sha256:1000000$oi8l51NA6bYWEaRJ$67b490d3b5d7ee656d1308255902715a16fc362da12e86ccf612d4637c06f4ed,YuHsing,Lee,alexlee24.1226@gmail.com,National Central University: GREAT Lab,1
+alexlee24,pbkdf2:sha256:1000000$UJWtx1MqRyN5o2aE$b460ce0aca2f3509bc55150cd4d690d80e50f48c68709b1a30b7990196f64b9c,YuXing,Lee,410914225@gms.ndhu.edu.tw,national central university,1

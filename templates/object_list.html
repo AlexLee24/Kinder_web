@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Data Server</title>
+    <link rel="stylesheet" href="/static/object_list.css">
+    <meta name="description" content="Kinder data server">
+</head>
+<body>
+    <!-- Header -->
+    {% include 'header.html' %}
+    
+    <!-- Banner -->
+    <div class="main-banner">
+        <div class="container">
+            <div class="header-text">
+                <h1>Object List</h1>
+                <p>Data Server</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    {% if 'username' in session %}
+        <!-- Search Filter -->
+        <div class="filter-form">
+            <input type="text" id="searchInput" placeholder="Enter object name or year to search">
+            <button onclick="filterObjects()">Search</button>
+            <button onclick="clearFilter()">Clear</button>
+            <select id="typeFilter"></select>
+        </div>
+        
+        <!-- Pagination Controls Top -->
+        <div id="pagination-controls-top" class="pagination"></div>
+        
+        <!-- Object Table -->
+        <table class="object-table">
+            <thead>
+                <tr>
+                    <th>Object Name</th>
+                    <th>RA</th>
+                    <th>Dec</th>
+                    <th>Type</th>
+                    <th>Last Update Date (Taipei Time, UTC+8)</th>
+                </tr>
+            </thead>
+            <tbody id="objectTableBody">
+                {% for obj in objects %}
+                <tr data-type="{{ obj['TNtype'] }}">
+                    <td><a href="{{ url_for('object_data', object_name=obj['object_name']) }}">{{ obj['object_name'] }}</a></td>
+                    <td>{{ obj['RA'] }}</td>
+                    <td>{{ obj['DEC'] }}</td>
+                    <td>{{ obj['TNtype'] }}</td>
+                    <td>{{ obj['last_update_date'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination Controls Bottom -->
+        <div id="pagination-controls-bottom" class="pagination"></div>
+        
+    {% else %}
+        <h2>Please Login to enter the data server</h2>
+    {% endif %}
+    
+    <!-- Footer -->
+    {% include 'footer.html' %}
+
+    <!-- JavaScript for Pagination and Search Filter -->
+    <script>
+        const rowsPerPage = 50;
+        let currentPage = 1;
+        let allData = Array.from(document.querySelectorAll('#objectTableBody tr'));
+        let filteredData = allData;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            populateTypeFilter();
+            displayPage(currentPage);
+            updatePaginationControls();
+        });
+
+        function populateTypeFilter() {
+            const typeFilter = document.getElementById('typeFilter');
+            const types = new Set(['Select Type']);
+
+            allData.forEach(row => {
+                types.add(row.getAttribute('data-type'));
+            });
+
+            types.forEach(type => {
+                const option = document.createElement('option');
+                option.value = type;
+                option.textContent = type;
+                typeFilter.appendChild(option);
+            });
+        }
+
+        function displayPage(page) {
+            const tableBody = document.getElementById('objectTableBody');
+            tableBody.innerHTML = '';
+
+            const startIndex = (page - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, filteredData.length);
+
+            filteredData.slice(startIndex, endIndex).forEach(row => {
+                tableBody.appendChild(row);
+            });
+
+            updatePaginationControls();
+        }
+
+        function updatePaginationControls() {
+            const paginationTop = document.getElementById('pagination-controls-top');
+            const paginationBottom = document.getElementById('pagination-controls-bottom');
+            paginationTop.innerHTML = '';
+            paginationBottom.innerHTML = '';
+            
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+
+            [paginationTop, paginationBottom].forEach(pagination => {
+                // Previous button
+                const prevButton = document.createElement('button');
+                prevButton.textContent = 'Previous';
+                prevButton.disabled = currentPage === 1;
+                prevButton.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        displayPage(currentPage);
+                    }
+                });
+                pagination.appendChild(prevButton);
+
+                // Page buttons
+                for (let i = 1; i <= totalPages; i++) {
+                    const button = document.createElement('button');
+                    button.textContent = i;
+                    button.classList.toggle('active', i === currentPage);
+                    button.addEventListener('click', () => {
+                        currentPage = i;
+                        displayPage(currentPage);
+                    });
+                    pagination.appendChild(button);
+                }
+
+                // Next button
+                const nextButton = document.createElement('button');
+                nextButton.textContent = 'Next';
+                nextButton.disabled = currentPage === totalPages;
+                nextButton.addEventListener('click', () => {
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        displayPage(currentPage);
+                    }
+                });
+                pagination.appendChild(nextButton);
+
+                // Go to page input
+                const goToPageInput = document.createElement('input');
+                goToPageInput.type = 'number';
+                goToPageInput.min = 1;
+                goToPageInput.max = totalPages;
+                goToPageInput.placeholder = 'Go to page';
+                goToPageInput.addEventListener('change', () => {
+                    const page = parseInt(goToPageInput.value);
+                    if (page >= 1 && page <= totalPages) {
+                        currentPage = page;
+                        displayPage(currentPage);
+                    } else {
+                        alert('請輸入有效頁碼');
+                    }
+                });
+                pagination.appendChild(goToPageInput);
+            });
+        }
+
+        function filterObjects() {
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+            const typeInput = document.getElementById('typeFilter').value;
+            
+            filteredData = allData.filter(row => {
+                const objectName = row.querySelector('td').textContent.toLowerCase();
+                const type = row.getAttribute('data-type');
+
+                const matchesName = objectName.includes(searchInput);
+                const matchesType = typeInput === 'Select Type' || type === typeInput;
+
+                return matchesName && matchesType;
+            });
+
+            currentPage = 1;
+            displayPage(currentPage);
+            updatePaginationControls();
+        }
+
+        function clearFilter() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('typeFilter').value = 'Select Type';
+            filteredData = allData;
+            
+            currentPage = 1;
+            displayPage(currentPage);
+            updatePaginationControls();
+        }
+
+    </script>
+</body>
+</html>

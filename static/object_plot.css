@@ -1,0 +1,174 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #ccc; 
+    margin: 0;
+    padding: 0;
+}
+
+.main-banner {
+    background-image: url('M42BG.jpg'); /* Background image */
+    background-size: cover;
+    background-position: bottom;
+    padding: 100px;
+    text-align: center;
+    position: relative;
+}
+
+.main-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5); 
+    z-index: 1;
+}
+
+.main-banner .container {
+    position: relative;
+    z-index: 2;
+}
+
+.header-text h1 {
+    font-size: 78px;
+    margin-bottom: 30px;
+    letter-spacing: 2px; 
+    color: #fff;
+}
+
+.header-text p {
+    font-size: 24px;
+    margin-bottom: 30px;
+    letter-spacing: 2px; 
+}
+
+/* ================== MAIN ================== */
+.container-main {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    margin: 40px;
+}
+
+.plot-container {
+    width: 50%;                      
+    margin-top: 100px;
+    text-align: center;
+}
+
+.plot-form-container {
+    width: 40%;
+    background-color: #fff;
+    padding: 30px;
+    margin: 50px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.plot-form-container h2 {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.plot-form-container p {
+    text-align: center;
+    font-size: 10px;
+}
+
+/* Adjusting for vertical alignment of label and input */
+.plot-form-row {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column; 
+}
+
+.plot-form-row label {
+    font-weight: bold;
+    color: #333;
+    font-size: 16px;
+    margin-bottom: 8px;  
+}
+
+
+.plot-form-row input,
+.plot-form-row select {
+    width: 100%; 
+    padding: 8px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+}
+
+.plot-form-row textarea {
+    width: 100%;
+    padding: 8px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+    height: 100px; 
+}
+
+.plot-form-row input:focus,
+.plot-form-row select:focus,
+.plot-form-row textarea:focus {
+    border-color: #2ca470;
+}
+
+.plot-form-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+}
+
+.plot-form-buttons button {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    background-color: #2ca470;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.plot-form-buttons button:hover {
+    background-color: #238057;
+}
+
+.plot-container {
+    width: 50%;
+    margin-top: 20px;
+    text-align: center;
+}
+
+.plot-image {
+    width: 100%;                    
+    height: auto;
+    border: 2px solid #ccc;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease-in-out;
+}
+
+.plot-image:hover {
+    transform: scale(1.05);           
+}
+
+.spinner {
+    border: 4px solid #f3f3f3; /* Light grey */
+    border-top: 4px solid #2ca470; /* Blue */
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 10px auto; /* Center alignment */
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
