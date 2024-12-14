@@ -5,11 +5,13 @@ import shutil
 import csv
 from plotly import graph_objs as go
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = 'H:\\'
 DATA_PATH = os.path.join(BASE_DIR, 'Lab_Data')
 DATA_FILE = 'observations.csv'
 
-STATIC_IMAGE_FOLDER = 'static/data_images'
+#STATIC_IMAGE_FOLDER = '/static/data_images'
+STATIC_IMAGE_FOLDER = '/Data_img'
 
 # Interactive plot, spec ============================================
 def create_interactive_spectrum_plot(spectrum_file, plot_filename):
@@ -76,7 +78,6 @@ class Data_Process:
     # scan folder to get detail
     def scan_data_folders(data_path=DATA_PATH):
         objects = []
-        os.makedirs(STATIC_IMAGE_FOLDER, exist_ok=True)
 
         for obj_folder in os.listdir(data_path):
             obj_path = os.path.join(data_path, obj_folder, "Data")
@@ -93,8 +94,7 @@ class Data_Process:
                     ra = lines[1].split(": ")[1].strip()
                     dec = lines[2].split(": ")[1].strip()
                     photo_image_path = os.path.normpath(os.path.join(obj_path, lines[3].split(": ")[1].strip()))
-                    TNtype = lines[4].split(": ")[1].strip() if len(lines) > 5 else 'None'
-                    
+                    TNtype = lines[4].split(": ")[1].strip() 
                     # create static
                     object_static_folder = os.path.join(STATIC_IMAGE_FOLDER, obj_folder)
                     os.makedirs(object_static_folder, exist_ok=True)
@@ -111,10 +111,12 @@ class Data_Process:
                     create_interactive_photometry_plot(photometry_path, photometry_html_path)
                     
                     # web_for_fit
-                    web_photo_path = f"/{photo_dest.replace(os.path.sep, '/')}"
-                    web_spectrum_html_path = f"/{spectrum_html_path.replace(os.path.sep, '/')}"
-                    web_photometry_html_path = f"/{photometry_html_path.replace(os.path.sep, '/')}"
+                    web_photo_path = f"{photo_dest.replace(os.path.sep, '/')}"
+                    web_spectrum_html_path = f"{spectrum_html_path.replace(os.path.sep, '/')}"
+                    web_photometry_html_path = f"{photometry_html_path.replace(os.path.sep, '/')}"
 
+                    print('web_photo_path',web_photo_path)
+                    
                     # analyze dat
                     dat_file = next((f for f in os.listdir(os.path.join(data_path, obj_folder, "Spectrum")) if f.endswith('.dat')), None)
                     if dat_file:
@@ -137,9 +139,10 @@ class Data_Process:
                         'dat_file': web_dat_path,
                         'TNtype': TNtype
                     })
-                print(f"Processed {object_name} with interactive spectrum and data files.")
             else:
+                print('='*50)
                 print(f"Missing info.txt or spectrum file for {obj_folder}")
+                print('='*50)
 
         return objects
 

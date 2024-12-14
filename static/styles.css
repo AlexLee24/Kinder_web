@@ -8,7 +8,7 @@ body {
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background-image: url('M101.jpg'); /* BG image */
+    background-image: url('BG/M101.jpg'); /* BG image */
     background-size: cover;
     background-position: top;
     height: 100vh;

@@ -10,7 +10,7 @@ body {
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background-image: url('LMC.jpg'); /* BG image */
+    background-image: url('BG/LMC.jpg'); /* BG image */
     background-size: cover;
     background-position: left 50%;
     padding: 100px; /* Banner height */

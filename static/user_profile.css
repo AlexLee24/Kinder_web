@@ -8,7 +8,7 @@ body {
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background-image: url('NGC6888.jpg'); /* BG image */
+    background-image: url('BG/NGC6888.jpg'); /* BG image */
     background-size: cover;
     background-position: bottom;
     padding: 100px; /* Banner height */

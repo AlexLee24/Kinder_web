@@ -7,7 +7,7 @@ body {
 
 /* ================== Banner Styling ================== */
 .main-banner {
-    background-image: url('M42BG.jpg'); /* Background image */
+    background-image: url('BG/M42BG.jpg'); /* Background image */
     background-size: cover;
     background-position: bottom;
     padding: 100px; /* Banner height */

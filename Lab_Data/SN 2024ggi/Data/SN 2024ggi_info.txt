@@ -1,5 +1,0 @@
-Object_Name: SN 2024ggi
-RA: 11:18:22.09
-DEC: -32:50:15.2
-Photo_path: SN 2024ggi_photo.png
-Transient_type: 
