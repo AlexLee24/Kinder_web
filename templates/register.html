@@ -25,7 +25,7 @@
 
             <form method="post" action="{{ url_for('register') }}">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Username(For display and login):</label>
                     <input type="text" id="username" name="username" value="{{ username|default('') }}" required>
                 </div>
                 <div class="form-group">
