@@ -10,21 +10,7 @@ body {
     z-index: 0; 
 }
 
-html, body {
-    margin: 0;
-    padding: 0;
-}
-
-.main-banner {
-    background-image: url('BG/M45.jpg'); /* BG image */
-    background-size: cover;
-    background-position: bottom;
-    padding: 100px; /* Banner height */
-    text-align: center; /* align center */
-    position: relative;
-}
-
-.main-banner::before {
+body::before {
     content: '';
     position: absolute;
     top: 0;
@@ -32,13 +18,14 @@ html, body {
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5); 
-    z-index: 1;
+    z-index: 1; /* layer */
 }
 
-.main-banner .container {
-    position: relative;
-    z-index: 2;
+html, body {
+    margin: 0;
+    padding: 0;
 }
+
 
 .header-text h1 {
     font-size: 78px;
@@ -59,7 +46,7 @@ html, body {
     justify-content: center;
     align-items: flex-start;
     margin: 40px;
-    
+    z-index: 2;
 }
 
 
@@ -68,6 +55,7 @@ html, body {
     width: 50%;                      
     margin-top: 100px;
     text-align: center;
+    z-index: 2;
 }
 
 .plot-form-container {
@@ -77,6 +65,7 @@ html, body {
     margin: 50px;
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 2;
 }
 
 .plot-form-container h2 {
