@@ -58,6 +58,24 @@
                         <div id="image-container">
                             <iframe src="{{ photometry_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
                         </div>
+                    
+                        <div id="upload-section">
+                            <h4>Upload Photometry File</h4>
+                            <p>File name please rename as: </p>
+                            <p>"<strong>{Your name/group}_{Data range, use "-"}_{Object name}_{Filter or All filter (in same txt) }_photometry.txt</strong>"</p>
+                            <p>For example: <strong>GREATLAB_60412-60420_SN 2024ggi_r_photometry.txt</strong></p>
+                            <p>If multiple filters are in the same .txt file: use the format <strong>{filter}&{time (JD)}&{Mag}</strong></p>
+                            <p>If filters are in separate .txt files: use the format <strong>{time (JD)}&{Mag}</strong></p>
+                            <p>Using <strong>spaces</strong> to separate values is also acceptable.</p>
+                            <p>Thank you!</p>
+                            
+                            <form id="upload-form" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_photometry', object_name=object_name) }}">
+                                <input type="file" name="file" class="upload-area" accept=".txt" required> 
+                                <button type="submit" class="upload-button">Upload</button>
+                            </form>
+                            
+                            <div id="upload-result"></div>
+                        </div>
                     </div>
 
                     <div id="spectrum-content" style="display: none;">
@@ -65,7 +83,9 @@
                         <div id="image-container">
                             <iframe src="{{ spectrum_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
                         </div>
+                        <!-- 
                         <a href="{{ dat_file }}" download class="download-button">Download Spectrum Data (.dat)</a>
+                        -->
                     </div>
                 </div>
             </div>
@@ -100,7 +120,7 @@
 
                 <div id="comment-box">
                     <h3>Comments (in UTC time)</h3>
-                    <div id="comments-list" style="max-height: 300px; overflow-y: auto;">
+                    <div id="comments-list" style="max-height: 500px; overflow-y: auto;">
                         {% if comments %}
                             {% for comment in comments %}
                                 <div class="comment" data-id="{{ comment[3] }}">
@@ -267,6 +287,31 @@
             if (this.value.trim()) {
                 this.classList.remove("error");
             }
+        });
+
+        document.getElementById("upload-form").addEventListener("submit", function(event) {
+            event.preventDefault();
+        
+            const formData = new FormData(this);
+            const uploadResult = document.getElementById("upload-result");
+            const actionUrl = this.action;
+        
+            fetch(actionUrl, {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "success") {
+                    uploadResult.innerHTML = `<p style="color:green;">${data.message}</p>`;
+                } else {
+                    uploadResult.innerHTML = `<p style="color:red;">${data.message}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                uploadResult.innerHTML = `<p style="color:red;">An error occurred while uploading.</p>`;
+            });
         });
     </script>
 </body>

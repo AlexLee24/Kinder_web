@@ -43,7 +43,7 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
         # 光學濾鏡
         'u': '#4B0082',    # 深紫色 (u band)
         'B': '#0000FF',    # 藍色 (B band)
-        'g': '#00FF00',    # 綠色 (g band)
+        'g': '#2ca470',    # 綠色 (g band)
         'V': '#228B22',    # 深綠色 (V band)
         'r': '#FF0000',    # 紅色 (r band)
         'o': '#FFA500',    # 橙色 (o band)

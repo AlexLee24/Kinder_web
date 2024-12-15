@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload Photometry File</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .upload-container {
+            width: 50%;
+            margin: 50px auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .upload-container h1 {
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            display: block;
+            margin: 10px auto;
+        }
+
+        .upload-button {
+            display: inline-block;
+            padding: 10px 20px;
+            font-size: 16px;
+            color: white;
+            background-color: #2ca470;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .upload-button:hover {
+            background-color: #238057;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-top: 20px;
+            text-decoration: none;
+            color: #2ca470;
+            font-weight: bold;
+        }
+
+        .back-button:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <h1>Upload Photometry File</h1>
+        <p>File name please name as "<strong>{Object name}_{Filter}_photometry.txt</strong>"</p>
+        <p>e.g: <strong>SN 2024ggi_r_photometry.txt</strong></p>
+        
+        <form action="{{ url_for('upload_photometry') }}" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".txt" required>
+            <button type="submit" class="upload-button">Upload File</button>
+        </form>
+    </div>
+</body>
+</html>

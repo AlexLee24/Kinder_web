@@ -77,6 +77,12 @@ body {
     background-color: #238057;
 }
 
+h4 {
+    margin-bottom: 20px;
+    font-size: 20px;
+    border-bottom: 2px solid #333;  
+    padding-bottom: 10px;
+}
 
 /* Search area */
 .search-area {
@@ -222,7 +228,14 @@ body {
     background-color: #238057; 
 }
 
+#upload-form {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px; /* 元素間距 */
+}
+
 /* Download button */
+.upload-button,
 .download-button {
     display: inline-block;
     margin-top: 10px;
@@ -237,6 +250,22 @@ body {
     cursor: pointer; 
 }
 
+.upload-area {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 10px 20px;
+    color: #000000; 
+    font-size: 16px;
+    text-align: center;
+    text-decoration: none; 
+    border-radius: 5px; 
+    border: none; 
+    border-radius: 5px; 
+    border: 2px solid #2ca470;
+    cursor: pointer; 
+}
+
+.upload-button:hover,
 .download-button:hover {
     background-color: #238057;
 }
@@ -268,18 +297,22 @@ body {
 
 #comment-box {
     background-color: #ffffff;
+    margin-top: 10px;
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     overflow-y: auto; 
 }
 
+#comment-form {
+    display: flex;
+    align-items: center;
+    gap: 10px; 
+}
+
 #comment-form textarea {
     width: 70%;
-    max-width: 95%;
-    padding: 10px;
-    margin-bottom: 10px;
-    margin-top: 10px;
+    padding: 10px 15px;
     border-radius: 5px;
     border: 1px solid #000000;
 }
@@ -367,4 +400,29 @@ label {
     font-size: 14px;
     display: block;
     margin-top: 10px;
+}
+
+
+.flash-message {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+
+.flash-message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.flash-message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.flash-message.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
 }
