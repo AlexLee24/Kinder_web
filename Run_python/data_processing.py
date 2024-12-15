@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 #BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE_DIR = 'H:\\'
 DATA_PATH = os.path.join(BASE_DIR, 'Lab_Data')
-DATA_FILE = 'observations.csv'
+DATA_FILE = os.path.join(BASE_DIR,'Other', 'observations.csv')
 
 #STATIC_IMAGE_FOLDER = '/static/data_images'
 STATIC_IMAGE_FOLDER = '/Data_img'
