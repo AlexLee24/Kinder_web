@@ -57,7 +57,6 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
         'J': '#8B4513',    # 棕色 (J band)
         'H': '#A0522D',    # 土紅色 (H band)
         'Ks': '#CD853F',   # 黃土色 (Ks band)
-        'JHK': '#8B4513',  # 統一紅外線顏色 (JHK)
     }
 
     for filter_name, photometry_file in photometry_files.items():
