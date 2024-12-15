@@ -9,6 +9,7 @@
     <!-- Header -->
     {% include 'header.html' %}
     <!-- Header -->
+    
     <h1>Pending User Approvals</h1>
     <h1>Admin Dashboard - Pending User Approvals</h1>
     <table>
@@ -59,6 +60,13 @@
         </tr>
         {% endfor %}
     </table>
+<!--
+    <form action="{{ url_for('clear_comments') }}" method="post" style="margin-bottom: 20px;">
+        <button type="submit" style="background-color: red; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer;">
+            Clear All Comments
+        </button>
+    </form>
+-->
     <!-- Footer -->
     {% include 'footer.html' %}
     <!-- Footer -->

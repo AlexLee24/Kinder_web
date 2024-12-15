@@ -47,25 +47,25 @@
                 <h3>Select Data</h3>
                 <p>Choose data to view</p>
                 <select id="data-select" onchange="loadData(this.value)">
-                    <option value="spectrum">Spectrum</option>
                     <option value="light_curve">Light Curve</option>
+                    <option value="spectrum">Spectrum</option>
                 </select>
                 
                 <div id="display-data">
-                    <!-- Default display is Spectrum Plot -->
-                    <div id="spectrum-content">
+                    <!-- Default display is Photometry Plot -->
+                    <div id="light-curve-content">
+                        <h3>Light curve for {{ object_name }}</h3>
+                        <div id="image-container">
+                            <iframe src="{{ photometry_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
+                        </div>
+                    </div>
+
+                    <div id="spectrum-content" style="display: none;">
                         <h3>Spectrum Chart for {{ object_name }}</h3>
                         <div id="image-container">
                             <iframe src="{{ spectrum_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
                         </div>
                         <a href="{{ dat_file }}" download class="download-button">Download Spectrum Data (.dat)</a>
-                    </div>
-            
-                    <div id="light-curve-content" style="display: none;">
-                        <h3>Light curve for {{ object_name }}</h3>
-                        <div id="image-container">
-                            <iframe src="{{ photometry_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
-                        </div>
                     </div>
                 </div>
             </div>

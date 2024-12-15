@@ -15,53 +15,53 @@
     <!-- Banner -->
 
     <!-- Form for generating the plot -->
-    <div class="container-main">
-        <div class="plot-form-container">
-            <h2>Generate Object Visibility Plot</h2>
-            <form id="plot-form">
-                <div class="plot-form-row">
-                    <label for="date">Date:</label>
-                    <input type="date" id="date" required />
-                </div>
+        <div class="container-main">
+            <div class="plot-form-container">
+                <h2>Generate Object Visibility Plot</h2>
+                <form id="plot-form">
+                    <div class="plot-form-row">
+                        <label for="date">Date:</label>
+                        <input type="date" id="date" required />
+                    </div>
 
-                <div class="plot-form-row">
-                    <label for="telescope">Observatory:</label>
-                    <select id="telescope" required>
-                        <option value="Other">Other</option>
-                        <option value="Lulin">Lulin</option>
-                        <option value="KTO">KTO</option>
-                    </select>
-                </div>
+                    <div class="plot-form-row">
+                        <label for="telescope">Observatory:</label>
+                        <select id="telescope" required>
+                            <option value="Other">Other</option>
+                            <option value="Lulin">Lulin</option>
+                            <option value="KTO">KTO</option>
+                        </select>
+                    </div>
 
-                <div class="plot-form-row">
-                    <label for="location">Location:</label>
-                    <input type="text" id="location" placeholder="Enter Longitude Latitude Altitude. e.g. 120:52:21.5 23:28:10.0 2800" required />
-                </div>
+                    <div class="plot-form-row">
+                        <label for="location">Location:</label>
+                        <input type="text" id="location" placeholder="Enter Longitude Latitude Altitude. e.g. 120:52:21.5 23:28:10.0 2800" required />
+                    </div>
 
-                <div class="plot-form-row">
-                    <label for="timezone">Timezone:</label>
-                    <input type="text" id="timezone" placeholder="Enter UTC offset. e.g. +8" required />
-                </div>
+                    <div class="plot-form-row">
+                        <label for="timezone">Timezone:</label>
+                        <input type="text" id="timezone" placeholder="Enter UTC offset. e.g. +8" required />
+                    </div>
 
-                <div class="plot-form-row">
-                    <label for="target-list">Target List:</label>
-                    <textarea id="target-list" placeholder="Enter targets one per line: Object_Name RA DEC
+                    <div class="plot-form-row">
+                        <label for="target-list">Target List:</label>
+                        <textarea id="target-list" placeholder="Enter targets one per line: Object_Name RA DEC
 e.g.
 M42 5h 35m 17s -5° 23′ 24″ 
 Great_Orion_Nebula 5:35:17 -5:23:24
 Target1 83.8208 -5.3900"></textarea>
-                    <a>The browser may block the opening of a new window.</a>
-                </div>
+                        <a>The browser may block the opening of a new window.</a>
+                    </div>
 
-                <div class="plot-form-buttons">
-                    <button type="button" id="generate-btn">Generate</button>
-                    <div id="loading-spinner" class="spinner" style="display: none;"></div>
-                    <button type="reset" id="clear-btn">Clear</button>
-                </div>
-            </form>
-            <p>plot by python obsplanning, https://github.com/pjcigan/obsplanning</p>
+                    <div class="plot-form-buttons">
+                        <button type="button" id="generate-btn">Generate</button>
+                        <div id="loading-spinner" class="spinner" style="display: none;"></div>
+                        <button type="reset" id="clear-btn">Clear</button>
+                    </div>
+                </form>
+                <p>plot by python obsplanning, https://github.com/pjcigan/obsplanning</p>
+            </div>
         </div>
-    </div>
 
     <!-- Footer -->
     {% include 'footer.html' %}

@@ -1,16 +1,26 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #ccc; 
+    margin: 0;
+    padding: 0;
+    background-image: url('BG/M42BG2.jpg');
+    background-size: cover;
+    background-position: center; 
+    background-attachment: fixed; 
+    position: relative; 
+    z-index: 0; 
+}
+
+html, body {
     margin: 0;
     padding: 0;
 }
 
 .main-banner {
-    background-image: url('M42BG.jpg'); /* Background image */
+    background-image: url('BG/M45.jpg'); /* BG image */
     background-size: cover;
     background-position: bottom;
-    padding: 100px;
-    text-align: center;
+    padding: 100px; /* Banner height */
+    text-align: center; /* align center */
     position: relative;
 }
 
@@ -49,7 +59,10 @@ body {
     justify-content: center;
     align-items: flex-start;
     margin: 40px;
+    
 }
+
+
 
 .plot-container {
     width: 50%;                      
