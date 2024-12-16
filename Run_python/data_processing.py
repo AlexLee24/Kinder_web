@@ -5,15 +5,13 @@ import shutil
 import csv
 import plotly.graph_objects as go
 
-#BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BASE_DIR = 'H:\\'
+BASE_DIR = 'H:/Data'
 DATA_PATH = os.path.join(BASE_DIR, 'Lab_Data')
 DATA_FILE = os.path.join(BASE_DIR,'Other', 'observations.csv')
 
-#STATIC_IMAGE_FOLDER = '/static/data_images'
 STATIC_IMAGE_FOLDER = '/Data_img'
-
 STATIC_IMAGE_FOLDER_Direct = os.path.join(BASE_DIR, 'Data_img')
+
 # Interactive plot, spec ============================================
 def create_interactive_spectrum_plot(spectrum_file, plot_filename):
     data = np.loadtxt(spectrum_file, usecols=(0, 1))
@@ -146,7 +144,6 @@ class Data_Process:
                     # create static
                     object_static_folder = os.path.join(STATIC_IMAGE_FOLDER, obj_folder)
                     object_static_folder_direct = os.path.join(STATIC_IMAGE_FOLDER_Direct, obj_folder)
-                    os.makedirs(object_static_folder, exist_ok=True)
 
                     # copy fit to static
                     photo_dest = os.path.join(object_static_folder, f"{obj_folder}_photo.png")
@@ -191,9 +188,10 @@ class Data_Process:
                         'TNtype': TNtype
                     })
             else:
-                print('='*50)
-                print(f"Missing info.txt or spectrum file for {obj_folder}")
-                print('='*50)
+                if not obj_folder == '.DS_Store':
+                    print('='*50)
+                    print(f"Missing info.txt or spectrum file for {obj_folder}")
+                    print('='*50)
 
         return objects
 

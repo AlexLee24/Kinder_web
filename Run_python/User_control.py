@@ -2,9 +2,9 @@ import os
 from werkzeug.security import generate_password_hash, check_password_hash
 
 class UserManagement: 
-    BASE_DIR = 'H:/Other/'
-    USER_DATA_FILE = os.path.join(BASE_DIR, 'users.txt')
-    PENDING_USER_FILE = os.path.join(BASE_DIR, 'pending_users.txt')
+    BASE_DIR = 'H:/Data'
+    USER_DATA_FILE = os.path.join(BASE_DIR, 'Other', 'users.txt')
+    PENDING_USER_FILE = os.path.join(BASE_DIR, 'Other', 'pending_users.txt')
 
     # Loading user
     def load_users(filename=USER_DATA_FILE):

@@ -233,8 +233,8 @@ body {
     padding: 15px;
     border-radius: 10px;
     background-color: #fff;
-    width: 60%;
-    max-width: 60%;
+    width: 1000px;
+    max-width: 1000px;
 }
 
 .filter-row {
