@@ -4,8 +4,12 @@ import datetime
 import shutil
 import csv
 import plotly.graph_objects as go
+import configparser
 
-BASE_DIR = 'H:/Data'
+config = configparser.ConfigParser()
+config.read('config.ini')
+BASE_DIR = config['Paths']['BASE_DIR']
+
 DATA_PATH = os.path.join(BASE_DIR, 'Lab_Data')
 DATA_FILE = os.path.join(BASE_DIR,'Other', 'observations.csv')
 
@@ -82,6 +86,7 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
     fig = go.Figure(data=traces, layout=layout)
     fig.write_html(plot_filename)
 
+
 def scan_photometry_files(data_path, obj_folder):
     photometry_folder = os.path.join(data_path, obj_folder, "Photometry")
     photometry_files = {}
@@ -92,6 +97,7 @@ def scan_photometry_files(data_path, obj_folder):
                 filter_name = file_name.split("_")[-2] 
                 photometry_files[filter_name] = os.path.join(photometry_folder, file_name)
     return photometry_files
+
 
 class Data_Process:
     # Loading observation
@@ -109,7 +115,6 @@ class Data_Process:
         with open(DATA_FILE, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerows(data)
-
 
     # process_data_folders
     def process_data_folders(data_path=DATA_PATH):
@@ -223,5 +228,4 @@ class Data_Process:
             -11: 'Pacific/Midway',      
             -12: 'Pacific/Kwajalein'  
         }
-    
         return timezone_dict.get(offset)

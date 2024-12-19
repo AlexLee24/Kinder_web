@@ -1,8 +1,12 @@
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
+import configparser
 
 class UserManagement: 
-    BASE_DIR = 'H:/Data'
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    BASE_DIR = config['Paths']['BASE_DIR']
+    
     USER_DATA_FILE = os.path.join(BASE_DIR, 'Other', 'users.txt')
     PENDING_USER_FILE = os.path.join(BASE_DIR, 'Other', 'pending_users.txt')
 
@@ -72,6 +76,5 @@ class UserManagement:
                     parts[1] = hashed_password
                     line = ','.join(parts) + '\n'
                 lines.append(line)
-
         with open(filename, 'w', encoding='utf-8') as f:
             f.writelines(lines)
