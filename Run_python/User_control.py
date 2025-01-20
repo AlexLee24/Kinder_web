@@ -20,8 +20,10 @@ class UserManagement:
                     if len(parts) >= 2:
                         username = parts[0]
                         hashed_password = parts[1]  # hashed_password
+                        org = parts[5]
                         users[username] = hashed_password
-        return users
+                        
+        return users, org
 
     #get user data
     def get_user_data(username, filename=USER_DATA_FILE):

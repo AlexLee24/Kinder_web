@@ -24,7 +24,7 @@
             {% endwith %}</div>
 
             <form method="post" action="{{ url_for('register') }}">
-                <p><strong>Do not use commas(",") in any field.</strong></p>
+                <p><strong>Do not use commas(",") and colon(":") in any field.</strong></p>
                 <div class="form-group">
                     <label for="username">Username(For display and login):</label>
                     <input type="text" id="username" name="username" value="{{ username|default('') }}" required>
@@ -42,7 +42,7 @@
                     <input type="email" id="email" name="email" value="{{ email|default('') }}" required>
                 </div>
                 <div class="form-group">
-                    <label for="organization">Organization and Groups: (e.g. National Central University: GREAT Lab) </label>
+                    <label for="organization">Organization and Groups: (e.g. National Central University GREAT Lab) </label>
                     <input type="text" id="organization" name="organization" value="{{ organization|default('') }}" required>
                 </div>
                 <div class="form-group">

@@ -62,8 +62,8 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
     }
 
     for filter_name, photometry_file in photometry_files.items():
-        data = np.loadtxt(photometry_file, usecols=(0, 1))
-        time, mag = data[:, 0], data[:, 1]
+        data = np.loadtxt(photometry_file, usecols=(0, 1, 2))
+        time, mag, error = data[:, 0], data[:, 1], data[:, 2]
 
         trace = go.Scatter(
             x=time,
@@ -71,13 +71,18 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
             mode='markers',
             name=f'Filter: {filter_name}',
             marker=dict(color=filter_colors.get(filter_name, '#000000')),
+            error_y=dict(
+                type='data',
+                array=error,
+                visible=True
+            ),
             visible=True  
         )
         traces.append(trace)
 
     layout = go.Layout(
         title="Photometry - Multiple Filters by clicking on the chart legend.",
-        xaxis=dict(title="Time (JD)",tickformat="d"),
+        xaxis=dict(title="Time (MJD)",tickformat="d"),
         yaxis=dict(title="Magnitude",autorange="reversed"),
         template="seaborn",
         showlegend=True 
@@ -136,7 +141,7 @@ class Data_Process:
             spectrum_path = os.path.join(data_path, obj_folder, "Spectrum", f"{obj_folder}_spectrum.dat")
             photometry_path = scan_photometry_files(data_path, obj_folder)
 
-            if os.path.exists(txt_file_path) and os.path.exists(spectrum_path):
+            if os.path.exists(txt_file_path):
                 last_update_date = datetime.datetime.fromtimestamp(os.path.getmtime(txt_file_path)).strftime('%Y-%m-%d %H:%M:%S')
 
                 with open(txt_file_path, 'r') as file:
@@ -146,6 +151,8 @@ class Data_Process:
                     dec = lines[2].split(": ")[1].strip()
                     photo_image_path = os.path.normpath(os.path.join(obj_path, lines[3].split(": ")[1].strip()))
                     TNtype = lines[4].split(": ")[1].strip() 
+                    permission = lines[5].split(": ")[1].strip()
+                    
                     # create static
                     object_static_folder = os.path.join(STATIC_IMAGE_FOLDER, obj_folder)
                     object_static_folder_direct = os.path.join(STATIC_IMAGE_FOLDER_Direct, obj_folder)
@@ -153,31 +160,41 @@ class Data_Process:
                     # copy fit to static
                     photo_dest = os.path.join(object_static_folder, f"{obj_folder}_photo.png")
                     photo_dest_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_photo.png")
-                    shutil.copy(photo_image_path, photo_dest_dir)
+                    if os.path.exists(photo_dest):
+                        shutil.copy(photo_image_path, photo_dest_dir)
+                        web_photo_path = f"{photo_dest.replace(os.path.sep, '/')}"
+                    else:
+                        web_photo_path = None
 
                     # create interactive plot
                     spectrum_html_path = os.path.join(object_static_folder, f"{obj_folder}_spectrum.html")
                     spectrum_html_path_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_spectrum.html")
-                    create_interactive_spectrum_plot(spectrum_path, spectrum_html_path_dir)
+                    if os.path.exists(str(spectrum_path)):
+                        create_interactive_spectrum_plot(spectrum_path, spectrum_html_path_dir)
+                        web_spectrum_html_path = f"{spectrum_html_path.replace(os.path.sep, '/')}"
+                    else:
+                        web_spectrum_html_path = None
+                        
                     
                     photometry_html_path = os.path.join(object_static_folder, f"{obj_folder}_photometry.html")
                     photometry_html_path_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_photometry.html")
-                    create_interactive_photometry_plot(photometry_path, photometry_html_path_dir)
-                    
-                    # web_for_fit
-                    web_photo_path = f"{photo_dest.replace(os.path.sep, '/')}"
-                    web_spectrum_html_path = f"{spectrum_html_path.replace(os.path.sep, '/')}"
-                    web_photometry_html_path = f"{photometry_html_path.replace(os.path.sep, '/')}"
+                    if os.path.exists(str(photometry_path)):
+                        create_interactive_photometry_plot(photometry_path, photometry_html_path_dir)
+                        web_photometry_html_path = f"{photometry_html_path.replace(os.path.sep, '/')}"
+                    else:
+                        web_photometry_html_path = None
 
                     # analyze dat
-                    dat_file = next((f for f in os.listdir(os.path.join(data_path, obj_folder, "Spectrum")) if f.endswith('.dat')), None)
-                    if dat_file:
-                        dat_file_path = os.path.join(data_path, obj_folder, "Spectrum", dat_file)
-                        dat_dest = os.path.join(object_static_folder, f"{obj_folder}_spectrum.dat")
-                        dat_dest_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_spectrum.dat")
-                        shutil.copy(dat_file_path, dat_dest_dir)
-                        web_dat_path = f"/{dat_dest.replace(os.path.sep, '/')}"
-
+                    if os.path.exists(str(spectrum_path)):
+                        dat_file = next((f for f in os.listdir(os.path.join(data_path, obj_folder, "Spectrum")) if f.endswith('.dat')), None)
+                        if dat_file:
+                            dat_file_path = os.path.join(data_path, obj_folder, "Spectrum", dat_file)
+                            dat_dest = os.path.join(object_static_folder, f"{obj_folder}_spectrum.dat")
+                            dat_dest_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_spectrum.dat")
+                            shutil.copy(dat_file_path, dat_dest_dir)
+                            web_dat_path = f"/{dat_dest.replace(os.path.sep, '/')}"
+                        else:
+                            web_dat_path = None
                     else:
                         web_dat_path = None
                     
@@ -190,13 +207,23 @@ class Data_Process:
                         'spectrum_html': web_spectrum_html_path,
                         'photometry_html': web_photometry_html_path,
                         'dat_file': web_dat_path,
-                        'TNtype': TNtype
+                        'TNtype': TNtype,
+                        'Permission': permission
                     })
             else:
                 if not obj_folder == '.DS_Store':
-                    print('='*50)
-                    print(f"Missing info.txt or spectrum file for {obj_folder}")
-                    print('='*50)
+                    objects.append({
+                        'object_name': obj_folder,
+                        'RA': None,
+                        'DEC': None,
+                        'last_update_date': None,
+                        'photo_image': None,
+                        'spectrum_html': None,
+                        'photometry_html': None,
+                        'dat_file': None,
+                        'TNtype': None,
+                        'Permission': None
+                    })
 
         return objects
 

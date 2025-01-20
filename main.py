@@ -199,14 +199,20 @@ def object_data(object_name):
     
     objects = Data_Process.scan_data_folders()
     object_info = next((obj for obj in objects if obj['object_name'] == object_name), None)
-
+    user_organization = session.get('organization')
+    
     if object_info:
-        conn = sqlite3.connect(COMMENTS)
-        cursor = conn.cursor()
-        cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
-        comments = cursor.fetchall()
-        conn.close()
-        return render_template('object_data_temp.html', **object_info)
+        Permission_list = object_info['Permission'].split('&')
+        print(Permission_list)
+        if object_info['Permission'] == 'public' or user_organization in Permission_list: 
+            conn = sqlite3.connect(COMMENTS)
+            cursor = conn.cursor()
+            cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
+            comments = cursor.fetchall()
+            conn.close()
+            return render_template('object_data_temp.html', **object_info)
+        else:
+            return render_template('No_permission.html', current_path='/aboutus.html')
     else:
         return "Object not found", 404
 
@@ -240,13 +246,14 @@ def login_page():
         if username in pending_users:
             return redirect(url_for('login_page', error='pending'))
 
-        users = UserManagement.load_users() 
+        users, org = UserManagement.load_users() 
         hashed_password = users.get(username)
         
         if hashed_password:
             password_check = check_password_hash(hashed_password, password)
             if password_check:
                 session['username'] = username
+                session['organization'] = org
                 next_page = request.args.get('next', url_for('home'))
                 return redirect(next_page)
         return redirect(url_for('login_page', error=1))
