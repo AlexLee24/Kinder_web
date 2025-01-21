@@ -19,6 +19,7 @@ matplotlib.use('Agg')
 from flask import Flask, render_template, request, redirect, url_for, session, render_template_string, jsonify, flash, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mail import Mail, Message
+from datetime import datetime
 
 from Run_python.User_control import UserManagement
 from Run_python.data_processing import Data_Process
@@ -35,7 +36,8 @@ PENDING_USER_FILE = os.path.join(BASE_DIR, 'Other', 'pending_users.txt')
 RESET_TOKEN_FILE= os.path.join(BASE_DIR, 'Other', 'reset_tokens.txt')
 COMMENTS = os.path.join(BASE_DIR, 'Other', 'comments.db') 
 
-base_upload_folder = os.path.join(BASE_DIR, 'Upload')  
+#base_upload_folder = os.path.join(BASE_DIR, 'Upload')  
+base_upload_folder = os.path.join(BASE_DIR, 'Lab_Data') 
 base_path = os.path.join(BASE_DIR, 'Data_img') 
 
 #================================ Define code ======================================
@@ -76,10 +78,18 @@ def upload_photometry(object_name):
             return jsonify({"status": "error", "message": "No file selected"})
 
         if file and file.filename.endswith('.txt'): 
-            upload_folder = os.path.join(base_upload_folder, object_name)
+            upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
             os.makedirs(upload_folder, exist_ok=True)
 
+            filename, file_extension = os.path.splitext(file.filename)
+            current_date = datetime.now().strftime("%Y_%m_%d")
+
             save_path = os.path.join(upload_folder, file.filename)
+            counter = 1
+            while os.path.exists(save_path):
+                new_filename = f"{filename}_{current_date}_{counter}{file_extension}"
+                save_path = os.path.join(upload_folder, new_filename)
+                counter += 1
             file.save(save_path)
             return jsonify({"status": "success", "message": f"File successfully uploaded"})
         
@@ -202,9 +212,8 @@ def object_data(object_name):
     user_organization = session.get('organization')
     
     if object_info:
-        Permission_list = object_info['Permission'].split('&')
-        print(Permission_list)
-        if object_info['Permission'] == 'public' or user_organization in Permission_list or 'admin' in user_organization: 
+        Permission_list = object_info['Permission'].split(' & ')
+        if object_info['Permission'] == 'public' or user_organization in Permission_list or user_organization == 'admin': 
             conn = sqlite3.connect(COMMENTS)
             cursor = conn.cursor()
             cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
@@ -246,8 +255,9 @@ def login_page():
         if username in pending_users:
             return redirect(url_for('login_page', error='pending'))
 
-        users, org = UserManagement.load_users() 
+        users, ueres_org = UserManagement.load_users() 
         hashed_password = users.get(username)
+        org = ueres_org.get(username)
         
         if hashed_password:
             password_check = check_password_hash(hashed_password, password)
@@ -750,8 +760,8 @@ def generate_plot_2():
 
 # run
 if __name__ == '__main__':
-    app.run(debug=True)
-    #app.run(host='0.0.0.0', port=80)
+    #app.run(debug=True)
+    app.run(host='0.0.0.0', port=80)
 
 #git add .
 #git commit -m "XXX"

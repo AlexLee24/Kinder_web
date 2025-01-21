@@ -281,8 +281,8 @@ h4 {
 }
 
 #photo-section img {
-    max-width: 650px;
-    height: auto;
+    width: 650px;
+    height: 650px;
     border-radius: 8px;
 }
 

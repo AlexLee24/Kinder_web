@@ -13,6 +13,7 @@ class UserManagement:
     # Loading user
     def load_users(filename=USER_DATA_FILE):
         users = {}
+        ueres_org = {}
         if os.path.exists(filename):
             with open(filename, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -22,8 +23,9 @@ class UserManagement:
                         hashed_password = parts[1]  # hashed_password
                         org = parts[5]
                         users[username] = hashed_password
+                        ueres_org[username] = org
                         
-        return users, org
+        return users, ueres_org
 
     #get user data
     def get_user_data(username, filename=USER_DATA_FILE):

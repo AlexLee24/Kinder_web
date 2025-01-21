@@ -61,33 +61,44 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
         'Ks': '#CD853F',   # 黃土色 (Ks band)
     }
 
-    for filter_name, photometry_file in photometry_files.items():
+    combined_data = {}
+    
+    for photometry_file, filter_name in photometry_files.items():
         data = np.loadtxt(photometry_file, usecols=(0, 1, 2))
+        if data.ndim == 1:
+            data = np.expand_dims(data, axis=0)
         time, mag, error = data[:, 0], data[:, 1], data[:, 2]
-
+        
+        if filter_name not in combined_data:
+            combined_data[filter_name] = {'time': [], 'mag': [], 'error': []}
+        combined_data[filter_name]['time'].extend(time)
+        combined_data[filter_name]['mag'].extend(mag)
+        combined_data[filter_name]['error'].extend(error)
+    
+    for filter_name, data in combined_data.items():
         trace = go.Scatter(
-            x=time,
-            y=mag,
+            x=data['time'],
+            y=data['mag'],
             mode='markers',
-            name=f'Filter: {filter_name}',
+            name=f'Filter: {filter_name}',  
             marker=dict(color=filter_colors.get(filter_name, '#000000')),
             error_y=dict(
                 type='data',
-                array=error,
+                array=data['error'],
                 visible=True
             ),
-            visible=True  
+            visible=True
         )
         traces.append(trace)
-
+    
     layout = go.Layout(
         title="Photometry - Multiple Filters by clicking on the chart legend.",
-        xaxis=dict(title="Time (MJD)",tickformat="d"),
-        yaxis=dict(title="Magnitude",autorange="reversed"),
+        xaxis=dict(title="Time (MJD)", tickformat="d"),
+        yaxis=dict(title="Magnitude", autorange="reversed"),
         template="seaborn",
-        showlegend=True 
+        showlegend=True
     )
-
+    
     fig = go.Figure(data=traces, layout=layout)
     fig.write_html(plot_filename)
 
@@ -98,10 +109,15 @@ def scan_photometry_files(data_path, obj_folder):
     
     if os.path.exists(photometry_folder):
         for file_name in os.listdir(photometry_folder):
-            if file_name.startswith(f"{obj_folder}_") and file_name.endswith("_photometry.txt"):
-                filter_name = file_name.split("_")[-2] 
-                photometry_files[filter_name] = os.path.join(photometry_folder, file_name)
-    return photometry_files
+            if file_name.startswith(f"{obj_folder}_") and file_name.endswith(".txt"):
+                file_part = file_name.split("_")
+                filter_name = file_part[1]
+                path = os.path.join(photometry_folder, file_name)
+                photometry_files[path] = filter_name
+        print(photometry_files)
+        return photometry_files
+    else:
+        return None
 
 
 class Data_Process:
@@ -138,12 +154,15 @@ class Data_Process:
         for obj_folder in os.listdir(data_path):
             obj_path = os.path.join(data_path, obj_folder, "Data")
             txt_file_path = os.path.join(obj_path, f"{obj_folder}_info.txt")
-            spectrum_path = os.path.join(data_path, obj_folder, "Spectrum", f"{obj_folder}_spectrum.dat")
             photometry_path = scan_photometry_files(data_path, obj_folder)
+            spectrum_path = os.path.join(data_path, obj_folder, "Spectrum", f"{obj_folder}_spectrum.dat")
+            
 
             if os.path.exists(txt_file_path):
                 last_update_date = datetime.datetime.fromtimestamp(os.path.getmtime(txt_file_path)).strftime('%Y-%m-%d %H:%M:%S')
-
+                sp = str(spectrum_path)
+                if not os.path.exists(sp):
+                    spectrum_path = None
                 with open(txt_file_path, 'r') as file:
                     lines = file.readlines()
                     object_name = lines[0].split(": ")[1].strip()
@@ -156,11 +175,13 @@ class Data_Process:
                     # create static
                     object_static_folder = os.path.join(STATIC_IMAGE_FOLDER, obj_folder)
                     object_static_folder_direct = os.path.join(STATIC_IMAGE_FOLDER_Direct, obj_folder)
+                    os.makedirs(object_static_folder_direct, exist_ok=True)
 
                     # copy fit to static
                     photo_dest = os.path.join(object_static_folder, f"{obj_folder}_photo.png")
                     photo_dest_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_photo.png")
-                    if os.path.exists(photo_dest):
+                    
+                    if os.path.exists(photo_image_path):
                         shutil.copy(photo_image_path, photo_dest_dir)
                         web_photo_path = f"{photo_dest.replace(os.path.sep, '/')}"
                     else:
@@ -169,7 +190,7 @@ class Data_Process:
                     # create interactive plot
                     spectrum_html_path = os.path.join(object_static_folder, f"{obj_folder}_spectrum.html")
                     spectrum_html_path_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_spectrum.html")
-                    if os.path.exists(str(spectrum_path)):
+                    if spectrum_path:
                         create_interactive_spectrum_plot(spectrum_path, spectrum_html_path_dir)
                         web_spectrum_html_path = f"{spectrum_html_path.replace(os.path.sep, '/')}"
                     else:
@@ -178,14 +199,14 @@ class Data_Process:
                     
                     photometry_html_path = os.path.join(object_static_folder, f"{obj_folder}_photometry.html")
                     photometry_html_path_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_photometry.html")
-                    if os.path.exists(str(photometry_path)):
+                    if photometry_path:
                         create_interactive_photometry_plot(photometry_path, photometry_html_path_dir)
                         web_photometry_html_path = f"{photometry_html_path.replace(os.path.sep, '/')}"
                     else:
                         web_photometry_html_path = None
 
                     # analyze dat
-                    if os.path.exists(str(spectrum_path)):
+                    if spectrum_path:
                         dat_file = next((f for f in os.listdir(os.path.join(data_path, obj_folder, "Spectrum")) if f.endswith('.dat')), None)
                         if dat_file:
                             dat_file_path = os.path.join(data_path, obj_folder, "Spectrum", dat_file)
@@ -198,18 +219,27 @@ class Data_Process:
                     else:
                         web_dat_path = None
                     
-                    objects.append({
+                    object_data = {
                         'object_name': object_name,
                         'RA': ra,
                         'DEC': dec,
                         'last_update_date': last_update_date,
-                        'photo_image': web_photo_path,
-                        'spectrum_html': web_spectrum_html_path,
-                        'photometry_html': web_photometry_html_path,
-                        'dat_file': web_dat_path,
                         'TNtype': TNtype,
                         'Permission': permission
-                    })
+                    }
+                    if web_photometry_html_path is not None:
+                        object_data['photometry_html'] = web_photometry_html_path
+
+                    if web_dat_path is not None:
+                        object_data['dat_file'] = web_dat_path
+
+                    if web_spectrum_html_path is not None:
+                        object_data['spectrum_html'] = web_spectrum_html_path
+
+                    if web_photo_path is not None:
+                        object_data['photo_image'] = web_photo_path
+
+                    objects.append(object_data)
             else:
                 if not obj_folder == '.DS_Store':
                     objects.append({
@@ -224,6 +254,8 @@ class Data_Process:
                         'TNtype': None,
                         'Permission': None
                     })
+                    print(objects)
+                    print('aaaaa')
 
         return objects
 
