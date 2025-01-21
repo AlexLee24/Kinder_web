@@ -204,7 +204,7 @@ def object_data(object_name):
     if object_info:
         Permission_list = object_info['Permission'].split('&')
         print(Permission_list)
-        if object_info['Permission'] == 'public' or user_organization in Permission_list: 
+        if object_info['Permission'] == 'public' or user_organization in Permission_list or 'admin' in user_organization: 
             conn = sqlite3.connect(COMMENTS)
             cursor = conn.cursor()
             cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
