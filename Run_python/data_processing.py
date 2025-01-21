@@ -5,6 +5,7 @@ import shutil
 import csv
 import plotly.graph_objects as go
 import configparser
+import random
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -61,35 +62,58 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
         'Ks': '#CD853F',   # 黃土色 (Ks band)
     }
 
+    marker_symbols_list = ['square', 'diamond', 'cross', 'x', 'star']
+    marker_symbols = {}
+
     combined_data = {}
     
     for photometry_file, filter_name in photometry_files.items():
+        if '+' in filter_name:
+            filter_name, telescope = filter_name.split('+')
+        else:
+            telescope = 'Unknown'
+        
         data = np.loadtxt(photometry_file, usecols=(0, 1, 2))
         if data.ndim == 1:
             data = np.expand_dims(data, axis=0)
         time, mag, error = data[:, 0], data[:, 1], data[:, 2]
         
         if filter_name not in combined_data:
-            combined_data[filter_name] = {'time': [], 'mag': [], 'error': []}
+            combined_data[filter_name] = {'time': [], 'mag': [], 'error': [], 'telescope': []}
         combined_data[filter_name]['time'].extend(time)
         combined_data[filter_name]['mag'].extend(mag)
         combined_data[filter_name]['error'].extend(error)
+        combined_data[filter_name]['telescope'].extend([telescope] * len(time))
     
     for filter_name, data in combined_data.items():
-        trace = go.Scatter(
-            x=data['time'],
-            y=data['mag'],
-            mode='markers',
-            name=f'Filter: {filter_name}',  
-            marker=dict(color=filter_colors.get(filter_name, '#000000')),
-            error_y=dict(
-                type='data',
-                array=data['error'],
+        for telescope in set(data['telescope']):
+            if telescope not in marker_symbols:
+                if telescope == 'Unknown':
+                    marker_symbols[telescope] = 'circle'
+                else:
+                    if marker_symbols_list:
+                        marker_symbols[telescope] = marker_symbols_list.pop(0)
+                    else:
+                        marker_symbols[telescope] = 'circle'
+            indices = [i for i, t in enumerate(data['telescope']) if t == telescope]
+            trace = go.Scatter(
+                x=[data['time'][i] for i in indices],
+                y=[data['mag'][i] for i in indices],
+                mode='markers',
+                name=f'Filter: {filter_name} (Telescope: {telescope})',
+                marker=dict(
+                    color=filter_colors.get(filter_name, '#000000'),
+                    symbol=marker_symbols[telescope],
+                    size=10
+                ),
+                error_y=dict(
+                    type='data',
+                    array=[abs(data['error'][i]) for i in indices],
+                    visible=True
+                ),
                 visible=True
-            ),
-            visible=True
-        )
-        traces.append(trace)
+            )
+            traces.append(trace)
     
     layout = go.Layout(
         title="Photometry - Multiple Filters by clicking on the chart legend.",
@@ -101,20 +125,28 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
     
     fig = go.Figure(data=traces, layout=layout)
     fig.write_html(plot_filename)
-
-
+    
+# =====================================================================
 def scan_photometry_files(data_path, obj_folder):
     photometry_folder = os.path.join(data_path, obj_folder, "Photometry")
     photometry_files = {}
     
     if os.path.exists(photometry_folder):
         for file_name in os.listdir(photometry_folder):
-            if file_name.startswith(f"{obj_folder}_") and file_name.endswith(".txt"):
+            obj_part = obj_folder.split(" ")
+            obj = f"{obj_part[0]}{obj_part[1]}"
+            if (file_name.startswith(f"{obj_folder}_") or file_name.startswith(f"{obj}_")) and file_name.endswith(".txt"):
                 file_part = file_name.split("_")
                 filter_name = file_part[1]
                 path = os.path.join(photometry_folder, file_name)
-                photometry_files[path] = filter_name
-        print(photometry_files)
+                if len(file_part) > 3:
+                    if '.txt' in file_part[3]:
+                        Telescope = file_part[3].rstrip('.txt')
+                    else:
+                        Telescope = file_part[3]
+                    photometry_files[path] = f"{filter_name}+{Telescope}"
+                else:
+                    photometry_files[path] = filter_name
         return photometry_files
     else:
         return None
@@ -155,8 +187,16 @@ class Data_Process:
             obj_path = os.path.join(data_path, obj_folder, "Data")
             txt_file_path = os.path.join(obj_path, f"{obj_folder}_info.txt")
             photometry_path = scan_photometry_files(data_path, obj_folder)
-            spectrum_path = os.path.join(data_path, obj_folder, "Spectrum", f"{obj_folder}_spectrum.dat")
-            
+            spectrum_folder = os.path.join(data_path, obj_folder, "Spectrum")
+            spectrum_path = None
+            if os.path.exists(spectrum_folder):
+                for file_name in os.listdir(spectrum_folder):
+                    if file_name.endswith(".dat"):
+                        spectrum_path = os.path.join(spectrum_folder, f"{obj_folder}_spectrum.dat")
+                        break
+                    elif file_name.endswith(".txt"):
+                        spectrum_path = os.path.join(spectrum_folder, f"{obj_folder}_spectrum.txt")
+                        break
 
             if os.path.exists(txt_file_path):
                 last_update_date = datetime.datetime.fromtimestamp(os.path.getmtime(txt_file_path)).strftime('%Y-%m-%d %H:%M:%S')
@@ -254,9 +294,6 @@ class Data_Process:
                         'TNtype': None,
                         'Permission': None
                     })
-                    print(objects)
-                    print('aaaaa')
-
         return objects
 
     def get_timezone_name(offset):
