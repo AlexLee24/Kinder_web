@@ -39,7 +39,7 @@
     <!-- Add Observation form -->
     <div id="observation-form">
         <h2 id="form-title">Add New Observation</h2>
-        
+        <p>You can use copy to get the same object observation but date is today</p>
 
         <div class="form-row">
             <label>Object: </label>
@@ -164,7 +164,7 @@
                     <th data-sort="observed">Observed</th>
                     <th data-sort="ra">RA</th>
                     <th data-sort="dec">DEC</th>
-                    <th data-sort="observer">Observer</th>
+                    <th data-sort="observer">Trigger</th>
                     <th data-sort="date">Date</th>
                     {% if 'username' in session %}
                         <th>Actions</th>
@@ -187,6 +187,7 @@
                         <button class="expand-button">Plot</button>
                         {% if 'username' in session %}
                             <button class="edit-button">Edit</button>
+                            <button class="copy-button">Copy</button>
                             <button class="delete-button">Delete</button>
                         {% endif %}
                     </td>
@@ -232,6 +233,43 @@
         
             // When 'Plot' button is clicked, generate and display plot in a new tab
             document.querySelector('tbody').addEventListener('click', function(event) {
+                if (event.target.classList.contains('copy-button')) {
+                    const row = event.target.closest('tr'); 
+                    const object = row.cells[1].textContent;
+                    const telescope = row.cells[2].textContent;
+                    const triggered = row.cells[3].textContent;
+                    const observe = row.cells[4].textContent;
+                    const ra = row.cells[5].textContent;
+                    const dec = row.cells[6].textContent;
+                    const observer = row.cells[7].textContent;
+                    const date = new Date().toISOString().split('T')[0]; 
+        
+                    const newRowData = [object, telescope, triggered, observe, ra, dec, observer, date];
+                    data.push(newRowData);
+        
+                    const newRow = document.createElement("tr");
+                    newRow.innerHTML = `
+                        <td data-count></td>
+                        <td>${object}</td>
+                        <td>${telescope}</td>
+                        <td>${triggered}</td>
+                        <td>${observe}</td>
+                        <td>${ra}</td>
+                        <td>${dec}</td>
+                        <td>${observer}</td>
+                        <td>${date}</td>
+                        <td>
+                            <button class="expand-button">Plot</button>
+                            <button class="edit-button">Edit</button>
+                            <button class="copy-button">Copy</button>
+                            <button class="delete-button">Delete</button>
+                        </td>
+                    `;
+                    document.getElementById("observation-table-body").prepend(newRow);
+                    bindRowEvents(newRow);
+                    updateTableCount();
+                    saveDataToServer();
+                }
                 if (event.target.classList.contains('expand-button')) {
                     const row = event.target.closest('tr'); // Find the row the button is in
                     const objectName = row.cells[1].textContent;
@@ -239,7 +277,7 @@
                     const dec = row.cells[6].textContent;
                     const dateText = row.cells[8]?.textContent || ""; 
                     const date = dateText.replace(/-/g, "");
-                    
+                    alert("Generating Plot. Please ensure your browser is not blocking pop-up windows.... Please click OK and wait for the plot to appear.");
                     generatePlot(objectName, ra, dec, date, row);
                 }
             });
@@ -341,6 +379,7 @@
                     <td>
                         <button class="expand-button">Plot</button>
                         <button class="edit-button">Edit</button>
+                        <button class="copy-button">Copy</button>
                         <button class="delete-button">Delete</button>
                     </td>
                 `;
@@ -640,6 +679,7 @@
                         <td>
                             <button class="expand-button">Plot</button>
                             <button class="edit-button">Edit</button>
+                            <button class="copy-button">Copy</button>
                             <button class="delete-button">Delete</button>
                         </td>
                     `;
@@ -808,9 +848,9 @@
         // ====================== Save Data to Server ======================
         function saveDataToServer() {
             const updatedData = data.map(row => [
-                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]
             ]);
-
+        
             fetch("/save_data", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -820,17 +860,14 @@
             .then(result => {
                 if (result.status === "success") {
                     alert("Data saved or edit successfully!");
-                    data = updatedData;
-                    originalData = [...data];
-                    populateYearMonthFilters();
-                    displayPage(currentPage);    
-                    updatePaginationControls();
-                    updatePageInfo();
                 } else {
                     alert("Failed to save data.");
                 }
             })
-            .catch(error => console.error("Error:", error));
+            .catch(error => {
+                console.error("Error:", error);
+                alert("An error occurred while saving data.");
+            });
         }
     
         // ====================== Initialize Table Count and Filters on Load ======================

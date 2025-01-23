@@ -123,6 +123,7 @@ def serve_data_img(filename):
 @app.route('/save_data', methods=['POST'])
 def save_data_route():
     data = request.json.get('data', [])
+    print(data)
     Data_Process.save_data(data)
     return jsonify({"status": "success"})
 
@@ -228,7 +229,7 @@ def object_data(object_name):
 
 @app.route('/observation.html')
 def observation():
-    data = Data_Process.load_data()  # Load observation data
+    data = Data_Process.load_data() # Load observation data
     return render_template('observation.html', data=data, current_path='/observation.html')
 
 
