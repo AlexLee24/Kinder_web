@@ -38,6 +38,19 @@
                             About Us
                         </a>
                     </li>
+                    
+                    {% if session.get('organization') == "NCU GREAT Lab" and 'username' in session%}
+                        <li>
+                            <a href="https://docs.google.com/spreadsheets/d/1DIpWAHnHcANkU3akCkqCeSfn6sRUtsXkxXXlIb3w6oo/edit?gid=70341031#gid=70341031" target="_blank" rel="noopener noreferrer">
+                                Observation log
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('trigger_view', next=request.path) }}" class="{% if request.path == url_for('trigger_view') %}active{% endif %}">
+                                Trigger
+                            </a>
+                        </li>
+                    {% endif %}
 
                     {% if 'username' in session %}
                         <li>

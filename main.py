@@ -23,6 +23,8 @@ from datetime import datetime
 
 from Run_python.User_control import UserManagement
 from Run_python.data_processing import Data_Process
+from Run_python.Trigger import Generate_message
+
 app = Flask(__name__, static_folder="static")
 
 app.secret_key = 'test'
@@ -95,6 +97,67 @@ def upload_photometry(object_name):
         
         return jsonify({"status": "error", "message": "Invalid file format. Only .txt files are allowed."})
 
+#Trigger 
+def convert_ra_format(ra):
+    parts = ra.split(':')
+    if len(parts) == 3:
+        hours = parts[0] + 'h'
+        minutes = parts[1] + 'm'
+        seconds = parts[2] + 's'
+        return f"{hours} {minutes} {seconds}"
+    else:
+        raise ValueError("Invalid RA format. Expected format: xx:xx:xx")
+
+def convert_dec_format(dec):
+    parts = dec.split(':')
+    if len(parts) == 3:
+        degrees = parts[0] + 'd'
+        minutes = parts[1] + 'm'
+        seconds = parts[2] + 's'
+        return f"{degrees} {minutes} {seconds}"
+    else:
+        raise ValueError("Invalid DEC format. Expected format: xx:xx:xx")
+
+@app.route('/trigger', methods=['GET', 'POST'])
+def trigger_view():
+    plot_folder = os.path.join(app.root_path, "static", "ov_plot")
+    if request.method == 'POST':
+        # 處理表單提交
+        targets = []
+        targets_all = []
+        for key in request.form.keys():
+            if key.startswith('obj-'):
+                index = key.split('-')[1]
+                obj = request.form[f'obj-{index}']
+                ra = request.form[f'ra-{index}']
+                dec = request.form[f'dec-{index}']
+                mag = request.form[f'mag-{index}']
+                too = 'yes' if f'too-{index}' in request.form else 'no'
+                target = {
+                    'object_name': obj,
+                    'ra': convert_ra_format(ra),
+                    'dec': convert_dec_format(dec),
+                }
+                targets_all.append(target)
+                targets.append({'obj': obj, 'ra': ra, 'dec': dec, 'mag': mag, 'too': too})
+        
+        targets.sort(key=lambda x: x['ra'])
+
+        messages = []
+        for target in targets:
+            ToO = target['too'] == 'yes'
+            message = Generate_message.generate_message(target['obj'], target['ra'], target['dec'], target['mag'], ToO)
+            messages.append(message)
+            
+        unique_filename = Generate_message.generate_plot(targets_all, plot_folder)
+
+        return jsonify({
+            'messages': messages,
+            'targets_all': targets_all,
+            'success': True,
+            'plot_url': f"/static/ov_plot/{unique_filename}"
+        })
+    return render_template('trigger.html')
 
 # admin to clear all comments
 @app.route('/clear_comments', methods=['POST'])
@@ -265,6 +328,7 @@ def login_page():
             if password_check:
                 session['username'] = username
                 session['organization'] = org
+                print(session)
                 next_page = request.args.get('next', url_for('home'))
                 return redirect(next_page)
         return redirect(url_for('login_page', error=1))
@@ -707,7 +771,6 @@ def generate_plot_2():
     
     date = date.replace("-","")
     timezone = Data_Process.get_timezone_name(int(timezone))
-    
     for i in targets:
         name = i['object_name']
         ra = i['ra']

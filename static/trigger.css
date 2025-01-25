@@ -1,0 +1,204 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-image: url('BG/M42BG2.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    position: relative;
+    z-index: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: -1; /* 確保這個層級在其他元素之下 */
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+.container-main p,h2 {
+    color: #fff; /* 設置為白色 */
+    padding: 10px; /* 添加內邊距 */
+    z-index: 3; /* 確保在其他元素之上 */
+}
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.header-text h1 {
+    font-size: 78px;
+    margin-bottom: 30px;
+    letter-spacing: 2px;
+    color: #fff;
+}
+
+.header-text p {
+    font-size: 24px;
+    margin-bottom: 30px;
+    letter-spacing: 2px;
+}
+
+/* ================== MAIN ================== */
+.container-main {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin: 40px;
+    z-index: 2;
+    position: relative; /* 確保 z-index 生效 */
+    flex: 1;
+}
+
+.target-block {
+    width: 100%;
+    background-color: #fff;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 2;
+    position: relative; /* 確保 z-index 生效 */
+}
+
+.target-block h3 {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.remove-target {
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: 24px;
+    color: red;
+    cursor: pointer;
+}
+
+.target-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px; /* 增加間距 */
+}
+
+.target-row label {
+    font-weight: bold;
+    color: #333;
+    font-size: 16px;
+    margin-right: 10px;
+}
+
+.target-row input {
+    flex: 1;
+    padding: 8px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+}
+
+.target-row input:focus {
+    border-color: #2ca470;
+}
+
+.form-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.add-target-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.add-target-btn:hover {
+    background-color: #0056b3;
+}
+
+.generate-btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    background-color: #2ca470;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.generate-btn:hover {
+    background-color: #238057;
+}
+
+.message-container {
+    width: 100%;
+    background-color: #fff;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 2;
+    position: relative; /* 確保 z-index 生效 */
+    max-height: 1000px; /* 設置最大高度 */
+    overflow-y: auto; /* 允許垂直滾動 */
+}
+
+.message-container h3 {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.message-container textarea {
+    width: 98%;
+    height: 900px; /* 調整高度 */
+    font-size: 16px;
+    color: #333;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px;
+    resize: none;
+    overflow-y: auto;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #2ca470;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 10px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
