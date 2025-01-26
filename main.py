@@ -122,7 +122,6 @@ def convert_dec_format(dec):
 def trigger_view():
     plot_folder = os.path.join(app.root_path, "static", "ov_plot")
     if request.method == 'POST':
-        # 處理表單提交
         targets = []
         targets_all = []
         for key in request.form.keys():
@@ -133,11 +132,15 @@ def trigger_view():
                 dec = request.form[f'dec-{index}']
                 mag = request.form[f'mag-{index}']
                 too = 'yes' if f'too-{index}' in request.form else 'no'
-                target = {
-                    'object_name': obj,
-                    'ra': convert_ra_format(ra),
-                    'dec': convert_dec_format(dec),
-                }
+                try:
+                    target = {
+                        'object_name': obj,
+                        'ra': convert_ra_format(ra),
+                        'dec': convert_dec_format(dec),
+                    }
+                except ValueError as e:
+                    return redirect(url_for('trigger_view'))
+                
                 targets_all.append(target)
                 observable_priority = Generate.observe_priority(ra)
                 targets.append({'obj': obj, 'ra': ra, 'dec': dec, 'mag': mag, 'too': too, 'priority': observable_priority})

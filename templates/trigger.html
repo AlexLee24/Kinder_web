@@ -15,10 +15,22 @@
         <div class="container-main">
             <h2>Generate Object Message</h2>
             <p>Messages will be generated below, and the Visibility plot will open in a new page.</p>
+
+            <!-- Display Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash {{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
             <form id="message-form">
                 <div id="targets-container">
                     <div class="target-block">
-                        <h3>Target 1 <span class="remove-target" onclick="removeTarget(this)">×</span></h3>
+                        <h3>Target<span class="remove-target" onclick="removeTarget(this)"></span></h3>
                         <div class="target-row">
                             <label for="obj-1">Object:</label>
                             <input type="text" name="obj-1" placeholder="SN2024ggi" required />
@@ -55,7 +67,7 @@
             const targetBlock = document.createElement('div');
             targetBlock.className = 'target-block';
             targetBlock.innerHTML = `
-                <h3>Target ${targetCount} <span class="remove-target" onclick="removeTarget(this)">×</span></h3>
+                <h3>Target<span class="remove-target" onclick="removeTarget(this)">×</span></h3>
                 <div class="target-row">
                     <label for="obj-${targetCount}">Object:</label>
                     <input type="text" name="obj-${targetCount}" placeholder="SN2024ggi" required />
