@@ -23,7 +23,7 @@ from datetime import datetime
 
 from Run_python.User_control import UserManagement
 from Run_python.data_processing import Data_Process
-from Run_python.Trigger import Generate_message
+from Run_python.Trigger import Generate
 
 app = Flask(__name__, static_folder="static")
 
@@ -139,17 +139,18 @@ def trigger_view():
                     'dec': convert_dec_format(dec),
                 }
                 targets_all.append(target)
-                targets.append({'obj': obj, 'ra': ra, 'dec': dec, 'mag': mag, 'too': too})
+                observable_priority = Generate.observe_priority(ra)
+                targets.append({'obj': obj, 'ra': ra, 'dec': dec, 'mag': mag, 'too': too, 'priority': observable_priority})
         
-        targets.sort(key=lambda x: x['ra'])
+        targets.sort(key=lambda x: x['priority'])
 
         messages = []
         for target in targets:
             ToO = target['too'] == 'yes'
-            message = Generate_message.generate_message(target['obj'], target['ra'], target['dec'], target['mag'], ToO)
+            message = Generate.generate_message(target['obj'], target['ra'], target['dec'], target['mag'], ToO)
             messages.append(message)
             
-        unique_filename = Generate_message.generate_plot(targets_all, plot_folder)
+        unique_filename = Generate.generate_plot(targets_all, plot_folder)
 
         return jsonify({
             'messages': messages,
