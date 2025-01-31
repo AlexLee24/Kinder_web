@@ -132,21 +132,25 @@ def trigger_view():
                 dec = request.form[f'dec-{index}']
                 mag = request.form[f'mag-{index}']
                 too = 'yes' if f'too-{index}' in request.form else 'no'
-                try:
-                    target = {
-                        'object_name': obj,
-                        'ra': convert_ra_format(ra),
-                        'dec': convert_dec_format(dec),
-                    }
-                except ValueError as e:
-                    return redirect(url_for('trigger_view'))
-                
-                targets_all.append(target)
                 observable_priority = Generate.observe_priority(ra)
                 targets.append({'obj': obj, 'ra': ra, 'dec': dec, 'mag': mag, 'too': too, 'priority': observable_priority})
         
         targets.sort(key=lambda x: x['priority'])
-
+        
+        for i in targets:
+            obj = i['obj']
+            ra = i['ra']
+            dec = i['dec']
+            try:
+                target = {
+                    'object_name': obj,
+                    'ra': convert_ra_format(ra),
+                    'dec': convert_dec_format(dec),
+                }
+                targets_all.append(target)
+            except ValueError as e:
+                return redirect(url_for('trigger_view'))
+        
         messages = []
         for target in targets:
             ToO = target['too'] == 'yes'
