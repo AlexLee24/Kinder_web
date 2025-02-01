@@ -12,6 +12,7 @@ import obsplanning as obs
 import ephem
 import re
 import configparser
+import sys
 
 import matplotlib
 matplotlib.use('Agg')
@@ -32,6 +33,10 @@ app.secret_key = 'test'
 config = configparser.ConfigParser()
 config.read('config.ini')
 BASE_DIR = config['Paths']['BASE_DIR']
+path_ex = os.path.exists(BASE_DIR)
+if path_ex == False:
+    print("=================== Check the path in config.ini file ===================")
+    sys.exit()
 
 USER_DATA_FILE = os.path.join(BASE_DIR, 'Other', 'users.txt')
 PENDING_USER_FILE = os.path.join(BASE_DIR, 'Other', 'pending_users.txt')
