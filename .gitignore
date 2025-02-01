@@ -1,4 +1,5 @@
 __pycache__
+__pycache__/
 token.json
 main_debug.py
 .codegpt
