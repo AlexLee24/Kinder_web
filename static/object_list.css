@@ -292,3 +292,74 @@ h2 {
     padding-bottom: 10px;
     font-weight: bold;
 }
+
+#addObjectBtn {
+    display: block;
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #2ca470;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    margin: 20px auto;
+}
+
+#addObjectBtn:hover {
+    background-color: #238057;
+}
+
+#addObjectModal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #ffffff;
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+#modalOverlay {
+    display: none; 
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+}
+
+#addObjectModal button {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    margin-top: 10px;
+    margin-right: 10px;
+}
+
+#addObjectModal button[type="submit"] {
+    background-color: #2ca470;
+    color: #fff;
+}
+
+#addObjectModal button[type="submit"]:hover {
+    background-color: #238057;
+}
+
+#addObjectModal button[type="button"] {
+    background-color: #ccc;
+    color: #333;
+}
+
+#addObjectModal button[type="button"]:hover {
+    background-color: #aaa;
+}

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin File Manager</title>
+    <link rel="stylesheet" href="/static/admin_file_manager.css">
+</head>
+<body>
+    <!-- Include Header -->
+    {% include 'header.html' %}
+
+    <div id="admin-file-manager">
+        <h1>Admin File Manager</h1>
+        <p>Current Path: /{{ current_path }}</p>
+    
+        {% if current_path %}
+            {% set parts = current_path.split('/') %}
+            {% if parts|length > 1 %}
+                {% set parent = parts[:-1]|join('/') %}
+            {% else %}
+                {% set parent = '' %}
+            {% endif %}
+            <div class="cd-up">
+                <a href="{{ url_for('admin_file_manager', path=parent) }}">[ cd .. ]</a>
+            </div>
+        {% endif %}
+    
+        <ul>
+        {% for item in items %}
+            <li>
+                {% if item.is_dir %}
+                    <!-- 如果是資料夾 -->
+                    <a href="{{ url_for('admin_file_manager', path=item.rel_path) }}">{{ item.name }}/</a>
+                {% else %}
+                    <!-- 如果是檔案 -->
+                    <div class="file-name">{{ item.name }}</div>
+                    {% if item.name.endswith('.txt') %}
+                        <div class="file-actions">
+                            <form action="{{ url_for('admin_file_delete') }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete this file?');">
+                                <button type="button" onclick="window.location.href='{{ url_for('admin_file_edit', path=item.rel_path) }}'" class="edit-button">Edit</button>
+                                <input type="hidden" name="path" value="{{ item.rel_path }}">
+                                <button type="submit" class="delete-button">Delete</button>
+                            </form>
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+    
+        <a href="{{ url_for('admin_file_new', path=current_path) }}" class="create-new">Create New txt File</a>
+    </div>
+    
+
+</body>
+</html>

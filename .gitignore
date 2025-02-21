@@ -1,7 +1,9 @@
 __pycache__
 __pycache__/
+Data
 token.json
 main_debug.py
+config.ini
 .codegpt
 .DS_Store
 .DS_Store 2

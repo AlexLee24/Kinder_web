@@ -13,6 +13,7 @@ import ephem
 import re
 import configparser
 import sys
+import shutil
 
 import matplotlib
 matplotlib.use('Agg')
@@ -72,6 +73,240 @@ init_db()
 #==================================== route =================================================
 #==================================== route =================================================
 #==================================== route =================================================
+# delete comment
+@app.route('/delete_comment/<int:comment_id>', methods=['POST'])
+def delete_comment(comment_id):
+    if 'username' not in session or session['username'] != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    try:
+        conn = sqlite3.connect(COMMENTS)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM comments WHERE id = ?', (comment_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# add object
+@app.route('/add_object', methods=['POST'])
+def add_object():
+    if 'username' not in session or session['username'] != 'admin':
+        return redirect(url_for('login_page'))
+    
+    target_name = request.form.get('target_name')
+    if not target_name:
+        flash("Please enter an object name", "error")
+        return redirect(url_for('object_list'))
+    
+    src = os.path.join(BASE_DIR, 'Other_Data', 'empty_object')
+    dest = os.path.join(BASE_DIR, 'Lab_Data', target_name)
+    
+    if os.path.exists(dest):
+        flash("Object with this name already exists.", "error")
+        return redirect(url_for('object_list'))
+    
+    try:
+        shutil.copytree(src, dest)
+        data_folder = os.path.join(dest, 'Data')
+        old_info_file = os.path.join(data_folder, 'object_name_info.txt')
+        new_info_file = os.path.join(data_folder, f"{target_name}_info.txt")
+        if os.path.exists(old_info_file):
+            os.rename(old_info_file, new_info_file)
+        flash("Object added successfully.", "success")
+    except Exception as e:
+        flash(f"Error adding object: {e}", "error")
+    
+    return redirect(url_for('object_list'))
+
+# update_object_info
+@app.route('/update_object_info/<object_name>', methods=['POST'])
+def update_object_info(object_name):
+    if 'username' not in session or session['username'] != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+    data = request.get_json()
+    new_ra = data.get('RA')
+    new_dec = data.get('DEC')
+    new_tntype = data.get('TNtype')
+    new_permission = data.get('Permission')
+    
+    info_file = os.path.join(BASE_DIR, 'Lab_Data', object_name, 'Data', f"{object_name}_info.txt")
+    if not os.path.exists(info_file):
+        return jsonify({'success': False, 'message': 'Info file not found'}), 404
+
+    try:
+        with open(info_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        for line in lines:
+            if line.startswith("RA:"):
+                new_lines.append("RA: " + new_ra + "\n")
+            elif line.startswith("DEC:"):
+                new_lines.append("DEC: " + new_dec + "\n")
+            elif line.startswith("Transient_type:"):
+                new_lines.append("Transient_type: " + new_tntype + "\n")
+            elif line.startswith("Permission:"):
+                new_lines.append("Permission: " + new_permission + "\n")
+            else:
+                new_lines.append(line)
+        
+        with open(info_file, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# delete object
+@app.route('/delete_object/<object_name>', methods=['POST'])
+def delete_object(object_name):
+    if 'username' not in session or session['username'] != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+    src_lab_data = os.path.join(BASE_DIR, 'Lab_Data', object_name)
+    delete_parent = os.path.join(BASE_DIR, 'Other_Data', 'delete_object')
+    os.makedirs(delete_parent, exist_ok=True)
+    
+    temp_dest = os.path.join(delete_parent, object_name)
+    data_img_folder = os.path.join(BASE_DIR, 'Data_img', object_name)
+
+    try:
+        if os.path.exists(src_lab_data):
+            shutil.move(src_lab_data, temp_dest)
+            deletion_time = datetime.now().strftime("%Y%m%d%H%M%S")
+            new_dest = os.path.join(delete_parent, f"{object_name}_{deletion_time}")
+            os.rename(temp_dest, new_dest)
+        else:
+            return jsonify({'success': False, 'message': 'Lab_Data folder not found'}), 404
+
+        if os.path.exists(data_img_folder):
+            shutil.rmtree(data_img_folder)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# upload image
+@app.route('/upload_object_photo/<object_name>', methods=['POST'])
+def upload_object_photo(object_name):
+    if 'username' not in session or session['username'] != 'admin':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('login_page'))
+
+    if 'photo' not in request.files:
+        flash("No file part", "error")
+        return redirect(url_for('object_data', object_name=object_name))
+    
+    photo_file = request.files['photo']
+    if photo_file.filename == '':
+        flash("No file selected", "error")
+        return redirect(url_for('object_data', object_name=object_name))
+
+    data_folder = os.path.join(BASE_DIR, 'Lab_Data', object_name, 'Data')
+    if not os.path.exists(data_folder):
+        flash("Data folder not found", "error")
+        return redirect(url_for('object_data', object_name=object_name))
+
+    original_filename = photo_file.filename
+    extension = os.path.splitext(original_filename)[1]  # e.g. ".png" / ".jpg"
+
+    new_filename = f"{object_name}_photo{extension}"
+    save_path = os.path.join(data_folder, new_filename)
+
+    try:
+        photo_file.save(save_path)
+    except Exception as e:
+        flash(f"Error saving file: {e}", "error")
+        return redirect(url_for('object_data', object_name=object_name))
+
+    info_file = os.path.join(data_folder, f"{object_name}_info.txt")
+    if not os.path.exists(info_file):
+        flash("Info file not found to update photo path", "error")
+        return redirect(url_for('object_data', object_name=object_name))
+    
+    try:
+        with open(info_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        found_photo_path_line = False
+        for line in lines:
+            if line.startswith("Photo_path:"):
+                new_lines.append(f"Photo_path: {new_filename}\n")
+                found_photo_path_line = True
+            else:
+                new_lines.append(line)
+        
+        if not found_photo_path_line:
+            new_lines.append(f"Photo_path: {new_filename}\n")
+
+        with open(info_file, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+
+        flash("Photo uploaded successfully.", "success")
+    except Exception as e:
+        flash(f"Error updating info.txt: {e}", "error")
+
+    return redirect(url_for('object_data', object_name=object_name))
+
+# edit object name
+@app.route('/update_object_name_inline/<object_name>', methods=['POST'])
+def update_object_name_inline(object_name):
+    # 檢查是否為 admin
+    if 'username' not in session or session['username'] != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+
+    data = request.get_json()
+    new_name = data.get('newName', '').strip()
+    if not new_name:
+        return jsonify({'success': False, 'message': 'New object name cannot be empty.'}), 400
+
+    old_folder = os.path.join(BASE_DIR, 'Lab_Data', object_name)
+    new_folder = os.path.join(BASE_DIR, 'Lab_Data', new_name)
+
+    if not os.path.exists(old_folder):
+        return jsonify({'success': False, 'message': 'Original folder not found.'}), 404
+    if os.path.exists(new_folder):
+        return jsonify({'success': False, 'message': 'New folder already exists.'}), 400
+
+    try:
+        # 重新命名主資料夾
+        os.rename(old_folder, new_folder)
+        # 遞迴更新新資料夾內所有檔案名稱中包含舊名稱的部分
+        for root, dirs, files in os.walk(new_folder):
+            for file in files:
+                if object_name in file:
+                    old_file_path = os.path.join(root, file)
+                    new_file_name = file.replace(object_name, new_name)
+                    new_file_path = os.path.join(root, new_file_name)
+                    os.rename(old_file_path, new_file_path)
+        # 更新 info.txt 中的 Photo_path 行
+        data_dir = os.path.join(new_folder, 'Data')
+        info_file_path = os.path.join(data_dir, f"{new_name}_info.txt")
+        if os.path.exists(info_file_path):
+            with open(info_file_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            new_lines = []
+            for line in lines:
+                if line.startswith("Photo_path:"):
+                    new_lines.append(f"Photo_path: {new_name}_photo.png\n")
+                else:
+                    new_lines.append(line)
+            with open(info_file_path, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+        # 刪除 BASE_DIR/Data_img 中舊名稱的資料夾
+        data_img_old_folder = os.path.join(BASE_DIR, 'Data_img', object_name)
+        if os.path.exists(data_img_old_folder):
+            shutil.rmtree(data_img_old_folder)
+
+        # 更新成功後，回傳新名稱
+        return jsonify({'success': True, 'new_name': new_name})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 # upload photometry
 @app.route('/upload_photometry/<object_name>', methods=['POST'])
 def upload_photometry(object_name):
@@ -88,19 +323,41 @@ def upload_photometry(object_name):
             upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
             os.makedirs(upload_folder, exist_ok=True)
 
-            filename, file_extension = os.path.splitext(file.filename)
-            current_date = datetime.now().strftime("%Y_%m_%d")
-
-            save_path = os.path.join(upload_folder, file.filename)
-            counter = 1
-            while os.path.exists(save_path):
-                new_filename = f"{filename}_{current_date}_{counter}{file_extension}"
-                save_path = os.path.join(upload_folder, new_filename)
-                counter += 1
-            file.save(save_path)
-            return jsonify({"status": "success", "message": f"File successfully uploaded"})
+            target_path = os.path.join(upload_folder, file.filename)
+            
+            if os.path.exists(target_path):
+                try:
+                    new_content = file.read().decode('utf-8')
+                    new_lines = [line.strip() for line in new_content.splitlines() if line.strip()]
+                    
+                    with open(target_path, 'r', encoding='utf-8') as f:
+                        existing_content = f.read()
+                    old_lines = [line.strip() for line in existing_content.splitlines() if line.strip()]
+                    
+                    lines_to_append = []
+                    for line in new_lines:
+                        if line not in old_lines:
+                            lines_to_append.append(line)
+                    
+                    if not lines_to_append:
+                        return jsonify({"status": "success", "message": "Uploaded content is already present; nothing appended."})
+                    
+                    with open(target_path, 'a', encoding='utf-8') as f:
+                        for line in lines_to_append:
+                            f.write("\n" + line)
+                    return jsonify({"status": "success", "message": "File content appended successfully, please reload the page to see the changes."})
+                except Exception as e:
+                    return jsonify({"status": "error", "message": f"Error appending content: {e}"})
+            else:
+                try:
+                    file.save(target_path)
+                    return jsonify({"status": "success", "message": "File successfully uploaded, please reload the page to see the changes."})
+                except Exception as e:
+                    return jsonify({"status": "error", "message": f"Error saving file: {e}"})
         
         return jsonify({"status": "error", "message": "Invalid file format. Only .txt files are allowed."})
+
+
 
 #Trigger 
 def convert_ra_format(ra):
@@ -221,24 +478,140 @@ def object_list():
     return render_template('object_list.html', objects=objects)
 
 
+# admin file management ====================================================================
+@app.route('/admin_file_manager', methods=['GET'])
+def admin_file_manager():
+    if 'username' not in session or session['username'] != 'admin':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('login_page'))
+    
+    rel_path = request.args.get('path', '')
+    abs_path = os.path.abspath(os.path.join(BASE_DIR, rel_path))
+    
+    if not abs_path.startswith(BASE_DIR):
+        flash("Access denied", "error")
+        return redirect(url_for('admin_file_manager'))
+    
+    items = os.listdir(abs_path)
+    file_items = []
+    for item in items:
+        if item == '.DS_Store':
+            continue
+        item_abs = os.path.join(abs_path, item)
+        file_items.append({
+            'name': item,
+            'is_dir': os.path.isdir(item_abs),
+            'rel_path': os.path.join(rel_path, item).replace("\\", "/")  
+        })
+    
+    return render_template('admin_file_manager.html', current_path=rel_path, items=file_items)
+
+@app.route('/admin_file_manager/edit', methods=['GET', 'POST'])
+def admin_file_edit():
+    if 'username' not in session or session['username'] != 'admin':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('login_page'))
+    
+    file_rel_path = request.args.get('path')
+    if not file_rel_path:
+        flash("No file specified", "error")
+        return redirect(url_for('admin_file_manager'))
+    abs_file_path = os.path.abspath(os.path.join(BASE_DIR, file_rel_path))
+    if not abs_file_path.startswith(BASE_DIR):
+        flash("Access denied", "error")
+        return redirect(url_for('admin_file_manager'))
+    
+    if request.method == 'POST':
+        content = request.form.get('content')
+        try:
+            with open(abs_file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            flash("File saved successfully", "success")
+        except Exception as e:
+            flash(f"Error saving file: {e}", "error")
+        return redirect(url_for('admin_file_manager', path=os.path.dirname(file_rel_path)))
+    
+    try:
+        with open(abs_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        flash(f"Error opening file: {e}", "error")
+        return redirect(url_for('admin_file_manager', path=os.path.dirname(file_rel_path)))
+    
+    return render_template('admin_file_edit.html', file_path=file_rel_path, content=content)
+
+@app.route('/admin_file_manager/delete', methods=['POST'])
+def admin_file_delete():
+    if 'username' not in session or session['username'] != 'admin':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    
+    file_rel_path = request.form.get('path')
+    abs_file_path = os.path.abspath(os.path.join(BASE_DIR, file_rel_path))
+    if not abs_file_path.startswith(BASE_DIR):
+        return jsonify({'success': False, 'message': 'Access denied'}), 403
+    try:
+        os.remove(abs_file_path)
+        flash("File deleted successfully", "success")
+        return redirect(url_for('admin_file_manager', path=os.path.dirname(file_rel_path)))
+    except Exception as e:
+        flash(f"Error deleting file: {e}", "error")
+        return redirect(url_for('admin_file_manager', path=os.path.dirname(file_rel_path)))
+
+@app.route('/admin_file_manager/new', methods=['GET', 'POST'])
+def admin_file_new():
+    if 'username' not in session or session['username'] != 'admin':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('login_page'))
+    
+    current_rel_path = request.args.get('path', '')
+    abs_dir_path = os.path.abspath(os.path.join(BASE_DIR, current_rel_path))
+    if not abs_dir_path.startswith(BASE_DIR):
+        flash("Access denied", "error")
+        return redirect(url_for('admin_file_manager'))
+    
+    if request.method == 'POST':
+        filename = request.form.get('filename')
+        content = request.form.get('content', '')
+        
+        if not filename.endswith('.txt'):
+            filename += '.txt'
+        
+        new_file_path = os.path.join(abs_dir_path, filename)
+        try:
+            with open(new_file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            flash("File created successfully", "success")
+        except Exception as e:
+            flash(f"Error creating file: {e}", "error")
+        return redirect(url_for('admin_file_manager', path=current_rel_path))
+    
+    return render_template('admin_file_new.html', current_path=current_rel_path)
+
+
+
 # add comment =============================================================================
 @app.route('/get_comments/<object_name>')
 def get_comments(object_name):
     conn = sqlite3.connect(COMMENTS)
     cursor = conn.cursor()
-    cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
+    cursor.execute('SELECT id, username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
     comments = cursor.fetchall()
     conn.close()
 
     # render html
     comments_html = render_template_string('''
-        {% for comment in comments %}
-            <div class="comment">
-                <p><strong>{{ comment[0] }}:</strong> {{ comment[1] }}</p>
-                <small>{{ comment[2] }}</small>
-            </div>
-        {% endfor %}
-    ''', comments=comments)
+    {% for comment in comments %}
+    <div class="comment" data-id="{{ comment[0] }}">
+        <p>
+            <strong>{{ comment[1] }}:</strong> {{ comment[2] }}
+            {% if session.get('username') == 'admin' %}
+                <button onclick="deleteComment({{ comment[0] }})" class="delete-comment-button">Delete</button>
+            {% endif %}
+        </p>
+        <small>{{ comment[3] }}</small>
+    </div>
+    {% endfor %}
+''', comments=comments)
 
     return jsonify({"comments_html": comments_html})
 
@@ -289,8 +662,10 @@ def object_data(object_name):
     user_organization = session.get('organization')
     
     if object_info:
-        Permission_list = object_info['Permission'].split(' & ')
-        if object_info['Permission'] == 'public' or user_organization in Permission_list or user_organization == 'admin': 
+        permission = object_info['Permission']
+        print(f"Permission: {permission}")
+        Permission_list = permission.split(' & ')
+        if permission == 'public' or permission == 'Public' or user_organization in Permission_list or user_organization == 'admin':
             conn = sqlite3.connect(COMMENTS)
             cursor = conn.cursor()
             cursor.execute('SELECT username, comment, timestamp FROM comments WHERE object_name = ?', (object_name,))
@@ -299,6 +674,7 @@ def object_data(object_name):
             return render_template('object_data_temp.html', **object_info)
         else:
             return render_template('No_permission.html', current_path='/aboutus.html')
+
     else:
         return "Object not found", 404
 

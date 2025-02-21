@@ -366,7 +366,7 @@ h4 {
 
 
 #star-map {
-    padding: 15px;
+    padding: 5px;
     background-color: #f9f9f9;
     border-radius: 8px;
     text-align: center;
@@ -425,4 +425,27 @@ label {
     background-color: #d1ecf1;
     color: #0c5460;
     border: 1px solid #bee5eb;
+}
+
+
+#deleteObjectBtn {
+    display: block;
+    margin: 20px auto;
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #e74c3c;  /* 紅色背景 */
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#deleteObjectBtn:hover {
+    background-color: #c0392b;
+}
+
+.delete-object-container {
+    text-align: center;
+    margin-top: 30px;
 }

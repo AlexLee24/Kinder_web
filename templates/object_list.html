@@ -21,6 +21,35 @@
     </div>
     
     <!-- Main Content -->
+    {% if 'username' in session and session['username'] == 'admin' %}
+        <!-- Add Object button -->
+        <button id="addObjectBtn">Add Object</button>
+
+        <!-- Modal window -->
+        <div id="addObjectModal">
+            <h3>Add New Object</h3>
+            <form id="addObjectForm" method="POST" action="{{ url_for('add_object') }}">
+                <p>Enter the object name like "SN 1987A"</p>
+                <input type="text" id="target_name" name="target_name" required>
+                <button type="submit">Submit</button>
+                <button type="button" id="cancelBtn">Cancel</button>
+            </form>
+        </div>
+
+        <!-- Modal bg -->
+        <div id="modalOverlay"></div>
+        
+        <script>
+            document.getElementById('addObjectBtn').addEventListener('click', function() {
+            document.getElementById('addObjectModal').style.display = 'block';
+            document.getElementById('modalOverlay').style.display = 'block';
+            });
+            document.getElementById('cancelBtn').addEventListener('click', function() {
+            document.getElementById('addObjectModal').style.display = 'none';
+            document.getElementById('modalOverlay').style.display = 'none';
+            });
+        </script>
+    {% endif %}
     {% if 'username' in session %}
         <!-- Search Filter -->
         <div class="filter-form">

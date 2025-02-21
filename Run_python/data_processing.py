@@ -134,7 +134,10 @@ def scan_photometry_files(data_path, obj_folder):
     if os.path.exists(photometry_folder):
         for file_name in os.listdir(photometry_folder):
             obj_part = obj_folder.split(" ")
-            obj = f"{obj_part[0]}{obj_part[1]}"
+            if len(obj_part) > 1:
+                obj = f"{obj_part[0]}{obj_part[1]}"
+            else:
+                obj = f"{obj_part[0]}"
             if (file_name.startswith(f"{obj_folder}_") or file_name.startswith(f"{obj}_")) and file_name.endswith(".txt"):
                 file_part = file_name.split("_")
                 filter_name = file_part[1]
@@ -205,23 +208,22 @@ class Data_Process:
                     spectrum_path = None
                 with open(txt_file_path, 'r') as file:
                     lines = file.readlines()
-                    object_name = lines[0].split(": ")[1].strip()
-                    ra = lines[1].split(": ")[1].strip()
-                    dec = lines[2].split(": ")[1].strip()
-                    photo_image_path = os.path.normpath(os.path.join(obj_path, lines[3].split(": ")[1].strip()))
-                    TNtype = lines[4].split(": ")[1].strip() 
-                    permission = lines[5].split(": ")[1].strip()
+                    ra = lines[0].split(": ")[1].strip()
+                    dec = lines[1].split(": ")[1].strip()
+                    photo_image_path = os.path.normpath(os.path.join(obj_path, lines[2].split(": ")[1].strip()))
+                    TNtype = lines[3].split(": ")[1].strip() 
+                    permission = lines[4].split(": ")[1].strip()
                     
                     # create static
                     object_static_folder = os.path.join(STATIC_IMAGE_FOLDER, obj_folder)
                     object_static_folder_direct = os.path.join(STATIC_IMAGE_FOLDER_Direct, obj_folder)
                     os.makedirs(object_static_folder_direct, exist_ok=True)
 
-                    # copy fit to static
+                    # copy file to static only if photo_image_path is not empty and is a file
                     photo_dest = os.path.join(object_static_folder, f"{obj_folder}_photo.png")
                     photo_dest_dir = os.path.join(object_static_folder_direct, f"{obj_folder}_photo.png")
-                    
-                    if os.path.exists(photo_image_path):
+
+                    if photo_image_path and os.path.isfile(photo_image_path):
                         shutil.copy(photo_image_path, photo_dest_dir)
                         web_photo_path = f"{photo_dest.replace(os.path.sep, '/')}"
                     else:
@@ -260,7 +262,7 @@ class Data_Process:
                         web_dat_path = None
                     
                     object_data = {
-                        'object_name': object_name,
+                        'object_name': obj_folder,
                         'RA': ra,
                         'DEC': dec,
                         'last_update_date': last_update_date,

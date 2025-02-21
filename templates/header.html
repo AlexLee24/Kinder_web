@@ -23,11 +23,13 @@
                             Object list
                         </a>
                     </li>
+                    <!--
                     <li>
                         <a href="/observation.html" class="{% if request.path == '/observation.html' %}active{% endif %}">
                             Observation
                         </a>
                     </li>
+                    -->
                     <li>
                         <a href="{{ url_for('object_plot', next=request.path) }}" class="{% if request.path == '/object_plot.html' %}active{% endif %}">
                             Plot
@@ -71,14 +73,9 @@
                         <li>
                             <a href="{{ url_for('admin_dashboard', next=request.path) }}" class="login-button">admin dashboard</a>
                         </li>
-                    {% endif %}
-
-                    {% if session.get('username') == 'admin' %}
-                    <li>
-                        <a href="{{ url_for('example') }}" class="login-button">
-                            Flash test
-                        </a>
-                    </li>
+                        <li>
+                            <a href="{{ url_for('admin_file_manager') }}" class="login-button">File Manager</a>
+                        </li>
                     {% endif %}
                 </ul>
             </nav>

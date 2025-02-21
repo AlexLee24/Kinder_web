@@ -15,7 +15,7 @@
         <div class="container">
             <div class="header-text">
                 <h1>{{ object_name }}</h1>
-                <p>RA: {{ RA }}, DEC: {{ DEC }}</p>
+                <p>Last update date (UTC+8): {{ last_update_date }}</p>
             </div>
         </div>
     </div>
@@ -23,16 +23,57 @@
     <!-- Main Content -->
     <div class="main-content">
         <h1>Object Details</h1>
-        
+
         <div class="object-info">
-            <div><h3>Object Name</h3><p>{{ object_name }}</p></div>
-            <div><h3>RA</h3><p>{{ RA }}</p></div>
-            <div><h3>DEC</h3><p>{{ DEC }}</p></div>
-            <div><h3>Type</h3><p>{{ TNtype }}</p></div>
             <div>
-                <h3>Last update date (UTC+8):</h3>
-                <p>{{ last_update_date }}</p>
+                <h3>Object Name
+                {% if 'username' in session and session['username'] == 'admin' %}
+                    <span class="edit-icon" onclick="editObjectName()">✏️</span>
+                {% endif %}
+                </h3>
+                <p id="objectNameDisplay">{{ object_name }}</p>
             </div>
+
+            <!-- RA -->
+            <div>
+                <h3>RA 
+                {% if 'username' in session and session['username'] == 'admin' %}
+                    <span class="edit-icon" onclick="editField('RA')">✏️</span>
+                {% endif %}
+                </h3>
+                <p id="field_RA">{{ RA }}</p>
+                </div>
+                
+            <!-- DEC -->
+            <div>
+                <h3>DEC 
+                {% if 'username' in session and session['username'] == 'admin' %}
+                    <span class="edit-icon" onclick="editField('DEC')">✏️</span>
+                {% endif %}
+                </h3>
+                <p id="field_DEC">{{ DEC }}</p>
+            </div>
+                
+            <!-- Type (Transient_type) -->
+            <div>
+                <h3>Type 
+                {% if 'username' in session and session['username'] == 'admin' %}
+                    <span class="edit-icon" onclick="editField('TNtype')">✏️</span>
+                {% endif %}
+                </h3>
+                <p id="field_TNtype">{{ TNtype }}</p>
+            </div>
+
+            <!-- Permission -->
+            <div>
+                <h3>Permission:
+                {% if 'username' in session and session['username'] == 'admin' %}
+                    <span class="edit-icon" onclick="editField('Permission')">✏️</span>
+                {% endif %}
+                </h3>
+                <p id="field_Permission">{{ Permission }}</p>
+            </div>
+
         </div>
         
         <div class="data-display-section">
@@ -41,8 +82,30 @@
             <div class="data-selection">
                 <div id="photo-section">
                     <h3>Photo</h3>
-                    <img src="{{ photo_image }}" alt="Photo">
+                    <img src="{{ photo_image }}" alt="Photo" id="objectPhoto">
+                    {% if 'username' in session and session['username'] == 'admin' %}
+                        <span class="edit-icon" onclick="openPhotoUploadModal()">✏️</span>
+                    {% endif %}
                 </div>
+                
+                {% if 'username' in session and session['username'] == 'admin' %}
+                <!-- Modal windows -->
+                <div id="photoUploadModal" style="display:none; position: fixed; top:50%; left:50%; transform: translate(-50%, -50%);
+                    background-color: #fff; padding:20px; border:1px solid #ccc; border-radius:10px; z-index:1000;">
+                <h3>Upload Photo</h3>
+                <form id="photoUploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_object_photo', object_name=object_name) }}">
+                    <input type="file" name="photo" accept="image/*" required style="margin-bottom:10px;">
+                    <br>
+                    <button type="submit" style="padding:10px 20px; background-color:#2ca470; color:#fff; border:none; border-radius:5px; margin-right:10px; cursor:pointer;">Upload</button>
+                    <button type="button" id="cancelPhotoBtn" style="padding:10px 20px; background-color:#ccc; color:#333; border:none; border-radius:5px; cursor:pointer;">Cancel</button>
+                </form>
+                </div>
+
+                <!-- Modal BG -->
+                <div id="photoOverlay" style="display:none; position: fixed; top:0; left:0; width:100%; height:100%;
+                    background: rgba(0,0,0,0.5); z-index:999;"></div>
+                {% endif %}
+
 
                 <h3>Select Data</h3>
                 <p>Choose data to view</p>
@@ -63,7 +126,7 @@
                             <h4>Upload Photometry File</h4>
                             <p>Please rename the file as:</p>
                             <p>"<strong>{Object name}_{Filter or All filters (in the same txt)}_photometry_{Telescope or site}.txt</strong>"</p>
-                            <p>For example: <strong>SN 2024ggi_r_photometry_LOT.txt</strong></p>
+                            <p>For example: <strong>{{ object_name }}_r_photometry_LOT.txt</strong></p>
                             <p>Please let filters in different .txt files, use the format in txt files: <strong>{time (MJD)} {Mag} {ERR}</strong></p>
                             <p>If different filters are in the same .txt file, please send an email and attach the file.</p>
                             <p>Use <strong>spaces</strong> to separate values.</p>
@@ -125,10 +188,15 @@
                     <div id="comments-list" style="max-height: 500px; overflow-y: auto;">
                         {% if comments %}
                             {% for comment in comments %}
-                                <div class="comment" data-id="{{ comment[3] }}">
-                                    <p><strong>{{ comment[0] }}:</strong> {{ comment[1] }}</p>
-                                    <small>{{ comment[2] }}</small>
-                                </div>
+                            <div class="comment" data-id="{{ comment[0] }}">
+                                <p>
+                                    <strong>{{ comment[1] }}:</strong> {{ comment[2] }}
+                                    {% if session.get('username') == 'admin' %}
+                                        <button onclick="deleteComment({{ comment[0] }})" class="delete-comment-button">Delete</button>
+                                    {% endif %}
+                                </p>
+                                <small>{{ comment[3] }}</small>
+                            </div>
                             {% endfor %}
                         {% else %}
                             <p>No comments now.</p>
@@ -145,6 +213,12 @@
         </div>
     </div>
     
+    {% if 'username' in session and session['username'] == 'admin' %}
+    <div class="delete-object-container">
+        <button id="deleteObjectBtn" onclick="confirmDelete()">Delete Object</button>
+    </div>
+    {% endif %}
+
     <!-- Footer -->
     {% include 'footer.html' %}
 
@@ -315,6 +389,185 @@
                 uploadResult.innerHTML = `<p style="color:red;">An error occurred while uploading.</p>`;
             });
         });
+
+        function editField(fieldName) {
+            var p = document.getElementById('field_' + fieldName);
+            var currentValue = p.textContent.trim();
+            var input = document.createElement('input');
+
+            input.type = 'text';
+            input.value = currentValue;
+            input.id = 'input_' + fieldName;
+            input.style.fontSize = "16px";
+            input.style.padding = "5px";
+            p.parentNode.replaceChild(input, p);
+        
+            // Save
+            var saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save';
+            saveBtn.onclick = function() { saveField(fieldName); };
+            saveBtn.style.marginLeft = "10px";
+            saveBtn.style.padding = "5px 10px";
+            // Cancel
+            var cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.onclick = function() { cancelEdit(fieldName, currentValue); };
+            cancelBtn.style.marginLeft = "5px";
+            cancelBtn.style.padding = "5px 10px";
+        
+            input.parentNode.appendChild(saveBtn);
+            input.parentNode.appendChild(cancelBtn);
+        }
+        
+        function saveField(fieldName) {
+            var input = document.getElementById('input_' + fieldName);
+            var newValue = input.value.trim();
+        
+            // read value
+            var newRA = fieldName === 'RA' ? newValue : (document.getElementById('field_RA') ? document.getElementById('field_RA').textContent.trim() : '');
+            var newDEC = fieldName === 'DEC' ? newValue : (document.getElementById('field_DEC') ? document.getElementById('field_DEC').textContent.trim() : '');
+            var newTNtype = fieldName === 'TNtype' ? newValue : (document.getElementById('field_TNtype') ? document.getElementById('field_TNtype').textContent.trim() : '');
+            var newPermission = fieldName === 'Permission' ? newValue : (document.getElementById('field_Permission') ? document.getElementById('field_Permission').textContent.trim() : '');
+        
+            fetch("{{ url_for('update_object_info', object_name=object_name) }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ RA: newRA, DEC: newDEC, TNtype: newTNtype, Permission: newPermission })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    location.reload();
+                } else {
+                    alert("Update failed: " + data.message);
+                }
+            })
+            .catch(err => {
+                alert("Error: " + err);
+            });
+        }
+        
+        function cancelEdit(fieldName, originalValue) {
+            var input = document.getElementById('input_' + fieldName);
+            var p = document.createElement('p');
+            p.id = 'field_' + fieldName;
+            p.textContent = originalValue;
+            input.parentNode.replaceChild(p, input);
+            location.reload();
+        }
+
+        function confirmDelete() {
+            if (confirm("Are you sure you want to delete this object? This action cannot be undone.")) {
+                fetch("{{ url_for('delete_object', object_name=object_name) }}", {
+                    method: "POST"
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert("Object deleted successfully.");
+                        window.location.href = "{{ url_for('object_list') }}";
+                    } else {
+                        alert("Delete failed: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    alert("Error: " + err);
+                });
+            }
+        }
+
+        function openPhotoUploadModal() {
+            document.getElementById('photoUploadModal').style.display = 'block';
+            document.getElementById('photoOverlay').style.display = 'block';
+        }
+        
+        document.getElementById('cancelPhotoBtn')?.addEventListener('click', function() {
+            document.getElementById('photoUploadModal').style.display = 'none';
+            document.getElementById('photoOverlay').style.display = 'none';
+        });
+
+        function editObjectName() {
+            var displayElement = document.getElementById("objectNameDisplay");
+            var currentName = displayElement.childNodes[0].nodeValue.trim();
+            
+            var input = document.createElement("input");
+            input.type = "text";
+            input.value = currentName;
+            input.id = "objectNameInput";
+            input.style.fontSize = "inherit";
+            input.style.padding = "5px";
+            input.style.border = "2px solid #2ca470";
+            input.style.borderRadius = "5px";
+            
+            var saveBtn = document.createElement("button");
+            saveBtn.textContent = "Save";
+            saveBtn.onclick = saveObjectName;
+            saveBtn.style.marginLeft = "10px";
+            saveBtn.style.padding = "5px 10px";
+            saveBtn.style.backgroundColor = "#2ca470";
+            saveBtn.style.color = "#fff";
+            saveBtn.style.border = "none";
+            saveBtn.style.borderRadius = "5px";
+            saveBtn.style.cursor = "pointer";
+            
+            var cancelBtn = document.createElement("button");
+            cancelBtn.textContent = "Cancel";
+            cancelBtn.onclick = function() { location.reload(); };
+            cancelBtn.style.marginLeft = "5px";
+            cancelBtn.style.padding = "5px 10px";
+            cancelBtn.style.backgroundColor = "#ccc";
+            cancelBtn.style.color = "#333";
+            cancelBtn.style.border = "none";
+            cancelBtn.style.borderRadius = "5px";
+            cancelBtn.style.cursor = "pointer";
+            
+            displayElement.innerHTML = "";
+            displayElement.appendChild(input);
+            displayElement.appendChild(saveBtn);
+            displayElement.appendChild(cancelBtn);
+        }
+        
+        function saveObjectName() {
+            var newName = document.getElementById("objectNameInput").value.trim();
+            if (!newName) {
+                alert("Object name cannot be empty.");
+                return;
+            }
+            fetch("{{ url_for('update_object_name_inline', object_name=object_name) }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ newName: newName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    alert("Object name updated successfully.");
+                    window.location.href = "/object_data/" + encodeURIComponent(data.new_name);
+                } else {
+                    alert("Update failed: " + data.message);
+                }
+            })
+            .catch(error => {
+                alert("Error: " + error);
+            });
+        }
+
+        function deleteComment(commentId) {
+            if (confirm("Are you sure you want to delete this comment?")) {
+                fetch("/delete_comment/" + commentId, { method: "POST" })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.success) {
+                            loadComments();
+                        } else {
+                            alert("Delete failed: " + data.message);
+                        }
+                    })
+                    .catch(err => {
+                        alert("Error: " + err);
+                    });
+            }
+        }
     </script>
 </body>
 </html>
