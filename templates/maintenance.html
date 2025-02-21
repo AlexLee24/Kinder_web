@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Site Under Maintenance</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='maintenance.css') }}">
+    <meta name="description" content="網站維護中">
+</head>
+<body>
+    <div class="main-banner">
+        <div class="container">
+            <div class="header-text">
+                <h1>Site Under Maintenance</h1>
+                <p>Please try again later. Thank you!</p>
+            </div>
+            <div class="footer-text">
+                <h3>About us</h3>
+                <p>Institue of Astronomy, National Central University, Taiwan </p>
+                <p><a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                    Great and Rare Exotic Astronomical Transients Laboratory Webpage
+                </a></p>
+                <p>&copy; 2025 GREAT Lab</p>
+            </div>
+            <div class="footer-text">
+                <h3>Contact</h3>
+                <p>Email: <span id="email"></span></p>
+                <p>Tel: 886-3-422-7151#65964</p>
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    const localPart = "kinder";
+    const domain = "astro.ncu.edu.tw";
+    document.getElementById("email").innerText = `${localPart}[@]${domain}`;
+</script>
+</html>
