@@ -50,6 +50,7 @@
             <th>Last Name</th>
             <th>Email</th>
             <th>Organization</th>
+            <th>Actions</th>
         </tr>
         {% for user in exist_users %}
         <tr>
@@ -58,6 +59,9 @@
             <td>{{ user.last_name }}</td>
             <td>{{ user.email }}</td>
             <td>{{ user.organization }}</td>
+            <td>
+                <a href="{{ url_for('admin_edit_user', username=user.username) }}">Edit</a>
+            </td>
         </tr>
         {% endfor %}
     </table>

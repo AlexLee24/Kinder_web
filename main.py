@@ -77,6 +77,37 @@ init_db()
 #==================================== route =================================================
 #==================================== route =================================================
 #==================================== route =================================================
+# edit user org
+@app.route('/admin_edit_user', methods=['GET', 'POST'])
+def admin_edit_user():
+    if 'username' not in session or session['username'] != 'admin':
+        flash("Unauthorized access", "error")
+        return redirect(url_for('login_page'))
+    
+    username = request.args.get('username')
+    if not username:
+        flash("No user specified", "error")
+        return redirect(url_for('admin_dashboard'))
+    
+    user_data = UserManagement.get_user_data(username)
+    if not user_data:
+        flash("User not found.", "error")
+        return redirect(url_for('admin_dashboard'))
+    
+    if request.method == 'POST':
+        new_organization = request.form.get('organization').strip()
+        UserManagement.save_user_profile(username, user_data['first_name'], user_data['last_name'], user_data['email'], new_organization)
+        flash("Organization updated successfully.", "success")
+        return redirect(url_for('admin_dashboard'))
+    
+    return render_template('admin_edit_user.html', user=user_data)
+
+
+# astronomy tools
+@app.route('/astronomy_tools', methods=['GET'])
+def astronomy_tools():
+    return render_template('astronomy_tools.html')
+
 # delete comment
 @app.route('/delete_comment/<int:comment_id>', methods=['POST'])
 def delete_comment(comment_id):

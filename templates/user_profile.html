@@ -23,34 +23,32 @@
                 <!-- Editable Username -->
                 <div class="form-group">
                     <label for="username">Username (For display and login):</label>
-                    <input type="text" name="username" id="username" value="{{ username }}" required>
+                    <input type="text" name="username" id="username" value="{{ username }}" readonly>
                 </div>
 
                 <!-- Editable First Name -->
                 <div class="form-group">
                     <label for="first_name">First Name:</label>
-                    <input type="text" name="first_name" id="first_name" value="{{ first_name }}" required>
+                    <input type="text" name="first_name" id="first_name" value="{{ first_name }}" readonly>
                 </div>
 
                 <!-- Editable Last Name -->
                 <div class="form-group">
                     <label for="last_name">Last Name:</label>
-                    <input type="text" name="last_name" id="last_name" value="{{ last_name }}" required>
+                    <input type="text" name="last_name" id="last_name" value="{{ last_name }}" readonly>
                 </div>
 
                 <!-- Readonly Email -->
                 <div class="form-group">
-                    <label for="email">Email (Readonly):</label>
+                    <label for="email">Email:</label>
                     <input type="email" name="email" id="email" value="{{ email }}" readonly>
                 </div>
 
                 <!-- Readonly Organization -->
                 <div class="form-group">
-                    <label for="organization">Organization (Readonly):</label>
+                    <label for="organization">Organization:</label>
                     <input type="text" name="organization" id="organization" value="{{ organization }}" readonly>
                 </div>
-
-                <button type="submit" class="update-button">Update Profile</button>
             </form>
 
             <!-- Change Password Section -->

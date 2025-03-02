@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit User Organization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin_dash.css') }}">
+</head>
+<body>
+    <div class="container main-content">
+        <h1>Edit User Organization</h1>
+        <form method="POST" action="{{ url_for('admin_edit_user', username=user.username) }}">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" value="{{ user.username }}" readonly>
+            </div>
+            <div class="form-group">
+                <label for="first_name">First Name:</label>
+                <input type="text" id="first_name" value="{{ user.first_name }}" readonly>
+            </div>
+            <div class="form-group">
+                <label for="last_name">Last Name:</label>
+                <input type="text" id="last_name" value="{{ user.last_name }}" readonly>
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" value="{{ user.email }}" readonly>
+            </div>
+            <div class="form-group">
+                <label for="organization">Organization:</label>
+                <input type="text" id="organization" name="organization" value="{{ user.organization }}">
+            </div>
+            <button type="submit" class="update-button">Update Organization</button>
+        </form>
+    </div>
+</body>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f2f2f2;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Container */
+    .container {
+        width: 90%;
+        margin: 120px auto 50px auto; /* 預留 header 固定高度 */
+        padding: 20px;
+        background-color: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    /* Headings */
+    h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 20px;
+        font-size: 28px;
+    }
+
+    /* 表格樣式 */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+    }
+
+    table th,
+    table td {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: center;
+        font-size: 16px;
+    }
+
+    table th {
+        background-color: #2ca470;
+        color: #fff;
+        font-weight: bold;
+    }
+
+    table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+
+    table tr:hover {
+        background-color: #e0f7e8;
+    }
+
+    /* 表單區塊 */
+    form {
+        margin: 20px 0;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .form-group input {
+        width: 100%;
+        padding: 8px;
+        font-size: 16px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+    }
+
+    /* 按鈕樣式 */
+    button {
+        padding: 10px 20px;
+        background-color: #2ca470;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+        background-color: #238057;
+    }
+
+    /* 表格內的操作按鈕 */
+    table form {
+        display: inline;
+    }
+
+    table form button {
+        padding: 5px 10px;
+        font-size: 14px;
+    }
+
+    /* Flash Messages */
+    .flash-message-container {
+        position: fixed;
+        top: 0;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .flash-message {
+        padding: 15px 25px;
+        margin: 10px;
+        border-radius: 5px;
+        color: #fff;
+        font-size: 16px;
+        text-align: center;
+        animation: fadeInOut 5s ease-in-out;
+    }
+
+    .flash-message.success {
+        background-color: #4caf50;
+    }
+
+    .flash-message.error {
+        background-color: #ff1100;
+    }
+
+    .flash-message.info {
+        background-color: #2196f3;
+    }
+
+    .flash-message.warning {
+        background-color: #ff9800;
+    }
+
+    @keyframes fadeInOut {
+        0% {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        10%, 90% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        100% {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+    }
+
+    /* 響應式設定 */
+    @media (max-width: 768px) {
+        .container {
+            width: 95%;
+            margin-top: 80px;
+            padding: 15px;
+        }
+        table th,
+        table td {
+            font-size: 14px;
+            padding: 8px;
+        }
+        button {
+            font-size: 14px;
+            padding: 8px 15px;
+        }
+    }
+
+</style>
+</html>
