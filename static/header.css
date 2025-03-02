@@ -1,5 +1,5 @@
 /* Header styling START */
-header {    /* Header styling */
+header {
     background-color: #7e7e7e; /* Background color for menu bar */
     padding: 20px 0;
     position: fixed;
@@ -8,63 +8,84 @@ header {    /* Header styling */
     max-width: 100%;
     z-index: 100;
 }
-header .container {    /* Container styling */
+header .container {
     width: 90%;
     max-width: 90%;
     margin: 0 auto;
 }
-
-.header-content {   /* Content styling */
-    display: flex;              /* Use flex */
-    align-items: center;        /* Center */
-    justify-content: space-between;
+.header-content {
+    display: flex;
+    align-items: center;
+    /* 讓 Logo 與導覽列都貼左側 */
+    justify-content: flex-start;
 }
 
-.header-content .logo {     /* Logo */
-    text-decoration: none;  /* no line */
+/* Logo */
+.header-content .logo {
+    text-decoration: none;
     color: #ffffff;
+    margin-right: 30px; /* 與導覽列保持一點距離 */
 }
-
-.header-content .logo p {   /* Logo, <p> */
+.header-content .logo p {
     margin: 0;
     font-size: 24px;
     font-weight: bold;
     color: #ffffff;
 }
 
-.header-content .main-nav ul {  
+/* 主導覽列 */
+.main-nav {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    /* 若想讓右側的登入按鈕更靠右，可在此使用 justify-content: space-between; 
+       不過此範例中用 nav-left, nav-right 來分開控制 */
+}
+
+/* 左側導覽 (nav-left) */
+.nav-left {
     list-style: none;
     margin: 0;
     padding: 0;
     display: flex;
 }
-
-.header-content .main-nav ul li {
+.nav-left li {
     margin-left: 30px;
 }
-
-.header-content .main-nav ul li a {
+.nav-left li a {
     text-decoration: none;
     color: #ffffff;
     font-size: 18px;
 }
-
-.header-content .main-nav ul li b {
-    text-decoration: none;
-    color: #ffffff;
-    font-size: 18px;
-}
-
-.header-content .main-nav ul li a.active,
-.header-content .main-nav ul li a:hover {
+.nav-left li a.active,
+.nav-left li a:hover {
     font-weight: bold;
     color: #46ffaf;
 }
 
-.container-main-header .main-nav {
-    margin-right: 20px;
+/* 右側導覽 (nav-right) */
+.nav-right {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    margin-left: auto; /* 讓右側導覽自動推到最右 */
+}
+.nav-right li {
+    margin-left: 30px;
+}
+.nav-right li a {
+    text-decoration: none;
+    color: #ffffff;
+    font-size: 18px;
+}
+.nav-right li a.active,
+.nav-right li a:hover {
+    font-weight: bold;
+    color: #46ffaf;
 }
 
+/* Login/User buttons */
 .nav a.login-button {
     background-color: #2ca470;
     color: #fff;
@@ -73,12 +94,60 @@ header .container {    /* Container styling */
     text-decoration: none;
     font-size: 18px;
 }
-
 .nav a.login-button:hover {
     background-color: #238057;
 }
-/* Header styling END */
 
+/* Dropdown Menu */
+.header-content .main-nav ul li.dropdown {
+    position: relative;
+}
+
+.header-content .main-nav ul li.dropdown .dropdown-content li a.active,
+.header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
+    font-weight: bold;
+    color: #46ffaf;
+}
+
+.header-content .main-nav ul li.dropdown > a {
+    cursor: pointer;
+}
+.header-content .main-nav ul li.dropdown .dropdown-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #7e7e7e;
+    min-width: 200px;
+    box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+    z-index: 200;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.header-content .main-nav ul li.dropdown:hover .dropdown-content {
+    display: block;
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+.header-content .main-nav ul li.dropdown .dropdown-content li {
+    margin: 0;
+    padding: 8px 12px;
+}
+.header-content .main-nav ul li.dropdown .dropdown-content li a {
+    color: #ffffff;
+    text-decoration: none;
+    display: block;
+    font-size: 18px;
+}
+.header-content .main-nav ul li.dropdown .dropdown-content li a:hover,
+.header-content .main-nav ul li.dropdown:hover > a {
+    color: #46ffaf;
+    text-decoration: underline;
+}
+
+/* Flash Messages */
 .flash-message-container {
     position: fixed;
     top: 0;
@@ -87,7 +156,6 @@ header .container {    /* Container styling */
     justify-content: center;
     z-index: 1000;
 }
-
 .flash-message {
     padding: 15px 25px;
     margin: 10px;
@@ -97,27 +165,18 @@ header .container {    /* Container styling */
     text-align: center;
     animation: fadeInOut 5s ease-in-out;
 }
-
 .flash-message.success {
-    background-color: #4caf50; /* Success color */
-    color: #ffffff;
+    background-color: #4caf50;
 }
-
 .flash-message.error {
-    background-color: #ff1100; /* Error color */
-    color: #ffffff;
+    background-color: #ff1100;
 }
-
 .flash-message.info {
-    background-color: #2196f3; /* Info color */
-    color: #ffffff;
+    background-color: #2196f3;
 }
-
 .flash-message.warning {
-    background-color: #ff9800; /* Warning color */
-    color: #ffffff;
+    background-color: #ff9800;
 }
-
 @keyframes fadeInOut {
     0% {
         opacity: 0;
@@ -136,78 +195,34 @@ header .container {    /* Container styling */
 /* Media query for small screens (max-width: 768px) */
 @media (max-width: 768px) {
     header {
-        padding: 10px 0; /* 減少 header 高度 */
+        padding: 10px 0;
     }
-
     .header-content {
-        flex-direction: column; /* 將元素垂直排列 */
-        align-items: flex-start; /* 將項目靠左對齊 */
+        flex-direction: column;
+        align-items: flex-start;
     }
-
     .header-content .logo {
-        margin-bottom: 10px; /* 增加 logo 與導航的間距 */
-        font-size: 20px; /* 調整 logo 大小 */
+        margin-bottom: 10px;
+        font-size: 20px;
     }
-
-    .header-content .main-nav {
-        width: 100%; /* 導航寬度全屏 */
+    .main-nav {
+        width: 100%;
     }
-
-    .header-content .main-nav ul {
-        flex-direction: column; /* 垂直排列導航項目 */
-        align-items: flex-start; /* 靠左對齊導航項目 */
-        padding-left: 10px; /* 增加內縮 */
+    .nav-left, .nav-right {
+        flex-direction: column;
+        align-items: flex-start;
+        padding-left: 10px;
     }
-
-    .header-content .main-nav ul li {
-        margin-left: 0; /* 移除水平間距 */
-        margin-bottom: 10px; /* 垂直間距 */
+    .nav-left li, .nav-right li {
+        margin-left: 0;
+        margin-bottom: 10px;
     }
-
-    .header-content .main-nav ul li a {
-        font-size: 16px; /* 調整文字大小 */
+    .nav-left li a, .nav-right li a {
+        font-size: 16px;
     }
-
     .nav a.login-button {
-        font-size: 16px; /* 調整按鈕大小 */
-        padding: 8px 15px; /* 調整按鈕內縮 */
+        font-size: 16px;
+        padding: 8px 15px;
     }
 }
-
-/* Dropdown menu styling */
-.dropdown {
-    position: relative;
-    display: inline-block;
-}
-
-.dropdown-toggle::after {
-    content: ' ▼';
-    font-size: 12px;
-}
-
-.dropdown-menu {
-    display: none;
-    position: absolute;
-    background-color: white;
-    min-width: 160px;
-    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
-    z-index: 1;
-}
-
-.dropdown-menu li {
-    padding: 12px 16px;
-}
-
-.dropdown-menu li a {
-    color: black;
-    text-decoration: none;
-    display: block;
-}
-
-.dropdown-menu li a:hover {
-    background-color: #f1f1f1;
-}
-
-.dropdown:hover .dropdown-menu {
-    display: block;
-}
+/* Header styling END */

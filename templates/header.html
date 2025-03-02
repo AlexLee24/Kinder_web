@@ -2,6 +2,7 @@
     <meta charset="UTF-8">
     <title>GREAT Lab</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='header.css') }}">
+    {% include 'favicon.html' %}
 </head>
 <header>
     <div class="container">
@@ -10,50 +11,67 @@
             <a href="/" class="logo">
                 <p>Kinder</p>
             </a>
-            <!-- Menu -->
+            <!-- Navigation -->
             <nav class="main-nav">
-                <ul class="nav">
-                    <li>
-                        <a href="/" class="{% if request.path == '/' or request.path == '/index.html' %}active{% endif %}">
-                            Home
-                        </a>
-                    </li>
+                <ul class="nav nav-left">
                     <li>
                         <a href="{{ url_for('object_list') }}" class="{% if request.path == '/object_list.html' %}active{% endif %}">
                             Object list
                         </a>
                     </li>
-                    <!--
-                    <li>
-                        <a href="/observation.html" class="{% if request.path == '/observation.html' %}active{% endif %}">
-                            Observation
-                        </a>
+
+                    <li class="dropdown">
+                        <a href="#">Tools ∨</a>
+                        <ul class="dropdown-content">
+                            <li>
+                                <a href="{{ url_for('object_plot', next=request.path) }}" class="{% if request.path == '/object_plot.html' %}active{% endif %}">
+                                    Plot
+                                </a>
+                            </li>
+                            <li>
+                                <a href="{{ url_for('trigger_view', next=request.path) }}" class="{% if request.path == '/trigger' %}active{% endif %}">
+                                    Lulin-Trigger
+                                </a>
+                            </li>
+                        </ul>
                     </li>
-                    -->
-                    <li>
-                        <a href="{{ url_for('object_plot', next=request.path) }}" class="{% if request.path == '/object_plot.html' %}active{% endif %}">
-                            Plot
-                        </a>
-                    </li>
-                    <li>
-                        <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
-                            About Us
-                        </a>
-                    </li>
-                    
-                    {% if session.get('organization') == "NCU GREAT Lab" and 'username' in session%}
-                        <li>
-                            <a href="https://docs.google.com/spreadsheets/d/1DIpWAHnHcANkU3akCkqCeSfn6sRUtsXkxXXlIb3w6oo/edit?gid=70341031#gid=70341031" target="_blank" rel="noopener noreferrer">
-                                Observation log
-                            </a>
+
+                    {% if session.get('organization') == "NCU GREAT Lab" and 'username' in session %}
+                        <li class="dropdown">
+                            <a href="#">Lab ∨</a>
+                            <ul class="dropdown-content">
+                                <li>
+                                    <a href="https://docs.google.com/spreadsheets/d/1DIpWAHnHcANkU3akCkqCeSfn6sRUtsXkxXXlIb3w6oo/edit?gid=70341031#gid=70341031" target="_blank" rel="noopener noreferrer">
+                                        Observation log
+                                    </a>
+                                </li>
+                                
+                            </ul>
                         </li>
-                        <li>
-                            <a href="{{ url_for('trigger_view', next=request.path) }}" class="{% if request.path == url_for('trigger_view') %}active{% endif %}">
-                                Trigger
-                            </a>
+                    {% endif %}
+                    {% if session.get('username') == 'admin' %}
+                        <li class="dropdown">
+                            <a href="#">Admin ∨</a>
+                            <ul class="dropdown-content">
+                                <li>
+                                    <a href="{{ url_for('admin_dashboard', next=request.path) }}">User management</a>
+                                </li>
+                                <li>
+                                    <a href="{{ url_for('admin_file_manager') }}">File Manager</a>
+                                </li>
+                            </ul>
                         </li>
                     {% endif %}
 
+                    <li>
+                        <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                            About Us 
+                        </a>
+                    </li>
+                </ul>
+
+
+                <ul class="nav nav-right">
                     {% if 'username' in session %}
                         <li>
                             <a href="{{ url_for('user_profile') }}" class="{% if request.path == '/user_profile.html' %}active{% endif %}">
@@ -66,15 +84,6 @@
                     {% else %}
                         <li>
                             <a href="{{ url_for('login_page', next=request.path) }}" class="login-button">Login</a>
-                        </li>
-                    {% endif %}
-
-                    {% if session.get('username') == 'admin' %}
-                        <li>
-                            <a href="{{ url_for('admin_dashboard', next=request.path) }}" class="login-button">admin dashboard</a>
-                        </li>
-                        <li>
-                            <a href="{{ url_for('admin_file_manager') }}" class="login-button">File Manager</a>
                         </li>
                     {% endif %}
                 </ul>

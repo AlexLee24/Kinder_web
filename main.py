@@ -5,6 +5,10 @@
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
+debug_mode = True
+# =================================================================================================
+# =================================================================================================
+# =================================================================================================
 import os
 import sqlite3
 import uuid
@@ -254,7 +258,6 @@ def upload_object_photo(object_name):
 # edit object name
 @app.route('/update_object_name_inline/<object_name>', methods=['POST'])
 def update_object_name_inline(object_name):
-    # 檢查是否為 admin
     if 'username' not in session or session['username'] != 'admin':
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
@@ -272,9 +275,7 @@ def update_object_name_inline(object_name):
         return jsonify({'success': False, 'message': 'New folder already exists.'}), 400
 
     try:
-        # 重新命名主資料夾
         os.rename(old_folder, new_folder)
-        # 遞迴更新新資料夾內所有檔案名稱中包含舊名稱的部分
         for root, dirs, files in os.walk(new_folder):
             for file in files:
                 if object_name in file:
@@ -282,7 +283,6 @@ def update_object_name_inline(object_name):
                     new_file_name = file.replace(object_name, new_name)
                     new_file_path = os.path.join(root, new_file_name)
                     os.rename(old_file_path, new_file_path)
-        # 更新 info.txt 中的 Photo_path 行
         data_dir = os.path.join(new_folder, 'Data')
         info_file_path = os.path.join(data_dir, f"{new_name}_info.txt")
         if os.path.exists(info_file_path):
@@ -296,12 +296,10 @@ def update_object_name_inline(object_name):
                     new_lines.append(line)
             with open(info_file_path, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
-        # 刪除 BASE_DIR/Data_img 中舊名稱的資料夾
         data_img_old_folder = os.path.join(BASE_DIR, 'Data_img', object_name)
         if os.path.exists(data_img_old_folder):
             shutil.rmtree(data_img_old_folder)
 
-        # 更新成功後，回傳新名稱
         return jsonify({'success': True, 'new_name': new_name})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -1214,7 +1212,7 @@ def generate_plot_2():
 # run
 if __name__ == '__main__':
     #app.run(debug=True)
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=80, debug=debug_mode)
 
 #git add .
 #git commit -m "XXX"
