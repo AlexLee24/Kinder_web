@@ -1,9 +1,9 @@
 /* Footer styling START */
 footer {
-    background-color: #cacaca;     /* Footer BG */
-    padding: 10px 0;            
+    backdrop-filter: blur(1px);
+    padding: 10px 0;
+    color: #fff; /* 全部文字改成白色 */
 }
-
 
 footer .container {
     width: 90%;
@@ -11,48 +11,62 @@ footer .container {
 }
 
 .footer-container {
-    display: flex;               
-    justify-content: space-between; 
-    flex-wrap: wrap;              
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
 }
 
 .footer-text {
     flex: 1;
     margin: 20px;
     min-width: 250px;
+    color: #fff; /* 文字白色 */
 }
 
 .footer-text h3 {
     margin-bottom: 20px;
     font-size: 20px;
-    border-bottom: 2px solid #333;  
+    border-bottom: 2px solid #fff;
     padding-bottom: 10px;
     font-weight: bold;
+    color: #fff;
+}
+
+.footer-text a {
+    color: #fff;
+    text-decoration: underline;
+    transition: color 0.3s;
+}
+
+.footer-text a:hover{
+    color: #2ca470;
 }
 
 .footer-contact {
     flex: 1;
     margin: 20px;
-    min-width: 250px;           
+    min-width: 250px;
+    color: #fff;
 }
 
 .footer-contact h3 {
     margin-bottom: 20px;
     font-size: 20px;
-    border-bottom: 2px solid #333;  
+    border-bottom: 2px solid #fff;
     padding-bottom: 10px;
+    color: #fff;
 }
 
 .footer-bottom {
     flex: 1;
     margin: 20px;
-    min-width: 250px;           
+    min-width: 250px;
+    color: #fff;
 }
-
 
 @media (max-width: 400px) {
     .footer-content {
-        flex-direction: column; 
+        flex-direction: column;
         align-items: center;
     }
 

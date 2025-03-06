@@ -17,7 +17,6 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5); 
     z-index: 1; /* layer */
 }
 
@@ -45,7 +44,7 @@ html, body {
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    margin: 40px;
+    margin: 0px;
     z-index: 2;
 }
 
@@ -60,7 +59,7 @@ html, body {
     width: 40%;
     background-color: #fff;
     padding: 30px;
-    margin: 50px;
+    margin: 100px;
     border-radius: 10px;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     z-index: 2;

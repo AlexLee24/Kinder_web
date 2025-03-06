@@ -1,7 +1,11 @@
 /* Basic settings */
 body {
+    background-image: url('BG/LMC.jpg');
+    background-size: cover;
+    background-position: center; 
+    background-attachment: fixed; 
+    position: relative; 
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
     margin: 0;
     padding: 0;
 }

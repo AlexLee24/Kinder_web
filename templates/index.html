@@ -1,4 +1,3 @@
-<!-- Home Page (home.html) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,21 +9,44 @@
 </head>
 <body>
     {% include 'header.html' %}
-    
+
+    <!-- Banner -->
     <!-- Banner -->
     <div class="main-banner">
         <div class="container">
-            <div class="header-text">
-                <h1>Kinder Data Server</h1>
-                <p>
-                    <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
-                        Great and Rare Exotic Astronomical Transients Laboratory
-                    </a>
-                </p>
+            <div class="banner-content">
+                <!-- 左側文字區 -->
+                <div class="banner-left">
+                    <h1>Kinder Data Server</h1>
+                    <div class="banner-subtext">
+                        <p>Institute of Astronomy, National Central University, Taiwan</p>
+                        <p>
+                            <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                                Great and Rare Exotic Astronomical Transients Laboratory
+                            </a>
+                        </p>
+                        <p>&copy; 2025 GREAT Lab</p>
+                    </div>
+                    <div class="banner-contact">
+                        <p>If you find any bugs or have any suggestions, please contact us or post to GitHub.</p>
+                        <p>Developed by GREAT Lab, <a href="https://github.com/AlexLee24/Kinder_web" target="_blank" rel="noopener noreferrer">GitHub page</a></p>
+                        <p>Background image by <a href="https://www.instagram.com/alexlee.photo_24/" target="_blank" rel="noopener noreferrer">Yu-Hsing(Alex) Lee</a></p>
+                    </div>
+                    <div class="banner-contact">
+                        <h2>Contact</h2>
+                        <p>Email: kinder[[@]]astro.ncu.edu.tw   (remove [[ and ]])</p>
+                        <p>Tel: 886-3-422-7151 #65964</p>
+                    </div>
+                </div>
+                <!-- 右側圖片區 -->
+                <div class="banner-right">
+                    <img src="{{ url_for('static', filename='BG/SLT_SN2024ggi.png') }}" alt="SN2024ggi" />
+                    <p>SLT g-, r-, and i-band (blue, green and red respectively) images of SN2024ggi</p>
+                </div>
             </div>
         </div>
     </div>
+
     
-    {% include 'footer.html' %}
 </body>
 </html>

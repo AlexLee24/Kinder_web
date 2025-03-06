@@ -1,13 +1,27 @@
 /* Header styling START */
 header {
-    background-color: #7e7e7e; /* Background color for menu bar */
-    padding: 20px 0;
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(30px);
+    padding: 20px 20px;
     position: fixed;
     top: 0;
-    width: 100%;
-    max-width: 100%;
+    left: 50%;                     
+    transform: translateX(-50%);   
+    width: 95%;
+    max-width: 95%;
     z-index: 100;
+    box-shadow: 0 5px 30px 0 rgba(0,0,0,0.2);
+    border-bottom: 2px solid rgba(0,0,0,0.2);
+    border-bottom-right-radius: 35px;
+    border-bottom-left-radius: 35px;
+    background: transparent;
+    transition: background-color 0.3s ease;
 }
+
+header.scrolled {
+    background: #7e7e7e;
+}
+
 header .container {
     width: 90%;
     max-width: 90%;
@@ -16,7 +30,6 @@ header .container {
 .header-content {
     display: flex;
     align-items: center;
-    /* 讓 Logo 與導覽列都貼左側 */
     justify-content: flex-start;
 }
 
@@ -24,7 +37,7 @@ header .container {
 .header-content .logo {
     text-decoration: none;
     color: #ffffff;
-    margin-right: 30px; /* 與導覽列保持一點距離 */
+    margin-right: 30px; 
 }
 .header-content .logo p {
     margin: 0;
@@ -33,13 +46,34 @@ header .container {
     color: #ffffff;
 }
 
-/* 主導覽列 */
 .main-nav {
     display: flex;
     align-items: center;
     width: 100%;
-    /* 若想讓右側的登入按鈕更靠右，可在此使用 justify-content: space-between; 
-       不過此範例中用 nav-left, nav-right 來分開控制 */
+}
+
+
+li a {
+    position: relative; 
+    color: #ffffff;
+    text-decoration: none;
+}
+
+li a::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -3px;
+    transform: translateX(-50%);
+    width: 0;
+    height: 2px; 
+    background-color: #46ffaf; 
+    transition: width 0.3s ease;
+}
+
+li a:hover::after,
+li a.active::after {
+    width: 100%;
 }
 
 /* 左側導覽 (nav-left) */
@@ -53,13 +87,13 @@ header .container {
     margin-left: 30px;
 }
 .nav-left li a {
-    text-decoration: none;
-    color: #ffffff;
     font-size: 18px;
 }
-.nav-left li a.active,
+.nav-left li a.active {
+    color: #46ffaf;
+}
+
 .nav-left li a:hover {
-    font-weight: bold;
     color: #46ffaf;
 }
 
@@ -69,19 +103,18 @@ header .container {
     margin: 0;
     padding: 0;
     display: flex;
-    margin-left: auto; /* 讓右側導覽自動推到最右 */
+    margin-left: auto;
 }
 .nav-right li {
     margin-left: 30px;
 }
 .nav-right li a {
-    text-decoration: none;
-    color: #ffffff;
     font-size: 18px;
 }
-.nav-right li a.active,
+.nav-right li a.active {
+    color: #46ffaf;
+}
 .nav-right li a:hover {
-    font-weight: bold;
     color: #46ffaf;
 }
 
@@ -102,15 +135,12 @@ header .container {
 .header-content .main-nav ul li.dropdown {
     position: relative;
 }
-
-.header-content .main-nav ul li.dropdown .dropdown-content li a.active,
-.header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
-    font-weight: bold;
-    color: #46ffaf;
-}
-
 .header-content .main-nav ul li.dropdown > a {
     cursor: pointer;
+}
+.header-content .main-nav ul li.dropdown .dropdown-content li a.active,
+.header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
+    color: #46ffaf;
 }
 .header-content .main-nav ul li.dropdown .dropdown-content {
     position: absolute;
@@ -144,7 +174,6 @@ header .container {
 .header-content .main-nav ul li.dropdown .dropdown-content li a:hover,
 .header-content .main-nav ul li.dropdown:hover > a {
     color: #46ffaf;
-    text-decoration: underline;
 }
 
 /* Flash Messages */
