@@ -1,8 +1,8 @@
 /* Footer styling START */
 footer {
-    backdrop-filter: blur(1px);
+    backdrop-filter: blur(30px);
     padding: 10px 0;
-    color: #fff; /* 全部文字改成白色 */
+    color: #fff; 
 }
 
 footer .container {
@@ -20,7 +20,7 @@ footer .container {
     flex: 1;
     margin: 20px;
     min-width: 250px;
-    color: #fff; /* 文字白色 */
+    color: #fff; 
 }
 
 .footer-text h3 {
@@ -63,6 +63,7 @@ footer .container {
     min-width: 250px;
     color: #fff;
 }
+
 
 @media (max-width: 400px) {
     .footer-content {

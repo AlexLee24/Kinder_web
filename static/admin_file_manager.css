@@ -1,29 +1,52 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
+    background-image: url('BG/M101.jpg'); /* BG image */
+    background-size: cover;
+    background-position: bottom;
     margin: 0;
     padding: 0;
+    
 }
 
 /* ================= Scoped Admin File Manager Styles ================= */
+.container-afm{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin-top: 100px;
+}
+
 #admin-file-manager {
-    font-family: Arial, sans-serif;
-    background-color: #cccccc;
-    padding: 100px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+    width: 90%;
 }
 
 #admin-file-manager h1 {
     text-align: center;
     font-size: 36px;
-    color: #333;
+    color: #fff;
     margin-top: 20px;
 }
+
 
 #admin-file-manager p {
     text-align: center;
     font-size: 18px;
     margin: 10px 0;
+    color: #fff;
 }
+
+#admin-file-manager a {
+    text-decoration: none;
+    color: #fff;
+}
+
+
 
 /* cd-up (回上一層) 連結 */
 #admin-file-manager .cd-up {
@@ -52,10 +75,13 @@ body {
     padding: 0;
     margin: 0 auto;
     width: 80%;
+    max-height: 500px; 
+    overflow-y: auto; 
 }
 
+
 #admin-file-manager ul li {
-    background-color: #fff;
+    background: rgba(0, 0, 0, 0.2);
     margin-bottom: 5px;
     font-size: 16px;
     display: flex;            /* 關鍵：Flex 排版 */
@@ -70,6 +96,7 @@ body {
     text-overflow: ellipsis;  /* 文字溢出時顯示省略號 */
     margin-right: 10px;
     margin-left: 10px;
+    color: #fff
 }
 
 /* 動作按鈕容器 */

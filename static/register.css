@@ -1,6 +1,8 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
+    background-image: url('BG/M42BG.jpg'); /* BG image */
+    background-size: cover;
+    background-position: bottom;
     margin: 0;
     padding: 0;
 }
@@ -10,9 +12,7 @@ body {
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background-image: url('BG/M42BG.jpg'); /* BG image */
-    background-size: cover;
-    background-position: bottom;
+    min-height: 100vh;
     padding: 100px; /* Banner height */
     text-align: center; /* align center */
     position: relative;
@@ -34,6 +34,41 @@ body {
 .main-banner .container {
     position: relative;
     z-index: 2; /* layer */
+}
+
+.container.main-content {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+    width: 50%;
+}
+
+/* 登入頁標題 */
+
+.container.main-content h1 {
+    font-size: 36px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    text-align: center;
+    color: #fff
+}
+
+.container.main-content p,
+.container.main-content label{
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #fff
+}
+
+.container.main-content a {
+    text-decoration: underline;
+    color: #fff;
+}
+
+.container.main-content a:hover {
+    color: #2ca470;
 }
 
 /* Banner Header */
@@ -146,21 +181,27 @@ body {
 .form-group {
     margin-bottom: 20px;
 }
-
 .form-group label {
     display: block;
-    font-weight: bold;
+    font-size: 16px;
     margin-bottom: 5px;
+    color: #fff;
 }
-
 .form-group input {
-    width: 70%;           
-    max-width: 100%;          
-    box-sizing: border-box;   
+    width: 80%;
     padding: 10px;
     font-size: 16px;
-    border: 1px solid #000000;
+    border: none;
     border-radius: 5px;
+    box-sizing: border-box;
+}
+
+/* 顯示密碼區塊 */
+.form-group.inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
 }
 
 .button-group {

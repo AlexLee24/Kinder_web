@@ -1,18 +1,20 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
+    background-image: url('BG/LMC.jpg'); /* BG image */
+    background-size: cover;
+    background-position: left 50%;
     margin: 0;
     padding: 0;
 }
+
+
 
 /* ============================================================================ */
 /* ============================================================================ */
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background-image: url('BG/LMC.jpg'); /* BG image */
-    background-size: cover;
-    background-position: left 50%;
+    min-height: 100vh;
     padding: 100px; /* Banner height */
     text-align: center; /* align center */
     position: relative;
@@ -130,6 +132,98 @@ body {
 /* ============================================================================ */
 /* ============================================================================ */
 /* Main styling START */
+.container.main-banner {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.container.main-content {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.6);
+    width: 350px;
+}
+
+/* 登入頁標題 */
+.container.main-content h1 {
+    font-size: 36px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    text-align: center;
+    color: #fff
+}
+
+.container.main-content p,
+.container.main-content label{
+    font-size: 18px;
+    margin-bottom: 10px;
+    color: #fff
+}
+
+/* 表單組 */
+.form-group {
+    margin-bottom: 20px;
+}
+.form-group label {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 5px;
+    color: #fff;
+}
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    box-sizing: border-box;
+}
+
+/* 顯示密碼區塊 */
+.form-group.inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+/* 主登入按鈕 */
+.main-button {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    font-size: 18px;
+    background-color: #2ca470;
+    border: none;
+    border-radius: 5px;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+.main-button:hover {
+    background-color: #238057;
+}
+
+/* 其他連結，例如 Register 與 Forgot Password */
+.register-button,
+.forgot-password-button {
+    display: block;
+    text-align: center;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #fff;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.register-button:hover,
+.forgot-password-button:hover {
+    color: #46ffaf;
+}
+
 .main-content {
     max-width: 500px;      
     margin: 100px auto;      
@@ -141,26 +235,6 @@ body {
 .main-content h1 {
     text-align: center;
     margin-bottom: 30px;
-}
-
-.form-group {
-    margin-bottom: 20px;
-}
-
-.form-group label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-}
-
-.form-group input {
-    width: 100%;           
-    max-width: 100%;          
-    box-sizing: border-box;   
-    padding: 10px;
-    font-size: 16px;
-    border: 1px solid #000000;
-    border-radius: 5px;
 }
 
 .center {
@@ -187,56 +261,6 @@ body {
     margin: 0;
 }
 
-
-/* Button styling */
-.button-group {
-    margin-top: 15px; 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    gap: 10px;
-}
-
-.main-button {
-    display: block;
-    width: 70%;           
-    max-width: 70%;       
-    padding: 7px;
-    font-size: 30px;
-    background-color: #2ca470;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    box-sizing: border-box;
-    text-align: center;  
-}
-
-.main-button:hover {
-    background-color: #238057;
-}
-
-.forgot-password-button,
-.register-button {
-    display: block;
-    width: 70%;           
-    max-width: 70%;       
-    padding: 7px;
-    font-size: 14px;
-    background-color: #2ca470;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    box-sizing: border-box;
-    text-align: center;
-    text-decoration: none;
-}
-
-.forgot-password-button:hover,
-.register-button:hover {
-    background-color: #238057;
-}
 
 /* Input styling */
 form input[type="text"],

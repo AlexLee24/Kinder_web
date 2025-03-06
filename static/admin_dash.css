@@ -1,6 +1,8 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
+    background-image: url('BG/M101.jpg'); /* BG image */
+    background-size: cover;
+    background-position: bottom;
     margin: 0;
     padding: 0;
     color: #333;
@@ -9,7 +11,7 @@ body {
 /* ================== Header and Banner Styling ================== */
 h1 {
     text-align: center;
-    color: #000000;
+    color: #fff;
     font-size: 28px;
     margin-top: 20px;
 }
@@ -66,4 +68,12 @@ button:hover {
 /* Inline forms for actions */
 form {
     display: inline;
+}
+
+
+.wrapper {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin-top: 100px;
 }
