@@ -2,179 +2,169 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Data Server</title>
-    <link rel="stylesheet" href="/static/object_data_temp.css">
+    <title>Data Server - {{ object_name }}</title>
+    <!-- Link to CSS file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='object_data_temp.css') }}">
     <meta name="description" content="Data server">
     {% include 'favicon.html' %}
 </head>
 <body>
-    <!-- Include Header -->
+    <!-- Header include -->
     {% include 'header.html' %}
     
-    <!-- Banner -->
-    <div class="main-banner">
-        <div class="container">
-            <div class="header-text">
-                <h1>{{ object_name }}</h1>
-                <p>Last update date (UTC+8): {{ last_update_date }}</p>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Main Content -->
-    <div class="main-content">
-        <h1>Object Details</h1>
-
-        <div class="object-info">
-            <div>
-                <h3>Object Name
+    <!-- Banner Section -->
+    <div class="banner">
+        <div class="banner-content">
+            <h1 id="objectNameHeader">
+                {{ object_name }}
                 {% if 'username' in session and session['username'] == 'admin' %}
-                    <span class="edit-icon" onclick="editObjectName()">✏️</span>
+                    <span class="edit-icon" onclick="openEditModal('object_name', '{{ object_name }}')">✏️</span>
                 {% endif %}
-                </h3>
-                <p id="objectNameDisplay">{{ object_name }}</p>
-            </div>
-
-            <!-- RA -->
-            <div>
-                <h3>RA 
-                {% if 'username' in session and session['username'] == 'admin' %}
-                    <span class="edit-icon" onclick="editField('RA')">✏️</span>
-                {% endif %}
-                </h3>
-                <p id="field_RA">{{ RA }}</p>
+            </h1>
+            
+            <!-- Object Information Panel -->
+            <div class="object-info">
+                <div>
+                    <h3>RA 
+                        {% if 'username' in session and session['username'] == 'admin' %}
+                            <!-- Click to open modal for editing RA -->
+                            <span class="edit-icon" onclick="openEditModal('RA', '{{ RA }}')">✏️</span>
+                        {% endif %}
+                    </h3>
+                    <p id="field_RA">{{ RA }}</p>
+                </div>
+                <div>
+                    <h3>DEC 
+                        {% if 'username' in session and session['username'] == 'admin' %}
+                            <span class="edit-icon" onclick="openEditModal('DEC', '{{ DEC }}')">✏️</span>
+                        {% endif %}
+                    </h3>
+                    <p id="field_DEC">{{ DEC }}</p>
+                </div>
+                <div>
+                    <h3>Type 
+                        {% if 'username' in session and session['username'] == 'admin' %}
+                            <span class="edit-icon" onclick="openEditModal('TNtype', '{{ TNtype }}')">✏️</span>
+                        {% endif %}
+                    </h3>
+                    <p id="field_TNtype">{{ TNtype }}</p>
                 </div>
                 
-            <!-- DEC -->
-            <div>
-                <h3>DEC 
-                {% if 'username' in session and session['username'] == 'admin' %}
-                    <span class="edit-icon" onclick="editField('DEC')">✏️</span>
-                {% endif %}
-                </h3>
-                <p id="field_DEC">{{ DEC }}</p>
-            </div>
-                
-            <!-- Type (Transient_type) -->
-            <div>
-                <h3>Type 
-                {% if 'username' in session and session['username'] == 'admin' %}
-                    <span class="edit-icon" onclick="editField('TNtype')">✏️</span>
-                {% endif %}
-                </h3>
-                <p id="field_TNtype">{{ TNtype }}</p>
             </div>
 
-            <!-- Permission -->
-            <div>
-                <h3>Permission:
-                {% if 'username' in session and session['username'] == 'admin' %}
-                    <span class="edit-icon" onclick="editField('Permission')">✏️</span>
-                {% endif %}
+            {% if 'username' in session and session['username'] == 'admin' %}
+            <div>   
+                <h3>Permission 
+                    <span class="edit-icon" onclick="openEditModal('Permission', '{{ Permission }}')">✏️</span>
                 </h3>
                 <p id="field_Permission">{{ Permission }}</p>
             </div>
+            {% endif %}
+
+            <!-- Edit Modal (similar style as Add Object Modal) -->
+            <div id="editModal" class="modal">
+                <h3>Edit <span id="editFieldName"></span></h3>
+                <form id="editForm" onsubmit="saveEdit(); return false;">
+                    <input type="text" id="editFieldValue" required>
+                    <div class="modal-buttons">
+                        <button type="submit" class="primary-button">Save</button>
+                        <button type="button" id="cancelEditBtn" class="secondary-button" onclick="closeEditModal()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+            <div id="editOverlay" class="modal-overlay"></div>
+            
+            <p>Last update (UTC+8): {{ last_update_date }}</p>
+
 
         </div>
+        <!-- Photo Section -->
+        <div id="photo-section">
+            <img src="{{ photo_image }}" alt="Photo" id="objectPhoto">
+            {% if 'username' in session and session['username'] == 'admin' %}
+                <span class="edit-icon" onclick="openPhotoUploadModal()">✏️</span>
+            {% endif %}
+        </div>
+        {% if 'username' in session and session['username'] == 'admin' %}
+        <!-- Photo Upload Modal -->
+        <div id="photoUploadModal" class="modal">
+            <h3>Upload Photo</h3>
+            <form id="photoUploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_object_photo', object_name=object_name) }}">
+                <input type="file" name="photo" accept="image/*" required>
+                <div class="modal-buttons">
+                    <button type="submit" class="primary-button">Upload</button>
+                    <button type="button" id="cancelPhotoBtn" class="secondary-button">Cancel</button>
+                </div>
+            </form>
+        </div>
+        <div id="photoOverlay" class="modal-overlay"></div>
+        {% endif %}
+    </div>
+    
+    <!-- Main Content Section -->
+    <div class="main-content">
+        <h1>Object Details</h1>
         
+        <!-- Data Display Section -->
         <div class="data-display-section">
-            <!-- Left Section ---------------------------------------------------->
-            <!-- Left Section ---------------------------------------------------->
+            <!-- Left Section: Data Selection & Photo -->
             <div class="data-selection">
-                <div id="photo-section">
-                    <h3>Photo</h3>
-                    <img src="{{ photo_image }}" alt="Photo" id="objectPhoto">
-                    {% if 'username' in session and session['username'] == 'admin' %}
-                        <span class="edit-icon" onclick="openPhotoUploadModal()">✏️</span>
-                    {% endif %}
+                <!-- Data Selection -->
+                <div class="Select Data">
+                    <h3>Select Data</h3>
+                    <select id="data-select" onchange="loadData(this.value)">
+                        <option value="light_curve">Light Curve</option>
+                        <option value="spectrum">Spectrum</option>
+                    </select>
                 </div>
-                
-                {% if 'username' in session and session['username'] == 'admin' %}
-                <!-- Modal windows -->
-                <div id="photoUploadModal" style="display:none; position: fixed; top:50%; left:50%; transform: translate(-50%, -50%);
-                    background-color: #fff; padding:20px; border:1px solid #ccc; border-radius:10px; z-index:1000;">
-                <h3>Upload Photo</h3>
-                <form id="photoUploadForm" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_object_photo', object_name=object_name) }}">
-                    <input type="file" name="photo" accept="image/*" required style="margin-bottom:10px;">
-                    <br>
-                    <button type="submit" style="padding:10px 20px; background-color:#2ca470; color:#fff; border:none; border-radius:5px; margin-right:10px; cursor:pointer;">Upload</button>
-                    <button type="button" id="cancelPhotoBtn" style="padding:10px 20px; background-color:#ccc; color:#333; border:none; border-radius:5px; cursor:pointer;">Cancel</button>
-                </form>
-                </div>
-
-                <!-- Modal BG -->
-                <div id="photoOverlay" style="display:none; position: fixed; top:0; left:0; width:100%; height:100%;
-                    background: rgba(0,0,0,0.5); z-index:999;"></div>
-                {% endif %}
-
-
-                <h3>Select Data</h3>
-                <p>Choose data to view</p>
-                <select id="data-select" onchange="loadData(this.value)">
-                    <option value="light_curve">Light Curve</option>
-                    <option value="spectrum">Spectrum</option>
-                </select>
-                
+                <!-- Data Display Container -->
                 <div id="display-data">
-                    <!-- Default display is Photometry Plot -->
+                    <!-- Light Curve Content -->
                     <div id="light-curve-content">
-                        <h3>Light curve for {{ object_name }}</h3>
+                        <h3>Light Curve for {{ object_name }}</h3>
                         <div id="image-container">
-                            <iframe src="{{ photometry_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
+                            <iframe src="{{ photometry_html }}" frameborder="0"></iframe>
                         </div>
-                    
-                        <div id="upload-section">
-                            <h4>Upload Photometry File</h4>
-                            <p>Please rename the file as:</p>
-                            <p>"<strong>{Object name}_{Filter or All filters (in the same txt)}_photometry_{Telescope or site}.txt</strong>"</p>
-                            <p>For example: <strong>{{ object_name }}_r_photometry_LOT.txt</strong></p>
-                            <p>Please let filters in different .txt files, use the format in txt files: <strong>{time (MJD)} {Mag} {ERR}</strong></p>
-                            <p>If different filters are in the same .txt file, please send an email and attach the file.</p>
-                            <p>Use <strong>spaces</strong> to separate values.</p>
-                            <p>Thank you!</p>
-                            
-                            <form id="upload-form" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_photometry', object_name=object_name) }}">
-                                <input type="file" name="file" class="upload-area" accept=".txt" required> 
-                                <button type="submit" class="upload-button">Upload</button>
-                            </form>
-                            
-                            <div id="upload-result"></div>
-                        </div>
+                        <h4>Upload Photometry File</h4>
+                        <p>Please rename the file as:</p>
+                        <p>"<strong>{Object name}_{Filter or All filters (in the same txt)}_photometry_{Telescope or site}.txt</strong>"</p>
+                        <p>For example: <strong>{{ object_name }}_r_photometry_LOT.txt</strong></p>
+                        <p>Please let filters in different .txt files, use the format in txt files: <strong>{time (MJD)} {Mag} {ERR}</strong></p>
+                        <p>If different filters are in the same .txt file, please send an email and attach the file.</p>
+                        <p>Use <strong>spaces</strong> to separate values.</p>
+                        <p>Thank you!</p>
+                        <form id="upload-form" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_photometry', object_name=object_name) }}">
+                            <input type="file" name="file" class="upload-area" accept=".txt" required>
+                            <button type="submit" class="upload-button">Upload</button>
+                        </form>
+                        <div id="upload-result"></div>
                     </div>
-
+                    <!-- Spectrum Content (initially hidden) -->
                     <div id="spectrum-content" style="display: none;">
                         <h3>Spectrum Chart for {{ object_name }}</h3>
                         <div id="image-container">
-                            <iframe src="{{ spectrum_html }}" style="width:100%; height:600px;" frameborder="0"></iframe>
+                            <iframe src="{{ spectrum_html }}" frameborder="0"></iframe>
                         </div>
-                        <!-- 
-                        <a href="{{ dat_file }}" download class="download-button">Download Spectrum Data (.dat)</a>
-                        -->
                     </div>
                 </div>
-                
             </div>
-            <!-- Right Section ---------------------------------------------->
-            <!-- Right Section ---------------------------------------------->
+            
+            <!-- Right Section: Star Map & Comments -->
             <div class="right-panel">
-                
+                <!-- Star Map Section -->
                 <div id="star-map">
                     <h3>Star Map</h3>
-                    <!-- import aladin -->
-                    <link rel='stylesheet' href='https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.css' />
-                    <script type='text/javascript' src='https://code.jquery.com/jquery-1.9.1.min.js' charset='utf-8'></script>
-                    <div id='aladin-lite-div' style='width: 500px; height:500px;'></div>
-                    <script type='text/javascript' src='https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js' charset='utf-8'></script>
-                    
-                    <!-- aladin button -->
-                    <div style="margin-top: 10px;">
-                        <button onclick="updateView()">Update View</button>
-                        <button onclick="resetView()">Reset View</button>
+                    <!-- AladinLite integration -->
+                    <link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.css">
+                    <script src="https://code.jquery.com/jquery-1.9.1.min.js"></script>
+                    <div id="aladin-lite-div"></div>
+                    <script src="https://aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js"></script>
+                    <div class="aladin-buttons">
+                        <button onclick="updateView()" class="primary-button">Update View</button>
+                        <button onclick="resetView()" class="secondary-button">Reset View</button>
                     </div>
-
-                    <!-- Fov control -->
-                    <div style="margin-top: 10px;">
-                        Field of view: 
+                    <div class="fov-control">
+                        Field of view:
                         <input type="number" id="fov" value="18">
                         <select id="fovUnit">
                             <option value="arcmin">arcmin</option>
@@ -183,48 +173,31 @@
                         </select>
                     </div>
                 </div>
-
-                <div id="comment-box">
-                    <h3>Comments (in UTC time)</h3>
-                    <div id="comments-list" style="max-height: 500px; overflow-y: auto;">
-                        {% if comments %}
-                            {% for comment in comments %}
-                            <div class="comment" data-id="{{ comment[0] }}">
-                                <p>
-                                    <strong>{{ comment[1] }}:</strong> {{ comment[2] }}
-                                    {% if session.get('username') == 'admin' %}
-                                        <button onclick="deleteComment({{ comment[0] }})" class="delete-comment-button">Delete</button>
-                                    {% endif %}
-                                </p>
-                                <small>{{ comment[3] }}</small>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <p>No comments now.</p>
-                        {% endif %}
-                    </div>
                 
+                <!-- Comment Box -->
+                <div id="comment-box">
+                    <h3>Comments (UTC)</h3>
+                    <div id="comments-list"></div>
                     <form id="comment-form">
                         <textarea name="comment" id="comment-textarea" placeholder="Your Comment" required data-tooltip="Comment cannot be empty"></textarea>
-                        <button type="button" onclick="submitComment()">Submit</button>
+                        <button type="button" onclick="submitComment()" class="primary-button">Submit</button>
                     </form>
                 </div>
-                
             </div>
         </div>
     </div>
     
+    <!-- Delete Object Button for Admin -->
     {% if 'username' in session and session['username'] == 'admin' %}
     <div class="delete-object-container">
         <button id="deleteObjectBtn" onclick="confirmDelete()">Delete Object</button>
     </div>
     {% endif %}
-
-
-    <!-- ============================================================================================ -->
-    <!-- ============================================================================================ -->
-    <!-- ============================================================================================ -->
-    <!-- Script -->
+    
+    <!-- Footer include -->
+    {% include 'footer.html' %}
+    
+    <!-- JavaScript Section -->
     <script>
         let currentScale = 1;
         let currentX = 0;
@@ -235,6 +208,52 @@
 
         const ra = "{{ RA }}";
         const dec = "{{ DEC }}";
+
+        // Open the edit modal and populate with field name and current value
+        function openEditModal(field, currentValue) {
+            document.getElementById('editFieldName').textContent = field;
+            document.getElementById('editFieldValue').value = currentValue;
+            // Save field name in a global variable for later use
+            window.currentEditField = field;
+            document.getElementById('editModal').style.display = 'block';
+            document.getElementById('editOverlay').style.display = 'block';
+        }
+
+        // Close the edit modal
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            document.getElementById('editOverlay').style.display = 'none';
+        }
+
+        // Save the edited field value (this is a sample implementation)
+        function saveEdit() {
+            var field = window.currentEditField;
+            var newValue = document.getElementById('editFieldValue').value.trim();
+            if (!newValue) {
+                alert(field + " cannot be empty.");
+                return;
+            }
+            // Example: Send new value via fetch to update endpoint (adjust URL and payload as needed)
+            fetch("{{ url_for('update_object_info', object_name=object_name) }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ [field]: newValue })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    // Update displayed field value
+                    document.getElementById('field_' + field).textContent = newValue;
+                    closeEditModal();
+                } else {
+                    alert("Update failed: " + data.message);
+                }
+            })
+            .catch(err => {
+                alert("Error: " + err);
+            });
+        }
+
 
         function resetImage() {
             // Reset scale and position

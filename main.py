@@ -486,7 +486,6 @@ def serve_data_img(filename):
 @app.route('/save_data', methods=['POST'])
 def save_data_route():
     data = request.json.get('data', [])
-    print(data)
     Data_Process.save_data(data)
     return jsonify({"status": "success"})
 
@@ -693,7 +692,6 @@ def object_data(object_name):
     
     if object_info:
         permission = object_info['Permission']
-        print(f"Permission: {permission}")
         Permission_list = permission.split(' & ')
         if permission == 'public' or permission == 'Public' or user_organization in Permission_list or user_organization == 'admin':
             conn = sqlite3.connect(COMMENTS)
@@ -747,7 +745,6 @@ def login_page():
             if password_check:
                 session['username'] = username
                 session['organization'] = org
-                print(session)
                 next_page = request.args.get('next', url_for('home'))
                 return redirect(next_page)
         return redirect(url_for('login_page', error=1))
