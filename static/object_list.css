@@ -1,427 +1,294 @@
+/* 全局背景與基本設定 */
 body {
     font-family: Arial, sans-serif;
-    background-color: #cccccc;
     margin: 0;
     padding: 0;
-}
-
-footer .container {
-    width: 90%;
-    margin: 0 auto;
-}
-
-.footer-container {
-    display: flex;               
-    justify-content: space-between; 
-    flex-wrap: wrap;              
-}
-
-.footer-text {
-    flex: 1;
-    margin: 20px;
-    min-width: 250px;
-}
-
-.footer-text a {
-    color: #333;
-    text-decoration: underline;
-    transition: color 0.3s;
-}
-
-.footer-text a:hover{
-    color: #2ca470;
-}
-
-.footer-text h3 {
-    margin-bottom: 20px;
-    font-size: 20px;
-    border-bottom: 2px solid #333;  
-    padding-bottom: 10px;
-    font-weight: bold;
-}
-
-.footer-contact {
-    flex: 1;
-    margin: 20px;
-    min-width: 250px;           
-}
-
-.footer-contact h3 {
-    margin-bottom: 20px;
-    font-size: 20px;
-    border-bottom: 2px solid #333;  
-    padding-bottom: 10px;
-}
-
-.footer-bottom {
-    flex: 1;
-    margin: 20px;
-    min-width: 250px;           
-}
-/* ============================================================================ */
-/* ============================================================================ */
-/* ============================================================================ */
-/* Banner styling START */
-.main-banner {
-    background-image: url('BG/M42BG2.jpg'); /* BG image */
+    background-image: url('BG/M42BG2.jpg');
     background-size: cover;
-    background-position:center 27%;
-    padding: 100px; /* Banner height */
-    text-align: center; /* align center */
+    background-position: center;
+    background-attachment: fixed;
     position: relative;
+    z-index: 0;
 }
-
-/* adj img */
-.main-banner::before {
+body::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5); 
-    z-index: 1; /* layer */
+    z-index: 1;
+    pointer-events: none;
 }
-
-/* Banner detail */
-.main-banner .container {
+header {
+    z-index: 2;
     position: relative;
-    z-index: 2; /* layer */
 }
 
-/* Banner Header */
-.header-text h1 {
-    font-size: 78px;
-    margin-bottom: 30px;
-    letter-spacing: 2px; 
-    color: #fff;
-}
-
-.header-text p {
-    font-size: 24px;
-    margin-bottom: 30px;
-    letter-spacing: 2px; 
-    color: #fff;
-}
-
-/* Search text */
-.searchText {
+/* Banner (搜尋與分頁區) */
+.banner {
+    padding: 10px 0;
     width: 100%;
-    max-width: 500px; 
-    padding: 15px;
-    font-size: 16px;
-    border: none;
-    border-radius: 50px 0 0 50px; /* left circular */
-    outline: none;
+    border-radius: 20px;
+    background-color: rgba(190, 190, 190, 0.7);
+    margin: 100px auto 50px auto;
+    text-align: center;
+    width: 50%;
+    z-index: 2;
 }
 
-/* Search botton */
-.main-button {
-    padding: 15px 30px;
-    font-size: 16px;
-    border: none;
-    border-radius: 0 50px 50px 0; /* right circular */
-    background-color: #2ca470; 
-    color: #fff;
-    cursor: pointer;
+.banner-bottom {
+    padding: 10px 0;
+    width: 100%;
+    border-radius: 20px;
+    background-color: rgba(190, 190, 190, 0.7);
+    margin: 50px auto 50px auto;
+    text-align: center;
+    width: 50%;
+    z-index: 2;
 }
 
-.main-button:hover {
-    background-color: #238057;
-}
-
-
-/* Search area */
-.search-area {
+.banner-content {
+    max-width: 1200px;
+    margin: 0 auto;
     display: flex;
-    justify-content: center;
-    margin-top: 20px;
-}
-
-.search-area input,
-.search-area button {
-    margin: 0;
-}
-
-.search-area input {
-    border-right: none;
-}
-
-.search-area button {
-    border-left: none;
-}
-
-/* adj when max width < 400px */
-@media screen and (max-width: 400px) {
-    .main-banner h1 {
-        font-size: 32px;
-    }
-
-    .search-area {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .search-area input,
-    .search-area button {
-        width: 100%;
-        max-width: 300px;
-        border-radius: 50px;
-        margin-bottom: 10px;
-    }
-
-    .search-area input {
-        border-right: none;
-    }
-
-    .search-area button {
-        border-left: none;
-    }
-}
-/* Banner styling END */
-/* ============================================================================ */
-/* ============================================================================ */
-/* ============================================================================ */
-/* Main styling START */
-.container-main {
-    justify-content: center;
-    text-align: center;
+    flex-direction: column;
     align-items: center;
-    margin: 0px;
-    background-color: #cccccc;
-}
-/* Object Table Styles */
-.object-table {
-    width: 90%;
-    border-collapse: collapse;
-    margin: 20px auto; /* auto 左右置中 */
-    text-align: center;
+    gap: 10px;
 }
 
-
-h2 {
-    text-align: center;
-    font-size: 40px;
+.banner-content h2 {
+    font-size: 42px;
+    margin-bottom: 10px;
 }
 
-.object-table th,
-.object-table td {
-    border: 1px solid #000000;
-    text-align: center;
-    padding: 8px;
-}
-
-.object-table th {
-    background-color: #ccc;
-    font-size: 20px;
-}
-
-.object-table tr:nth-child(even) {
-    background-color: #f9f9f9;
-    font-size: 16px;
-}
-
-.object-table tr:nth-child(odd) {
-    background-color: #f9f9f9;
-    font-size: 16px;
-}
-
-.object-table a {
-    color: #2ca470;
-    text-decoration: none;
-}
-
-.object-table a:hover {
-    text-decoration: underline;
-}
-
-/* Main styling END */
-/* filter */
-
+/* Filter 表單 */
 .filter-form {
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     gap: 10px;
-    margin: 20px auto;
-    padding: 15px;
-    width: 80%;
-    max-width: 800px;
-    border-radius: 10px;
-    background-color: #ffffff;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
-
 .filter-form input[type="text"] {
-    width: 100%;
-    max-width: 700px;
+    padding: 10px;
+    font-size: 16px;
+    width: 300px;
+    border: 1px solid #2ca470;
+    border-radius: 5px;
+}
+.filter-form button {
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.filter-form select {
     padding: 10px;
     font-size: 16px;
     border: 1px solid #2ca470;
     border-radius: 5px;
-    outline: none;
-    box-sizing: border-box;
 }
 
-.filter-form button {
-    padding: 10px 20px;
-    font-size: 16px;
-    background-color: #2ca470;
-    color: #fff;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-}
-
-.filter-form button:hover {
-    background-color: #238057;
-}
-
-.filter-form select {
-    padding: 8px;
-    font-size: 14px;
-    border: 1px solid #2ca470;
-    border-radius: 5px;
-    outline: none;
-    width: 120px;
-}
-
+/* 分頁 */
 .pagination {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: 20px 0;
+    gap: 10px;
+    margin: 0px auto;
 }
-
 .pagination button,
 .pagination input[type="number"] {
-    padding: 8px 16px;
+    padding: 8px 12px;
     font-size: 14px;
     border: none;
     border-radius: 5px;
-    background-color: #2ca470;
-    color: #fff;
     cursor: pointer;
-    margin: 0 5px;
 }
-
-.pagination button:hover {
-    background-color: #238057;
-}
-
-.pagination input[type="number"] {
-    width: 70px;
-    text-align: center;
-    color: #fff;
-}
-
-.pagination input[type="number"]::placeholder {
-    color: #dadada; 
-    opacity: 1; 
-}
-
 .pagination button.active {
     background-color: #238057;
-}
-
-#pagination-info {
-    text-align: center;        
-    margin-bottom: 15px;       
-    font-size: 16px;           
-    font-weight: bold;         
-    color: #333333;            
-    padding: 10px 0;           
-    border-radius: 5px;        
+    color: #fff;
 }
 .pagination input[type="number"] {
-    -webkit-appearance: none;
-    -moz-appearance: textfield;
-    appearance: textfield;
-    margin: 0;
+    width: 100px;
+    text-align: center;
+    border: 1px solid #2ca470;
+    border-radius: 5px;
 }
 
-.pagination input[type="number"]::-webkit-outer-spin-button,
-.pagination input[type="number"]::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
+/* 主要容器：僅放表格 */
+.container-main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0px;
+    z-index: 2;
+}
+.table-container {
+    width: 80%;
+    background-color: #ccc;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
 }
 
-.footer-text h3 {
-    margin-bottom: 20px;
-    font-size: 20px;
-    border-bottom: 2px solid #333;  
-    padding-bottom: 10px;
-    font-weight: bold;
+/* 表格樣式 */
+.object-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    text-align: center;
+}
+.object-table th,
+.object-table td {
+    border: 1px solid #000000;
+    padding: 12px;
+}
+.object-table th {
+    background-color: #aaa;
+    font-size: 18px;
+}
+.object-table tr {
+    background-color: #f9f9f9;
+}
+.object-table tr:hover {
+    background-color: #e9e9e9;
+}
+.object-table a {
+    color: #2ca470;
+    text-decoration: none;
+}
+.object-table a:hover {
+    text-decoration: underline;
 }
 
+/* 按鈕 */
+.primary-button {
+    background-color: #2ca470;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+.primary-button:hover {
+    background-color: #238057;
+}
+.secondary-button {
+    background-color: #ccc;
+    color: #333;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+.secondary-button:hover {
+    background-color: #aaa;
+}
+
+/* 新增物件按鈕 */
 #addObjectBtn {
     display: block;
+    margin: 20px auto;
     padding: 10px 20px;
-    font-size: 16px;
     background-color: #2ca470;
     color: #fff;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     transition: background-color 0.3s ease;
-    margin: 20px auto;
 }
 
 #addObjectBtn:hover {
     background-color: #238057;
 }
 
+/* 模態視窗 (新增物件) */
 #addObjectModal {
-    display: none;
+    display: none; /* 初始隱藏 */
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: #ffffff;
+    background-color: #fff;
+    width: 400px;
     padding: 20px;
-    border: 1px solid #ccc;
     border-radius: 10px;
-    z-index: 1000;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1001; /* 高於背景遮罩 */
+    text-align: center;
+}
+
+#addObjectForm p {
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+
+#addObjectForm input[type="text"] {
+    width: 90%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+#addObjectForm button {
+    padding: 10px 20px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+#addObjectForm button[type="submit"] {
+    background-color: #2ca470;
+    color: #fff;
+}
+
+#addObjectForm button[type="submit"]:hover {
+    background-color: #238057;
+}
+
+#addObjectForm button[type="button"] {
+    background-color: #ccc;
+    color: #333;
+}
+
+#addObjectForm button[type="button"]:hover {
+    background-color: #aaa;
 }
 
 #modalOverlay {
-    display: none; 
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
+    z-index: 1000;
 }
 
-#addObjectModal button {
-    padding: 10px 20px;
-    font-size: 16px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-    margin-top: 10px;
-    margin-right: 10px;
+
+.fixed-footer {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
 }
 
-#addObjectModal button[type="submit"] {
-    background-color: #2ca470;
-    color: #fff;
-}
-
-#addObjectModal button[type="submit"]:hover {
-    background-color: #238057;
-}
-
-#addObjectModal button[type="button"] {
-    background-color: #ccc;
-    color: #333;
-}
-
-#addObjectModal button[type="button"]:hover {
-    background-color: #aaa;
+@media screen and (max-width: 768px) {
+    .table-container {
+        width: 95%;
+        padding: 20px;
+    }
+    .filter-form input[type="text"] {
+        width: 200px;
+    }
 }
