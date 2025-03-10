@@ -15,7 +15,9 @@
     <div class="banner">
         <div class="banner-content">
             <h2>Object List</h2>
-
+            {% if 'username' not in session %}
+            <p>please login to see the objrct details</p>
+            {% endif %}
             <div class="filter-form">
                 <input type="text" id="searchInput" placeholder="Search object name or year">
                 <button onclick="filterObjects()" class="primary-button">Search</button>
@@ -92,9 +94,7 @@
         </div>
     </div>
     
-    <footer class="fixed-footer">
-        {% include 'footer.html' %}
-    </footer>
+    {% include 'footer.html' %}
     
     <script>
         const rowsPerPage = 50;
