@@ -59,7 +59,7 @@
                 </h3>
                 <p id="field_Permission">{{ Permission }}</p>
             </div>
-            <a href="{{ url_for('admin_file_manager') }}">File Manager</a>
+            <a href="{{ url_for('admin_file_manager', path='Lab_Data/' ~ object_name) }}">File Manager</a>
             {% endif %}
 
             <!-- Edit Modal (similar style as Add Object Modal) -->
