@@ -37,30 +37,32 @@ def create_interactive_spectrum_plot(spectrum_file, plot_filename):
 # Interactive plot, photometry ============================================
 def get_filter_color(filter_name, alpha):
     filter_colors = {
-        # 紫外線濾鏡
-        'uvw2': f'rgba(106,90,205,{alpha})',
-        'uvm2': f'rgba(132,112,255,{alpha})',
-        'unw1': f'rgba(123,104,238,{alpha})',
-        
-        # 光學濾鏡
-        'u': f'rgba(75,0,130,{alpha})',
-        'B': f'rgba(0,0,255,{alpha})',
-        'g': f'rgba(44,164,112,{alpha})',
-        'V': f'rgba(34,139,34,{alpha})',
-        'r': f'rgba(255,0,0,{alpha})',
-        'o': f'rgba(255,165,0,{alpha})',
-        'i': f'rgba(255,105,180,{alpha})',
-        'z': f'rgba(139,0,0,{alpha})',
-        'y': f'rgba(210,105,30,{alpha})',
-        'w': f'rgba(46,139,87,{alpha})',
-        'c': f'rgba(138,43,226,{alpha})',
+        # Swift UVOT 濾鏡（近似值）
+        'uvw2': f'rgba(106,90,205,－)',  # 藍紫色
+        'uvm2': f'rgba(132,112,255,{alpha})', # 淡紫藍
+        'uvw1': f'rgba(123,104,238,{alpha})', # 藍紫
+
+        # 光學濾鏡（SDSS/Johnson 系統）
+        'u': f'rgba(75,0,130,{alpha})',        # U 濾鏡：靛藍色
+        'B': f'rgba(0,0,255,{alpha})',         # B 濾鏡：藍色
+        'g': f'rgba(44,164,112,{alpha})',       # g 濾鏡：偏綠（綠色調）
+        'V': f'rgba(34,139,34,{alpha})',        # V 濾鏡：正綠
+        'r': f'rgba(180,220,180,{alpha})',      # 小寫 r（例如 SDSS r）：偏綠、柔和
+        'R': f'rgba(255,0,0,{alpha})',          # 大寫 R（例如 Johnson R）：紅色
+        'o': f'rgba(255,165,0,{alpha})',        # o 濾鏡：橙色
+        'i': f'rgba(255,105,180,{alpha})',      # i 濾鏡：粉紅
+        'z': f'rgba(139,0,0,{alpha})',          # z 濾鏡：深紅
+        'y': f'rgba(210,105,30,{alpha})',       # y 濾鏡：棕橘色
+        'w': f'rgba(46,139,87,{alpha})',        # w 濾鏡：綠意較重（或視為白光輔助）
+        'c': f'rgba(138,43,226,{alpha})',       # c 濾鏡：藍紫
 
         # 紅外線濾鏡
-        'J': f'rgba(139,69,19,{alpha})',
-        'H': f'rgba(160,82,45,{alpha})',
-        'Ks': f'rgba(205,133,63,{alpha})'
+        'J': f'rgba(139,69,19,{alpha})',        # J 濾鏡：棕色
+        'H': f'rgba(160,82,45,{alpha})',        # H 濾鏡：土紅
+        'Ks': f'rgba(205,133,63,{alpha})'       # Ks 濾鏡：黃土色
     }
-    return filter_colors.get(filter_name, f'rgba(0,0,0,1)')
+    return filter_colors.get(filter_name, f'rgba(0,0,0,－)')
+
 
 def create_interactive_photometry_plot(photometry_files, plot_filename):
     traces = []
