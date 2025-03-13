@@ -59,6 +59,7 @@
                 </h3>
                 <p id="field_Permission">{{ Permission }}</p>
             </div>
+            <a href="{{ url_for('admin_file_manager') }}">File Manager</a>
             {% endif %}
 
             <!-- Edit Modal (similar style as Add Object Modal) -->
@@ -86,6 +87,7 @@
             {% endif %}
         </div>
         {% if 'username' in session and session['username'] == 'admin' %}
+        
         <!-- Photo Upload Modal -->
         <div id="photoUploadModal" class="modal">
             <h3>Upload Photo</h3>
@@ -104,7 +106,6 @@
     <!-- Main Content Section -->
     <div class="main-content">
         <h1>Object Details</h1>
-        
         <!-- Data Display Section -->
         <div class="data-display-section">
             <!-- Left Section: Data Selection & Photo -->

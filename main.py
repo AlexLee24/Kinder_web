@@ -6,7 +6,7 @@
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
-debug_mode = False
+debug_mode = True
 # =================================================================================================
 # =================================================================================================
 # =================================================================================================
@@ -162,9 +162,9 @@ def update_object_info(object_name):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
     data = request.get_json()
-    new_ra = data.get('RA')
-    new_dec = data.get('DEC')
-    new_tntype = data.get('TNtype')
+    new_ra = str(data.get('RA'))
+    new_dec = str(data.get('DEC'))
+    new_tntype = str(data.get('TNtype'))
     new_permission = data.get('Permission')
     
     info_file = os.path.join(BASE_DIR, 'Lab_Data', object_name, 'Data', f"{object_name}_info.txt")
@@ -193,6 +193,7 @@ def update_object_info(object_name):
 
         return jsonify({'success': True})
     except Exception as e:
+        print(f"error:{e}, with{new_ra}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # delete object
