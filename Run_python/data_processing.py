@@ -97,33 +97,49 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
                         marker_symbols[telescope] = marker_symbols_list.pop(0)
                     else:
                         marker_symbols[telescope] = 'circle'
-            indices = [i for i, t in enumerate(data['telescope']) if t == telescope]
-            colors = []
-            for i in indices:
-                err_val = abs(data['error'][i])
-                if err_val == 0:
-                    colors.append(get_filter_color(filter_name, 0.3))
-                else:
-                    colors.append(get_filter_color(filter_name, 1))
-            trace = go.Scatter(
-                x=[data['time'][i] for i in indices],
-                y=[data['mag'][i] for i in indices],
-                mode='markers',
-                name=f'Filter: {filter_name} (Telescope: {telescope})',
-                marker=dict(
-                    color=colors,
-                    symbol=marker_symbols[telescope],
-                    size=10
-                ),
-                error_y=dict(
-                    type='data',
-                    array=[abs(data['error'][i]) for i in indices],
-                    visible=True,
-                    color=get_filter_color(filter_name, 1)
-                ),
-                visible=True
-            )
-            traces.append(trace)
+            
+            group_indices = [i for i, t in enumerate(data['telescope']) if t == telescope]
+            indices_with_error = [i for i in group_indices if abs(data['error'][i]) > 0]
+            indices_without_error = [i for i in group_indices if abs(data['error'][i]) == 0]
+            
+            if indices_with_error:
+                colors_with = [get_filter_color(filter_name, 1) for _ in indices_with_error]
+                trace_with = go.Scatter(
+                    x=[data['time'][i] for i in indices_with_error],
+                    y=[data['mag'][i] for i in indices_with_error],
+                    mode='markers',
+                    name=f'Filter: {filter_name} (Telescope: {telescope})',
+                    marker=dict(
+                        color=colors_with,
+                        symbol=marker_symbols[telescope],
+                        size=10
+                    ),
+                    error_y=dict(
+                        type='data',
+                        array=[abs(data['error'][i]) for i in indices_with_error],
+                        visible=True,
+                        color=get_filter_color(filter_name, 1)
+                    ),
+                    visible=True
+                )
+                traces.append(trace_with)
+            
+            if indices_without_error:
+                colors_without = [get_filter_color(filter_name, 0.3) for _ in indices_without_error]
+                symbols_without = ["triangle-down" for _ in indices_without_error]
+                trace_without = go.Scatter(
+                    x=[data['time'][i] for i in indices_without_error],
+                    y=[data['mag'][i] for i in indices_without_error],
+                    mode='markers',
+                    name=f'Filter: {filter_name} (Telescope: {telescope}) (none detection)',
+                    marker=dict(
+                        color=colors_without,
+                        symbol=symbols_without,
+                        size=20
+                    ),
+                    visible=True
+                )
+                traces.append(trace_without)
     
     layout = go.Layout(
         title="Photometry - Multiple Filters by clicking on the chart legend.",
@@ -135,6 +151,7 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
     
     fig = go.Figure(data=traces, layout=layout)
     fig.write_html(plot_filename)
+
     
 # =====================================================================
 def scan_photometry_files(data_path, obj_folder):
