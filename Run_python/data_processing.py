@@ -35,33 +35,35 @@ def create_interactive_spectrum_plot(spectrum_file, plot_filename):
     fig.write_html(plot_filename)
 
 # Interactive plot, photometry ============================================
-def create_interactive_photometry_plot(photometry_files, plot_filename):
-    traces = []
+def get_filter_color(filter_name, alpha):
     filter_colors = {
         # 紫外線濾鏡
-        'uvw2': '#6A5ACD',  # 淡紫色 (類似 UVW2)
-        'uvm2': '#8470FF',  # 淡紫藍色 (類似 UVM2)
-        'unw1': '#7B68EE',  # 紫藍色 (類似 UVW1)
+        'uvw2': f'rgba(106,90,205,{alpha})',
+        'uvm2': f'rgba(132,112,255,{alpha})',
+        'unw1': f'rgba(123,104,238,{alpha})',
         
         # 光學濾鏡
-        'u': '#4B0082',    # 深紫色 (u band)
-        'B': '#0000FF',    # 藍色 (B band)
-        'g': '#2ca470',    # 綠色 (g band)
-        'V': '#228B22',    # 深綠色 (V band)
-        'r': '#FF0000',    # 紅色 (r band)
-        'o': '#FFA500',    # 橙色 (o band)
-        'i': '#FF69B4',    # 粉紅色 (i band)
-        'z': '#8B0000',    # 深紅色 (z band)
-        'y': '#D2691E',    # 棕橘色 (y band)
-        'w': '#2E8B57',    # 海綠色 (w band)
-        'c': '#8A2BE2',    # 藍紫色 (c band)
+        'u': f'rgba(75,0,130,{alpha})',
+        'B': f'rgba(0,0,255,{alpha})',
+        'g': f'rgba(44,164,112,{alpha})',
+        'V': f'rgba(34,139,34,{alpha})',
+        'r': f'rgba(255,0,0,{alpha})',
+        'o': f'rgba(255,165,0,{alpha})',
+        'i': f'rgba(255,105,180,{alpha})',
+        'z': f'rgba(139,0,0,{alpha})',
+        'y': f'rgba(210,105,30,{alpha})',
+        'w': f'rgba(46,139,87,{alpha})',
+        'c': f'rgba(138,43,226,{alpha})',
 
         # 紅外線濾鏡
-        'J': '#8B4513',    # 棕色 (J band)
-        'H': '#A0522D',    # 土紅色 (H band)
-        'Ks': '#CD853F',   # 黃土色 (Ks band)
+        'J': f'rgba(139,69,19,{alpha})',
+        'H': f'rgba(160,82,45,{alpha})',
+        'Ks': f'rgba(205,133,63,{alpha})'
     }
+    return filter_colors.get(filter_name, f'rgba(0,0,0,1)')
 
+def create_interactive_photometry_plot(photometry_files, plot_filename):
+    traces = []
     marker_symbols_list = ['square', 'diamond', 'cross', 'x', 'star']
     marker_symbols = {}
 
@@ -77,7 +79,7 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
         if data.ndim == 1:
             data = np.expand_dims(data, axis=0)
         time, mag, error = data[:, 0], data[:, 1], data[:, 2]
-        
+
         if filter_name not in combined_data:
             combined_data[filter_name] = {'time': [], 'mag': [], 'error': [], 'telescope': []}
         combined_data[filter_name]['time'].extend(time)
@@ -96,20 +98,28 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
                     else:
                         marker_symbols[telescope] = 'circle'
             indices = [i for i, t in enumerate(data['telescope']) if t == telescope]
+            colors = []
+            for i in indices:
+                err_val = abs(data['error'][i])
+                if err_val == 0:
+                    colors.append(get_filter_color(filter_name, 0.3))
+                else:
+                    colors.append(get_filter_color(filter_name, 1))
             trace = go.Scatter(
                 x=[data['time'][i] for i in indices],
                 y=[data['mag'][i] for i in indices],
                 mode='markers',
                 name=f'Filter: {filter_name} (Telescope: {telescope})',
                 marker=dict(
-                    color=filter_colors.get(filter_name, '#000000'),
+                    color=colors,
                     symbol=marker_symbols[telescope],
                     size=10
                 ),
                 error_y=dict(
                     type='data',
                     array=[abs(data['error'][i]) for i in indices],
-                    visible=True
+                    visible=True,
+                    color=get_filter_color(filter_name, 1)
                 ),
                 visible=True
             )

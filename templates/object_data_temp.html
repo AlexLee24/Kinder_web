@@ -234,26 +234,44 @@
                 alert(field + " cannot be empty.");
                 return;
             }
-            // Example: Send new value via fetch to update endpoint (adjust URL and payload as needed)
-            fetch("{{ url_for('update_object_info', object_name=object_name) }}", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ [field]: newValue })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if(data.success) {
-                    // Update displayed field value
-                    document.getElementById('field_' + field).textContent = newValue;
-                    closeEditModal();
-                } else {
-                    alert("Update failed: " + data.message);
-                }
-            })
-            .catch(err => {
-                alert("Error: " + err);
-            });
+            if (field === 'object_name') {
+                fetch("{{ url_for('update_object_name_inline', object_name=object_name) }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ newName: newValue })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.success) {
+                        window.location.href = "/object_data/" + encodeURIComponent(data.new_name);
+                    } else {
+                        alert("Update failed: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    alert("Error: " + err);
+                });
+            } else {
+                fetch("{{ url_for('update_object_info', object_name=object_name) }}", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ [field]: newValue })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if(data.success) {
+                        document.getElementById('field_' + field).textContent = newValue;
+                        closeEditModal();
+                    } else {
+                        alert("Update failed: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    alert("Error: " + err);
+                });
+            }
         }
+        
 
 
         function resetImage() {

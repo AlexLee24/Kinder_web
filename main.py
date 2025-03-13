@@ -6,7 +6,7 @@
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
-debug_mode = False
+debug_mode = True
 # =================================================================================================
 # =================================================================================================
 # =================================================================================================
@@ -162,10 +162,10 @@ def update_object_info(object_name):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 403
 
     data = request.get_json()
-    new_ra = str(data.get('RA'))
-    new_dec = str(data.get('DEC'))
-    new_tntype = str(data.get('TNtype'))
-    new_permission = data.get('Permission')
+    new_ra = str(data.get('RA', None))
+    new_dec = str(data.get('DEC', None))
+    new_tntype = str(data.get('TNtype', None))
+    new_permission = data.get('Permission', None)
     
     info_file = os.path.join(BASE_DIR, 'Lab_Data', object_name, 'Data', f"{object_name}_info.txt")
     if not os.path.exists(info_file):
@@ -177,13 +177,13 @@ def update_object_info(object_name):
 
         new_lines = []
         for line in lines:
-            if line.startswith("RA:"):
+            if line.startswith("RA:") and new_ra != "None":
                 new_lines.append("RA: " + new_ra + "\n")
-            elif line.startswith("DEC:"):
+            elif line.startswith("DEC:") and new_dec != "None":
                 new_lines.append("DEC: " + new_dec + "\n")
-            elif line.startswith("Transient_type:"):
+            elif line.startswith("Transient_type:") and new_tntype != "None":
                 new_lines.append("Transient_type: " + new_tntype + "\n")
-            elif line.startswith("Permission:"):
+            elif line.startswith("Permission:") and new_permission != None:
                 new_lines.append("Permission: " + new_permission + "\n")
             else:
                 new_lines.append(line)
@@ -193,7 +193,6 @@ def update_object_info(object_name):
 
         return jsonify({'success': True})
     except Exception as e:
-        print(f"error:{e}, with{new_ra}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # delete object
@@ -248,7 +247,6 @@ def upload_object_photo(object_name):
 
     original_filename = photo_file.filename
     extension = os.path.splitext(original_filename)[1]  # e.g. ".png" / ".jpg"
-
     new_filename = f"{object_name}_photo{extension}"
     save_path = os.path.join(data_folder, new_filename)
 
@@ -324,7 +322,7 @@ def update_object_name_inline(object_name):
             new_lines = []
             for line in lines:
                 if line.startswith("Photo_path:"):
-                    new_lines.append(f"Photo_path: {new_name}_photo.png\n")
+                    new_lines.append(f"Photo_path: {new_name}_photo.JPG\n")
                 else:
                     new_lines.append(line)
             with open(info_file_path, 'w', encoding='utf-8') as f:
@@ -332,7 +330,6 @@ def update_object_name_inline(object_name):
         data_img_old_folder = os.path.join(BASE_DIR, 'Data_img', object_name)
         if os.path.exists(data_img_old_folder):
             shutil.rmtree(data_img_old_folder)
-
         return jsonify({'success': True, 'new_name': new_name})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -1155,6 +1152,7 @@ def generate_plot():
     
     # Generate image
     plot_path = os.path.join("static", f"ov_plot\observing_tracks.jpg")
+
     obs.plot_night_observing_tracks(
         [target], lulin_obs, obs_start_local_dt, obs_end_local_dt, simpletracks=True, toptime='local',
         timezone='calculate', n_steps=1000, savepath=plot_path
