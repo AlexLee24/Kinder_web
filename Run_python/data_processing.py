@@ -47,10 +47,10 @@ def get_filter_color(filter_name, alpha):
         'B': f'rgba(0,0,255,{alpha})',         # B 濾鏡：藍色
         'g': f'rgba(44,164,112,{alpha})',       # g 濾鏡：偏綠（綠色調）
         'V': f'rgba(34,139,34,{alpha})',        # V 濾鏡：正綠
-        'r': f'rgba(255,100,100,{alpha})',      # 小寫 r（例如 SDSS r）：偏綠、柔和
+        'r': f'rgba(255,100,100,{alpha})',      # 小寫 r（例如 SDSS r）：偏紅
         'R': f'rgba(255,0,0,{alpha})',          # 大寫 R（例如 Johnson R）：紅色
         'o': f'rgba(255,165,0,{alpha})',        # o 濾鏡：橙色
-        'i': f'rgba(255,105,180,{alpha})',      # i 濾鏡：粉紅
+        'i': f'rgba(255,105,180,{alpha})',      # i 濾鏡：粉紅 
         'z': f'rgba(139,0,0,{alpha})',          # z 濾鏡：深紅
         'y': f'rgba(210,105,30,{alpha})',       # y 濾鏡：棕橘色
         'w': f'rgba(46,139,87,{alpha})',        # w 濾鏡：綠意較重（或視為白光輔助）
@@ -127,17 +127,18 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
                 traces.append(trace_with)
             
             if indices_without_error:
-                colors_without = [get_filter_color(filter_name, 0.7) for _ in indices_without_error]
+                colors_without = [get_filter_color(filter_name, 1) for _ in indices_without_error]
+                print(f"{filter_name} color without {colors_without}")
                 symbols_without = ["triangle-down-open" for _ in indices_without_error]
                 trace_without = go.Scatter(
                     x=[data['time'][i] for i in indices_without_error],
                     y=[data['mag'][i] for i in indices_without_error],
                     mode='markers',
-                    name=f'Filter: {filter_name} (Telescope: {telescope}) (none detection)',
+                    name=f'Filter: {filter_name} (Telescope: {telescope}) (upper limits)',
                     marker=dict(
+                        color=colors_without,
                         line=dict(
                             width=2,
-                            color=colors_without
                         ),
                         symbol=symbols_without,
                         size=10
