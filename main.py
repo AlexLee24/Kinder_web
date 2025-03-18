@@ -11,26 +11,28 @@ debug_mode = False
 # =================================================================================================
 # =================================================================================================
 import os
-import sqlite3
-import uuid
-import obsplanning as obs
-import ephem
 import re
-import configparser
 import sys
+import uuid
+import ephem
 import shutil
+import sqlite3
+import configparser
+
 
 import matplotlib
 matplotlib.use('Agg')
 
-from flask import Flask, render_template, request, redirect, url_for, session, render_template_string, jsonify, flash, send_from_directory
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_mail import Mail, Message
 from datetime import datetime
+from flask_mail import Mail, Message
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, render_template, request, redirect, url_for, session, render_template_string, jsonify, flash, send_from_directory
 
+import Run_python.new_obsplan as obs
+from Run_python.Trigger import Generate
 from Run_python.User_control import UserManagement
 from Run_python.data_processing import Data_Process
-from Run_python.Trigger import Generate
+
 
 app = Flask(__name__, static_folder="static")
 
@@ -1199,7 +1201,7 @@ def generate_plot_2():
         dec = re.sub(r"[mM′']", ":", dec)
         dec = re.sub(r"[sS″\"]", "", dec).strip()
         
-        name = f"{name}\nRA: {ra}\nDEC: {dec}"
+        name = f"{name}"
         
         ephem_target = obs.create_ephem_target(name, ra, dec)
         target_list.append(ephem_target)

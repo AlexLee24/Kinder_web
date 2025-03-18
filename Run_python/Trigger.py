@@ -1,5 +1,5 @@
 import uuid
-import obsplanning as obs
+import Run_python.new_obsplan as obs
 import ephem
 import re
 import os
