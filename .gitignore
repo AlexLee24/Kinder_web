@@ -181,3 +181,4 @@ config.ini
 .codegpt
 .DS_Store
 .DS_Store 2
+/static/ov_plot
