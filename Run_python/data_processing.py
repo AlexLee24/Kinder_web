@@ -149,8 +149,8 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
     
     layout = go.Layout(
         title="Photometry - Multiple Filters by clicking on the chart legend.",
-        xaxis=dict(title="Time (MJD)", tickformat="d"),
-        yaxis=dict(title="Magnitude", autorange="reversed"),
+        xaxis=dict(title="Time (MJD)", tickformat=".2f"),
+        yaxis=dict(title="Magnitude", tickformat=".2f", autorange="reversed"),
         template="seaborn",
         showlegend=True
     )
