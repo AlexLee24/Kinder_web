@@ -60,6 +60,23 @@
             </form>
             <div id="dec-result"></div>
         </div>
+
+        <!-- Redshift to Distance Conversion Section -->
+        <div class="tool-section">
+            <h2>Redshift to Distance</h2>
+            <form id="redshift-conversion-form">
+                <div class="form-group">
+                    <label for="redshift-value">redshift (z):</label>
+                    <input type="number" step="any" id="redshift-value" name="redshift-value" placeholder="e.g. 0.039">
+                </div>
+                <div class="form-group">
+                    <label for="redshift-error">redshift err (optional):</label>
+                    <input type="number" step="any" id="redshift-error" name="redshift-error" placeholder="e.g. 0.016">
+                </div>
+                <button type="button" class="tool-button" onclick="convertRedshift()">Calculate</button>
+            </form>
+            <div id="redshift-result"></div>
+        </div>
     </div>
 
     {% include 'footer.html' %}
@@ -187,6 +204,84 @@
                 output = "<p>Please enter DEC in either dd:mm:ss or decimal degrees.</p>";
             }
             document.getElementById("dec-result").innerHTML = output;
+        }
+
+        function redshiftToDistance(z, z_err = null) {
+            // Speed of light in km/s
+            const c = 299792;
+            // Hubble constant in km/s/Mpc
+            const H0 = 70;
+            
+            let v, v_err = null;
+            
+            // For z greater than 1, use the relativistic velocity formula.
+            if (z > 1) {
+                v = c * (((1 + z)**2 - 1) / ((1 + z)**2 + 1));
+                // Calculate error propagation using the derivative
+                if (z_err !== null) {
+                    const derivative = 4 * (z + 1) / ((z**2 + 2 * z + 2)**2);
+                    v_err = c * derivative * z_err;
+                }
+            } else {
+                // For z <= 1, use the linear approximation.
+                v = c * z;
+                if (z_err !== null) {
+                    v_err = c * z_err;
+                }
+            }
+            
+            // Calculate distance in Mpc.
+            const d_Mpc = v / H0;
+            const d_Mpc_err = v_err !== null ? v_err / H0 : null;
+            
+            // Convert distance from Mpc to parsecs (1 Mpc = 1e6 parsecs).
+            const d_pc = d_Mpc * 1e6;
+            const d_pc_err = d_Mpc_err !== null ? d_Mpc_err * 1e6 : null;
+            
+            return {
+                d_Mpc, d_Mpc_err, d_pc, d_pc_err
+            };
+        }
+        
+        function convertRedshift() {
+            const redshiftInput = document.getElementById("redshift-value").value;
+            const redshiftErrorInput = document.getElementById("redshift-error").value;
+            const resultDiv = document.getElementById("redshift-result");
+            
+            if (!redshiftInput) {
+                resultDiv.innerHTML = "<p>Plese enter Redshift</p>";
+                return;
+            }
+            
+            const z = parseFloat(redshiftInput);
+            const z_err = redshiftErrorInput ? parseFloat(redshiftErrorInput) : null;
+            
+            if (isNaN(z)) {
+                resultDiv.innerHTML = "<p>Plese enter correct Redshift</p>";
+                return;
+            }
+            
+            const result = redshiftToDistance(z, z_err);
+            
+            let output = `<p>Redshift: ${z}`;
+            if (z_err !== null) {
+                output += ` ± ${z_err}`;
+            }
+            output += "</p>";
+            
+            output += `<p>Distance (Mpc): ${result.d_Mpc.toFixed(3)}`;
+            if (result.d_Mpc_err !== null) {
+                output += ` ± ${result.d_Mpc_err.toFixed(3)}`;
+            }
+            output += "</p>";
+            
+            output += `<p>Distance (pc): ${result.d_pc.toFixed(3)}`;
+            if (result.d_pc_err !== null) {
+                output += ` ± ${result.d_pc_err.toFixed(3)}`;
+            }
+            output += "</p>";
+            
+            resultDiv.innerHTML = output;
         }
 
         window.addEventListener("scroll", function() {
