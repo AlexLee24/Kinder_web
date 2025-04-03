@@ -182,3 +182,7 @@ config.ini
 .DS_Store
 .DS_Store 2
 /static/ov_plot
+test.py
+config.ini
+/config.ini
+config.ini

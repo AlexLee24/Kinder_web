@@ -248,7 +248,7 @@ header {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 #comments-list {
-    max-height: 500px;
+    max-height: 300px;
     overflow-y: auto;
     margin-bottom: 20px;
 }
@@ -435,6 +435,69 @@ header {
 #upload-result {
     margin-top: 10px;
     font-size: 16px;
+    opacity: 1;
+    transition: opacity 0.5s ease-out;
+}
+
+#upload-result.fade-out {
+    animation: fadeOut 2s ease-out forwards;
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+
+/* ATLAS Upload Modal Styles */
+#atlasUploadModal {
+    display: none; 
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 400px;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    z-index: 1001;
+    text-align: center;
+}
+
+#atlasUploadModal h3 {
+    margin-bottom: 20px;
+    font-size: 24px;
+    color: #333;
+}
+
+#atlasUploadForm input[type="text"],
+#atlasUploadForm input[type="password"] {
+    width: 90%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+#atlasOverlay {
+    display: none; /* 初始隱藏 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+#togglePassword {
+    font-size: 14px;
+    color: #2ca470;
+    background: none;
+    border: none;
+    cursor: pointer;
+    outline: none;
 }
 
 

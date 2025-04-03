@@ -1,4 +1,4 @@
-# Last update at: 2025-03-14
+# Last update at: 2025-04-03
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
@@ -6,23 +6,25 @@
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
 # IMPORTANT: DO NOT share PASSWORD publicly.
-debug_mode = False
 # =================================================================================================
 # =================================================================================================
 # =================================================================================================
 import os
 import re
 import sys
+import time
 import uuid
 import ephem
 import shutil
 import sqlite3
+import requests
 import configparser
 
 
 import matplotlib
 matplotlib.use('Agg')
 
+from bs4 import BeautifulSoup
 from datetime import datetime
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -41,6 +43,7 @@ app.secret_key = 'test'
 config = configparser.ConfigParser()
 config.read('config.ini')
 BASE_DIR = config['Paths']['BASE_DIR']
+debug_mode = config['debug']['DEBUG']
 path_ex = os.path.exists(BASE_DIR)
 if path_ex == False:
     print("=================== Check the path in config.ini file ===================")
@@ -80,6 +83,107 @@ init_db()
 #==================================== route =================================================
 #==================================== route =================================================
 #==================================== route =================================================
+@app.route('/upload_atlas_photometry/<object_name>', methods=['POST'])
+def upload_atlas_photometry(object_name):
+    data = request.get_json()
+    account = data.get('account')
+    password = data.get('password')
+    atlas_url = data.get('atlas_url')
+    
+    if not account or not password or not atlas_url:
+        return jsonify({"status": "error", "message": "請提供完整資訊"}), 400
+
+    login_page_url = "https://star.pst.qub.ac.uk/sne/atlas4/userlist_quickview/44/"
+    login_url = "https://star.pst.qub.ac.uk/sne/atlas4/accounts/auth/"
+    next_s = "/sne/atlas4/userlist_quickview/44/"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    try:
+        session_req = requests.Session()
+        login_page = session_req.get(login_page_url, headers=headers)
+        login_soup = BeautifulSoup(login_page.content, "html.parser")
+        csrf_input = login_soup.find("input", {"name": "csrfmiddlewaretoken"})
+        csrf_token = csrf_input["value"] if csrf_input else ""
+        
+        login_data = {
+            "username": account,
+            "password": password,
+            "csrfmiddlewaretoken": csrf_token,
+            "next": next_s
+        }
+        headers["Referer"] = login_page_url
+        login_response = session_req.post(login_url, data=login_data, headers=headers)
+        if "authentication failed" in login_response.text.lower():
+            return jsonify({"status": "error", "message": "登入失敗"}), 403
+
+        time.sleep(2)
+        
+        page = session_req.get(atlas_url, headers=headers)
+        if page.status_code != 200:
+            return jsonify({"status": "error", "message": "Can not get data"}), 404
+        if "login" in page.url.lower():
+            return jsonify({"status": "error", "message": "Please check your username or password"}), 403
+        
+        soup = BeautifulSoup(page.content, "html.parser")
+        tables = []
+        container_divs = soup.find_all(class_="table-container")
+        for container in container_divs:
+            tables_in_container = container.find_all("table")
+            if tables_in_container:
+                tables.extend(tables_in_container)
+        if not tables:
+            tables = soup.find_all("table", class_="table-container")
+        if not tables:
+            return jsonify({"status": "error", "message": "Can not find data"}), 404
+
+        data_dict = {}
+        for table in tables:
+            header_row = table.find("tr")
+            if not header_row:
+                continue
+            headers_list = [th.get_text(strip=True) for th in header_row.find_all(["th", "td"])]
+            try:
+                idx_mjd = headers_list.index("Mjd")
+                idx_mag = headers_list.index("Mag")
+                idx_dmag = headers_list.index("Dmag")
+                idx_filt = headers_list.index("Filt")
+            except ValueError:
+                continue
+            
+            rows = table.find_all("tr")[1:]
+            for row in rows:
+                cols = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+                if len(cols) < len(headers_list):
+                    continue
+                mjd = cols[idx_mjd]
+                mag = cols[idx_mag]
+                dmag = cols[idx_dmag]
+                filt = cols[idx_filt]
+                line = f"{mjd} {mag} {dmag}"
+                data_dict.setdefault(filt, []).append(line)
+        
+        if not data_dict:
+            return jsonify({"status": "error", "message": "No valid data"}), 404
+
+        upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
+        os.makedirs(upload_folder, exist_ok=True)
+        for filt, lines in data_dict.items():
+            filename = f"{object_name}_{filt}_photometry_ATLAS.txt"
+            file_path = os.path.join(upload_folder, filename)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write("\n".join(lines))
+        
+        return jsonify({"status": "success", "message": "ATLAS photometry uploaded successfully"}), 200
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error: {e}"}), 500
+
+
+
+
 # edit user org
 @app.route('/admin_edit_user', methods=['GET', 'POST'])
 def admin_edit_user():
@@ -340,19 +444,17 @@ def update_object_name_inline(object_name):
 # upload photometry
 @app.route('/upload_photometry/<object_name>', methods=['POST'])
 def upload_photometry(object_name):
-    if request.method == 'POST':
-        if 'file' not in request.files:
-            return jsonify({"status": "error", "message": "No file part"})
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({"status": "error", "message": "No file selected"})
+    files = request.files.getlist('file')
+    if not files or all(file.filename == '' for file in files):
+        return jsonify({"status": "error", "message": "No file selected"})
 
-        if file and file.filename.endswith('.txt'): 
+    messages = []
+    for file in files:
+        if file.filename == '':
+            continue
+        if file and file.filename.endswith('.txt'):
             upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
             os.makedirs(upload_folder, exist_ok=True)
-
             target_path = os.path.join(upload_folder, file.filename)
             
             if os.path.exists(target_path):
@@ -364,28 +466,32 @@ def upload_photometry(object_name):
                         existing_content = f.read()
                     old_lines = [line.strip() for line in existing_content.splitlines() if line.strip()]
                     
-                    lines_to_append = []
-                    for line in new_lines:
-                        if line not in old_lines:
-                            lines_to_append.append(line)
+                    lines_to_append = [line for line in new_lines if line not in old_lines]
                     
                     if not lines_to_append:
-                        return jsonify({"status": "success", "message": "Uploaded content is already present; nothing appended."})
+                        messages.append(f"{file.filename}: Uploaded content is already present; nothing appended.")
+                        continue
                     
                     with open(target_path, 'a', encoding='utf-8') as f:
                         for line in lines_to_append:
                             f.write("\n" + line)
-                    return jsonify({"status": "success", "message": "File content appended successfully, please reload the page to see the changes."})
+                    messages.append(f"{file.filename}: File content appended successfully.")
                 except Exception as e:
-                    return jsonify({"status": "error", "message": f"Error appending content: {e}"})
+                    messages.append(f"{file.filename}: Error appending content: {e}")
             else:
                 try:
                     file.save(target_path)
-                    return jsonify({"status": "success", "message": "File successfully uploaded, please reload the page to see the changes."})
+                    messages.append(f"{file.filename}: File successfully uploaded.")
                 except Exception as e:
-                    return jsonify({"status": "error", "message": f"Error saving file: {e}"})
-        
-        return jsonify({"status": "error", "message": "Invalid file format. Only .txt files are allowed."})
+                    messages.append(f"{file.filename}: Error saving file: {e}")
+        else:
+            messages.append(f"{file.filename}: Invalid file format. Only .txt files are allowed.")
+    
+    if messages:
+        return jsonify({"status": "success", "message": " ".join(messages)})
+    else:
+        return jsonify({"status": "error", "message": "No valid files processed."})
+
 
 
 

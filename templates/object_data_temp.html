@@ -127,18 +127,37 @@
                             <iframe src="{{ photometry_html }}" frameborder="0"></iframe>
                         </div>
                         <h4>Upload Photometry File</h4>
-                        <p>Please rename the file as:</p>
-                        <p>"<strong>{Object name}_{Filter or All filters (in the same txt)}_photometry_{Telescope or site}.txt</strong>"</p>
+                        <p>Use the format in txt files: <strong>{time (MJD)} {Mag} {ERR}</strong>, use <strong>spaces</strong> to separate values.</p>
+                        <p>Please rename the file as: "<strong>{Object name}_{Filter}_photometry_{Telescope or site}.txt</strong>"</p>
                         <p>For example: <strong>{{ object_name }}_r_photometry_LOT.txt</strong></p>
-                        <p>Please let filters in different .txt files, use the format in txt files: <strong>{time (MJD)} {Mag} {ERR}</strong></p>
-                        <p>If different filters are in the same .txt file, please send an email and attach the file.</p>
-                        <p>Use <strong>spaces</strong> to separate values.</p>
                         <p>Thank you!</p>
                         <form id="upload-form" enctype="multipart/form-data" method="POST" action="{{ url_for('upload_photometry', object_name=object_name) }}">
-                            <input type="file" name="file" class="upload-area" accept=".txt" required>
+                            <input type="file" name="file" class="upload-area" accept=".txt" multiple required>
                             <button type="submit" class="upload-button">Upload</button>
                         </form>
                         <div id="upload-result"></div>
+
+                        <button id="atlas-upload-btn" class="primary-button" onclick="openAtlasModal()">Upload ATLAS Photometry</button>
+
+                        <!-- ATLAS Upload Modal -->
+                        <div id="atlasUploadModal" class="modal">
+                            <h3>ATLAS Photometry Upload</h3>
+                            <form id="atlasUploadForm" onsubmit="submitAtlasUpload(); return false;">
+                                <input type="text" id="atlasAccount" placeholder="Account" required>
+                                <input type="text" id="atlasPassword" placeholder="Password" required>
+                                <input type="text" id="atlasUrl" placeholder="URL" required>
+                                <div id="atlasSpinner" style="display:none; margin-bottom: 15px;">
+                                    <p>Loading, please wait...</p>
+                                </div>
+                                <div id="atlasMessage"></div>
+                                <div class="modal-buttons">
+                                    <button type="submit" class="primary-button">Submit</button>
+                                    <button type="button" class="secondary-button" onclick="closeAtlasModal()">Cancel</button>
+                                </div>
+                            </form>
+                        </div>
+                        <div id="atlasOverlay" class="modal-overlay"></div>
+
                     </div>
                     <!-- Spectrum Content (initially hidden) -->
                     <div id="spectrum-content" style="display: none;">
@@ -407,6 +426,9 @@
         
             const formData = new FormData(this);
             const uploadResult = document.getElementById("upload-result");
+            // 清除可能已存在的淡出類別
+            uploadResult.classList.remove("fade-out");
+        
             const actionUrl = this.action;
         
             fetch(actionUrl, {
@@ -420,10 +442,17 @@
                 } else {
                     uploadResult.innerHTML = `<p style="color:red;">${data.message}</p>`;
                 }
+                // 顯示 3 秒後加上淡出動畫
+                setTimeout(() => {
+                    uploadResult.classList.add("fade-out");
+                }, 3000);
             })
             .catch(error => {
                 console.error("Error:", error);
                 uploadResult.innerHTML = `<p style="color:red;">An error occurred while uploading.</p>`;
+                setTimeout(() => {
+                    uploadResult.classList.add("fade-out");
+                }, 3000);
             });
         });
 
@@ -614,6 +643,52 @@
                 header.classList.remove("scrolled");
             }
         });
+
+        // ATLAS
+        function openAtlasModal() {
+            document.getElementById('atlasUploadModal').style.display = 'block';
+            document.getElementById('atlasOverlay').style.display = 'block';
+        }
+        function closeAtlasModal() {
+            document.getElementById('atlasUploadModal').style.display = 'none';
+            document.getElementById('atlasOverlay').style.display = 'none';
+        }
+        
+        function submitAtlasUpload() {
+            const account = document.getElementById('atlasAccount').value.trim();
+            const password = document.getElementById('atlasPassword').value.trim();
+            const atlasUrl = document.getElementById('atlasUrl').value.trim();
+            const objectName = "{{ object_name }}"; 
+            if (!account || !password || !atlasUrl) {
+                alert("請填入完整資訊");
+                return;
+            }
+            
+            document.getElementById('atlasSpinner').style.display = 'block';
+            document.getElementById('atlasMessage').innerHTML = "";
+            
+            fetch("{{ url_for('upload_atlas_photometry', object_name=object_name) }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ account: account, password: password, atlas_url: atlasUrl })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('atlasSpinner').style.display = 'none';
+                let msgHtml = `<p>${data.message}</p>`;
+                msgHtml += `<button class="primary-button" onclick="closeAtlasMessage()">Close</button>`;
+                document.getElementById('atlasMessage').innerHTML = msgHtml;
+            })
+            .catch(err => {
+                document.getElementById('atlasSpinner').style.display = 'none';
+                document.getElementById('atlasMessage').innerHTML = `<p>發生錯誤: ${err}</p><button class="primary-button" onclick="closeAtlasMessage()">Close</button>`;
+            });
+        }
+        
+        function closeAtlasMessage() {
+            closeAtlasModal();
+            location.reload();
+        }
     </script>
 </body>
 </html>
