@@ -41,7 +41,7 @@ app = Flask(__name__, static_folder="static")
 app.secret_key = 'test'
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read('config_file.ini')
 BASE_DIR = config['Paths']['BASE_DIR']
 debug_mode = config['debug']['DEBUG']
 path_ex = os.path.exists(BASE_DIR)
