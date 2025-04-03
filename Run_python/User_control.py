@@ -4,7 +4,7 @@ import configparser
 
 class UserManagement: 
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('config_file.ini')
     BASE_DIR = config['Paths']['BASE_DIR']
     
     USER_DATA_FILE = os.path.join(BASE_DIR, 'Other', 'users.txt')

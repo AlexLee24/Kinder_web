@@ -8,7 +8,7 @@ import configparser
 import random
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read('config_file.ini')
 BASE_DIR = config['Paths']['BASE_DIR']
 
 DATA_PATH = os.path.join(BASE_DIR, 'Lab_Data')
