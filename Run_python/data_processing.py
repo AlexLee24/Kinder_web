@@ -128,7 +128,6 @@ def create_interactive_photometry_plot(photometry_files, plot_filename):
             
             if indices_without_error:
                 colors_without = [get_filter_color(filter_name, 1) for _ in indices_without_error]
-                print(f"{filter_name} color without {colors_without}")
                 symbols_without = ["triangle-down-open" for _ in indices_without_error]
                 trace_without = go.Scatter(
                     x=[data['time'][i] for i in indices_without_error],
