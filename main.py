@@ -43,7 +43,8 @@ app.secret_key = 'test'
 config = configparser.ConfigParser()
 config.read('config_file.ini')
 BASE_DIR = config['Paths']['BASE_DIR']
-debug_mode = config['debug']['DEBUG']
+debug_mode = config.getboolean('debug', 'DEBUG')
+
 path_ex = os.path.exists(BASE_DIR)
 if path_ex == False:
     print("=================== Check the path in config.ini file ===================")
