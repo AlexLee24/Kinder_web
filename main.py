@@ -176,6 +176,7 @@ def upload_pessto(object_name):
 
         if object_found and match_element:
             aka_links = match_element.find_all("a", href=True)
+            results = []
             for aka_link in aka_links:
                 name = aka_link.get_text(strip=True)
                 link_url = aka_link["href"]
@@ -184,9 +185,18 @@ def upload_pessto(object_name):
                     pessto_account = tokens["PESSTO_USERNAME"]
                     pessto_password = tokens["PESSTO_PASSWORD"]
                     result = Data_Process.atlas_photometry(object_name, pessto_account, pessto_password, link_url)
-                    status_code = 200 if result.get("status") == "success" else 500
-                    return jsonify(result), status_code
-            return jsonify({"status": "error", "message": "No object found in pessto", "data": aka_data})
+                    results.append(result)
+                elif name.startswith("ZTF"):
+                    result = Data_Process.ztf_photometry(object_name, link_url)
+                    results.append(result)
+            
+            return jsonify({
+                "status": "success",
+                "message": "All photometry processed successfully",
+                "aka_data": aka_data,
+                "results": results
+            }), 200
+
         else:
             return jsonify({"status": "error", "message": "No object found in pessto", "data": aka_data})
     

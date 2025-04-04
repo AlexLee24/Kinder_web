@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import datetime
 import shutil
@@ -455,3 +456,78 @@ class Data_Process:
         
         except Exception as e:
             return {"status": "error", "message": f"Error: {e}"}
+    
+    def ztf_photometry(object_name, ztf_url, account=None, password=None):
+        if 'lasair' in ztf_url:
+            try:
+                session_req = requests.Session()
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                "Chrome/91.0.4472.124 Safari/537.36"
+                }
+                page = session_req.get(ztf_url, headers=headers)
+                if page.status_code != 200:
+                    return {"status": "error", "message": f"Failed to get data, status code: {page.status_code}"}
+                
+                soup = BeautifulSoup(page.content, "html.parser")
+                table = soup.find('table', class_=lambda x: x and 'datatable' in x)
+                if not table:
+                    return {"status": "error", "message": "找不到匹配的表格。"}
+                
+                rows = table.find_all('tr')
+                if not rows:
+                    return {"status": "error", "message": "表格中沒有找到行"}
+                
+                headers_row = rows[0]
+                headers_list = [th.get_text().strip() for th in headers_row.find_all('th')]
+                
+                mjd_idx = None
+                mag_idx = None
+                filter_idx = None
+                for i, header in enumerate(headers_list):
+                    if header == "MJD":
+                        mjd_idx = i
+                    elif header == "unforced mag":
+                        mag_idx = i
+                    elif header.lower() in ["filter", "filt"]:
+                        filter_idx = i
+                
+                if mjd_idx is None or mag_idx is None or filter_idx is None:
+                    return {"status": "error", "message": "未找到必要的欄位 (MJD、unforced mag 或 Filter)"}
+                
+                data_dict = {}
+                for row in rows[1:]:
+                    cols = row.find_all('td')
+                    if not cols:
+                        continue
+                    data = [col.get_text().strip() for col in cols]
+                    if len(data) <= max(mjd_idx, mag_idx, filter_idx):
+                        continue
+                    mjd = data[mjd_idx]
+                    mag_value = data[mag_idx]
+                    filter_val = data[filter_idx]
+                    mag_match = re.search(r'(\d+\.\d+)\s*±\s*(\d+\.\d+)', mag_value)
+                    if mag_match:
+                        mag = float(mag_match.group(1))
+                        mag_error = float(mag_match.group(2))
+                        result_entry = f"{mjd} {mag} {mag_error}"
+                        data_dict.setdefault(filter_val, []).append(result_entry)
+                
+                if not data_dict:
+                    return {"status": "error", "message": "未成功處理任何數據"}
+                
+                upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
+                os.makedirs(upload_folder, exist_ok=True)
+                for filt, lines in data_dict.items():
+                    filename = f"{object_name}_{filt}_photometry_ZTF.txt"
+                    file_path = os.path.join(upload_folder, filename)
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write("\n".join(lines))
+                
+                return {"status": "success", "message": "ZTF photometry uploaded successfully", "data": data_dict}
+            
+            except Exception as e:
+                return {"status": "error", "message": f"Error: {e}"}
+
+
