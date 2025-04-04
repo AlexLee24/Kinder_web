@@ -137,7 +137,8 @@
                         </form>
                         <div id="upload-result"></div>
 
-                        <button id="atlas-upload-btn" class="primary-button" onclick="openAtlasModal()">Upload ATLAS Photometry</button>
+                        <!-- ATLAS Upload Button -->
+                        <button id="atlas-upload-btn" class="primary-button" onclick="openAtlasModal()">ATLAS Upload (ATLAS account)</button>
 
                         <!-- ATLAS Upload Modal -->
                         <div id="atlasUploadModal" class="modal">
@@ -157,6 +158,27 @@
                             </form>
                         </div>
                         <div id="atlasOverlay" class="modal-overlay"></div>
+
+                        <!-- PESSTO Upload Button -->
+                        <button id="pessto-upload-btn" class="primary-button" onclick="openPesstoModal()">Pessto Upload (pessto account)</button>
+
+                        <!-- PESSTO Upload Modal -->
+                        <div id="pesstoUploadModal" class="modal">
+                        <h3>Pessto Upload (Only ATLAS now)</h3>
+                        <form id="pesstoUploadForm" onsubmit="submitPesstoUpload(); return false;">
+                            <input type="text" id="pesstoAccount" placeholder="Account" required>
+                            <input type="text" id="pesstoPassword" placeholder="Password" required>
+                            <div id="pesstoSpinner" style="display:none; margin-bottom: 15px;">
+                                <p>Loading, please wait...</p>
+                            </div>
+                            <div id="pesstoMessage"></div>
+                            <div class="modal-buttons">
+                                <button type="submit" class="primary-button">Submit</button>
+                                <button type="button" class="secondary-button" onclick="closePesstoModal()">Cancel</button>
+                            </div>
+                        </form>
+                        </div>
+                        <div id="pesstoOverlay" class="modal-overlay"></div>
 
                     </div>
                     <!-- Spectrum Content (initially hidden) -->
@@ -644,7 +666,35 @@
             }
         });
 
-        // ATLAS
+        // ATLAS spinner控制
+        let atlasSpinnerInterval;
+        function startAtlasSpinner() {
+            const spinnerElem = document.querySelector("#atlasSpinner p");
+            let dots = 0;
+            atlasSpinnerInterval = setInterval(() => {
+                dots = (dots % 3) + 1;
+                spinnerElem.textContent = "Loading, please wait" + ".".repeat(dots);
+            }, 500);
+        }
+        function stopAtlasSpinner() {
+            clearInterval(atlasSpinnerInterval);
+        }
+
+        // PESSTO spinner控制
+        let pesstoSpinnerInterval;
+        function startPesstoSpinner() {
+            const spinnerElem = document.querySelector("#pesstoSpinner p");
+            let dots = 0;
+            pesstoSpinnerInterval = setInterval(() => {
+                dots = (dots % 3) + 1;
+                spinnerElem.textContent = "Loading, please wait" + ".".repeat(dots);
+            }, 500);
+        }
+        function stopPesstoSpinner() {
+            clearInterval(pesstoSpinnerInterval);
+        }
+
+        // ATLAS Modal開關與送出
         function openAtlasModal() {
             document.getElementById('atlasUploadModal').style.display = 'block';
             document.getElementById('atlasOverlay').style.display = 'block';
@@ -653,40 +703,76 @@
             document.getElementById('atlasUploadModal').style.display = 'none';
             document.getElementById('atlasOverlay').style.display = 'none';
         }
-        
         function submitAtlasUpload() {
-            const account = document.getElementById('atlasAccount').value.trim();
-            const password = document.getElementById('atlasPassword').value.trim();
-            const atlasUrl = document.getElementById('atlasUrl').value.trim();
-            const objectName = "{{ object_name }}"; 
-            if (!account || !password || !atlasUrl) {
-                alert("請填入完整資訊");
-                return;
-            }
-            
+            // 顯示spinner並啟動動畫
             document.getElementById('atlasSpinner').style.display = 'block';
-            document.getElementById('atlasMessage').innerHTML = "";
-            
+            startAtlasSpinner();
+            // ... 此處呼叫 fetch 上傳程式碼 ...
             fetch("{{ url_for('upload_atlas_photometry', object_name=object_name) }}", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ account: account, password: password, atlas_url: atlasUrl })
+                body: JSON.stringify({
+                    account: document.getElementById('atlasAccount').value.trim(),
+                    password: document.getElementById('atlasPassword').value.trim(),
+                    atlas_url: document.getElementById('atlasUrl').value.trim()
+                })
             })
             .then(response => response.json())
             .then(data => {
+                stopAtlasSpinner();
                 document.getElementById('atlasSpinner').style.display = 'none';
                 let msgHtml = `<p>${data.message}</p>`;
                 msgHtml += `<button class="primary-button" onclick="closeAtlasMessage()">Close</button>`;
                 document.getElementById('atlasMessage').innerHTML = msgHtml;
             })
             .catch(err => {
+                stopAtlasSpinner();
                 document.getElementById('atlasSpinner').style.display = 'none';
                 document.getElementById('atlasMessage').innerHTML = `<p>發生錯誤: ${err}</p><button class="primary-button" onclick="closeAtlasMessage()">Close</button>`;
             });
         }
-        
+
+        // PESSTO Modal開關與送出
+        function openPesstoModal() {
+            document.getElementById('pesstoUploadModal').style.display = 'block';
+            document.getElementById('pesstoOverlay').style.display = 'block';
+        }
+        function closePesstoModal() {
+            document.getElementById('pesstoUploadModal').style.display = 'none';
+            document.getElementById('pesstoOverlay').style.display = 'none';
+        }
+        function submitPesstoUpload() {
+            document.getElementById('pesstoSpinner').style.display = 'block';
+            startPesstoSpinner();
+            fetch("{{ url_for('upload_pessto', object_name=object_name) }}", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    account: document.getElementById('pesstoAccount').value.trim(),
+                    password: document.getElementById('pesstoPassword').value.trim()
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                stopPesstoSpinner();
+                document.getElementById('pesstoSpinner').style.display = 'none';
+                let msgHtml = `<p>${data.message}</p>`;
+                msgHtml += `<button class="primary-button" onclick="closePesstoMessage()">Close</button>`;
+                document.getElementById('pesstoMessage').innerHTML = msgHtml;
+            })
+            .catch(err => {
+                stopPesstoSpinner();
+                document.getElementById('pesstoSpinner').style.display = 'none';
+                document.getElementById('pesstoMessage').innerHTML = `<p>發生錯誤: ${err}</p><button class="primary-button" onclick="closePesstoMessage()">Close</button>`;
+            });
+        }
+
         function closeAtlasMessage() {
             closeAtlasModal();
+            location.reload();
+        }
+        function closePesstoMessage() {
+            closePesstoModal();
             location.reload();
         }
     </script>

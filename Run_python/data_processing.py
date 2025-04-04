@@ -5,7 +5,10 @@ import shutil
 import csv
 import plotly.graph_objects as go
 import configparser
-import random
+
+import requests
+from bs4 import BeautifulSoup
+import time
 
 config = configparser.ConfigParser()
 config.read('config_file.ini')
@@ -16,6 +19,8 @@ DATA_FILE = os.path.join(BASE_DIR,'Other', 'observations.csv')
 
 STATIC_IMAGE_FOLDER = '/Data_img'
 STATIC_IMAGE_FOLDER_Direct = os.path.join(BASE_DIR, 'Data_img')
+
+base_upload_folder = os.path.join(BASE_DIR, 'Lab_Data') 
 
 # Interactive plot, spec ============================================
 def create_interactive_spectrum_plot(spectrum_file, plot_filename):
@@ -359,3 +364,94 @@ class Data_Process:
             -12: 'Pacific/Kwajalein'  
         }
         return timezone_dict.get(offset)
+    
+    def atlas_photometry(object_name, account, password, atlas_url):
+        try:
+            session_req = requests.Session()
+            login_page_url = "https://star.pst.qub.ac.uk/sne/atlas4/userlist_quickview/44/"
+            login_url = "https://star.pst.qub.ac.uk/sne/atlas4/accounts/auth/"
+            next_s = "/sne/atlas4/userlist_quickview/44/"
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/91.0.4472.124 Safari/537.36"
+            }
+
+            login_page = session_req.get(login_page_url, headers=headers)
+            login_soup = BeautifulSoup(login_page.content, "html.parser")
+            csrf_input = login_soup.find("input", {"name": "csrfmiddlewaretoken"})
+            csrf_token = csrf_input["value"] if csrf_input else ""
+
+            login_data = {
+                "username": account,
+                "password": password,
+                "csrfmiddlewaretoken": csrf_token,
+                "next": next_s
+            }
+            headers["Referer"] = login_page_url
+            login_response = session_req.post(login_url, data=login_data, headers=headers)
+            if "authentication failed" in login_response.text.lower():
+                return {"status": "error", "message": "登入失敗"}
+
+            time.sleep(2)
+
+            page = session_req.get(atlas_url, headers=headers)
+            if page.status_code != 200:
+                return {"status": "error", "message": "Can not get data"}
+            if "login" in page.url.lower():
+                return {"status": "error", "message": "Please check your username or password"}
+
+            soup = BeautifulSoup(page.content, "html.parser")
+            tables = []
+            container_divs = soup.find_all(class_="table-container")
+            for container in container_divs:
+                tables_in_container = container.find_all("table")
+                if tables_in_container:
+                    tables.extend(tables_in_container)
+            if not tables:
+                tables = soup.find_all("table", class_="table-container")
+            if not tables:
+                return {"status": "error", "message": "Can not find data"}
+
+            data_dict = {}
+            for table in tables:
+                header_row = table.find("tr")
+                if not header_row:
+                    continue
+                headers_list = [th.get_text(strip=True) for th in header_row.find_all(["th", "td"])]
+                try:
+                    idx_mjd = headers_list.index("Mjd")
+                    idx_mag = headers_list.index("Mag")
+                    idx_dmag = headers_list.index("Dmag")
+                    idx_filt = headers_list.index("Filt")
+                except ValueError:
+                    continue
+
+                rows = table.find_all("tr")[1:]
+                for row in rows:
+                    cols = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
+                    if len(cols) < len(headers_list):
+                        continue
+                    mjd = cols[idx_mjd]
+                    mag = cols[idx_mag]
+                    dmag = cols[idx_dmag]
+                    filt = cols[idx_filt]
+                    line = f"{mjd} {mag} {dmag}"
+                    data_dict.setdefault(filt, []).append(line)
+
+            if not data_dict:
+                return {"status": "error", "message": "No valid data"}
+
+            upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
+            os.makedirs(upload_folder, exist_ok=True)
+            for filt, lines in data_dict.items():
+                filename = f"{object_name}_{filt}_photometry_ATLAS.txt"
+                file_path = os.path.join(upload_folder, filename)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write("\n".join(lines))
+
+            return {"status": "success", "message": "ATLAS photometry uploaded successfully"}
+        
+        except Exception as e:
+            return {"status": "error", "message": f"Error: {e}"}

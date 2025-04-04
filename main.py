@@ -59,6 +59,9 @@ COMMENTS = os.path.join(BASE_DIR, 'Other', 'comments.db')
 base_upload_folder = os.path.join(BASE_DIR, 'Lab_Data') 
 base_path = os.path.join(BASE_DIR, 'Data_img') 
 
+import json
+with open("token.json", "r") as file:
+    tokens = json.load(file)
 #================================ Define code ======================================
 #================================ Define code ======================================
 #================================ Define code ======================================
@@ -84,6 +87,114 @@ init_db()
 #==================================== route =================================================
 #==================================== route =================================================
 #==================================== route =================================================
+@app.route('/upload_pessto/<object_name>', methods=['POST'])
+def upload_pessto(object_name):
+    data = request.get_json()
+    account = data.get('account')
+    password = data.get('password')
+
+    if not account or not password:
+        return jsonify({"status": "error", "message": "Please enter account and password"}), 400
+
+    LOGIN_URL = "https://www.pessto.org/marshall/login"
+    TARGET_URL = f"https://www.pessto.org/marshall/transients/search?q={object_name}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
+
+    try:
+        session_req = requests.Session()
+        login_page = session_req.get(LOGIN_URL, headers=headers)
+        soup = BeautifulSoup(login_page.text, "html.parser")
+        
+        csrf_input = soup.find("input", {"name": "csrfmiddlewaretoken"})
+        if not csrf_input:
+            csrf_input = soup.find("input", {"name": "csrf_token"})
+            csrf_input = csrf_input or soup.find("input", {"name": "_csrf_token"})
+            csrf_input = csrf_input or soup.find("input", {"name": "_token"})
+        csrf_token = csrf_input["value"] if csrf_input else ""
+        
+        login_data = {
+            "login": account,
+            "password": password
+        }
+        if csrf_token:
+            login_data["csrfmiddlewaretoken"] = csrf_token
+
+        headers["Referer"] = LOGIN_URL
+        login_response = session_req.post(LOGIN_URL, data=login_data, headers=headers, allow_redirects=True)
+        if login_response.status_code != 200:
+            return jsonify({"status": "error", "message": "Login failed"}), 403
+
+        time.sleep(2)
+        target_response = session_req.get(TARGET_URL, headers=headers)
+        if target_response.status_code != 200:
+            return jsonify({"status": "error", "message": "Can not search this object"}), 404
+
+        target_html = target_response.text
+        soup = BeautifulSoup(target_html, "html.parser")
+        tns_links = soup.find_all("a", href=lambda href: href and "wis-tns.org/object" in href)
+        
+        object_found = False
+        match_element = None
+        aka_data = []
+        
+        for link in tns_links:
+            if link.get_text(strip=True) == object_name:
+                object_found = True
+                parent_row = link
+                for _ in range(5):
+                    if parent_row.parent:
+                        parent_row = parent_row.parent
+                        aka_list = parent_row.find("div", class_="row-fluid akaList")
+                        if aka_list:
+                            match_element = aka_list
+                            break
+                break
+        
+        if not object_found:
+            for link in tns_links:
+                parent_row = link
+                parent_aka_list = None
+                for _ in range(5):
+                    if parent_row.parent:
+                        parent_row = parent_row.parent
+                        aka_list = parent_row.find("div", class_="row-fluid akaList")
+                        if aka_list:
+                            parent_aka_list = aka_list
+                            break
+                if parent_aka_list:
+                    aka_links = parent_aka_list.find_all("a", href=True)
+                    for aka_link in aka_links:
+                        if aka_link.get_text(strip=True) == object_name:
+                            object_found = True
+                            match_element = parent_aka_list
+                            break
+                if object_found:
+                    break
+
+        if object_found and match_element:
+            aka_links = match_element.find_all("a", href=True)
+            for aka_link in aka_links:
+                name = aka_link.get_text(strip=True)
+                link_url = aka_link["href"]
+                aka_data.append({"name": name, "link": link_url})
+                if name.startswith("ATLAS"):
+                    pessto_account = tokens["PESSTO_USERNAME"]
+                    pessto_password = tokens["PESSTO_PASSWORD"]
+                    result = Data_Process.atlas_photometry(object_name, pessto_account, pessto_password, link_url)
+                    status_code = 200 if result.get("status") == "success" else 500
+                    return jsonify(result), status_code
+            return jsonify({"status": "error", "message": "No object found in pessto", "data": aka_data})
+        else:
+            return jsonify({"status": "error", "message": "No object found in pessto", "data": aka_data})
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Error: {e}"}), 500
+
+
+
 @app.route('/upload_atlas_photometry/<object_name>', methods=['POST'])
 def upload_atlas_photometry(object_name):
     data = request.get_json()
@@ -93,94 +204,10 @@ def upload_atlas_photometry(object_name):
     
     if not account or not password or not atlas_url:
         return jsonify({"status": "error", "message": "請提供完整資訊"}), 400
-
-    login_page_url = "https://star.pst.qub.ac.uk/sne/atlas4/userlist_quickview/44/"
-    login_url = "https://star.pst.qub.ac.uk/sne/atlas4/accounts/auth/"
-    next_s = "/sne/atlas4/userlist_quickview/44/"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
-    try:
-        session_req = requests.Session()
-        login_page = session_req.get(login_page_url, headers=headers)
-        login_soup = BeautifulSoup(login_page.content, "html.parser")
-        csrf_input = login_soup.find("input", {"name": "csrfmiddlewaretoken"})
-        csrf_token = csrf_input["value"] if csrf_input else ""
-        
-        login_data = {
-            "username": account,
-            "password": password,
-            "csrfmiddlewaretoken": csrf_token,
-            "next": next_s
-        }
-        headers["Referer"] = login_page_url
-        login_response = session_req.post(login_url, data=login_data, headers=headers)
-        if "authentication failed" in login_response.text.lower():
-            return jsonify({"status": "error", "message": "登入失敗"}), 403
-
-        time.sleep(2)
-        
-        page = session_req.get(atlas_url, headers=headers)
-        if page.status_code != 200:
-            return jsonify({"status": "error", "message": "Can not get data"}), 404
-        if "login" in page.url.lower():
-            return jsonify({"status": "error", "message": "Please check your username or password"}), 403
-        
-        soup = BeautifulSoup(page.content, "html.parser")
-        tables = []
-        container_divs = soup.find_all(class_="table-container")
-        for container in container_divs:
-            tables_in_container = container.find_all("table")
-            if tables_in_container:
-                tables.extend(tables_in_container)
-        if not tables:
-            tables = soup.find_all("table", class_="table-container")
-        if not tables:
-            return jsonify({"status": "error", "message": "Can not find data"}), 404
-
-        data_dict = {}
-        for table in tables:
-            header_row = table.find("tr")
-            if not header_row:
-                continue
-            headers_list = [th.get_text(strip=True) for th in header_row.find_all(["th", "td"])]
-            try:
-                idx_mjd = headers_list.index("Mjd")
-                idx_mag = headers_list.index("Mag")
-                idx_dmag = headers_list.index("Dmag")
-                idx_filt = headers_list.index("Filt")
-            except ValueError:
-                continue
-            
-            rows = table.find_all("tr")[1:]
-            for row in rows:
-                cols = [td.get_text(strip=True) for td in row.find_all(["td", "th"])]
-                if len(cols) < len(headers_list):
-                    continue
-                mjd = cols[idx_mjd]
-                mag = cols[idx_mag]
-                dmag = cols[idx_dmag]
-                filt = cols[idx_filt]
-                line = f"{mjd} {mag} {dmag}"
-                data_dict.setdefault(filt, []).append(line)
-        
-        if not data_dict:
-            return jsonify({"status": "error", "message": "No valid data"}), 404
-
-        upload_folder = os.path.join(base_upload_folder, object_name, 'Photometry')
-        os.makedirs(upload_folder, exist_ok=True)
-        for filt, lines in data_dict.items():
-            filename = f"{object_name}_{filt}_photometry_ATLAS.txt"
-            file_path = os.path.join(upload_folder, filename)
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write("\n".join(lines))
-        
-        return jsonify({"status": "success", "message": "ATLAS photometry uploaded successfully"}), 200
     
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Error: {e}"}), 500
+    result = Data_Process.atlas_photometry(object_name, account, password, atlas_url)
+    status_code = 200 if result.get("status") == "success" else 500
+    return jsonify(result), status_code
 
 
 
@@ -876,9 +903,7 @@ def logout():
 # register ================================================================================
 # register ================================================================================
 # register ================================================================================
-import json
-with open("token.json", "r") as file:
-    tokens = json.load(file)
+
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
