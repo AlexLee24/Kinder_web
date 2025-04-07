@@ -96,6 +96,7 @@ def upload_pessto(object_name):
     if not account or not password:
         return jsonify({"status": "error", "message": "Please enter account and password"}), 400
     
+    object_name_1 = object_name
     try:
         object_name = object_name.replace(' ', '')
     except Exception as e:
@@ -189,10 +190,10 @@ def upload_pessto(object_name):
                 if name.startswith("ATLAS"):
                     pessto_account = tokens["PESSTO_USERNAME"]
                     pessto_password = tokens["PESSTO_PASSWORD"]
-                    result = Data_Process.atlas_photometry(object_name, pessto_account, pessto_password, link_url)
+                    result = Data_Process.atlas_photometry(object_name_1, pessto_account, pessto_password, link_url)
                     results.append(result)
                 elif name.startswith("ZTF"):
-                    result = Data_Process.ztf_photometry(object_name, link_url)
+                    result = Data_Process.ztf_photometry(object_name_1, link_url)
                     results.append(result)
             
             return jsonify({
