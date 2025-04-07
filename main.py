@@ -95,7 +95,12 @@ def upload_pessto(object_name):
 
     if not account or not password:
         return jsonify({"status": "error", "message": "Please enter account and password"}), 400
-
+    
+    try:
+        object_name = object_name.replace(' ', '')
+    except Exception as e:
+        object_name = object_name
+    
     LOGIN_URL = "https://www.pessto.org/marshall/login"
     TARGET_URL = f"https://www.pessto.org/marshall/transients/search?q={object_name}"
     
