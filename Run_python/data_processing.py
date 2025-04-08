@@ -65,9 +65,12 @@ def get_filter_color(filter_name, alpha):
         # 紅外線濾鏡
         'J': f'rgba(139,69,19,{alpha})',        # J 濾鏡：棕色
         'H': f'rgba(160,82,45,{alpha})',        # H 濾鏡：土紅
-        'Ks': f'rgba(205,133,63,{alpha})'       # Ks 濾鏡：黃土色
+        'Ks': f'rgba(205,133,63,{alpha})',       # Ks 濾鏡：黃土色
+
+        # 其他濾鏡
+        'L': f'rgba(0,255,255,{alpha})',       # L 濾鏡：淺色
     }
-    return filter_colors.get(filter_name, f'rgba(0,0,0,－)')
+    return filter_colors.get(filter_name, f'rgba(0,0,0,1)')
 
 
 def create_interactive_photometry_plot(photometry_files, plot_filename):
