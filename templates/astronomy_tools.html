@@ -23,8 +23,8 @@
                     <input type="number" step="any" id="jd" name="jd" placeholder="Enter JD">
                 </div>
                 <div class="form-group">
-                    <label for="common-date">Common Date (YYYY-MM-DD):</label>
-                    <input type="date" id="common-date" name="common-date">
+                    <label for="common-date">Common Date (YYYY-MM-DD HH:MM:SS):</label>
+                    <input type="datetime-local" id="common-date" name="common-date" step="1">
                 </div>
                 <button type="button" class="tool-button" onclick="convertDate()">Convert</button>
             </form>
@@ -77,6 +77,28 @@
             </form>
             <div id="redshift-result"></div>
         </div>
+
+        <!-- abs mag -->
+        <div class="tool-section">
+            <h2>Absolute magnitude</h2>
+            <form id="absolute-magnitude-form">
+                <div class="form-group">
+                    <label for="apparent-magnitude">Apparent magnitude (m):</label>
+                    <input type="number" step="any" id="apparent-magnitude" name="apparent-magnitude" placeholder="e.g. 15.3">
+                </div>
+                <div class="form-group">
+                    <label for="magnitude-redshift">Redshift (z):</label>
+                    <input type="number" step="any" id="magnitude-redshift" name="magnitude-redshift" placeholder="e.g. 0.039">
+                </div>
+                <div class="form-group">
+                    <label for="extinction">Extinction (A, optional):</label>
+                    <input type="number" step="any" id="extinction" name="extinction" placeholder="e.g. 0.3" value="0">
+                </div>
+                <button type="button" class="tool-button" onclick="calculateAbsoluteMagnitude()">Calculate</button>
+            </form>
+            <div id="magnitude-result"></div>
+        </div>
+
     </div>
 
     {% include 'footer.html' %}
@@ -88,7 +110,10 @@
             const yyyy = date.getUTCFullYear();
             const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
             const dd = String(date.getUTCDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
+            const hh = String(date.getUTCHours()).padStart(2, '0');
+            const min = String(date.getUTCMinutes()).padStart(2, '0');
+            const sec = String(date.getUTCSeconds()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec} UTC`;
         }
         
         function convertDate() {
@@ -102,19 +127,26 @@
                 const mjd = parseFloat(mjdInput);
                 const jd = mjd + 2400000.5;
                 const commonDate = jdToDate(jd);
-                output += `<p>MJD ${mjd} corresponds to JD ${jd.toFixed(2)} and Date ${commonDate}</p>`;
+                output += `<p>MJD ${mjd} corresponds to JD ${jd.toFixed(6)} and Date ${commonDate}</p>`;
             }
             if (jdInput) {
                 const jd = parseFloat(jdInput);
                 const mjd = jd - 2400000.5;
                 const commonDate = jdToDate(jd);
-                output += `<p>JD ${jd} corresponds to MJD ${mjd.toFixed(2)} and Date ${commonDate}</p>`;
+                output += `<p>JD ${jd} corresponds to MJD ${mjd.toFixed(6)} and Date ${commonDate}</p>`;
             }
             if (commonDateInput) {
-                const commonDate = new Date(commonDateInput + "T00:00:00Z");
+                // 處理包含時間的日期輸入
+                const commonDate = new Date(commonDateInput + "Z"); // 添加 Z 表示 UTC
+                
+                // 將日期格式化為易讀格式
+                const formattedDate = commonDate.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+                
+                // 計算 JD 和 MJD
                 const jd = commonDate.getTime() / 86400000 + 2440587.5;
                 const mjd = jd - 2400000.5;
-                output += `<p>Date ${commonDateInput} corresponds to JD ${jd.toFixed(2)} and MJD ${mjd.toFixed(2)}</p>`;
+                
+                output += `<p>Date ${formattedDate} corresponds to JD ${jd.toFixed(6)} and MJD ${mjd.toFixed(6)}</p>`;
             }
             if (!mjdInput && !jdInput && !commonDateInput) {
                 output = "<p>Please enter a value in one of the fields.</p>";
@@ -292,6 +324,50 @@
                 header.classList.remove("scrolled");
             }
         });
+
+        function calculateAbsoluteMagnitude() {
+            const apparentMagnitude = parseFloat(document.getElementById("apparent-magnitude").value);
+            const redshift = parseFloat(document.getElementById("magnitude-redshift").value);
+            const extinctionInput = document.getElementById("extinction").value;
+            const extinction = extinctionInput ? parseFloat(extinctionInput) : 0;
+            const resultDiv = document.getElementById("magnitude-result");
+            
+            if (isNaN(apparentMagnitude) || isNaN(redshift)) {
+                resultDiv.innerHTML = "<p>Please enter valid apparent magnitude and redshift values</p>";
+                return;
+            }
+            
+            // Calculate distance (using same logic as redshiftToDistance)
+            const c = 299792; // Speed of light, km/s
+            const H0 = 70; // Hubble constant, km/s/Mpc
+            
+            let v;
+            if (redshift > 1) {
+                v = c * (((1 + redshift)**2 - 1) / ((1 + redshift)**2 + 1));
+            } else {
+                v = c * redshift;
+            }
+            
+            const distanceMpc = v / H0;
+            const distancePc = distanceMpc * 1e6;
+            
+            // Calculate distance modulus: DM = 5*log10(d) - 5
+            const distanceModulus = 5 * Math.log10(distancePc) - 5;
+            
+            // Calculate absolute magnitude: M = m - 5*log10(d/10) - A
+            // or equivalently: M = m - DM - A
+            const absoluteMagnitude = apparentMagnitude - distanceModulus - extinction;
+            
+            let output = `
+                <p>Apparent magnitude (m): ${apparentMagnitude.toFixed(2)}</p>
+                <p>Redshift (z): ${redshift.toFixed(4)}</p>
+                <p>Distance (Mpc): ${distanceMpc.toFixed(2)}</p>
+                <p>Extinction (A): ${extinction.toFixed(2)}</p>
+                <p>Absolute magnitude (M): ${absoluteMagnitude.toFixed(2)}</p>
+            `;
+            
+            resultDiv.innerHTML = output;
+        }
     </script>
 </body>
 </html>
