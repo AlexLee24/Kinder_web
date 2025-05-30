@@ -10,6 +10,42 @@
     {% include 'header.html' %}
 
     <div class="container main-content">
+        <!-- Redshift to Distance Conversion Section -->
+        <div class="tool-section">
+            <h2>Redshift to Distance</h2>
+            <form id="redshift-conversion-form">
+                <div class="form-group">
+                    <label for="redshift-value">Redshift (z):</label>
+                    <input type="number" step="any" id="redshift-value" name="redshift-value" placeholder="e.g. 0.039">
+                </div>
+                <div class="form-group">
+                    <label for="redshift-error">Redshift err (optional):</label>
+                    <input type="number" step="any" id="redshift-error" name="redshift-error" placeholder="e.g. 0.016">
+                </div>
+                <button type="button" class="tool-button" onclick="convertRedshift()">Calculate</button>
+            </form>
+            <div id="redshift-result"></div>
+
+        <!-- Absolute Magnitude -->
+            <h2>Absolute Magnitude</h2>
+            <form id="absolute-magnitude-form">
+                <div class="form-group">
+                    <label for="apparent-magnitude">Apparent magnitude (m):</label>
+                    <input type="number" step="any" id="apparent-magnitude" name="apparent-magnitude" placeholder="e.g. 15.3">
+                </div>
+                <div class="form-group">
+                    <label for="magnitude-redshift">Redshift (z):</label>
+                    <input type="number" step="any" id="magnitude-redshift" name="magnitude-redshift" placeholder="e.g. 0.039">
+                </div>
+                <div class="form-group">
+                    <label for="extinction">Extinction (A, optional):</label>
+                    <input type="number" step="any" id="extinction" name="extinction" placeholder="e.g. 0.3" value="0">
+                </div>
+                <button type="button" class="tool-button" onclick="calculateAbsoluteMagnitude()">Calculate</button>
+            </form>
+            <div id="magnitude-result"></div>
+        </div>
+
         <!-- Date Conversion Section -->
         <div class="tool-section">
             <h2>Date Conversion</h2>
@@ -59,42 +95,6 @@
                 <button type="button" class="tool-button" onclick="convertDEC()">Convert DEC</button>
             </form>
             <div id="dec-result"></div>
-        </div>
-
-        <!-- Redshift to Distance Conversion Section -->
-        <div class="tool-section">
-            <h2>Redshift to Distance</h2>
-            <form id="redshift-conversion-form">
-                <div class="form-group">
-                    <label for="redshift-value">Redshift (z):</label>
-                    <input type="number" step="any" id="redshift-value" name="redshift-value" placeholder="e.g. 0.039">
-                </div>
-                <div class="form-group">
-                    <label for="redshift-error">Redshift err (optional):</label>
-                    <input type="number" step="any" id="redshift-error" name="redshift-error" placeholder="e.g. 0.016">
-                </div>
-                <button type="button" class="tool-button" onclick="convertRedshift()">Calculate</button>
-            </form>
-            <div id="redshift-result"></div>
-
-        <!-- Absolute Magnitude -->
-            <h2>Absolute Magnitude</h2>
-            <form id="absolute-magnitude-form">
-                <div class="form-group">
-                    <label for="apparent-magnitude">Apparent magnitude (m):</label>
-                    <input type="number" step="any" id="apparent-magnitude" name="apparent-magnitude" placeholder="e.g. 15.3">
-                </div>
-                <div class="form-group">
-                    <label for="magnitude-redshift">Redshift (z):</label>
-                    <input type="number" step="any" id="magnitude-redshift" name="magnitude-redshift" placeholder="e.g. 0.039">
-                </div>
-                <div class="form-group">
-                    <label for="extinction">Extinction (A, optional):</label>
-                    <input type="number" step="any" id="extinction" name="extinction" placeholder="e.g. 0.3" value="0">
-                </div>
-                <button type="button" class="tool-button" onclick="calculateAbsoluteMagnitude()">Calculate</button>
-            </form>
-            <div id="magnitude-result"></div>
         </div>
 
     </div>
