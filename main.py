@@ -13,13 +13,14 @@ import os
 import re
 import sys
 import time
+import math
 import uuid
 import ephem
 import shutil
 import sqlite3
 import requests
 import configparser
-
+import astropy.units as u
 
 import matplotlib
 matplotlib.use('Agg')
@@ -27,6 +28,7 @@ matplotlib.use('Agg')
 from bs4 import BeautifulSoup
 from datetime import datetime
 from flask_mail import Mail, Message
+from astropy.cosmology import FlatLambdaCDM
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, render_template, request, redirect, url_for, session, render_template_string, jsonify, flash, send_from_directory
 
@@ -87,6 +89,108 @@ init_db()
 #==================================== route =================================================
 #==================================== route =================================================
 #==================================== route =================================================
+@app.route('/calculate_redshift', methods=['POST'])
+def calculate_redshift():
+    data = request.get_json()
+    redshift = data.get('redshift')
+    redshift_error = data.get('redshift_error')
+    
+    if not redshift:
+        return jsonify({"status": "error", "message": "Please enter redshift value"}), 400
+    
+    try:
+        z = float(redshift)
+        z_err = float(redshift_error) if redshift_error else None
+        
+        # Define the cosmology (Planck 2018 values)
+        cosmo = FlatLambdaCDM(H0=67.7 * u.km / u.s / u.Mpc, Om0=0.309, Tcmb0=2.725 * u.K)
+        
+        # Calculate luminosity distance
+        Dis_L = cosmo.luminosity_distance(z)
+        Dis_L_Mpc = Dis_L.to(u.Mpc).value
+        Dis_L_pc = Dis_L.to(u.pc).value
+        
+        # Error propagation for luminosity distance (approximate)
+        if z_err is not None:
+            # Calculate derivative at z+dz and z-dz to estimate error
+            dz = 0.001  # Small increment for numerical derivative
+            z_plus = z + dz
+            z_minus = max(0, z - dz)  # Ensure non-negative redshift
+            
+            Dis_L_plus = cosmo.luminosity_distance(z_plus).to(u.Mpc).value
+            Dis_L_minus = cosmo.luminosity_distance(z_minus).to(u.Mpc).value
+            
+            # Numerical derivative
+            dDis_dz = (Dis_L_plus - Dis_L_minus) / (2 * dz)
+            Dis_L_Mpc_err = abs(dDis_dz * z_err)
+            Dis_L_pc_err = Dis_L_Mpc_err * 1e6
+        else:
+            Dis_L_Mpc_err = None
+            Dis_L_pc_err = None
+        
+        result = {
+            "status": "success",
+            "redshift": z,
+            "redshift_error": z_err,
+            "distance_mpc": round(Dis_L_Mpc, 3),
+            "distance_mpc_error": round(Dis_L_Mpc_err, 3) if Dis_L_Mpc_err else None,
+            "distance_pc": round(Dis_L_pc, 3),
+            "distance_pc_error": round(Dis_L_pc_err, 3) if Dis_L_pc_err else None
+        }
+        
+        return jsonify(result)
+        
+    except ValueError:
+        return jsonify({"status": "error", "message": "Please enter valid numbers"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Calculation error: {str(e)}"}), 500
+
+@app.route('/calculate_absolute_magnitude', methods=['POST'])
+def calculate_absolute_magnitude():
+    data = request.get_json()
+    apparent_magnitude = data.get('apparent_magnitude')
+    redshift = data.get('redshift')
+    extinction = data.get('extinction', 0)
+    
+    if not apparent_magnitude or not redshift:
+        return jsonify({"status": "error", "message": "Please enter apparent magnitude and redshift"}), 400
+    
+    try:
+        m = float(apparent_magnitude)
+        z = float(redshift)
+        A = float(extinction) if extinction else 0
+        
+        # Define the cosmology (Planck 2018 values)
+        cosmo = FlatLambdaCDM(H0=67.7 * u.km / u.s / u.Mpc, Om0=0.309, Tcmb0=2.725 * u.K)
+        
+        # Calculate luminosity distance
+        Dis_L = cosmo.luminosity_distance(z)
+        distance_mpc = Dis_L.to(u.Mpc).value
+        distance_pc = Dis_L.to(u.pc).value
+        
+        # Calculate distance modulus: DM = 5*log10(d_L) - 5
+        distance_modulus = 5 * math.log10(distance_pc) - 5
+        
+        # Calculate absolute magnitude: M = m - DM - A
+        absolute_magnitude = m - distance_modulus - A
+        
+        result = {
+            "status": "success",
+            "apparent_magnitude": round(m, 2),
+            "redshift": round(z, 4),
+            "distance_mpc": round(distance_mpc, 2),
+            "distance_modulus": round(distance_modulus, 2),
+            "extinction": round(A, 2),
+            "absolute_magnitude": round(absolute_magnitude, 2)
+        }
+        
+        return jsonify(result)
+        
+    except ValueError:
+        return jsonify({"status": "error", "message": "Please enter valid numbers"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Calculation error: {str(e)}"}), 500
+
 @app.route('/upload_pessto/<object_name>', methods=['POST'])
 def upload_pessto(object_name):
     data = request.get_json()

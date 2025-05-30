@@ -78,9 +78,9 @@
             <div id="redshift-result"></div>
         </div>
 
-        <!-- abs mag -->
+        <!-- Absolute Magnitude -->
         <div class="tool-section">
-            <h2>Absolute magnitude</h2>
+            <h2>Absolute Magnitude</h2>
             <form id="absolute-magnitude-form">
                 <div class="form-group">
                     <label for="apparent-magnitude">Apparent magnitude (m):</label>
@@ -113,7 +113,8 @@
             const hh = String(date.getUTCHours()).padStart(2, '0');
             const min = String(date.getUTCMinutes()).padStart(2, '0');
             const sec = String(date.getUTCSeconds()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec} UTC`;
+            const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+            return `${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}.${ms} UTC`;
         }
         
         function convertDate() {
@@ -238,82 +239,100 @@
             document.getElementById("dec-result").innerHTML = output;
         }
 
-        function redshiftToDistance(z, z_err = null) {
-            // Speed of light in km/s
-            const c = 299792;
-            // Hubble constant in km/s/Mpc
-            const H0 = 70;
-            
-            let v, v_err = null;
-            
-            // For z greater than 1, use the relativistic velocity formula.
-            if (z > 1) {
-                v = c * (((1 + z)**2 - 1) / ((1 + z)**2 + 1));
-                // Calculate error propagation using the derivative
-                if (z_err !== null) {
-                    const derivative = 4 * (z + 1) / ((z**2 + 2 * z + 2)**2);
-                    v_err = c * derivative * z_err;
-                }
-            } else {
-                // For z <= 1, use the linear approximation.
-                v = c * z;
-                if (z_err !== null) {
-                    v_err = c * z_err;
-                }
-            }
-            
-            // Calculate distance in Mpc.
-            const d_Mpc = v / H0;
-            const d_Mpc_err = v_err !== null ? v_err / H0 : null;
-            
-            // Convert distance from Mpc to parsecs (1 Mpc = 1e6 parsecs).
-            const d_pc = d_Mpc * 1e6;
-            const d_pc_err = d_Mpc_err !== null ? d_Mpc_err * 1e6 : null;
-            
-            return {
-                d_Mpc, d_Mpc_err, d_pc, d_pc_err
-            };
-        }
-        
         function convertRedshift() {
             const redshiftInput = document.getElementById("redshift-value").value;
             const redshiftErrorInput = document.getElementById("redshift-error").value;
             const resultDiv = document.getElementById("redshift-result");
             
             if (!redshiftInput) {
-                resultDiv.innerHTML = "<p>Plese enter Redshift</p>";
+                resultDiv.innerHTML = "<p>Please enter Redshift</p>";
                 return;
             }
             
-            const z = parseFloat(redshiftInput);
-            const z_err = redshiftErrorInput ? parseFloat(redshiftErrorInput) : null;
+            // Send data to backend
+            fetch('/calculate_redshift', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    redshift: redshiftInput,
+                    redshift_error: redshiftErrorInput
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let output = `<p>Redshift: ${data.redshift}`;
+                    if (data.redshift_error !== null) {
+                        output += ` ± ${data.redshift_error}`;
+                    }
+                    output += "</p>";
+                    
+                    output += `<p>Distance (Mpc): ${data.distance_mpc}`;
+                    if (data.distance_mpc_error !== null) {
+                        output += ` ± ${data.distance_mpc_error}`;
+                    }
+                    output += "</p>";
+                    
+                    output += `<p>Distance (pc): ${data.distance_pc}`;
+                    if (data.distance_pc_error !== null) {
+                        output += ` ± ${data.distance_pc_error}`;
+                    }
+                    output += "</p>";
+                    
+                    resultDiv.innerHTML = output;
+                } else {
+                    resultDiv.innerHTML = `<p style="color: red;">${data.message}</p>`;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            });
+        }
+
+        function calculateAbsoluteMagnitude() {
+            const apparentMagnitude = document.getElementById("apparent-magnitude").value;
+            const redshift = document.getElementById("magnitude-redshift").value;
+            const extinction = document.getElementById("extinction").value;
+            const resultDiv = document.getElementById("magnitude-result");
             
-            if (isNaN(z)) {
-                resultDiv.innerHTML = "<p>Plese enter correct Redshift</p>";
+            if (!apparentMagnitude || !redshift) {
+                resultDiv.innerHTML = "<p>Please enter valid apparent magnitude and redshift values</p>";
                 return;
             }
             
-            const result = redshiftToDistance(z, z_err);
-            
-            let output = `<p>Redshift: ${z}`;
-            if (z_err !== null) {
-                output += ` ± ${z_err}`;
-            }
-            output += "</p>";
-            
-            output += `<p>Distance (Mpc): ${result.d_Mpc.toFixed(3)}`;
-            if (result.d_Mpc_err !== null) {
-                output += ` ± ${result.d_Mpc_err.toFixed(3)}`;
-            }
-            output += "</p>";
-            
-            output += `<p>Distance (pc): ${result.d_pc.toFixed(3)}`;
-            if (result.d_pc_err !== null) {
-                output += ` ± ${result.d_pc_err.toFixed(3)}`;
-            }
-            output += "</p>";
-            
-            resultDiv.innerHTML = output;
+            // Send data to backend
+            fetch('/calculate_absolute_magnitude', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    apparent_magnitude: apparentMagnitude,
+                    redshift: redshift,
+                    extinction: extinction
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let output = `
+                        <p>Apparent magnitude (m): ${data.apparent_magnitude}</p>
+                        <p>Redshift (z): ${data.redshift}</p>
+                        <p>Distance (Mpc): ${data.distance_mpc}</p>
+                        <p>Distance modulus (DM): ${data.distance_modulus}</p>
+                        <p>Dust extinction (A): ${data.extinction}</p>
+                        <p>Absolute magnitude (M): ${data.absolute_magnitude}</p>
+                    `;
+                    resultDiv.innerHTML = output;
+                } else {
+                    resultDiv.innerHTML = `<p style="color: red;">${data.message}</p>`;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            });
         }
 
         window.addEventListener("scroll", function() {
@@ -324,50 +343,6 @@
                 header.classList.remove("scrolled");
             }
         });
-
-        function calculateAbsoluteMagnitude() {
-            const apparentMagnitude = parseFloat(document.getElementById("apparent-magnitude").value);
-            const redshift = parseFloat(document.getElementById("magnitude-redshift").value);
-            const extinctionInput = document.getElementById("extinction").value;
-            const extinction = extinctionInput ? parseFloat(extinctionInput) : 0;
-            const resultDiv = document.getElementById("magnitude-result");
-            
-            if (isNaN(apparentMagnitude) || isNaN(redshift)) {
-                resultDiv.innerHTML = "<p>Please enter valid apparent magnitude and redshift values</p>";
-                return;
-            }
-            
-            // Calculate distance (using same logic as redshiftToDistance)
-            const c = 299792; // Speed of light, km/s
-            const H0 = 70; // Hubble constant, km/s/Mpc
-            
-            let v;
-            if (redshift > 1) {
-                v = c * (((1 + redshift)**2 - 1) / ((1 + redshift)**2 + 1));
-            } else {
-                v = c * redshift;
-            }
-            
-            const distanceMpc = v / H0;
-            const distancePc = distanceMpc * 1e6;
-            
-            // Calculate distance modulus: DM = 5*log10(d) - 5
-            const distanceModulus = 5 * Math.log10(distancePc) - 5;
-            
-            // Calculate absolute magnitude: M = m - 5*log10(d/10) - A
-            // or equivalently: M = m - DM - A
-            const absoluteMagnitude = apparentMagnitude - distanceModulus - extinction;
-            
-            let output = `
-                <p>Apparent magnitude (m): ${apparentMagnitude.toFixed(2)}</p>
-                <p>Redshift (z): ${redshift.toFixed(4)}</p>
-                <p>Distance (Mpc): ${distanceMpc.toFixed(2)}</p>
-                <p>Extinction (A): ${extinction.toFixed(2)}</p>
-                <p>Absolute magnitude (M): ${absoluteMagnitude.toFixed(2)}</p>
-            `;
-            
-            resultDiv.innerHTML = output;
-        }
     </script>
 </body>
 </html>
