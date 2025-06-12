@@ -1,6 +1,9 @@
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background-image: url('../photo/M45.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
     margin: 0;
     padding: 0;
     font-weight: 300;
