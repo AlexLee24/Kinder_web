@@ -1,0 +1,11 @@
+/* Import all marshal styles */
+@import '_variables.css';
+@import '_base.css';
+@import '_components.css';
+@import '_layout.css';
+@import '_filters.css';
+@import '_cards.css';
+@import '_table.css';
+@import '_compact.css';
+@import '_modals.css';
+@import '_responsive.css';

@@ -1,0 +1,128 @@
+/* Table View */
+.objects-table {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+    margin-bottom: var(--spacing-3xl);
+    animation: fadeInUp 0.4s ease;
+}
+
+.table-container {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.data-table th {
+    background: rgba(255, 255, 255, 0.1);
+    padding: var(--spacing-lg) var(--spacing-md);
+    text-align: left;
+    font-weight: var(--font-weight-medium);
+    color: var(--primary-green);
+    border-bottom: 1px solid var(--glass-border);
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+}
+
+.data-table td {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.data-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.object-name-cell a {
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0.3px;
+    transition: color var(--transition-fast);
+}
+
+.object-name-cell a:hover {
+    color: var(--primary-green);
+}
+
+.coord-cell,
+.magnitude-cell,
+.redshift-cell,
+.date-cell {
+    font-family: 'Courier New', monospace;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.actions-cell {
+    text-align: center;
+}
+
+.action-btn {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin: 0 2px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    background: var(--glass-bg);
+    color: white;
+    transition: var(--transition-fast);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.action-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+/* Table Classification Badges */
+.table-classification-badge {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-medium);
+    background: var(--glass-bg);
+    color: rgba(255, 255, 255, 0.8);
+    border: 1px solid var(--glass-border);
+    display: inline-block;
+}
+
+/* Table Tag Indicators */
+.table-tag-indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-semibold);
+    color: white;
+    margin: 0 auto;
+}
+
+.table-tag-indicator.object {
+    background: linear-gradient(45deg, var(--inbox-color), #388e3c);
+}
+
+.table-tag-indicator.followup {
+    background: linear-gradient(45deg, var(--followup-color), var(--blue-dark));
+}
+
+.table-tag-indicator.finished {
+    background: linear-gradient(45deg, var(--finished-color), var(--orange-dark));
+}
+
+.table-tag-indicator.snoozed {
+    background: linear-gradient(45deg, var(--snoozed-color), var(--purple-dark));
+}

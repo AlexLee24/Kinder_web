@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astronomy Tools - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/astronomy_tools.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="container main-content">
+        
+        <div class="tool-section">
+            <h2>Calculator</h2>
+            <p class="section-description">Calculate distances and absolute magnitudes from redshift data</p>
+            
+            <div class="calculator-grid">
+                <div class="input-section">
+                    <h3>Input Parameters</h3>
+                    
+                    <div class="form-group">
+                        <label for="redshift-value">Redshift (z) <span class="required">*</span></label>
+                        <input type="number" step="any" id="redshift-value" name="redshift-value" placeholder="e.g. 0.039">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="redshift-error">Redshift error (optional)</label>
+                        <input type="number" step="any" id="redshift-error" name="redshift-error" placeholder="e.g. 0.016">
+                    </div>
+                    
+                    <div class="divider"></div>
+                    
+                    <div class="form-group">
+                        <label for="apparent-magnitude">Apparent magnitude (m)</label>
+                        <input type="number" step="any" id="apparent-magnitude" name="apparent-magnitude" placeholder="e.g. 15.3">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="extinction">Extinction (A)</label>
+                        <input type="number" step="any" id="extinction" name="extinction" placeholder="e.g. 0.3" value="0">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="distance-unit">Distance Unit</label>
+                        <select id="distance-unit" name="distance-unit">
+                            <option value="km">Kilometers (km)</option>
+                            <option value="ly">Light-years (ly)</option>
+                            <option value="pc">Parsecs (pc)</option>
+                            <option value="Mpc" selected>Megaparsecs (Mpc)</option>
+                            <option value="Gpc">Gigaparsecs (Gpc)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button type="button" class="tool-button tertiary" onclick="calculateBoth()">
+                            Calculate
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="results-section">
+                    <h3>Results</h3>
+                    <div id="combined-result" class="result-display">
+                        <div class="placeholder-text">
+                            Enter redshift value and click calculate to see results
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tool-section">
+            <h2>Coordinate Conversion</h2>
+            <p class="section-description">Convert between different coordinate formats</p>
+            
+            <div class="coordinate-grid">
+                <div class="coordinate-section">
+                    <h3>Right Ascension (RA)</h3>
+                    <div class="form-group">
+                        <label for="ra-hms">RA (hh:mm:ss)</label>
+                        <input type="text" id="ra-hms" name="ra-hms" placeholder="e.g. 12:34:56.78">
+                    </div>
+                    <div class="form-group">
+                        <label for="ra-decimal">RA (Decimal °)</label>
+                        <input type="number" step="any" id="ra-decimal" name="ra-decimal" placeholder="e.g. 188.720">
+                    </div>
+                    <button type="button" class="tool-button" onclick="convertRA()">Convert RA</button>
+                    <div id="ra-result" class="result-section"></div>
+                </div>
+                
+                <div class="coordinate-section">
+                    <h3>Declination (DEC)</h3>
+                    <div class="form-group">
+                        <label for="dec-dms">DEC (±dd:mm:ss)</label>
+                        <input type="text" id="dec-dms" name="dec-dms" placeholder="e.g. -23:45:12.34">
+                    </div>
+                    <div class="form-group">
+                        <label for="dec-decimal">DEC (Decimal °)</label>
+                        <input type="number" step="any" id="dec-decimal" name="dec-decimal" placeholder="e.g. -23.753">
+                    </div>
+                    <button type="button" class="tool-button" onclick="convertDEC()">Convert DEC</button>
+                    <div id="dec-result" class="result-section"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tool-section">
+            <h2>Date Conversion</h2>
+            <p class="section-description">Convert between different astronomical date formats</p>
+            
+            <div class="date-grid">
+                <div class="date-input-section">
+                    <div class="form-group">
+                        <label for="mjd">Modified Julian Date (MJD)</label>
+                        <input type="number" step="any" id="mjd" name="mjd" placeholder="e.g. 59000.5">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="jd">Julian Date (JD)</label>
+                        <input type="number" step="any" id="jd" name="jd" placeholder="e.g. 2459000.5">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="common-date">Common Date</label>
+                        <input type="datetime-local" id="common-date" name="common-date" step="1">
+                    </div>
+                    
+                    <button type="button" class="tool-button" onclick="convertDate()">
+                        Convert Date
+                    </button>
+                </div>
+                
+                <div class="date-result-section">
+                    <div id="date-result" class="result-section">
+                        <div class="placeholder-text">
+                            Enter any date format to see conversions
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/astronomy_tools.js') }}"></script>
+</body>
+</html>

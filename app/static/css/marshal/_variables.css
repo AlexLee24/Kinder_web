@@ -1,0 +1,54 @@
+:root {
+    /* Primary Colors */
+    --primary-green: #46ffaf;
+    --primary-green-dark: #2ca470;
+    --primary-green-light: #52ffb8;
+    
+    /* Secondary Colors */
+    --blue: #2196F3;
+    --blue-dark: #1976d2;
+    --orange: #FF9800;
+    --orange-dark: #f57c00;
+    --purple: #9C27B0;
+    --purple-dark: #7b1fa2;
+    --red: #ff6b6b;
+    --red-dark: #e63946;
+    
+    /* Status Colors */
+    --inbox-color: #4CAF50;
+    --followup-color: #2196F3;
+    --finished-color: #FF9800;
+    --snoozed-color: #9C27B0;
+    
+    /* Glass Effect */
+    --glass-bg: rgba(255, 255, 255, 0.1);
+    --glass-border: rgba(255, 255, 255, 0.2);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    
+    /* Typography */
+    --font-family: 'Helvetica Neue', Arial, sans-serif;
+    --font-weight-light: 300;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 20px;
+    --spacing-2xl: 24px;
+    --spacing-3xl: 30px;
+    
+    /* Border Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 15px;
+    --radius-xl: 20px;
+    --radius-2xl: 25px;
+    
+    /* Transitions */
+    --transition-fast: 0.3s ease;
+    --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}

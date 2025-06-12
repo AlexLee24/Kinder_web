@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transient Marshal - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <!-- Admin status for JavaScript -->
+    {% if session.user and session.user.is_admin %}
+    <div data-admin="true" style="display: none;"></div>
+    {% endif %}
+
+    <div class="marshal-container">
+        <!-- Top Control Panel -->
+        <div class="control-panel">
+            <div class="panel-header">
+                <h1>Transient Marshal</h1>
+                <div class="status-info">
+                    <span class="total-count">{{ total_count }} objects</span>
+                    <span class="last-sync">
+                        Last sync: 
+                        {% if last_sync %}
+                            <span id="lastSync">{{ last_sync.time }}</span>
+                            {% if last_sync.status == 'completed' %}
+                                <span class="sync-status success">
+                                    ({{ last_sync.imported }} new, {{ last_sync.updated }} updated
+                                    {% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})
+                                </span>
+                            {% elif last_sync.status == 'failed' %}
+                                <span class="sync-status error">(Failed)</span>
+                            {% else %}
+                                <span class="sync-status pending">({{ last_sync.status|title }})</span>
+                            {% endif %}
+                        {% else %}
+                            <span id="lastSync">Never</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Main Statistics -->
+            <div class="main-stats">
+                <div class="big-stat-card at">
+                    <div class="stat-info">
+                        <span class="stat-number">{{ at_count }}</span>
+                        <span class="stat-label">AT</span>
+                    </div>
+                </div>
+                <div class="big-stat-card classified">
+                    <div class="stat-info">
+                        <span class="stat-number">{{ classified_count }}</span>
+                        <span class="stat-label">Classified</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary Statistics -->
+            <div class="secondary-stats">
+                <div class="small-stat-card inbox">
+                    <div class="stat-info">
+                        <span class="stat-number" id="inboxCount">{{ inbox_count }}</span>
+                        <span class="stat-label">Inbox</span>
+                    </div>
+                </div>
+                <div class="small-stat-card followup">
+                    <div class="stat-info">
+                        <span class="stat-number" id="followupCount">{{ followup_count }}</span>
+                        <span class="stat-label">Follow-up</span>
+                    </div>
+                </div>
+                <div class="small-stat-card finished">
+                    <div class="stat-info">
+                        <span class="stat-number" id="finishedCount">{{ finished_count }}</span>
+                        <span class="stat-label">Finished</span>
+                    </div>
+                </div>
+                <div class="small-stat-card snoozed">
+                    <div class="stat-info">
+                        <span class="stat-number" id="snoozedCount">{{ snoozed_count }}</span>
+                        <span class="stat-label">Snoozed</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Filter Tools -->
+            <div class="search-tools">
+                <!-- Main Search -->
+                <div class="search-section">
+                    <div class="search-input-group">
+                        <input type="text" id="searchInput" placeholder="Search by name or coordinates...">
+                        <button class="search-btn" onclick="performSearch()">
+                            Search
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Advanced Filters -->
+                <div class="advanced-filters">
+                    <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
+                        <span>Advanced Filters</span>
+                        <span class="toggle-arrow">▼</span>
+                    </button>
+                    
+                    <div class="advanced-filters-content" id="advancedFiltersContent">
+                        <div class="filter-row">
+                            <!-- Classification Filter -->
+                            <div class="filter-group">
+                                <label>Classification</label>
+                                <select id="classificationFilter">
+                                    <option value="">All Classifications</option>
+                                    <!-- Dynamic options will be populated by JavaScript -->
+                                </select>
+                                <div class="filter-tooltip">Filter by object classification type</div>
+                            </div>
+                            
+                            <!-- Tag Filter -->
+                            <div class="filter-group">
+                                <label>Status Tag</label>
+                                <select id="tagFilter">
+                                    <option value="">All Status</option>
+                                    <option value="object">Inbox</option>
+                                    <option value="followup">Follow-up</option>
+                                    <option value="finished">Finished</option>
+                                    <option value="snoozed">Snoozed</option>
+                                </select>
+                                <div class="filter-tooltip">Filter by current status tag</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Discovery Date Range</label>
+                                <div class="date-range-group">
+                                    <input type="date" id="dateFrom" placeholder="From">
+                                    <span class="range-separator">—</span>
+                                    <input type="date" id="dateTo" placeholder="To">
+                                </div>
+                                <div class="filter-tooltip">Filter by discovery date range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Apparent Magnitude</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="appMagMin" placeholder="Min mag">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="appMagMax" placeholder="Max mag">
+                                </div>
+                                <div class="filter-tooltip">Filter by apparent magnitude range</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Redshift Range</label>
+                                <div class="redshift-range-group">
+                                    <input type="number" step="0.001" id="redshiftMin" placeholder="Min z">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.001" id="redshiftMax" placeholder="Max z">
+                                </div>
+                                <div class="filter-tooltip">Filter by redshift (z) range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Discoverer/Survey</label>
+                                <input type="text" id="discovererFilter" placeholder="e.g., ATLAS, ZTF, Gaia...">
+                                <div class="filter-tooltip">Filter by discovering survey or group</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row">
+                            <div class="filter-actions">
+                                <button class="apply-advanced-btn" onclick="applyAdvancedFilters()">
+                                    🔍 Apply Filters
+                                </button>
+                                <button class="clear-btn" onclick="clearAllFilters()">
+                                    🗑️ Clear All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tools -->
+                <div class="admin-tools">
+                    {% if session.user and session.user.is_admin %}
+                    <button class="sync-btn" onclick="manualTNSDownload()" id="syncBtn">
+                        📥 Download TNS Data
+                    </button>
+                    <button class="add-btn" onclick="showAddModal()">
+                        ➕ Add Object
+                    </button>
+                    <button class="export-btn" onclick="exportData()">
+                        📊 Export
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- View Controls -->
+            <div class="view-controls">
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="cards" onclick="switchView('cards')">
+                        Cards
+                    </button>
+                    <button class="view-btn" data-view="table" onclick="switchView('table')">
+                        Table
+                    </button>
+                    <button class="view-btn" data-view="compact" onclick="switchView('compact')">
+                        Compact
+                    </button>
+                </div>
+                
+                <div class="sort-controls">
+                    <select id="sortBy" onchange="applySorting()">
+                        <option value="last_update">Last Update</option>
+                        <option value="discovery_date">Discovery Date</option>
+                        <option value="magnitude">Discovery Magnitude</option>
+                    </select>
+                    <button class="sort-order-btn" onclick="toggleSortOrder()" id="sortOrderBtn">
+                        ↓
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="content-area">
+            <!-- Top Pagination Controls -->
+            <div class="pagination-container top-pagination">
+                <div class="pagination-info">
+                    <span id="topPaginationInfo">Showing 0 of 0 objects</span>
+                </div>
+                <div class="pagination-controls" id="topPaginationControls">
+                </div>
+                <div class="page-size-selector">
+                    <label>Show:</label>
+                    <select id="topPageSizeSelect" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Cards View -->
+            <div class="objects-grid" id="cardsView">
+                {% for obj in objects %}
+                <div class="object-card" 
+                    data-classification="{{ obj.type or 'AT' }}" 
+                    data-discovery="{{ obj.discoverydate or '' }}" 
+                    data-tag="object"
+                    data-magnitude="{{ obj.discoverymag or '' }}"
+                    data-redshift="{{ obj.redshift or '' }}">
+                
+                <div class="card-header">
+                    <div class="object-name">
+                        <a href="#" onclick="quickView('{{ obj.name_prefix }}{{ obj.name }}')">
+                            {{ obj.name_prefix }}{{ obj.name }}
+                        </a>
+                    </div>
+                    <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
+                        {{ obj.type or 'AT' }}
+                    </div>
+                </div>
+                
+                <div class="card-content">
+                    <div class="coordinates">
+                        <div class="coord-item">
+                            <span class="coord-label">RA:</span>
+                            <span class="coord-value">{{ "%.6f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
+                        </div>
+                        <div class="coord-item">
+                            <span class="coord-label">Dec:</span>
+                            <span class="coord-value">{{ "%.6f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="object-info">
+                        {% if obj.discoverymag %}
+                        <div class="info-item">
+                            <span>Discovery Mag = {{ obj.discoverymag }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        {% if obj.redshift %}
+                        <div class="info-item">
+                            <span>z = {{ obj.redshift }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        {% if obj.discoverydate %}
+                        <div class="info-item">
+                            <span>Date: {{ obj.discoverydate[:10] }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        {% if obj.source_group %}
+                        <div class="info-item">
+                            <span>Source: {{ obj.source_group }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card-footer">
+                    <div class="tag-badge object">
+                        Inbox
+                    </div>
+                    <div class="last-update">
+                        {{ obj.time_received[:16] if obj.time_received else 'No update' }}
+                    </div>
+                    <div class="card-actions">
+                        <button class="quick-action" onclick="quickView('{{ obj.name_prefix }}{{ obj.name }}')" title="Quick View">
+                            View
+                        </button>
+                    </div>
+                </div>
+            </div>
+                {% endfor %}
+            </div>
+
+            <!-- Table View -->
+            <div class="objects-table" id="tableView" style="display: none;">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Object Name</th>
+                                <th>Classification</th>
+                                <th>RA (J2000)</th>
+                                <th>Dec (J2000)</th>
+                                <th>App. Mag</th>
+                                <th>Abs. Mag</th>
+                                <th>Redshift</th>
+                                <th>Discovery Date</th>
+                                <th>Discoverer</th>
+                                <th>Tag</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Compact View -->
+            <div class="objects-compact" id="compactView" style="display: none;">
+            </div>
+
+            <!-- Bottom Pagination Controls -->
+            <div class="pagination-container bottom-pagination">
+                <div class="pagination-info">
+                    <span id="paginationInfo">Showing 0 of 0 objects</span>
+                </div>
+                <div class="pagination-controls" id="paginationControls">
+                </div>
+                <div class="page-size-selector">
+                    <label>Show:</label>
+                    <select id="pageSizeSelect" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="uploadModalOverlay" style="display: none;">
+        <div class="upload-modal">
+            <div class="modal-header">
+                <h3>📤 Upload TNS CSV Data</h3>
+                <button class="close-modal" onclick="closeUploadModal()">×</button>
+            </div>
+            <div class="modal-content">
+                <div class="upload-info">
+                    <p><strong>Supported File Types:</strong></p>
+                    <ul>
+                        <li>.csv files</li>
+                        <li>.zip files (containing CSV)</li>
+                        <li>Max file size: 50MB</li>
+                    </ul>
+                    <p><strong>Important Notes:</strong></p>
+                    <ul>
+                        <li>System will automatically detect new or updated objects</li>
+                        <li>Duplicate objects will be updated based on objid</li>
+                        <li>Please do not close the window during upload</li>
+                    </ul>
+                </div>
+                
+                <div class="upload-section">
+                    <div class="file-drop-zone" id="fileDropZone">
+                        <div class="drop-content">
+                            <div class="upload-icon">📁</div>
+                            <p>Drag files here or click to select files</p>
+                            <p class="file-types">Supports .csv, .zip formats</p>
+                        </div>
+                        <input type="file" id="csvFileInput" accept=".csv,.zip" style="display: none;">
+                    </div>
+                    
+                    <div class="selected-file" id="selectedFileInfo" style="display: none;">
+                        <div class="file-info">
+                            <span class="file-name" id="selectedFileName"></span>
+                            <span class="file-size" id="selectedFileSize"></span>
+                        </div>
+                        <button class="remove-file" onclick="clearSelectedFile()">Remove</button>
+                    </div>
+                </div>
+                
+                <div class="upload-options">
+                    <label>
+                        <input type="checkbox" id="skipDuplicates" checked>
+                        Skip duplicate records (recommended)
+                    </label>
+                    <label>
+                        <input type="checkbox" id="validateData" checked>
+                        Validate data format
+                    </label>
+                </div>
+                
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="progressText">Preparing upload...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                </div>
+                
+                <div class="upload-result" id="uploadResult" style="display: none;">
+                    <div class="result-content">
+                        <div class="result-icon" id="resultIcon"></div>
+                        <div class="result-text" id="resultText"></div>
+                        <div class="result-stats" id="resultStats"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
+                <button class="upload-btn" onclick="startUpload()" id="startUploadBtn" disabled>
+                    🚀 Start Upload
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <script src="{{ url_for('static', filename='js/marshal.js') }}"></script>
+</body>
+</html>

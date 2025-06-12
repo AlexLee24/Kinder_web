@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Profile - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+    <meta name="description" content="User Profile - Kinder">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="profile-container">
+        <div class="profile-header">
+            <h1>My Profile</h1>
+            <p>Your account information and group memberships</p>
+        </div>
+
+        <div class="profile-content">
+            <div class="profile-card">
+                <div class="user-info-section">
+                    <div class="user-details">
+                        <div class="user-name-container">
+                            <h2 id="userName">{{ user_data.name if user_data else session.user.name }}</h2>
+                            <button class="edit-name-btn" onclick="showEditNameModal()">
+                                <span class="edit-icon">✏️</span>
+                            </button>
+                        </div>
+                        <p class="user-email">{{ session.user.email }}</p>
+                        {% if session.user.is_admin %}
+                        <span class="admin-badge">Administrator</span>
+                        {% endif %}
+                    </div>
+                    <div class="user-avatar">
+                        <img src="{{ user_data.picture if user_data and user_data.picture else session.user.picture }}" alt="Profile Picture">
+                    </div>
+                </div>
+
+                <div class="groups-section">
+                    <h3>My Groups</h3>
+                    {% if user_groups %}
+                    <div class="groups-grid">
+                        {% for group in user_groups %}
+                        <div class="group-item">
+                            <div class="group-icon">
+                                <span>{{ group[0].upper() }}</span>
+                            </div>
+                            <div class="group-info">
+                                <span class="group-name">{{ group }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="no-groups">
+                        <div class="no-groups-icon">
+                            <span>👥</span>
+                        </div>
+                        <p>You are not a member of any groups yet.</p>
+                        {% if session.user.is_admin %}
+                        <p class="admin-hint">As an administrator, you can manage groups in the <a href="{{ url_for('admin_panel') }}">Admin Panel</a>.</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="account-section">
+                    <h3>Account Information</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Email:</span>
+                            <span class="info-value">{{ session.user.email }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Account Type:</span>
+                            <span class="info-value">
+                                {% if session.user.is_admin %}
+                                    Administrator
+                                {% else %}
+                                    User
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Groups:</span>
+                            <span class="info-value">{{ user_groups|length }} group{{ 's' if user_groups|length != 1 else '' }}</span>
+                        </div>
+                        {% if user_data and user_data.last_login %}
+                        <div class="info-item">
+                            <span class="info-label">Last Login:</span>
+                            <span class="info-value">{{ user_data.last_login[:19] if user_data.last_login else 'Unknown' }}</span>
+                        </div>
+                        {% endif %}
+                        {% if user_data and user_data.invited_at %}
+                        <div class="info-item">
+                            <span class="info-label">Member Since:</span>
+                            <span class="info-value">{{ user_data.invited_at[:10] if user_data.invited_at else 'Unknown' }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if session.user.is_admin %}
+                <div class="admin-section">
+                    <h3>Administrator Actions</h3>
+                    <div class="admin-actions">
+                        <a href="{{ url_for('admin_panel') }}" class="btn btn-primary">
+                            Go to Admin Panel
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Name Modal -->
+    <div id="editNameModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Name</h3>
+                <span class="close" onclick="closeEditNameModal()">&times;</span>
+            </div>
+            <form onsubmit="updateName(event)">
+                <div class="form-group">
+                    <label for="newName">New Name:</label>
+                    <input type="text" id="newName" name="newName" value="{{ user_data.name if user_data else session.user.name }}" required maxlength="50">
+                    <div class="char-counter">
+                        <span id="charCount">{{ (user_data.name if user_data else session.user.name)|length }}</span>/50
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditNameModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Name</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer"></div>
+
+    <script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+</body>
+</html>

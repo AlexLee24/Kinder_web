@@ -1,0 +1,95 @@
+<head>
+    <meta charset="UTF-8">
+    <title>Kinder Web</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<header>
+    <div class="container">
+        <div class="header-content">
+            <!-- Logo -->
+            <a href="/" class="logo">
+                <p>Kinder</p>
+            </a>
+            
+            <!-- Main Navigation -->
+            <nav class="main-nav">
+                <!-- Left Navigation -->
+                <ul class="nav-left">
+                    <li><a href="{{ url_for('marshal') }}">Marshal</a></li>
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/', '/astronomy_tools', '/object_visibility'] %}class="active"{% endif %}>
+                            Tools
+                            <span class="dropdown-arrow">▼</span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="{{ url_for('astronomy_tools') }}">Astronomy Tools</a></li>
+                            <li><a href="{{ url_for('object_plot') }}">Object Visibility Plot</a></li>
+                        </ul>
+                    </li>
+                    <li class="dropdown">
+                        <a href="#">About Us <span class="dropdown-arrow">▼</span></a>
+                        <ul class="dropdown-content">
+                            <li>
+                                <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
+                                    About GREAT Lab
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://www.lulin.ncu.edu.tw/weather/" target="_blank" rel="noopener noreferrer">
+                                    NCU Lulin Observatory
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+                
+                <!-- Right Navigation -->
+                <ul class="nav-right">
+                    {% if session.user %}
+                        <!-- User is logged in -->
+                        <li class="dropdown">
+                            <a href="#" class="user-menu">
+                                <img src="{{ session.user.picture }}" alt="User Avatar" class="user-avatar">
+                                {{ session.user.name }}
+                            </a>
+                            <ul class="dropdown-content">
+                                <li><a href="{{ url_for('profile') }}">Profile</a></li>
+                                {% if session.user.is_admin %}
+                                    <li><a href="{{ url_for('admin_panel') }}">Admin Panel</a></li>
+                                {% endif %}
+                                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <!-- User is not logged in -->
+                        <li><a href="{{ url_for('login') }}" class="login-button">Login</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</header>
+
+<!-- Flash Messages -->
+<div class="flash-message-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div id="flash-message">
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+</div>
+<!-- Flash Messages End -->
+
+<script>
+    setTimeout(function() {
+        const flashMessage = document.getElementById("flash-message");
+        if (flashMessage) {
+            flashMessage.style.display = "none";
+        }
+    }, 3000);
+</script>

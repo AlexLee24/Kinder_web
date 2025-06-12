@@ -1,0 +1,155 @@
+/* Cards View */
+.objects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-3xl);
+}
+
+.object-card {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-2xl);
+    box-shadow: var(--glass-shadow);
+    transition: var(--transition-fast);
+    color: white;
+    animation: fadeInUp 0.4s ease;
+}
+
+.object-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.object-card[data-tag="object"] {
+    border-left: 4px solid var(--inbox-color);
+}
+
+.object-card[data-tag="followup"] {
+    border-left: 4px solid var(--followup-color);
+}
+
+.object-card[data-tag="finished"] {
+    border-left: 4px solid var(--finished-color);
+}
+
+.object-card[data-tag="snoozed"] {
+    border-left: 4px solid var(--snoozed-color);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-xl);
+}
+
+.object-name a {
+    font-size: 1.2rem;
+    font-weight: var(--font-weight-medium);
+    color: #ffffff;
+    text-decoration: none;
+    transition: color var(--transition-fast);
+    letter-spacing: 0.5px;
+}
+
+.object-name a:hover {
+    color: var(--primary-green);
+}
+
+.classification-badge {
+    padding: 6px var(--spacing-md);
+    border-radius: var(--radius-lg);
+    font-size: 0.8rem;
+    font-weight: var(--font-weight-medium);
+    background: var(--glass-bg);
+    color: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.coordinates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-xl);
+}
+
+.coord-item {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px var(--spacing-md);
+    border-radius: 10px;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.coord-label {
+    font-weight: var(--font-weight-medium);
+    color: var(--primary-green);
+    margin-right: var(--spacing-xs);
+    letter-spacing: 0.3px;
+}
+
+.coord-value {
+    color: rgba(255, 255, 255, 0.9);
+    font-family: 'Courier New', monospace;
+}
+
+.object-info {
+    margin-bottom: var(--spacing-xl);
+}
+
+.info-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.info-icon {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.last-update {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.2px;
+}
+
+.card-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.quick-action {
+    padding: 6px 10px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: var(--transition-fast);
+    color: white;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.quick-action:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}

@@ -1,0 +1,152 @@
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    margin: 0;
+    padding: 0;
+    font-weight: 300;
+    min-height: 100vh;
+}
+
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 140px 20px 40px;
+}
+
+.login-form-container {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 20px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2);
+    max-width: 450px;
+    width: 100%;
+    overflow: hidden;
+}
+
+.login-form {
+    padding: 40px;
+    color: #fff;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.login-header h1 {
+    font-size: 2.5rem;
+    font-weight: 200;
+    margin: 0 0 10px 0;
+    letter-spacing: 2px;
+}
+
+.login-header p {
+    font-size: 1.2rem;
+    font-weight: 300;
+    margin: 0;
+    opacity: 0.9;
+    letter-spacing: 1px;
+}
+
+.login-content {
+    text-align: center;
+}
+
+.login-description {
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 30px;
+    opacity: 0.9;
+}
+
+.login-buttons {
+    margin-bottom: 30px;
+}
+
+.google-login-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    padding: 15px 30px;
+    border-radius: 50px;
+    text-decoration: none;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 280px;
+}
+
+.google-login-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.login-info {
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.info-text {
+    font-size: 0.95rem;
+    margin-bottom: 15px;
+    opacity: 0.8;
+}
+
+.feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+}
+
+.feature-list li {
+    padding: 5px 0;
+    position: relative;
+    padding-left: 20px;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.feature-list li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #46ffaf;
+    font-weight: bold;
+}
+
+@media (max-width: 768px) {
+    .login-container {
+        padding: 120px 15px 40px;
+    }
+    
+    .login-form {
+        padding: 30px 25px;
+    }
+    
+    .login-header h1 {
+        font-size: 2rem;
+    }
+    
+    .login-header p {
+        font-size: 1rem;
+    }
+}
+
+::selection {
+    background: rgba(70, 255, 175, 0.3);
+}
+
+::-moz-selection {
+    background: rgba(70, 255, 175, 0.3);
+}

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <meta name="description" content="Kinder Admin Panel">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>Admin Panel</h1>
+            <p>Manage users, groups, and invitations</p>
+            
+            <!-- Data Consistency Check -->
+            <div class="consistency-check">
+                <button class="btn btn-info" onclick="checkDataConsistency()">
+                    Check Data Consistency
+                </button>
+                <span id="consistencyStatus" class="consistency-status"></span>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('users')">Users</button>
+            <button class="tab-button" onclick="showTab('groups')">Groups</button>
+            <button class="tab-button" onclick="showTab('invitations')">Invitations</button>
+        </div>
+
+        <div id="users-tab" class="tab-content active">
+            <div class="section-header">
+                <h2>Users Management</h2>
+                <div class="header-actions">
+                    <div class="search-section">
+                        <div class="search-row">
+                            <div class="search-input-group">
+                                <input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="searchUsers()">
+                                <button class="btn btn-secondary" onclick="clearSearch()">Clear</button>
+                            </div>
+                            <div class="filter-group">
+                                <label>
+                                    <input type="checkbox" id="adminFilter" onchange="searchUsers()">
+                                    Admins only
+                                </label>
+                                <select id="groupFilter" onchange="searchUsers()">
+                                    <option value="">All groups</option>
+                                    {% for group_name in groups.keys() %}
+                                    <option value="{{ group_name.lower() }}">{{ group_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="search-results">
+                            <span id="searchResults">{{ users|length }} users found</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="showInviteUserModal()">Invite New User</button>
+                </div>
+            </div>
+            
+            <div class="users-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Avatar</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Admin</th>
+                            <th>Groups</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for email, user in users.items() %}
+                        <tr>
+                            <td>
+                                <img src="{{ user.picture }}" alt="Avatar" class="user-avatar">
+                            </td>
+                            <td>{{ user.name }}</td>
+                            <td>{{ email }}</td>
+                            <td>
+                                {% if user.get('is_admin') %}
+                                    <span class="status-badge status-admin">Admin</span>
+                                {% else %}
+                                    <span class="status-badge status-user">User</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.get('groups') %}
+                                    {% for group in user.groups %}
+                                        <span class="group-badge">{{ group }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="no-groups">No groups</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ user.get('invited_at', user.get('last_login', 'Unknown'))[:10] }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    {% if email != session.user.email %}
+                                    <button class="btn-small btn-warning" onclick="toggleAdminStatus('{{ email }}')">
+                                        {{ 'Remove Admin' if user.get('is_admin') else 'Make Admin' }}
+                                    </button>
+                                    <button class="btn-small btn-danger" onclick="deleteUser('{{ email }}')">
+                                        Delete
+                                    </button>
+                                    {% else %}
+                                    <span class="btn-small btn-info" style="opacity: 0.6;">You</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="groups-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Groups Management</h2>
+                <button class="btn btn-primary" onclick="showCreateGroupModal()">Create New Group</button>
+            </div>
+            
+            <div class="groups-grid">
+                {% for group_name, group in groups.items() %}
+                <div class="group-card" id="group-{{ loop.index0 }}">
+                    <div class="group-header">
+                        <h3 class="group-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
+                            {{ group_name }}
+                            <span class="expand-icon" id="icon-{{ loop.index0 }}">▼</span>
+                        </h3>
+                        <div class="group-actions">
+                            <button class="btn-small btn-danger" onclick="deleteGroup('{{ group_name }}')">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                    <p class="group-description">{{ group.description or 'No description' }}</p>
+                    <div class="group-info">
+                        <p><strong>Members:</strong> {{ group.members|length }}</p>
+                        <p><strong>Created:</strong> {{ group.created_at[:10] }}</p>
+                    </div>
+                    
+                    <div class="group-details" id="details-{{ loop.index0 }}" style="display: none;">
+                        <div class="group-members-section">
+                            <div class="members-header">
+                                <h4>Members ({{ group.members|length }})</h4>
+                                <button class="btn-small btn-primary" onclick="showAddMembersModal('{{ group_name }}')">
+                                    Add Members
+                                </button>
+                            </div>
+                            
+                            {% if group.members %}
+                            <div class="members-list">
+                                {% for member in group.members %}
+                                <div class="member-item">
+                                    <div class="member-info">
+                                        <img src="{{ users[member].picture if member in users else '/static/img/default-avatar.png' }}" 
+                                             alt="Avatar" class="member-avatar">
+                                        <div class="member-details">
+                                            <span class="member-name">{{ users[member].name if member in users else 'Unknown User' }}</span>
+                                            <span class="member-email">{{ member }}</span>
+                                        </div>
+                                    </div>
+                                    <button class="btn-small btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')">
+                                        Remove
+                                    </button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="no-members">
+                                <p>No members in this group yet.</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="invitations-tab" class="tab-content">
+            <div class="section-header">
+                <h2>Invitations Management</h2>
+                <div class="header-actions">
+                    <button class="btn btn-warning" onclick="cleanAcceptedInvitations()">Clean Accepted</button>
+                </div>
+            </div>
+            
+            <div class="invitations-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Admin Role</th>
+                            <th>Invited By</th>
+                            <th>Status</th>
+                            <th>Invited At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for token, invitation in invitations.items() %}
+                        <tr>
+                            <td>{{ invitation.email }}</td>
+                            <td>
+                                {% if invitation.get('is_admin') %}
+                                    <span class="status-badge status-admin">Admin</span>
+                                {% else %}
+                                    <span class="status-badge status-user">User</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ invitation.invited_by }}</td>
+                            <td>
+                                <span class="status-badge status-{{ invitation.status }}">
+                                    {{ invitation.status.title() }}
+                                </span>
+                            </td>
+                            <td>{{ invitation.invited_at[:10] }}</td>
+                            <td>
+                                <div class="action-buttons">
+                                    {% if invitation.status == 'pending' %}
+                                    <button class="btn-small btn-secondary" onclick="copyInvitationLink('{{ token }}')">
+                                        Copy Link
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn-small btn-danger" onclick="deleteInvitation('{{ token }}')">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if invitations|length == 0 %}
+                <div class="no-invitations">
+                    <p>No invitations found.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Consistency Modal -->
+    <div id="consistencyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Data Consistency Check</h3>
+                <span class="close" onclick="closeModal('consistencyModal')">&times;</span>
+            </div>
+            <div class="consistency-content">
+                <div id="consistencyResults">
+                    <!-- Results will be loaded here -->
+                </div>
+                <div class="modal-actions" id="consistencyActions" style="display: none;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('consistencyModal')">Cancel</button>
+                    <button type="button" class="btn btn-warning" onclick="cleanDataConsistency()">Clean Issues</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="inviteUserModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Invite New User</h3>
+                <span class="close" onclick="closeModal('inviteUserModal')">&times;</span>
+            </div>
+            <form onsubmit="inviteUser(event)">
+                <div class="form-group">
+                    <label for="userEmail">Email Address *</label>
+                    <input type="email" id="userEmail" required>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="isAdmin">
+                        <span class="checkmark"></span>
+                        Grant administrator privileges
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="sendEmail">
+                        <span class="checkmark"></span>
+                        Send email notification
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('inviteUserModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Send Invitation</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Group</h3>
+                <span class="close" onclick="closeModal('createGroupModal')">&times;</span>
+            </div>
+            <form onsubmit="createGroup(event)">
+                <div class="form-group">
+                    <label for="groupName">Group Name *</label>
+                    <input type="text" id="groupName" required>
+                </div>
+                <div class="form-group">
+                    <label for="groupDescription">Description</label>
+                    <textarea id="groupDescription" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('createGroupModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Group</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="addMembersModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Members to Group</h3>
+                <span class="close" onclick="closeModal('addMembersModal')">&times;</span>
+            </div>
+            <div class="add-members-content">
+                <div class="group-info">
+                    <p><strong>Group:</strong> <span id="selectedGroupName"></span></p>
+                    <p class="help-text">Select users to add to this group:</p>
+                </div>
+                
+                <div class="search-users-section">
+                    <input type="text" id="memberSearch" placeholder="Search users..." onkeyup="filterAvailableUsers()">
+                </div>
+                
+                <div class="available-users-container" id="availableUsersContainer">
+                    <!-- Available users will be loaded here -->
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addMembersModal')">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="addSelectedMembers()">Add Selected</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>

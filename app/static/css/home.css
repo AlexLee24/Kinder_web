@@ -1,0 +1,308 @@
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-color: #cccccc;
+    margin: 0;
+    padding: 0;
+    font-weight: 300;
+}
+
+/* ============================================================================ */
+/* Banner styling START */
+.main-banner {
+    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('../photo/NCU.jpg');
+    background-size: cover;
+    background-position: center;
+    height: 100vh;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.main-banner .container {
+    position: relative;
+    z-index: 2;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.banner-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem; 
+    align-items: center;
+    color: #fff;
+    min-height: 70vh;
+    padding: 0 2rem; 
+}
+
+.banner-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 2rem;
+    padding-right: 1rem;
+    padding-left: 2rem;
+}
+
+.title-section {
+    margin-bottom: 1rem;
+}
+
+.banner-left h1 {
+    font-size: 5rem;
+    font-weight: 100;
+    letter-spacing: 4px;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 8px rgba(0,0,0,0.5);
+    line-height: 0.9;
+}
+
+.banner-left h2 {
+    font-size: 1.8rem;
+    font-weight: 200;
+    letter-spacing: 2px;
+    opacity: 0.9;
+    color: rgba(255,255,255,0.9);
+    margin: 0;
+}
+
+.banner-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-size: 1.1rem;
+    line-height: 1.6;
+}
+
+.institution {
+    font-size: 1.2rem;
+    opacity: 0.95;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.lab-link {
+    margin: 0;
+}
+
+.lab-link a {
+    color: #46ffaf;
+    text-decoration: none;
+    font-weight: 400;
+    border-bottom: 1px solid rgba(70, 255, 175, 0.5);
+    transition: all 0.3s ease;
+    padding-bottom: 2px;
+}
+
+.lab-link a:hover {
+    border-bottom-color: #46ffaf;
+    text-shadow: 0 0 8px rgba(70, 255, 175, 0.3);
+}
+
+.copyright {
+    font-size: 0.95rem;
+    opacity: 0.7;
+    margin: 0;
+}
+
+.banner-links {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.social-links {
+    display: flex;
+    gap: 2rem;
+}
+
+.link-item {
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1rem;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+}
+
+.link-item:hover {
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    border-color: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.1);
+}
+
+.link-item svg {
+    transition: transform 0.3s ease;
+}
+
+.link-item:hover svg {
+    transform: scale(1.1);
+}
+
+.contact-note {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    margin: 0;
+    font-style: italic;
+}
+
+.banner-contact {
+    padding-top: 2rem;
+    border-top: 1px solid rgba(255,255,255,0.15);
+}
+
+.banner-contact h3 {
+    font-size: 1.3rem;
+    font-weight: 300;
+    margin-bottom: 1rem;
+    letter-spacing: 1px;
+    color: #46ffaf;
+}
+
+.contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.email, .phone {
+    margin: 0;
+    font-size: 1rem;
+    opacity: 0.9;
+    font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.banner-right {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 1rem;
+    padding-right: 2rem;
+}
+
+.image-container {
+    position: relative;
+    width: 100%;
+    max-width: 450px;
+    text-align: center;
+}
+
+.banner-right img {
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+    transition: transform 0.3s ease;
+}
+
+.banner-right img:hover {
+    transform: translateY(-6px) scale(1.02);
+}
+
+.banner-right p {
+    margin: 0;
+    font-size: 0.9rem;
+    opacity: 0.8;
+    font-style: italic;
+    line-height: 1.4;
+    background: rgba(0,0,0,0.6);
+    padding: 8px 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    display: inline-block;
+}
+
+@media screen and (max-width: 1024px) {
+    .banner-content {
+        gap: 2rem;
+        padding: 0 1rem;
+    }
+    
+    .banner-left {
+        padding-left: 1rem;
+        padding-right: 0.5rem;
+    }
+    
+    .banner-right {
+        padding-left: 0.5rem;
+        padding-right: 1rem;
+    }
+    
+    .banner-left h1 {
+        font-size: 4rem;
+    }
+}
+
+@media screen and (max-width: 768px) {
+    .banner-content {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+        text-align: center;
+        padding: 0;
+    }
+    
+    .banner-left {
+        padding: 0;
+        align-items: center;
+    }
+    
+    .banner-right {
+        padding: 0;
+    }
+    
+    .banner-left h1 {
+        font-size: 3.5rem;
+    }
+    
+    .banner-left h2 {
+        font-size: 1.5rem;
+    }
+    
+    .social-links {
+        justify-content: center;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .main-banner {
+        padding: 0 15px;
+    }
+    
+    .banner-left h1 {
+        font-size: 2.8rem;
+        letter-spacing: 2px;
+    }
+    
+    .banner-left h2 {
+        font-size: 1.2rem;
+    }
+    
+    .social-links {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .contact-info {
+        align-items: center;
+    }
+}
+
+::selection {
+    background: rgba(70, 255, 175, 0.3);
+}
+
+::-moz-selection {
+    background: rgba(70, 255, 175, 0.3);
+}

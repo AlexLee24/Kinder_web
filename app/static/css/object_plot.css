@@ -1,0 +1,558 @@
+/* ==================== GLOBAL STYLES ==================== */
+:root {
+    --primary-gradient: linear-gradient(45deg, #46ffaf, #2ca470);
+    --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
+    --tertiary-gradient: linear-gradient(45deg, #ff4757, #ff3742);
+    --accent-color: #46ffaf;
+    --glass-bg: rgba(255, 255, 255, 0.1);
+    --glass-border: rgba(255, 255, 255, 0.2);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.9);
+    --text-muted: rgba(255, 255, 255, 0.6);
+    --shadow-primary: 0 8px 32px rgba(0,0,0,0.1);
+    --shadow-hover: 0 12px 40px rgba(0,0,0,0.15);
+    --border-radius: 20px;
+    --border-radius-sm: 15px;
+    --transition: all 0.3s ease;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background-image: url('../photo/LMC.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+    font-weight: 300;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* ==================== MAIN CONTAINER ==================== */
+.container-main {
+    max-width: 1200px;
+    margin: 120px auto 40px;
+    padding: 20px;
+    position: relative;
+    z-index: 2;
+}
+
+/* ==================== FORM CONTAINER ==================== */
+.plot-form-container {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 30px;
+    position: relative;
+    transition: var(--transition);
+    box-shadow: var(--shadow-primary);
+    color: var(--text-primary);
+}
+
+.plot-form-container:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-hover);
+}
+
+/* ==================== TYPOGRAPHY ==================== */
+.plot-form-container h2 {
+    font-size: 1.8em;
+    color: var(--accent-color);
+    margin-bottom: 25px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    text-align: center;
+    position: relative;
+    padding-bottom: 15px;
+}
+
+.plot-form-container h2::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, #46ffaf, #667eea);
+    border-radius: 2px;
+}
+
+.plot-form-container p {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    font-weight: 300;
+    margin-bottom: 30px;
+    line-height: 1.5;
+    font-style: italic;
+}
+
+/* ==================== FORM STYLES ==================== */
+.plot-form-row {
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.plot-form-row label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--accent-color);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    font-size: 14px;
+    transition: var(--transition);
+}
+
+/* Input field base styles */
+.plot-form-row input,
+.plot-form-row select,
+.plot-form-row textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-sm);
+    font-size: 14px;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 300;
+    transition: var(--transition);
+    outline: none;
+}
+
+.plot-form-row input::placeholder,
+.plot-form-row textarea::placeholder {
+    color: var(--text-muted);
+    font-weight: 300;
+}
+
+/* Focus state */
+.plot-form-row input:focus,
+.plot-form-row select:focus,
+.plot-form-row textarea:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 20px rgba(70, 255, 175, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.plot-form-row input:focus + label,
+.plot-form-row select:focus + label,
+.plot-form-row textarea:focus + label {
+    color: var(--accent-color);
+}
+
+/* Select styles */
+.plot-form-row select {
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2346ffaf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 40px;
+}
+
+.plot-form-row select option {
+    background: rgba(0, 0, 0, 0.9);
+    color: var(--text-primary);
+    padding: 10px;
+    border: none;
+}
+
+.plot-form-row select option:checked {
+    background: var(--accent-color);
+    color: #000000;
+}
+
+.plot-form-row select option:hover {
+    background: rgba(70, 255, 175, 0.2);
+}
+
+/* Textarea styles */
+.plot-form-row textarea {
+    min-height: 120px;
+    resize: vertical;
+    line-height: 1.6;
+}
+
+/* ==================== BUTTONS ==================== */
+.plot-form-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.plot-form-buttons button {
+    padding: 12px 30px;
+    font-size: 14px;
+    font-weight: 400;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+    letter-spacing: 0.5px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    position: relative;
+    overflow: hidden;
+    min-width: 140px;
+}
+
+#generate-btn {
+    background: var(--primary-gradient);
+    color: var(--text-primary);
+    box-shadow: 0 6px 20px rgba(70, 255, 175, 0.25);
+}
+
+#generate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(70, 255, 175, 0.3);
+    background: linear-gradient(45deg, #52ffb8, #35b57a);
+}
+
+#clear-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.1);
+}
+
+#clear-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.15);
+}
+
+/* Button click effect */
+.plot-form-buttons button:active {
+    transform: translateY(0);
+}
+
+/* ==================== LOADING SPINNER ==================== */
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(70, 255, 175, 0.3);
+    border-top: 3px solid var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 8px;
+    display: inline-block;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ==================== RESPONSIVE DESIGN ==================== */
+@media (max-width: 1024px) {
+    .container-main {
+        max-width: 90%;
+        padding: 15px;
+    }
+    
+    .plot-form-buttons {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .plot-form-buttons button {
+        width: 100%;
+        margin: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .container-main {
+        margin: 100px auto 30px;
+        padding: 15px;
+    }
+    
+    .plot-form-container {
+        padding: 20px;
+    }
+    
+    .plot-form-container h2 {
+        font-size: 1.5em;
+        margin-bottom: 20px;
+    }
+    
+    .plot-form-row {
+        margin-bottom: 15px;
+    }
+    
+    .plot-form-row input,
+    .plot-form-row select,
+    .plot-form-row textarea {
+        padding: 10px 14px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .plot-form-buttons button {
+        padding: 15px;
+        font-size: 16px;
+        margin: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    .container-main {
+        margin: 90px auto 25px;
+        padding: 10px;
+    }
+    
+    .plot-form-container {
+        padding: 15px;
+    }
+    
+    .plot-form-container h2 {
+        font-size: 1.3em;
+        margin-bottom: 15px;
+    }
+    
+    .plot-form-container p {
+        font-size: 0.875rem;
+        margin-bottom: 25px;
+    }
+    
+    .plot-form-row {
+        margin-bottom: 12px;
+    }
+    
+    .plot-form-row label {
+        font-size: 13px;
+    }
+    
+    .plot-form-row input,
+    .plot-form-row select,
+    .plot-form-row textarea {
+        padding: 12px;
+        border-radius: 12px;
+    }
+    
+    .plot-form-buttons {
+        margin-top: 20px;
+        gap: 10px;
+    }
+    
+    .plot-form-buttons button {
+        padding: 12px;
+        font-size: 14px;
+    }
+}
+
+/* ==================== ACCESSIBILITY & INTERACTIONS ==================== */
+/* Focus indicators */
+.plot-form-row input:focus-visible,
+.plot-form-row select:focus-visible,
+.plot-form-row textarea:focus-visible,
+.plot-form-buttons button:focus-visible {
+    outline: 2px solid rgba(70, 255, 175, 0.5);
+    outline-offset: 2px;
+}
+
+/* Form validation states */
+.plot-form-row input:invalid:not(:placeholder-shown) {
+    border-color: rgba(255, 71, 87, 0.6);
+    box-shadow: 0 0 20px rgba(255, 71, 87, 0.3);
+}
+
+.plot-form-row input:valid:not(:placeholder-shown) {
+    border-color: rgba(70, 255, 175, 0.6);
+    box-shadow: 0 0 20px rgba(70, 255, 175, 0.2);
+}
+
+/* ==================== SCROLLBAR STYLING ==================== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(70, 255, 175, 0.6);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(70, 255, 175, 0.8);
+}
+
+/* ==================== SELECTION STYLING ==================== */
+::selection {
+    background: rgba(70, 255, 175, 0.3);
+    color: var(--text-primary);
+}
+
+::-moz-selection {
+    background: rgba(70, 255, 175, 0.3);
+    color: var(--text-primary);
+}
+
+/* ==================== LOADING STATES ==================== */
+.plot-form-buttons button.loading {
+    background: linear-gradient(45deg, #74b9ff, #0984e3);
+    animation: pulse 1.5s infinite;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* ==================== MESSAGE STYLING ==================== */
+.error-message {
+    background: var(--tertiary-gradient);
+    color: var(--text-primary);
+    padding: 15px 20px;
+    border-radius: var(--border-radius-sm);
+    margin-top: 15px;
+    text-align: center;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    box-shadow: 0 6px 20px rgba(255, 71, 87, 0.25);
+    border: 1px solid rgba(255, 71, 87, 0.3);
+    animation: slideInUp 0.4s ease;
+}
+
+.success-message {
+    background: var(--primary-gradient);
+    color: var(--text-primary);
+    padding: 15px 20px;
+    border-radius: var(--border-radius-sm);
+    margin-top: 15px;
+    text-align: center;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    box-shadow: 0 6px 20px rgba(70, 255, 175, 0.25);
+    border: 1px solid rgba(70, 255, 175, 0.3);
+    animation: slideInUp 0.4s ease;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==================== ENHANCED HOVER EFFECTS ==================== */
+.plot-form-row:hover label {
+    color: var(--accent-color);
+    transform: translateX(2px);
+}
+
+.plot-form-row input:hover,
+.plot-form-row select:hover,
+.plot-form-row textarea:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.12);
+}
+
+/* ==================== INPUT SPECIFIC STYLING ==================== */
+input[type="date"] {
+    color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    opacity: 0.8;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* ==================== GLASS MORPHISM EFFECTS ==================== */
+.plot-form-container::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.1) 0%, 
+        rgba(255, 255, 255, 0.05) 50%, 
+        rgba(255, 255, 255, 0.02) 100%);
+    border-radius: calc(var(--border-radius) - 1px);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* ==================== ANIMATION KEYFRAMES ==================== */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==================== FORM ENHANCEMENT ==================== */
+.plot-form-container {
+    animation: fadeInUp 0.6s ease;
+}
+
+.plot-form-row {
+    animation: fadeInUp 0.4s ease;
+    animation-delay: calc(var(--delay, 0) * 0.1s);
+}
+
+/* Add delayed animation for each form row */
+.plot-form-row:nth-child(1) { --delay: 1; }
+.plot-form-row:nth-child(2) { --delay: 2; }
+.plot-form-row:nth-child(3) { --delay: 3; }
+.plot-form-row:nth-child(4) { --delay: 4; }
+.plot-form-row:nth-child(5) { --delay: 5; }
+
+/* ==================== BUTTON ENHANCEMENTS ==================== */
+.plot-form-buttons button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.plot-form-buttons button:hover::before {
+    left: 100%;
+}
