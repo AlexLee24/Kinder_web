@@ -3,6 +3,9 @@
 test.py
 upload_tns_maual.py
 upload_tns/
+app/tns_data/
+app/data/
+app/static/ov_plot
 
 # Python
 __pycache__/
