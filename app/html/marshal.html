@@ -175,10 +175,10 @@
                         <div class="filter-row">
                             <div class="filter-actions">
                                 <button class="apply-advanced-btn" onclick="applyAdvancedFilters()">
-                                    🔍 Apply Filters
+                                    Apply Filters
                                 </button>
                                 <button class="clear-btn" onclick="clearAllFilters()">
-                                    🗑️ Clear All
+                                    Clear All
                                 </button>
                             </div>
                         </div>
@@ -189,13 +189,13 @@
                 <div class="admin-tools">
                     {% if session.user and session.user.is_admin %}
                     <button class="sync-btn" onclick="manualTNSDownload()" id="syncBtn">
-                        📥 Download TNS Data
+                        Download TNS Data
                     </button>
                     <button class="add-btn" onclick="showAddModal()">
-                        ➕ Add Object
+                        Add Object
                     </button>
                     <button class="export-btn" onclick="exportData()">
-                        📊 Export
+                        Export
                     </button>
                     {% endif %}
                 </div>
@@ -272,11 +272,11 @@
                     <div class="coordinates">
                         <div class="coord-item">
                             <span class="coord-label">RA:</span>
-                            <span class="coord-value">{{ "%.6f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
+                            <span class="coord-value">{{ "%.3f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
                         </div>
                         <div class="coord-item">
                             <span class="coord-label">Dec:</span>
-                            <span class="coord-value">{{ "%.6f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
+                            <span class="coord-value">{{ "%.3f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
                         </div>
                     </div>
                     

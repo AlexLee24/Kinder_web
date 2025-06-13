@@ -1,6 +1,7 @@
 .env
 
 test.py
+upload_tns_maual.py
 upload_tns/
 
 # Python

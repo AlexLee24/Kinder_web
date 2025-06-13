@@ -1208,7 +1208,7 @@ def api_get_classifications():
         return jsonify({
             'success': False,
             'error': str(e),
-            'classifications': ['AT', 'SN Ia', 'SN II', 'SN Ib/c']  # Default classifications
+            'classifications': ['AT', 'Kilonova']  # Default classifications
         }), 500
 
 # ===============================================================================
@@ -1278,6 +1278,5 @@ if __name__ == '__main__':
     app.run(
         host=config.HOST,
         port=config.PORT,
-        debug=config.DEBUG,
-        ssl_context="adhoc"
+        debug=config.DEBUG
     )

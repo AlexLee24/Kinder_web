@@ -10,22 +10,32 @@ def send_invitation_email(email, invitation_link):
             print("Email configuration missing")
             return False
         
-        msg = MIMEMultipart()
-        msg['From'] = config.SENDER_EMAIL
+        msg = MIMEMultipart('alternative')
+        msg['From'] = f"Kinder Research Platform <{config.SENDER_EMAIL}>"
         msg['To'] = email
-        msg['Subject'] = 'Invitation to join Kinder Platform'
+        msg['Subject'] = 'Research Collaboration Invitation - Kinder Platform'
         
-        body = f"""
-        You have been invited to join the Kinder platform.
-        
-        Click the link below to accept the invitation and create your account:
-        {invitation_link}
-        
-        Best regards,
-        Kinder Team
-        """
-        
-        msg.attach(MIMEText(body, 'plain'))
+        # Plain text version
+        text_body = f"""Dear,
+
+We would like to invite you to join the Kinder platform.
+
+Your account has been pre-approved by our team. To complete your registration and access the platform, please use the following secure link:
+
+{invitation_link}
+
+This invitation is valid for 7 days. If you have any questions, please contact our support team.
+
+Best regards,
+The Kinder Research Team
+
+---
+This is an automated message from the Kinder Platform.
+If you received this email in error, please disregard it.
+"""
+
+        # Attach both versions
+        msg.attach(MIMEText(text_body, 'plain'))
         
         server = smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT)
         server.starttls()
@@ -36,4 +46,3 @@ def send_invitation_email(email, invitation_link):
         return True
     except Exception as e:
         print(f"Email sending error: {e}")
-        return False

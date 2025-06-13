@@ -457,6 +457,10 @@ function generateCardsView() {
         card.dataset.magnitude = obj.magnitude;
         card.dataset.redshift = obj.redshift;
         
+        // Format coordinates to 3 decimal places
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="object-name">
@@ -473,11 +477,11 @@ function generateCardsView() {
                 <div class="coordinates">
                     <div class="coord-item">
                         <span class="coord-label">RA:</span>
-                        <span class="coord-value">${obj.ra || 'N/A'}</span>
+                        <span class="coord-value">${formattedRA}</span>
                     </div>
                     <div class="coord-item">
                         <span class="coord-label">Dec:</span>
-                        <span class="coord-value">${obj.dec || 'N/A'}</span>
+                        <span class="coord-value">${formattedDec}</span>
                     </div>
                 </div>
                 

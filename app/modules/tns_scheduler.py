@@ -19,6 +19,8 @@ class TNSScheduler:
     def __init__(self):
         self.running = False
         self.thread = None
+        self.max_retries = 3
+        self.retry_delay = 60  # seconds
         load_dotenv()
         
         init_tns_database()
@@ -41,42 +43,90 @@ class TNSScheduler:
         
         log_id = log_download_attempt(prev_hour)
         
-        try:
-            download_tns_data()
-            
-            result = self.find_and_process_csv(utc_hr, log_id)
-            return result
+        # Retry mechanism for downloads
+        for attempt in range(self.max_retries):
+            try:
+                print(f"Download attempt {attempt + 1}/{self.max_retries}")
+                download_tns_data()
                 
-        except Exception as e:
-            error_msg = f"Unexpected error: {e}"
-            print(error_msg)
-            update_download_log(log_id, 'failed', error_message=error_msg)
-            raise e
+                result = self.find_and_process_csv(utc_hr, log_id)
+                return result
+                
+            except requests.exceptions.ReadTimeout as e:
+                error_msg = f"Download timeout on attempt {attempt + 1}: {e}"
+                print(error_msg)
+                
+                if attempt < self.max_retries - 1:
+                    print(f"Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                    continue
+                else:
+                    print("Max retries reached, marking as failed")
+                    update_download_log(log_id, 'failed', error_message=f"Timeout after {self.max_retries} attempts")
+                    raise e
+                    
+            except requests.exceptions.ConnectionError as e:
+                error_msg = f"Connection error on attempt {attempt + 1}: {e}"
+                print(error_msg)
+                
+                if attempt < self.max_retries - 1:
+                    print(f"Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                    continue
+                else:
+                    print("Max retries reached, marking as failed")
+                    update_download_log(log_id, 'failed', error_message=f"Connection error after {self.max_retries} attempts")
+                    raise e
+                    
+            except Exception as e:
+                error_msg = f"Unexpected error on attempt {attempt + 1}: {e}"
+                print(error_msg)
+                
+                # For unexpected errors, don't retry
+                update_download_log(log_id, 'failed', error_message=error_msg)
+                raise e
     
     def start_scheduler(self):
         if self.running:
             return False
         
-        schedule.every().hour.at(":01").do(self.download_and_import_tns_data)
+        # Schedule downloads at 01 and 31 minutes past every hour
+        schedule.every().hour.at(":01").do(self._safe_download_wrapper)
+        schedule.every().hour.at(":31").do(self._safe_download_wrapper)
         
         self.running = True
         self.thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.thread.start()
         
-        print("TNS scheduler started - will download at 1 minute past every hour")
+        print("TNS scheduler started - will download at 01 and 31 minutes past every hour")
         return True
+    
+    def _safe_download_wrapper(self):
+        """Wrapper to catch and log exceptions from scheduled downloads"""
+        try:
+            current_time = datetime.now(timezone.utc)
+            print(f"Scheduled download triggered at {current_time.strftime('%H:%M')} UTC")
+            self.download_and_import_tns_data()
+        except Exception as e:
+            print(f"Scheduled download failed: {e}")
+            # Continue running scheduler even if one download fails
     
     def stop_scheduler(self):
         self.running = False
         schedule.clear()
         if self.thread:
-            self.thread.join(timeout=1)
+            self.thread.join(timeout=5)  # Increased timeout
         print("TNS scheduler stopped")
     
     def _run_scheduler(self):
         while self.running:
-            schedule.run_pending()
-            time.sleep(1)
+            try:
+                schedule.run_pending()
+                time.sleep(1)
+            except Exception as e:
+                print(f"Scheduler error: {e}")
+                # Continue running even if there's an error
+                time.sleep(5)
     
     def manual_download(self, hour_offset=0):
         hour_utc = (datetime.now(timezone.utc).hour - hour_offset) % 24
@@ -86,16 +136,45 @@ class TNSScheduler:
         
         log_id = log_download_attempt(hour_utc, "manual_download")
         
-        try:
-            download_tns_data()
-            
-            result = self.find_and_process_csv(utc_hr, log_id)
-            return result
+        # Retry mechanism for manual downloads
+        for attempt in range(self.max_retries):
+            try:
+                print(f"Manual download attempt {attempt + 1}/{self.max_retries}")
+                download_tns_data()
                 
-        except Exception as e:
-            print(f"Manual download failed: {e}")
-            update_download_log(log_id, 'failed', error_message=str(e))
-            raise e
+                result = self.find_and_process_csv(utc_hr, log_id)
+                return result
+                
+            except requests.exceptions.ReadTimeout as e:
+                error_msg = f"Manual download timeout on attempt {attempt + 1}: {e}"
+                print(error_msg)
+                
+                if attempt < self.max_retries - 1:
+                    print(f"Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                    continue
+                else:
+                    print("Max retries reached for manual download")
+                    update_download_log(log_id, 'failed', error_message=f"Manual download timeout after {self.max_retries} attempts")
+                    raise e
+                    
+            except requests.exceptions.ConnectionError as e:
+                error_msg = f"Manual download connection error on attempt {attempt + 1}: {e}"
+                print(error_msg)
+                
+                if attempt < self.max_retries - 1:
+                    print(f"Retrying in {self.retry_delay} seconds...")
+                    time.sleep(self.retry_delay)
+                    continue
+                else:
+                    print("Max retries reached for manual download")
+                    update_download_log(log_id, 'failed', error_message=f"Manual download connection error after {self.max_retries} attempts")
+                    raise e
+                    
+            except Exception as e:
+                print(f"Manual download failed: {e}")
+                update_download_log(log_id, 'failed', error_message=str(e))
+                raise e
 
     def find_and_process_csv(self, utc_hr, log_id):
         possible_names = [
@@ -107,37 +186,44 @@ class TNSScheduler:
         
         csv_path = None
         
+        # First try exact hour matches
         for name in possible_names:
             potential_path = self.tns_data_dir / name
             if potential_path.exists():
                 csv_path = potential_path
                 break
         
+        # If no exact match, look for any CSV files
         if not csv_path:
             csv_files = list(self.tns_data_dir.glob("*.csv"))
             if csv_files:
-                csv_path = csv_files[0]
-                print(f"Using found CSV file: {csv_path.name}")
+                # Use the most recent CSV file
+                csv_path = max(csv_files, key=os.path.getctime)
+                print(f"Using most recent CSV file: {csv_path.name}")
             else:
                 raise FileNotFoundError(f"No CSV files found for hour {utc_hr}")
         
         print(f"Processing CSV file: {csv_path}")
         
-        result = self.import_csv_to_database_with_tracking(str(csv_path))
-        
-        print(f"Import completed: {result['imported']} new, {result['updated']} updated, {result['errors']} errors")
-        
-        update_download_log(
-            log_id, 
-            'completed', 
-            records_imported=result['imported'],
-            records_updated=result['updated'],
-            error_message=f"{result['errors']} errors" if result['errors'] > 0 else None
-        )
-        
-        # Keep CSV file for future reference (max 24 files, one per UTC hour)
-        print(f"Keeping CSV file: {csv_path}")
-        return result
+        try:
+            result = self.import_csv_to_database_with_tracking(str(csv_path))
+            
+            print(f"Import completed: {result['imported']} new, {result['updated']} updated, {result['errors']} errors")
+            
+            update_download_log(
+                log_id, 
+                'completed', 
+                records_imported=result['imported'],
+                records_updated=result['updated'],
+                error_message=f"{result['errors']} errors" if result['errors'] > 0 else None
+            )
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error processing CSV file: {e}")
+            update_download_log(log_id, 'failed', error_message=f"CSV processing error: {str(e)}")
+            raise e
 
     def import_csv_to_database_with_tracking(self, csv_file_path):
         conn = get_tns_db_connection()
@@ -173,7 +259,7 @@ class TNSScheduler:
                 
                 print(f"CSV columns: {csv_reader.fieldnames}")
                 
-                batch_size = 1000
+                batch_size = 500  # Reduced batch size for better performance
                 batch_count = 0
                 
                 for row_num, row in enumerate(csv_reader, 1):
@@ -234,7 +320,7 @@ class TNSScheduler:
             conn.close()
 
     def cleanup_old_csv_files(self, days_to_keep=7):
-        """Clean up CSV files older than specified days (optional maintenance)"""
+        """Clean up CSV files older than specified days"""
         try:
             from datetime import timedelta
             cutoff_time = datetime.now() - timedelta(days=days_to_keep)
@@ -243,15 +329,27 @@ class TNSScheduler:
             cleaned_count = 0
             
             for csv_file in csv_files:
-                if csv_file.stat().st_mtime < cutoff_time.timestamp():
-                    csv_file.unlink()
-                    cleaned_count += 1
-                    print(f"Removed old CSV file: {csv_file.name}")
+                try:
+                    if csv_file.stat().st_mtime < cutoff_time.timestamp():
+                        csv_file.unlink()
+                        cleaned_count += 1
+                        print(f"Removed old CSV file: {csv_file.name}")
+                except OSError as e:
+                    print(f"Could not delete {csv_file}: {e}")
             
             if cleaned_count > 0:
                 print(f"Cleaned up {cleaned_count} old CSV files")
             
         except Exception as e:
             print(f"Error during CSV cleanup: {e}")
+
+    def get_download_status(self):
+        """Get current download status for monitoring"""
+        return {
+            'running': self.running,
+            'max_retries': self.max_retries,
+            'retry_delay': self.retry_delay,
+            'data_directory': str(self.tns_data_dir)
+        }
 
 tns_scheduler = TNSScheduler()

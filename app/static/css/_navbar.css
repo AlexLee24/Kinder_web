@@ -10,7 +10,7 @@ header {
     width: 70%;
     max-width: 95%;
     z-index: 100;
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 35px;
     background: rgba(0, 0, 0, 0.11);
@@ -249,7 +249,7 @@ li a.active::after {
     border: 1px solid rgba(255, 255, 255, 0.2);
     min-width: 200px;
     border-radius: 15px;
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     z-index: 200;
     opacity: 0;
     visibility: hidden;
