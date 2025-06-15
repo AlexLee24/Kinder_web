@@ -1,0 +1,214 @@
+/* Responsive design styles */
+
+@media (max-width: 1024px) {
+    .object-detail-container {
+        margin: 100px auto 30px;
+        padding: 15px;
+    }
+    
+    .detail-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .header-main {
+        flex-direction: column;
+        gap: 25px;
+    }
+    
+    .location-image-container {
+        align-self: center;
+        width: 240px;
+    }
+    
+    .location-image {
+        width: 240px;
+        height: 240px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .object-actions {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .object-detail-container {
+        margin: 90px auto 25px;
+        padding: 15px;
+    }
+    
+    .object-name {
+        font-size: 2.2rem;
+    }
+    
+    .coordinates-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .object-actions {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .info-card {
+        margin-bottom: 20px;
+    }
+    
+    .card-header,
+    .card-content {
+        padding: 20px;
+    }
+    
+    .location-image-container {
+        width: 200px;
+    }
+    
+    .location-image {
+        width: 200px;
+        height: 200px;
+    }
+    
+    .location-marker {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .table-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .table-actions {
+        justify-content: stretch;
+    }
+    
+    .table-actions .btn {
+        flex: 1;
+    }
+    
+    .photometry-table {
+        font-size: 12px;
+    }
+    
+    .photometry-table th,
+    .photometry-table td {
+        padding: 8px 6px;
+    }
+}
+
+@media (max-width: 480px) {
+    .object-detail-container {
+        margin: 80px auto 20px;
+        padding: 10px;
+    }
+    
+    .object-header {
+        padding: 20px;
+    }
+    
+    .object-name {
+        font-size: 1.8rem;
+    }
+    
+    .notification {
+        min-width: 280px;
+    }
+    
+    .notification-container {
+        right: 10px;
+        left: 10px;
+    }
+    
+    .location-image-container {
+        width: 160px;
+    }
+    
+    .location-image {
+        width: 160px;
+        height: 160px;
+    }
+    
+    .location-marker {
+        width: 14px;
+        height: 14px;
+        border-width: 1px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 10px;
+    }
+    
+    .object-actions {
+        gap: 8px;
+    }
+    
+    .action-btn {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding: 15px;
+    }
+}
+
+/* Tablet specific adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .basic-info-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .coordinates-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1400px) {
+    .object-detail-container {
+        max-width: 1600px;
+    }
+    
+    .detail-content {
+        grid-template-columns: 1fr 450px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .location-image {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}

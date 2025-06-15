@@ -235,60 +235,81 @@ class TNSScheduler:
         
         try:
             with open(csv_file_path, 'r', encoding='utf-8') as file:
-                # Skip lines until we find the header
-                line = file.readline()
-                line_count = 1
+                lines = file.readlines()
                 
-                while line and not line.strip().startswith('"objid"'):
-                    print(f"Skipping line {line_count}: {line.strip()[:50]}...")
-                    line = file.readline()
-                    line_count += 1
+                # Check if file has enough lines
+                if len(lines) < 3:
+                    print(f"CSV file has insufficient data: {len(lines)} lines")
+                    return {
+                        'imported': 0,
+                        'updated': 0,
+                        'errors': 0,
+                        'total_processed': 0
+                    }
                 
-                if not line:
-                    raise ValueError("Could not find CSV header line starting with 'objid'")
+                # Skip first line (time range) and use second line as header
+                header_line = lines[1].strip()
+                data_lines = lines[2:]
                 
-                print(f"Found header at line {line_count}: {line.strip()}")
+                print(f"Time range: {lines[0].strip()}")
+                print(f"Header: {header_line[:100]}...")
+                print(f"Data lines: {len(data_lines)}")
                 
-                # Reset file position to start of header line
-                file.seek(0)
-                for _ in range(line_count - 1):
-                    file.readline()
+                # Parse header to get field names
+                import csv
+                from io import StringIO
                 
-                # Now read with CSV reader
-                csv_reader = csv.DictReader(file)
+                header_reader = csv.reader(StringIO(header_line))
+                fieldnames = next(header_reader)
                 
-                print(f"CSV columns: {csv_reader.fieldnames}")
+                print(f"CSV columns: {fieldnames}")
                 
-                batch_size = 500  # Reduced batch size for better performance
+                # Validate required columns
+                if 'objid' not in fieldnames:
+                    raise ValueError(f"Missing required 'objid' column in header")
+                
+                batch_size = 500
                 batch_count = 0
                 
-                for row_num, row in enumerate(csv_reader, 1):
+                # Process data lines
+                for row_num, line in enumerate(data_lines, 1):
                     try:
-                        cleaned_row = {}
-                        for key, value in row.items():
-                            if value == '' or value == 'NULL' or value is None:
-                                cleaned_row[key] = None
-                            else:
-                                cleaned_row[key] = value
+                        line = line.strip()
+                        if not line:
+                            continue
                         
-                        if not cleaned_row.get('objid'):
+                        # Parse CSV line
+                        csv_reader = csv.reader(StringIO(line))
+                        values = next(csv_reader)
+                        
+                        # Create row dictionary
+                        row = {}
+                        for i, fieldname in enumerate(fieldnames):
+                            if i < len(values):
+                                value = values[i].strip()
+                                row[fieldname] = None if value in ('', 'NULL') else value
+                            else:
+                                row[fieldname] = None
+                        
+                        if not row.get('objid'):
                             print(f"Row {row_num}: Missing objid")
                             error_count += 1
                             continue
                         
-                        cursor.execute('SELECT id FROM tns_objects WHERE objid = ?', (cleaned_row.get('objid'),))
+                        # Check if object exists
+                        cursor.execute('SELECT id FROM tns_objects WHERE objid = ?', (row.get('objid'),))
                         existing = cursor.fetchone()
                         
                         if existing:
-                            update_tns_object(cursor, cleaned_row)
+                            update_tns_object(cursor, row)
                             updated_count += 1
                             if updated_count <= 5:
-                                print(f"Updated: {cleaned_row.get('name_prefix', '')}{cleaned_row.get('name', '')}")
+                                print(f"Updated: {row.get('name_prefix', '')}{row.get('name', '')}")
                         else:
-                            insert_tns_object(cursor, cleaned_row)
+                            insert_tns_object(cursor, row)
                             imported_count += 1
                             if imported_count <= 5:
-                                print(f"Imported: {cleaned_row.get('name_prefix', '')}{cleaned_row.get('name', '')}")
+                                print(f"Imported: {row.get('name_prefix', '')}{row.get('name', '')}")
                         
                         batch_count += 1
                         if batch_count >= batch_size:

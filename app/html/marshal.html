@@ -61,25 +61,25 @@
 
             <!-- Secondary Statistics -->
             <div class="secondary-stats">
-                <div class="small-stat-card inbox">
+                <div class="small-stat-card inbox clickable" onclick="filterByStatus('object')" title="Click to filter Inbox objects">
                     <div class="stat-info">
                         <span class="stat-number" id="inboxCount">{{ inbox_count }}</span>
                         <span class="stat-label">Inbox</span>
                     </div>
                 </div>
-                <div class="small-stat-card followup">
+                <div class="small-stat-card followup clickable" onclick="filterByStatus('followup')" title="Click to filter Follow-up objects">
                     <div class="stat-info">
                         <span class="stat-number" id="followupCount">{{ followup_count }}</span>
                         <span class="stat-label">Follow-up</span>
                     </div>
                 </div>
-                <div class="small-stat-card finished">
+                <div class="small-stat-card finished clickable" onclick="filterByStatus('finished')" title="Click to filter Finished objects">
                     <div class="stat-info">
                         <span class="stat-number" id="finishedCount">{{ finished_count }}</span>
                         <span class="stat-label">Finished</span>
                     </div>
                 </div>
-                <div class="small-stat-card snoozed">
+                <div class="small-stat-card snoozed clickable" onclick="filterByStatus('snoozed')" title="Click to filter Snoozed objects">
                     <div class="stat-info">
                         <span class="stat-number" id="snoozedCount">{{ snoozed_count }}</span>
                         <span class="stat-label">Snoozed</span>
@@ -92,9 +92,12 @@
                 <!-- Main Search -->
                 <div class="search-section">
                     <div class="search-input-group">
-                        <input type="text" id="searchInput" placeholder="Search by name or coordinates...">
-                        <button class="search-btn" onclick="performSearch()">
+                        <input type="text" id="searchInput" placeholder="Search by name..">
+                        <button class="apply-advanced-btn" onclick="performSearch()">
                             Search
+                        </button>
+                        <button class="clear-btn" onclick="clearAllFilters()">
+                            Clear
                         </button>
                     </div>
                 </div>
@@ -191,11 +194,14 @@
                     <button class="sync-btn" onclick="manualTNSDownload()" id="syncBtn">
                         Download TNS Data
                     </button>
+                    <button class="sync-btn" onclick="manualAutoSnooze()" id="autoSnoozeBtn" title="Run auto-snooze check now">
+                        Auto-Snooze Check
+                    </button>
+                    <!-- <button class="sync-btn" onclick="debugObjectTag('2025nlz')" id="debugBtn">
+                        Debug 2025nlz
+                    </button> -->
                     <button class="add-btn" onclick="showAddModal()">
                         Add Object
-                    </button>
-                    <button class="export-btn" onclick="exportData()">
-                        Export
                     </button>
                     {% endif %}
                 </div>
@@ -250,18 +256,34 @@
             <!-- Cards View -->
             <div class="objects-grid" id="cardsView">
                 {% for obj in objects %}
-                <div class="object-card" 
+                {% set real_tag = obj.tag or 'object' %}
+                <div class="object-card tag-{{ real_tag }}" 
                     data-classification="{{ obj.type or 'AT' }}" 
                     data-discovery="{{ obj.discoverydate or '' }}" 
-                    data-tag="object"
+                    data-tag="{{ real_tag }}"
                     data-magnitude="{{ obj.discoverymag or '' }}"
                     data-redshift="{{ obj.redshift or '' }}">
                 
                 <div class="card-header">
                     <div class="object-name">
-                        <a href="#" onclick="quickView('{{ obj.name_prefix }}{{ obj.name }}')">
-                            {{ obj.name_prefix }}{{ obj.name }}
-                        </a>
+                        {% if obj.name and obj.name|length >= 4 %}
+                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                            {% set full_name = (obj.name_prefix or '') + obj.name %}
+                            
+                            {% if year_letters and not obj.name_prefix %}
+                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}">
+                                    {{ obj.name_prefix or '' }}{{ obj.name }}
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}">
+                                    {{ obj.name_prefix or '' }}{{ obj.name }}
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('marshal') }}">
+                                {{ obj.name_prefix or '' }}{{ obj.name }}
+                            </a>
+                        {% endif %}
                     </div>
                     <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
                         {{ obj.type or 'AT' }}
@@ -308,16 +330,39 @@
                 </div>
                 
                 <div class="card-footer">
-                    <div class="tag-badge object">
-                        Inbox
+                    <div class="tag-badge {{ real_tag }}">
+                        {% if real_tag == 'followup' %}
+                            Follow-up
+                        {% elif real_tag == 'finished' %}
+                            Finished
+                        {% elif real_tag == 'snoozed' %}
+                            Snoozed
+                        {% else %}
+                            Inbox
+                        {% endif %}
                     </div>
                     <div class="last-update">
                         {{ obj.time_received[:16] if obj.time_received else 'No update' }}
                     </div>
                     <div class="card-actions">
-                        <button class="quick-action" onclick="quickView('{{ obj.name_prefix }}{{ obj.name }}')" title="Quick View">
-                            View
-                        </button>
+                        {% if obj.name and obj.name|length >= 4 %}
+                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                            {% set full_name = (obj.name_prefix or '') + obj.name %}
+                            
+                            {% if year_letters and not obj.name_prefix %}
+                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details">
+                                    View
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" class="quick-action" title="View Details">
+                                    View
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('marshal') }}" class="quick-action" title="View Details">
+                                View
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -334,8 +379,7 @@
                                 <th>Classification</th>
                                 <th>RA (J2000)</th>
                                 <th>Dec (J2000)</th>
-                                <th>App. Mag</th>
-                                <th>Abs. Mag</th>
+                                <th>Discover Mag</th>
                                 <th>Redshift</th>
                                 <th>Discovery Date</th>
                                 <th>Discoverer</th>
@@ -446,6 +490,86 @@
                 <button class="cancel-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
                 <button class="upload-btn" onclick="startUpload()" id="startUploadBtn" disabled>
                     🚀 Start Upload
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Object Modal -->
+    <div class="modal-overlay" id="addObjectModalOverlay" style="display: none;">
+        <div class="add-object-modal">
+            <div class="modal-header">
+                <h3>🌟 Add New Object</h3>
+                <button class="close-modal" onclick="closeAddObjectModal()">×</button>
+            </div>
+            <div class="modal-content">
+                <form id="addObjectForm">
+                    <div class="form-group">
+                        <label for="objectName">Object Name *</label>
+                        <input type="text" id="objectName" placeholder="e.g., 2025abc, AT2025xyz" required>
+                        <div class="form-help">Enter the object name (TNS format preferred)</div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="objectRA">Right Ascension (RA) *</label>
+                            <input type="number" step="0.000001" id="objectRA" placeholder="e.g., 123.456789" required>
+                            <div class="form-help">Decimal degrees (J2000)</div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="objectDEC">Declination (DEC) *</label>
+                            <input type="number" step="0.000001" id="objectDEC" placeholder="e.g., -12.345678" required>
+                            <div class="form-help">Decimal degrees (J2000)</div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="objectType">Object Type</label>
+                        <select id="objectType" onchange="handleTypeSelection()">
+                            <option value="">Select type (optional)</option>
+                            <!-- Options will be populated dynamically from the same source as classificationFilter -->
+                        </select>
+                        <div class="form-help">Classification can be updated later</div>
+                        
+                        <!-- Custom type input - initially hidden -->
+                        <div class="custom-type-group" id="customTypeGroup" style="display: none;">
+                            <label for="customObjectType">Custom Object Type</label>
+                            <input type="text" id="customObjectType" placeholder="Enter custom type..." maxlength="50">
+                            <div class="form-help">Enter a custom classification type</div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="objectMagnitude">Discovery Magnitude</label>
+                        <input type="number" step="0.01" id="objectMagnitude" placeholder="e.g., 18.5">
+                        <div class="form-help">Optional - can be added later</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="objectDiscoveryDate">Discovery Date</label>
+                        <input type="date" id="objectDiscoveryDate">
+                        <div class="form-help">Optional - defaults to today</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="objectSource">Source/Discoverer</label>
+                        <input type="text" id="objectSource" placeholder="e.g., ATLAS, ZTF, Gaia">
+                        <div class="form-help">Optional - survey or group name</div>
+                    </div>
+                </form>
+                
+                <div class="add-result" id="addResult" style="display: none;">
+                    <div class="result-content">
+                        <div class="result-icon" id="addResultIcon"></div>
+                        <div class="result-text" id="addResultText"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeAddObjectModal()" id="addCancelBtn">Cancel</button>
+                <button class="add-btn" onclick="submitAddObject()" id="addSubmitBtn">
+                    ➕ Add Object
                 </button>
             </div>
         </div>

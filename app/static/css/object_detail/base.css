@@ -1,0 +1,118 @@
+/* Base styles and CSS variables */
+
+:root {
+    --primary-color: #46ffaf;
+    --primary-hover: #52ffb8;
+    --background-primary: rgba(255, 255, 255, 0.15);
+    --background-secondary: rgba(255, 255, 255, 0.1);
+    --background-hover: rgba(255, 255, 255, 0.05);
+    --border-color: rgba(255, 255, 255, 0.3);
+    --border-light: rgba(255, 255, 255, 0.2);
+    --text-primary: white;
+    --text-secondary: rgba(255, 255, 255, 0.9);
+    --text-muted: rgba(255, 255, 255, 0.6);
+    --error-color: #ff6b6b;
+    --success-color: #4ecdc4;
+    --warning-color: #ffeaa7;
+    --info-color: #46ffaf;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #1a1a2e;
+    background-image: url('../../photo/SLT_SN2024ggi.png');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    min-height: 100vh;
+    color: #333;
+    position: relative;
+}
+
+/* Glass morphism overlay for better readability */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(2px);
+    z-index: -1;
+}
+
+/* Selection and scrollbar styling */
+::selection {
+    background: rgba(70, 255, 175, 0.3);
+    color: white;
+}
+
+::-moz-selection {
+    background: rgba(70, 255, 175, 0.3);
+    color: white;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(70, 255, 175, 0.6);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(70, 255, 175, 0.8);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes pulse-simple {
+    0%, 100% {
+        opacity: 0.8;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1.1);
+    }
+}

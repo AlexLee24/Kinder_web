@@ -16,9 +16,9 @@
     
     /* Status Colors */
     --inbox-color: #4CAF50;
-    --followup-color: #2196F3;
-    --finished-color: #FF9800;
-    --snoozed-color: #9C27B0;
+    --followup-color: #fdcb6e;
+    --finished-color: #003d82;
+    --snoozed-color: #e84393;
     
     /* Glass Effect */
     --glass-bg: rgba(255, 255, 255, 0.1);

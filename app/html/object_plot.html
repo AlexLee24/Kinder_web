@@ -66,23 +66,112 @@ Target1 83.8208 -5.3900"></textarea>
 <!-- =========================================================================================== -->
 <!-- =========================================================================================== -->
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const objectName = urlParams.get('object_name');
+            const ra = urlParams.get('ra');
+            const dec = urlParams.get('dec');
+            
+            if (objectName && ra && dec) {
+                autoFillObjectData(objectName, ra, dec);
+            }
+        });
+        
+        function autoFillObjectData(objectName, ra, dec) {
+            try {
+                console.log(`Auto-filling object data: ${objectName}, RA: ${ra}, Dec: ${dec}`);
+                
+                // 使用正確的 ID：target-list (textarea)
+                const targetListTextarea = document.getElementById('target-list');
+                if (targetListTextarea) {
+                    // 如果 textarea 已經有內容，換行後添加
+                    const currentContent = targetListTextarea.value;
+                    const newTarget = `${objectName} ${ra} ${dec}`;
+                    
+                    if (currentContent.trim()) {
+                        targetListTextarea.value = currentContent + '\n' + newTarget;
+                    } else {
+                        targetListTextarea.value = newTarget;
+                    }
+                    
+                    showNotification(`Object ${objectName} added successfully`, 'success');
+                }
+                
+                // 使用正確的 ID：date
+                const dateInput = document.getElementById('date');
+                if (dateInput && !dateInput.value) {
+                    const today = new Date().toISOString().split('T')[0];
+                    dateInput.value = today;
+                }
+                
+            } catch (error) {
+                console.error('Error auto-filling object data:', error);
+                showNotification('Error auto-filling object data', 'error');
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#f44336' : '#2196F3'};
+                color: white;
+                border-radius: 6px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                z-index: 10000;
+                font-size: 14px;
+                max-width: 300px;
+                animation: slideIn 0.3s ease-out;
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease-out';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+        
         // Function to handle 'telescope' change and update Location and Timezone accordingly
         document.getElementById('telescope').addEventListener('change', function() {
             const telescope = this.value;
             const locationInput = document.getElementById('location');
             const timezoneInput = document.getElementById('timezone');
-
+        
             if (telescope === 'Lulin') {
-                locationInput.value = "120:52:21.5 23:28:10.0 2800";  // Lulin Observatory coordinates and altitude
-                timezoneInput.value = "+8";  // Lulin Observatory timezone
+                locationInput.value = "120:52:21.5 23:28:10.0 2800";
+                timezoneInput.value = "+8";
             } else if (telescope === 'KTO') {
                 locationInput.value = "120:41:53.54 22:03:0.64 40";  
-                timezoneInput.value = "+8";  // Observatory timezone
+                timezoneInput.value = "+8";
             } else if (telescope === 'Palomar') {
                 locationInput.value = "-116:51:50.0 33:21:21.0 1706";  
-                timezoneInput.value = "-8";  // Observatory timezone
+                timezoneInput.value = "-8";
             } else {
-                locationInput.value = '';  // manually
+                locationInput.value = '';
                 timezoneInput.value = '';  
             }
         });

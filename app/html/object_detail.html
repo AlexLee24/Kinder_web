@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ object_name }} - Object Detail - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/object_detail_main.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <!-- Admin status for JavaScript -->
+    {% if session.user and session.user.is_admin %}
+    <div data-admin="true" style="display: none;"></div>
+    {% endif %}
+
+    <div class="object-detail-container">
+        <!-- Header Section -->
+        <div class="object-header">
+            <div class="header-main">
+                <div class="header-left">
+                    <!-- Breadcrumb -->
+                    <div class="breadcrumb">
+                        <a href="{{ url_for('marshal') }}" class="breadcrumb-link">Marshal</a>
+                        <span class="breadcrumb-separator">›</span>
+                        <span class="breadcrumb-current" id="breadcrumbCurrent">{{ object_name }}</span>
+                    </div>
+                    
+                    <!-- Object Title and Meta -->
+                    <div class="object-title-section">
+                        <h1 class="object-name" id="objectName">{{ object_name }}</h1>
+                        <div class="object-meta">
+                            <span class="discovery-date" id="discoveryDateDisplay">
+                                Discovered: {{ object_data.discoverydate[:10] if object_data.discoverydate else 'Unknown' }}
+                            </span>
+                            <!-- <span class="discovery-date" id="discoveryDateDisplay">
+                                Object ID: {{ object_data.objid or 'N/A' }}
+                            </span> -->
+                            <span class="classification-badge {{ (object_data.type or 'at')|lower|replace(' ', '-') }}" id="classificationBadge">
+                                {{ object_data.type or 'AT' }}
+                            </span>
+                            <div class="tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
+                                {{ object_data.tag|title or 'Inbox' }}
+                            </div>
+                            <button class="action-btn visibility" onclick="openVisibilityPlot()">
+                                Visibility Plot
+                            </button>
+                            <button class="copy-coords-btn" onclick="copyCoordinates()">
+                                Copy Coordinates
+                            </button>
+                            {% if session.user and session.user.is_admin %}
+                            <button class="edit-btn" onclick="editObjects()">
+                                Edit
+                            </button>
+                            <button class="delete-btn" onclick="deleteObjects()">
+                                Delete
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Basic Information Grid -->
+                    <div class="basic-info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Reporting Group:</span>
+                            <span class="info-value">{{ object_data.reporting_group or 'N/A' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Discovery Survey:</span>
+                            <span class="info-value">{{ object_data.source_group or 'N/A' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Discovery Mag:</span>
+                            <span class="info-value" id="discoveryMag">
+                                {{ object_data.discoverymag or 'N/A' }}
+                                {% if object_data.discoveryfilter %}({{ object_data.discoveryfilter }}){% endif %}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Redshift:</span>
+                            <span class="info-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">RA (J2000):</span>
+                            <span class="info-value" id="raValue">
+                                {{ "%.6f°"|format(object_data.ra) if object_data.ra else 'N/A' }}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Dec (J2000):</span>
+                            <span class="info-value" id="decValue">
+                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Dec (J2000):</span>
+                            <span class="info-value" id="raHMS">
+                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Dec (J2000):</span>
+                            <span class="info-value" id="decDMS">
+                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Header Actions Card -->
+                    <div class="header-actions-card">
+                        <!-- Status Management Section -->
+                        {% if session.user and session.user.is_admin %}
+                        <div class="header-section status-section">
+                            <h4 class="section-title">Status Management</h4>
+                            <div class="status-controls-compact">
+                                <div class="status-actions-compact">
+                                    <button class="status-btn-compact inbox" onclick="changeStatus('object')" title="Move to Inbox">
+                                        <span class="btn-icon">📥</span>
+                                        Inbox
+                                    </button>
+                                    <button class="status-btn-compact followup" onclick="changeStatus('followup')" title="Mark for Follow-up">
+                                        <span class="btn-icon">🔍</span>
+                                        Follow-up
+                                    </button>
+                                    <button class="status-btn-compact finished" onclick="changeStatus('finished')" title="Mark as Finished">
+                                        <span class="btn-icon">✅</span>
+                                        Finished
+                                    </button>
+                                    <button class="status-btn-compact snoozed" onclick="changeStatus('snoozed')" title="Snooze">
+                                        <span class="btn-icon">😴</span>
+                                        Snooze
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- External Resources Section -->
+                        <div class="header-section external-section">
+                            <h4 class="section-title">External Resources</h4>
+                            <div class="external-links-compact">
+                                <a href="#" class="external-link-compact tns" onclick="openTNSPage()" title="View on Transient Name Server">
+                                    <span class="link-icon">🔭</span>
+                                    <span class="link-title">TNS</span>
+                                </a>
+                                
+                                <a href="#" class="external-link-compact ned" onclick="openNED()" title="NASA/IPAC Extragalactic Database">
+                                    <span class="link-icon">🔭</span>
+                                    <span class="link-title">NED</span>
+                                </a>
+                                
+                                <a href="#" class="external-link-compact desi" onclick="openDESI()" title="DESI Legacy Survey">
+                                    <span class="link-icon">🔭</span>
+                                    <span class="link-title">DESI LS</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Location Image Section -->
+                <div class="location-image-container">
+                    <div class="location-image" id="locationImage">
+                        <div class="image-loading" id="imageLoading">
+                            <div class="loading-spinner-small"></div>
+                            <span>Loading image...</span>
+                        </div>
+                        <img id="locationImageSrc" style="display: none; cursor: pointer;" alt="Object location" onclick="openDESI()">
+                        <div class="location-marker" id="locationMarker" style="display: none;" onclick="openDESI()"></div>
+                    </div>
+                    <div class="image-info">
+                        <span class="image-credit">DESI Legacy Survey</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="detail-content">
+            <!-- Left Column -->
+            <div class="detail-left">
+                <!-- Photometry Card -->
+                <div class="info-card">
+                    <div class="card-header">
+                        <h3>Photometry</h3>
+                        <div class="card-actions">
+                            {% if session.user and session.user.is_admin %}
+                            <button class="action-btn-small edit" onclick="togglePhotometryEditMode()" id="photometryEditBtn">
+                                <span class="btn-icon">✏️</span>
+                                Edit
+                            </button>
+                            <button class="action-btn-small add" onclick="showAddPhotometryForm()" id="addPhotometryBtn" style="display: none;">
+                                <span class="btn-icon">➕</span>
+                                Add Point
+                            </button>
+                            {% endif %}
+                            <button class="action-btn-small upload" onclick="uploadPhotometry()">
+                                <span class="btn-icon">📤</span>
+                                Upload
+                            </button>
+                            <button class="action-btn-small refresh" onclick="loadPhotometryPlot()">
+                                <span class="btn-icon">🔄</span>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="photometry-container">
+                            <div class="plot-loading" id="photometryLoading">
+                                <div class="loading-spinner-small"></div>
+                                <span>Loading photometry data...</span>
+                            </div>
+                            <!-- Add photometry data table for editing -->
+                            <div class="photometry-table-container" id="photometryTableContainer" style="display: none;">
+                                <div class="table-header">
+                                    <h4>Photometry Data Points</h4>
+                                    <div class="table-actions">
+                                        <button class="btn btn-secondary" onclick="cancelPhotometryEdit()">Cancel</button>
+                                        <button class="btn btn-primary" onclick="savePhotometryChanges()">Save Changes</button>
+                                    </div>
+                                </div>
+                                <div class="table-wrapper">
+                                    <table class="photometry-table" id="photometryTable">
+                                        <thead>
+                                            <tr>
+                                                <th>MJD</th>
+                                                <th>Magnitude</th>
+                                                <th>Error</th>
+                                                <th>Filter</th>
+                                                <th>Telescope</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="photometryTableBody">
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="photometry-grid" id="photometryPlot">
+                                <!-- Plotly chart will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spectrum Card -->
+                <div class="info-card">
+                    <div class="card-header">
+                        <h3>Spectroscopy</h3>
+                        <div class="card-actions">
+                            <button class="action-btn-small upload" onclick="uploadSpectrum()">
+                                <span class="btn-icon">📤</span>
+                                Upload
+                            </button>
+                            <button class="action-btn-small refresh" onclick="loadSpectrumPlot()">
+                                <span class="btn-icon">🔄</span>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="spectrum-container">
+                            <div class="plot-loading" id="spectrumLoading">
+                                <div class="loading-spinner-small"></div>
+                                <span>Loading spectrum data...</span>
+                            </div>
+                            <div class="spectrum-controls" id="spectrumControls" style="display: none;">
+                                <select id="spectrumSelector" onchange="loadSpecificSpectrum()">
+                                    <option value="">All Spectra Overview</option>
+                                </select>
+                            </div>
+                            <div class="photometry-grid" id="spectrumPlot">
+                                <!-- Plotly chart will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discovery Information Card -->
+                <div class="info-card">
+                    <div class="card-header">
+                        <h3>Empty Space</h3>
+                    </div>
+                    <div class="card-content">
+                        
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="detail-right">
+                
+
+                <!-- Notes Card -->
+                <div class="info-card">
+                    <div class="card-header">
+                        <h3>Comments</h3>
+                        <button class="add-comment-btn" onclick="showAddCommentForm()" id="addCommentBtn">
+                            <span class="btn-icon">💬</span>
+                            Add Comment
+                        </button>
+                    </div>
+                    <div class="card-content">
+                        <!-- Add Comment Form -->
+                        <div class="add-comment-form" id="addCommentForm" style="display: none;">
+                            <div class="form-group">
+                                <textarea id="commentContent" placeholder="Add your comment..." maxlength="1000" rows="3"></textarea>
+                                <div class="char-counter" id="charCounter">0/1000</div>
+                            </div>
+                            <div class="form-actions">
+                                <button class="btn btn-secondary" onclick="cancelAddComment()">Cancel</button>
+                                <button class="btn btn-primary" onclick="submitComment()">Post Comment</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Comments Container -->
+                        <div class="comments-container" id="commentsContainer">
+                            <div class="comments-loading" id="commentsLoading">
+                                <div class="loading-spinner-small"></div>
+                                <span>Loading comments...</span>
+                            </div>
+                            <div class="no-comments" id="noComments" style="display: none;">
+                                <span class="no-comments-icon">💬</span>
+                                <span class="no-comments-text">No comments yet. Be the first to comment!</span>
+                            </div>
+                            <div class="comments-list" id="commentsList">
+                                <!-- Comments will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading object details...</div>
+        </div>
+    </div>
+
+    <!-- Upload Photometry Modal -->
+    <div class="modal" id="uploadPhotometryModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Photometry Data</h3>
+                <span class="close" onclick="closeUploadModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="upload-instructions">
+                    <h4>Data Format:</h4>
+                    <p>Upload a text file with the following format (one observation per line):</p>
+                    <pre>MJD   magnitude   error   filter   telescope</pre>
+                    <p><strong>Example:</strong></p>
+                    <pre>59123.456   18.24   0.05   g   SLT
+59124.567   18.31   0.06   r   LOT
+59125.678   18.45   0.08   i   
+59126.789   >19.5   0.0    g   </pre>
+                    <p><strong>Notes:</strong></p>
+                    <ul>
+                        <li>Columns can be separated by spaces or tabs</li>
+                        <li>Telescope column is optional (will default to "Unknown")</li>
+                        <li>Use ">" for upper limits (error will be ignored)</li>
+                        <li>Lines starting with "#" will be ignored</li>
+                    </ul>
+                </div>
+                
+                <div class="upload-area">
+                    <input type="file" id="photometryFile" accept=".txt,.dat,.csv" style="display: none;">
+                    <div class="file-drop-zone" id="fileDropZone">
+                        <div class="drop-icon">📄</div>
+                        <div class="drop-text">
+                            <p>Click to select file or drag and drop</p>
+                            <p class="drop-subtext">Supported formats: .txt, .dat, .csv</p>
+                        </div>
+                    </div>
+                    <div class="selected-file" id="selectedFile" style="display: none;">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name" id="fileName"></span>
+                        <button class="remove-file" onclick="removeSelectedFile()">×</button>
+                    </div>
+                </div>
+                
+                <div class="upload-preview" id="uploadPreview" style="display: none;">
+                    <h4>Data Preview:</h4>
+                    <div class="preview-table-container">
+                        <table class="preview-table" id="previewTable">
+                            <thead>
+                                <tr>
+                                    <th>MJD</th>
+                                    <th>Magnitude</th>
+                                    <th>Error</th>
+                                    <th>Filter</th>
+                                    <th>Telescope</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="preview-summary" id="previewSummary"></div>
+                </div>
+                
+                <div class="upload-error" id="uploadError" style="display: none;">
+                    <div class="error-icon">⚠️</div>
+                    <div class="error-text" id="errorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="uploadBtn" onclick="uploadPhotometryData()" disabled>Upload Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Photometry Point Modal -->
+    <div class="modal" id="addPhotometryModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Photometry Point</h3>
+                <span class="close" onclick="closeAddPhotometryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addPhotometryForm">
+                    <div class="form-group">
+                        <label for="addMjd">MJD:</label>
+                        <input type="number" id="addMjd" step="0.001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addMagnitude">Magnitude:</label>
+                        <input type="number" id="addMagnitude" step="0.001" required>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="addIsUpperLimit">
+                            Upper Limit
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="addMagnitudeError">Magnitude Error:</label>
+                        <input type="number" id="addMagnitudeError" step="0.001">
+                    </div>
+                    <div class="form-group">
+                        <label for="addFilter">Filter:</label>
+                        <input type="text" id="addFilter" required placeholder="e.g., g, r, i, V, B">
+                    </div>
+                    <div class="form-group">
+                        <label for="addTelescope">Telescope:</label>
+                        <input type="text" id="addTelescope" placeholder="e.g., SLT, LOT, Unknown">
+                    </div>
+                </form>
+                <div class="form-error" id="addFormError" style="display: none;">
+                    <div class="error-icon">⚠️</div>
+                    <div class="error-text" id="addErrorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddPhotometryModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addPhotometryPoint()">Add Point</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
+</body>
+</html>

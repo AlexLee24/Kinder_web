@@ -6,6 +6,7 @@ upload_tns/
 app/tns_data/
 app/data/
 app/static/ov_plot
+test/
 
 # Python
 __pycache__/

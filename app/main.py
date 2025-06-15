@@ -9,6 +9,7 @@ import re
 import ephem
 import math
 import uuid
+import urllib.parse
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from dotenv import load_dotenv
@@ -32,7 +33,10 @@ from modules.coordinate_converter import (
     convert_dec_dms_to_decimal, convert_dec_decimal_to_dms
 )
 from modules.tns_scheduler import tns_scheduler
-from modules.tns_database import init_tns_database, get_tns_statistics, search_tns_objects, get_filtered_stats, get_objects_count
+from modules.tns_database import init_tns_database, get_tns_statistics, search_tns_objects, get_filtered_stats, get_objects_count, get_auto_snooze_stats, update_object_activity
+from modules.object_data import object_db
+from modules.data_processing import DataVisualization
+from modules.auto_snooze_scheduler import auto_snooze_scheduler
 
 
 app = Flask(__name__, template_folder='html', static_folder='static')
@@ -41,6 +45,7 @@ app.secret_key = config.SECRET_KEY
 init_database()
 init_tns_database()
 tns_scheduler.start_scheduler()
+auto_snooze_scheduler.start_scheduler()
 
 
 # ===============================================================================
@@ -760,6 +765,7 @@ def convert_dec():
 # Obs plan
 # ===============================================================================
 @app.route('/object_plot.html')
+@app.route('/object_plot')
 def object_plot():
     return render_template('object_plot.html', current_path='/object_plot.html')
 
@@ -1033,7 +1039,11 @@ def marshal():
         at_count = get_objects_count(object_type='AT')
         classified_count = total_count - at_count
         
-        # Get only high-level statistics without loading all objects
+        # Get tag-based statistics
+        from modules.tns_database import get_tag_statistics
+        tag_stats = get_tag_statistics()
+        
+        # Get TNS statistics
         tns_stats = get_tns_statistics()
         
         # Format last sync data properly
@@ -1042,28 +1052,56 @@ def marshal():
             recent_download = tns_stats['recent_downloads'][0]
             if recent_download.get('download_time'):
                 try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(recent_download['download_time'].replace('Z', '+00:00'))
                     last_sync_data = {
-                        'time': dt.strftime('%Y-%m-%d %H:%M:%S UTC'),
-                        'status': recent_download.get('status', 'unknown'),
-                        'imported': recent_download.get('records_imported', 0),
-                        'updated': recent_download.get('records_updated', 0),
-                        'errors': recent_download.get('error_message', '')
+                        'time': recent_download['download_time'],
+                        'status': 'completed',
+                        'imported': recent_download.get('imported_count', 0),
+                        'updated': recent_download.get('updated_count', 0)
                     }
                 except:
-                    last_sync_data = {
-                        'time': recent_download.get('download_time', 'Unknown'),
-                        'status': recent_download.get('status', 'unknown'),
-                        'imported': recent_download.get('records_imported', 0),
-                        'updated': recent_download.get('records_updated', 0),
-                        'errors': recent_download.get('error_message', '')
-                    }
+                    pass
         
-        # Load initial objects for display (limited to avoid performance issues)
+        # Smart loading strategy for large datasets
         initial_objects = []
-        if total_count <= 5000:  # Only load initial data if reasonable amount
-            initial_objects = search_tns_objects(limit=100, sort_by='discoverydate', sort_order='desc')
+        use_api_mode = True  # Default to API mode for large datasets
+        initial_limit = 0
+        
+        # Only load initial data for smaller datasets or specific scenarios
+        if total_count <= 1000:
+            # Small dataset: load all
+            initial_limit = min(total_count, 200)
+            use_api_mode = False
+        elif total_count <= 5000:
+            # Medium dataset: load first page
+            initial_limit = 100
+            use_api_mode = False
+        else:
+            # Large dataset: pure API mode, no initial loading
+            initial_limit = 0
+            use_api_mode = True
+            print(f"Large dataset detected ({total_count} objects), using pure API mode")
+        
+        # Load initial objects if applicable
+        if initial_limit > 0:
+            try:
+                raw_objects = search_tns_objects(
+                    limit=initial_limit, 
+                    sort_by='discoverydate', 
+                    sort_order='desc'
+                )
+                
+                for obj in raw_objects:
+                    if 'tag' not in obj or obj['tag'] is None:
+                        obj['tag'] = 'object'
+                    initial_objects.append(obj)
+                
+                print(f"Loaded {len(initial_objects)} initial objects")
+                
+            except Exception as e:
+                print(f"Error loading initial objects: {e}")
+                # Fallback to API mode if initial loading fails
+                initial_objects = []
+                use_api_mode = True
         
         return render_template('marshal.html', 
                              current_path='/marshal',
@@ -1071,12 +1109,14 @@ def marshal():
                              tns_stats=tns_stats,
                              at_count=at_count,
                              classified_count=classified_count,
-                             inbox_count=total_count,
-                             followup_count=0,
-                             finished_count=0,
-                             snoozed_count=0,
+                             inbox_count=tag_stats.get('object', 0),
+                             followup_count=tag_stats.get('followup', 0),
+                             finished_count=tag_stats.get('finished', 0),
+                             snoozed_count=tag_stats.get('snoozed', 0),
                              last_sync=last_sync_data,
-                             total_count=total_count)
+                             total_count=total_count,
+                             use_api_mode=use_api_mode,
+                             initial_limit=initial_limit)
         
     except Exception as e:
         print(f"Error loading Marshal data: {e}")
@@ -1092,32 +1132,193 @@ def marshal():
                              finished_count=0,
                              snoozed_count=0,
                              last_sync=None,
-                             total_count=0)
+                             total_count=0,
+                             use_api_mode=True,
+                             initial_limit=0)
 
-@app.route('/object/<object_name>')
-def object_data(object_name):
-    if 'user' not in session:
-        flash('Please log in to access object data.', 'warning')
-        return redirect(url_for('login'))
+@app.route('/api/objects', methods=['POST'])
+def add_object():
+    """Add a new object to the database"""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied - Admin privileges required'}), 403
     
     try:
-        results = search_tns_objects(search_term=object_name, limit=1)
+        data = request.get_json()
         
-        if not results:
-            flash(f'Object {object_name} not found.', 'error')
-            return redirect(url_for('marshal'))
+        required_fields = ['name', 'ra', 'dec']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
         
-        obj = results[0]
+        object_name = str(data['name']).strip()
+        ra = float(data['ra'])
+        dec = float(data['dec'])
+        object_type = str(data.get('type', 'AT')).strip()
+        magnitude = data.get('magnitude')
+        discovery_date = data.get('discovery_date')
+        source = (data.get('source') or '').strip() or 'Manual Entry'
         
-        return render_template('object_detail.html', 
-                             current_path='/object',
-                             obj=obj,
-                             object_name=object_name)
+        if not (0 <= ra < 360):
+            return jsonify({'error': 'RA must be between 0 and 360 degrees'}), 400
+        
+        if not (-90 <= dec <= 90):
+            return jsonify({'error': 'DEC must be between -90 and 90 degrees'}), 400
+        
+        if magnitude is not None:
+            try:
+                magnitude = float(magnitude)
+                if not (-5 <= magnitude <= 30):
+                    return jsonify({'error': 'Magnitude should be between -5 and 30'}), 400
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Invalid magnitude value'}), 400
+        
+        if len(object_name) < 3:
+            return jsonify({'error': 'Object name must be at least 3 characters'}), 400
+        
+        from modules.tns_database import search_tns_objects
+        existing_objects = search_tns_objects(search_term=object_name, limit=1)
+        if existing_objects:
+            return jsonify({'error': f'Object {object_name} already exists in database'}), 400
+        
+        from modules.tns_database import get_tns_db_connection
+        import uuid
+        from datetime import datetime
+        
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        objid = str(uuid.uuid4())
+        
+        if discovery_date:
+            try:
+                datetime.strptime(discovery_date, '%Y-%m-%d')
+            except ValueError:
+                return jsonify({'error': 'Invalid discovery date format. Use YYYY-MM-DD'}), 400
+        else:
+            discovery_date = datetime.now().strftime('%Y-%m-%d')
+        
+        insert_query = '''
+        INSERT INTO tns_objects (
+            objid, name, name_prefix, type, ra, declination, 
+            discoverymag, discoverydate, source_group, 
+            time_received, lastmodified, tag
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        '''
+        
+        current_time = datetime.now().isoformat()
+        
+        cursor.execute(insert_query, (
+            objid,
+            object_name,
+            '',
+            object_type,
+            ra,
+            dec,
+            magnitude,
+            discovery_date,
+            source or 'Manual Entry',
+            current_time,
+            current_time,
+            'object'
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        user_email = session['user']['email']
+        print(f"User {user_email} added new object: {object_name} at RA={ra}, DEC={dec}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Object {object_name} added successfully',
+            'object_name': object_name,
+            'objid': objid
+        })
+        
+    except ValueError as e:
+        return jsonify({'error': f'Invalid input data: {str(e)}'}), 400
+    except Exception as e:
+        print(f"Error adding object: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+@app.route('/api/auto-snooze/manual-run', methods=['POST'])
+def manual_auto_snooze():
+    """Manually trigger auto-snooze check"""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'error': 'Admin access required'}), 403
+    
+    try:
+        # Import the scheduler and run manual check
+        from modules.auto_snooze_scheduler import auto_snooze_scheduler
+        
+        result = auto_snooze_scheduler.manual_auto_snooze()
+        
+        if isinstance(result, dict):
+            return jsonify({
+                'success': True,
+                'snoozed_count': result.get('snoozed_count', 0),
+                'unsnoozed_count': result.get('unsnoozed_count', 0),
+                'total_processed': result.get('total_processed', 0)
+            })
+        else:
+            # If result is just a number (legacy format)
+            return jsonify({
+                'success': True,
+                'total_processed': result,
+                'snoozed_count': 0,
+                'unsnoozed_count': 0
+            })
+            
+    except Exception as e:
+        print(f"Error in manual auto-snooze: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/stats')
+def api_get_stats():
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        total_count = get_objects_count()
+        at_count = get_objects_count(object_type='AT')
+        classified_count = total_count - at_count
+        
+        from modules.tns_database import get_tag_statistics
+        tag_stats = get_tag_statistics()
+        
+        stats = {
+            'inbox_count': tag_stats.get('object', 0),
+            'followup_count': tag_stats.get('followup', 0),
+            'finished_count': tag_stats.get('finished', 0),
+            'snoozed_count': tag_stats.get('snoozed', 0),
+            'at_count': at_count,
+            'classified_count': classified_count,
+            'total_count': total_count
+        }
+        
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
         
     except Exception as e:
-        print(f"Error loading object data for {object_name}: {e}")
-        flash('Error loading object data.', 'error')
-        return redirect(url_for('marshal'))
+        app.logger.error(f"Stats API error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'stats': {
+                'inbox_count': 0,
+                'followup_count': 0,
+                'finished_count': 0,
+                'snoozed_count': 0,
+                'at_count': 0,
+                'classified_count': 0,
+                'total_count': 0
+            }
+        }), 500
 
 @app.route('/api/objects')
 def api_get_objects():
@@ -1132,7 +1333,6 @@ def api_get_objects():
     date_to = request.args.get('date_to', '')
     
     try:
-        # 從資料庫搜尋
         objects = search_tns_objects(
             search_term=search, 
             object_type=classification,
@@ -1145,7 +1345,6 @@ def api_get_objects():
             tag=tag
         )
         
-        # 取得總數
         total = get_objects_count(
             search_term=search, 
             object_type=classification,
@@ -1154,7 +1353,6 @@ def api_get_objects():
             date_to=date_to
         )
         
-        # 取得統計資料
         stats = get_filtered_stats(
             search_term=search, 
             object_type=classification,
@@ -1187,6 +1385,57 @@ def api_get_objects():
                 'at_count': 0, 
                 'classified_count': 0
             },
+            'error': str(e)
+        }), 500
+
+@app.route('/api/object-tags', methods=['POST'])
+def api_get_object_tags():
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        object_names = data.get('object_names', [])
+        
+        if not object_names:
+            return jsonify({'success': True, 'tags': {}})
+        
+        from modules.tns_database import get_tns_db_connection
+        
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        
+        # Create placeholders for the IN clause
+        placeholders = ','.join(['?' for _ in object_names])
+        
+        cursor.execute(f'''
+            SELECT name, COALESCE(tag, 'object') as tag
+            FROM tns_objects 
+            WHERE name IN ({placeholders})
+        ''', object_names)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # Create tag mapping
+        tag_mapping = {}
+        for name, tag in results:
+            tag_mapping[name] = tag
+        
+        # Ensure all requested objects have a tag (default to 'object')
+        for name in object_names:
+            if name not in tag_mapping:
+                tag_mapping[name] = 'object'
+        
+        return jsonify({
+            'success': True,
+            'tags': tag_mapping
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Object tags API error: {str(e)}")
+        return jsonify({
+            'success': False,
             'error': str(e)
         }), 500
 
@@ -1270,10 +1519,957 @@ def tns_stats_api():
         return jsonify({'error': str(e)}), 500
 
 # ===============================================================================
+# OBJECT DETAILS
+# ===============================================================================
+@app.route('/object/<path:object_name>')
+def object_detail_generic(object_name):
+    """Generic object detail route for all object names"""
+    if 'user' not in session:
+        flash('Please log in to access object data.', 'warning')
+        return redirect(url_for('login'))
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        print(f"Looking for object: '{object_name}'")
+        
+        # Search for object by name
+        results = search_tns_objects(search_term=object_name, limit=10)
+        
+        # Find exact match
+        matching_obj = None
+        for obj in results:
+            full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            if full_name.lower() == object_name.lower() or obj.get('name', '').lower() == object_name.lower():
+                matching_obj = obj
+                break
+        
+        if not matching_obj:
+            print(f"Object '{object_name}' not found in database")
+            flash(f'Object {object_name} not found.', 'error')
+            return redirect(url_for('marshal'))
+        
+        print(f"Found object data: {matching_obj}")
+        
+        return render_template('object_detail.html', 
+                             current_path='/object',
+                             object_data=matching_obj,
+                             object_name=object_name)
+        
+    except Exception as e:
+        print(f"Error loading object data for {object_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error loading object data.', 'error')
+        return redirect(url_for('marshal'))
+
+@app.route('/object/<int:year><letters>')
+def object_detail_tns_format(year, letters):
+    if 'user' not in session:
+        flash('Please log in to access object data.', 'warning')
+        return redirect(url_for('login'))
+    
+    try:
+        # Construct TNS-style name from year and letters
+        object_name = f"{year}{letters}"
+        print(f"Looking for TNS object: '{object_name}'")
+        
+        from modules.tns_database import debug_search_objects
+        debug_search_objects(object_name)
+        
+        # Search for object by constructed name
+        results = search_tns_objects(search_term=object_name, limit=10)
+        
+        # Find exact match based on year + letters pattern
+        matching_obj = None
+        for obj in results:
+            full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            # Extract year and letters from full name using regex
+            import re
+            match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
+            if match and match.group(1) == str(year) and match.group(2).lower() == letters.lower():
+                matching_obj = obj
+                break
+        
+        if not matching_obj:
+            print(f"TNS object '{object_name}' not found in database")
+            flash(f'Object {object_name} not found.', 'error')
+            return redirect(url_for('marshal'))
+        
+        print(f"Found TNS object data: {matching_obj}")
+        
+        return render_template('object_detail.html', 
+                             current_path='/object',
+                             object_data=matching_obj,
+                             object_name=object_name)
+        
+    except Exception as e:
+        print(f"Error loading TNS object data for {year}{letters}: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error loading object data.', 'error')
+        return redirect(url_for('marshal'))
+
+# Update marshal.html links generation
+@app.route('/api/object/<int:year><letters>')
+def api_get_object_tns_format(year, letters):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        object_name = f"{year}{letters}"
+        
+        # Search for object by name pattern
+        from modules.tns_database import search_tns_objects
+        results = search_tns_objects(search_term=object_name, limit=10)
+        
+        # Find exact match
+        matching_obj = None
+        for obj in results:
+            full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            import re
+            match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
+            if match and match.group(1) == str(year) and match.group(2).lower() == letters.lower():
+                matching_obj = obj
+                break
+        
+        if not matching_obj:
+            return jsonify({'success': False, 'error': 'Object not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'object': matching_obj
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching TNS object {year}{letters}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Helper function to extract TNS-style name from full object name
+def extract_tns_name(full_name):
+    """Extract year+letters format from full TNS name"""
+    import re
+    match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
+    if match:
+        return f"{match.group(1)}{match.group(2)}"
+    return full_name
+
+# Update object status API to use TNS format
+@app.route('/api/object/<int:year><letters>/status', methods=['POST'])
+def api_update_object_status_tns_format(year, letters):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+        
+        if not new_status or new_status not in ['object', 'followup', 'finished', 'snoozed']:
+            return jsonify({'error': 'Invalid status'}), 400
+        
+        object_name = f"{year}{letters}"
+        
+        # Find the actual object in database
+        results = search_tns_objects(search_term=object_name, limit=10)
+        matching_obj = None
+        
+        for obj in results:
+            full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            import re
+            match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
+            if match and match.group(1) == str(year) and match.group(2).lower() == letters.lower():
+                matching_obj = obj
+                break
+        
+        if not matching_obj:
+            return jsonify({'error': 'Object not found'}), 404
+        
+        # Update object status using full name
+        from modules.tns_database import update_object_status
+        full_object_name = (matching_obj.get('name_prefix', '') + matching_obj.get('name', '')).strip()
+        
+        if update_object_status(full_object_name, new_status):
+            return jsonify({
+                'success': True,
+                'message': f'Status updated to {new_status}'
+            })
+        else:
+            return jsonify({'error': 'Failed to update status'}), 500
+        
+    except Exception as e:
+        app.logger.error(f"Error updating status for {year}{letters}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/object/<object_name>')
+def get_object_api(object_name):
+    """API endpoint to get object data by name"""
+    try:
+        from modules.tns_database import search_tns_objects
+        
+        object_name = urllib.parse.unquote(object_name)
+        print(f"=== API: Searching for object: '{object_name}' ===")
+        
+        results = search_tns_objects(search_term=object_name, limit=1)
+        
+        if results and len(results) > 0:
+            obj = results[0]
+            print(f"Found object: {obj}")
+            
+            full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            if not full_name and obj.get('name'):
+                full_name = obj.get('name')
+            
+            return jsonify({
+                'success': True,
+                'object': obj,
+                'full_name': full_name
+            })
+        else:
+            print(f"No object found for: '{object_name}'")
+            return jsonify({
+                'success': False,
+                'error': f'Object {object_name} not found'
+            }), 404
+            
+    except Exception as e:
+        print(f"Error in get_object_api: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/object/<object_name>/edit', methods=['POST'])
+def api_edit_object(object_name):
+    """Edit object data"""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied - Admin privileges required'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        data = request.get_json()
+        
+        # Validate input data
+        updates = {}
+        
+        # Basic fields that can be updated
+        updatable_fields = [
+            'type', 'ra', 'declination', 'redshift', 'discoverymag', 
+            'discoveryfilter', 'discoverydate', 'source_group', 
+            'reporting_group', 'remarks'
+        ]
+        
+        for field in updatable_fields:
+            if field in data:
+                value = data[field]
+                
+                # Validate specific fields
+                if field in ['ra', 'declination', 'redshift', 'discoverymag']:
+                    if value and value != '':
+                        try:
+                            value = float(value)
+                            if field == 'ra' and not (0 <= value < 360):
+                                return jsonify({'error': 'RA must be between 0 and 360 degrees'}), 400
+                            if field == 'declination' and not (-90 <= value <= 90):
+                                return jsonify({'error': 'Dec must be between -90 and 90 degrees'}), 400
+                            if field == 'redshift' and value < 0:
+                                return jsonify({'error': 'Redshift must be positive'}), 400
+                            if field == 'discoverymag' and not (-5 <= value <= 30):
+                                return jsonify({'error': 'Magnitude should be between -5 and 30'}), 400
+                        except (ValueError, TypeError):
+                            return jsonify({'error': f'Invalid value for {field}'}), 400
+                    else:
+                        value = None
+                
+                elif field == 'discoverydate':
+                    if value and value != '':
+                        try:
+                            # Validate date format
+                            datetime.strptime(value, '%Y-%m-%d')
+                        except ValueError:
+                            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+                    else:
+                        value = None
+                
+                elif field in ['type', 'discoveryfilter', 'source_group', 'reporting_group', 'remarks']:
+                    if value and len(str(value).strip()) > 200:
+                        return jsonify({'error': f'{field} is too long (maximum 200 characters)'}), 400
+                    value = str(value).strip() if value else None
+                
+                updates[field] = value
+        
+        if not updates:
+            return jsonify({'error': 'No valid fields to update'}), 400
+        
+        # Update database
+        from modules.tns_database import get_tns_db_connection
+        
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        
+        # Build update query
+        set_clauses = []
+        params = []
+        
+        for field, value in updates.items():
+            set_clauses.append(f"{field} = ?")
+            params.append(value)
+        
+        # Add lastmodified timestamp
+        set_clauses.append("lastmodified = CURRENT_TIMESTAMP")
+        set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+        
+        params.append(object_name)  # For WHERE clause
+        
+        update_query = f"""
+            UPDATE tns_objects 
+            SET {', '.join(set_clauses)}
+            WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+        """
+        
+        print(f"Update query: {update_query}")
+        print(f"Update params: {params}")
+        
+        cursor.execute(update_query, params)
+        rows_affected = cursor.rowcount
+        
+        if rows_affected == 0:
+            conn.close()
+            return jsonify({'error': 'Object not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        # Update activity timestamp
+        update_object_activity(object_name, "data_edit")
+        
+        user_email = session['user']['email']
+        updated_fields = list(updates.keys())
+        print(f"User {user_email} updated object {object_name}, fields: {updated_fields}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Object {object_name} updated successfully',
+            'updated_fields': updated_fields
+        })
+        
+    except Exception as e:
+        print(f"Error editing object {object_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+@app.route('/api/object/<object_name>/delete', methods=['DELETE'])
+def api_delete_object(object_name):
+    """Delete object from database"""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied - Admin privileges required'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        
+        from modules.tns_database import get_tns_db_connection
+        
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        
+        # First check if object exists
+        cursor.execute("""
+            SELECT name_prefix, name, type, discoverydate 
+            FROM tns_objects 
+            WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+        """, (object_name,))
+        
+        existing_object = cursor.fetchone()
+        if not existing_object:
+            conn.close()
+            return jsonify({'error': 'Object not found'}), 404
+        
+        # Delete from tns_objects table
+        cursor.execute("""
+            DELETE FROM tns_objects 
+            WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+        """, (object_name,))
+        
+        rows_affected = cursor.rowcount
+        
+        if rows_affected == 0:
+            conn.close()
+            return jsonify({'error': 'Failed to delete object'}), 500
+        
+        # Also delete related data from object_data database
+        try:
+            from modules.object_data import object_db
+            
+            # Delete photometry data
+            phot_conn = object_db.get_connection()
+            phot_cursor = phot_conn.cursor()
+            
+            phot_cursor.execute("DELETE FROM photometry WHERE object_name = ?", (object_name,))
+            deleted_photometry = phot_cursor.rowcount
+            
+            phot_cursor.execute("DELETE FROM spectroscopy WHERE object_name = ?", (object_name,))
+            deleted_spectroscopy = phot_cursor.rowcount
+            
+            phot_cursor.execute("DELETE FROM comments WHERE object_name = ?", (object_name,))
+            deleted_comments = phot_cursor.rowcount
+            
+            phot_conn.commit()
+            phot_conn.close()
+            
+            print(f"Deleted related data: {deleted_photometry} photometry, {deleted_spectroscopy} spectroscopy, {deleted_comments} comments")
+            
+        except Exception as e:
+            print(f"Error deleting related data: {e}")
+            # Continue with main deletion even if related data deletion fails
+        
+        conn.commit()
+        conn.close()
+        
+        user_email = session['user']['email']
+        print(f"User {user_email} deleted object: {object_name}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Object {object_name} deleted successfully',
+            'object_name': object_name
+        })
+        
+    except Exception as e:
+        print(f"Error deleting object {object_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+
+# ===============================================================================
+# OBJECT DATA
+# ===============================================================================
+@app.route('/api/object/<int:year><letters>/photometry')
+def get_object_photometry(year, letters):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    
+    try:
+        photometry = object_db.get_photometry(object_name)
+        return jsonify({
+            'success': True,
+            'photometry': photometry,
+            'count': len(photometry)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get spectroscopy data for an object
+@app.route('/api/object/<int:year><letters>/spectroscopy')
+def get_object_spectroscopy(year, letters):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    
+    try:
+        spectra_list = object_db.get_spectrum_list(object_name)
+        return jsonify({
+            'success': True,
+            'spectra': spectra_list,
+            'count': len(spectra_list)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get specific spectrum data
+@app.route('/api/object/<int:year><letters>/spectrum/<spectrum_id>')
+def get_spectrum_data(year, letters, spectrum_id):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    
+    try:
+        conn = object_db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT wavelength, intensity FROM spectroscopy 
+            WHERE object_name = ? AND spectrum_id = ?
+            ORDER BY wavelength ASC
+        ''', (object_name, spectrum_id))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        wavelengths = [row[0] for row in results]
+        intensities = [row[1] for row in results]
+        
+        return jsonify({
+            'success': True,
+            'wavelength': wavelengths,
+            'intensity': intensities,
+            'spectrum_id': spectrum_id
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Upload photometry data
+@app.route('/api/object/<int:year><letters>/photometry', methods=['POST'])
+def upload_photometry(year, letters):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    data = request.get_json()
+    
+    try:
+        point_id = object_db.add_photometry_point(
+            object_name=object_name,
+            mjd=float(data.get('mjd')),
+            magnitude=float(data.get('magnitude')) if data.get('magnitude') else None,
+            magnitude_error=float(data.get('magnitude_error')) if data.get('magnitude_error') else None,
+            filter_name=data.get('filter'),
+            telescope=data.get('telescope')
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Photometry point added successfully',
+            'id': point_id
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Upload spectrum data
+@app.route('/api/object/<int:year><letters>/spectroscopy', methods=['POST'])
+def upload_spectroscopy(year, letters):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    data = request.get_json()
+    
+    try:
+        spectrum_id = object_db.add_spectrum_data(
+            object_name=object_name,
+            wavelength_data=data.get('wavelength', []),
+            intensity_data=data.get('intensity', []),
+            phase=float(data.get('phase')) if data.get('phase') else None,
+            telescope=data.get('telescope'),
+            spectrum_id=data.get('spectrum_id')
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Spectrum data added successfully',
+            'spectrum_id': spectrum_id
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Delete photometry point
+@app.route('/api/photometry/<int:point_id>', methods=['DELETE'])
+def delete_photometry_point(point_id):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        if object_db.delete_photometry_point(point_id):
+            return jsonify({
+                'success': True,
+                'message': 'Photometry point deleted successfully'
+            })
+        else:
+            return jsonify({'error': 'Photometry point not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Delete spectrum
+@app.route('/api/spectrum/<spectrum_id>', methods=['DELETE'])
+def delete_spectrum(spectrum_id):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        if object_db.delete_spectrum(spectrum_id):
+            return jsonify({
+                'success': True,
+                'message': 'Spectrum deleted successfully'
+            })
+        else:
+            return jsonify({'error': 'Spectrum not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get photometry plot for an object
+@app.route('/api/object/<int:year><letters>/photometry/plot')
+def get_object_photometry_plot(year, letters):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    
+    try:
+        photometry_data = object_db.get_photometry(object_name)
+        
+        if not photometry_data:
+            return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'No photometry data available'
+            })
+        
+        plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data)
+        
+        return jsonify({
+            'success': True,
+            'plot_html': plot_html,
+            'data_count': len(photometry_data)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Get spectrum plot for an object
+@app.route('/api/object/<int:year><letters>/spectrum/plot')
+def get_object_spectrum_plot(year, letters):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = f"{year}{letters}"
+    spectrum_id = request.args.get('spectrum_id')
+    
+    try:
+        spectrum_data = object_db.get_spectroscopy(object_name)
+        
+        if not spectrum_data:
+            return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'No spectrum data available'
+            })
+        
+        if spectrum_id:
+            # Show specific spectrum
+            plot_html = DataVisualization.create_spectrum_plot_from_db(spectrum_data, spectrum_id)
+        else:
+            # Show all spectra overview
+            plot_html = DataVisualization.create_spectrum_list_plot_from_db(spectrum_data)
+        
+        return jsonify({
+            'success': True,
+            'plot_html': plot_html,
+            'data_count': len(spectrum_data)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/object/<object_name>/photometry/plot')
+def get_object_photometry_plot_generic(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        print(f"Getting photometry plot for object: {object_name}")
+        
+        from modules.tns_database import search_tns_objects
+        results = search_tns_objects(search_term=object_name, limit=1)
+        
+        if not results:
+            return jsonify({
+                'success': False,
+                'error': f'Object {object_name} not found'
+            }), 404
+        
+        photometry_data = object_db.get_photometry(object_name)
+        
+        if not photometry_data:
+            return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'No photometry data available for this object'
+            })
+        
+        plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data)
+        
+        return jsonify({
+            'success': True,
+            'plot_html': plot_html,
+            'data_count': len(photometry_data)
+        })
+    except Exception as e:
+        print(f"Error getting photometry plot: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/object/<object_name>/spectrum/plot')
+def get_object_spectrum_plot_generic(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    object_name = urllib.parse.unquote(object_name)
+    spectrum_id = request.args.get('spectrum_id')
+    
+    try:
+        from modules.tns_database import search_tns_objects
+        results = search_tns_objects(search_term=object_name, limit=1)
+        
+        if not results:
+            return jsonify({
+                'success': False,
+                'error': f'Object {object_name} not found'
+            }), 404
+        
+        spectrum_data = object_db.get_spectroscopy(object_name)
+        
+        if not spectrum_data:
+            return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'No spectrum data available for this object'
+            })
+        
+        if spectrum_id:
+            # Show specific spectrum
+            plot_html = DataVisualization.create_spectrum_plot_from_db(spectrum_data, spectrum_id)
+        else:
+            # Show all spectra overview
+            plot_html = DataVisualization.create_spectrum_list_plot_from_db(spectrum_data)
+        
+        return jsonify({
+            'success': True,
+            'plot_html': plot_html,
+            'data_count': len(spectrum_data)
+        })
+    except Exception as e:
+        print(f"Error getting spectrum plot: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/auto-snooze/status')
+def auto_snooze_status():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        status = auto_snooze_scheduler.get_status()
+        return jsonify({'success': True, 'status': status})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auto-snooze/stats')
+def auto_snooze_stats_api():
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        stats = get_auto_snooze_stats()
+        return jsonify({'success': True, 'stats': stats})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/object/<object_name>/status', methods=['POST'])
+def api_update_object_status_generic(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+        
+        if not new_status or new_status not in ['object', 'followup', 'finished', 'snoozed']:
+            return jsonify({'error': 'Invalid status'}), 400
+        
+        object_name = urllib.parse.unquote(object_name)
+        
+        from modules.tns_database import update_object_status
+        
+        if update_object_status(object_name, new_status):
+            # Update activity timestamp (this is now handled in update_object_status)
+            return jsonify({
+                'success': True,
+                'message': f'Status updated to {new_status}'
+            })
+        else:
+            return jsonify({'error': 'Failed to update status in database'}), 500
+        
+    except Exception as e:
+        app.logger.error(f"Error updating status for {object_name}: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# ===============================================================================
+# COMMENTS
+# ===============================================================================
+
+# Get comments for an object
+@app.route('/api/object/<object_name>/comments')
+def get_object_comments(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        comments = object_db.get_comments(object_name)
+        
+        return jsonify({
+            'success': True,
+            'comments': comments,
+            'count': len(comments)
+        })
+    except Exception as e:
+        app.logger.error(f"Error getting comments for {object_name}: {str(e)}")
+        return jsonify({'error': 'Failed to get comments'}), 500
+
+# Add a new comment
+@app.route('/api/object/<object_name>/comments', methods=['POST'])
+def add_object_comment(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        data = request.get_json()
+        content = data.get('content', '').strip()
+        
+        if not content:
+            return jsonify({'error': 'Comment content is required'}), 400
+        
+        if len(content) > 1000:
+            return jsonify({'error': 'Comment is too long (maximum 1000 characters)'}), 400
+        
+        user = session['user']
+        comment_id = object_db.add_comment(
+            object_name=object_name,
+            user_email=user['email'],
+            user_name=user['name'],
+            user_picture=user.get('picture', ''),
+            content=content
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Comment added successfully',
+            'comment_id': comment_id
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error adding comment for {object_name}: {str(e)}")
+        return jsonify({'error': 'Failed to add comment'}), 500
+
+# Delete a comment (admin only)
+@app.route('/api/comments/<int:comment_id>', methods=['DELETE'])
+def delete_comment(comment_id):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        # Check if comment exists
+        comment = object_db.get_comment_by_id(comment_id)
+        if not comment:
+            return jsonify({'error': 'Comment not found'}), 404
+        
+        if object_db.delete_comment(comment_id):
+            return jsonify({
+                'success': True,
+                'message': 'Comment deleted successfully'
+            })
+        else:
+            return jsonify({'error': 'Failed to delete comment'}), 500
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
+        return jsonify({'error': 'Failed to delete comment'}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ===============================================================================
+# DEBUG
+# ===============================================================================
+@app.route('/debug/database')
+def debug_database():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        from modules.tns_database import get_tns_db_connection
+        
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM tns_objects")
+        total_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT name_prefix, name, objid FROM tns_objects LIMIT 10")
+        sample_objects = cursor.fetchall()
+        
+        cursor.execute("PRAGMA table_info(tns_objects)")
+        columns = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'total_objects': total_count,
+            'sample_objects': sample_objects,
+            'columns': [col[1] for col in columns]
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/debug/object/<object_name>')
+def debug_object_tag_route(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    
+    try:
+        object_name = urllib.parse.unquote(object_name)
+        
+        from modules.tns_database import debug_object_tag
+        results = debug_object_tag(object_name)
+        
+        return jsonify({
+            'success': True,
+            'debug_results': results,
+            'object_name': object_name
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ===============================================================================
 # APPLICATION STARTUP
 # ===============================================================================
 import atexit
 atexit.register(lambda: tns_scheduler.stop_scheduler())
+atexit.register(lambda: auto_snooze_scheduler.stop_scheduler())
 if __name__ == '__main__':
     app.run(
         host=config.HOST,

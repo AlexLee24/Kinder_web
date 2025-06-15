@@ -44,19 +44,19 @@
 }
 
 .tag-badge.object {
-    background: linear-gradient(45deg, var(--inbox-color), #388e3c);
+    background: linear-gradient(45deg, var(--inbox-color));
 }
 
 .tag-badge.followup {
-    background: linear-gradient(45deg, var(--followup-color), var(--blue-dark));
+    background: linear-gradient(45deg, var(--followup-color));
 }
 
 .tag-badge.finished {
-    background: linear-gradient(45deg, var(--finished-color), var(--orange-dark));
+    background: linear-gradient(45deg, var(--finished-color));
 }
 
 .tag-badge.snoozed {
-    background: linear-gradient(45deg, var(--snoozed-color), var(--purple-dark));
+    background: linear-gradient(45deg, var(--snoozed-color));
 }
 
 /* Loading Indicator */
@@ -123,4 +123,66 @@
 .notification-info {
     background: linear-gradient(45deg, #74b9ff, #0984e3);
     border: 1px solid rgba(116, 185, 255, 0.3);
+}
+
+/* Clickable status cards */
+.small-stat-card.clickable {
+    cursor: pointer;
+    transition: var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+
+.small-stat-card.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.small-stat-card.clickable:active {
+    transform: translateY(0px);
+}
+
+/* Active state for filtered status */
+.small-stat-card.clickable.active {
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.02);
+}
+
+.small-stat-card.clickable.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+    pointer-events: none;
+}
+
+/* Hover effect enhancement */
+.small-stat-card.clickable:hover .stat-number {
+    color: var(--primary-green);
+    text-shadow: 0 0 10px rgba(70, 255, 175, 0.3);
+}
+
+.small-stat-card.clickable:hover .stat-label {
+    color: rgba(255, 255, 255, 1);
+}
+
+/* Add a subtle glow for each status type */
+.small-stat-card.inbox.clickable:hover {
+    box-shadow: 0 8px 25px rgba(76, 175, 80, 0.2);
+}
+
+.small-stat-card.followup.clickable:hover {
+    box-shadow: 0 8px 25px rgba(253, 203, 110, 0.2);
+}
+
+.small-stat-card.finished.clickable:hover {
+    box-shadow: 0 8px 25px rgba(0, 61, 130, 0.2);
+}
+
+.small-stat-card.snoozed.clickable:hover {
+    box-shadow: 0 8px 25px rgba(232, 67, 147, 0.2);
 }
