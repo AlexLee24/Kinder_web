@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telescope Simulator - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/telescope_simulator_main.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <div class="container-main">
+        <!-- Main Content Layout -->
+        <div class="telescope-content">
+            <!-- Unified Content Section -->
+            <div class="sky-map-section">
+                <div class="sky-map-container">
+                    <div class="sky-map-header">
+                        <h2>Telescope Simulator</h2>
+                        <p>Interactive telescope simulation with real sky data</p>
+                        
+                        <!-- Survey Selection Embedded -->
+                        <div class="survey-selection-embedded">
+                            <div class="survey-buttons">
+                                <button class="survey-btn active" data-survey="CDS/P/DSS2/color" onclick="changeSurvey('CDS/P/DSS2/color')">DSS2</button>
+                                <button class="survey-btn" data-survey="P/2MASS/color" onclick="changeSurvey('P/2MASS/color')">2MASS</button>
+                                <button class="survey-btn" data-survey="P/SDSS9/color" onclick="changeSurvey('P/SDSS9/color')">SDSS9</button>
+                                <button class="survey-btn" data-survey="P/PanSTARRS/DR1/color-z-zg-g" onclick="changeSurvey('P/PanSTARRS/DR1/color-z-zg-g')">PanSTARRS</button>
+                                <button class="survey-btn" data-survey="P/DECaLS/DR5/color" onclick="changeSurvey('P/DECaLS/DR5/color')">DECaLS</button>
+                                <button class="survey-btn" data-survey="CDS/P/DESI-Legacy-Surveys/DR10/color" onclick="changeSurvey('CDS/P/DESI-Legacy-Surveys/DR10/color')">DESI</button>
+                                <button class="survey-btn" data-survey="CDS/P/Rubin/FirstLook" onclick="changeSurvey('CDS/P/Rubin/FirstLook')">Rubin</button>
+                            </div>
+                        </div>
+
+                        <!-- Compact Control Panel Embedded -->
+                        <div class="control-panel-embedded">
+                            <div class="control-row">
+                                <!-- Telescope Configuration -->
+                                <div class="control-group">
+                                    <label class="control-label">Telescope:</label>
+                                    <select id="telescopePreset" class="compact-select" onchange="loadTelescopePreset()">
+                                        <option value="">Custom</option>
+                                        <option value="Lulin LOT">Lulin LOT</option>
+                                        <option value="Lulin SLT">Lulin SLT</option>
+                                        <option value="Lulin LATTE">Lulin LATTE</option>
+                                    </select>
+                                    <p>Focal Length</p>
+                                    <input type="number" id="focalLength" class="compact-input" placeholder="FL(mm)" value="530" min="100" max="50000" onchange="calculateFOV()" title="Focal Length (mm)">
+                                    <p>Aperture</p>
+                                    <input type="number" id="aperture" class="compact-input" placeholder="Aperture" value="106" min="50" max="10000" onchange="calculateFOV()" title="Aperture (mm)">
+                                    <p>Focal Reducer</p>
+                                    <input type="number" id="focalReducer" class="compact-input" placeholder="1.0" value="1.0" step="0.01" onchange="calculateFOV()" title="Focal Reducer (e.g. 1.0, 0.67, 0.5)">
+                                </div>
+
+                                <!-- Camera Configuration -->
+                                <div class="control-group">
+                                    <label class="control-label">Camera:</label>
+                                    <select id="cameraPreset" class="compact-select" onchange="loadCameraPreset()">
+                                        <option value="">Custom</option>
+                                        <option value="LOT Sophia">LOT Sophia</option>
+                                        <option value="LOT SBIG ST-9XEI">LOT SBIG ST-9XEI</option>
+                                        <option value="SLT Andor iKon-M 934">SLT Andor iKon-M 934</option>
+                                        <option value="Moravian C5-100M">Moravian C5-100M</option>
+                                        <option value="PlayerOne ZEUS(IMX455)">PlayerOne ZEUS(IMX455)</option>
+                                        <option value="PlayerOne Poseidon(IMX571)">PlayerOne Poseidon(IMX571)</option>
+                                        <option value="PlayerOne Artemis(IMX492)">PlayerOne Artemis(IMX492)</option>
+                                        <option value="PlayerOne Ares(IMX533)">PlayerOne Ares(IMX533)</option>
+                                        <option value="PlayerOne Uranus(IMX585)">PlayerOne Uranus(IMX585)</option>
+                                    </select>
+                                    <p>Sensor Size(mm)</p>
+                                    <input type="number" id="sensorWidth" class="compact-input" placeholder="W(mm)" value="23.6" min="1" max="100" step="0.1" onchange="calculateFOV()" title="Sensor Width (mm)">
+                                    <p>x</p>
+                                    <input type="number" id="sensorHeight" class="compact-input" placeholder="H(mm)" value="15.6" min="1" max="100" step="0.1" onchange="calculateFOV()" title="Sensor Height (mm)">
+                                    <p>Resolution(px)</p>
+                                    <input type="number" id="resolutionX" class="compact-input" placeholder="X(px)" value="6224" min="100" max="20000" onchange="calculateFOV()" title="Resolution X (pixels)">
+                                    <p>x</p>
+                                    <input type="number" id="resolutionY" class="compact-input" placeholder="Y(px)" value="4168" min="100" max="20000" onchange="calculateFOV()" title="Resolution Y (pixels)">
+                                </div>
+
+                                <!-- Mosaic Configuration -->
+                                <div class="control-group">
+                                    <label class="control-label">Mosaic:</label>
+                                    <p>Tiles</p>
+                                    <input type="number" id="mosaicX" class="compact-input" placeholder="X" value="1" min="1" max="10" onchange="calculateMosaic()" title="Tiles X">
+                                    <p>x</p>
+                                    <input type="number" id="mosaicY" class="compact-input" placeholder="Y" value="1" min="1" max="10" onchange="calculateMosaic()" title="Tiles Y">
+                                    <p>Overlap</p>
+                                    <input type="number" id="overlap" class="compact-input" placeholder="Overlap%" value="10" min="0" max="50" onchange="calculateMosaic()" title="Overlap (%)">
+                                    <p>Rotation</p>
+                                    <input type="number" id="rotation" class="compact-input" placeholder="Rot°" value="0" min="-180" max="180" step="0.1" onchange="calculateMosaic()" title="Rotation (degrees)">
+                                </div>
+
+                                <!-- Target Search -->
+                                <div class="control-group">
+                                    <label class="control-label">Target:</label>
+                                    <input type="text" id="targetName" class="compact-input" placeholder="Target name" title="Target Name">
+                                    <button class="compact-btn" onclick="searchByName()">Search</button>
+                                    <input type="number" id="targetRA" class="compact-input" placeholder="RA°" step="0.000001" title="RA (degrees)">
+                                    <input type="number" id="targetDEC" class="compact-input" placeholder="DEC°" step="0.000001" title="DEC (degrees)">
+                                    <button class="compact-btn" onclick="gotoCoordinates()">Goto</button>
+                                </div>
+                            </div>
+
+                            <!-- Info Display Row -->
+                            <div class="info-row">
+                                <div class="info-group">
+                                    <span class="info-label">Focal Length:</span>
+                                    <span id="effectiveFocalLength" class="info-value">530mm</span>
+                                </div>
+                                <div class="info-group">
+                                    <span class="info-label">F-ratio:</span>
+                                    <span id="fRatio" class="info-value">f/5.0</span>
+                                </div>
+                                <div class="info-group">
+                                    <span class="info-label">Pixel Scale:</span>
+                                    <span id="pixelScale" class="info-value">2.06"/px</span>
+                                </div>
+                                <div class="info-group">
+                                    <span class="info-label">Single FOV:</span>
+                                    <span id="singleFrameFOV" class="info-value">2.29°×1.53°</span>
+                                </div>
+                                <div class="info-group">
+                                    <span class="info-label">Total FOV:</span>
+                                    <span id="totalFOV" class="info-value">2.29°×1.53°</span>
+                                </div>
+                            </div>
+
+                            <!-- Mosaic Tile Centers Row -->
+                            <div class="mosaic-centers-row">
+                                <div class="tile-centers-container">
+                                    <div class="tile-centers-header" onclick="toggleTileCenters()">
+                                        <span class="info-label">Tile Centers:</span>
+                                        <span class="collapse-icon collapsed" id="tileCentersIcon">▶</span>
+                                    </div>
+                                    <div class="tile-centers-content collapsed" id="tileCenters">
+                                        <div class="tile-center-item">Center: 0°, 0°</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="sky-map-content">
+                        <!-- Aladin Loading -->
+                        <div class="aladin-loading" id="aladinLoading">
+                            <div class="spinner"></div>
+                            <span>Loading sky view...</span>
+                        </div>
+                        
+                        <!-- Aladin Lite -->
+                        <div id="aladin-lite-div" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- Scripts -->
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js"></script>
+    <script src="{{ url_for('static', filename='js/telescope_simulator.js') }}"></script>
+</body>
+</html>

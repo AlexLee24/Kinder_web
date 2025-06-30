@@ -1,0 +1,197 @@
+<!-- filepath: /Volumes/Mac_mini/Lab_Macmini/GitHub_Work/Kinder_web/app/html/private_area.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GREAT Lab - Private Area - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <div class="private-container">
+        <!-- Header Section -->
+        <div class="private-header">
+            <div class="header-content">
+                <div class="lab-logo">
+                    <span class="lab-icon">🔬</span>
+                    <div class="lab-info">
+                        <h1>GREAT Lab</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Access Section -->
+        <div class="quick-access">
+            <h2 class="section-title">Quick Access</h2>
+            <div class="access-grid">
+                <a href="{{ url_for('private_calendar') }}" class="access-card calendar">
+                    <div class="card-icon">📅</div>
+                    <div class="card-content">
+                        <h3>Calendar</h3>
+                        <p>View and manage lab schedule, observations, and meetings</p>
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('private_telescope') }}" class="access-card telescope">
+                    <div class="card-icon">🔭</div>
+                    <div class="card-content">
+                        <h3>Telescope Management</h3>
+                        <p>Monitor telescope status, schedule observations</p>
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('private_projects') }}" class="access-card projects">
+                    <div class="card-icon">📊</div>
+                    <div class="card-content">
+                        <h3>Research Projects</h3>
+                        <p>Track ongoing research projects and collaborations</p>
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('private_resources') }}" class="access-card resources">
+                    <div class="card-icon">📚</div>
+                    <div class="card-content">
+                        <h3>Lab Resources</h3>
+                        <p>Access documents, papers, and lab protocols</p>
+                    </div>
+                </a>
+                
+                <a href="{{ url_for('marshal') }}" class="access-card marshal">
+                    <div class="card-icon">🌟</div>
+                    <div class="card-content">
+                        <h3>Transient Marshal</h3>
+                        <p>Monitor and classify transient objects</p>
+                    </div>
+                </a>
+                
+                <div class="access-card weather">
+                    <div class="card-icon">🌤️</div>
+                    <div class="card-content">
+                        <h3>Weather & Conditions</h3>
+                        <p>Real-time weather at Lulin Observatory</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity Section -->
+        <div class="recent-activity">
+            <h2 class="section-title">Recent Activity</h2>
+            <div class="activity-container">
+                <div class="activity-list">
+                    <div class="activity-item">
+                        <div class="activity-icon new">🌟</div>
+                        <div class="activity-content">
+                            <div class="activity-title">New transient discovered: 2024abc</div>
+                            <div class="activity-meta">2 hours ago • Transient Marshal</div>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon update">📊</div>
+                        <div class="activity-content">
+                            <div class="activity-title">Project proposal updated: Kilonova Survey</div>
+                            <div class="activity-meta">5 hours ago • Dr. Smith</div>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon telescope">🔭</div>
+                        <div class="activity-content">
+                            <div class="activity-title">Observation scheduled: SLT Target List #47</div>
+                            <div class="activity-meta">1 day ago • Telescope Control</div>
+                        </div>
+                    </div>
+                    
+                    <div class="activity-item">
+                        <div class="activity-icon meeting">📅</div>
+                        <div class="activity-content">
+                            <div class="activity-title">Lab meeting scheduled for tomorrow</div>
+                            <div class="activity-meta">2 days ago • Lab Calendar</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="activity-sidebar">
+                    <div class="sidebar-card">
+                        <h3>Today's Schedule</h3>
+                        <div class="schedule-item">
+                            <div class="schedule-time">14:00</div>
+                            <div class="schedule-title">Data Analysis Session</div>
+                        </div>
+                        <div class="schedule-item">
+                            <div class="schedule-time">16:30</div>
+                            <div class="schedule-title">Telescope Maintenance</div>
+                        </div>
+                        <div class="schedule-item">
+                            <div class="schedule-time">19:00</div>
+                            <div class="schedule-title">Observation Start</div>
+                        </div>
+                    </div>
+                    
+                    <div class="sidebar-card">
+                        <h3>Lab Status</h3>
+                        <div class="status-item">
+                            <div class="status-indicator online"></div>
+                            <span>SLT Telescope: Online</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator maintenance"></div>
+                            <span>LOT Telescope: Maintenance</span>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-indicator online"></div>
+                            <span>Data Pipeline: Running</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Announcements Section -->
+        <div class="announcements">
+            <h2 class="section-title">Lab Announcements</h2>
+            <div class="announcement-list">
+                <div class="announcement-item important">
+                    <div class="announcement-header">
+                        <span class="announcement-icon">📢</span>
+                        <span class="announcement-title">Important: New Safety Protocols</span>
+                        <span class="announcement-date">Dec 15, 2024</span>
+                    </div>
+                    <div class="announcement-content">
+                        Please review the updated safety protocols for observatory operations. All team members must complete the safety training by end of month.
+                    </div>
+                </div>
+                
+                <div class="announcement-item">
+                    <div class="announcement-header">
+                        <span class="announcement-icon">🎉</span>
+                        <span class="announcement-title">Paper Accepted: GW Follow-up Results</span>
+                        <span class="announcement-date">Dec 12, 2024</span>
+                    </div>
+                    <div class="announcement-content">
+                        Congratulations to the team! Our gravitational wave follow-up paper has been accepted for publication in ApJ.
+                    </div>
+                </div>
+                
+                <div class="announcement-item">
+                    <div class="announcement-header">
+                        <span class="announcement-icon">🔧</span>
+                        <span class="announcement-title">Telescope Upgrade Scheduled</span>
+                        <span class="announcement-date">Dec 10, 2024</span>
+                    </div>
+                    <div class="announcement-content">
+                        The SLT telescope will undergo camera upgrade next week. Observations will be suspended from Dec 18-20.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/private_area.js') }}"></script>
+</body>
+</html>

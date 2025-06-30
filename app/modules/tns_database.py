@@ -267,7 +267,7 @@ def import_csv_to_database(csv_file_path):
     finally:
         conn.close()
 
-def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, sort_by="discoverydate", sort_order="desc", date_from=None, date_to=None, tag=None):
+def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, sort_by="discoverydate", sort_order="desc", date_from=None, date_to=None, tag=None, app_mag_min=None, app_mag_max=None, redshift_min=None, redshift_max=None, discoverer=None):
     try:
         conn = get_tns_db_connection()
         cursor = conn.cursor()
@@ -287,7 +287,6 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
         
         if search_term:
             search_term = search_term.strip()
-            print(f"Searching for: '{search_term}'")
             
             query += """ AND (
                 name LIKE ? OR 
@@ -295,8 +294,6 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
             )"""
             search_pattern = f"%{search_term}%"
             params.extend([search_pattern, search_pattern])
-            
-            print(f"Search pattern: '{search_pattern}'")
         
         if object_type:
             if object_type.upper() == 'AT':
@@ -316,7 +313,30 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
         if tag:
             query += " AND COALESCE(tag, 'object') = ?"
             params.append(tag)
-            print(f"Tag filter applied: {tag}")
+        
+        # Apparent magnitude filters
+        if app_mag_min and app_mag_min.strip():
+            query += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) >= ?"
+            params.append(float(app_mag_min))
+            
+        if app_mag_max and app_mag_max.strip():
+            query += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) <= ?"
+            params.append(float(app_mag_max))
+            
+        # Redshift filters
+        if redshift_min and redshift_min.strip():
+            query += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) >= ?"
+            params.append(float(redshift_min))
+            
+        if redshift_max and redshift_max.strip():
+            query += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) <= ?"
+            params.append(float(redshift_max))
+            
+        # Discoverer/Survey filter
+        if discoverer and discoverer.strip():
+            query += " AND (source_group LIKE ? OR reporting_group LIKE ?)"
+            discoverer_pattern = f"%{discoverer}%"
+            params.extend([discoverer_pattern, discoverer_pattern])
         
         sort_column = sort_by if sort_by in ["discoverydate", "name", "type", "redshift", "discoverymag", "time_received"] else "discoverydate"
         sort_direction = "DESC" if sort_order.upper() == "DESC" else "ASC"
@@ -330,9 +350,6 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
             query += " OFFSET ?"
             params.append(offset)
         
-        print(f"Final query: {query}")
-        print(f"Final params: {params}")
-        
         cursor.execute(query, params)
         results = cursor.fetchall()
         
@@ -345,10 +362,8 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
                     obj_dict['tag'] = 'object'
                 objects.append(obj_dict)
             
-            print(f"Found {len(objects)} objects")
             return objects
         else:
-            print("No objects found")
             return []
         
     except Exception as e:
@@ -360,7 +375,7 @@ def search_tns_objects(search_term=None, object_type=None, limit=100, offset=0, 
         if 'conn' in locals():
             conn.close()
 
-def get_objects_count(search_term=None, object_type=None, tag=None, date_from=None, date_to=None):
+def get_objects_count(search_term=None, object_type=None, tag=None, date_from=None, date_to=None, app_mag_min=None, app_mag_max=None, redshift_min=None, redshift_max=None, discoverer=None):
     conn = get_tns_db_connection()
     cursor = conn.cursor()
     
@@ -391,13 +406,37 @@ def get_objects_count(search_term=None, object_type=None, tag=None, date_from=No
         query += " AND COALESCE(tag, 'object') = ?"
         params.append(tag)
     
+    # Apparent magnitude filters
+    if app_mag_min and app_mag_min.strip():
+        query += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) >= ?"
+        params.append(float(app_mag_min))
+        
+    if app_mag_max and app_mag_max.strip():
+        query += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) <= ?"
+        params.append(float(app_mag_max))
+        
+    # Redshift filters
+    if redshift_min and redshift_min.strip():
+        query += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) >= ?"
+        params.append(float(redshift_min))
+        
+    if redshift_max and redshift_max.strip():
+        query += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) <= ?"
+        params.append(float(redshift_max))
+        
+    # Discoverer/Survey filter
+    if discoverer and discoverer.strip():
+        query += " AND (source_group LIKE ? OR reporting_group LIKE ?)"
+        discoverer_pattern = f"%{discoverer}%"
+        params.extend([discoverer_pattern, discoverer_pattern])
+    
     cursor.execute(query, params)
     count = cursor.fetchone()[0]
     
     conn.close()
     return count
 
-def get_filtered_stats(search_term=None, object_type=None, tag=None, date_from=None, date_to=None):
+def get_filtered_stats(search_term=None, object_type=None, tag=None, date_from=None, date_to=None, app_mag_min=None, app_mag_max=None, redshift_min=None, redshift_max=None, discoverer=None):
     conn = get_tns_db_connection()
     cursor = conn.cursor()
     
@@ -427,6 +466,30 @@ def get_filtered_stats(search_term=None, object_type=None, tag=None, date_from=N
     if date_to:
         base_where += " AND discoverydate <= ?"
         params.append(date_to)
+    
+    # Apparent magnitude filters
+    if app_mag_min and app_mag_min.strip():
+        base_where += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) >= ?"
+        params.append(float(app_mag_min))
+        
+    if app_mag_max and app_mag_max.strip():
+        base_where += " AND discoverymag IS NOT NULL AND discoverymag != '' AND CAST(discoverymag AS REAL) <= ?"
+        params.append(float(app_mag_max))
+        
+    # Redshift filters
+    if redshift_min and redshift_min.strip():
+        base_where += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) >= ?"
+        params.append(float(redshift_min))
+        
+    if redshift_max and redshift_max.strip():
+        base_where += " AND redshift IS NOT NULL AND redshift != '' AND CAST(redshift AS REAL) <= ?"
+        params.append(float(redshift_max))
+        
+    # Discoverer/Survey filter
+    if discoverer and discoverer.strip():
+        base_where += " AND (source_group LIKE ? OR reporting_group LIKE ?)"
+        discoverer_pattern = f"%{discoverer}%"
+        params.extend([discoverer_pattern, discoverer_pattern])
     
     # AT vs Classified count
     cursor.execute(

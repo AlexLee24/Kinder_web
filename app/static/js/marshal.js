@@ -325,7 +325,12 @@ function loadObjects(resetPage = false) {
         classification: currentFilters.classification || '',
         tag: currentFilters.tag || '',
         date_from: currentFilters.date_from || '',
-        date_to: currentFilters.date_to || ''
+        date_to: currentFilters.date_to || '',
+        app_mag_min: currentFilters.app_mag_min || '',
+        app_mag_max: currentFilters.app_mag_max || '',
+        redshift_min: currentFilters.redshift_min || '',
+        redshift_max: currentFilters.redshift_max || '',
+        discoverer: currentFilters.discoverer || ''
     });
     
     fetch(`/api/objects?${params.toString()}`)
@@ -489,12 +494,19 @@ function generateTableView() {
         row.dataset.tag = obj.tag;
         row.classList.add(`tag-${obj.tag}`);
         
-        // 轉義物件名稱中的單引號
         const escapedName = obj.name.replace(/'/g, "\\'");
+        
+        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (pureYearLettersMatch) {
+            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
         
         row.innerHTML = `
             <td class="object-name-cell">
-                <a href="javascript:void(0)" onclick="quickView('${escapedName}')">${obj.name}</a>
+                <a href="${objectLink}" target="_blank">${obj.name}</a>
             </td>
             <td>
                 <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
@@ -511,7 +523,7 @@ function generateTableView() {
                 </span>
             </td>
             <td class="actions-cell">
-                <button class="action-btn view" onclick="quickView('${escapedName}')" title="View">View</button>
+                <a href="${objectLink}" target="_blank" class="action-btn view" title="View">View</a>
                 ${window.isAdmin ? `<button class="action-btn edit" onclick="editTags('${escapedName}')" title="Edit Tags">Edit</button>` : ''}
             </td>
         `;
@@ -536,11 +548,17 @@ function generateCompactView() {
         item.dataset.tag = obj.tag;
         item.classList.add(`tag-${obj.tag}`);
         
-        const escapedName = obj.name.replace(/'/g, "\\'");
+        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (pureYearLettersMatch) {
+            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
         
         item.innerHTML = `
             <div class="compact-main">
-                <a href="javascript:void(0)" onclick="quickView('${escapedName}')" class="compact-name">${obj.name}</a>
+                <a href="${objectLink}" target="_blank" class="compact-name">${obj.name}</a>
                 <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
                 <span class="compact-coords">${obj.ra || 'N/A'}, ${obj.dec || 'N/A'}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
@@ -583,10 +601,18 @@ function generateCardsView() {
         const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
         const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
         
+        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (pureYearLettersMatch) {
+            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
+        
         card.innerHTML = `
             <div class="card-header">
                 <div class="object-name">
-                    <a href="javascript:void(0)" onclick="quickView('${obj.name.replace(/'/g, "\\'")}')">
+                    <a href="${objectLink}" target="_blank">
                         ${obj.name}
                     </a>
                 </div>
@@ -642,17 +668,15 @@ function generateCardsView() {
                     ${obj.last_update ? obj.last_update.substring(0, 16) : 'No update'}
                 </div>
                 <div class="card-actions">
-                    <button class="quick-action" onclick="quickView('${obj.name.replace(/'/g, "\\'")}')">
+                    <a href="${objectLink}" target="_blank" class="quick-action">
                         View
-                    </button>
+                    </a>
                 </div>
             </div>
         `;
         
         cardsContainer.appendChild(card);
     });
-    
-    console.log('Generated cards with tags:', filteredObjects.map(obj => `${obj.name}: ${obj.tag}`));
 }
 
 function getTagDisplayName(tag) {
@@ -1412,10 +1436,10 @@ function quickView(objectName) {
         const year = pureYearLettersMatch[1];
         const letters = pureYearLettersMatch[2];
         console.log(`Using TNS format route: /object/${year}${letters}`);
-        window.location.href = `/object/${year}${letters}`;
+        window.open(`/object/${year}${letters}`, '_blank');
     } else {
         console.log(`Using generic route: /object/${encodeURIComponent(objectName)}`);
-        window.location.href = `/object/${encodeURIComponent(objectName)}`;
+        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank');
     }
 }
 

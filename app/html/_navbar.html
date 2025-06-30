@@ -25,8 +25,10 @@
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('astronomy_tools') }}">Astronomy Tools</a></li>
                             <li><a href="{{ url_for('object_plot') }}">Object Visibility Plot</a></li>
+                            <li><a href="{{ url_for('telescope_simulator') }}">Telescope Simulator</a></li>
                         </ul>
                     </li>
+
                     <li class="dropdown">
                         <a href="#">About Us <span class="dropdown-arrow">▼</span></a>
                         <ul class="dropdown-content">
@@ -42,6 +44,14 @@
                             </li>
                         </ul>
                     </li>
+
+                    {% if session.user and session.user.is_great_lab_member %}
+                    <li class="dropdown private-area">
+                        <a href="{{ url_for('private_area') }}" class="dropdown-toggle" {% if current_path.startswith('/private') %}class="active"{% endif %}>
+                            GREAT Lab
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 
                 <!-- Right Navigation -->

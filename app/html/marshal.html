@@ -271,11 +271,11 @@
                             {% set full_name = (obj.name_prefix or '') + obj.name %}
                             
                             {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}">
+                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank">
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}">
+                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" target="_blank">
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% endif %}
@@ -350,16 +350,16 @@
                             {% set full_name = (obj.name_prefix or '') + obj.name %}
                             
                             {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details">
+                                <a href="{{ url_for('object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank">
                                     View
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" class="quick-action" title="View Details">
+                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" class="quick-action" title="View Details" target="_blank">
                                     View
                                 </a>
                             {% endif %}
                         {% else %}
-                            <a href="{{ url_for('marshal') }}" class="quick-action" title="View Details">
+                            <a href="{{ url_for('object_detail_generic', object_name=(obj.name_prefix or '') + obj.name) }}" class="quick-action" title="View Details" target="_blank">
                                 View
                             </a>
                         {% endif %}

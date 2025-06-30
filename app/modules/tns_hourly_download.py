@@ -30,9 +30,6 @@ def download_tns_data():
     }
     
     try:
-        print(f"Downloading TNS data from: {tns_link}")
-        print(f"Saving to directory: {tns_data_dir}")
-        
         # Download file
         response = requests.get(tns_link, headers=headers, timeout=30)
         response.raise_for_status()
@@ -44,17 +41,11 @@ def download_tns_data():
         with open(file_path, 'wb') as f:
             f.write(response.content)
         
-        print(f"Downloaded {len(response.content)} bytes")
-        
         with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            file_list = zip_ref.namelist()
-            print(f"Files in ZIP: {file_list}")
             zip_ref.extractall(tns_data_dir)
         
         # Clean up zip file
         file_path.unlink()
-        
-        print(f"TNS data downloaded and extracted successfully")
         
     except requests.RequestException as e:
         print(f"Error downloading TNS data: {e}")

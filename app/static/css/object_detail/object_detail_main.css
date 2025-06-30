@@ -38,6 +38,20 @@
     display: grid;
     grid-template-columns: 1fr 400px;
     gap: 30px;
+    align-items: start;
+}
+
+.detail-left,
+.detail-right {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+/* Remove margin-bottom from info-cards in flex containers */
+.detail-left .info-card,
+.detail-right .info-card {
+    margin-bottom: 0;
 }
 
 

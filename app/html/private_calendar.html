@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GREAT Lab Calendar</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/private_calendar.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='photo/icon.png') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <!-- Main Calendar Container -->
+    <div class="calendar-container">
+        <!-- Top Navigation Bar -->
+        <div class="calendar-navbar">
+            <div class="nav-left">
+                <h1 class="calendar-logo">
+                    Calendar
+                </h1>
+            </div>
+            <div class="nav-center">
+                <h2 class="current-date" id="current-date">January 2025</h2>
+                <button class="nav-btn" id="prev-btn">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="today-btn" id="today-btn">Today</button>
+                <button class="nav-btn" id="next-btn">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            
+            <div class="nav-right">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search events..." id="search-input">
+                </div>
+                <div class="view-selector">
+                    <button class="view-btn active" data-view="month">Month</button>
+                    <button class="view-btn" data-view="week">Week</button>
+                </div>
+                <button class="add-btn" id="add-event-btn">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="calendar-main">
+            <!-- Side Panel (Collapsible) -->
+            <aside class="side-panel" id="side-panel">
+                <div class="subscription">
+                    <h3>Subscriptions</h3>
+                    <button class="subscription-btn" id="subscribe-btn">
+                        <i class="fas fa-plus"></i> Subscribe
+                    </button>
+                </div>
+                
+                <div class="calendar-list">
+                    <h3>Group Calendars</h3>
+                    <div class="calendar-item">
+                        <input type="checkbox" id="meetings" checked>
+                        <div class="calendar-color" style="background: #e20a0a;"></div>
+                        <label for="important">Important</label>
+                    </div>
+                    <div class="calendar-item">
+                        <input type="checkbox" id="personal" checked>
+                        <div class="calendar-color" style="background: #4285f4;"></div>
+                        <label for="trigger">Trigger</label>
+                    </div>
+                    <div class="calendar-item">
+                        <input type="checkbox" id="work" checked>
+                        <div class="calendar-color" style="background: #34a853;"></div>
+                        <label for="work">Work</label>
+                    </div>
+                    <div class="calendar-item">
+                        <input type="checkbox" id="meetings" checked>
+                        <div class="calendar-color" style="background: #c0ea35;"></div>
+                        <label for="meetings">Meetings</label>
+                    </div>
+                    <div class="calendar-item">
+                        <input type="checkbox" id="meetings" checked>
+                        <div class="calendar-color" style="background: #d85bee;"></div>
+                        <label for="other">Other</label>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Calendar Grid Area -->
+            <div class="calendar-area">
+                <!-- Week Header (Always visible) -->
+                <div class="week-header" id="week-header">
+                    <div class="day-header">Sun</div>
+                    <div class="day-header">Mon</div>
+                    <div class="day-header">Tue</div>
+                    <div class="day-header">Wed</div>
+                    <div class="day-header">Thu</div>
+                    <div class="day-header">Fri</div>
+                    <div class="day-header">Sat</div>
+                </div>
+                
+                <!-- Dynamic Calendar Content -->
+                <div class="calendar-content" id="calendar-content">
+                    <!-- Month/Week/Day view content -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Event Modal -->
+    <div class="modal" id="event-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Add Event</h3>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <form id="event-form">
+                <input type="text" id="event-title" placeholder="Add title" required>
+                
+                <div class="all-day-toggle">
+                    <input type="checkbox" id="all-day" onchange="toggleTimeInputs(this.checked)">
+                    <label for="all-day">All day</label>
+                </div>
+                
+                <div class="datetime-container">
+                    <div class="datetime-group">
+                        <label>Start</label>
+                        <div class="date-time-inputs">
+                            <input type="date" id="event-start-date" required>
+                            <input type="time" id="event-start-time">
+                        </div>
+                    </div>
+                    
+                    <div class="datetime-group">
+                        <label>End</label>
+                        <div class="date-time-inputs">
+                            <input type="date" id="event-end-date" required>
+                            <input type="time" id="event-end-time">
+                        </div>
+                    </div>
+                </div>
+                
+                <textarea id="event-description" placeholder="Add description"></textarea>
+                
+                <label for="event-calendar">Select Calendar</label>
+                <select id="event-calendar">
+                    <option value="important">Important</option>
+                    <option value="trigger">Trigger</option>
+                    <option value="work">Work</option>
+                    <option value="meetings">Meetings</option>
+                    <option value="other">Other</option>
+                </select>
+                
+                <label for="event-members">Assign to members</label>
+                <select id="event-members">
+                    <option value="">Select member</option>
+                </select>
+                
+                <div class="modal-actions">
+                    <button type="button" id="cancel-btn">Cancel</button>
+                    <button type="button" id="delete-btn" style="display: none;">Delete</button>
+                    <button type="submit">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/private_calendar.js') }}"></script>
+    <script>
+        function toggleTimeInputs(isAllDay) {
+            const startTime = document.getElementById('event-start-time');
+            const endTime = document.getElementById('event-end-time');
+            
+            if (isAllDay) {
+                startTime.style.display = 'none';
+                endTime.style.display = 'none';
+            } else {
+                startTime.style.display = 'block';
+                endTime.style.display = 'block';
+            }
+        }
+        </script>
+</body>
+</html>

@@ -197,6 +197,9 @@ function updatePageContent() {
     // Load comment
     loadComments();
 
+    // Initialize Aladin Lite
+    initializeAladinWhenReady();
+
     console.log('Page content updated');
 }
 
@@ -684,6 +687,11 @@ function loadPhotometryPlot() {
                             });
                             
                             console.log('Photometry plot rendered successfully');
+                            
+                            // Match star-map height after photometry plot is loaded
+                            setTimeout(() => {
+                                matchStarMapHeight();
+                            }, 200);
                         } catch (error) {
                             console.error('Error executing plot scripts:', error);
                             photometryContainer.innerHTML = `
@@ -702,6 +710,11 @@ function loadPhotometryPlot() {
                             <span class="no-data-text">${plotData.message || 'No photometry data available'}</span>
                         </div>
                     `;
+                    
+                    // Match star-map height even when no data
+                    setTimeout(() => {
+                        matchStarMapHeight();
+                    }, 100);
                 }
             }
         } else {
@@ -713,6 +726,11 @@ function loadPhotometryPlot() {
                         <span class="no-data-text">Error loading photometry data</span>
                     </div>
                 `;
+                
+                // Match star-map height even on error
+                setTimeout(() => {
+                    matchStarMapHeight();
+                }, 100);
             }
         }
     }).catch(error => {
@@ -725,6 +743,11 @@ function loadPhotometryPlot() {
                     <span class="no-data-text">Error loading photometry data</span>
                 </div>
             `;
+            
+            // Match star-map height even on catch error
+            setTimeout(() => {
+                matchStarMapHeight();
+            }, 100);
         }
     });
 }
@@ -2577,4 +2600,233 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Aladin Lite variables and functions
+let aladinInstance = null;
+let currentSurvey = 'CDS/P/DSS2/color';
+let currentFOV = 0.05;
+
+// Initialize Aladin Lite
+function initializeAladin() {
+    if (!objectData || !objectData.ra || !objectData.declination) {
+        console.warn('No coordinates available for Aladin');
+        showAladinError('No coordinates available');
+        return;
+    }
+
+    const ra = parseFloat(objectData.ra);
+    const dec = parseFloat(objectData.declination);
+
+    console.log(`Initializing Aladin with coordinates: RA=${ra}, Dec=${dec}`);
+
+    try {
+        // Show loading
+        showAladinLoading(true);
+
+        // Initialize Aladin
+        A.init.then(() => {
+            aladinInstance = A.aladin('#aladin-lite-div', {
+                survey: currentSurvey,
+                fov: currentFOV,
+                target: `${ra} ${dec}`,
+                cooFrame: 'ICRS',
+                showReticle: true,
+                showZoomControl: false,
+                showFullscreenControl: true,
+                showLayersControl: false,
+                showGotoControl: false,
+                showShareControl: false,
+                showCatalog: false,
+                showFrame: false,
+                showCooGrid: false,
+                showProjectionControl: false,
+                showSimbadPointerControl: false,
+                showCooGridControl: false,
+                showSettings: false,
+                showLogo: true,
+                showContextMenu: false,
+                allowFullZoomout: true,
+                realFullscreen: true,
+                reticleColor: '#ff0000',
+                reticleSize: 20,
+                showStatusBar: false,
+            });
+
+            // Add target marker
+            const cat = A.catalog({
+                name: 'Target',
+                color: '#ff0000',
+                sourceSize: 12,
+                shape: 'cross'
+            });
+            
+            const targetName = getFullObjectName(objectData) || objectName;
+            cat.addSources([A.source(ra, dec, {name: targetName})]);
+            aladinInstance.addCatalog(cat);
+
+            // Ensure logo and frame are visible
+            setTimeout(() => {
+                try {
+                    // Force show logo and frame elements
+                    const aladinDiv = document.getElementById('aladin-lite-div');
+                    if (aladinDiv) {
+                        const logos = aladinDiv.querySelectorAll('.aladin-logo, .aladin-logoDiv');
+                        logos.forEach(logo => {
+                            if (logo) {
+                                logo.style.display = 'block';
+                                logo.style.visibility = 'visible';
+                                logo.style.opacity = '1';
+                            }
+                        });
+                        
+                        const frames = aladinDiv.querySelectorAll('.aladin-frame, .aladin-location');
+                        frames.forEach(frame => {
+                            if (frame) {
+                                frame.style.display = 'block';
+                                frame.style.visibility = 'visible';
+                                frame.style.opacity = '1';
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Could not manually show Aladin elements:', e);
+                }
+            }, 1000);
+
+            // Hide loading and show Aladin
+            showAladinLoading(false);
+            document.getElementById('aladin-lite-div').style.display = 'block';
+
+            console.log('Aladin initialized successfully');
+        }).catch(error => {
+            console.error('Failed to initialize Aladin:', error);
+            showAladinError('Failed to load star map');
+        });
+
+    } catch (error) {
+        console.error('Error initializing Aladin:', error);
+        showAladinError('Failed to initialize star map');
+    }
+}
+
+// Change survey
+function changeSurvey() {
+    const surveySelect = document.getElementById('surveySelect');
+    if (!surveySelect || !aladinInstance) return;
+
+    currentSurvey = surveySelect.value;
+    console.log(`Changing survey to: ${currentSurvey}`);
+
+    try {
+        aladinInstance.setImageSurvey(currentSurvey);
+    } catch (error) {
+        console.error('Error changing survey:', error);
+        showNotification('Failed to change survey', 'error');
+    }
+}
+
+// Refresh star map
+function refreshStarMap() {
+    console.log('Refreshing star map...');
+    
+    if (aladinInstance) {
+        try {
+            // Destroy current instance
+            aladinInstance = null;
+            document.getElementById('aladin-lite-div').innerHTML = '';
+        } catch (error) {
+            console.warn('Error destroying Aladin instance:', error);
+        }
+    }
+
+    // Reinitialize
+    setTimeout(() => {
+        initializeAladin();
+    }, 100);
+}
+
+// Show Aladin loading state
+function showAladinLoading(show) {
+    const loadingElement = document.getElementById('aladinLoading');
+    const aladinDiv = document.getElementById('aladin-lite-div');
+    
+    if (loadingElement) {
+        loadingElement.style.display = show ? 'flex' : 'none';
+    }
+    
+    if (aladinDiv) {
+        aladinDiv.style.display = show ? 'none' : 'block';
+    }
+}
+
+// Show Aladin error
+function showAladinError(message) {
+    const loadingElement = document.getElementById('aladinLoading');
+    const aladinDiv = document.getElementById('aladin-lite-div');
+    
+    if (loadingElement) {
+        loadingElement.innerHTML = `
+            <div class="error-icon">⚠️</div>
+            <span>${message}</span>
+        `;
+        loadingElement.style.display = 'flex';
+    }
+    
+    if (aladinDiv) {
+        aladinDiv.style.display = 'none';
+    }
+}
+
+// Initialize Aladin when object data is loaded
+function initializeAladinWhenReady() {
+    if (objectData && objectData.ra && objectData.declination) {
+        // Match star-map height with photometry card
+        matchStarMapHeight();
+        initializeAladin();
+    }
+}
+
+// Match star-map height with photometry card
+function matchStarMapHeight() {
+    const photometryCard = document.querySelector('.detail-left .info-card:first-child');
+    const starMapCard = document.getElementById('star-map');
+    
+    if (photometryCard && starMapCard) {
+        // Wait for layout to be complete
+        setTimeout(() => {
+            const photometryHeight = photometryCard.offsetHeight;
+            console.log(`Setting star-map height to match photometry: ${photometryHeight}px`);
+            starMapCard.style.height = `${photometryHeight}px`;
+            
+            // Also adjust the aladin container
+            const aladinContainer = starMapCard.querySelector('.aladin-container');
+            if (aladinContainer) {
+                const cardHeader = starMapCard.querySelector('.card-header');
+                const aladinControls = starMapCard.querySelector('.aladin-controls');
+                const headerHeight = cardHeader ? cardHeader.offsetHeight : 0;
+                const controlsHeight = aladinControls ? aladinControls.offsetHeight : 0;
+                const availableHeight = photometryHeight - headerHeight - controlsHeight - 20; // 20px for padding
+                aladinContainer.style.height = `${Math.max(400, availableHeight)}px`;
+            }
+        }, 100);
+    }
+}
+
+// Add window resize listener to maintain height matching
+window.addEventListener('resize', debounce(() => {
+    matchStarMapHeight();
+}, 250));
+
+// Debounce function to prevent excessive calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }

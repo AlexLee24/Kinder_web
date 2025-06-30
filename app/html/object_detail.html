@@ -63,12 +63,40 @@
                     <!-- Basic Information Grid -->
                     <div class="basic-info-grid">
                         <div class="info-item">
-                            <span class="info-label">Reporting Group:</span>
-                            <span class="info-value">{{ object_data.reporting_group or 'N/A' }}</span>
+                            <span class="info-label">RA (J2000):</span>
+                            <span class="info-value" id="raValue">
+                                {{ "%.6f°"|format(object_data.ra) if object_data.ra else 'N/A' }}
+                            </span>
                         </div>
                         <div class="info-item">
-                            <span class="info-label">Discovery Survey:</span>
-                            <span class="info-value">{{ object_data.source_group or 'N/A' }}</span>
+                            <span class="info-label">Dec (J2000):</span>
+                            <span class="info-value" id="decValue">
+                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">RA (HMS):</span>
+                            <span class="info-value" id="raHMS">
+                                <!-- Will be filled by JavaScript -->
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Dec (DMS):</span>
+                            <span class="info-value" id="decDMS">
+                                <!-- Will be filled by JavaScript -->
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Discovery Date:</span>
+                            <span class="info-value" id="discoveryDateInfo">
+                                {{ object_data.discoverydate[:10] if object_data.discoverydate else 'N/A' }}
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Report Date:</span>
+                            <span class="info-value" id="reportDateInfo">
+                                {{ object_data.reportdate[:10] if object_data.reportdate else 'N/A' }}
+                            </span>
                         </div>
                         <div class="info-item">
                             <span class="info-label">Discovery Mag:</span>
@@ -82,28 +110,12 @@
                             <span class="info-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
                         </div>
                         <div class="info-item">
-                            <span class="info-label">RA (J2000):</span>
-                            <span class="info-value" id="raValue">
-                                {{ "%.6f°"|format(object_data.ra) if object_data.ra else 'N/A' }}
-                            </span>
+                            <span class="info-label">Reporting Group:</span>
+                            <span class="info-value">{{ object_data.reporting_group or 'N/A' }}</span>
                         </div>
                         <div class="info-item">
-                            <span class="info-label">Dec (J2000):</span>
-                            <span class="info-value" id="decValue">
-                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Dec (J2000):</span>
-                            <span class="info-value" id="raHMS">
-                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Dec (J2000):</span>
-                            <span class="info-value" id="decDMS">
-                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
-                            </span>
+                            <span class="info-label">Discovery Survey:</span>
+                            <span class="info-value">{{ object_data.source_group or 'N/A' }}</span>
                         </div>
                     </div>
                     
@@ -290,7 +302,40 @@
 
             <!-- Right Column -->
             <div class="detail-right">
-                
+                <!-- Aladin Card -->
+                <div class="info-card" id="star-map">
+                    <div class="card-header">
+                        <h3>Star Map by Aladin</h3>
+                        <div class="card-actions">
+                            <div class="survey-selector">
+                                <select id="surveySelect" onchange="changeSurvey()">
+                                    <option value="CDS/P/DSS2/color">DSS2 Color</option>
+                                    <option value="P/2MASS/color">2MASS Color</option>
+                                    <option value="P/SDSS9/color">SDSS9 Color</option>
+                                    <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS Color</option>
+                                    <option value="P/DECaLS/DR5/color">DECaLS Color</option>
+                                    <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-DR10</option>
+                                    <option value="CDS/P/Rubin/FirstLook">VeraRubin-LSST</option>
+                                    <option value="simg.de/P/NSNS/DR0_2/ohs8">NSNS-DR02</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <!-- Aladin Loading -->
+                        <div class="aladin-loading" id="aladinLoading">
+                            <div class="loading-spinner-small"></div>
+                            <span>Loading star map...</span>
+                        </div>
+                        
+                        <!-- Aladin Lite -->
+                        <div id="aladin-lite-div" style="display: none;"></div>
+                    </div>
+                    
+                    <!-- Aladin Scripts -->
+                    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+                    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js"></script>
+                </div>
 
                 <!-- Notes Card -->
                 <div class="info-card">

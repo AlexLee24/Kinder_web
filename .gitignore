@@ -6,6 +6,8 @@ upload_tns/
 app/tns_data/
 app/data/
 app/static/ov_plot
+app/main_copy.py
+app/main_old.py
 test/
 
 # Python

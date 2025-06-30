@@ -9,63 +9,147 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/object_plot.css') }}">
     <meta name="description" content="Object Visibility Plot">
     {% include '_favicon.html' %}
+    <style>
+        .plot-result-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .plot-image-container {
+            text-align: center;
+            position: relative;
+        }
+        
+        .plot-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        
+        .plot-image:hover {
+            transform: scale(1.02);
+        }
+        
+        .plot-title {
+            color: white;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .plot-actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .plot-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .plot-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        
+        .plot-info {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
     {% include '_navbar.html' %}
 
-    <!-- Form for generating the plot -->
-        <div class="container-main">
-            <div class="plot-form-container">
-                <h2>Generate Object Visibility Plot</h2>
-                <form id="plot-form">
-                    <div class="plot-form-row">
-                        <label for="date">Date:</label>
-                        <input type="date" id="date" required />
-                    </div>
+    <div class="container-main">
+        <div class="plot-form-container">
+            <h2>Generate Object Visibility Plot</h2>
+            <form id="plot-form">
+                <div class="plot-form-row">
+                    <label for="date">Date:</label>
+                    <input type="date" id="date" required />
+                </div>
 
-                    <div class="plot-form-row">
-                        <label for="telescope">Observatory:</label>
-                        <select id="telescope" required>
-                            <option value="Other">Other</option>
-                            <option value="Lulin">Lulin</option>
-                            <option value="KTO">KTO</option>
-                            <option value="Palomar">Palomar</option>
-                        </select>
-                    </div>
+                <div class="plot-form-row">
+                    <label for="telescope">Observatory:</label>
+                    <select id="telescope" required>
+                        <option value="Other">Other</option>
+                        <option value="Lulin">NCU Lulin Observatory</option>
+                        <option value="LasCampanas">Las Campanas Observatory</option>
+                        <option value="Palomar">Palomar Observatory</option>
+                        <option value="KTO">Taiwan Kenting Observatory</option>
+                    </select>
+                </div>
 
-                    <div class="plot-form-row">
-                        <label for="location">Location:</label>
-                        <input type="text" id="location" placeholder="Enter Longitude Latitude Altitude. e.g. 120:52:21.5 23:28:10.0 2800" required />
-                    </div>
+                <div class="plot-form-row">
+                    <label for="location">Location:</label>
+                    <input type="text" id="location" placeholder="Enter Longitude Latitude Altitude. e.g. 120:52:21.5 23:28:10.0 2800" required />
+                </div>
 
-                    <div class="plot-form-row">
-                        <label for="timezone">Timezone:</label>
-                        <input type="text" id="timezone" placeholder="Enter UTC offset. e.g. +8" required />
-                    </div>
+                <div class="plot-form-row">
+                    <label for="timezone">Timezone:</label>
+                    <input type="text" id="timezone" placeholder="Enter UTC offset. e.g. +8" required />
+                </div>
 
-                    <div class="plot-form-row">
-                        <label for="target-list">Target List:</label>
-                        <textarea id="target-list" placeholder="Enter targets one per line: Object_Name RA DEC
+                <div class="plot-form-row">
+                    <label for="target-list">Target List:</label>
+                    <textarea id="target-list" placeholder="Enter targets one per line: Object_Name RA DEC
 e.g.
 M42 5h 35m 17s -5° 23′ 24″ 
 Great_Orion_Nebula 5:35:17 -5:23:24
 Target1 83.8208 -5.3900"></textarea>
-                        <a>The browser may block the opening of a new window.</a>
-                    </div>
+                    <a>The browser may block the opening of a new window.</a>
+                </div>
 
-                    <div class="plot-form-buttons">
-                        <button type="button" id="generate-btn">Generate</button>
-                        <div id="loading-spinner" class="spinner" style="display: none;"></div>
-                        <button type="reset" id="clear-btn">Clear</button>
-                    </div>
-                </form>
-                <p>plot by python obsplanning, https://github.com/pjcigan/obsplanning</p>
+                <div class="plot-form-buttons">
+                    <button type="button" id="generate-btn">Generate</button>
+                    <div id="loading-spinner" class="spinner" style="display: none;"></div>
+                    <button type="reset" id="clear-btn">Clear</button>
+                </div>
+            </form>
+            <p>plot by python obsplanning, https://github.com/pjcigan/obsplanning</p>
+        </div>
+
+        <!-- Plot Result Container -->
+        <div class="plot-result-container" id="plot-result" style="display: none;">
+            <div class="plot-title">Visibility Plot Result</div>
+            <div class="plot-image-container">
+                <img id="plot-image" class="plot-image" src="" alt="Visibility Plot" onclick="openPlotInNewTab()">
+            </div>
+            <div class="plot-actions">
+                <button class="plot-btn" onclick="openPlotInNewTab()">Open in New Tab</button>
+                <button class="plot-btn" onclick="downloadPlot()">Download</button>
+            </div>
+            <div class="plot-info">
+                Click image or use buttons above to open in new tab
             </div>
         </div>
-<!-- =========================================================================================== -->
-<!-- =========================================================================================== -->
-<!-- =========================================================================================== -->
+    </div>
+
     <script>
+        let currentPlotUrl = '';
+
         document.addEventListener('DOMContentLoaded', function() {
             const urlParams = new URLSearchParams(window.location.search);
             const objectName = urlParams.get('object_name');
@@ -81,10 +165,8 @@ Target1 83.8208 -5.3900"></textarea>
             try {
                 console.log(`Auto-filling object data: ${objectName}, RA: ${ra}, Dec: ${dec}`);
                 
-                // 使用正確的 ID：target-list (textarea)
                 const targetListTextarea = document.getElementById('target-list');
                 if (targetListTextarea) {
-                    // 如果 textarea 已經有內容，換行後添加
                     const currentContent = targetListTextarea.value;
                     const newTarget = `${objectName} ${ra} ${dec}`;
                     
@@ -97,7 +179,6 @@ Target1 83.8208 -5.3900"></textarea>
                     showNotification(`Object ${objectName} added successfully`, 'success');
                 }
                 
-                // 使用正確的 ID：date
                 const dateInput = document.getElementById('date');
                 if (dateInput && !dateInput.value) {
                     const today = new Date().toISOString().split('T')[0];
@@ -141,47 +222,40 @@ Target1 83.8208 -5.3900"></textarea>
                 }, 300);
             }, 3000);
         }
-        
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Function to handle 'telescope' change and update Location and Timezone accordingly
-        document.getElementById('telescope').addEventListener('change', function() {
-            const telescope = this.value;
-            const locationInput = document.getElementById('location');
-            const timezoneInput = document.getElementById('timezone');
-        
-            if (telescope === 'Lulin') {
-                locationInput.value = "120:52:21.5 23:28:10.0 2800";
-                timezoneInput.value = "+8";
-            } else if (telescope === 'KTO') {
-                locationInput.value = "120:41:53.54 22:03:0.64 40";  
-                timezoneInput.value = "+8";
-            } else if (telescope === 'Palomar') {
-                locationInput.value = "-116:51:50.0 33:21:21.0 1706";  
-                timezoneInput.value = "-8";
-            } else {
-                locationInput.value = '';
-                timezoneInput.value = '';  
-            }
-        });
 
-        // Function to parse RA (Right Ascension) and convert it to hours, minutes, seconds
+        function showPlotResult(plotUrl) {
+            currentPlotUrl = plotUrl;
+            const plotImage = document.getElementById('plot-image');
+            const plotResult = document.getElementById('plot-result');
+            
+            plotImage.src = plotUrl;
+            plotResult.style.display = 'block';
+            
+            // Smooth scroll to plot result
+            plotResult.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function openPlotInNewTab() {
+            if (currentPlotUrl) {
+                window.open(currentPlotUrl, '_blank');
+            }
+        }
+
+        function downloadPlot() {
+            if (currentPlotUrl) {
+                const link = document.createElement('a');
+                link.href = currentPlotUrl;
+                link.download = `visibility_plot_${new Date().toISOString().split('T')[0]}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
         function parseRA(ra) {
-            // Handle RA formats (HHh Mm Ss, HH:MM:SS, HH MM SS)
-            const raPatternHMS = /^(\d{1,2})h\s*(\d{1,2})m\s*([\d.]+)s?$/;  // e.g., 5h 35m 17.1s
-            const raPatternColon = /^(\d{1,2}):(\d{1,2}):([\d.]+)$/;  // e.g., 5:35:17.1
-            const raPatternSpace = /^(\d{1,2})\s*(\d{1,2})\s*([\d.]+)$/;  // e.g., 5 35 17.1
+            const raPatternHMS = /^(\d{1,2})h\s*(\d{1,2})m\s*([\d.]+)s?$/;
+            const raPatternColon = /^(\d{1,2}):(\d{1,2}):([\d.]+)$/;
+            const raPatternSpace = /^(\d{1,2})\s*(\d{1,2})\s*([\d.]+)$/;
     
             let match = ra.match(raPatternHMS) || ra.match(raPatternColon) || ra.match(raPatternSpace);
             if (match) {
@@ -191,14 +265,12 @@ Target1 83.8208 -5.3900"></textarea>
                     seconds: parseInt(match[3], 10)
                 };
             }
-            console.log("Invalid RA format:", ra); // Show error message for invalid RA
-            return null;  // Return null if invalid RA format
+            console.log("Invalid RA format:", ra);
+            return null;
         }
 
-        // Function to parse DEC (Declination) and convert it to degrees, minutes, seconds
         function parseDEC(dec) {
-            // Handle DEC formats (±DD° MM′ SS″, ±DD:MM:SS, ±DD MM SS)
-            const decPattern = /^([+-]?\d{1,2})(?::|°\s?)(\d{1,2})(?::|\′\s?)([\d.]+)(?:\"|\″)?$/;  // e.g., -5° 23′ 24″
+            const decPattern = /^([+-]?\d{1,2})(?::|°\s?)(\d{1,2})(?::|\′\s?)([\d.]+)(?:\"|\″)?$/;
             const match = dec.match(decPattern);
             if (match) {
                 return {
@@ -207,8 +279,8 @@ Target1 83.8208 -5.3900"></textarea>
                     arcseconds: parseFloat(match[3])
                 };
             }
-            console.log("Invalid DEC format:", dec); // Show error message for invalid DEC
-            return null;  // Return null if invalid DEC format
+            console.log("Invalid DEC format:", dec);
+            return null;
         }
 
         function formatRA(ra) {
@@ -244,9 +316,7 @@ Target1 83.8208 -5.3900"></textarea>
                 arcseconds,
             };
         }
-        
 
-        // Handle form submission
         document.getElementById('generate-btn').addEventListener('click', function () {
             const date = document.getElementById('date').value;
             const telescope = document.getElementById('telescope').value;
@@ -254,40 +324,34 @@ Target1 83.8208 -5.3900"></textarea>
             const timezone = document.getElementById('timezone').value;
             const targetList = document.getElementById('target-list').value.trim().split("\n");
             
-            // loading
             const loadingSpinner = document.getElementById('loading-spinner');
             loadingSpinner.style.display = 'inline-block';
 
             if (!date) {
                 alert("Please fill in the Date.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
             const year = parseInt(date.split("-")[0], 10);
             if (year < 1900 || year > 2100) {
                 alert("Year must be between 1900 and 2100 to avoid bug.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
 
             if (!telescope) {
                 alert("Please select an Observatory.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
             if (!location) {
                 alert("Please fill in the Location.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
             if (!timezone) {
                 alert("Please fill in the Timezone.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
 
@@ -316,11 +380,8 @@ Target1 83.8208 -5.3900"></textarea>
                     dec = parts[4].replace(/º/, ":") + parts[5].replace(/'/, ":") + parts[6].replace(/"/, "");
                 }
 
-                
-
                 let errors = [];
             
-                // RA
                 if (typeof ra !== 'string' || ra.trim() === "") {
                     errors.push("RA is missing or invalid.");
                 } else {
@@ -330,7 +391,6 @@ Target1 83.8208 -5.3900"></textarea>
                     }
                 }
             
-                // DEC
                 if (typeof dec !== 'string' || dec.trim() === "") {
                     errors.push("DEC is missing or invalid.");
                 } else {
@@ -343,7 +403,6 @@ Target1 83.8208 -5.3900"></textarea>
                 if (errors.length > 0) {
                     alert(`Target: ${name}\n${errors.join("\n")}`);
                     loadingSpinner.style.display = 'none';
-                    
                     return null;
                 }
             
@@ -352,20 +411,16 @@ Target1 83.8208 -5.3900"></textarea>
                     ra: formatRA(parseRA(ra)),
                     dec: formatDEC(parseDEC(dec))
                 };
-            }).filter(target => target !== null); // Filter out invalid targets
+            }).filter(target => target !== null);
             
+            console.log("Valid targets:", targets);
         
-            console.log("Valid targets:", targets); // Log the valid targets before sending them to the server
-        
-            // If no valid targets, alert the user
             if (targets.length === 0) {
                 alert("No valid targets to generate.");
                 loadingSpinner.style.display = 'none';
-                
                 return;
             }
         
-            // Send the data to the server to generate the plot
             fetch("/generate_plot", {
                 method: "POST",
                 headers: {
@@ -384,18 +439,40 @@ Target1 83.8208 -5.3900"></textarea>
                 loadingSpinner.style.display = 'none';
                 
                 if (data.success) {
-                    const plotUrl = data.plot_url;
-                    // Open the plot image URL directly in a new tab
-                    window.open(plotUrl, "_blank");
+                    showPlotResult(data.plot_url);
+                    showNotification('Plot generated successfully!', 'success');
                 } else {
                     alert("Failed to generate plot.");
                 }
             })
             .catch(error => {
-            console.error("Error:", error);
-            alert("An error occurred while generating the plot.");
-            loadingSpinner.style.display = 'none';
+                console.error("Error:", error);
+                alert("An error occurred while generating the plot.");
+                loadingSpinner.style.display = 'none';
             });
+        });
+
+        document.getElementById('telescope').addEventListener('change', function() {
+            const telescope = this.value;
+            const locationInput = document.getElementById('location');
+            const timezoneInput = document.getElementById('timezone');
+        
+            if (telescope === 'Lulin') {
+                locationInput.value = "120:52:21.5 23:28:10.0 2800";
+                timezoneInput.value = "+8";
+            } else if (telescope === 'KTO') {
+                locationInput.value = "120:41:53.54 22:03:0.64 40";  
+                timezoneInput.value = "+8";
+            } else if (telescope === 'Palomar') {
+                locationInput.value = "-116:51:50.0 33:21:21.0 1706";  
+                timezoneInput.value = "-8";
+            } else if (telescope === 'LasCampanas') {
+                locationInput.value = "-70:41:33.0 -29:00:51.12 2282";  
+                timezoneInput.value = "-3";
+            } else {
+                locationInput.value = '';
+                timezoneInput.value = '';  
+            }
         });
 
         window.addEventListener("scroll", function() {
