@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Harmonic Analyzer v6.0 (Physics Engine)</title>
+    <style>
+        :root {
+            --bg-color: #0f0f0f;
+            --panel-bg: #181818;
+            --border-color: #333;
+            --text-main: #e0e0e0;
+            --text-sub: #9e9e9e;
+            --accent: #00bcd4;
+            --ota-color: #ab47bc;
+            --danger: #ef5350;
+            --warning: #ffa726;
+            --success: #66bb6a;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background: var(--bg-color); color: var(--text-main); 
+            margin: 0; padding: 0; display: flex; flex-direction: column; 
+            height: 100vh; overflow: hidden; 
+        }
+        
+        @media (min-width: 900px) {
+            body { flex-direction: row; padding: 15px; gap: 15px; }
+            .controls { flex: 0 0 380px; border-radius: 8px; border: 1px solid var(--border-color); order: 1; }
+            .display-container { flex: 1; border-radius: 8px; border: 1px solid var(--border-color); order: 2; }
+        }
+        @media (max-width: 899px) {
+            .display-container { flex: 0 0 55%; border-bottom: 1px solid var(--border-color); order: 1; }
+            .controls { flex: 1; order: 2; }
+        }
+
+        .controls { background: var(--panel-bg); padding: 15px; overflow-y: auto; -webkit-overflow-scrolling: touch; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.3); }
+        .display-container { position: relative; background: #050505; overflow: hidden; z-index: 5; }
+        canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+        canvas:active { cursor: grabbing; }
+
+        h2 { margin: 0 0 15px 0; color: var(--text-main); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.5px; }
+        h3 { margin: 20px 0 10px 0; color: var(--text-sub); font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; border-left: 3px solid var(--accent); padding-left: 10px; }
+        
+        .input-group { margin-bottom: 10px; background: #222; padding: 10px; border-radius: 6px; border: 1px solid #333; }
+        label { display: block; margin-bottom: 6px; font-size: 0.8rem; color: var(--text-sub); }
+        input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; accent-color: var(--accent); height: 16px; touch-action: auto; -webkit-user-select: none; user-select: none; }
+        .list-container input[type="range"] { touch-action: pan-x; pointer-events: auto; }
+        .val-disp { float: right; color: var(--text-main); font-family: monospace; font-size: 0.9rem; }
+        .unit { color: #666; font-size: 0.75rem; margin-left: 2px; }
+        
+        button.add-btn { width: 100%; padding: 8px; background: #2a2a2a; color: var(--text-main); border: 1px dashed #555; border-radius: 6px; font-size: 0.85rem; margin-top: 5px; cursor: pointer; transition: 0.2s; }
+        button.add-btn:hover { background: #333; border-color: var(--accent); color: var(--accent); }
+
+        .list-container { margin-bottom: 10px; border: 1px solid #333; border-radius: 6px; padding: 5px; background: #1a1a1a; min-height: 60px; max-height: 250px; overflow-y: auto; }
+        .item-box { background: #252525; padding: 8px; margin-bottom: 6px; border-radius: 4px; position: relative; }
+        .cw-box { border-left: 3px solid var(--warning); }
+        .ota-box { border-left: 3px solid var(--ota-color); }
+        .item-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+        .item-col { flex: 1; }
+        .item-label { font-size: 0.75rem; color: #888; display: block; }
+        .item-remove { position: absolute; top: 5px; right: 5px; background: transparent; color: #666; border: none; font-size: 1rem; cursor: pointer; line-height: 1; }
+        .item-remove:hover { color: var(--danger); }
+
+        /* Dashboard */
+        #stats { 
+            position: absolute; top: 15px; right: 15px; 
+            background: rgba(15, 15, 15, 0.9); padding: 15px; 
+            border-radius: 8px; border: 1px solid #444; 
+            width: 240px; backdrop-filter: blur(8px); 
+            pointer-events: none; user-select: none; 
+            font-size: 0.85rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; color: #bbb; }
+        .stat-val { font-family: monospace; font-weight: 600; color: #fff; }
+        .stat-sub { font-size: 0.75rem; color: #666; }
+        .stat-div { height: 1px; background: #333; margin: 10px 0; }
+        
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; text-align: center; margin-top: 8px; text-transform: uppercase; }
+        .bg-ok { background: rgba(102, 187, 106, 0.15); color: #66bb6a; border: 1px solid #2e7d32; }
+        .bg-warn { background: rgba(255, 167, 38, 0.15); color: #ffa726; border: 1px solid #ef6c00; }
+        .bg-err { background: rgba(239, 83, 80, 0.15); color: #ef5350; border: 1px solid #c62828; }
+        .bg-info { background: rgba(41, 182, 246, 0.15); color: #29b6f6; border: 1px solid #0288d1; }
+
+        .advice-box { margin-top: 10px; padding: 8px; background: #222; border-radius: 4px; border-left: 3px solid #666; font-size: 0.75rem; line-height: 1.4; color: #ccc; }
+
+        .controls-overlay { position: absolute; bottom: 15px; left: 15px; display: flex; gap: 10px; }
+        .btn-overlay { background: rgba(40,40,40,0.8); color: #e0e0e0; border: 1px solid #555; padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; backdrop-filter: blur(4px); cursor: pointer; }
+        .slider-overlay { position: absolute; bottom: 15px; right: 15px; width: 160px; background: rgba(30,30,30,0.8); padding: 8px 12px; border-radius: 8px; border: 1px solid #444; backdrop-filter: blur(4px); }
+        
+        /* Torque Chart */
+        .chart-container { position: absolute; bottom: 60px; left: 15px; width: 280px; height: 160px; background: rgba(15,15,15,0.92); border-radius: 8px; border: 1px solid #444; padding: 10px; backdrop-filter: blur(8px); }
+        .chart-title { font-size: 0.7rem; color: var(--accent); font-weight: 600; margin-bottom: 5px; }
+        #torqueChart { width: 100%; height: 120px; }
+
+        /* OTA Height mini viz */
+        .ota-height-right { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+        .ota-height-val { font-family: monospace; }
+        .ota-height-mini { width: 34px; height: 34px; border-radius: 6px; border: 1px solid #333; background: #1b1b1b; position: relative; flex: 0 0 auto; }
+        .ota-height-base { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 2px; background: #444; border-radius: 2px; }
+        .ota-height-post { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: 2px; background: rgba(255,255,255,0.25); border-radius: 2px; }
+        .ota-height-dot { position: absolute; left: 50%; transform: translate(-50%, 50%); width: 6px; height: 6px; border-radius: 50%; background: var(--ota-color); box-shadow: 0 0 0 2px rgba(171,71,188,0.15); }
+
+        /* Mobile panel collapse */
+        .mobile-controls-toggle { position: absolute; top: 15px; left: 15px; z-index: 20; display: none; }
+        @media (max-width: 899px) {
+            .mobile-controls-toggle { display: block; }
+            body.controls-collapsed .controls { display: none; }
+            body.controls-collapsed .display-container { flex: 1 1 100%; border-bottom: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px;">
+            <h2 style="margin:0;" data-lang="title">Harmonic Physics <span style="font-size:0.6em; color:#666;">v6.0</span></h2>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <select id="langSelect" style="padding:4px 6px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-size:0.75rem;">
+                    <option value="en">English</option>
+                    <option value="zh-TW">繁體中文</option>
+                </select>
+                <select id="presetSelect" style="padding:6px; background:#222; color:#fff; border:1px solid #444; border-radius:4px; font-size:0.8rem;">
+                    <option value="custom" data-lang="preset.custom">Custom</option>
+                    <option value="am5">ZWO AM5</option>
+                    <option value="nyx101">Pegasus NYX-101</option>
+                    <option value="wd17">WarpAstron WD-17</option>
+                    <option value="wd20">WarpAstron WD-20</option>
+                    <option value="rst300">Rainbow RST-300</option>
+                </select>
+            </div>
+        </div>
+
+        <h3 data-lang="section.mount">Mount Geometry</h3>
+        <div class="input-group">
+            <label data-lang="label.l1">L1 (Axis to Saddle) <span class="val-disp" id="v_l1">9.5 <span class="unit">cm</span></span></label>
+            <input type="range" id="mountH" min="5" max="20" step="0.1" value="9.5">
+            <label data-lang="label.torque">Max Motor Torque <span class="val-disp" id="v_tmax">26 <span class="unit">Nm</span></span></label>
+            <input type="range" id="maxTorque" min="10" max="150" step="1" value="26">
+        </div>
+
+        <h3 data-lang="section.ota">Optical Tubes (OTA)</h3>
+        <div id="otaList" class="list-container"></div>
+        <button id="addOtaBtn" class="add-btn" style="border-color: var(--ota-color); color: var(--ota-color);" data-lang="btn.addTelescope">+ Add Telescope</button>
+        
+        <h3 style="display:flex; align-items:center; gap:10px;">
+            <span data-lang="section.cw">Counterweights</span>
+            <input type="checkbox" id="useShaft" checked style="width:16px; margin:0;">
+        </h3>
+        
+        <div id="cwSection">
+            <div class="input-group">
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;">
+                        <label data-lang="label.shaftLen">Shaft Len <span class="val-disp" id="v_sl">25 <span class="unit">cm</span></span></label>
+                        <input type="range" id="shaftLen" min="10" max="50" step="0.5" value="25.0">
+                    </div>
+                    <div style="flex:1;">
+                        <label data-lang="label.shaftWt">Shaft Wt <span class="val-disp" id="v_sw">0.5 <span class="unit">kg</span></span></label>
+                        <input type="range" id="shaftW" min="0.1" max="5.0" step="0.1" value="0.5">
+                    </div>
+                </div>
+            </div>
+            <div id="cwList" class="list-container"></div>
+            <button id="addCwBtn" class="add-btn" style="color:var(--warning); border-color:var(--warning);" data-lang="btn.addCW">+ Add Counterweight</button>
+            <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
+                <span style="font-size:0.7rem; color:#666; width:100%;">Vixen Quick Add:</span>
+                <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(1)">1kg</button>
+                <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(1.9)">1.9kg</button>
+                <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(2.8)">2.8kg</button>
+                <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(3.7)">3.7kg</button>
+                <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(5)">5kg</button>
+            </div>
+        </div>
+        <div style="height: 40px;"></div>
+    </div>
+
+    <div class="display-container">
+        <canvas id="simCanvas"></canvas>
+        
+        <div id="stats">
+            <div class="stat-row" style="color:var(--accent); font-weight:700;" data-lang="stats.torque">TORQUE DYNAMICS</div>
+            <div class="stat-row"><span data-lang="stats.instant">Instant Load:</span> <span class="stat-val" id="t_inst" style="color:#fff;">0.0</span> <span class="unit">Nm</span></div>
+            <div class="stat-row"><span data-lang="stats.peak">Peak (Horizontal):</span> <span class="stat-val" id="t_net">0.0</span> <span class="unit">Nm</span></div>
+            <div class="stat-row"><span data-lang="stats.peakPct">Peak Load %:</span> <span class="stat-val" id="load_pct">0%</span></div>
+            <div id="statusT" class="badge bg-ok">NORMAL</div>
+
+            <div class="stat-div"></div>
+            <div class="stat-row" style="color:var(--accent); font-weight:700;" data-lang="stats.cm">CENTER OF MASS (CM)</div>
+            <div class="stat-row"><span data-lang="stats.cmOffset">CM Offset (Radius):</span> <span class="stat-val" id="cm_rad">0.0</span> <span class="unit">cm</span></div>
+            <div class="stat-row"><span data-lang="stats.inertia">Inertia Total:</span> <span class="stat-val" id="i_total">0.0</span> <span class="unit">kgm²</span></div>
+            
+            <div class="stat-div"></div>
+            <div class="stat-row" style="color:var(--accent); font-weight:700;" data-lang="stats.weight">WEIGHT LIMITS</div>
+            <div class="stat-row"><span data-lang="stats.otaPayload">OTA Payload:</span> <span class="stat-val" id="ota_weight">0.0</span> / <span id="ota_limit">13</span> <span class="unit">kg</span></div>
+            <div id="statusOTA" class="badge bg-ok" style="display:inline-block; margin-right:5px;">OK</div>
+            <div class="stat-row" style="margin-top:5px;"><span data-lang="stats.sysTotal">System Total:</span> <span class="stat-val" id="sys_weight">0.0</span> / <span id="sys_limit">25</span> <span class="unit">kg</span></div>
+            <div id="statusSys" class="badge bg-ok" style="display:inline-block;">OK</div>
+            
+            <div id="advice" class="advice-box">System optimized for harmonic drive.</div>
+        </div>
+
+        <div class="controls-overlay">
+            <button class="btn-overlay" onclick="resetView()" data-lang="btn.resetView">⟲ Reset View</button>
+        </div>
+
+        <div class="mobile-controls-toggle">
+            <button id="toggleControlsBtn" class="btn-overlay" onclick="toggleControls()" data-lang="btn.controls">☰ Controls</button>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title" data-lang="chart.title">TORQUE vs RA ANGLE</div>
+            <canvas id="torqueChart"></canvas>
+        </div>
+
+        <div class="slider-overlay">
+            <label style="font-size:0.75rem; color:#aaa; margin-bottom:4px; display:block;" data-lang="label.raRotation">RA Rotation: <span id="rot_val">0°</span></label>
+            <input type="range" id="raRotation" min="-180" max="180" step="1" value="0" style="width:100%; margin:0;">
+        </div>
+    </div>
+
+    <script>
+        // Language Dictionary
+        const translations = {
+            en: {
+                title: "Harmonic Physics",
+                'preset.custom': "Custom",
+                'section.mount': "Mount Geometry",
+                'section.ota': "Optical Tubes (OTA)",
+                'section.cw': "Counterweights",
+                'label.l1': "L1 (Axis to Saddle)",
+                'label.torque': "Max Motor Torque",
+                'label.shaftLen': "Shaft Len",
+                'label.shaftWt': "Shaft Wt",
+                'label.raRotation': "RA Rotation:",
+                'btn.addTelescope': "+ Add Telescope",
+                'btn.addCW': "+ Add Counterweight",
+                'btn.resetView': "⟲ Reset View",
+                'btn.controls': "☰ Controls",
+                'chart.title': "TORQUE vs RA ANGLE",
+                'stats.torque': "TORQUE DYNAMICS",
+                'stats.instant': "Instant Load:",
+                'stats.peak': "Peak (Horizontal):",
+                'stats.peakPct': "Peak Load %:",
+                'stats.cm': "CENTER OF MASS (CM)",
+                'stats.cmOffset': "CM Offset (Radius):",
+                'stats.inertia': "Inertia Total:",
+                'stats.weight': "WEIGHT LIMITS",
+                'stats.otaPayload': "OTA Payload:",
+                'stats.sysTotal': "System Total:",
+                'item.mass': "Mass (kg)",
+                'item.pos': "Pos (cm)",
+                'item.diam': "Diam (mm)",
+                'item.weight': "Weight (kg)",
+                'item.height': "Height (cm)",
+                'item.telescope': "Telescope",
+                'status.normal': "NORMAL",
+                'status.optimal': "OPTIMAL",
+                'status.overload': "OVERLOAD",
+                'status.tooHeavy': "TOO HEAVY",
+                'status.tooLight': "TOO LIGHT",
+                'status.heavyLoad': "HEAVY LOAD",
+                'btn.showControls': "☰ Show Controls",
+                'btn.hideControls': "☰ Hide Controls",
+                'advice.otaOverload': "⚠️ OTA Payload ({ota}kg) exceeds limit ({limit}kg)! Remove {diff}kg from telescope setup.",
+                'advice.sysOverload': "⚠️ System total ({total}kg) exceeds structural limit ({limit}kg)! Reduce overall weight by {diff}kg.",
+                'advice.danger': "⚠️ DANGER: Torque exceeds motor limit. Reduce payload or re-balance immediately.",
+                'advice.cmOffset': "⚠️ CM is {cm}cm off-axis. This causes variable torque (0 to {torque} Nm) during tracking. \nSuggest: Adjust CW to center CM.",
+                'advice.tooHeavy': "⚠️ Load at {pct}% is too heavy! Consider removing {diff}kg of counterweight.",
+                'advice.otaHigh': "⚠️ OTA Payload at {pct}% of limit. Consider lighter equipment.",
+                'advice.sysHigh': "⚠️ System total at {pct}% of structural limit. Mind the weight.",
+                'advice.tooLight': "ℹ️ Load at {pct}% is very light. Consider adding {diff}kg more counterweight for stability.",
+                'advice.tooBalanced': "⚠️ Too balanced! Harmonic drives need some load imbalance to function optimally. Consider reducing counterweight.",
+                'advice.cmOk': "ℹ️ CM is off-axis, but load is acceptable for harmonic tracking.",
+                'advice.optimal': "✅ System optimized for harmonic drive operation. Load distribution suitable for precision tracking."
+            },
+            'zh-TW': {
+                title: "諧波分析儀",
+                'preset.custom': "自訂",
+                'section.mount': "赤道儀幾何",
+                'section.ota': "光學鏡筒 (OTA)",
+                'section.cw': "配重",
+                'label.l1': "L1 (軸心到鳩尾槽)",
+                'label.torque': "最大馬達扭矩",
+                'label.shaftLen': "重錘桿長度",
+                'label.shaftWt': "重錘桿重量",
+                'label.raRotation': "RA 旋轉角度:",
+                'btn.addTelescope': "+ 新增望遠鏡",
+                'btn.addCW': "+ 新增配重",
+                'btn.resetView': "⟲ 重設視角",
+                'btn.controls': "☰ 控制面板",
+                'chart.title': "扭矩 vs RA 角度",
+                'stats.torque': "扭矩動態",
+                'stats.instant': "瞬時負載:",
+                'stats.peak': "峰值 (水平):",
+                'stats.peakPct': "峰值負載 %:",
+                'stats.cm': "質心 (CM)",
+                'stats.cmOffset': "質心偏移 (半徑):",
+                'stats.inertia': "總慣性矩:",
+                'stats.weight': "重量限制",
+                'stats.otaPayload': "OTA 負載:",
+                'stats.sysTotal': "系統總重:",
+                'item.mass': "質量 (kg)",
+                'item.pos': "位置 (cm)",
+                'item.diam': "口徑 (mm)",
+                'item.weight': "重量 (kg)",
+                'item.height': "高度 (cm)",
+                'item.telescope': "望遠鏡",
+                'status.normal': "正常",
+                'status.optimal': "最佳",
+                'status.overload': "超載",
+                'status.tooHeavy': "過重",
+                'status.tooLight': "過輕",
+                'status.heavyLoad': "重負載",
+                'btn.showControls': "☰ 顯示控制",
+                'btn.hideControls': "☰ 隱藏控制",
+                'advice.otaOverload': "⚠️ OTA 負載 ({ota}kg) 超過限制 ({limit}kg)！請減少 {diff}kg 的望遠鏡設備。",
+                'advice.sysOverload': "⚠️ 系統總重 ({total}kg) 超過結構限制 ({limit}kg)！請減少 {diff}kg 的總重量。",
+                'advice.danger': "⚠️ 危險：扭矩超過馬達限制。請立即減少負載或重新平衡。",
+                'advice.cmOffset': "⚠️ 質心偏移 {cm}cm。這會導致追蹤時扭矩變化 (0 到 {torque} Nm)。\n建議：調整配重使質心居中。",
+                'advice.tooHeavy': "⚠️ 負載達 {pct}%，過重！建議減少 {diff}kg 配重。",
+                'advice.otaHigh': "⚠️ OTA 負載達限制的 {pct}%。建議使用較輕的設備。",
+                'advice.sysHigh': "⚠️ 系統總重達結構限制的 {pct}%。請注意重量。",
+                'advice.tooLight': "ℹ️ 負載僅 {pct}%，非常輕。建議增加 {diff}kg 配重以提高穩定性。",
+                'advice.tooBalanced': "⚠️ 太平衡了！諧波赤道儀需要一些負載不平衡才能最佳運作。建議減少配重。",
+                'advice.cmOk': "ℹ️ 質心偏移，但負載在諧波追蹤可接受範圍內。",
+                'advice.optimal': "✅ 系統已針對諧波赤道儀優化。負載分配適合精密追蹤。"
+            }
+        };
+
+        // Current language
+        let currentLang = 'en';
+
+        // Language functions
+        function detectSystemLanguage() {
+            const browserLang = navigator.language || navigator.languages?.[0] || 'en';
+            return browserLang.startsWith('zh') ? 'zh-TW' : 'en';
+        }
+
+        function updateLanguage(lang) {
+            currentLang = lang;
+            document.getElementById('langSelect').value = lang;
+            
+            // Update all elements with data-lang attributes
+            document.querySelectorAll('[data-lang]').forEach(el => {
+                const key = el.getAttribute('data-lang');
+                if (translations[lang] && translations[lang][key]) {
+                    const text = translations[lang][key];
+                    
+                    if (el.tagName === 'OPTION') {
+                        el.textContent = text;
+                    } else if (el.tagName === 'LABEL') {
+                        // For labels with .val-disp, only update the text node before it
+                        const valSpan = el.querySelector('.val-disp');
+                        if (valSpan) {
+                            // Find and update only the text node, preserve the span element
+                            const nodes = el.childNodes;
+                            for (let i = 0; i < nodes.length; i++) {
+                                if (nodes[i].nodeType === Node.TEXT_NODE) {
+                                    nodes[i].textContent = text + ' ';
+                                    break;
+                                }
+                            }
+                        } else {
+                            el.textContent = text;
+                        }
+                    } else if (el.tagName === 'SPAN' || el.tagName === 'BUTTON' || el.tagName === 'DIV') {
+                        // For span, button, div - check if it has child elements
+                        if (el.children.length === 0) {
+                            el.textContent = text;
+                        } else {
+                            // Has children, only update text node
+                            const firstChild = el.firstChild;
+                            if (firstChild && firstChild.nodeType === Node.TEXT_NODE) {
+                                firstChild.textContent = text;
+                            }
+                        }
+                    } else if (el.tagName === 'H3' || el.tagName === 'H2') {
+                        // For headings, preserve version span if exists
+                        const versionSpan = el.querySelector('span');
+                        if (versionSpan && versionSpan.style.fontSize) {
+                            el.innerHTML = text + ' ' + versionSpan.outerHTML;
+                        } else {
+                            el.textContent = text;
+                        }
+                    }
+                }
+            });
+            
+            // Update dynamic content
+            renderCW();
+            renderOTA();
+            localStorage.setItem('harmonicAnalyzerLang', lang);
+        }
+
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let view = { scale: 1.3, x: 0, y: 40, isDragging: false, lx: 0, ly: 0 };
+        
+        // Defaults
+        let cwList = [{ id: 1, weight: 5, height: 4, pos: 15 }];
+        let otaList = [{ id: 1, label: 'A', aperture: 10, weight: 8, offset: 2 }];
+        let cwId = 2, otaId = 2;
+        let physics = {};
+
+        // Elements
+        const els = {
+            mountH: document.getElementById('mountH'),
+            maxTorque: document.getElementById('maxTorque'),
+            shaftLen: document.getElementById('shaftLen'),
+            shaftW: document.getElementById('shaftW'),
+            raRot: document.getElementById('raRotation'),
+            useShaft: document.getElementById('useShaft'),
+            cwSection: document.getElementById('cwSection'),
+            cwList: document.getElementById('cwList'),
+            otaList: document.getElementById('otaList'),
+            preset: document.getElementById('presetSelect')
+        };
+
+        const ui = {
+            l1: document.getElementById('v_l1'),
+            tmax: document.getElementById('v_tmax'),
+            sl: document.getElementById('v_sl'),
+            sw: document.getElementById('v_sw'),
+            t_inst: document.getElementById('t_inst'),
+            t_net: document.getElementById('t_net'),
+            load_pct: document.getElementById('load_pct'),
+            cm_rad: document.getElementById('cm_rad'),
+            i_total: document.getElementById('i_total'),
+            st_t: document.getElementById('statusT'),
+            st_ota: document.getElementById('statusOTA'),
+            st_sys: document.getElementById('statusSys'),
+            ota_weight: document.getElementById('ota_weight'),
+            ota_limit: document.getElementById('ota_limit'),
+            sys_weight: document.getElementById('sys_weight'),
+            sys_limit: document.getElementById('sys_limit'),
+            advice: document.getElementById('advice'),
+            rot_val: document.getElementById('rot_val')
+        };
+
+        const presets = {
+            // payloadKg = OTA負載上限, totalKg = payloadKg × 1.4 (諧波赤道儀不需全平衡)
+            am5: { h: 9.5, t: 26, sl: 23, sw: 0.6, payloadKg: 20, totalKg: 28 }, 
+            wd17: { h: 8.4, t: 38, sl: 25, sw: 0.8, payloadKg: 20, totalKg: 28 },
+            wd20: { h: 9.0, t: 60, sl: 28, sw: 1.0, payloadKg: 30, totalKg: 42 },
+            rst300: { h: 9.0, t: 85, sl: 30, sw: 1.2, payloadKg: 50, totalKg: 70 },
+            nyx101: { h: 10.0, t: 60, sl: 28, sw: 1.0, payloadKg: 30, totalKg: 42 }
+        };
+
+        // --- Logic ---
+        function updateDisplayValues() {
+            ui.l1.innerHTML = `${els.mountH.value} <span class="unit">cm</span>`;
+            ui.tmax.innerHTML = `${els.maxTorque.value} <span class="unit">Nm</span>`;
+            ui.sl.innerHTML = `${els.shaftLen.value} <span class="unit">cm</span>`;
+            ui.sw.innerHTML = `${els.shaftW.value} <span class="unit">kg</span>`;
+            ui.rot_val.innerText = `${els.raRot.value}°`;
+        }
+
+        els.preset.addEventListener('change', (e) => {
+            const p = presets[e.target.value];
+            if(p) {
+                els.mountH.value = p.h; els.maxTorque.value = p.t;
+                els.shaftLen.value = p.sl; els.shaftW.value = p.sw;
+                // 保留現有OTA設定，不重置
+                els.useShaft.checked = true; update();
+            }
+        });
+
+        [els.mountH, els.maxTorque, els.shaftLen, els.shaftW, els.raRot].forEach(el => {
+            el.addEventListener('input', update);
+            // 阻止滑桿觸控事件冒泡，修復觸控裝置滑動問題
+            el.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+            el.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+        });
+        els.useShaft.addEventListener('change', update);
+        
+        // 監聽動態新增的滑桿
+        function bindSliderTouch(container) {
+            container.addEventListener('touchstart', e => {
+                if(e.target.type === 'range') e.stopPropagation();
+            }, { passive: true });
+            container.addEventListener('touchmove', e => {
+                if(e.target.type === 'range') e.stopPropagation();
+            }, { passive: true });
+        }
+        bindSliderTouch(els.cwList);
+        bindSliderTouch(els.otaList);
+
+        // List Managers
+        function renderCW() {
+            const noCWText = currentLang === 'zh-TW' ? '無配重' : 'No CWs';
+            els.cwList.innerHTML = cwList.length ? '' : `<div style="text-align:center; color:#555; font-size:0.7rem;">${noCWText}</div>`;
+            const maxLen = parseFloat(els.shaftLen.value);
+            cwList.forEach(c => {
+                const massLabel = translations[currentLang]['item.mass'];
+                const posLabel = translations[currentLang]['item.pos'];
+                const div = document.createElement('div'); div.className = 'item-box cw-box';
+                div.innerHTML = `
+                    <button class="item-remove" onclick="delCW(${c.id})">×</button>
+                    <div class="item-row">
+                        <div class="item-col"><span class="item-label">${massLabel}</span><input type="range" min="0.5" max="20" step="0.5" value="${c.weight}" oninput="updCW(${c.id}, 'weight', this.value, this)"></div>
+                        <div class="item-col" style="text-align:right;"><span style="font-family:monospace; color:#fff;">${c.weight} <span class="unit">kg</span></span></div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-col"><span class="item-label">${posLabel}</span><input type="range" min="2" max="${maxLen}" step="0.5" value="${c.pos}" oninput="updCW(${c.id}, 'pos', this.value, this)"></div>
+                        <div class="item-col" style="text-align:right;"><span style="font-family:monospace; color:#fff;">${c.pos} <span class="unit">cm</span></span></div>
+                    </div>`;
+                els.cwList.appendChild(div);
+            });
+        }
+        function renderOTA() {
+            const noOTAText = currentLang === 'zh-TW' ? '無望遠鏡' : 'No Telescopes';
+            els.otaList.innerHTML = otaList.length ? '' : `<div style="text-align:center; color:#555; font-size:0.7rem;">${noOTAText}</div>`;
+            otaList.forEach(o => {
+                const clamped = Math.min(Math.max(o.offset, 0), 30);
+                const postPx = Math.round((clamped / 30) * 20);
+                const dotBottomPx = postPx + 8;
+                const telescopeLabel = translations[currentLang]['item.telescope'];
+                const diamLabel = translations[currentLang]['item.diam'];
+                const weightLabel = translations[currentLang]['item.weight'];
+                const heightLabel = translations[currentLang]['item.height'];
+                const div = document.createElement('div'); div.className = 'item-box ota-box';
+                div.innerHTML = `
+                    <button class="item-remove" onclick="delOTA(${o.id})">×</button>
+                    <div style="color:var(--ota-color); font-weight:bold; font-size:0.8rem; margin-bottom:4px;">${telescopeLabel} ${o.label}</div>
+                    <div class="item-row">
+                        <div class="item-col"><span class="item-label">${diamLabel}</span><input type="range" min="50" max="400" step="5" value="${o.aperture * 10}" oninput="updOTA(${o.id}, 'aperture', this.value/10, this)"></div>
+                        <div class="item-col" style="text-align:right; font-family:monospace;">${(o.aperture*10).toFixed(0)} <span class="unit">mm</span></div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-col"><span class="item-label">${weightLabel}</span><input type="range" min="0.5" max="50" step="0.5" value="${o.weight}" oninput="updOTA(${o.id}, 'weight', this.value, this)"></div>
+                        <div class="item-col" style="text-align:right; font-family:monospace;">${o.weight} <span class="unit">kg</span></div>
+                    </div>
+                    <div class="item-row">
+                        <div class="item-col"><span class="item-label">${heightLabel}</span><input type="range" min="0" max="30" step="0.5" value="${o.offset}" oninput="updOTA(${o.id}, 'offset', this.value, this)"></div>
+                        <div class="item-col ota-height-right">
+                            <span class="ota-height-val">${o.offset} <span class="unit">cm</span></span>
+                            <div class="ota-height-mini" aria-hidden="true">
+                                <div class="ota-height-base"></div>
+                                <div class="ota-height-post" style="height:${postPx}px"></div>
+                                <div class="ota-height-dot" style="bottom:${dotBottomPx}px"></div>
+                            </div>
+                        </div>
+                    </div>`;
+                els.otaList.appendChild(div);
+            });
+        }
+
+        window.addCW = () => { cwList.push({id:cwId++, weight:2.5, height:3, pos:10}); renderCW(); update(); };
+        window.delCW = (id) => { cwList=cwList.filter(c=>c.id!==id); renderCW(); update(); };
+        window.updCW = (id,k,v,el) => { 
+            const c=cwList.find(x=>x.id===id); 
+            if(c){ 
+                c[k]=parseFloat(v); 
+                // 只更新顯示值，不重新渲染列表
+                const box = el.closest('.item-box');
+                if(box) {
+                    const displays = box.querySelectorAll('.item-row');
+                    if(k==='weight' && displays[0]) displays[0].querySelector('[style*="text-align:right"]').innerHTML = `<span style="font-family:monospace; color:#fff;">${c.weight} <span class="unit">kg</span></span>`;
+                    if(k==='pos' && displays[1]) displays[1].querySelector('[style*="text-align:right"]').innerHTML = `<span style="font-family:monospace; color:#fff;">${c.pos} <span class="unit">cm</span></span>`;
+                }
+                update(); 
+            }
+        };
+        
+        window.addOTA = () => { otaList.push({id:otaId++, label:String.fromCharCode(65+otaList.length), aperture:8, weight:3, offset:2}); renderOTA(); update(); };
+        window.delOTA = (id) => { otaList=otaList.filter(o=>o.id!==id); otaList.forEach((o,i)=>o.label=String.fromCharCode(65+i)); renderOTA(); update(); };
+        window.updOTA = (id,k,v,el) => { 
+            const o=otaList.find(x=>x.id===id); 
+            if(o){ 
+                o[k]=parseFloat(v); 
+                // 只更新顯示值，不重新渲染列表
+                const box = el.closest('.item-box');
+                if(box) {
+                    const displays = box.querySelectorAll('.item-row');
+                    if(k==='aperture' && displays[0]) displays[0].querySelector('[style*="text-align:right"]').innerHTML = `${(o.aperture*10).toFixed(0)} <span class="unit">mm</span>`;
+                    if(k==='weight' && displays[1]) displays[1].querySelector('[style*="text-align:right"]').innerHTML = `${o.weight} <span class="unit">kg</span>`;
+                    if(k==='offset' && displays[2]) {
+                        const right = displays[2].querySelector('.ota-height-right');
+                        if(right) {
+                            const valEl = right.querySelector('.ota-height-val');
+                            if(valEl) valEl.innerHTML = `${o.offset} <span class="unit">cm</span>`;
+                            const postEl = right.querySelector('.ota-height-post');
+                            const dotEl = right.querySelector('.ota-height-dot');
+                            const clamped = Math.min(Math.max(o.offset, 0), 30);
+                            const postPx = Math.round((clamped / 30) * 20);
+                            const dotBottomPx = postPx + 8;
+                            if(postEl) postEl.style.height = `${postPx}px`;
+                            if(dotEl) dotEl.style.bottom = `${dotBottomPx}px`;
+                        }
+                    }
+                }
+                update(); 
+            }
+        };
+
+        document.getElementById('addCwBtn').onclick = window.addCW;
+        document.getElementById('addOtaBtn').onclick = window.addOTA;
+
+        // --- Physics ---
+        function update() {
+            updateDisplayValues();
+            const g = 9.81;
+            const hasShaft = els.useShaft.checked;
+            els.cwSection.style.display = hasShaft ? 'block' : 'none';
+            const rotDeg = parseFloat(els.raRot.value);
+            const rotRad = rotDeg * Math.PI / 180;
+
+            const l1 = parseFloat(els.mountH.value) / 100;
+            
+            // 1. OTAs (Negative Y)
+            let m_ota = 0, moment_ota = 0, inertia_ota = 0;
+            let visualOTAs = otaList.map(o => {
+                const r = l1 + (o.offset + o.aperture/2)/100;
+                m_ota += o.weight;
+                moment_ota += o.weight * (-r); // Up
+                inertia_ota += o.weight * (r*r);
+                return {...o, r};
+            });
+
+            // 2. CWs (Positive Y)
+            let m_cw = 0, moment_cw = 0, inertia_cw = 0;
+            if (hasShaft) {
+                const sw = parseFloat(els.shaftW.value);
+                const sl = parseFloat(els.shaftLen.value) / 100;
+                m_cw += sw;
+                moment_cw += sw * (sl/2);
+                inertia_cw += (1/3)*sw*(sl*sl); // Shaft inertia
+                cwList.forEach(c => {
+                    const r = c.pos / 100;
+                    m_cw += c.weight;
+                    moment_cw += c.weight * r;
+                    inertia_cw += c.weight * (r*r);
+                });
+            }
+
+            // 3. Totals
+            const mass_total = m_ota + m_cw;
+            const moment_net = moment_ota + moment_cw; // Standard static moment at horizontal
+            const cm_y = mass_total > 0 ? moment_net / mass_total : 0; // CM offset from axis
+            const inertia_total = inertia_ota + inertia_cw;
+
+            // Torque calc
+            // Peak Torque (Static Horizontal) = Net Moment * g
+            // Note: moment_net is kg*m. Torque = kg*m * m/s^2 = N*m
+            // Actually moment_net calculation above is essentially Sum(m*r). 
+            // So Peak Torque = moment_net * g.
+            // Since moment_ota is negative (up), moment_cw is positive (down).
+            // If |OTA| > |CW|, result is negative (Top heavy).
+            const torque_peak = Math.abs(moment_net * g);
+            
+            // Instantaneous Torque = Peak * sin(theta)
+            // At 0 deg (upright), torque load on motor is 0 (balanced by structure).
+            // At 90 deg, torque is max.
+            const torque_inst = torque_peak * Math.sin(rotRad);
+
+            // Display
+            ui.t_net.innerText = torque_peak.toFixed(1);
+            ui.t_inst.innerText = Math.abs(torque_inst).toFixed(1);
+            ui.i_total.innerText = inertia_total.toFixed(2);
+            
+            // CM Radius (Absolute distance from center)
+            // In this 1D analysis (along the bar), CM Y is the radius.
+            ui.cm_rad.innerText = Math.abs(cm_y * 100).toFixed(1);
+
+            // Logic
+            const maxT = parseFloat(els.maxTorque.value);
+            const pct = (torque_peak / maxT) * 100;
+            ui.load_pct.innerText = pct.toFixed(0) + "%";
+
+            // Get current preset limits
+            const currentPreset = presets[els.preset.value] || { payloadKg: 15, totalKg: 30 };
+            const payloadLimit = currentPreset.payloadKg || 15;
+            const totalLimit = currentPreset.totalKg || 30;
+            
+            // Weight checks
+            const otaPayloadPct = (m_ota / payloadLimit) * 100;
+            const sysTotalPct = (mass_total / totalLimit) * 100;
+            
+            ui.ota_weight.innerText = m_ota.toFixed(1);
+            ui.ota_limit.innerText = payloadLimit;
+            ui.sys_weight.innerText = mass_total.toFixed(1);
+            ui.sys_limit.innerText = totalLimit;
+            
+            // OTA Payload status
+            ui.st_ota.className = "badge";
+            if(otaPayloadPct > 100) { ui.st_ota.classList.add('bg-err'); ui.st_ota.innerText="OVERLOAD"; }
+            else if(otaPayloadPct > 80) { ui.st_ota.classList.add('bg-warn'); ui.st_ota.innerText=`${otaPayloadPct.toFixed(0)}%`; }
+            else { ui.st_ota.classList.add('bg-ok'); ui.st_ota.innerText=`${otaPayloadPct.toFixed(0)}%`; }
+            
+            // System Total status
+            ui.st_sys.className = "badge";
+            if(sysTotalPct > 100) { ui.st_sys.classList.add('bg-err'); ui.st_sys.innerText="OVERLOAD"; }
+            else if(sysTotalPct > 80) { ui.st_sys.classList.add('bg-warn'); ui.st_sys.innerText=`${sysTotalPct.toFixed(0)}%`; }
+            else { ui.st_sys.classList.add('bg-ok'); ui.st_sys.innerText=`${sysTotalPct.toFixed(0)}%`; }
+
+            // Advisor
+            const cm_offset_cm = Math.abs(cm_y * 100);
+            const isHeavy = torque_peak > 5.0; // 5Nm threshold
+            const isOffset = cm_offset_cm > 8.0; // 8cm threshold for harmonic drives
+
+            ui.st_t.className = "badge";
+            if(pct > 100) { ui.st_t.classList.add('bg-err'); ui.st_t.innerText = translations[currentLang]['status.overload']; }
+            else if(pct > 80) { ui.st_t.classList.add('bg-err'); ui.st_t.innerText = translations[currentLang]['status.tooHeavy']; }
+            else if(pct < 10 && mass_total > 1) { ui.st_t.classList.add('bg-info'); ui.st_t.innerText = translations[currentLang]['status.tooLight']; }
+            else if(pct > 70) { ui.st_t.classList.add('bg-warn'); ui.st_t.innerText = translations[currentLang]['status.heavyLoad']; }
+            else { ui.st_t.classList.add('bg-ok'); ui.st_t.innerText = translations[currentLang]['status.optimal']; }
+
+            let advice = "";
+            const t = translations[currentLang];
+            if(otaPayloadPct > 100) advice = t['advice.otaOverload'].replace('{ota}', m_ota.toFixed(1)).replace('{limit}', payloadLimit).replace('{diff}', (m_ota - payloadLimit).toFixed(1));
+            else if(sysTotalPct > 100) advice = t['advice.sysOverload'].replace('{total}', mass_total.toFixed(1)).replace('{limit}', totalLimit).replace('{diff}', (mass_total - totalLimit).toFixed(1));
+            else if (pct > 100) advice = t['advice.danger'];
+            else if (isOffset && isHeavy) advice = t['advice.cmOffset'].replace('{cm}', cm_offset_cm.toFixed(1)).replace('{torque}', torque_peak.toFixed(1));
+            else if (pct > 80) advice = t['advice.tooHeavy'].replace('{pct}', pct.toFixed(0)).replace('{diff}', ((torque_peak - maxT*0.6)/9.81).toFixed(1));
+            else if(otaPayloadPct > 80) advice = t['advice.otaHigh'].replace('{pct}', otaPayloadPct.toFixed(0));
+            else if(sysTotalPct > 80) advice = t['advice.sysHigh'].replace('{pct}', sysTotalPct.toFixed(0));
+            else if (pct < 10 && mass_total > 1) advice = t['advice.tooLight'].replace('{pct}', pct.toFixed(0)).replace('{diff}', ((maxT*0.3 - torque_peak)/9.81).toFixed(1));
+            else if (pct < 3 && mass_total > 3) advice = t['advice.tooBalanced'];
+            else if (isOffset && !isHeavy) advice = t['advice.cmOk'];
+            else advice = t['advice.optimal'];
+            ui.advice.innerText = advice;
+
+            // Store for chart
+            physics = { visualOTAs, l1, cm_y, hasShaft, sl: hasShaft?parseFloat(els.shaftLen.value)/100:0, torque_peak, maxT, pct };
+            draw();
+            drawTorqueChart();
+        }
+
+        // --- Drawing ---
+        function draw() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width/2 + view.x, canvas.height/2 + view.y);
+            ctx.scale(view.scale, view.scale);
+            
+            const rotRad = parseFloat(els.raRot.value) * Math.PI / 180;
+            const px = 4; // px per cm scaling
+
+            // CM Path (Circle)
+            // Draw this BEFORE rotation so it stays static in background
+            const cmR_px = Math.abs(physics.cm_y * 100 * px);
+            if(cmR_px > 2) {
+                ctx.beginPath(); ctx.arc(0,0, cmR_px, 0, Math.PI*2);
+                ctx.strokeStyle = '#333'; ctx.setLineDash([5,5]); ctx.stroke(); ctx.setLineDash([]);
+            }
+
+            // Rotate World
+            ctx.rotate(rotRad);
+
+            // Mount
+            ctx.fillStyle = '#333'; ctx.strokeStyle = '#555';
+            ctx.fillRect(-20, -20, 40, 40); ctx.strokeRect(-20,-20,40,40);
+            ctx.beginPath(); ctx.arc(0,0,4,0,Math.PI*2); ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--accent'); ctx.fill();
+
+            // Shaft
+            if(physics.hasShaft) {
+                const h = physics.sl * 100 * px;
+                ctx.fillStyle='#888'; ctx.fillRect(-4, 20, 8, h);
+                cwList.forEach(c => {
+                    const y = c.pos * px;
+                    const w = (5+c.weight)*px*0.7; const h_cw = c.height*px;
+                    ctx.fillStyle='#ffa726'; ctx.fillRect(-w/2, y-h_cw/2, w, h_cw);
+                });
+            }
+
+            // Arm
+            const armH = physics.l1 * px;
+            ctx.fillStyle='#666'; ctx.fillRect(-6, -20-armH, 12, armH);
+            ctx.fillStyle='#444'; ctx.fillRect(-40, -20-armH-8, 80, 8); // Saddle
+
+            // Tangent Packing OTAs
+            const groups = {};
+            physics.visualOTAs.forEach(o => {
+                const k = o.offset.toFixed(1);
+                if(!groups[k]) groups[k]=[]; groups[k].push(o);
+            });
+            
+            Object.values(groups).forEach(g => {
+                g.sort((a,b)=>a.id-b.id);
+                const totalW = g.reduce((s,o)=>s + o.aperture*px, 0);
+                let cx = -totalW/2;
+                g.forEach(o => {
+                    const r = (o.aperture/2)*px;
+                    const saddleTop = -20 - armH - 8; // 鳩尾槽頂部 Y 座標
+                    const riserH = o.offset * px; // 墊高高度
+                    const cy = saddleTop - riserH - r; // 望遠鏡中心 Y
+                    cx += o.aperture*px/2; // center of this one
+                    
+                    // Riser (墊高塊 - 連接鳩尾槽和望遠鏡)
+                    if(o.offset > 0) {
+                        ctx.fillStyle='#555';
+                        ctx.fillRect(cx - r*0.4, saddleTop - riserH, r*0.8, riserH);
+                        ctx.strokeStyle='#666';
+                        ctx.strokeRect(cx - r*0.4, saddleTop - riserH, r*0.8, riserH);
+                    }
+
+                    // Tube
+                    const grad = ctx.createRadialGradient(cx, cy, r*0.2, cx, cy, r);
+                    grad.addColorStop(0, '#7b1fa2'); grad.addColorStop(1, '#4a148c');
+                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+                    ctx.fillStyle=grad; ctx.fill();
+                    ctx.strokeStyle='#ba68c8'; ctx.lineWidth=2; ctx.stroke();
+                    
+                    // Text
+                    ctx.save(); ctx.translate(cx, cy); ctx.rotate(-rotRad); // Keep text level
+                    ctx.fillStyle='#fff'; ctx.font='bold 12px Arial'; ctx.textAlign='center';
+                    ctx.fillText(o.label, 0, 4);
+                    ctx.fillStyle='#ccc'; ctx.font='10px Arial';
+                    ctx.fillText(`Φ${o.aperture*10}`, 0, -r-5);
+                    ctx.restore();
+
+                    cx += o.aperture*px/2; // advance
+                });
+            });
+
+            // CM Marker
+            const cmY_px = physics.cm_y * 100 * px;
+            ctx.translate(0, cmY_px);
+            
+            // Gravity Vector (Always Down relative to Screen)
+            // We are currently rotated by rotRad. To draw down, we rotate back -rotRad.
+            ctx.save();
+            ctx.rotate(-rotRad);
+            
+            // Draw CM Cross
+            ctx.beginPath(); ctx.strokeStyle='#ffeb3b'; ctx.lineWidth=2;
+            ctx.moveTo(-6,0); ctx.lineTo(6,0); ctx.moveTo(0,-6); ctx.lineTo(0,6); ctx.stroke();
+            
+            // Draw G Arrow
+            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0, 40); 
+            ctx.lineTo(-4, 34); ctx.moveTo(0, 40); ctx.lineTo(4, 34);
+            ctx.strokeStyle='rgba(255, 235, 59, 0.7)'; ctx.stroke();
+            ctx.fillStyle='#ffeb3b'; ctx.font='bold 14px Arial'; ctx.fillText('g', 8, 35);
+            ctx.font='bold 12px Arial'; ctx.fillText('CM', 8, 0);
+            
+            ctx.restore();
+            ctx.restore();
+        }
+
+        // Pointer Events
+        function getPt(e) { return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY}; }
+        canvas.onmousedown = e => { view.isDragging=true; view.lx=e.clientX; view.ly=e.clientY; };
+        window.onmouseup = () => view.isDragging=false;
+        canvas.onmousemove = e => { if(view.isDragging){ view.x+=e.clientX-view.lx; view.y+=e.clientY-view.ly; view.lx=e.clientX; view.ly=e.clientY; requestAnimationFrame(draw); }};
+        canvas.ontouchstart = e => { 
+            if(e.target !== canvas) return;
+            view.isDragging=true; const p=getPt(e); view.lx=p.x; view.ly=p.y; 
+        };
+        canvas.ontouchend = () => view.isDragging=false;
+        canvas.ontouchmove = e => { 
+            if(view.isDragging && e.target === canvas){ 
+                const p=getPt(e); view.x+=p.x-view.lx; view.y+=p.y-view.ly; view.lx=p.x; view.ly=p.y; 
+                e.preventDefault(); requestAnimationFrame(draw); 
+            }
+        };
+        canvas.onwheel = e => { e.preventDefault(); view.scale = Math.min(Math.max(view.scale * Math.exp(e.deltaY * -0.001), 0.2), 5); requestAnimationFrame(draw); };
+        window.resetView = () => { view.scale = window.innerWidth<900?0.9:1.3; view.x=0; view.y=50; els.raRot.value=0; update(); };
+        window.onresize = () => { canvas.width=canvas.parentElement.offsetWidth; canvas.height=canvas.parentElement.offsetHeight; update(); };
+
+        // Vixen Counterweight Quick Add
+        window.addVixenCW = (weight) => { 
+            cwList.push({id:cwId++, weight:weight, height: weight < 2 ? 2 : (weight < 4 ? 3 : 4), pos:12}); 
+            renderCW(); 
+            update(); 
+        };
+
+        // Torque Chart
+        const chartCanvas = document.getElementById('torqueChart');
+        const chartCtx = chartCanvas.getContext('2d');
+        
+        function drawTorqueChart() {
+            const dpr = window.devicePixelRatio || 1;
+            const cssW = chartCanvas.offsetWidth;
+            const cssH = chartCanvas.offsetHeight;
+            chartCanvas.width = Math.max(1, Math.round(cssW * dpr));
+            chartCanvas.height = Math.max(1, Math.round(cssH * dpr));
+            chartCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const cw = cssW, ch = cssH;
+            const margin = { left: 35, right: 10, top: 10, bottom: 25 };
+            const plotW = cw - margin.left - margin.right;
+            const plotH = ch - margin.top - margin.bottom;
+
+            chartCtx.clearRect(0, 0, cw, ch);
+            
+            const maxT = physics.maxT || 26;
+            const peakT = physics.torque_peak || 0;
+            const pct = physics.pct || 0;
+            
+            // Background zones
+            // Too light zone (< 10%)
+            chartCtx.fillStyle = 'rgba(41, 182, 246, 0.1)';
+            const lightY = plotH * (1 - 0.1);
+            chartCtx.fillRect(margin.left, margin.top + lightY, plotW, plotH - lightY);
+            
+            // Too heavy zone (> 80%)
+            chartCtx.fillStyle = 'rgba(239, 83, 80, 0.15)';
+            const heavyY = plotH * (1 - 0.8);
+            chartCtx.fillRect(margin.left, margin.top, plotW, heavyY);
+            
+            // Optimal zone (10% - 80%)
+            chartCtx.fillStyle = 'rgba(102, 187, 106, 0.08)';
+            chartCtx.fillRect(margin.left, margin.top + heavyY, plotW, lightY - heavyY);
+
+            // Grid
+            chartCtx.strokeStyle = '#333';
+            chartCtx.lineWidth = 0.5;
+            for(let i = 0; i <= 4; i++) {
+                const y = margin.top + (plotH / 4) * i;
+                chartCtx.beginPath();
+                chartCtx.moveTo(margin.left, y);
+                chartCtx.lineTo(margin.left + plotW, y);
+                chartCtx.stroke();
+            }
+
+            // Draw sine curve (torque = peak * sin(angle))
+            chartCtx.beginPath();
+            chartCtx.strokeStyle = '#00bcd4';
+            chartCtx.lineWidth = 2;
+            for(let deg = 0; deg <= 180; deg++) {
+                const x = margin.left + (deg / 180) * plotW;
+                const torqueRatio = Math.sin(deg * Math.PI / 180);
+                const torquePct = (peakT * torqueRatio / maxT);
+                const y = margin.top + plotH * (1 - Math.min(torquePct, 1.2));
+                if(deg === 0) chartCtx.moveTo(x, y);
+                else chartCtx.lineTo(x, y);
+            }
+            chartCtx.stroke();
+
+            // Current position marker
+            const currentDeg = Math.abs(parseFloat(els.raRot.value));
+            const currentX = margin.left + (currentDeg / 180) * plotW;
+            const currentTorqueRatio = Math.sin(currentDeg * Math.PI / 180);
+            const currentPct = (peakT * currentTorqueRatio / maxT);
+            const currentY = margin.top + plotH * (1 - Math.min(currentPct, 1.2));
+            
+            chartCtx.beginPath();
+            chartCtx.arc(currentX, currentY, 4, 0, Math.PI * 2);
+            chartCtx.fillStyle = '#ffeb3b';
+            chartCtx.fill();
+            chartCtx.strokeStyle = '#fff';
+            chartCtx.lineWidth = 1;
+            chartCtx.stroke();
+
+            // Threshold lines
+            // 80% line
+            chartCtx.beginPath();
+            chartCtx.strokeStyle = '#ef5350';
+            chartCtx.lineWidth = 1;
+            chartCtx.setLineDash([4, 4]);
+            const y80 = margin.top + plotH * 0.2;
+            chartCtx.moveTo(margin.left, y80);
+            chartCtx.lineTo(margin.left + plotW, y80);
+            chartCtx.stroke();
+            
+            // 10% line
+            chartCtx.strokeStyle = '#29b6f6';
+            const y10 = margin.top + plotH * 0.9;
+            chartCtx.moveTo(margin.left, y10);
+            chartCtx.lineTo(margin.left + plotW, y10);
+            chartCtx.stroke();
+            chartCtx.setLineDash([]);
+
+            // Axes labels
+            chartCtx.fillStyle = '#888';
+            chartCtx.font = '9px Arial';
+            chartCtx.textAlign = 'center';
+            chartCtx.fillText('0°', margin.left, ch - 8);
+            chartCtx.fillText('90°', margin.left + plotW/2, ch - 8);
+            chartCtx.fillText('180°', margin.left + plotW, ch - 8);
+            
+            chartCtx.textAlign = 'right';
+            chartCtx.fillText('0%', margin.left - 3, margin.top + plotH);
+            chartCtx.fillText('100%', margin.left - 3, margin.top + 4);
+            chartCtx.fillStyle = '#ef5350';
+            chartCtx.fillText('80%', margin.left - 3, y80 + 3);
+            chartCtx.fillStyle = '#29b6f6';
+            chartCtx.fillText('10%', margin.left - 3, y10 + 3);
+
+            // Peak label
+            if(pct > 0) {
+                chartCtx.fillStyle = '#00bcd4';
+                chartCtx.textAlign = 'left';
+                chartCtx.font = 'bold 9px Arial';
+                chartCtx.fillText(`Peak: ${pct.toFixed(0)}%`, margin.left + plotW/2 + 10, margin.top + plotH * (1 - Math.min(pct/100, 1.2)) - 5);
+            }
+        }
+
+        // Mobile controls collapse/expand
+        window.toggleControls = () => {
+            document.body.classList.toggle('controls-collapsed');
+            const btn = document.getElementById('toggleControlsBtn');
+            const isCollapsed = document.body.classList.contains('controls-collapsed');
+            if(btn) btn.textContent = translations[currentLang][isCollapsed ? 'btn.showControls' : 'btn.hideControls'];
+            window.onresize();
+        };
+
+        // Initialize language
+        const savedLang = localStorage.getItem('harmonicAnalyzerLang') || detectSystemLanguage();
+        updateLanguage(savedLang);
+        
+        // Language selector event
+        document.getElementById('langSelect').addEventListener('change', (e) => {
+            updateLanguage(e.target.value);
+        });
+
+        renderCW(); renderOTA(); window.onresize();
+    </script>
+</body>
+</html>

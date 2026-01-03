@@ -25,12 +25,13 @@ def register_astronomy_routes(app):
     @app.route('/astronomy_tools')
     def astronomy_tools():
         return render_template('astronomy_tools.html', current_path='/astronomy_tools')
+    
+    @app.route('/mount_torque')
+    def mount_torque():
+        return render_template('mount_torque.html', current_path='/mount_torque')
 
     @app.route('/calculate_redshift', methods=['POST'])
     def calculate_redshift():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             data = request.get_json()
             redshift = float(data.get('redshift', 0))
@@ -44,9 +45,6 @@ def register_astronomy_routes(app):
 
     @app.route('/calculate_absolute_magnitude', methods=['POST'])
     def calculate_absolute_magnitude_route():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             data = request.get_json()
             apparent_magnitude = float(data.get('apparent_magnitude'))
@@ -61,9 +59,6 @@ def register_astronomy_routes(app):
 
     @app.route('/convert_date', methods=['POST'])
     def convert_date():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             data = request.get_json()
             mjd = data.get('mjd')
@@ -86,9 +81,6 @@ def register_astronomy_routes(app):
 
     @app.route('/convert_ra', methods=['POST'])
     def convert_ra():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             data = request.get_json()
             ra_hms = data.get('ra_hms')
@@ -108,9 +100,6 @@ def register_astronomy_routes(app):
 
     @app.route('/convert_dec', methods=['POST'])
     def convert_dec():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             data = request.get_json()
             dec_dms = data.get('dec_dms')
@@ -187,9 +176,6 @@ def register_astronomy_routes(app):
 
     @app.route("/generate_plot", methods=["POST"])
     def generate_plot():
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
         try:
             target_list = []
             plot_folder = os.path.join(app.root_path, "static", "ov_plot")

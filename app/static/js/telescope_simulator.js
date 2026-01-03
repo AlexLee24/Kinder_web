@@ -259,49 +259,8 @@ function calculateMosaic() {
         totalFOVElement.textContent = `${totalFOVWidth.toFixed(2)}°×${totalFOVHeight.toFixed(2)}°`;
     }
     
-    // Calculate and display tile centers
-    let tileCoordinatesHTML = '';
-    if (isAladinReady && aladin) {
-        const centerRaDec = aladin.getRaDec();
-        const centerRA = centerRaDec[0];
-        const centerDec = centerRaDec[1];
-        
-        // Calculate offsets for each tile
-        const stepX = singleFrameFOVWidth * overlapFactor;
-        const stepY = singleFrameFOVHeight * overlapFactor;
-        
-        const startX = -(tilesX - 1) * stepX / 2;
-        const startY = -(tilesY - 1) * stepY / 2;
-        
-        const tileItems = [];
-        
-        for (let row = 0; row < tilesY; row++) {
-            for (let col = 0; col < tilesX; col++) {
-                const offsetX = startX + col * stepX;
-                const offsetY = startY + row * stepY;
-                
-                // Convert offsets to RA/Dec
-                const tileRA = centerRA + offsetX / Math.cos(centerDec * Math.PI / 180);
-                const tileDec = centerDec + offsetY;
-                
-                const tileNum = row * tilesX + col + 1;
-                const raHMS = decimalToHMS(tileRA);
-                const decDMS = decimalToDMS(tileDec);
-                
-                tileItems.push(`<div class="tile-center-item">T${tileNum}: RA ${raHMS}, Dec ${decDMS}</div>`);
-            }
-        }
-        
-        tileCoordinatesHTML = tileItems.join('');
-    } else {
-        tileCoordinatesHTML = `<div class="tile-center-item">${totalFrames} tiles (${tilesX}×${tilesY})</div>`;
-    }
-    
     // Update Tile Centers display
-    const tileCentersElement = document.getElementById('tileCenters');
-    if (tileCentersElement) {
-        tileCentersElement.innerHTML = tileCoordinatesHTML;
-    }
+    updateTileCentersOnly();
     
     // Automatically update FOV display when mosaic parameters change
     clearMosaicFromMap();
@@ -851,10 +810,10 @@ function setupAladinMonitors() {
             setTimeout(updateFixedFOVOverlay, 100);
         });
         
-        // Monitor view changes (pan events) - not needed for fixed overlay but good to have
+        // Monitor view changes (pan events) - update tile centers when position changes
         aladin.on('positionChanged', function() {
-            // Fixed overlay doesn't need to update on position change
-            // but we could add coordinate display here if needed
+            // Update tile centers coordinates when user pans the map
+            setTimeout(updateTileCentersOnly, 100);
         });
         
         console.log('Aladin monitors set up');
@@ -882,4 +841,69 @@ function decimalToDMS(decimal) {
     const s = ((Math.abs(decimal) - d) * 60 - m) * 60;
     
     return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}' ${s.toFixed(1).padStart(4, '0')}"`;
+}
+
+// Update only tile centers coordinates without redrawing FOV
+function updateTileCentersOnly() {
+    if (!isAladinReady || !aladin) return;
+    
+    const tilesX = parseInt(document.getElementById('mosaicX').value) || 1;
+    const tilesY = parseInt(document.getElementById('mosaicY').value) || 1;
+    const overlap = parseFloat(document.getElementById('overlap').value) || 10;
+    
+    const sensorWidth = parseFloat(document.getElementById('sensorWidth').value) || 23.6;
+    const sensorHeight = parseFloat(document.getElementById('sensorHeight').value) || 15.6;
+    const focalLength = parseFloat(document.getElementById('focalLength').value) || 530;
+    const reducer = parseFloat(document.getElementById('focalReducer').value) || 1.0;
+    const effectiveFocalLength = focalLength * reducer;
+    
+    const singleFrameFOVWidth = (sensorWidth / effectiveFocalLength) * 57.2958;
+    const singleFrameFOVHeight = (sensorHeight / effectiveFocalLength) * 57.2958;
+    
+    // Calculate and display tile centers
+    let tileCoordinatesHTML = '';
+    try {
+        const centerRaDec = aladin.getRaDec();
+        const centerRA = centerRaDec[0];
+        const centerDec = centerRaDec[1];
+        
+        // Calculate offsets for each tile
+        const overlapFactor = (100 - overlap) / 100;
+        const stepX = singleFrameFOVWidth * overlapFactor;
+        const stepY = singleFrameFOVHeight * overlapFactor;
+        
+        const startX = -(tilesX - 1) * stepX / 2;
+        const startY = -(tilesY - 1) * stepY / 2;
+        
+        const tileItems = [];
+        
+        for (let row = 0; row < tilesY; row++) {
+            for (let col = 0; col < tilesX; col++) {
+                const offsetX = startX + col * stepX;
+                const offsetY = startY + row * stepY;
+                
+                // Convert offsets to RA/Dec
+                const tileRA = centerRA + offsetX / Math.cos(centerDec * Math.PI / 180);
+                const tileDec = centerDec + offsetY;
+                
+                const tileNum = row * tilesX + col + 1;
+                const raHMS = decimalToHMS(tileRA);
+                const decDMS = decimalToDMS(tileDec);
+                
+                tileItems.push(`<div class="tile-center-item">T${tileNum}: RA ${raHMS}, Dec ${decDMS}</div>`);
+            }
+        }
+        
+        tileCoordinatesHTML = tileItems.join('');
+    } catch (error) {
+        console.error('Error getting current position:', error);
+        const totalFrames = tilesX * tilesY;
+        tileCoordinatesHTML = `<div class="tile-center-item">${totalFrames} tiles (${tilesX}×${tilesY})</div>`;
+    }
+    
+    // Update Tile Centers display
+    const tileCentersElement = document.getElementById('tileCenters');
+    if (tileCentersElement) {
+        tileCentersElement.innerHTML = tileCoordinatesHTML;
+    }
 }
