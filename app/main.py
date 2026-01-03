@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import atexit
 from werkzeug.routing import BaseConverter
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
@@ -22,6 +23,7 @@ from modules.calendar_database import init_calendar_database
 # Create Flask app
 app = Flask(__name__, template_folder='html', static_folder='static')
 app.secret_key = config.SECRET_KEY
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Custom URL converter for TNS object names (supports both upper and lowercase letters)
 class AlphaConverter(BaseConverter):

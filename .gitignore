@@ -53,3 +53,7 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Google Cloud
+.tmp.drivedownload
+.tmp.driveupload
