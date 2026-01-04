@@ -63,4 +63,8 @@ Thumbs.db
 
 OLD/
 data/
+<<<<<<< HEAD
 app/modules/download_phot.py
+=======
+app/modules/download_phot.py
+>>>>>>> 5e5c3bc (rebuild)
