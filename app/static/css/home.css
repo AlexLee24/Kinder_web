@@ -9,7 +9,7 @@ body {
 /* ============================================================================ */
 /* Banner styling START */
 .main-banner {
-    background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('../photo/NCU.jpg');
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('../photo/NCU.jpg');
     background-size: cover;
     background-position: center;
     height: 100vh;
@@ -59,6 +59,15 @@ body {
     margin-bottom: 0.5rem;
     text-shadow: 2px 2px 8px rgba(0,0,0,0.5);
     line-height: 0.9;
+    display: flex;
+    align-items: center;
+}
+
+.home-logo {
+    height: 0.8em;
+    width: auto;
+    margin-right: 20px;
+    filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.5));
 }
 
 .banner-left h2 {
@@ -90,17 +99,17 @@ body {
 }
 
 .lab-link a {
-    color: #46ffaf;
+    color: #C5A059;
     text-decoration: none;
     font-weight: 400;
-    border-bottom: 1px solid rgba(70, 255, 175, 0.5);
+    border-bottom: 1px solid rgba(197, 160, 89, 0.5);
     transition: all 0.3s ease;
     padding-bottom: 2px;
 }
 
 .lab-link a:hover {
-    border-bottom-color: #46ffaf;
-    text-shadow: 0 0 8px rgba(70, 255, 175, 0.3);
+    border-bottom-color: #C5A059;
+    text-shadow: 0 0 8px rgba(197, 160, 89, 0.3);
 }
 
 .copyright {
@@ -168,7 +177,7 @@ body {
     font-weight: 300;
     margin-bottom: 1rem;
     letter-spacing: 1px;
-    color: #46ffaf;
+    color: #C5A059;
 }
 
 .contact-info {
@@ -204,7 +213,7 @@ body {
     height: auto;
     border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.4);
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, opacity 0.5s ease;
 }
 
 .banner-right img:hover {
@@ -300,9 +309,112 @@ body {
 }
 
 ::selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
 }
 
 ::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
+}
+/* ==================== RESPONSIVE DESIGN IMPROVEMENTS ==================== */
+
+/* Tablet and Mobile (max-width: 900px) */
+@media screen and (max-width: 900px) {
+    .main-banner {
+        height: auto;
+        min-height: 100vh;
+        padding: 100px 20px 40px; /* Top padding for navbar */
+        align-items: flex-start;
+    }
+
+    .banner-content {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+        text-align: center;
+        padding: 0;
+        min-height: auto;
+    }
+
+    .banner-left {
+        padding: 0;
+        align-items: center;
+        order: 1; /* Text first */
+    }
+
+    .banner-right {
+        padding: 0;
+        order: 2; /* Image second */
+        margin-bottom: 20px;
+    }
+
+    .banner-left h1 {
+        font-size: 3.5rem;
+        justify-content: center;
+    }
+
+    .banner-info {
+        align-items: center;
+    }
+
+    .banner-links {
+        align-items: center;
+        width: 100%;
+    }
+
+    .banner-contact {
+        width: 100%;
+        border-top: 1px solid rgba(255,255,255,0.2);
+    }
+}
+
+/* Small Mobile (max-width: 480px) */
+@media screen and (max-width: 480px) {
+    .main-banner {
+        padding: 90px 15px 30px;
+    }
+
+    .banner-left h1 {
+        font-size: 2.5rem;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .home-logo {
+        margin-right: 0;
+        height: 1.2em;
+    }
+
+    .banner-left h2 {
+        font-size: 1.2rem;
+    }
+
+    .social-links {
+        flex-direction: column;
+        width: 100%;
+        gap: 10px;
+    }
+
+    .link-item {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .image-container {
+        max-width: 100%;
+    }
+    
+    .banner-right p {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+    }
+}
+
+/* Force text alignment for mobile */
+@media screen and (max-width: 900px) {
+    .banner-info, .institution, .lab-link, .copyright, .contact-note {
+        text-align: center;
+    }
+    
+    .banner-left h1 {
+        width: 100%;
+    }
 }

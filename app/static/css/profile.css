@@ -1,7 +1,7 @@
 /* ===== 基礎樣式 ===== */
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/M45.jpg');
+    background-image: url('../photo/M42BG.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
@@ -14,7 +14,7 @@ body {
 /* ===== 選取文字效果 ===== */
 ::selection,
 ::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
 }
 
 /* ===== 主容器 ===== */
@@ -50,11 +50,11 @@ body {
 .profile-card {
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(20, 20, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 25px;
     padding: 40px;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.1);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.2);
     color: #ffffff;
 }
 
@@ -89,7 +89,7 @@ body {
     margin: 0 0 12px 0;
     font-size: 2.2em;
     font-weight: 400;
-    color: #46ffaf;
+    color: #C5A059;
     letter-spacing: 1px;
     word-break: break-word;
 }
@@ -200,7 +200,7 @@ body {
     margin: 0;
     font-size: 1.5em;
     font-weight: 400;
-    color: #46ffaf;
+    color: #C5A059;
     letter-spacing: 1px;
 }
 
@@ -255,9 +255,9 @@ body {
 
 .form-group input:focus {
     outline: none;
-    border-color: #46ffaf;
+    border-color: #C5A059;
     background: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 0 20px rgba(70, 255, 175, 0.2);
+    box-shadow: 0 0 20px rgba(197, 160, 89, 0.2);
 }
 
 .form-group input::placeholder {
@@ -318,8 +318,8 @@ body {
 }
 
 .notification-success {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
-    border: 1px solid rgba(70, 255, 175, 0.3);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
+    border: 1px solid rgba(197, 160, 89, 0.3);
 }
 
 .notification-error {
@@ -344,7 +344,7 @@ body {
 
 .groups-section h3 {
     font-size: 1.8em;
-    color: #46ffaf;
+    color: #C5A059;
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -380,13 +380,13 @@ body {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     display: flex;
     align-items: center;
     justify-content: center;
     margin-right: 18px;
     flex-shrink: 0;
-    box-shadow: 0 4px 15px rgba(70, 255, 175, 0.3);
+    box-shadow: 0 4px 15px rgba(197, 160, 89, 0.3);
 }
 
 .group-icon span {
@@ -440,7 +440,7 @@ body {
 }
 
 .admin-hint a {
-    color: #46ffaf;
+    color: #C5A059;
     text-decoration: none;
     transition: color 0.3s ease;
 }
@@ -457,7 +457,7 @@ body {
 
 .account-section h3 {
     font-size: 1.8em;
-    color: #46ffaf;
+    color: #C5A059;
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -504,7 +504,7 @@ body {
 
 .admin-section h3 {
     font-size: 1.8em;
-    color: #46ffaf;
+    color: #C5A059;
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -537,14 +537,14 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     color: #ffffff;
-    box-shadow: 0 8px 25px rgba(70, 255, 175, 0.3);
+    box-shadow: 0 8px 25px rgba(197, 160, 89, 0.3);
 }
 
 .btn-primary:hover {
     transform: translateY(-3px);
-    box-shadow: 0 12px 35px rgba(70, 255, 175, 0.4);
+    box-shadow: 0 12px 35px rgba(197, 160, 89, 0.4);
 }
 
 /* ===== 響應式設計 ===== */

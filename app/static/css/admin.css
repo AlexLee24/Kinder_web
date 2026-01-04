@@ -1,7 +1,7 @@
 /* ===== 基礎樣式 ===== */
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/M45.jpg');
+    background-image: url('../photo/M1_LOT.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
@@ -14,7 +14,7 @@ body {
 /* ===== 選取文字效果 ===== */
 ::selection,
 ::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
 }
 
 /* ===== 主容器 ===== */
@@ -67,12 +67,15 @@ body {
     padding: 15px 30px;
     font-size: 16px;
     cursor: pointer;
-    border-radius: 20px;
+    border-radius: 25px;
     transition: all 0.3s ease;
     font-weight: 300;
     color: rgba(255, 255, 255, 0.8);
     letter-spacing: 0.5px;
     flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .tab-button:hover {
@@ -81,10 +84,10 @@ body {
 }
 
 .tab-button.active {
-    background: rgba(70, 255, 175, 0.2);
-    color: #46ffaf;
+    background: rgba(197, 160, 89, 0.2);
+    color: #C5A059;
     font-weight: 400;
-    box-shadow: 0 4px 15px rgba(70, 255, 175, 0.2);
+    box-shadow: 0 4px 15px rgba(197, 160, 89, 0.2);
 }
 
 .tab-content {
@@ -149,14 +152,14 @@ input[type="submit"] {
 }
 
 .btn-primary {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     color: #ffffff;
-    box-shadow: 0 6px 20px rgba(70, 255, 175, 0.25);
+    box-shadow: 0 6px 20px rgba(197, 160, 89, 0.25);
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(70, 255, 175, 0.3);
+    box-shadow: 0 8px 25px rgba(197, 160, 89, 0.3);
 }
 
 .btn-secondary {
@@ -216,10 +219,13 @@ td .btn-small,
 td button {
     padding: 6px 12px;
     font-size: 11px;
-    border-radius: 15px;
+    border-radius: 25px;
     min-width: 80px;
     text-align: center;
     white-space: nowrap;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
 }
 
 /* ===== 表格樣式 ===== */
@@ -250,7 +256,7 @@ th, td {
 th {
     background: rgba(255, 255, 255, 0.1);
     font-weight: 500;
-    color: #46ffaf;
+    color: #C5A059;
     letter-spacing: 0.5px;
 }
 
@@ -268,7 +274,7 @@ tr:hover {
 
 /* ===== 徽章樣式 ===== */
 .group-badge {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     color: #ffffff;
     padding: 4px 12px;
     border-radius: 15px;
@@ -276,7 +282,7 @@ tr:hover {
     margin-right: 5px;
     font-weight: 500;
     letter-spacing: 0.3px;
-    box-shadow: 0 4px 15px rgba(70, 255, 175, 0.3);
+    box-shadow: 0 4px 15px rgba(197, 160, 89, 0.3);
 }
 
 .no-groups {
@@ -360,7 +366,7 @@ tr:hover {
 
 .group-header h3 {
     margin: 0;
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 400;
     font-size: 1.3em;
     letter-spacing: 0.5px;
@@ -483,7 +489,7 @@ tr:hover {
 
 .modal-header h3 {
     margin: 0;
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 400;
     font-size: 1.4em;
     letter-spacing: 0.5px;
@@ -520,7 +526,7 @@ tr:hover {
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 500;
     letter-spacing: 0.5px;
 }
@@ -551,8 +557,8 @@ tr:hover {
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #46ffaf;
-    box-shadow: 0 0 20px rgba(70, 255, 175, 0.3);
+    border-color: #C5A059;
+    box-shadow: 0 0 20px rgba(197, 160, 89, 0.3);
 }
 
 .form-group textarea {
@@ -572,7 +578,7 @@ tr:hover {
     width: auto;
     margin-right: 12px;
     transform: scale(1.2);
-    accent-color: #46ffaf;
+    accent-color: #C5A059;
 }
 
 .modal-actions {
@@ -610,7 +616,7 @@ tr:hover {
 
 .available-groups h4, 
 .current-groups h4 {
-    color: #46ffaf;
+    color: #C5A059;
     margin-bottom: 10px;
 }
 
@@ -637,8 +643,8 @@ tr:hover {
 }
 
 .group-item.current-group {
-    background: rgba(70, 255, 175, 0.15);
-    border-color: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.15);
+    border-color: rgba(197, 160, 89, 0.3);
 }
 
 .group-item.available-group {
@@ -713,8 +719,8 @@ tr:hover {
 
 .search-input-group input:focus {
     outline: none;
-    border-color: #46ffaf;
-    box-shadow: 0 0 15px rgba(70, 255, 175, 0.3);
+    border-color: #C5A059;
+    box-shadow: 0 0 15px rgba(197, 160, 89, 0.3);
 }
 
 .filter-group {
@@ -736,7 +742,7 @@ tr:hover {
 .filter-group input[type="checkbox"] {
     margin-right: 5px;
     transform: scale(1.1);
-    accent-color: #46ffaf;
+    accent-color: #C5A059;
 }
 
 .filter-group select {
@@ -752,7 +758,7 @@ tr:hover {
 
 .filter-group select:focus {
     outline: none;
-    border-color: #46ffaf;
+    border-color: #C5A059;
 }
 
 .search-results {
@@ -799,7 +805,7 @@ tr:hover {
 
 .batch-group-item input[type="checkbox"] {
     margin-right: 8px;
-    accent-color: #46ffaf;
+    accent-color: #C5A059;
 }
 
 .help-text {
@@ -820,12 +826,12 @@ tr:hover {
 }
 
 .batch-groups-container::-webkit-scrollbar-thumb {
-    background: rgba(70, 255, 175, 0.5);
+    background: rgba(197, 160, 89, 0.5);
     border-radius: 3px;
 }
 
 .batch-groups-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(70, 255, 175, 0.7);
+    background: rgba(197, 160, 89, 0.7);
 }
 
 /* ===== 通知系統 ===== */
@@ -847,8 +853,8 @@ tr:hover {
 }
 
 .notification-success {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
-    border: 1px solid rgba(70, 255, 175, 0.3);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
+    border: 1px solid rgba(197, 160, 89, 0.3);
 }
 
 .notification-error {
@@ -882,7 +888,7 @@ tr:hover {
 }
 
 .modal-content h4 {
-    color: #46ffaf;
+    color: #C5A059;
 }
 
 /* ===== 群組詳細資訊 ===== */
@@ -921,7 +927,7 @@ tr:hover {
 }
 
 .members-header h4 {
-    color: #46ffaf;
+    color: #C5A059;
     margin: 0;
     font-size: 1.1em;
 }
@@ -1011,8 +1017,8 @@ tr:hover {
 
 .search-users-section input:focus {
     outline: none;
-    border-color: #46ffaf;
-    box-shadow: 0 0 15px rgba(70, 255, 175, 0.3);
+    border-color: #C5A059;
+    box-shadow: 0 0 15px rgba(197, 160, 89, 0.3);
 }
 
 .available-users-container {
@@ -1050,7 +1056,7 @@ tr:hover {
 .user-checkbox {
     margin-right: 12px;
     transform: scale(1.2);
-    accent-color: #46ffaf;
+    accent-color: #C5A059;
 }
 
 .user-info {
@@ -1101,12 +1107,12 @@ tr:hover {
 }
 
 .available-users-container::-webkit-scrollbar-thumb {
-    background: rgba(70, 255, 175, 0.5);
+    background: rgba(197, 160, 89, 0.5);
     border-radius: 3px;
 }
 
 .available-users-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(70, 255, 175, 0.7);
+    background: rgba(197, 160, 89, 0.7);
 }
 
 /* ===== 響應式設計 ===== */
@@ -1261,4 +1267,65 @@ tr:hover {
         width: 95%;
         margin: 10% auto;
     }
+}
+
+/* Toggle Switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.2);
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #C5A059;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #C5A059;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 24px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }

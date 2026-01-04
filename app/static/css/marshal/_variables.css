@@ -1,32 +1,32 @@
 :root {
     /* Primary Colors */
-    --primary-green: #46ffaf;
-    --primary-green-dark: #2ca470;
-    --primary-green-light: #52ffb8;
+    --primary-green: #C5A059; /* Muted Gold */
+    --primary-green-dark: #A08040;
+    --primary-green-light: #D4AF37;
     
     /* Secondary Colors */
-    --blue: #2196F3;
-    --blue-dark: #1976d2;
-    --orange: #FF9800;
-    --orange-dark: #f57c00;
-    --purple: #9C27B0;
-    --purple-dark: #7b1fa2;
-    --red: #ff6b6b;
-    --red-dark: #e63946;
+    --blue: #64B5F6;
+    --blue-dark: #42A5F5;
+    --orange: #FFB74D;
+    --orange-dark: #FFA726;
+    --purple: #BA68C8;
+    --purple-dark: #AB47BC;
+    --red: #E57373;
+    --red-dark: #EF5350;
     
     /* Status Colors */
-    --inbox-color: #4CAF50;
-    --followup-color: #fdcb6e;
-    --finished-color: #003d82;
-    --snoozed-color: #e84393;
+    --inbox-color: #81C784;
+    --followup-color: #FFD54F;
+    --finished-color: #90CAF9;
+    --snoozed-color: #F06292;
     
     /* Glass Effect */
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    --glass-bg: rgba(20, 20, 30, 0.85);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     
     /* Typography */
-    --font-family: 'Helvetica Neue', Arial, sans-serif;
+    --font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-weight-light: 300;
     --font-weight-normal: 400;
     --font-weight-medium: 500;

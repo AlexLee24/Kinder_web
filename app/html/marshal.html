@@ -64,25 +64,25 @@
                 <div class="small-stat-card inbox clickable" onclick="filterByStatus('object')" title="Click to filter Inbox objects">
                     <div class="stat-info">
                         <span class="stat-number" id="inboxCount">{{ inbox_count }}</span>
-                        <span class="stat-label">Inbox</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg> Inbox</span>
                     </div>
                 </div>
                 <div class="small-stat-card followup clickable" onclick="filterByStatus('followup')" title="Click to filter Follow-up objects">
                     <div class="stat-info">
                         <span class="stat-number" id="followupCount">{{ followup_count }}</span>
-                        <span class="stat-label">Follow-up</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg> Follow-up</span>
                     </div>
                 </div>
                 <div class="small-stat-card finished clickable" onclick="filterByStatus('finished')" title="Click to filter Finished objects">
                     <div class="stat-info">
                         <span class="stat-number" id="finishedCount">{{ finished_count }}</span>
-                        <span class="stat-label">Finished</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg> Finished</span>
                     </div>
                 </div>
                 <div class="small-stat-card snoozed clickable" onclick="filterByStatus('snoozed')" title="Click to filter Snoozed objects">
                     <div class="stat-info">
                         <span class="stat-number" id="snoozedCount">{{ snoozed_count }}</span>
-                        <span class="stat-label">Snoozed</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg> Snoozed</span>
                     </div>
                 </div>
             </div>
@@ -106,7 +106,7 @@
                 <div class="advanced-filters">
                     <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
                         <span>Advanced Filters</span>
-                        <span class="toggle-arrow">▼</span>
+                        <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                     </button>
                     
                     <div class="advanced-filters-content" id="advancedFiltersContent">
@@ -174,6 +174,28 @@
                                 <div class="filter-tooltip">Filter by discovering survey or group</div>
                             </div>
                         </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Brightest Mag Range</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="brightestMagMin" placeholder="Min mag">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="brightestMagMax" placeholder="Max mag">
+                                </div>
+                                <div class="filter-tooltip">Filter by brightest magnitude range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Brightest Abs Mag Range</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="brightestAbsMagMin" placeholder="Min M">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="brightestAbsMagMax" placeholder="Max M">
+                                </div>
+                                <div class="filter-tooltip">Filter by brightest absolute magnitude range</div>
+                            </div>
+                        </div>
                         
                         <div class="filter-row">
                             <div class="filter-actions">
@@ -191,18 +213,6 @@
                 <!-- Admin Tools -->
                 <div class="admin-tools">
                     {% if session.user and session.user.is_admin %}
-                    <button class="sync-btn" onclick="manualTNSDownload()" id="syncBtn">
-                        Download TNS Data
-                    </button>
-                    <button class="sync-btn" onclick="manualAutoSnooze()" id="autoSnoozeBtn" title="Run auto-snooze check now">
-                        Auto-Snooze Check
-                    </button>
-                    <!-- <button class="sync-btn" onclick="debugObjectTag('2025nlz')" id="debugBtn">
-                        Debug 2025nlz
-                    </button> -->
-                    <button class="add-btn" onclick="showAddModal()">
-                        Add Object
-                    </button>
                     {% endif %}
                 </div>
             </div>
@@ -223,12 +233,15 @@
                 
                 <div class="sort-controls">
                     <select id="sortBy" onchange="applySorting()">
-                        <option value="last_update">Last Update</option>
+                        <option value="lastmodified">Last Update</option>
+                        <option value="last_photometry">Last Photometry</option>
                         <option value="discovery_date">Discovery Date</option>
                         <option value="magnitude">Discovery Magnitude</option>
+                        <option value="brightest_mag">Brightest Mag</option>
+                        <option value="brightest_abs_mag">Brightest M</option>
                     </select>
                     <button class="sort-order-btn" onclick="toggleSortOrder()" id="sortOrderBtn">
-                        ↓
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
                     </button>
                 </div>
             </div>
@@ -262,7 +275,11 @@
                     data-discovery="{{ obj.discoverydate or '' }}" 
                     data-tag="{{ real_tag }}"
                     data-magnitude="{{ obj.discoverymag or '' }}"
-                    data-redshift="{{ obj.redshift or '' }}">
+                    data-redshift="{{ obj.redshift or '' }}"
+                    data-lastmodified="{{ obj.lastmodified or '' }}"
+                    data-lastphotometry="{{ obj.last_photometry_date or '' }}"
+                    data-brightest-mag="{{ obj.brightest_mag or '' }}"
+                    data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}">
                 
                 <div class="card-header">
                     <div class="object-name">
@@ -275,7 +292,7 @@
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" target="_blank">
+                                <a href="{{ url_for('object_detail_generic', object_name=obj.name) }}" target="_blank">
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% endif %}
@@ -306,6 +323,18 @@
                         {% if obj.discoverymag %}
                         <div class="info-item">
                             <span>Discovery Mag = {{ obj.discoverymag }}</span>
+                        </div>
+                        {% endif %}
+
+                        {% if obj.brightest_mag %}
+                        <div class="info-item">
+                            <span>Brightest Mag = {{ obj.brightest_mag }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        {% if obj.brightest_abs_mag %}
+                        <div class="info-item">
+                            <span>Brightest M = {{ obj.brightest_abs_mag }}</span>
                         </div>
                         {% endif %}
                         
@@ -354,12 +383,12 @@
                                     View
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('object_detail_generic', object_name=full_name) }}" class="quick-action" title="View Details" target="_blank">
+                                <a href="{{ url_for('object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
                                     View
                                 </a>
                             {% endif %}
                         {% else %}
-                            <a href="{{ url_for('object_detail_generic', object_name=(obj.name_prefix or '') + obj.name) }}" class="quick-action" title="View Details" target="_blank">
+                            <a href="{{ url_for('object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
                                 View
                             </a>
                         {% endif %}
@@ -380,6 +409,8 @@
                                 <th>RA (J2000)</th>
                                 <th>Dec (J2000)</th>
                                 <th>Discover Mag</th>
+                                <th>Brightest Mag</th>
+                                <th>Brightest M</th>
                                 <th>Redshift</th>
                                 <th>Discovery Date</th>
                                 <th>Discoverer</th>
@@ -419,8 +450,8 @@
     <div class="modal-overlay" id="uploadModalOverlay" style="display: none;">
         <div class="upload-modal">
             <div class="modal-header">
-                <h3>📤 Upload TNS CSV Data</h3>
-                <button class="close-modal" onclick="closeUploadModal()">×</button>
+                <h3> Upload TNS CSV Data</h3>
+                <button class="close-modal" onclick="closeUploadModal()"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
             <div class="modal-content">
                 <div class="upload-info">
@@ -441,7 +472,7 @@
                 <div class="upload-section">
                     <div class="file-drop-zone" id="fileDropZone">
                         <div class="drop-content">
-                            <div class="upload-icon">📁</div>
+                            <div class="upload-icon"></div>
                             <p>Drag files here or click to select files</p>
                             <p class="file-types">Supports .csv, .zip formats</p>
                         </div>
@@ -489,87 +520,7 @@
             <div class="modal-footer">
                 <button class="cancel-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
                 <button class="upload-btn" onclick="startUpload()" id="startUploadBtn" disabled>
-                    🚀 Start Upload
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Object Modal -->
-    <div class="modal-overlay" id="addObjectModalOverlay" style="display: none;">
-        <div class="add-object-modal">
-            <div class="modal-header">
-                <h3>🌟 Add New Object</h3>
-                <button class="close-modal" onclick="closeAddObjectModal()">×</button>
-            </div>
-            <div class="modal-content">
-                <form id="addObjectForm">
-                    <div class="form-group">
-                        <label for="objectName">Object Name *</label>
-                        <input type="text" id="objectName" placeholder="e.g., 2025abc, AT2025xyz" required>
-                        <div class="form-help">Enter the object name (TNS format preferred)</div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="objectRA">Right Ascension (RA) *</label>
-                            <input type="number" step="0.000001" id="objectRA" placeholder="e.g., 123.456789" required>
-                            <div class="form-help">Decimal degrees (J2000)</div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="objectDEC">Declination (DEC) *</label>
-                            <input type="number" step="0.000001" id="objectDEC" placeholder="e.g., -12.345678" required>
-                            <div class="form-help">Decimal degrees (J2000)</div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="objectType">Object Type</label>
-                        <select id="objectType" onchange="handleTypeSelection()">
-                            <option value="">Select type (optional)</option>
-                            <!-- Options will be populated dynamically from the same source as classificationFilter -->
-                        </select>
-                        <div class="form-help">Classification can be updated later</div>
-                        
-                        <!-- Custom type input - initially hidden -->
-                        <div class="custom-type-group" id="customTypeGroup" style="display: none;">
-                            <label for="customObjectType">Custom Object Type</label>
-                            <input type="text" id="customObjectType" placeholder="Enter custom type..." maxlength="50">
-                            <div class="form-help">Enter a custom classification type</div>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="objectMagnitude">Discovery Magnitude</label>
-                        <input type="number" step="0.01" id="objectMagnitude" placeholder="e.g., 18.5">
-                        <div class="form-help">Optional - can be added later</div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="objectDiscoveryDate">Discovery Date</label>
-                        <input type="date" id="objectDiscoveryDate">
-                        <div class="form-help">Optional - defaults to today</div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="objectSource">Source/Discoverer</label>
-                        <input type="text" id="objectSource" placeholder="e.g., ATLAS, ZTF, Gaia">
-                        <div class="form-help">Optional - survey or group name</div>
-                    </div>
-                </form>
-                
-                <div class="add-result" id="addResult" style="display: none;">
-                    <div class="result-content">
-                        <div class="result-icon" id="addResultIcon"></div>
-                        <div class="result-text" id="addResultText"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="cancel-btn" onclick="closeAddObjectModal()" id="addCancelBtn">Cancel</button>
-                <button class="add-btn" onclick="submitAddObject()" id="addSubmitBtn">
-                    ➕ Add Object
+                     Start Upload
                 </button>
             </div>
         </div>

@@ -2,15 +2,21 @@
 Object routes for the Kinder web application.
 """
 import re
+import math
 import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify
 
-from modules.tns_database import (
-    search_tns_objects, update_object_status, update_object_activity
+from modules.postgres_database import (
+    search_tns_objects, update_object_status, update_object_activity, get_tns_db_connection,
+    TNSObjectDB
 )
-from modules.object_data import object_db
+from modules.database import (
+    get_all_groups, get_object_permissions, grant_object_permission, 
+    revoke_object_permission, check_object_access
+)
 from modules.data_processing import DataVisualization
+from modules import ext_M_calculator
 
 
 def register_object_routes(app):
@@ -30,30 +36,39 @@ def register_object_routes(app):
             object_name = urllib.parse.unquote(object_name)
             
             # Try exact match first using direct SQL query
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             conn = get_tns_db_connection()
             cursor = conn.cursor()
             
             # Exact match queries (try multiple variants)
+            tag_logic = """
+            CASE 
+                WHEN finish_follow = 1 THEN 'finished'
+                WHEN follow = 1 THEN 'followup'
+                WHEN snoozed = 1 THEN 'snoozed'
+                ELSE 'object'
+            END as tag
+            """
+            
             exact_queries = [
                 # Full name match (case insensitive)
-                """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+                f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
                           reporting_groupid, reporting_group, source_groupid, source_group,
                           discoverydate, discoverymag, discmagfilter, filter, reporters,
                           time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                          creationdate, lastmodified, imported_at, updated_at, update_count,
-                          COALESCE(tag, 'object') as tag
+                          creationdate, lastmodified,
+                          {tag_logic}
                    FROM tns_objects 
-                   WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ? COLLATE NOCASE""",
+                   WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
                 # Name only match (case insensitive)
-                """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+                f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
                           reporting_groupid, reporting_group, source_groupid, source_group,
                           discoverydate, discoverymag, discmagfilter, filter, reporters,
                           time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                          creationdate, lastmodified, imported_at, updated_at, update_count,
-                          COALESCE(tag, 'object') as tag
+                          creationdate, lastmodified,
+                          {tag_logic}
                    FROM tns_objects 
-                   WHERE name = ? COLLATE NOCASE"""
+                   WHERE name ILIKE %s"""
             ]
             
             matching_obj = None
@@ -86,6 +101,53 @@ def register_object_routes(app):
                 flash(f'Object {object_name} not found.', 'error')
                 return redirect(url_for('marshal'))
             
+            # Calculate brightest mag and abs mag
+            try:
+                photometry_data = TNSObjectDB.get_photometry(object_name)
+                if photometry_data:
+                    valid_points = [p for p in photometry_data if p.get('magnitude') is not None]
+                    if valid_points:
+                        brightest_point = min(valid_points, key=lambda x: float(x['magnitude']))
+                        brightest_mag_val = float(brightest_point['magnitude'])
+                        
+                        # Format brightest mag
+                        filt = brightest_point.get('filter', '')
+                        matching_obj['brightest_mag'] = f"{brightest_mag_val:.2f}"
+                        if filt:
+                            matching_obj['brightest_mag'] += f" ({filt})"
+                        
+                        # Calculate Abs Mag
+                        redshift = matching_obj.get('redshift')
+                        ra = matching_obj.get('ra')
+                        dec = matching_obj.get('declination')
+                        
+                        if redshift and redshift > 0:
+                            distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
+                            if isinstance(distance_mpc, (int, float)):
+                                distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
+                                k_correction = 2.5 * math.log10(1 + redshift)
+                                
+                                extinction = 0
+                                if ra is not None and dec is not None:
+                                    # Use specific filter for extinction
+                                    ext_filt = filt if filt else 'V'
+                                    ext = ext_M_calculator.get_extinction(ra, dec, ext_filt)
+                                    if isinstance(ext, (int, float)):
+                                        extinction = ext
+                                
+                                abs_mag = brightest_mag_val - distance_modulus - k_correction - extinction
+                                matching_obj['brightest_abs_mag'] = f"{abs_mag:.2f}"
+                                if filt:
+                                    matching_obj['brightest_abs_mag'] += f" ({filt})"
+            except Exception as e:
+                print(f"Error calculating brightest values: {e}")
+                pass
+
+            # Convert datetime objects to strings for template compatibility
+            if matching_obj:
+                for key, value in matching_obj.items():
+                    if isinstance(value, datetime):
+                        matching_obj[key] = value.strftime('%Y-%m-%d %H:%M:%S')
             
             return render_template('object_detail.html', 
                                  current_path='/object',
@@ -133,6 +195,54 @@ def register_object_routes(app):
             if not matching_obj:
                 flash(f'Object {object_name} not found.', 'error')
                 return redirect(url_for('marshal'))
+            
+            # Calculate brightest mag and abs mag
+            try:
+                photometry_data = TNSObjectDB.get_photometry(object_name)
+                if photometry_data:
+                    valid_points = [p for p in photometry_data if p.get('magnitude') is not None]
+                    if valid_points:
+                        brightest_point = min(valid_points, key=lambda x: float(x['magnitude']))
+                        brightest_mag_val = float(brightest_point['magnitude'])
+                        
+                        # Format brightest mag
+                        filt = brightest_point.get('filter', '')
+                        matching_obj['brightest_mag'] = f"{brightest_mag_val:.2f}"
+                        if filt:
+                            matching_obj['brightest_mag'] += f" ({filt})"
+                        
+                        # Calculate Abs Mag
+                        redshift = matching_obj.get('redshift')
+                        ra = matching_obj.get('ra')
+                        dec = matching_obj.get('declination')
+                        
+                        if redshift and redshift > 0:
+                            distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
+                            if isinstance(distance_mpc, (int, float)):
+                                distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
+                                k_correction = 2.5 * math.log10(1 + redshift)
+                                
+                                extinction = 0
+                                if ra is not None and dec is not None:
+                                    # Use specific filter for extinction
+                                    ext_filt = filt if filt else 'V'
+                                    ext = ext_M_calculator.get_extinction(ra, dec, ext_filt)
+                                    if isinstance(ext, (int, float)):
+                                        extinction = ext
+                                
+                                abs_mag = brightest_mag_val - distance_modulus - k_correction - extinction
+                                matching_obj['brightest_abs_mag'] = f"{abs_mag:.2f}"
+                                if filt:
+                                    matching_obj['brightest_abs_mag'] += f" ({filt})"
+            except Exception as e:
+                print(f"Error calculating brightest values: {e}")
+                pass
+
+            # Convert datetime objects to strings for template compatibility
+            if matching_obj:
+                for key, value in matching_obj.items():
+                    if isinstance(value, datetime):
+                        matching_obj[key] = value.strftime('%Y-%m-%d %H:%M:%S')
             
             return render_template('object_detail.html', 
                                  current_path='/object',
@@ -236,7 +346,7 @@ def register_object_routes(app):
             object_name = urllib.parse.unquote(object_name)
             
             # First try exact match
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             conn = get_tns_db_connection()
             cursor = conn.cursor()
             
@@ -246,10 +356,15 @@ def register_object_routes(app):
                        reporting_groupid, reporting_group, source_groupid, source_group,
                        discoverydate, discoverymag, discmagfilter, filter, reporters,
                        time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                       creationdate, lastmodified, imported_at, updated_at, update_count,
-                       COALESCE(tag, 'object') as tag
+                       creationdate, lastmodified,
+                       CASE 
+                            WHEN finish_follow = 1 THEN 'finished'
+                            WHEN follow = 1 THEN 'followup'
+                            WHEN snoozed = 1 THEN 'snoozed'
+                            ELSE 'object'
+                       END as tag
                 FROM tns_objects 
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ? COLLATE NOCASE
+                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s
             """, (object_name,))
             
             exact_result = cursor.fetchone()
@@ -261,7 +376,7 @@ def register_object_routes(app):
                           'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
                           'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
                           'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                          'creationdate', 'lastmodified', 'imported_at', 'updated_at', 'update_count', 'tag']
+                          'creationdate', 'lastmodified', 'tag']
                 obj = dict(zip(columns, exact_result))
             else:
                 # Fallback to search function
@@ -302,49 +417,24 @@ def register_object_routes(app):
             # Validate input data
             updates = {}
             
-            # Basic fields that can be updated
-            updatable_fields = [
-                'type', 'ra', 'declination', 'redshift', 'discoverymag', 
-                'discoveryfilter', 'discoverydate', 'source_group', 
-                'reporting_group', 'remarks'
-            ]
+            # Basic fields that can be updated - ONLY Redshift allowed now
+            updatable_fields = ['redshift']
             
             for field in updatable_fields:
                 if field in data:
                     value = data[field]
                     
                     # Validate specific fields
-                    if field in ['ra', 'declination', 'redshift', 'discoverymag']:
+                    if field == 'redshift':
                         if value and value != '':
                             try:
                                 value = float(value)
-                                if field == 'ra' and not (0 <= value < 360):
-                                    return jsonify({'error': 'RA must be between 0 and 360 degrees'}), 400
-                                if field == 'declination' and not (-90 <= value <= 90):
-                                    return jsonify({'error': 'Dec must be between -90 and 90 degrees'}), 400
-                                if field == 'redshift' and value < 0:
+                                if value < 0:
                                     return jsonify({'error': 'Redshift must be positive'}), 400
-                                if field == 'discoverymag' and not (-5 <= value <= 30):
-                                    return jsonify({'error': 'Magnitude should be between -5 and 30'}), 400
                             except (ValueError, TypeError):
                                 return jsonify({'error': f'Invalid value for {field}'}), 400
                         else:
                             value = None
-                    
-                    elif field == 'discoverydate':
-                        if value and value != '':
-                            try:
-                                # Validate date format
-                                datetime.strptime(value, '%Y-%m-%d')
-                            except ValueError:
-                                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-                        else:
-                            value = None
-                    
-                    elif field in ['type', 'discoveryfilter', 'source_group', 'reporting_group', 'remarks']:
-                        if value and len(str(value).strip()) > 200:
-                            return jsonify({'error': f'{field} is too long (maximum 200 characters)'}), 400
-                        value = str(value).strip() if value else None
                     
                     updates[field] = value
             
@@ -352,7 +442,7 @@ def register_object_routes(app):
                 return jsonify({'error': 'No valid fields to update'}), 400
             
             # Update database
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             
             conn = get_tns_db_connection()
             cursor = conn.cursor()
@@ -362,19 +452,17 @@ def register_object_routes(app):
             params = []
             
             for field, value in updates.items():
-                set_clauses.append(f"{field} = ?")
+                set_clauses.append(f"{field} = %s")
                 params.append(value)
             
-            # Add lastmodified timestamp
-            set_clauses.append("lastmodified = CURRENT_TIMESTAMP")
-            set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+            # NOTE: We explicitly DO NOT update lastmodified or updated_at
             
             params.append(object_name)  # For WHERE clause
             
             update_query = f"""
                 UPDATE tns_objects 
                 SET {', '.join(set_clauses)}
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
             """
             
             cursor.execute(update_query, params)
@@ -412,7 +500,7 @@ def register_object_routes(app):
         try:
             object_name = urllib.parse.unquote(object_name)
             
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             
             conn = get_tns_db_connection()
             cursor = conn.cursor()
@@ -421,7 +509,7 @@ def register_object_routes(app):
             cursor.execute("""
                 SELECT name_prefix, name, type, discoverydate 
                 FROM tns_objects 
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
             """, (object_name,))
             
             existing_object = cursor.fetchone()
@@ -432,7 +520,7 @@ def register_object_routes(app):
             # Delete from tns_objects table
             cursor.execute("""
                 DELETE FROM tns_objects 
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = ?
+                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
             """, (object_name,))
             
             rows_affected = cursor.rowcount
@@ -441,23 +529,20 @@ def register_object_routes(app):
                 conn.close()
                 return jsonify({'error': 'Failed to delete object'}), 500
             
-            # Also delete related data from object_data database
+            # Also delete related data from PostgreSQL database
             try:
                 # Delete photometry data
-                phot_conn = object_db.get_connection()
-                phot_cursor = phot_conn.cursor()
+                cursor.execute("DELETE FROM photometry WHERE object_name = %s", (object_name,))
+                deleted_photometry = cursor.rowcount
                 
-                phot_cursor.execute("DELETE FROM photometry WHERE object_name = ?", (object_name,))
-                deleted_photometry = phot_cursor.rowcount
+                cursor.execute("DELETE FROM spectroscopy WHERE object_name = %s", (object_name,))
+                deleted_spectroscopy = cursor.rowcount
                 
-                phot_cursor.execute("DELETE FROM spectroscopy WHERE object_name = ?", (object_name,))
-                deleted_spectroscopy = phot_cursor.rowcount
+                cursor.execute("DELETE FROM comments WHERE object_name = %s", (object_name,))
+                deleted_comments = cursor.rowcount
                 
-                phot_cursor.execute("DELETE FROM comments WHERE object_name = ?", (object_name,))
-                deleted_comments = phot_cursor.rowcount
-                
-                phot_conn.commit()
-                phot_conn.close()
+                conn.commit()
+                conn.close()
                 
             except Exception:
                 # Continue with main deletion even if related data deletion fails
@@ -486,7 +571,7 @@ def register_object_routes(app):
             data = request.get_json()
             new_status = data.get('status')
             
-            if not new_status or new_status not in ['object', 'followup', 'finished', 'snoozed']:
+            if not new_status or new_status not in ['object', 'followup', 'finished', 'snoozed', 'clear']:
                 return jsonify({'error': 'Invalid status'}), 400
             
             object_name = urllib.parse.unquote(object_name)
@@ -517,7 +602,10 @@ def register_object_routes(app):
         object_name = f"{year}{letters}"
         
         try:
-            photometry = object_db.get_photometry(object_name)
+            # Sync last photometry date to ensure consistency
+            TNSObjectDB.sync_last_photometry_date(object_name)
+            
+            photometry = TNSObjectDB.get_photometry(object_name)
             return jsonify({
                 'success': True,
                 'photometry': photometry,
@@ -534,7 +622,7 @@ def register_object_routes(app):
         object_name = f"{year}{letters}"
         
         try:
-            spectra_list = object_db.get_spectrum_list(object_name)
+            spectra_list = TNSObjectDB.get_spectrum_list(object_name)
             return jsonify({
                 'success': True,
                 'spectra': spectra_list,
@@ -551,12 +639,12 @@ def register_object_routes(app):
         object_name = f"{year}{letters}"
         
         try:
-            conn = object_db.get_connection()
+            conn = get_tns_db_connection()
             cursor = conn.cursor()
             
             cursor.execute('''
                 SELECT wavelength, intensity FROM spectroscopy 
-                WHERE object_name = ? AND spectrum_id = ?
+                WHERE object_name = %s AND spectrum_id = %s
                 ORDER BY wavelength ASC
             ''', (object_name, spectrum_id))
             
@@ -584,7 +672,7 @@ def register_object_routes(app):
         data = request.get_json()
         
         try:
-            point_id = object_db.add_photometry_point(
+            point_id = TNSObjectDB.add_photometry_point(
                 object_name=object_name,
                 mjd=float(data.get('mjd')),
                 magnitude=float(data.get('magnitude')) if data.get('magnitude') else None,
@@ -610,7 +698,7 @@ def register_object_routes(app):
         data = request.get_json()
         
         try:
-            spectrum_id = object_db.add_spectrum_data(
+            spectrum_id = TNSObjectDB.add_spectrum_data(
                 object_name=object_name,
                 wavelength_data=data.get('wavelength', []),
                 intensity_data=data.get('intensity', []),
@@ -633,7 +721,7 @@ def register_object_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         try:
-            if object_db.delete_photometry_point(point_id):
+            if TNSObjectDB.delete_photometry_point(point_id):
                 return jsonify({
                     'success': True,
                     'message': 'Photometry point deleted successfully'
@@ -649,7 +737,7 @@ def register_object_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         try:
-            if object_db.delete_spectrum(spectrum_id):
+            if TNSObjectDB.delete_spectrum(spectrum_id):
                 return jsonify({
                     'success': True,
                     'message': 'Spectrum deleted successfully'
@@ -666,8 +754,23 @@ def register_object_routes(app):
         
         object_name = f"{year}{letters}"
         
+        # Check permissions
+        if not check_object_access(object_name, session['user']['email']):
+             return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'Access denied: You do not have permission to view this data.'
+            })
+        
         try:
-            photometry_data = object_db.get_photometry(object_name)
+            # Get object data for redshift, ra, and dec
+            results = search_tns_objects(search_term=object_name, limit=1)
+            obj_data = results[0] if results else {}
+            redshift = obj_data.get('redshift')
+            ra = obj_data.get('ra')
+            dec = obj_data.get('declination')
+            
+            photometry_data = TNSObjectDB.get_photometry(object_name)
             
             if not photometry_data:
                 return jsonify({
@@ -676,7 +779,7 @@ def register_object_routes(app):
                     'message': 'No photometry data available'
                 })
             
-            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data)
+            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data, redshift=redshift, ra=ra, dec=dec)
             
             return jsonify({
                 'success': True,
@@ -692,10 +795,19 @@ def register_object_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         object_name = f"{year}{letters}"
+        
+        # Check permissions
+        if not check_object_access(object_name, session['user']['email']):
+             return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'Access denied: You do not have permission to view this data.'
+            })
+            
         spectrum_id = request.args.get('spectrum_id')
         
         try:
-            spectrum_data = object_db.get_spectroscopy(object_name)
+            spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
             
             if not spectrum_data:
                 return jsonify({
@@ -727,6 +839,14 @@ def register_object_routes(app):
         try:
             object_name = urllib.parse.unquote(object_name)
             
+            # Check permissions
+            if not check_object_access(object_name, session['user']['email']):
+                 return jsonify({
+                    'success': True,
+                    'plot_html': None,
+                    'message': 'Access denied: You do not have permission to view this data.'
+                })
+            
             results = search_tns_objects(search_term=object_name, limit=1)
             
             if not results:
@@ -735,7 +855,7 @@ def register_object_routes(app):
                     'error': f'Object {object_name} not found'
                 }), 404
             
-            photometry_data = object_db.get_photometry(object_name)
+            photometry_data = TNSObjectDB.get_photometry(object_name)
             
             if not photometry_data:
                 return jsonify({
@@ -744,7 +864,10 @@ def register_object_routes(app):
                     'message': 'No photometry data available for this object'
                 })
             
-            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data)
+            # Get redshift from object data
+            redshift = results[0].get('redshift')
+            
+            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data, redshift=redshift)
             
             return jsonify({
                 'success': True,
@@ -765,6 +888,15 @@ def register_object_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         object_name = urllib.parse.unquote(object_name)
+        
+        # Check permissions
+        if not check_object_access(object_name, session['user']['email']):
+             return jsonify({
+                'success': True,
+                'plot_html': None,
+                'message': 'Access denied: You do not have permission to view this data.'
+            })
+            
         spectrum_id = request.args.get('spectrum_id')
         
         try:
@@ -776,7 +908,7 @@ def register_object_routes(app):
                     'error': f'Object {object_name} not found'
                 }), 404
             
-            spectrum_data = object_db.get_spectroscopy(object_name)
+            spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
             
             if not spectrum_data:
                 return jsonify({
@@ -813,7 +945,18 @@ def register_object_routes(app):
         
         try:
             object_name = urllib.parse.unquote(object_name)
-            comments = object_db.get_comments(object_name)
+            
+            # Check permissions
+            if not check_object_access(object_name, session['user']['email']):
+                 return jsonify({
+                    'success': True,
+                    'comments': [],
+                    'count': 0,
+                    'message': 'Access denied'
+                })
+            
+            # Use PostgreSQL database for comments
+            comments = TNSObjectDB.get_comments(object_name)
             
             return jsonify({
                 'success': True,
@@ -841,7 +984,8 @@ def register_object_routes(app):
                 return jsonify({'error': 'Comment is too long (maximum 1000 characters)'}), 400
             
             user = session['user']
-            comment_id = object_db.add_comment(
+            # Use PostgreSQL database for comments
+            comment_id = TNSObjectDB.add_comment(
                 object_name=object_name,
                 user_email=user['email'],
                 user_name=user['name'],
@@ -865,18 +1009,99 @@ def register_object_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         try:
-            # Check if comment exists
-            comment = object_db.get_comment_by_id(comment_id)
+            # Check if comment exists using PostgreSQL
+            comment = TNSObjectDB.get_comment_by_id(comment_id)
             if not comment:
                 return jsonify({'error': 'Comment not found'}), 404
             
-            if object_db.delete_comment(comment_id):
+            if TNSObjectDB.delete_comment(comment_id):
                 return jsonify({
                     'success': True,
                     'message': 'Comment deleted successfully'
                 })
             else:
                 return jsonify({'error': 'Failed to delete comment'}), 500
+        except Exception as e:
+            app.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
+            return jsonify({'error': 'Failed to delete comment'}), 500
+
+    # ===============================================================================
+    # PERMISSIONS
+    # ===============================================================================
+    @app.route('/api/groups')
+    def get_groups_api():
+        if 'user' not in session:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        try:
+            groups = get_all_groups()
+            return jsonify({
+                'success': True,
+                'groups': groups
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/object/<object_name>/permissions')
+    def get_object_permissions_api(object_name):
+        if 'user' not in session:
+            return jsonify({'error': 'Access denied'}), 403
+        
+        try:
+            object_name = urllib.parse.unquote(object_name)
+            permissions = get_object_permissions(object_name)
+            return jsonify({
+                'success': True,
+                'permissions': permissions
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/object/<object_name>/permissions', methods=['POST'])
+    def add_object_permission_api(object_name):
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        try:
+            object_name = urllib.parse.unquote(object_name)
+            data = request.get_json()
+            group_name = data.get('group_name')
+            
+            if not group_name:
+                return jsonify({'error': 'Group name is required'}), 400
+            
+            if grant_object_permission(object_name, group_name, session['user']['email']):
+                return jsonify({
+                    'success': True,
+                    'message': 'Permission granted successfully'
+                })
+            else:
+                return jsonify({'error': 'Failed to grant permission (maybe already exists)'}), 400
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/object/<object_name>/permissions', methods=['DELETE'])
+    def remove_object_permission_api(object_name):
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+        
+        try:
+            object_name = urllib.parse.unquote(object_name)
+            data = request.get_json()
+            group_name = data.get('group_name')
+            
+            if not group_name:
+                return jsonify({'error': 'Group name is required'}), 400
+            
+            if revoke_object_permission(object_name, group_name):
+                return jsonify({
+                    'success': True,
+                    'message': 'Permission revoked successfully'
+                })
+            else:
+                return jsonify({'error': 'Permission not found'}), 404
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
             
         except Exception as e:
             app.logger.error(f"Error deleting comment {comment_id}: {str(e)}")

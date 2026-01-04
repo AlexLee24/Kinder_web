@@ -23,7 +23,9 @@
                         <div class="user-name-container">
                             <h2 id="userName">{{ user_data.name if user_data else session.user.name }}</h2>
                             <button class="edit-name-btn" onclick="showEditNameModal()">
-                                <span class="edit-icon">✏️</span>
+                                <span class="edit-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </span>
                             </button>
                         </div>
                         <p class="user-email">{{ session.user.email }}</p>
@@ -54,7 +56,7 @@
                     {% else %}
                     <div class="no-groups">
                         <div class="no-groups-icon">
-                            <span>👥</span>
+                            <span></span>
                         </div>
                         <p>You are not a member of any groups yet.</p>
                         {% if session.user.is_admin %}

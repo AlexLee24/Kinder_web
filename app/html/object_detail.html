@@ -23,7 +23,7 @@
                     <!-- Breadcrumb -->
                     <div class="breadcrumb">
                         <a href="{{ url_for('marshal') }}" class="breadcrumb-link">Marshal</a>
-                        <span class="breadcrumb-separator">›</span>
+                        <span class="breadcrumb-separator"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
                         <span class="breadcrumb-current" id="breadcrumbCurrent">{{ object_name }}</span>
                     </div>
                     
@@ -62,6 +62,10 @@
                     
                     <!-- Basic Information Grid -->
                     <div class="basic-info-grid">
+                        <div class="info-item full-width-item">
+                            <span class="info-label">Internal Name:</span>
+                            <span class="info-value" id="internalName">{{ object_data.internal_names or 'N/A' }}</span>
+                        </div>
                         <div class="info-item">
                             <span class="info-label">RA (J2000):</span>
                             <span class="info-value" id="raValue">
@@ -93,9 +97,9 @@
                             </span>
                         </div>
                         <div class="info-item">
-                            <span class="info-label">Report Date:</span>
+                            <span class="info-label">Last Update:</span>
                             <span class="info-value" id="reportDateInfo">
-                                {{ object_data.reportdate[:10] if object_data.reportdate else 'N/A' }}
+                                {{ object_data.lastmodified[:10] if object_data.lastmodified else 'N/A' }}
                             </span>
                         </div>
                         <div class="info-item">
@@ -117,6 +121,14 @@
                             <span class="info-label">Discovery Survey:</span>
                             <span class="info-value">{{ object_data.source_group or 'N/A' }}</span>
                         </div>
+                        <div class="info-item">
+                            <span class="info-label">Brightest Mag:</span>
+                            <span class="info-value">{{ object_data.brightest_mag or 'N/A' }}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Brightest M:</span>
+                            <span class="info-value">{{ object_data.brightest_abs_mag or '--' }}</span>
+                        </div>
                     </div>
                     
                     <!-- Header Actions Card -->
@@ -128,20 +140,24 @@
                             <div class="status-controls-compact">
                                 <div class="status-actions-compact">
                                     <button class="status-btn-compact inbox" onclick="changeStatus('object')" title="Move to Inbox">
-                                        <span class="btn-icon">📥</span>
+                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg></span>
                                         Inbox
                                     </button>
                                     <button class="status-btn-compact followup" onclick="changeStatus('followup')" title="Mark for Follow-up">
-                                        <span class="btn-icon">🔍</span>
+                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg></span>
                                         Follow-up
                                     </button>
                                     <button class="status-btn-compact finished" onclick="changeStatus('finished')" title="Mark as Finished">
-                                        <span class="btn-icon">✅</span>
+                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg></span>
                                         Finished
                                     </button>
                                     <button class="status-btn-compact snoozed" onclick="changeStatus('snoozed')" title="Snooze">
-                                        <span class="btn-icon">😴</span>
+                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg></span>
                                         Snooze
+                                    </button>
+                                    <button class="status-btn-compact clear" onclick="changeStatus('clear')" title="Clear Follow/Finish">
+                                        <span class="btn-icon"></span>
+                                        Clear
                                     </button>
                                 </div>
                             </div>
@@ -153,19 +169,35 @@
                             <h4 class="section-title">External Resources</h4>
                             <div class="external-links-compact">
                                 <a href="#" class="external-link-compact tns" onclick="openTNSPage()" title="View on Transient Name Server">
-                                    <span class="link-icon">🔭</span>
+                                    <span class="link-icon"></span>
                                     <span class="link-title">TNS</span>
                                 </a>
                                 
                                 <a href="#" class="external-link-compact ned" onclick="openNED()" title="NASA/IPAC Extragalactic Database">
-                                    <span class="link-icon">🔭</span>
+                                    <span class="link-icon"></span>
                                     <span class="link-title">NED</span>
                                 </a>
                                 
                                 <a href="#" class="external-link-compact desi" onclick="openDESI()" title="DESI Legacy Survey">
-                                    <span class="link-icon">🔭</span>
+                                    <span class="link-icon"></span>
                                     <span class="link-title">DESI LS</span>
                                 </a>
+                                
+                                <a href="#" class="external-link-compact extinction" onclick="openExtinction()" title="Galactic Extinction Calculator">
+                                    <span class="link-icon"></span>
+                                    <span class="link-title">Extinction</span>
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Data Actions Section -->
+                        <div class="header-section data-actions-section">
+                            <h4 class="section-title">Data Actions</h4>
+                            <div class="external-links-compact">
+                                <button class="status-btn-compact" onclick="fetchPhotometry()" title="Fetch Photometry from TNS">
+                                    <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span>
+                                    Fetch Photometry
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -184,6 +216,36 @@
                     <div class="image-info">
                         <span class="image-credit">DESI Legacy Survey</span>
                     </div>
+                    
+                    <!-- Permission Management (Admin Only) -->
+                    {% if session.user and session.user.is_admin %}
+                    <div class="permission-management" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 0.85rem; font-weight: 600; color: #4a5568;">Data Access Control</span>
+                            <button class="action-btn-small" onclick="togglePermissionManager()" style="padding: 2px 8px; font-size: 0.75rem; background: #f8f9fa; border: 1px solid #ddd; color: #666;">Manage</button>
+                        </div>
+                        <div id="permissionManager" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #eee;">
+                            <div style="margin-bottom: 8px;">
+                                <label style="display: block; font-size: 0.75rem; color: #666; margin-bottom: 4px;">Select User Group:</label>
+                                <select id="groupSelect" style="width: 100%; padding: 6px; font-size: 0.85rem; border: 1px solid #ddd; border-radius: 4px; background: white;">
+                                    <option value="">Loading groups...</option>
+                                </select>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="grantPermission()" style="flex: 1; padding: 6px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: background 0.2s;">Grant Access</button>
+                                <button onclick="revokePermission()" style="flex: 1; padding: 6px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: background 0.2s;">Revoke Access</button>
+                            </div>
+                            <div id="permissionStatus" style="margin-top: 8px; font-size: 0.75rem; color: #666; min-height: 1.2em;"></div>
+                            
+                            <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+                                <span style="font-size: 0.75rem; font-weight: 600; color: #666; display: block; margin-bottom: 4px;">Current Access:</span>
+                                <div id="currentPermissionsList" style="font-size: 0.75rem; color: #4a5568; max-height: 60px; overflow-y: auto;">
+                                    Loading...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -195,24 +257,32 @@
                 <!-- Photometry Card -->
                 <div class="info-card">
                     <div class="card-header">
-                        <h3>Photometry</h3>
+                        <h3>Photometry <span id="lastPhotometryDate" style="font-size: 0.8em; font-weight: normal; color: #666; margin-left: 10px;"></span></h3>
                         <div class="card-actions">
                             {% if session.user and session.user.is_admin %}
                             <button class="action-btn-small edit" onclick="togglePhotometryEditMode()" id="photometryEditBtn">
-                                <span class="btn-icon">✏️</span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                </span>
                                 Edit
                             </button>
                             <button class="action-btn-small add" onclick="showAddPhotometryForm()" id="addPhotometryBtn" style="display: none;">
-                                <span class="btn-icon">➕</span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                </span>
                                 Add Point
                             </button>
                             {% endif %}
                             <button class="action-btn-small upload" onclick="uploadPhotometry()">
-                                <span class="btn-icon">📤</span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </span>
                                 Upload
                             </button>
                             <button class="action-btn-small refresh" onclick="loadPhotometryPlot()">
-                                <span class="btn-icon">🔄</span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                                </span>
                                 Refresh
                             </button>
                         </div>
@@ -262,11 +332,11 @@
                         <h3>Spectroscopy</h3>
                         <div class="card-actions">
                             <button class="action-btn-small upload" onclick="uploadSpectrum()">
-                                <span class="btn-icon">📤</span>
+                                <span class="btn-icon"></span>
                                 Upload
                             </button>
                             <button class="action-btn-small refresh" onclick="loadSpectrumPlot()">
-                                <span class="btn-icon">🔄</span>
+                                <span class="btn-icon"></span>
                                 Refresh
                             </button>
                         </div>
@@ -309,7 +379,7 @@
                         <div class="card-actions">
                             <div class="survey-selector">
                                 <select id="surveySelect" onchange="changeSurvey()">
-                                    <option value="CDS/P/DSS2/color">DSS2 Color</option>
+                                    <option value="CDS/P/DSS2/color" selected>DSS2 Color</option>
                                     <option value="P/2MASS/color">2MASS Color</option>
                                     <option value="P/SDSS9/color">SDSS9 Color</option>
                                     <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS Color</option>
@@ -322,12 +392,6 @@
                         </div>
                     </div>
                     <div class="card-content">
-                        <!-- Aladin Loading -->
-                        <div class="aladin-loading" id="aladinLoading">
-                            <div class="loading-spinner-small"></div>
-                            <span>Loading star map...</span>
-                        </div>
-                        
                         <!-- Aladin Lite -->
                         <div id="aladin-lite-div" style="display: none;"></div>
                     </div>
@@ -342,7 +406,7 @@
                     <div class="card-header">
                         <h3>Comments</h3>
                         <button class="add-comment-btn" onclick="showAddCommentForm()" id="addCommentBtn">
-                            <span class="btn-icon">💬</span>
+                            <span class="btn-icon"></span>
                             Add Comment
                         </button>
                     </div>
@@ -366,7 +430,7 @@
                                 <span>Loading comments...</span>
                             </div>
                             <div class="no-comments" id="noComments" style="display: none;">
-                                <span class="no-comments-icon">💬</span>
+                                <span class="no-comments-icon"></span>
                                 <span class="no-comments-text">No comments yet. Be the first to comment!</span>
                             </div>
                             <div class="comments-list" id="commentsList">
@@ -417,16 +481,16 @@
                 <div class="upload-area">
                     <input type="file" id="photometryFile" accept=".txt,.dat,.csv" style="display: none;">
                     <div class="file-drop-zone" id="fileDropZone">
-                        <div class="drop-icon">📄</div>
+                        <div class="drop-icon"></div>
                         <div class="drop-text">
                             <p>Click to select file or drag and drop</p>
                             <p class="drop-subtext">Supported formats: .txt, .dat, .csv</p>
                         </div>
                     </div>
                     <div class="selected-file" id="selectedFile" style="display: none;">
-                        <span class="file-icon">📄</span>
+                        <span class="file-icon"></span>
                         <span class="file-name" id="fileName"></span>
-                        <button class="remove-file" onclick="removeSelectedFile()">×</button>
+                        <button class="remove-file" onclick="removeSelectedFile()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                     </div>
                 </div>
                 
@@ -452,7 +516,7 @@
                 </div>
                 
                 <div class="upload-error" id="uploadError" style="display: none;">
-                    <div class="error-icon">⚠️</div>
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
                     <div class="error-text" id="errorText"></div>
                 </div>
             </div>
@@ -498,7 +562,7 @@
                     </div>
                 </form>
                 <div class="form-error" id="addFormError" style="display: none;">
-                    <div class="error-icon">⚠️</div>
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
                     <div class="error-text" id="addErrorText"></div>
                 </div>
             </div>

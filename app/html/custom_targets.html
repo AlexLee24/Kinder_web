@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Targets - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom_targets.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="container main-content">
+        <div class="header-section">
+            <h1>Custom Targets Manager</h1>
+            <p class="subtitle">Manage your personal list of observation targets</p>
+            {% if is_admin %}
+            <button class="btn btn-secondary btn-sm" onclick="openPermissionsModal()" style="margin-top: 10px;">
+                <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                Page Access Settings
+            </button>
+            {% endif %}
+        </div>
+
+        <div class="planner-container">
+            <!-- Add Target Panel -->
+            <div class="settings-panel">
+                <h3>Add New Target</h3>
+                <div class="table-responsive">
+                    <form id="add-target-form">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 10%">Name *</th>
+                                    <th style="width: 8%">RA *</th>
+                                    <th style="width: 8%">Dec *</th>
+                                    <th style="width: 8%">Mag</th>
+                                    <th style="width: 8%">Priority</th>
+                                    <th style="width: 25%">Exposure Settings</th>
+                                    <th style="width: 23%">Note</th>
+                                    <th style="width: 8%">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="text" id="target-name" class="form-control" required placeholder="Name"></td>
+                                    <td><input type="text" id="target-ra" class="form-control" required placeholder="HH:MM:SS"></td>
+                                    <td><input type="text" id="target-dec" class="form-control" required placeholder="DD:MM:SS"></td>
+                                    <td><input type="number" id="target-mag" class="form-control" step="0.1" placeholder="Mag"></td>
+                                    <td>
+                                        <select id="target-priority" class="form-control">
+                                            <option value="Urgent">Urgent</option>
+                                            <option value="High">High</option>
+                                            <option value="Normal" selected>Normal</option>
+                                            <option value="Medium">Medium</option>
+                                            <option value="Low">Low</option>
+                                        </select>
+                                    </td>
+                                    <td class="exposure-settings-cell">
+                                        <div class="auto-toggle-wrapper">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="target-auto" checked onchange="toggleAutoExposure(this)">
+                                                Auto by Mag
+                                            </label>
+                                        </div>
+                                        
+                                        <div id="manual-exposures-container" class="manual-exposures" style="display: none;">
+                                            <div id="exposure-list" class="exposure-list">
+                                                <!-- Exposure rows go here -->
+                                            </div>
+                                            <button type="button" class="btn-small btn-secondary add-exposure-btn" onclick="addExposureRow()">+ Add Filter</button>
+                                        </div>
+                                        <div id="auto-info-text" class="auto-info" style="display: block;">
+                                            <small class="text-muted">Exposures calculated automatically</small>
+                                        </div>
+                                    </td>
+                                    <td><input type="text" id="target-note" class="form-control" placeholder="Optional note"></td>
+                                    <td>
+                                        <button type="submit" class="btn btn-primary btn-sm" style="width: 100%;">
+                                            <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Saved Targets Panel -->
+            <div class="targets-panel">
+                <h3>Saved Targets</h3>
+                <div class="table-responsive">
+                    <table class="table" id="targets-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 10%">Name</th>
+                                <th style="width: 9%">RA</th>
+                                <th style="width: 9%">Dec</th>
+                                <th style="width: 8%">Mag</th>
+                                <th style="width: 8%">Priority</th>
+                                <th style="width: 25%">Exposure Settings</th>
+                                <th style="width: 23%">Note</th>
+                                <th style="width: 8%">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Targets will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Permissions Modal -->
+    <div id="permissionsModal" class="modal" style="display: none;">
+        <div class="modal-content settings-panel" style="max-width: 800px; margin: 5% auto;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>Page Access Settings</h3>
+                <span class="close" onclick="closePermissionsModal()" style="cursor: pointer; font-size: 24px;">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="color: #aaa; margin-bottom: 20px;">Select users and groups who are allowed to view this page. Admins always have access.</p>
+                
+                <div style="display: flex; gap: 30px;">
+                    <!-- Groups Column -->
+                    <div style="flex: 1;">
+                        <h4 style="color: #C5A059; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Allowed Groups</h4>
+                        <div id="groups-list" style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
+                            <!-- Groups will be loaded here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Users Column -->
+                    <div style="flex: 1;">
+                        <h4 style="color: #C5A059; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Allowed Users</h4>
+                        <div id="users-list" style="max-height: 400px; overflow-y: auto; margin-top: 10px;">
+                            <!-- Users will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions" style="margin-top: 30px; text-align: right;">
+                    <button type="button" class="btn btn-secondary" onclick="closePermissionsModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="savePermissions()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <template id="exposure-row-template">
+        <div class="exposure-row">
+            <select class="form-control field-filter" style="width: 60px;">
+                <option value="u">u</option>
+                <option value="g">g</option>
+                <option value="r">r</option>
+                <option value="i">i</option>
+                <option value="z">z</option>
+                <option value="rp" selected>rp</option>
+            </select>
+            <input type="number" class="form-control field-exp" placeholder="Exp(s)" value="300" style="width: 70px;">
+            <input type="number" class="form-control field-count" placeholder="Count" value="3" style="width: 60px;">
+            <button type="button" class="btn-icon" onclick="removeExposureRow(this)" title="Remove">
+                <svg class="icon-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+    </template>
+
+    <script src="{{ url_for('static', filename='js/custom_targets.js') }}"></script>
+</body>
+</html>

@@ -1,20 +1,20 @@
 /* Base styles and CSS variables */
 
 :root {
-    --primary-color: #46ffaf;
-    --primary-hover: #52ffb8;
-    --background-primary: rgba(255, 255, 255, 0.15);
-    --background-secondary: rgba(255, 255, 255, 0.1);
-    --background-hover: rgba(255, 255, 255, 0.05);
-    --border-color: rgba(255, 255, 255, 0.3);
-    --border-light: rgba(255, 255, 255, 0.2);
-    --text-primary: white;
-    --text-secondary: rgba(255, 255, 255, 0.9);
-    --text-muted: rgba(255, 255, 255, 0.6);
-    --error-color: #ff6b6b;
-    --success-color: #4ecdc4;
-    --warning-color: #ffeaa7;
-    --info-color: #46ffaf;
+    --primary-color: #C5A059;
+    --primary-hover: #D4AF37;
+    --background-primary: rgba(20, 20, 30, 0.85);
+    --background-secondary: rgba(30, 30, 40, 0.75);
+    --background-hover: rgba(255, 255, 255, 0.08);
+    --border-color: rgba(255, 255, 255, 0.15);
+    --border-light: rgba(255, 255, 255, 0.1);
+    --text-primary: #E0E0E0;
+    --text-secondary: #B0B0B0;
+    --text-muted: #707070;
+    --error-color: #CF6679;
+    --success-color: #81C784;
+    --warning-color: #FFD54F;
+    --info-color: #64B5F6;
 }
 
 * {
@@ -25,14 +25,14 @@
 
 body {
     font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: #1a1a2e;
+    background-color: #0f0f1a;
     background-image: url('../../photo/SLT_SN2024ggi.png');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
     background-position: center;
     min-height: 100vh;
-    color: #333;
+    color: var(--text-primary);
     position: relative;
 }
 
@@ -44,38 +44,38 @@ body::before {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(2px);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(5px);
     z-index: -1;
 }
 
 /* Selection and scrollbar styling */
 ::selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
     color: white;
 }
 
 ::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
     color: white;
 }
 
 ::-webkit-scrollbar {
-    width: 10px;
+    width: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(70, 255, 175, 0.6);
-    border-radius: 5px;
+    background: rgba(197, 160, 89, 0.4);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(70, 255, 175, 0.8);
+    background: rgba(197, 160, 89, 0.6);
 }
 
 /* Animations */

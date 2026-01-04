@@ -26,11 +26,13 @@
         }
         
         @media (min-width: 900px) {
-            body { flex-direction: row; padding: 15px; gap: 15px; }
-            .controls { flex: 0 0 380px; border-radius: 8px; border: 1px solid var(--border-color); order: 1; }
-            .display-container { flex: 1; border-radius: 8px; border: 1px solid var(--border-color); order: 2; }
+            /* body { flex-direction: row; padding: 15px; gap: 15px; } */
+            .main-wrapper { display: flex; flex-direction: row; padding: 15px; padding-top: 110px; gap: 15px; flex: 1; height: 100%; overflow: hidden; }
+            .controls { flex: 0 0 380px; border-radius: 8px; border: 1px solid var(--border-color); order: 1; height: 100%; }
+            .display-container { flex: 1; border-radius: 8px; border: 1px solid var(--border-color); order: 2; height: 100%; }
         }
         @media (max-width: 899px) {
+            .main-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; padding-top: 110px; }
             .display-container { flex: 0 0 55%; border-bottom: 1px solid var(--border-color); order: 1; }
             .controls { flex: 1; order: 2; }
         }
@@ -45,8 +47,8 @@
         
         .input-group { margin-bottom: 10px; background: #222; padding: 10px; border-radius: 6px; border: 1px solid #333; }
         label { display: block; margin-bottom: 6px; font-size: 0.8rem; color: var(--text-sub); }
-        input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; accent-color: var(--accent); height: 16px; touch-action: auto; -webkit-user-select: none; user-select: none; }
-        .list-container input[type="range"] { touch-action: pan-x; pointer-events: auto; }
+        input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; accent-color: var(--accent); height: 16px; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+        .list-container input[type="range"] { touch-action: pan-y; pointer-events: auto; }
         .val-disp { float: right; color: var(--text-main); font-family: monospace; font-size: 0.9rem; }
         .unit { color: #666; font-size: 0.75rem; margin-left: 2px; }
         
@@ -110,9 +112,11 @@
             body.controls-collapsed .display-container { flex: 1 1 100%; border-bottom: none; }
         }
     </style>
+    {% include '_favicon.html' %}
 </head>
 <body>
-
+    {% include '_navbar.html' %}
+    <div class="main-wrapper">
     <div class="controls">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px;">
             <h2 style="margin:0;" data-lang="title">Harmonic Physics <span style="font-size:0.6em; color:#666;">v6.0</span></h2>
@@ -219,9 +223,17 @@
             <input type="range" id="raRotation" min="-180" max="180" step="1" value="0" style="width:100%; margin:0;">
         </div>
     </div>
+    </div>
 
     <script>
         // Language Dictionary
+        const ICONS = {
+            warning: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+            info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+            success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+            x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+        };
+
         const translations = {
             en: {
                 title: "Harmonic Physics",
@@ -263,17 +275,17 @@
                 'status.heavyLoad': "HEAVY LOAD",
                 'btn.showControls': "☰ Show Controls",
                 'btn.hideControls': "☰ Hide Controls",
-                'advice.otaOverload': "⚠️ OTA Payload ({ota}kg) exceeds limit ({limit}kg)! Remove {diff}kg from telescope setup.",
-                'advice.sysOverload': "⚠️ System total ({total}kg) exceeds structural limit ({limit}kg)! Reduce overall weight by {diff}kg.",
-                'advice.danger': "⚠️ DANGER: Torque exceeds motor limit. Reduce payload or re-balance immediately.",
-                'advice.cmOffset': "⚠️ CM is {cm}cm off-axis. This causes variable torque (0 to {torque} Nm) during tracking. \nSuggest: Adjust CW to center CM.",
-                'advice.tooHeavy': "⚠️ Load at {pct}% is too heavy! Consider removing {diff}kg of counterweight.",
-                'advice.otaHigh': "⚠️ OTA Payload at {pct}% of limit. Consider lighter equipment.",
-                'advice.sysHigh': "⚠️ System total at {pct}% of structural limit. Mind the weight.",
-                'advice.tooLight': "ℹ️ Load at {pct}% is very light. Consider adding {diff}kg more counterweight for stability.",
-                'advice.tooBalanced': "⚠️ Too balanced! Harmonic drives need some load imbalance to function optimally. Consider reducing counterweight.",
-                'advice.cmOk': "ℹ️ CM is off-axis, but load is acceptable for harmonic tracking.",
-                'advice.optimal': "✅ System optimized for harmonic drive operation. Load distribution suitable for precision tracking."
+                'advice.otaOverload': ICONS.warning + " OTA Payload ({ota}kg) exceeds limit ({limit}kg)! Remove {diff}kg from telescope setup.",
+                'advice.sysOverload': ICONS.warning + " System total ({total}kg) exceeds structural limit ({limit}kg)! Reduce overall weight by {diff}kg.",
+                'advice.danger': ICONS.warning + " DANGER: Torque exceeds motor limit. Reduce payload or re-balance immediately.",
+                'advice.cmOffset': ICONS.warning + " CM is {cm}cm off-axis. This causes variable torque (0 to {torque} Nm) during tracking. \nSuggest: Adjust CW to center CM.",
+                'advice.tooHeavy': ICONS.warning + " Load at {pct}% is too heavy! Consider removing {diff}kg of counterweight.",
+                'advice.otaHigh': ICONS.warning + " OTA Payload at {pct}% of limit. Consider lighter equipment.",
+                'advice.sysHigh': ICONS.warning + " System total at {pct}% of structural limit. Mind the weight.",
+                'advice.tooLight': ICONS.info + " Load at {pct}% is very light. Consider adding {diff}kg more counterweight for stability.",
+                'advice.tooBalanced': ICONS.warning + " Too balanced! Harmonic drives need some load imbalance to function optimally. Consider reducing counterweight.",
+                'advice.cmOk': ICONS.info + " CM is off-axis, but load is acceptable for harmonic tracking.",
+                'advice.optimal': ICONS.success + " System optimized for harmonic drive operation. Load distribution suitable for precision tracking."
             },
             'zh-TW': {
                 title: "諧波分析儀",
@@ -315,17 +327,17 @@
                 'status.heavyLoad': "重負載",
                 'btn.showControls': "☰ 顯示控制",
                 'btn.hideControls': "☰ 隱藏控制",
-                'advice.otaOverload': "⚠️ OTA 負載 ({ota}kg) 超過限制 ({limit}kg)！請減少 {diff}kg 的望遠鏡設備。",
-                'advice.sysOverload': "⚠️ 系統總重 ({total}kg) 超過結構限制 ({limit}kg)！請減少 {diff}kg 的總重量。",
-                'advice.danger': "⚠️ 危險：扭矩超過馬達限制。請立即減少負載或重新平衡。",
-                'advice.cmOffset': "⚠️ 質心偏移 {cm}cm。這會導致追蹤時扭矩變化 (0 到 {torque} Nm)。\n建議：調整配重使質心居中。",
-                'advice.tooHeavy': "⚠️ 負載達 {pct}%，過重！建議減少 {diff}kg 配重。",
-                'advice.otaHigh': "⚠️ OTA 負載達限制的 {pct}%。建議使用較輕的設備。",
-                'advice.sysHigh': "⚠️ 系統總重達結構限制的 {pct}%。請注意重量。",
-                'advice.tooLight': "ℹ️ 負載僅 {pct}%，非常輕。建議增加 {diff}kg 配重以提高穩定性。",
-                'advice.tooBalanced': "⚠️ 太平衡了！諧波赤道儀需要一些負載不平衡才能最佳運作。建議減少配重。",
-                'advice.cmOk': "ℹ️ 質心偏移，但負載在諧波追蹤可接受範圍內。",
-                'advice.optimal': "✅ 系統已針對諧波赤道儀優化。負載分配適合精密追蹤。"
+                'advice.otaOverload': ICONS.warning + " OTA 負載 ({ota}kg) 超過限制 ({limit}kg)！請減少 {diff}kg 的望遠鏡設備。",
+                'advice.sysOverload': ICONS.warning + " 系統總重 ({total}kg) 超過結構限制 ({limit}kg)！請減少 {diff}kg 的總重量。",
+                'advice.danger': ICONS.warning + " 危險：扭矩超過馬達限制。請立即減少負載或重新平衡。",
+                'advice.cmOffset': ICONS.warning + " 質心偏移 {cm}cm。這會導致追蹤時扭矩變化 (0 到 {torque} Nm)。\n建議：調整配重使質心居中。",
+                'advice.tooHeavy': ICONS.warning + " 負載達 {pct}%，過重！建議減少 {diff}kg 配重。",
+                'advice.otaHigh': ICONS.warning + " OTA 負載達限制的 {pct}%。建議使用較輕的設備。",
+                'advice.sysHigh': ICONS.warning + " 系統總重達結構限制的 {pct}%。請注意重量。",
+                'advice.tooLight': ICONS.info + " 負載僅 {pct}%，非常輕。建議增加 {diff}kg 配重以提高穩定性。",
+                'advice.tooBalanced': ICONS.warning + " 太平衡了！諧波赤道儀需要一些負載不平衡才能最佳運作。建議減少配重。",
+                'advice.cmOk': ICONS.info + " 質心偏移，但負載在諧波追蹤可接受範圍內。",
+                'advice.optimal': ICONS.success + " 系統已針對諧波赤道儀優化。負載分配適合精密追蹤。"
             }
         };
 
@@ -498,7 +510,7 @@
                 const posLabel = translations[currentLang]['item.pos'];
                 const div = document.createElement('div'); div.className = 'item-box cw-box';
                 div.innerHTML = `
-                    <button class="item-remove" onclick="delCW(${c.id})">×</button>
+                    <button class="item-remove" onclick="delCW(${c.id})">${ICONS.x}</button>
                     <div class="item-row">
                         <div class="item-col"><span class="item-label">${massLabel}</span><input type="range" min="0.5" max="20" step="0.5" value="${c.weight}" oninput="updCW(${c.id}, 'weight', this.value, this)"></div>
                         <div class="item-col" style="text-align:right;"><span style="font-family:monospace; color:#fff;">${c.weight} <span class="unit">kg</span></span></div>
@@ -523,7 +535,7 @@
                 const heightLabel = translations[currentLang]['item.height'];
                 const div = document.createElement('div'); div.className = 'item-box ota-box';
                 div.innerHTML = `
-                    <button class="item-remove" onclick="delOTA(${o.id})">×</button>
+                    <button class="item-remove" onclick="delOTA(${o.id})">${ICONS.x}</button>
                     <div style="color:var(--ota-color); font-weight:bold; font-size:0.8rem; margin-bottom:4px;">${telescopeLabel} ${o.label}</div>
                     <div class="item-row">
                         <div class="item-col"><span class="item-label">${diamLabel}</span><input type="range" min="50" max="400" step="5" value="${o.aperture * 10}" oninput="updOTA(${o.id}, 'aperture', this.value/10, this)"></div>
@@ -721,7 +733,7 @@
             else if (pct < 3 && mass_total > 3) advice = t['advice.tooBalanced'];
             else if (isOffset && !isHeavy) advice = t['advice.cmOk'];
             else advice = t['advice.optimal'];
-            ui.advice.innerText = advice;
+            ui.advice.innerHTML = advice;
 
             // Store for chart
             physics = { visualOTAs, l1, cm_y, hasShaft, sl: hasShaft?parseFloat(els.shaftLen.value)/100:0, torque_peak, maxT, pct };
@@ -843,7 +855,13 @@
         // Pointer Events
         function getPt(e) { return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY}; }
         canvas.onmousedown = e => { view.isDragging=true; view.lx=e.clientX; view.ly=e.clientY; };
-        window.onmouseup = () => view.isDragging=false;
+        
+        // Global drag release to prevent "stuck" state
+        const stopDrag = () => view.isDragging = false;
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+        window.addEventListener('touchcancel', stopDrag);
+
         canvas.onmousemove = e => { if(view.isDragging){ view.x+=e.clientX-view.lx; view.y+=e.clientY-view.ly; view.lx=e.clientX; view.ly=e.clientY; requestAnimationFrame(draw); }};
         canvas.ontouchstart = e => { 
             if(e.target !== canvas) return;

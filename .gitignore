@@ -1,4 +1,7 @@
 .env
+kinder.env
+.DS_Store
+Thumbs.db
 
 test.py
 upload_tns_maual.py
@@ -57,3 +60,7 @@ Thumbs.db
 # Google Cloud
 .tmp.drivedownload
 .tmp.driveupload
+
+OLD/
+data/
+app/modules/download_phot.py

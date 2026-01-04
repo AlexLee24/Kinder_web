@@ -1,4 +1,22 @@
 // Global variables
+const ICONS = {
+    success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+    error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>',
+    warning: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+    info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
+    delete: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+    undo: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>',
+    edit: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
+    view: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+    user: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
+    save: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>',
+    noData: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>',
+    followup: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>',
+    inbox: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg>',
+    finished: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>',
+    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>'
+};
+
 let objectData = null;
 let objectName = '';
 let cleanObjectName = '';
@@ -106,12 +124,12 @@ function searchWithCandidates(candidates, index) {
             
             if (data.success && data.object) {
                 objectData = data.object;
-                console.log('✅ Object data loaded successfully:', objectData);
+                console.log('[SUCCESS] Object data loaded successfully:', objectData);
                 updatePageContent();
                 convertCoordinates();
                 showLoading(false);
             } else {
-                console.log(`❌ Search failed for "${candidate}", trying next...`);
+                console.log(`[ERROR] Search failed for "${candidate}", trying next...`);
                 searchWithCandidates(candidates, index + 1);
             }
         })
@@ -173,6 +191,7 @@ function updatePageContent() {
     // Update discovery information
     updateElementText('reportingGroup', objectData.reporting_group || 'N/A');
     updateElementText('discoverySurvey', objectData.source_group || 'N/A');
+    updateElementText('internalName', objectData.internal_names || 'N/A');
     updateElementText('timeReceived', objectData.time_received || 'N/A');
     
     // Update additional data
@@ -261,7 +280,7 @@ function showImageError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'image-error';
         errorDiv.innerHTML = `
-            <span class="error-icon">❌</span>
+            <span class="error-icon">${ICONS.error}</span>
             <span>${message}</span>
         `;
         
@@ -278,7 +297,7 @@ function updateClassificationBadge(type) {
     const badge = document.getElementById('classificationBadge');
     if (badge && type) {
         badge.className = `classification-badge ${type.toLowerCase()}`;
-        badge.textContent = type.toUpperCase();
+        badge.textContent = type;
     }
 }
 
@@ -287,7 +306,7 @@ function updateStatusBadge(tag) {
     if (badge) {
         const status = tag || 'object';
         badge.className = `tag-badge ${status}`;
-        badge.textContent = getStatusDisplayName(status);
+        badge.innerHTML = getStatusDisplayName(status);
         
         console.log('Status badge updated to:', status, getStatusDisplayName(status));
     }
@@ -439,6 +458,24 @@ function openNED() {
     window.open(nedUrl, '_blank');
 }
 
+function openExtinction() {
+    if (!objectData || !objectData.ra || !objectData.declination) {
+        showNotification('Coordinates not available for Extinction Calculator', 'warning');
+        return;
+    }
+    
+    const ra = parseFloat(objectData.ra);
+    const dec = parseFloat(objectData.declination);
+    
+    // Format: lon=152.629166d&lat=+10.327177d
+    // Ensure dec has + sign if positive
+    const decStr = dec >= 0 ? `+${dec}` : `${dec}`;
+    
+    const extinctionUrl = `https://ned.ipac.caltech.edu/cgi-bin/nph-calc?in_csys=Equatorial&in_equinox=J2000.0&obs_epoch=2000.0&lon=${ra}d&lat=${decStr}d&pa=0.0&out_csys=Galactic&out_equinox=J2000.0`;
+    
+    window.open(extinctionUrl, '_blank');
+}
+
 // Convert RA decimal degrees to HH:MM:SS format for URLs
 function convertRAToHMSForURL(ra) {
     const hours = ra / 15.0;
@@ -476,7 +513,8 @@ function changeStatus(newStatus) {
         'object': 'Inbox',
         'followup': 'Follow-up',
         'finished': 'Finished',
-        'snoozed': 'Snoozed'
+        'snoozed': 'Snoozed',
+        'clear': 'Clear'
     };
     
     // Show confirmation for status change
@@ -484,8 +522,8 @@ function changeStatus(newStatus) {
     const currentStatusName = statusNames[currentStatus] || 'Unknown';
     const newStatusName = statusNames[newStatus] || newStatus;
     
-    if (currentStatus === newStatus) {
-        showNotification(`ℹ️ Object is already marked as ${newStatusName}`, 'info');
+    if (currentStatus === newStatus && newStatus !== 'clear') {
+        showNotification(`Object is already marked as ${newStatusName}`, 'info');
         return;
     }
     
@@ -510,6 +548,11 @@ function changeStatus(newStatus) {
         showLoading(false);
         
         if (data.success) {
+            if (newStatus === 'clear') {
+                location.reload();
+                return;
+            }
+
             // Update local object data
             objectData.tag = newStatus;
             
@@ -517,7 +560,7 @@ function changeStatus(newStatus) {
             updateStatusDisplay(newStatus);
             
             // Show success notification
-            showNotification(`✅ Status changed to ${newStatusName} successfully!`, 'success');
+            showNotification(`Status changed to ${newStatusName} successfully!`, 'success');
             
             // Optional: Slight page refresh for status-related elements
             setTimeout(() => {
@@ -530,13 +573,13 @@ function changeStatus(newStatus) {
             }, 500);
             
         } else {
-            showNotification(`❌ Error changing status: ${data.error}`, 'error');
+            showNotification(`Error changing status: ${data.error}`, 'error');
         }
     })
     .catch(error => {
         showLoading(false);
         console.error('Error changing status:', error);
-        showNotification('❌ Network error occurred while changing status', 'error');
+        showNotification('Network error occurred while changing status', 'error');
     });
 }
 
@@ -545,24 +588,34 @@ function updateStatusDisplay(newStatus) {
         'object': 'Inbox',
         'followup': 'Follow-up', 
         'finished': 'Finished',
-        'snoozed': 'Snoozed'
+        'snoozed': 'Snoozed',
+        'clear': 'Clear'
     };
     
     const statusBadge = document.getElementById('statusBadge');
     if (statusBadge) {
-        statusBadge.className = `tag-badge ${newStatus}`;
-        statusBadge.textContent = statusNames[newStatus] || newStatus;
+        if (newStatus === 'clear') {
+            statusBadge.className = 'tag-badge';
+            statusBadge.textContent = 'Cleared';
+        } else {
+            statusBadge.className = `tag-badge ${newStatus}`;
+            statusBadge.textContent = statusNames[newStatus] || newStatus;
+        }
     }
 }
 
 function getStatusDisplayName(status) {
+    const icon = ICONS[status] || ICONS.inbox;
+    // Add style to the SVG string for spacing with text
+    const styledIcon = icon.replace('<svg', '<svg style="margin-right: 4px; vertical-align: text-bottom;"');
+    
     const statusNames = {
         'object': 'Inbox',
         'followup': 'Follow-up',
         'finished': 'Finished',
         'snoozed': 'Snoozed'
     };
-    return statusNames[status] || 'Inbox';
+    return `${styledIcon} ${statusNames[status] || 'Inbox'}`;
 }
 
 function exportObject() {
@@ -598,21 +651,25 @@ function exportObject() {
 }
 
 // Loading and notification functions
-function showLoading(show) {
+function showLoading(show, message = 'Loading object details...') {
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) {
         loadingOverlay.style.display = show ? 'flex' : 'none';
+        const loadingText = loadingOverlay.querySelector('.loading-text');
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
     }
 }
 
 function getNotificationIcon(type) {
     const icons = {
-        'success': '✅',
-        'error': '❌',
-        'warning': '⚠️',
-        'info': 'ℹ️'
+        'success': ICONS.success,
+        'error': ICONS.error,
+        'warning': ICONS.warning,
+        'info': ICONS.info
     };
-    return icons[type] || 'ℹ️';
+    return icons[type] || ICONS.info;
 }
 
 // Photometry plot loading with improved loading states
@@ -636,7 +693,7 @@ function loadPhotometryPlot() {
         if (photometryContainer) {
             photometryContainer.innerHTML = `
                 <div class="no-data">
-                    <span class="no-data-icon">❌</span>
+                    <span class="no-data-icon">${ICONS.error}</span>
                     <span class="no-data-text">Invalid object name format</span>
                 </div>
             `;
@@ -663,6 +720,36 @@ function loadPhotometryPlot() {
         // Store raw data for editing
         if (rawData.success) {
             photometryData = rawData.photometry || [];
+            
+            // Update Last Photometry Date in header
+            if (Array.isArray(photometryData) && photometryData.length > 0) {
+                // Find max MJD - ensure values are numbers
+                const mjds = photometryData.map(p => parseFloat(p.mjd)).filter(m => !isNaN(m));
+                
+                if (mjds.length > 0) {
+                    const maxMjd = Math.max(...mjds);
+                    
+                    // Convert MJD to Date string
+                    // MJD 40587 is 1970-01-01
+                    const unixTime = (maxMjd - 40587) * 86400 * 1000;
+                    const date = new Date(unixTime);
+                    
+                    // Format as YYYY-MM-DD HH:MM:SS
+                    const year = date.getUTCFullYear();
+                    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                    const day = String(date.getUTCDate()).padStart(2, '0');
+                    const hours = String(date.getUTCHours()).padStart(2, '0');
+                    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+                    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+                    
+                    const dateStr = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                    
+                    const lastPhotSpan = document.getElementById('lastPhotometryDate');
+                    if (lastPhotSpan) {
+                        lastPhotSpan.textContent = `(Last photometry: ${dateStr})`;
+                    }
+                }
+            }
         }
         
         // Display plot
@@ -696,7 +783,7 @@ function loadPhotometryPlot() {
                             console.error('Error executing plot scripts:', error);
                             photometryContainer.innerHTML = `
                                 <div class="no-data">
-                                    <span class="no-data-icon">❌</span>
+                                    <span class="no-data-icon">${ICONS.error}</span>
                                     <span class="no-data-text">Error rendering plot</span>
                                 </div>
                             `;
@@ -706,7 +793,7 @@ function loadPhotometryPlot() {
                 } else {
                     photometryContainer.innerHTML = `
                         <div class="no-data">
-                            <span class="no-data-icon">📊</span>
+                            <span class="no-data-icon">${ICONS.noData}</span>
                             <span class="no-data-text">${plotData.message || 'No photometry data available'}</span>
                         </div>
                     `;
@@ -722,7 +809,7 @@ function loadPhotometryPlot() {
             if (photometryContainer) {
                 photometryContainer.innerHTML = `
                     <div class="no-data">
-                        <span class="no-data-icon">❌</span>
+                        <span class="no-data-icon">${ICONS.error}</span>
                         <span class="no-data-text">Error loading photometry data</span>
                     </div>
                 `;
@@ -739,7 +826,7 @@ function loadPhotometryPlot() {
         if (photometryContainer) {
             photometryContainer.innerHTML = `
                 <div class="no-data">
-                    <span class="no-data-icon">❌</span>
+                    <span class="no-data-icon">${ICONS.error}</span>
                     <span class="no-data-text">Error loading photometry data</span>
                 </div>
             `;
@@ -761,10 +848,11 @@ function togglePhotometryEditMode() {
 }
 
 function enterPhotometryEditMode() {
-    if (photometryData.length === 0) {
-        showNotification('No photometry data to edit', 'warning');
-        return;
-    }
+    // Allow entering edit mode even if no data, so user can add points
+    // if (photometryData.length === 0) {
+    //     showNotification('No photometry data to edit', 'warning');
+    //     return;
+    // }
     
     isEditingPhotometry = true;
     
@@ -775,7 +863,7 @@ function enterPhotometryEditMode() {
     const tableContainer = document.getElementById('photometryTableContainer');
     
     if (editBtn) {
-        editBtn.innerHTML = '<span class="btn-icon">👁️</span> View Plot';
+        editBtn.innerHTML = `<span class="btn-icon">${ICONS.view}</span> View Plot`;
         editBtn.title = 'Switch back to plot view';
     }
     if (addBtn) addBtn.style.display = 'inline-flex';
@@ -810,7 +898,7 @@ function populatePhotometryTable() {
             <td>${point.telescope || 'Unknown'}</td>
             <td>
                 <button class="btn-small btn-danger" onclick="markForDeletion(${index}, ${point.id})" title="Delete this point">
-                    <span class="btn-icon">🗑️</span>
+                    <span class="btn-icon">${ICONS.delete}</span>
                 </button>
             </td>
         `;
@@ -831,7 +919,7 @@ function markForDeletion(index, pointId) {
         const btn = row.querySelector('button');
         if (btn) {
             btn.className = 'btn-small btn-danger';
-            btn.innerHTML = '<span class="btn-icon">🗑️</span>';
+            btn.innerHTML = `<span class="btn-icon">${ICONS.delete}</span>`;
             btn.title = 'Delete this point';
         }
     } else {
@@ -844,7 +932,7 @@ function markForDeletion(index, pointId) {
         const btn = row.querySelector('button');
         if (btn) {
             btn.className = 'btn-small btn-secondary';
-            btn.innerHTML = '<span class="btn-icon">↶</span>';
+            btn.innerHTML = `<span class="btn-icon">${ICONS.undo}</span>`;
             btn.title = 'Undo deletion';
         }
     }
@@ -892,7 +980,7 @@ function exitPhotometryEditMode() {
     const tableContainer = document.getElementById('photometryTableContainer');
     
     if (editBtn) {
-        editBtn.innerHTML = '<span class="btn-icon">✏️</span> Edit';
+        editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Edit`;
         editBtn.title = 'Edit photometry data';
     }
     if (addBtn) addBtn.style.display = 'none';
@@ -1099,7 +1187,7 @@ function loadSpectrumPlot() {
         if (spectrumContainer) {
             spectrumContainer.innerHTML = `
                 <div class="no-data">
-                    <span class="no-data-icon">❌</span>
+                    <span class="no-data-icon">${ICONS.error}</span>
                     <span class="no-data-text">Invalid object name format</span>
                 </div>
             `;
@@ -1144,7 +1232,7 @@ function loadSpectrumPlot() {
                                 console.error('Error executing spectrum plot scripts:', error);
                                 spectrumContainer.innerHTML = `
                                     <div class="no-data">
-                                        <span class="no-data-icon">❌</span>
+                                        <span class="no-data-icon">${ICONS.error}</span>
                                         <span class="no-data-text">Error rendering spectrum plot</span>
                                     </div>
                                 `;
@@ -1154,7 +1242,7 @@ function loadSpectrumPlot() {
                     } else {
                         spectrumContainer.innerHTML = `
                             <div class="no-data">
-                                <span class="no-data-icon">📈</span>
+                                <span class="no-data-icon">${ICONS.noData}</span>
                                 <span class="no-data-text">${data.message || 'No spectrum data available'}</span>
                             </div>
                         `;
@@ -1165,7 +1253,7 @@ function loadSpectrumPlot() {
                 if (spectrumContainer) {
                     spectrumContainer.innerHTML = `
                         <div class="no-data">
-                            <span class="no-data-icon">❌</span>
+                            <span class="no-data-icon">${ICONS.error}</span>
                             <span class="no-data-text">Error loading spectrum data</span>
                         </div>
                     `;
@@ -1178,7 +1266,7 @@ function loadSpectrumPlot() {
             if (spectrumContainer) {
                 spectrumContainer.innerHTML = `
                     <div class="no-data">
-                        <span class="no-data-icon">❌</span>
+                        <span class="no-data-icon">${ICONS.error}</span>
                         <span class="no-data-text">Error loading spectrum data</span>
                     </div>
                 `;
@@ -1219,7 +1307,7 @@ function loadSpecificSpectrum() {
                     } else {
                         spectrumContainer.innerHTML = `
                             <div class="no-data">
-                                <span class="no-data-icon">📈</span>
+                                <span class="no-data-icon">${ICONS.noData}</span>
                                 <span class="no-data-text">${data.message || 'No spectrum data available'}</span>
                             </div>
                         `;
@@ -1230,7 +1318,7 @@ function loadSpecificSpectrum() {
                 if (spectrumContainer) {
                     spectrumContainer.innerHTML = `
                         <div class="no-data">
-                            <span class="no-data-icon">❌</span>
+                            <span class="no-data-icon">${ICONS.error}</span>
                             <span class="no-data-text">Error loading spectrum data</span>
                         </div>
                     `;
@@ -1243,7 +1331,7 @@ function loadSpecificSpectrum() {
             if (spectrumContainer) {
                 spectrumContainer.innerHTML = `
                     <div class="no-data">
-                        <span class="no-data-icon">❌</span>
+                        <span class="no-data-icon">${ICONS.error}</span>
                         <span class="no-data-text">Error loading spectrum data</span>
                     </div>
                 `;
@@ -1674,7 +1762,7 @@ function showNotification(message, type = 'info') {
     notification.className = `notification ${type}`;
     notification.innerHTML = `
         <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 18px;">${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+            <span style="font-size: 18px; display: flex; align-items: center;">${type === 'success' ? ICONS.success : type === 'error' ? ICONS.error : type === 'warning' ? ICONS.warning : ICONS.info}</span>
             <span>${message}</span>
         </div>
     `;
@@ -1837,32 +1925,26 @@ function createCommentElement(comment) {
     commentDiv.className = 'comment-item';
     commentDiv.dataset.commentId = comment.id;
     
-    // Format time - use the simpler approach
-    const timeAgo = getTimeAgoSimple(comment.created_at);
+    // Parse date - backend now returns ISO format string
+    const createdAt = new Date(comment.created_at);
     
-    let createdAt;
-    if (comment.created_at.includes('Z') || comment.created_at.includes('+') || comment.created_at.includes('-')) {
-        createdAt = new Date(comment.created_at);
-    } else {
-        createdAt = new Date(comment.created_at + 'Z');
-    }
+    // Format as UTC string: YYYY-MM-DD HH:MM:SS (UTC)
+    const year = createdAt.getUTCFullYear();
+    const month = String(createdAt.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(createdAt.getUTCDate()).padStart(2, '0');
+    const hours = String(createdAt.getUTCHours()).padStart(2, '0');
+    const minutes = String(createdAt.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(createdAt.getUTCSeconds()).padStart(2, '0');
     
-    const fullTime = createdAt.toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZoneName: 'short'
-    });
+    const utcTimeStr = `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (UTC)`;
     
     // Check if current user is admin
     const isAdmin = document.querySelector('[data-admin="true"]') !== null;
     
     // Create avatar
     const avatarContent = comment.user_picture ? 
-        `<img src="${comment.user_picture}" alt="${comment.user_name}" onerror="this.parentNode.innerHTML='👤'; this.parentNode.classList.add('no-image');">` :
-        '👤';
+        `<img src="${comment.user_picture}" alt="${comment.user_name}" onerror="this.parentNode.innerHTML='${ICONS.user}'; this.parentNode.classList.add('no-image');">` :
+        ICONS.user;
     
     commentDiv.innerHTML = `
         <div class="comment-avatar ${!comment.user_picture ? 'no-image' : ''}">
@@ -1871,14 +1953,14 @@ function createCommentElement(comment) {
         <div class="comment-content">
             <div class="comment-header">
                 <span class="comment-author">${escapeHtml(comment.user_name)}</span>
-                <span class="comment-time" title="${fullTime}">${timeAgo}</span>
+                <span class="comment-time">${utcTimeStr}</span>
             </div>
             <div class="comment-text">${escapeHtml(comment.content)}</div>
         </div>
         ${isAdmin ? `
         <div class="comment-actions">
             <button class="comment-delete-btn" onclick="deleteComment(${comment.id})" title="Delete comment">
-                🗑️
+                ${ICONS.delete}
             </button>
         </div>
         ` : ''}
@@ -2060,7 +2142,7 @@ function showCommentsError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'comments-error';
         errorDiv.innerHTML = `
-            <div class="comments-error-icon">❌</div>
+            <div class="comments-error-icon">${ICONS.error}</div>
             <div class="comments-error-text">${message}</div>
         `;
         
@@ -2179,7 +2261,7 @@ function createEditModal() {
         <div class="modal" id="editObjectModal" style="display: none;">
             <div class="modal-content edit-modal-content">
                 <div class="modal-header">
-                    <h3>✏️ Edit Object Data</h3>
+                    <h3>${ICONS.edit} Edit Object Data</h3>
                     <span class="close" onclick="closeEditModal()">&times;</span>
                 </div>
                 <div class="modal-body">
@@ -2190,26 +2272,6 @@ function createEditModal() {
                                 <input type="text" id="editObjectName" readonly>
                                 <div class="form-help">Object name cannot be changed</div>
                             </div>
-                            
-                            <div class="form-group">
-                                <label for="editObjectType">Classification</label>
-                                <input type="text" id="editObjectType" placeholder="e.g., AT, SN Ia, SN II">
-                                <div class="form-help">Object classification type</div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="editObjectRA">Right Ascension (RA)</label>
-                                <input type="number" step="0.000001" id="editObjectRA" placeholder="Decimal degrees (J2000)">
-                                <div class="form-help">Decimal degrees (0-360)</div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="editObjectDEC">Declination (DEC)</label>
-                                <input type="number" step="0.000001" id="editObjectDEC" placeholder="Decimal degrees (J2000)">
-                                <div class="form-help">Decimal degrees (-90 to +90)</div>
-                            </div>
                         </div>
                         
                         <div class="form-row">
@@ -2218,46 +2280,6 @@ function createEditModal() {
                                 <input type="number" step="0.0001" id="editRedshift" placeholder="e.g., 0.0123">
                                 <div class="form-help">Spectroscopic or photometric redshift</div>
                             </div>
-                            
-                            <div class="form-group">
-                                <label for="editDiscoveryMag">Discovery Magnitude</label>
-                                <input type="number" step="0.01" id="editDiscoveryMag" placeholder="e.g., 18.5">
-                                <div class="form-help">Discovery magnitude</div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="editDiscoveryFilter">Discovery Filter</label>
-                                <input type="text" id="editDiscoveryFilter" placeholder="e.g., g, r, i, V, B">
-                                <div class="form-help">Filter used for discovery magnitude</div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="editDiscoveryDate">Discovery Date</label>
-                                <input type="date" id="editDiscoveryDate">
-                                <div class="form-help">Date of discovery</div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="editSourceGroup">Source/Discoverer</label>
-                                <input type="text" id="editSourceGroup" placeholder="e.g., ATLAS, ZTF, Gaia">
-                                <div class="form-help">Discovering survey or group</div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="editReportingGroup">Reporting Group</label>
-                                <input type="text" id="editReportingGroup" placeholder="e.g., University, Observatory">
-                                <div class="form-help">Group that reported to TNS</div>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="editRemarks">Remarks</label>
-                            <textarea id="editRemarks" rows="3" placeholder="Additional notes or remarks..." maxlength="200"></textarea>
-                            <div class="form-help">Optional remarks (max 200 characters)</div>
                         </div>
                     </form>
                     
@@ -2271,7 +2293,7 @@ function createEditModal() {
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeEditModal()" id="editCancelBtn">Cancel</button>
                     <button class="btn btn-primary" onclick="submitEditObject()" id="editSubmitBtn">
-                        💾 Save Changes
+                        ${ICONS.save} Save Changes
                     </button>
                 </div>
             </div>
@@ -2289,16 +2311,7 @@ function populateEditForm() {
     // Populate form fields with current data
     const fields = {
         'editObjectName': fullName,
-        'editObjectType': objectData.type || '',
-        'editObjectRA': objectData.ra || '',
-        'editObjectDEC': objectData.declination || '',
-        'editRedshift': objectData.redshift || '',
-        'editDiscoveryMag': objectData.discoverymag || '',
-        'editDiscoveryFilter': objectData.discoveryfilter || objectData.filter || '',
-        'editDiscoveryDate': objectData.discoverydate ? objectData.discoverydate.substring(0, 10) : '',
-        'editSourceGroup': objectData.source_group || '',
-        'editReportingGroup': objectData.reporting_group || '',
-        'editRemarks': objectData.remarks || ''
+        'editRedshift': objectData.redshift || ''
     };
     
     for (const [fieldId, value] of Object.entries(fields)) {
@@ -2332,32 +2345,12 @@ function submitEditObject() {
     
     const fullObjectName = getFullObjectName(objectData) || objectName;
     
-    // Collect form data
-    const formData = {
-        type: document.getElementById('editObjectType').value.trim() || null,
-        ra: document.getElementById('editObjectRA').value || null,
-        declination: document.getElementById('editObjectDEC').value || null,
-        redshift: document.getElementById('editRedshift').value || null,
-        discoverymag: document.getElementById('editDiscoveryMag').value || null,
-        discoveryfilter: document.getElementById('editDiscoveryFilter').value.trim() || null,
-        discoverydate: document.getElementById('editDiscoveryDate').value || null,
-        source_group: document.getElementById('editSourceGroup').value.trim() || null,
-        reporting_group: document.getElementById('editReportingGroup').value.trim() || null,
-        remarks: document.getElementById('editRemarks').value.trim() || null
+    // Collect form data - ONLY Redshift
+    const redshiftValue = document.getElementById('editRedshift').value;
+    
+    const cleanData = {
+        redshift: redshiftValue ? parseFloat(redshiftValue) : null
     };
-    
-    // Remove empty values
-    const cleanData = {};
-    for (const [key, value] of Object.entries(formData)) {
-        if (value !== null && value !== '') {
-            cleanData[key] = value;
-        }
-    }
-    
-    if (Object.keys(cleanData).length === 0) {
-        showEditResult('error', 'No Changes', 'No fields were modified');
-        return;
-    }
     
     // Disable submit button
     const submitBtn = document.getElementById('editSubmitBtn');
@@ -2379,7 +2372,7 @@ function submitEditObject() {
     .then(data => {
         if (data.success) {
             showEditResult('success', 'Success!', data.message);
-            showNotification('✅ Object updated successfully! Page will refresh in 2 seconds...', 'success');
+            showNotification('Object updated successfully! Page will refresh in 2 seconds...', 'success');
             setTimeout(() => {
                 closeEditModal();
                 
@@ -2402,7 +2395,7 @@ function submitEditObject() {
                 `;
                 overlay.innerHTML = `
                     <div style="background: #28a745; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                        ✅ Object "${fullObjectName}" updated successfully!
+                        <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${fullObjectName}" updated successfully!
                     </div>
                     <div style="font-size: 16px;">
                         Refreshing page to show updated data...
@@ -2425,7 +2418,7 @@ function submitEditObject() {
     .catch(error => {
         console.error('Error updating object:', error);
         showEditResult('error', 'Error', 'Network error occurred');
-        showNotification('❌ Network error occurred while updating object', 'error');
+        showNotification('Network error occurred while updating object', 'error');
     })
     .finally(() => {
         // Re-enable submit button
@@ -2445,7 +2438,7 @@ function showEditResult(type, title, message) {
         resultDiv.style.display = 'block';
         resultDiv.className = `edit-result ${type}`;
         
-        iconDiv.textContent = type === 'success' ? '✅' : '❌';
+        iconDiv.innerHTML = type === 'success' ? ICONS.success : ICONS.error;
         textDiv.innerHTML = `<strong>${title}</strong><br>${message}`;
     }
 }
@@ -2460,37 +2453,37 @@ function deleteObjects() {
     const fullObjectName = getFullObjectName(objectData) || objectName;
     
     // Show confirmation dialog with more specific information
-    const confirmationMessage = `⚠️ DELETE OBJECT CONFIRMATION ⚠️\n\n` +
+    const confirmationMessage = `DELETE OBJECT CONFIRMATION\n\n` +
                                `You are about to permanently DELETE:\n` +
-                               `📌 Object: "${fullObjectName}"\n\n` +
+                               `Object: "${fullObjectName}"\n\n` +
                                `This action will permanently remove:\n` +
                                `• Object data from the database\n` +
                                `• All photometry data\n` +
                                `• All spectroscopy data\n` +
                                `• All comments and notes\n\n` +
-                               `🚨 THIS CANNOT BE UNDONE! 🚨\n\n` +
+                               `THIS CANNOT BE UNDONE!\n\n` +
                                `To confirm deletion, type "DELETE" exactly:`;
     
     const userInput = prompt(confirmationMessage);
     
     if (userInput !== 'DELETE') {
         if (userInput !== null) { // User didn't cancel
-            showNotification('⚠️ Deletion cancelled - must type "DELETE" exactly', 'warning');
+            showNotification('Deletion cancelled - must type "DELETE" exactly', 'warning');
         }
         return;
     }
     
     // Additional confirmation for critical action
-    const finalConfirm = confirm(`🚨 FINAL CONFIRMATION 🚨\n\nAre you absolutely sure you want to delete "${fullObjectName}"?\n\nThis action CANNOT be undone!\n\nClick OK to proceed with deletion.`);
+    const finalConfirm = confirm(`FINAL CONFIRMATION\n\nAre you absolutely sure you want to delete "${fullObjectName}"?\n\nThis action CANNOT be undone!\n\nClick OK to proceed with deletion.`);
     
     if (!finalConfirm) {
-        showNotification('ℹ️ Deletion cancelled by user', 'info');
+        showNotification('Deletion cancelled by user', 'info');
         return;
     }
     
     // Show loading state
     showLoading(true);
-    showNotification('🗑️ Deleting object and all related data...', 'info');
+    showNotification('Deleting object and all related data...', 'info');
     
     // Create immediate visual feedback
     const overlay = document.createElement('div');
@@ -2513,7 +2506,7 @@ function deleteObjects() {
     `;
     overlay.innerHTML = `
         <div style="background: #dc3545; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-            🗑️ Deleting object "${fullObjectName}"...
+            <span style="display: inline-block; margin-right: 10px;">${ICONS.delete}</span> Deleting object "${fullObjectName}"...
         </div>
         <div style="font-size: 16px; margin-bottom: 20px;">
             Please wait while we remove all data...
@@ -2539,7 +2532,7 @@ function deleteObjects() {
             // Update overlay to show success
             overlay.innerHTML = `
                 <div style="background: #28a745; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                    ✅ Object "${fullObjectName}" deleted successfully!
+                    <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${fullObjectName}" deleted successfully!
                 </div>
                 <div style="font-size: 16px; margin-bottom: 20px;">
                     Redirecting to Marshal page...
@@ -2551,7 +2544,7 @@ function deleteObjects() {
             `;
             
             // Show success notification
-            showNotification(`✅ Object "${fullObjectName}" deleted successfully! Redirecting to Marshal...`, 'success');
+            showNotification(`Object "${fullObjectName}" deleted successfully! Redirecting to Marshal...`, 'success');
             
             // Redirect to marshal page after a short delay
             setTimeout(() => {
@@ -2561,7 +2554,7 @@ function deleteObjects() {
         } else {
             // Remove overlay and show error
             document.body.removeChild(overlay);
-            showNotification(`❌ Error deleting object: ${data.error}`, 'error');
+            showNotification(`Error deleting object: ${data.error}`, 'error');
         }
     })
     .catch(error => {
@@ -2574,7 +2567,7 @@ function deleteObjects() {
         }
         
         console.error('Error deleting object:', error);
-        showNotification('❌ Network error occurred while deleting object', 'error');
+        showNotification('Network error occurred while deleting object', 'error');
     });
 }
 
@@ -2604,6 +2597,7 @@ function escapeHtml(text) {
 
 // Aladin Lite variables and functions
 let aladinInstance = null;
+// let currentSurvey = 'CDS/P/DESI-Legacy-Surveys/DR10/color';
 let currentSurvey = 'CDS/P/DSS2/color';
 let currentFOV = 0.05;
 
@@ -2767,7 +2761,7 @@ function showAladinError(message) {
     
     if (loadingElement) {
         loadingElement.innerHTML = `
-            <div class="error-icon">⚠️</div>
+            <div class="error-icon">${ICONS.warning}</div>
             <span>${message}</span>
         `;
         loadingElement.style.display = 'flex';
@@ -2829,4 +2823,192 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+function fetchPhotometry() {
+    if (!objectName) {
+        showNotification('Object name not available', 'error');
+        return;
+    }
+    
+    if (!confirm(`Fetch photometry for ${objectName} from TNS? This process may take a moment.`)) {
+        return;
+    }
+    
+    showLoading(true, 'Downloading data, please do not close...');
+    
+    fetch(`/api/object/${encodeURIComponent(objectName)}/fetch_photometry`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('Photometry fetch completed successfully', 'success');
+            // Reload the page to show updated data
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showNotification(`Error: ${data.error}`, 'error');
+            showLoading(false);
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching photometry:', error);
+        showNotification('Failed to fetch photometry', 'error');
+        showLoading(false);
+    });
+}
+
+// Permission Management Functions
+function togglePermissionManager() {
+    const manager = document.getElementById('permissionManager');
+    if (manager.style.display === 'none') {
+        manager.style.display = 'block';
+        loadGroups();
+        loadPermissions();
+    } else {
+        manager.style.display = 'none';
+    }
+}
+
+function loadGroups() {
+    const select = document.getElementById('groupSelect');
+    select.innerHTML = '<option value="">Loading groups...</option>';
+    
+    fetch('/api/groups')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                select.innerHTML = '<option value="">Select Group...</option>';
+                data.groups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = group.name;
+                    option.textContent = group.name;
+                    select.appendChild(option);
+                });
+            } else {
+                select.innerHTML = '<option value="">Error loading groups</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading groups:', error);
+            select.innerHTML = '<option value="">Error loading groups</option>';
+        });
+}
+
+function loadPermissions() {
+    const statusDiv = document.getElementById('permissionStatus');
+    const listDiv = document.getElementById('currentPermissionsList');
+    
+    listDiv.innerHTML = 'Loading...';
+    
+    fetch(`/api/object/${encodeURIComponent(objectName)}/permissions`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.permissions.length === 0) {
+                    listDiv.innerHTML = '<span style="color: #999; font-style: italic;">No specific permissions granted (Admin only)</span>';
+                } else {
+                    listDiv.innerHTML = '';
+                    data.permissions.forEach(perm => {
+                        const item = document.createElement('div');
+                        item.style.marginBottom = '2px';
+                        item.innerHTML = `• ${perm.group_name}`;
+                        listDiv.appendChild(item);
+                    });
+                }
+            } else {
+                listDiv.innerHTML = 'Error loading permissions';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading permissions:', error);
+            listDiv.innerHTML = 'Error loading permissions';
+        });
+}
+
+function grantPermission() {
+    const select = document.getElementById('groupSelect');
+    const groupName = select.value;
+    const statusDiv = document.getElementById('permissionStatus');
+    
+    if (!groupName) {
+        statusDiv.textContent = 'Please select a group first';
+        statusDiv.style.color = '#dc3545';
+        return;
+    }
+    
+    statusDiv.textContent = 'Granting permission...';
+    statusDiv.style.color = '#666';
+    
+    fetch(`/api/object/${encodeURIComponent(objectName)}/permissions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ group_name: groupName })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusDiv.textContent = 'Permission granted successfully';
+            statusDiv.style.color = '#28a745';
+            loadPermissions();
+        } else {
+            statusDiv.textContent = `Error: ${data.error}`;
+            statusDiv.style.color = '#dc3545';
+        }
+    })
+    .catch(error => {
+        console.error('Error granting permission:', error);
+        statusDiv.textContent = 'Error granting permission';
+        statusDiv.style.color = '#dc3545';
+    });
+}
+
+function revokePermission() {
+    const select = document.getElementById('groupSelect');
+    const groupName = select.value;
+    const statusDiv = document.getElementById('permissionStatus');
+    
+    if (!groupName) {
+        statusDiv.textContent = 'Please select a group first';
+        statusDiv.style.color = '#dc3545';
+        return;
+    }
+    
+    if (!confirm('Are you sure you want to revoke access for this group?')) {
+        return;
+    }
+    
+    statusDiv.textContent = 'Revoking permission...';
+    statusDiv.style.color = '#666';
+    
+    fetch(`/api/object/${encodeURIComponent(objectName)}/permissions`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ group_name: groupName })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusDiv.textContent = 'Permission revoked successfully';
+            statusDiv.style.color = '#28a745';
+            loadPermissions();
+        } else {
+            statusDiv.textContent = `Error: ${data.error}`;
+            statusDiv.style.color = '#dc3545';
+        }
+    })
+    .catch(error => {
+        console.error('Error revoking permission:', error);
+        statusDiv.textContent = 'Error revoking permission';
+        statusDiv.style.color = '#dc3545';
+    });
 }

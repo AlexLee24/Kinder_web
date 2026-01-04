@@ -444,3 +444,126 @@
         color: black;
     }
 }
+/* ==================== MOBILE OPTIMIZATIONS ==================== */
+
+@media (max-width: 768px) {
+    /* Search Tools Optimization */
+    .search-input-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .search-input-group input {
+        width: 100%;
+        border-radius: var(--radius-md);
+    }
+
+    .search-input-group button {
+        width: 100%;
+        border-radius: var(--radius-md);
+        justify-content: center;
+    }
+
+    /* Advanced Filters Optimization */
+    .advanced-filters-content {
+        padding: 15px;
+    }
+
+    .filter-row {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .date-range-group, .magnitude-range-group, .redshift-range-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .date-range-group input, .magnitude-range-group input, .redshift-range-group input {
+        flex: 1;
+        min-width: 0; /* Prevent overflow */
+    }
+
+    /* View Controls Optimization */
+    .view-controls {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .view-toggle {
+        display: flex;
+        width: 100%;
+    }
+
+    .view-btn {
+        flex: 1;
+        justify-content: center;
+        padding: 10px;
+    }
+
+    .sort-controls {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+    }
+
+    #sortBy {
+        flex: 1;
+    }
+
+    /* Object Card Optimization */
+    .object-card {
+        padding: 15px;
+    }
+
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .object-name {
+        font-size: 1.2rem;
+    }
+
+    .card-content {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .coordinates {
+        flex-direction: row;
+        justify-content: space-between;
+        border-right: none;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-right: 0;
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+    }
+
+    .object-info {
+        grid-template-columns: 1fr;
+    }
+
+    .card-footer {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .card-actions {
+        width: 100%;
+    }
+
+    .quick-action {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+    }
+}

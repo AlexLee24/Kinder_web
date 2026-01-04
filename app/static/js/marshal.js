@@ -6,12 +6,25 @@ let currentPage = 1;
 let pageSize = 50;
 let totalPages = 1;
 let totalObjects = 0;
-let sortBy = 'last_update';
+let sortBy = 'lastmodified';
 let sortOrder = 'desc';
 let isLoading = false;
 let currentFilters = {};
 let useApiMode = false;
 let currentStatusFilter = '';
+
+const ICONS = {
+    chevronUp: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
+    chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+    arrowUp: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>',
+    arrowDown: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>',
+    chevronLeft: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>',
+    chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+    inbox: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg>',
+    followup: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>',
+    finished: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>',
+    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>'
+};
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -208,7 +221,9 @@ function loadInitialObjects() {
                 ra: raElement ? raElement.textContent.trim() : '',
                 dec: decElement ? decElement.textContent.trim() : '',
                 source: source || '',
-                last_update: lastUpdateElement ? lastUpdateElement.textContent.trim() : ''
+                last_update: lastUpdateElement ? lastUpdateElement.textContent.trim() : '',
+                lastmodified: card.dataset.lastmodified || '',
+                last_photometry: card.dataset.lastphotometry || ''
             };
             
             objectsFromDOM.push(obj);
@@ -330,7 +345,11 @@ function loadObjects(resetPage = false) {
         app_mag_max: currentFilters.app_mag_max || '',
         redshift_min: currentFilters.redshift_min || '',
         redshift_max: currentFilters.redshift_max || '',
-        discoverer: currentFilters.discoverer || ''
+        discoverer: currentFilters.discoverer || '',
+        brightest_mag_min: currentFilters.brightest_mag_min || '',
+        brightest_mag_max: currentFilters.brightest_mag_max || '',
+        brightest_abs_mag_min: currentFilters.brightest_abs_mag_min || '',
+        brightest_abs_mag_max: currentFilters.brightest_abs_mag_max || ''
     });
     
     fetch(`/api/objects?${params.toString()}`)
@@ -353,7 +372,11 @@ function loadObjects(resetPage = false) {
                 ra: obj.ra || '',
                 dec: obj.declination || '',
                 source: obj.source_group || '',
-                last_update: obj.time_received || obj.lastmodified || ''
+                last_update: obj.time_received || obj.lastmodified || '',
+                lastmodified: obj.lastmodified || '',
+                last_photometry: obj.last_photometry_date || '',
+                brightest_mag: obj.brightest_mag || '',
+                brightest_abs_mag: obj.brightest_abs_mag || ''
             }));
             
             currentObjects = mappedObjects;
@@ -417,7 +440,9 @@ function mapSortField(frontendField) {
         'discovery_date': 'discoverydate',
         'magnitude': 'discoverymag',
         'redshift': 'redshift',
-        'last_update': 'time_received'
+        'lastmodified': 'lastmodified',
+        'last_update': 'lastmodified',
+        'last_photometry': 'last_photometry_date'
     };
     
     return fieldMap[frontendField] || 'discoverydate';
@@ -496,10 +521,11 @@ function generateTableView() {
         
         const escapedName = obj.name.replace(/'/g, "\\'");
         
-        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        // Extract year and letters regardless of prefix (e.g. AT2025abc -> 2025abc)
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
         let objectLink = '';
-        if (pureYearLettersMatch) {
-            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
         } else {
             objectLink = `/object/${encodeURIComponent(obj.name)}`;
         }
@@ -514,6 +540,8 @@ function generateTableView() {
             <td class="coord-cell">${obj.ra || 'N/A'}</td>
             <td class="coord-cell">${obj.dec || 'N/A'}</td>
             <td class="magnitude-cell">${obj.magnitude || 'N/A'}</td>
+            <td class="magnitude-cell">${obj.brightest_mag || 'N/A'}</td>
+            <td class="magnitude-cell">${obj.brightest_abs_mag || 'N/A'}</td>
             <td class="redshift-cell">${obj.redshift || 'N/A'}</td>
             <td class="date-cell">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</td>
             <td class="discoverer-cell">${obj.source ? obj.source.slice(0, 30) : 'N/A'}</td>
@@ -548,10 +576,11 @@ function generateCompactView() {
         item.dataset.tag = obj.tag;
         item.classList.add(`tag-${obj.tag}`);
         
-        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        // Extract year and letters regardless of prefix
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
         let objectLink = '';
-        if (pureYearLettersMatch) {
-            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
         } else {
             objectLink = `/object/${encodeURIComponent(obj.name)}`;
         }
@@ -562,6 +591,8 @@ function generateCompactView() {
                 <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
                 <span class="compact-coords">${obj.ra || 'N/A'}, ${obj.dec || 'N/A'}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
+                ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest Mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
+                ${obj.brightest_abs_mag ? `<span class="compact-magnitude" title="Brightest Abs Mag">M=${parseFloat(obj.brightest_abs_mag).toFixed(1)}</span>` : ''}
                 ${obj.redshift ? `<span class="compact-redshift">z=${parseFloat(obj.redshift).toFixed(3)}</span>` : ''}
             </div>
             <div class="compact-meta">
@@ -601,10 +632,11 @@ function generateCardsView() {
         const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
         const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
         
-        const pureYearLettersMatch = obj.name.match(/^(\d{4})([a-zA-Z]+)$/);
+        // Extract year and letters regardless of prefix
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
         let objectLink = '';
-        if (pureYearLettersMatch) {
-            objectLink = `/object/${pureYearLettersMatch[1]}${pureYearLettersMatch[2]}`;
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
         } else {
             objectLink = `/object/${encodeURIComponent(obj.name)}`;
         }
@@ -680,23 +712,24 @@ function generateCardsView() {
 }
 
 function getTagDisplayName(tag) {
+    const icon = ICONS[tag] || ICONS.inbox;
+    // Add style to the SVG string for spacing with text
+    const styledIcon = icon.replace('<svg', '<svg style="margin-right: 4px; vertical-align: text-bottom;"');
+    
     const tagNames = {
         'object': 'Inbox',
         'followup': 'Follow-up',
         'finished': 'Finished',
         'snoozed': 'Snoozed'
     };
-    return tagNames[tag] || 'Inbox';
+    return `${styledIcon} ${tagNames[tag] || 'Inbox'}`;
 }
 
 function getTagIndicator(tag) {
-    const indicators = {
-        'object': 'I',
-        'followup': 'F',
-        'finished': 'D',
-        'snoozed': 'S'
-    };
-    return indicators[tag] || 'I';
+    // For indicator, we just want the icon, maybe with vertical alignment but no margin
+    const icon = ICONS[tag] || ICONS.inbox;
+    const styledIcon = icon.replace('<svg', '<svg style="vertical-align: text-bottom;"');
+    return styledIcon;
 }
 
 function filterByStatus(status) {
@@ -930,7 +963,7 @@ function updatePaginationControls(controlsId, totalPagesCount) {
     
     if (totalPagesCount > 1) {
         const prevBtn = document.createElement('button');
-        prevBtn.textContent = '‹ Prev';
+        prevBtn.innerHTML = ICONS.chevronLeft + ' Prev';
         prevBtn.className = `pagination-btn ${currentPage === 1 ? 'disabled' : ''}`;
         if (currentPage > 1) {
             prevBtn.onclick = () => changePage(currentPage - 1);
@@ -981,7 +1014,7 @@ function updatePaginationControls(controlsId, totalPagesCount) {
         }
         
         const nextBtn = document.createElement('button');
-        nextBtn.textContent = 'Next ›';
+        nextBtn.innerHTML = 'Next ' + ICONS.chevronRight;
         nextBtn.className = `pagination-btn ${currentPage === totalPagesCount ? 'disabled' : ''}`;
         if (currentPage < totalPagesCount) {
             nextBtn.onclick = () => changePage(currentPage + 1);
@@ -1047,7 +1080,7 @@ function applySorting() {
 
 function toggleSortOrder() {
     sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-    document.getElementById('sortOrderBtn').textContent = sortOrder === 'asc' ? '↑' : '↓';
+    document.getElementById('sortOrderBtn').innerHTML = sortOrder === 'asc' ? ICONS.arrowUp : ICONS.arrowDown;
     
     if (useApiMode) {
         loadObjects(true);
@@ -1061,9 +1094,15 @@ function sortObjects() {
         let aVal = a[sortBy] || '';
         let bVal = b[sortBy] || '';
         
-        if (sortBy === 'discovery_date' || sortBy === 'last_update') {
+        if (sortBy === 'discovery_date' || sortBy === 'last_update' || sortBy === 'lastmodified') {
             aVal = aVal ? new Date(aVal) : new Date('1900-01-01');
             bVal = bVal ? new Date(bVal) : new Date('1900-01-01');
+        } else if (sortBy === 'last_photometry') {
+            // If last_photometry is missing, fallback to lastmodified
+            let aTime = a.last_photometry || a.lastmodified || '';
+            let bTime = b.last_photometry || b.lastmodified || '';
+            aVal = aTime ? new Date(aTime) : new Date('1900-01-01');
+            bVal = bTime ? new Date(bTime) : new Date('1900-01-01');
         } else if (sortBy === 'magnitude') {
             aVal = aVal ? parseFloat(aVal) : 99;
             bVal = bVal ? parseFloat(bVal) : 99;
@@ -1149,7 +1188,7 @@ function toggleAdvancedFilters() {
     if (content.style.display === 'none' || !content.classList.contains('show')) {
         content.style.display = 'block';
         setTimeout(() => content.classList.add('show'), 10);
-        arrow.textContent = '▲';
+        // arrow.textContent = '▲';
         arrow.style.transform = 'rotate(180deg)';
         
         const filterGroups = content.querySelectorAll('.filter-group');
@@ -1159,7 +1198,7 @@ function toggleAdvancedFilters() {
     } else {
         content.classList.remove('show');
         setTimeout(() => content.style.display = 'none', 400);
-        arrow.textContent = '▼';
+        // arrow.textContent = '▼';
         arrow.style.transform = 'rotate(0deg)';
     }
 }
@@ -1181,6 +1220,10 @@ function applyAdvancedFilters() {
     currentFilters.redshift_min = document.getElementById('redshiftMin').value;
     currentFilters.redshift_max = document.getElementById('redshiftMax').value;
     currentFilters.discoverer = document.getElementById('discovererFilter').value;
+    currentFilters.brightest_mag_min = document.getElementById('brightestMagMin').value;
+    currentFilters.brightest_mag_max = document.getElementById('brightestMagMax').value;
+    currentFilters.brightest_abs_mag_min = document.getElementById('brightestAbsMagMin').value;
+    currentFilters.brightest_abs_mag_max = document.getElementById('brightestAbsMagMax').value;
     
     // If tag filter is set, update status filter and visual state
     if (currentFilters.tag && currentFilters.tag !== currentStatusFilter) {
@@ -1293,10 +1336,7 @@ function populateClassificationOptions(classifications) {
         classificationFilter.appendChild(option);
     });
     
-    const addModal = document.getElementById('addObjectModalOverlay');
-    if (addModal && addModal.style.display === 'flex') {
-        populateObjectTypeOptions();
-    }
+
 }
 
 function clearAllFilters() {
@@ -1315,6 +1355,10 @@ function clearAllFilters() {
     document.getElementById('redshiftMin').value = '';
     document.getElementById('redshiftMax').value = '';
     document.getElementById('discovererFilter').value = '';
+    document.getElementById('brightestMagMin').value = '';
+    document.getElementById('brightestMagMax').value = '';
+    document.getElementById('brightestAbsMagMin').value = '';
+    document.getElementById('brightestAbsMagMax').value = '';
     
     currentFilters = {
         search: '',
@@ -1326,7 +1370,11 @@ function clearAllFilters() {
         app_mag_max: '',
         redshift_min: '',
         redshift_max: '',
-        discoverer: ''
+        discoverer: '',
+        brightest_mag_min: '',
+        brightest_mag_max: '',
+        brightest_abs_mag_min: '',
+        brightest_abs_mag_max: ''
     };
     
     currentPage = 1;
@@ -1387,46 +1435,7 @@ function forceRefreshAll() {
     loadObjects(true);
 }
 
-function manualTNSDownload() {
-    const syncBtn = document.getElementById('syncBtn');
-    const originalText = syncBtn.textContent;
-    
-    syncBtn.disabled = true;
-    syncBtn.textContent = 'Downloading...';
-    
-    fetch('/api/tns/manual-download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({hour_offset: 0})
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const lastSyncElement = document.getElementById('lastSync');
-            if (lastSyncElement) {
-                const now = new Date();
-                lastSyncElement.textContent = now.toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
-            }
-            
-            showNotification(
-                `Successfully imported ${data.imported_count} new objects and updated ${data.updated_count} existing objects`, 
-                'success'
-            );
-            
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            showNotification('Download failed: ' + data.error, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('Download failed: Network error', 'error');
-    })
-    .finally(() => {
-        syncBtn.disabled = false;
-        syncBtn.textContent = originalText;
-    });
-}
+
 
 function quickView(objectName) {
     console.log(`QuickView called with: "${objectName}"`);
@@ -1470,339 +1479,8 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-function manualAutoSnooze() {
-    const autoSnoozeBtn = document.getElementById('autoSnoozeBtn');
-    const originalText = autoSnoozeBtn.textContent;
-    
-    autoSnoozeBtn.disabled = true;
-    autoSnoozeBtn.textContent = 'Processing...';
-    
-    showNotification('Running auto-snooze check...', 'info');
-    
-    fetch('/api/auto-snooze/manual-run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const snoozedCount = data.snoozed_count || 0;
-            const unsnoozedCount = data.unsnoozed_count || 0;
-            const totalProcessed = data.total_processed || 0;
-            
-            if (totalProcessed > 0) {
-                let message = `Auto-snooze completed: `;
-                if (snoozedCount > 0) {
-                    message += `${snoozedCount} objects snoozed`;
-                }
-                if (unsnoozedCount > 0) {
-                    if (snoozedCount > 0) message += ', ';
-                    message += `${unsnoozedCount} objects moved back to inbox`;
-                }
-                
-                showNotification(message, 'success');
-                
-                // Refresh the page after a short delay to show updated counts
-                setTimeout(() => {
-                    loadInitialStats();
-                    forceRefreshAll();
-                }, 1500);
-            } else {
-                showNotification('Auto-snooze check completed - no changes needed', 'info');
-            }
-        } else {
-            showNotification('Auto-snooze check failed: ' + (data.error || 'Unknown error'), 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error running auto-snooze:', error);
-        showNotification('Auto-snooze check failed: Network error', 'error');
-    })
-    .finally(() => {
-        autoSnoozeBtn.disabled = false;
-        autoSnoozeBtn.textContent = originalText;
-    });
-}
 
-function debugObjectTag(objectName) {
-    fetch(`/debug/object/${encodeURIComponent(objectName)}`)
-        .then(response => response.json())
-        .then(data => {
-            console.log('Debug results:', data);
-            showNotification(`Debug results logged to console`, 'info');
-        })
-        .catch(error => {
-            console.error('Debug error:', error);
-            showNotification('Debug failed', 'error');
-        });
-}
 
-function showAddModal() {
-    const modal = document.getElementById('addObjectModalOverlay');
-    if (modal) {
-        modal.style.display = 'flex';
-        resetAddObjectForm();
-        
-        // 直接複製 classificationFilter 的選項到 objectType
-        populateObjectTypeOptions();
-        
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('objectDiscoveryDate').value = today;
-        
-        setTimeout(() => {
-            document.getElementById('objectName').focus();
-        }, 100);
-    }
-}
 
-function populateObjectTypeOptions() {
-    const classificationFilter = document.getElementById('classificationFilter');
-    const objectTypeSelect = document.getElementById('objectType');
-    
-    if (!classificationFilter || !objectTypeSelect) return;
-    
-    objectTypeSelect.innerHTML = '<option value="">Select type (optional)</option>';
-    
-    Array.from(classificationFilter.options).forEach((option, index) => {
-        if (index > 0) {
-            const newOption = document.createElement('option');
-            newOption.value = option.value;
-            newOption.textContent = option.textContent;
-            objectTypeSelect.appendChild(newOption);
-        }
-    });
-    
-    const otherOption = document.createElement('option');
-    otherOption.value = 'other';
-    otherOption.textContent = 'Other (Custom)';
-    objectTypeSelect.appendChild(otherOption);
-    
-    console.log('Populated object type options from classification filter');
-}
-
-function handleTypeSelection() {
-    const typeSelect = document.getElementById('objectType');
-    const customTypeGroup = document.getElementById('customTypeGroup');
-    const customTypeInput = document.getElementById('customObjectType');
-    
-    if (!typeSelect || !customTypeGroup) return;
-    
-    const selectedValue = typeSelect.value;
-    
-    if (selectedValue === 'other') {
-        customTypeGroup.style.display = 'block';
-        setTimeout(() => {
-            customTypeGroup.classList.add('show');
-            if (customTypeInput) {
-                customTypeInput.focus();
-            }
-        }, 10);
-    } else {
-        customTypeGroup.classList.remove('show');
-        setTimeout(() => {
-            customTypeGroup.style.display = 'none';
-            if (customTypeInput) {
-                customTypeInput.value = '';
-            }
-        }, 300);
-    }
-}
-
-function closeAddObjectModal() {
-    const modal = document.getElementById('addObjectModalOverlay');
-    if (modal) {
-        modal.style.display = 'none';
-        resetAddObjectForm();
-    }
-}
-
-function resetAddObjectForm() {
-    const form = document.getElementById('addObjectForm');
-    if (form) {
-        form.reset();
-    }
-    
-    const customTypeGroup = document.getElementById('customTypeGroup');
-    if (customTypeGroup) {
-        customTypeGroup.style.display = 'none';
-        customTypeGroup.classList.remove('show');
-    }
-    
-    const resultDiv = document.getElementById('addResult');
-    if (resultDiv) {
-        resultDiv.style.display = 'none';
-    }
-    
-    const submitBtn = document.getElementById('addSubmitBtn');
-    if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '➕ Add Object';
-    }
-}
-
-function validateAddObjectForm() {
-    const name = document.getElementById('objectName').value.trim();
-    const ra = document.getElementById('objectRA').value.trim();
-    const dec = document.getElementById('objectDEC').value.trim();
-    const typeSelect = document.getElementById('objectType');
-    const customTypeInput = document.getElementById('customObjectType');
-    
-    const errors = [];
-    
-    if (!name) {
-        errors.push('Object name is required');
-    } else if (name.length < 3) {
-        errors.push('Object name must be at least 3 characters');
-    }
-    
-    if (!ra) {
-        errors.push('Right Ascension (RA) is required');
-    } else {
-        const raFloat = parseFloat(ra);
-        if (isNaN(raFloat) || raFloat < 0 || raFloat >= 360) {
-            errors.push('RA must be between 0 and 360 degrees');
-        }
-    }
-    
-    if (!dec) {
-        errors.push('Declination (DEC) is required');
-    } else {
-        const decFloat = parseFloat(dec);
-        if (isNaN(decFloat) || decFloat < -90 || decFloat > 90) {
-            errors.push('DEC must be between -90 and 90 degrees');
-        }
-    }
-    
-    if (typeSelect && typeSelect.value === 'other') {
-        const customType = customTypeInput ? customTypeInput.value.trim() : '';
-        if (!customType) {
-            errors.push('Custom object type is required when "Other" is selected');
-        } else if (customType.length < 2) {
-            errors.push('Custom object type must be at least 2 characters');
-        } else if (customType.length > 50) {
-            errors.push('Custom object type must be 50 characters or less');
-        } else if (!/^[a-zA-Z0-9\s\-\/]+$/.test(customType)) {
-            errors.push('Custom object type can only contain letters, numbers, spaces, hyphens, and forward slashes');
-        }
-    }
-    
-    const magnitude = document.getElementById('objectMagnitude').value.trim();
-    if (magnitude) {
-        const magFloat = parseFloat(magnitude);
-        if (isNaN(magFloat) || magFloat < -5 || magFloat > 30) {
-            errors.push('Magnitude should be between -5 and 30');
-        }
-    }
-    
-    return errors;
-}
-
-function submitAddObject() {
-    console.log('Submitting add object form...');
-    
-    const errors = validateAddObjectForm();
-    if (errors.length > 0) {
-        showNotification('Please fix the following errors:\n' + errors.join('\n'), 'error');
-        return;
-    }
-    
-    const typeSelect = document.getElementById('objectType');
-    const customTypeInput = document.getElementById('customObjectType');
-    
-    let objectType = 'Unknown';
-    
-    if (typeSelect && typeSelect.value) {
-        if (typeSelect.value === 'other') {
-            objectType = customTypeInput ? customTypeInput.value.trim() : 'AT';
-        } else {
-            objectType = typeSelect.value;
-        }
-    }
-    
-    const sourceValue = document.getElementById('objectSource').value;
-    const source = sourceValue ? sourceValue.trim() : '';
-    
-    const formData = {
-        name: document.getElementById('objectName').value.trim(),
-        ra: parseFloat(document.getElementById('objectRA').value.trim()),
-        dec: parseFloat(document.getElementById('objectDEC').value.trim()),
-        type: objectType,
-        magnitude: document.getElementById('objectMagnitude').value.trim() || null,
-        discovery_date: document.getElementById('objectDiscoveryDate').value || null,
-        source: source || null 
-    };
-    
-    console.log('Form data:', formData);
-    
-    const submitBtn = document.getElementById('addSubmitBtn');
-    const cancelBtn = document.getElementById('addCancelBtn');
-    
-    submitBtn.disabled = true;
-    submitBtn.textContent = '⏳ Adding...';
-    cancelBtn.disabled = true;
-    
-    fetch('/api/objects', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        return response.json();
-    })
-    .then(data => {
-        console.log('Response data:', data);
-        
-        if (data.success) {
-            showAddResult('success', 'Object Added Successfully!', 
-                `${formData.name} has been added to the database with type "${objectType}".`);
-            
-            showNotification(`Object ${formData.name} added successfully!`, 'success');
-            
-            setTimeout(() => {
-                closeAddObjectModal();
-                forceRefreshAll();
-            }, 2000);
-            
-        } else {
-            showAddResult('error', 'Failed to Add Object', 
-                data.error || 'An unknown error occurred.');
-            showNotification('Failed to add object: ' + (data.error || 'Unknown error'), 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error adding object:', error);
-        showAddResult('error', 'Network Error', 
-            'Failed to connect to server. Please try again.');
-        showNotification('Network error: ' + error.message, 'error');
-    })
-    .finally(() => {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '➕ Add Object';
-        cancelBtn.disabled = false;
-    });
-}
-
-function showAddResult(type, title, message) {
-    const resultDiv = document.getElementById('addResult');
-    const iconDiv = document.getElementById('addResultIcon');
-    const textDiv = document.getElementById('addResultText');
-    
-    if (!resultDiv || !iconDiv || !textDiv) return;
-    
-    // 設置圖標
-    if (type === 'success') {
-        iconDiv.textContent = '✅';
-        resultDiv.className = 'add-result success';
-    } else {
-        iconDiv.textContent = '❌';
-        resultDiv.className = 'add-result error';
-    }
-    textDiv.innerHTML = `<strong>${title}</strong><br>${message}`;
-    resultDiv.style.display = 'block';
-    resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-}
 
 window.isAdmin = document.querySelector('[data-admin="true"]') !== null;

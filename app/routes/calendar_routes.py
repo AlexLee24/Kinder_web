@@ -5,7 +5,7 @@ import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
 
-from modules.database import get_users, user_exists
+from modules.database import get_users, user_exists, check_object_access
 from modules.calendar_database import (
     get_calendar_events, create_calendar_event, update_calendar_event, 
     delete_calendar_event, get_calendar_categories, create_calendar_category
@@ -26,16 +26,11 @@ def register_calendar_routes(app):
             return redirect(url_for('login'))
         
         user_email = session['user']['email']
-        if not user_exists(user_email):
+        
+        # Check permissions for 'private_area'
+        # Treat 'private_area' as a resource name in the object_permissions table
+        if not check_object_access('private_area', user_email):
             flash('Access denied.', 'error')
-            return redirect(url_for('home'))
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            flash('Access denied. GREAT Lab members only.', 'error')
             return redirect(url_for('home'))
         
         return render_template('private_area.html', current_path='/private')
@@ -47,18 +42,12 @@ def register_calendar_routes(app):
             return redirect(url_for('login'))
         
         user_email = session['user']['email']
-        if not user_exists(user_email):
+        
+        # Check permissions for 'private_area' (calendar is part of private area)
+        if not check_object_access('private_area', user_email):
             flash('Access denied.', 'error')
             return redirect(url_for('home'))
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            flash('Access denied. GREAT Lab members only.', 'error')
-            return redirect(url_for('home'))
-        
+            
         return render_template('private_calendar.html', current_path='/private/calendar')
 
     @app.route('/private/telescope')
@@ -486,7 +475,7 @@ def register_calendar_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         try:
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             
             conn = get_tns_db_connection()
             cursor = conn.cursor()
@@ -511,22 +500,19 @@ def register_calendar_routes(app):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/debug/object/<object_name>')
-    def debug_object_tag_route(object_name):
-        if 'user' not in session or not session['user'].get('is_admin'):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        try:
-            object_name = urllib.parse.unquote(object_name)
-            
-            from modules.tns_database import debug_object_tag
-            results = debug_object_tag(object_name)
-            
-            return jsonify({
-                'success': True,
-                'debug_results': results,
-                'object_name': object_name
-            })
-            
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+    # @app.route('/debug/object/<object_name>')
+    # Debug object tag route - disabled (old tns_database function)
+    # @app.route('/api/debug-object-tag/<object_name>')
+    # def debug_object_tag_route(object_name):
+    #     if 'user' not in session or not session['user'].get('is_admin'):
+    #         return jsonify({'error': 'Access denied'}), 403
+    #     
+    #     try:
+    #         object_name = urllib.parse.unquote(object_name)
+    #         return jsonify({
+    #             'success': True,
+    #             'object_name': object_name,
+    #             'message': 'Debug function disabled - using PostgreSQL now'
+    #         })
+    #     except Exception as e:
+    #         return jsonify({'error': str(e)}), 500

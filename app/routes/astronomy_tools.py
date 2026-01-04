@@ -14,6 +14,7 @@ from modules.coordinate_converter import (
     convert_dec_dms_to_decimal, convert_dec_decimal_to_dms
 )
 from modules import obsplan as obs
+from modules.observation_script import get_followup_targets_json, process_observation_request
 
 
 def register_astronomy_routes(app):
@@ -25,6 +26,10 @@ def register_astronomy_routes(app):
     @app.route('/astronomy_tools')
     def astronomy_tools():
         return render_template('astronomy_tools.html', current_path='/astronomy_tools')
+
+    @app.route('/observation_planner')
+    def observation_planner():
+        return render_template('observation_planner.html', current_path='/observation_planner')
     
     @app.route('/mount_torque')
     def mount_torque():
@@ -206,9 +211,9 @@ def register_astronomy_routes(app):
                 return jsonify({'error': 'Timezone is required'}), 400
             
             try:
-                date = date.replace("-", "")
+                date = date.replace("-", "").replace("/", "")
                 if len(date) != 8:
-                    return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+                    return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD or YYYY/MM/DD'}), 400
             except Exception as e:
                 return jsonify({'error': f'Date processing error: {str(e)}'}), 400
             
@@ -307,3 +312,20 @@ def register_astronomy_routes(app):
             import traceback
             traceback.print_exc()
             return jsonify({'error': error_message}), 500
+
+    @app.route('/astronomy_tools/get_followup_targets', methods=['GET'])
+    def get_followup_targets_route():
+        try:
+            data = get_followup_targets_json()
+            return jsonify({'success': True, 'data': data})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/astronomy_tools/generate_script', methods=['POST'])
+    def generate_script_route():
+        try:
+            data = request.get_json()
+            script = process_observation_request(data)
+            return jsonify({'success': True, 'script': script})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500

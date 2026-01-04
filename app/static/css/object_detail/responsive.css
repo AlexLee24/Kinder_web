@@ -13,6 +13,7 @@
     .header-main {
         flex-direction: column;
         gap: 25px;
+        align-items: stretch;
     }
     
     .location-image-container {
@@ -210,5 +211,138 @@
     .location-image {
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
+    }
+}
+/* ==================== MOBILE OPTIMIZATIONS ==================== */
+
+@media (max-width: 768px) {
+    /* Header Section */
+    .object-header {
+        padding: 15px;
+    }
+
+    .header-main {
+        gap: 20px;
+    }
+
+    .object-title-section {
+        text-align: center;
+        align-items: center;
+    }
+
+    .object-name {
+        font-size: 1.8rem;
+        text-align: center;
+    }
+
+    .object-meta {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .classification-badge, .tag-badge {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+    }
+
+    .action-btn, .copy-coords-btn, .edit-btn, .delete-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Basic Info Grid */
+    .basic-info-grid {
+        grid-template-columns: 1fr; /* Single column on mobile */
+        gap: 10px;
+    }
+
+    .info-item {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 6px;
+    }
+
+    .info-label {
+        margin-bottom: 0;
+        min-width: 100px;
+    }
+
+    .info-value {
+        text-align: right;
+    }
+
+    /* Header Actions Card */
+    .header-actions-card {
+        padding: 15px;
+    }
+
+    .external-links-compact {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .external-link-compact {
+        width: 100%;
+        justify-content: center;
+        padding: 10px;
+    }
+
+    /* Location Image */
+    .location-image-container {
+        width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    .location-image {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1/1;
+    }
+
+    /* Detail Content */
+    .detail-content {
+        gap: 20px;
+    }
+
+    .info-card {
+        border-radius: 12px;
+    }
+
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .card-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .action-btn-small {
+        flex: 1;
+        justify-content: center;
+        min-width: 80px;
+    }
+
+    /* Photometry & Spectrum */
+    .photometry-container, .spectrum-container {
+        min-height: 300px;
+    }
+
+    /* Comments */
+    .add-comment-form .form-actions {
+        flex-direction: column;
+    }
+
+    .add-comment-form button {
+        width: 100%;
     }
 }

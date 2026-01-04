@@ -3,6 +3,17 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.offline as pyo
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+import math
+
+# Import external module for absolute magnitude calculation
+try:
+    from . import ext_M_calculator
+except ImportError:
+    try:
+        from modules import ext_M_calculator
+    except ImportError:
+        ext_M_calculator = None
 
 class DataVisualization:
     
@@ -49,7 +60,7 @@ class DataVisualization:
         return filter_colors.get(filter_name, f'rgba(128,128,128,{alpha})')  # 預設灰色
     
     @staticmethod
-    def create_photometry_plot_from_db(photometry_data):
+    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None):
         """Create interactive photometry plot from database data"""
         if not photometry_data:
             return None
@@ -57,7 +68,15 @@ class DataVisualization:
         # Group data by filter and telescope
         grouped_data = {}
         
+        all_mjds = []
+        all_mags = []
+        
         for point in photometry_data:
+            if point.get('mjd'):
+                all_mjds.append(point.get('mjd'))
+            if point.get('magnitude'):
+                all_mags.append(point.get('magnitude'))
+                
             filter_name = point.get('filter', 'Unknown')
             telescope = point.get('telescope', 'Unknown')
             key = f"{filter_name}_{telescope}"
@@ -75,20 +94,77 @@ class DataVisualization:
             grouped_data[key]['magnitude'].append(point.get('magnitude'))
             grouped_data[key]['magnitude_error'].append(point.get('magnitude_error', 0))
         
+        # Calculate distance modulus and extinction shift
+        distance_modulus = 0
+        k_correction = 0
+        extinction_shift = 0
+        ref_filter = 'r'
+        
+        if redshift and redshift > 0 and ext_M_calculator:
+            try:
+                # Use ext_M_calculator for distance
+                distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
+                if isinstance(distance_mpc, (int, float)):
+                    distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
+                    k_correction = 2.5 * math.log10(1 + redshift)
+                    
+                    # Calculate extinction if RA/Dec available
+                    if ra is not None and dec is not None:
+                        # Use V band as reference for the axis
+                        ref_filter = 'V'
+                        
+                        extinction_shift = ext_M_calculator.get_extinction(ra, dec, ref_filter)
+                        if not isinstance(extinction_shift, (int, float)):
+                            extinction_shift = 0
+            except Exception as e:
+                print(f"Error calculating absolute magnitude parameters: {e}")
+                distance_modulus = 0
+        elif redshift and redshift > 0:
+            # Fallback to simple calculation if module not available
+            try:
+                c = 299792.458 # km/s
+                H0 = 70.0 # km/s/Mpc
+                d_L_Mpc = (c * redshift) / H0
+                distance_modulus = 5 * np.log10(d_L_Mpc * 1e6) - 5
+            except Exception:
+                distance_modulus = 0
+        
+        total_shift = distance_modulus + k_correction + extinction_shift
+        
         # Create traces for each group
         traces = []
         marker_symbols = ['circle', 'square', 'diamond', 'cross', 'x', 'star']
+        
+        # Assign a consistent symbol for each telescope
+        telescope_symbols = {}
         symbol_index = 0
         
+        # First pass to assign symbols
+        for group_key, data in grouped_data.items():
+            telescope = data['telescope']
+            if telescope not in telescope_symbols:
+                if telescope == 'Unknown':
+                    telescope_symbols[telescope] = 'circle'
+                else:
+                    telescope_symbols[telescope] = marker_symbols[symbol_index % len(marker_symbols)]
+                    symbol_index += 1
+
         for group_key, data in grouped_data.items():
             filter_name = data['filter']
             telescope = data['telescope']
             
+            # Calculate specific absolute magnitude for this filter
+            filter_specific_shift = distance_modulus + k_correction
+            if ra is not None and dec is not None and ext_M_calculator:
+                try:
+                    ext = ext_M_calculator.get_extinction(ra, dec, filter_name)
+                    if isinstance(ext, (int, float)):
+                        filter_specific_shift += ext
+                except Exception:
+                    pass
+            
             # Get symbol for telescope
-            symbol = marker_symbols[symbol_index % len(marker_symbols)]
-            if telescope == 'Unknown':
-                symbol = 'circle'
-            symbol_index += 1
+            symbol = telescope_symbols.get(telescope, 'circle')
             
             # Separate points with and without errors
             with_errors = []
@@ -102,9 +178,19 @@ class DataVisualization:
             
             # Add trace for points with error bars
             if with_errors:
+                # Calculate absolute magnitudes for hover
+                abs_mags = []
+                for i in with_errors:
+                    mag = data['magnitude'][i]
+                    if mag is not None:
+                        abs_mags.append(mag - filter_specific_shift)
+                    else:
+                        abs_mags.append(None)
+                        
                 trace_with_errors = go.Scatter(
                     x=[data['mjd'][i] for i in with_errors],
                     y=[data['magnitude'][i] for i in with_errors],
+                    customdata=abs_mags,
                     mode='markers',
                     name=f'{filter_name} ({telescope})',
                     marker=dict(
@@ -120,18 +206,29 @@ class DataVisualization:
                     ),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                   'MJD: %{x:.3f}<br>' +
-                                  'Magnitude: %{y:.3f}<br>' +
+                                  'App. Mag: %{y:.3f}<br>' +
+                                  'Abs. Mag: %{customdata:.3f}<br>' +
                                   '<extra></extra>'
                 )
                 traces.append(trace_with_errors)
             
             # Add trace for upper limits (points without errors)
             if without_errors:
+                # Calculate absolute magnitudes for hover
+                abs_mags = []
+                for i in without_errors:
+                    mag = data['magnitude'][i]
+                    if mag is not None:
+                        abs_mags.append(mag - filter_specific_shift)
+                    else:
+                        abs_mags.append(None)
+
                 trace_upper_limits = go.Scatter(
                     x=[data['mjd'][i] for i in without_errors],
                     y=[data['magnitude'][i] for i in without_errors],
+                    customdata=abs_mags,
                     mode='markers',
-                    name=f'{filter_name} ({telescope}) - Upper Limits',
+                    name=f'{filter_name} ({telescope}) - Up',
                     marker=dict(
                         color=DataVisualization.get_filter_color(filter_name),
                         symbol='triangle-down-open',
@@ -140,13 +237,30 @@ class DataVisualization:
                     ),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                   'MJD: %{x:.3f}<br>' +
-                                  'Magnitude: %{y:.3f} (Upper Limit)<br>' +
+                                  'App. Mag: %{y:.3f} (Up)<br>' +
+                                  'Abs. Mag: >%{customdata:.3f}<br>' +
                                   '<extra></extra>'
                 )
                 traces.append(trace_upper_limits)
         
         if not traces:
             return None
+            
+        # Determine ranges
+        min_mjd = min(all_mjds) if all_mjds else 59000
+        max_mjd = max(all_mjds) if all_mjds else 59100
+        pad_mjd = (max_mjd - min_mjd) * 0.05
+        if pad_mjd == 0: pad_mjd = 1
+        plot_min_mjd = min_mjd - pad_mjd
+        plot_max_mjd = max_mjd + pad_mjd
+        
+        # Helper to convert MJD to Date string
+        def mjd_to_date_str(mjd):
+            dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(days=mjd - 40587)
+            return dt.strftime('%Y-%m-%d %H:%M:%S')
+            
+        plot_min_date = mjd_to_date_str(plot_min_mjd)
+        plot_max_date = mjd_to_date_str(plot_max_mjd)
         
         # Create layout
         layout = go.Layout(
@@ -155,26 +269,82 @@ class DataVisualization:
                 title="Modified Julian Date (MJD)",
                 tickformat=".2f",
                 showgrid=True,
-                gridcolor='rgba(128,128,128,0.2)'
+                gridcolor='rgba(128,128,128,0.2)',
+                range=[plot_min_mjd, plot_max_mjd]
+            ),
+            xaxis2=dict(
+                title="Date (UTC)",
+                overlaying='x',
+                side='top',
+                type='date',
+                range=[plot_min_date, plot_max_date],
+                showgrid=False
             ),
             yaxis=dict(
-                title="Magnitude",
+                title="Apparent Magnitude",
                 tickformat=".2f",
-                autorange="reversed",  # Brighter magnitudes at top
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             template="plotly_white",
             showlegend=True,
             legend=dict(
-                x=1.02,
+                x=1.15,
                 y=1,
                 xanchor='left',
                 yanchor='top'
             ),
             hovermode='closest',
-            margin=dict(l=60, r=150, t=50, b=60)
+            margin=dict(l=60, r=150, t=80, b=60)
         )
+        
+        # Handle Y-axis range and Absolute Magnitude
+        if all_mags:
+            min_mag = min(all_mags)
+            max_mag = max(all_mags)
+            mag_pad = (max_mag - min_mag) * 0.1
+            if mag_pad == 0: mag_pad = 0.5
+            plot_min_mag = min_mag - mag_pad
+            plot_max_mag = max_mag + mag_pad
+            
+            # Reversed Y-axis: [max, min]
+            layout.yaxis.range = [plot_max_mag, plot_min_mag]
+            
+            if total_shift > 0:
+                layout.yaxis2 = dict(
+                    title="Absolute Magnitude",
+                    overlaying='y',
+                    side='right',
+                    range=[plot_max_mag - total_shift, plot_min_mag - total_shift],
+                    showgrid=False,
+                    tickformat=".2f"
+                )
+                
+                # Add dummy trace to force yaxis2 to appear
+                traces.append(go.Scatter(
+                    x=[plot_min_mjd],
+                    y=[plot_max_mag - total_shift],
+                    xaxis='x',
+                    yaxis='y2',
+                    mode='markers',
+                    marker=dict(opacity=0),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+        else:
+             layout.yaxis.autorange = "reversed"
+             
+        # Add dummy trace to force xaxis2 to appear
+        traces.append(go.Scatter(
+            x=[plot_min_date, plot_max_date],
+            y=[plot_min_mag, plot_max_mag] if all_mags else [0, 0],
+            xaxis='x2',
+            yaxis='y',
+            mode='markers',
+            marker=dict(opacity=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
         
         fig = go.Figure(data=traces, layout=layout)
         

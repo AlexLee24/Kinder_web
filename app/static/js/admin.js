@@ -4,6 +4,13 @@ let filteredUsers = [];
 let currentGroupName = '';
 let availableUsers = [];
 
+const ICONS = {
+    chevronUp: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
+    chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+    arrowRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>',
+    warning: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>'
+};
+
 // Initialize users data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadUsersData();
@@ -646,10 +653,10 @@ function toggleGroupDetails(groupName, index) {
     
     if (detailsElement.style.display === 'none' || detailsElement.style.display === '') {
         detailsElement.style.display = 'block';
-        iconElement.textContent = '▲';
+        iconElement.innerHTML = ICONS.chevronUp;
     } else {
         detailsElement.style.display = 'none';
-        iconElement.textContent = '▼';
+        iconElement.innerHTML = ICONS.chevronDown;
     }
 }
 
@@ -856,7 +863,7 @@ function showConsistencyResults(issues) {
         html += '<p class="issue-description">Users that no longer exist but still have group associations:</p>';
         html += '<ul class="issue-list">';
         issues.orphaned_user_groups.forEach(item => {
-            html += `<li>User: ${item[0]} → Group: ${item[1]}</li>`;
+            html += `<li>User: ${item[0]} ${ICONS.arrowRight} Group: ${item[1]}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -868,14 +875,14 @@ function showConsistencyResults(issues) {
         html += '<p class="issue-description">Groups that no longer exist but still have user associations:</p>';
         html += '<ul class="issue-list">';
         issues.orphaned_group_users.forEach(item => {
-            html += `<li>User: ${item[0]} → Group: ${item[1]}</li>`;
+            html += `<li>User: ${item[0]} ${ICONS.arrowRight} Group: ${item[1]}</li>`;
         });
         html += '</ul>';
         html += '</div>';
     }
     
     html += '<div class="cleanup-warning">';
-    html += '<p><strong>⚠️ Warning:</strong> Cleaning these issues will permanently remove the orphaned relationships. This action cannot be undone.</p>';
+    html += `<p><strong>${ICONS.warning} Warning:</strong> Cleaning these issues will permanently remove the orphaned relationships. This action cannot be undone.</p>`;
     html += '</div>';
     
     resultsContainer.innerHTML = html;
@@ -915,4 +922,34 @@ async function cleanDataConsistency() {
     } catch (error) {
         showNotification('An error occurred: ' + error.message, 'error');
     }
+}
+
+function toggleCustomTargetsAccess(checkbox) {
+    const isChecked = checkbox.checked;
+    
+    fetch('/admin/settings/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            key: 'custom_targets_public_access',
+            value: isChecked
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Optional: show success toast
+            console.log('Setting saved');
+        } else {
+            alert('Failed to save setting: ' + data.error);
+            checkbox.checked = !isChecked; // Revert
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving setting');
+        checkbox.checked = !isChecked; // Revert
+    });
 }

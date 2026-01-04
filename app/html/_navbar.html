@@ -9,9 +9,17 @@
         <div class="header-content">
             <!-- Logo -->
             <a href="/" class="logo">
+                <img src="{{ url_for('static', filename='photo/Kinder_light.png') }}" alt="Kinder Logo">
                 <p>Kinder</p>
             </a>
             
+            <!-- Hamburger Menu Button -->
+            <button class="hamburger-menu" aria-label="Toggle navigation">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
             <!-- Main Navigation -->
             <nav class="main-nav">
                 <!-- Left Navigation -->
@@ -20,17 +28,19 @@
                     <li class="dropdown">
                         <a href="#" class="dropdown-toggle" {% if current_path in ['/', '/astronomy_tools', '/object_visibility'] %}class="active"{% endif %}>
                             Tools
-                            <span class="dropdown-arrow">▼</span>
+                            <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </a>
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('astronomy_tools') }}">Astronomy Tools</a></li>
+                            <li><a href="{{ url_for('observation_planner') }}">Observation Planner</a></li>
+                            <li><a href="{{ url_for('custom_targets_page') }}">Custom Targets</a></li>
                             <li><a href="{{ url_for('object_plot') }}">Object Visibility Plot</a></li>
                             <li><a href="{{ url_for('telescope_simulator') }}">Telescope Simulator</a></li>
                         </ul>
                     </li>
 
                     <li class="dropdown">
-                        <a href="#">About Us <span class="dropdown-arrow">▼</span></a>
+                        <a href="#">About Us <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span></a>
                         <ul class="dropdown-content">
                             <li>
                                 <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">
@@ -45,7 +55,7 @@
                         </ul>
                     </li>
 
-                    <!-- {% if session.user and session.user.is_great_lab_member %}
+                    <!-- {% if session.user and session.user.is_admin %}
                     <li class="dropdown private-area">
                         <a href="{{ url_for('private_area') }}" class="dropdown-toggle" {% if current_path.startswith('/private') %}class="active"{% endif %}>
                             GREAT Lab
@@ -94,6 +104,20 @@
     {% endwith %}
 </div>
 <!-- Flash Messages End -->
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const hamburger = document.querySelector('.hamburger-menu');
+        const mainNav = document.querySelector('.main-nav');
+        
+        if (hamburger && mainNav) {
+            hamburger.addEventListener('click', function() {
+                hamburger.classList.toggle('active');
+                mainNav.classList.toggle('active');
+            });
+        }
+    });
+</script>
 
 <script>
     setTimeout(function() {

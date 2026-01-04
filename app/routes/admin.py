@@ -11,7 +11,8 @@ from modules.database import (
     add_user_to_group, remove_user_from_group, user_in_group,
     get_invitations, create_invitation, get_invitation, update_invitation,
     delete_invitation, clean_accepted_invitations,
-    check_data_consistency, clean_data_consistency
+    check_data_consistency, clean_data_consistency,
+    get_setting, set_setting
 )
 from modules.email_utils import send_invitation_email
 
@@ -156,12 +157,33 @@ def register_admin_routes(app):
         
         current_user_email = session['user']['email']
         
+        # Get settings
+        custom_targets_public = get_setting('custom_targets_public_access', 'false') == 'true'
+        
         return render_template('admin.html', 
                              current_path='/admin',
                              users=users,
                              groups=groups,
                              invitations=invitations,
-                             current_user_email=current_user_email)
+                             current_user_email=current_user_email,
+                             custom_targets_public=custom_targets_public)
+
+    @app.route('/admin/settings/save', methods=['POST'])
+    def save_settings():
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+            
+        data = request.get_json()
+        key = data.get('key')
+        value = data.get('value')
+        
+        if not key:
+            return jsonify({'error': 'Key is required'}), 400
+            
+        if set_setting(key, value):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to save setting'}), 500
 
     # ===============================================================================
     # USER MANAGEMENT

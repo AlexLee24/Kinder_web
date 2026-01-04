@@ -35,7 +35,7 @@ body {
 
 .input-section h3,
 .results-section h3 {
-    color: #46ffaf;
+    color: #C5A059;
     font-size: 1.2em;
     font-weight: 400;
     margin-bottom: 1.5rem;
@@ -45,7 +45,7 @@ body {
 
 .divider {
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(70, 255, 175, 0.3), transparent);
+    background: linear-gradient(90deg, transparent, rgba(197, 160, 89, 0.3), transparent);
     margin: 1.5rem 0;
 }
 
@@ -57,7 +57,7 @@ body {
 }
 
 .tool-button.primary {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
 }
 
 .tool-button.secondary {
@@ -69,7 +69,7 @@ body {
 }
 
 .tool-button.primary:hover {
-    background: linear-gradient(45deg, #52ffb8, #35b57a);
+    background: linear-gradient(45deg, #d4b06a, #9f814f);
 }
 
 .tool-button.secondary:hover {
@@ -109,7 +109,7 @@ body {
 }
 
 .coordinate-section h3 {
-    color: #46ffaf;
+    color: #C5A059;
     font-size: 1.2em;
     font-weight: 400;
     margin-bottom: 1.5rem;
@@ -149,11 +149,11 @@ body {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 12px;
     padding: 1.2rem;
-    border-left: 4px solid #46ffaf;
+    border-left: 4px solid #C5A059;
 }
 
 .result-category h4 {
-    color: #46ffaf;
+    color: #C5A059;
     font-size: 1.1em;
     font-weight: 500;
     margin-bottom: 1rem;
@@ -189,7 +189,7 @@ body {
 
 .result-value-compact {
     font-size: 0.85rem;
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 600;
     font-family: 'Courier New', monospace;
 }
@@ -270,7 +270,7 @@ body {
 .form-group input:focus + .floating-label,
 .form-group input:not(:placeholder-shown) + .floating-label {
     transform: translateY(-1.5rem) scale(0.8);
-    color: #46ffaf;
+    color: #C5A059;
 }
 
 .floating-label {
@@ -310,8 +310,8 @@ body {
 .spinner {
     width: 40px;
     height: 40px;
-    border: 3px solid rgba(70, 255, 175, 0.3);
-    border-top: 3px solid #46ffaf;
+    border: 3px solid rgba(197, 160, 89, 0.3);
+    border-top: 3px solid #C5A059;
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -323,7 +323,7 @@ body {
 
 ::selection,
 ::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
+    background: rgba(197, 160, 89, 0.3);
 }
 
 .container.main-content {
@@ -356,7 +356,7 @@ h1 {
 
 .tool-section h2 {
     font-size: 1.8em;
-    color: #46ffaf;
+    color: #C5A059;
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -373,7 +373,7 @@ h1 {
     transform: translateX(-50%);
     width: 60px;
     height: 2px;
-    background: linear-gradient(90deg, #46ffaf, #667eea);
+    background: linear-gradient(90deg, #C5A059, #8e7340);
     border-radius: 2px;
 }
 
@@ -384,7 +384,7 @@ h1 {
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 500;
     letter-spacing: 0.5px;
     font-size: 14px;
@@ -412,13 +412,13 @@ h1 {
 
 .form-group input:focus {
     outline: none;
-    border-color: #46ffaf;
-    box-shadow: 0 0 20px rgba(70, 255, 175, 0.3);
+    border-color: #C5A059;
+    box-shadow: 0 0 20px rgba(197, 160, 89, 0.3);
     background: rgba(255, 255, 255, 0.15);
 }
 
 .tool-button {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     color: #ffffff;
     padding: 12px 30px;
     border: none;
@@ -434,14 +434,15 @@ h1 {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    box-shadow: 0 6px 20px rgba(70, 255, 175, 0.25);
+    box-shadow: 0 6px 20px rgba(197, 160, 89, 0.25);
     width: fit-content;
+    text-align: center;
 }
 
 .tool-button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(70, 255, 175, 0.3);
-    background: linear-gradient(45deg, #52ffb8, #35b57a);
+    box-shadow: 0 8px 25px rgba(197, 160, 89, 0.3);
+    background: linear-gradient(45deg, #d4b06a, #9f814f);
 }
 
 .tool-button:active {
@@ -475,7 +476,7 @@ h1 {
 }
 
 .result-section h4 {
-    color: #46ffaf;
+    color: #C5A059;
     font-size: 1.2em;
     font-weight: 400;
     margin-bottom: 15px;
@@ -488,7 +489,7 @@ h1 {
     padding: 12px 16px;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
-    border-left: 4px solid #46ffaf;
+    border-left: 4px solid #C5A059;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -508,7 +509,7 @@ h1 {
 }
 
 .result-value {
-    color: #46ffaf;
+    color: #C5A059;
     font-weight: 600;
     font-size: 15px;
     font-family: 'Courier New', monospace;
@@ -529,7 +530,7 @@ h1 {
 }
 
 .success-message {
-    background: linear-gradient(45deg, #46ffaf, #2ca470);
+    background: linear-gradient(45deg, #C5A059, #8e7340);
     color: #ffffff;
     padding: 15px 20px;
     border-radius: 15px;
@@ -537,8 +538,8 @@ h1 {
     text-align: center;
     font-weight: 400;
     letter-spacing: 0.5px;
-    box-shadow: 0 6px 20px rgba(70, 255, 175, 0.25);
-    border: 1px solid rgba(70, 255, 175, 0.3);
+    box-shadow: 0 6px 20px rgba(197, 160, 89, 0.25);
+    border: 1px solid rgba(197, 160, 89, 0.3);
 }
 
 .tool-section ul {
@@ -561,16 +562,18 @@ h1 {
 }
 
 .tool-section ul li::before {
-    content: "✓";
+    content: "";
     position: absolute;
     left: 0;
-    color: #46ffaf;
-    font-weight: bold;
-    font-size: 16px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23C5A059' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
 }
 
 .tool-section h3 {
-    color: #46ffaf;
+    color: #C5A059;
     font-size: 1.3em;
     font-weight: 400;
     margin: 30px 0 15px 0;
@@ -596,7 +599,7 @@ h1 {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2346ffaf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23C5A059' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
     background-repeat: no-repeat;
     background-position: right 12px center;
     background-size: 16px;
@@ -605,8 +608,8 @@ h1 {
 
 .form-group select:focus {
     outline: none;
-    border-color: #46ffaf;
-    box-shadow: 0 0 20px rgba(70, 255, 175, 0.3);
+    border-color: #C5A059;
+    box-shadow: 0 0 20px rgba(197, 160, 89, 0.3);
     background: rgba(255, 255, 255, 0.15);
 }
 
@@ -618,12 +621,12 @@ h1 {
 }
 
 .form-group select option:checked {
-    background: #46ffaf;
+    background: #C5A059;
     color: #000000;
 }
 
 .form-group select option:hover {
-    background: rgba(70, 255, 175, 0.2);
+    background: rgba(197, 160, 89, 0.2);
 }
 
 @keyframes fadeInUp {
@@ -647,12 +650,12 @@ h1 {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(70, 255, 175, 0.6);
+    background: rgba(197, 160, 89, 0.6);
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(70, 255, 175, 0.8);
+    background: rgba(197, 160, 89, 0.8);
 }
 
 @media (max-width: 768px) {
@@ -783,7 +786,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .form-group input:focus-visible {
-    outline: 2px solid rgba(70, 255, 175, 0.5);
+    outline: 2px solid rgba(197, 160, 89, 0.5);
     outline-offset: 2px;
 }
 

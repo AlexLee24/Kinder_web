@@ -1,9 +1,9 @@
 /* ==================== GLOBAL STYLES ==================== */
 :root {
-    --primary-gradient: linear-gradient(45deg, #46ffaf, #2ca470);
+    --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
     --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
     --tertiary-gradient: linear-gradient(45deg, #ff4757, #ff3742);
-    --accent-color: #46ffaf;
+    --accent-color: #C5A059;
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
     --text-primary: #ffffff;
@@ -84,7 +84,7 @@ body {
     transform: translateX(-50%);
     width: 60px;
     height: 2px;
-    background: linear-gradient(90deg, #46ffaf, #667eea);
+    background: linear-gradient(90deg, #C5A059, #8e7340);
     border-radius: 2px;
 }
 
@@ -216,6 +216,10 @@ body {
     position: relative;
     overflow: hidden;
     min-width: 140px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
 }
 
 #generate-btn {

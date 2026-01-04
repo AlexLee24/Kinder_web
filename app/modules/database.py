@@ -63,6 +63,28 @@ def init_database():
             )
         ''')
         
+        # 建立物件權限表格
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS object_permissions (
+                object_name TEXT,
+                group_name TEXT,
+                granted_by TEXT,
+                granted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (object_name, group_name),
+                FOREIGN KEY (group_name) REFERENCES groups (name) ON DELETE CASCADE,
+                FOREIGN KEY (granted_by) REFERENCES users (email)
+            )
+        ''')
+
+        # 建立系統設定表格
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.commit()
 
 @contextmanager
@@ -76,6 +98,25 @@ def get_db_connection():
         conn.close()
 
 # 使用者相關操作
+def get_user(email):
+    """取得單一使用者資訊"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
+        user = cursor.fetchone()
+        
+        if user:
+            user_dict = dict(user)
+            # 取得使用者的群組
+            cursor.execute('''
+                SELECT group_name FROM user_groups 
+                WHERE user_email = ?
+            ''', (email,))
+            groups = [row[0] for row in cursor.fetchall()]
+            user_dict['groups'] = groups
+            return user_dict
+        return None
+
 def get_users():
     """取得所有使用者"""
     with get_db_connection() as conn:
@@ -368,3 +409,106 @@ def clean_data_consistency():
         conn.commit()
     
     return cleaned_count
+# 群組相關操作
+def get_all_groups():
+    """取得所有群組"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM groups ORDER BY name')
+        return [dict(row) for row in cursor.fetchall()]
+
+# 物件權限相關操作
+def get_object_permissions(object_name):
+    """取得物件的權限設定"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT op.*, g.description as group_description 
+            FROM object_permissions op
+            JOIN groups g ON op.group_name = g.name
+            WHERE op.object_name = ?
+        ''', (object_name,))
+        return [dict(row) for row in cursor.fetchall()]
+
+def grant_object_permission(object_name, group_name, granted_by):
+    """授權群組存取物件"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO object_permissions (object_name, group_name, granted_by)
+                VALUES (?, ?, ?)
+            ''', (object_name, group_name, granted_by))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+def revoke_object_permission(object_name, group_name):
+    """移除群組存取物件的權限"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM object_permissions 
+            WHERE object_name = ? AND group_name = ?
+        ''', (object_name, group_name))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def check_object_access(object_name, user_email):
+    """檢查使用者是否有權限存取物件"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. 檢查使用者是否為管理員
+        cursor.execute('SELECT is_admin FROM users WHERE email = ?', (user_email,))
+        user = cursor.fetchone()
+        if not user:
+            return False
+        if user['is_admin']:
+            return True
+            
+        # 2. 檢查物件是否有設定權限
+        # 如果沒有任何權限設定，預設為只有管理員可見 (Closed by default)
+        # 這樣可以確保安全性，如果要開放，必須明確加入群組
+        cursor.execute('SELECT COUNT(*) FROM object_permissions WHERE object_name = ?', (object_name,))
+        if cursor.fetchone()[0] == 0:
+            # 這裡假設沒有設定就是只有管理員能看
+            return False
+            
+        # 3. 檢查使用者是否在被授權的群組中
+        cursor.execute('''
+            SELECT 1 FROM object_permissions op
+            JOIN user_groups ug ON op.group_name = ug.group_name
+            WHERE op.object_name = ? AND ug.user_email = ?
+        ''', (object_name, user_email))
+        
+        return cursor.fetchone() is not None
+
+# 系統設定相關操作
+def get_setting(key, default=None):
+    """取得系統設定"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        # Check if table exists first to avoid errors during migration
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+        if not cursor.fetchone():
+            return default
+            
+        cursor.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
+        row = cursor.fetchone()
+        return row['value'] if row else default
+
+def set_setting(key, value):
+    """儲存系統設定"""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        ''', (key, str(value)))
+        conn.commit()
+        return True

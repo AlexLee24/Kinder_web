@@ -3,7 +3,7 @@ Marshal routes for the Kinder web application.
 """
 from flask import render_template, redirect, url_for, session, flash, request, jsonify
 
-from modules.tns_database import (
+from modules.postgres_database import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics
 )
@@ -102,6 +102,8 @@ def register_marshal_routes(app):
                                  initial_limit=initial_limit)
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             flash('Error loading transient data.', 'error')
             return render_template('marshal.html', 
                                  current_path='/marshal',

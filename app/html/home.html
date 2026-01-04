@@ -15,7 +15,10 @@
             <div class="banner-content">
                 <div class="banner-left">
                     <div class="title-section">
-                        <h1>Kinder</h1>
+                        <h1>
+                            <img src="{{ url_for('static', filename='photo/Kinder_light.png') }}" alt="Kinder Logo" class="home-logo">
+                            Kinder
+                        </h1>
                         <h2>Kilonova Finder</h2>
                     </div>
                     
@@ -52,7 +55,7 @@
                     <div class="banner-contact">
                         <h3>Contact</h3>
                         <div class="contact-info">
-                            <p class="email">kinder[[@]]astro.ncu.edu.tw</p>
+                            <p class="email" id="obfuscated-email" data-user="kinder" data-domain="astro.ncu.edu.tw"></p>
                             <p class="phone">+886-3-422-7151 #65964</p>
                         </div>
                     </div>
@@ -60,12 +63,13 @@
                 
                 <div class="banner-right">
                     <div class="image-container">
-                        <img src="{{ url_for('static', filename='photo/SLT_SN2024ggi.png') }}" alt="SN2024ggi" />
+                        <img src="{{ url_for('static', filename='photo/SLT_SN2024ggi.png') }}" alt="Slideshow Image" />
                         <p>SLT g-, r-, and i-band images of SN2024ggi</p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/home.js') }}"></script>
 </body>
 </html>

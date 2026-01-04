@@ -3,7 +3,7 @@ Authentication routes (Google OAuth, login, logout)
 """
 from flask import session, flash, redirect, url_for, request
 from datetime import datetime
-from modules.database import user_exists, get_users, save_user, update_user
+from modules.database import user_exists, get_users, get_user, save_user, update_user
 from modules.config import config
 
 def register_auth_routes(app):
@@ -20,6 +20,31 @@ def register_auth_routes(app):
             'scope': 'openid email profile'
         }
     )
+
+    @app.before_request
+    def refresh_user_session():
+        """Refresh user session data from database on every request"""
+        if 'user' in session:
+            # Skip static files to reduce DB load
+            if request.path.startswith('/static'):
+                return
+
+            user_email = session['user']['email']
+            user_data = get_user(user_email)
+            
+            if user_data:
+                # Update admin status if changed
+                current_is_admin = user_data.get('is_admin', False)
+                if session['user'].get('is_admin') != current_is_admin:
+                    session['user']['is_admin'] = current_is_admin
+                    session.modified = True
+                
+                # Update groups/membership if changed
+                user_groups = user_data.get('groups', [])
+                is_great_lab_member = 'GREAT_Lab' in user_groups
+                if session['user'].get('is_great_lab_member') != is_great_lab_member:
+                    session['user']['is_great_lab_member'] = is_great_lab_member
+                    session.modified = True
 
     def update_user_session_groups(user_email):
         if 'user' in session and session['user']['email'] == user_email:

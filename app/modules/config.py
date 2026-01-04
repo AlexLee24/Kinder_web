@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Use relative path to kinder.env (2 levels up from app/modules/)
+basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, '..', '..', 'kinder.env'))
 
 class Config:
     # Application settings

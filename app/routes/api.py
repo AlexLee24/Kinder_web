@@ -3,18 +3,18 @@ API routes for the Kinder web application.
 """
 import math
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import request, jsonify, session
 
-from modules.tns_database import (
+from modules.postgres_database import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics, get_filtered_stats, get_distinct_classifications,
     update_object_status, update_object_activity, get_auto_snooze_stats
 )
-from modules.tns_scheduler import tns_scheduler
-from modules.auto_snooze_scheduler import auto_snooze_scheduler
-from modules.object_data import object_db
+from modules.Manual_tns_download_snoozed import download_TNS_api_hr, addin_database, auto_snoozed
+from modules.download_phot import process_single_object_workflow
 from modules.data_processing import DataVisualization
+import pathlib
 
 
 def register_api_routes(app):
@@ -66,12 +66,22 @@ def register_api_routes(app):
             if existing_objects:
                 return jsonify({'error': f'Object {object_name} already exists in database'}), 400
             
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             import uuid
             
             conn = get_tns_db_connection()
             cursor = conn.cursor()
-            objid = str(uuid.uuid4())
+            objid = str(uuid.uuid4()) # Note: objid in postgres is INTEGER, this might fail if uuid is string. 
+            # Actually postgres_database.py defines objid as INTEGER PRIMARY KEY.
+            # So we should generate an integer ID or let it auto-increment if it was SERIAL.
+            # But it is INTEGER PRIMARY KEY, not SERIAL.
+            # We need to find the max objid and increment it, or use a random integer.
+            # Let's check how postgres_database.py handles inserts. It doesn't have insert function for objects.
+            # We should probably use a large random integer or max+1.
+            
+            # Let's use max+1
+            cursor.execute("SELECT COALESCE(MAX(objid), 0) + 1 FROM tns_objects")
+            objid = cursor.fetchone()[0]
             
             if discovery_date:
                 try:
@@ -85,8 +95,8 @@ def register_api_routes(app):
             INSERT INTO tns_objects (
                 objid, name, name_prefix, type, ra, declination, 
                 discoverymag, discoverydate, source_group, 
-                time_received, lastmodified, tag
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                time_received, lastmodified, inbox, snoozed, follow, finish_follow
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0, 0, 0)
             '''
             
             current_time = datetime.now().isoformat()
@@ -102,8 +112,7 @@ def register_api_routes(app):
                 discovery_date,
                 source or 'Manual Entry',
                 current_time,
-                current_time,
-                'object'
+                current_time
             ))
             
             conn.commit()
@@ -130,22 +139,23 @@ def register_api_routes(app):
             return jsonify({'success': False, 'error': 'Admin access required'}), 403
         
         try:
-            result = auto_snooze_scheduler.manual_auto_snooze()
+            # Run auto-snooze
+            success = auto_snoozed(datetime.now(timezone.utc), debug=True)
             
-            if isinstance(result, dict):
+            if success:
+                # Get updated stats
+                stats = get_auto_snooze_stats()
                 return jsonify({
                     'success': True,
-                    'snoozed_count': result.get('snoozed_count', 0),
-                    'unsnoozed_count': result.get('unsnoozed_count', 0),
-                    'total_processed': result.get('total_processed', 0)
+                    'snoozed_count': stats.get('snoozed_count', 0),
+                    'finished_count': stats.get('finished_count', 0),
+                    'message': 'Auto-snooze completed successfully'
                 })
             else:
                 return jsonify({
-                    'success': True,
-                    'total_processed': result,
-                    'snoozed_count': 0,
-                    'unsnoozed_count': 0
-                })
+                    'success': False,
+                    'error': 'Auto-snooze failed'
+                }), 500
                 
         except Exception as e:
             import traceback
@@ -195,6 +205,29 @@ def register_api_routes(app):
                 }
             }), 500
 
+    @app.route('/api/object/<path:object_name>/fetch_photometry', methods=['POST'])
+    def fetch_photometry(object_name):
+        """Fetch photometry for a specific object"""
+        if 'user' not in session:
+            return jsonify({'error': 'Access denied'}), 403
+            
+        try:
+            object_name = urllib.parse.unquote(object_name)
+            print(f"Fetching photometry for {object_name}")
+            
+            # Run the workflow
+            process_single_object_workflow(object_name)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Photometry fetch completed for {object_name}'
+            })
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/objects')
     def api_get_objects():
         page = request.args.get('page', 1, type=int)
@@ -204,12 +237,26 @@ def register_api_routes(app):
         search = request.args.get('search', '')
         classification = request.args.get('classification', '')
         tag = request.args.get('tag', '')
+        
+        # Handle optional parameters that might be empty strings
         date_from = request.args.get('date_from', '')
+        date_from = date_from if date_from else None
+        
         date_to = request.args.get('date_to', '')
+        date_to = date_to if date_to else None
+        
         app_mag_min = request.args.get('app_mag_min', '')
+        app_mag_min = float(app_mag_min) if app_mag_min else None
+        
         app_mag_max = request.args.get('app_mag_max', '')
+        app_mag_max = float(app_mag_max) if app_mag_max else None
+        
         redshift_min = request.args.get('redshift_min', '')
+        redshift_min = float(redshift_min) if redshift_min else None
+        
         redshift_max = request.args.get('redshift_max', '')
+        redshift_max = float(redshift_max) if redshift_max else None
+        
         discoverer = request.args.get('discoverer', '')
         
         try:
@@ -295,18 +342,24 @@ def register_api_routes(app):
             if not object_names:
                 return jsonify({'success': True, 'tags': {}})
             
-            from modules.tns_database import get_tns_db_connection
+            from modules.postgres_database import get_tns_db_connection
             
             conn = get_tns_db_connection()
             cursor = conn.cursor()
             
-            placeholders = ','.join(['?' for _ in object_names])
+            placeholders = ','.join(['%s' for _ in object_names])
             
             cursor.execute(f'''
-                SELECT name, COALESCE(tag, 'object') as tag
+                SELECT name, 
+                       CASE 
+                            WHEN finish_follow = 1 THEN 'finished'
+                            WHEN follow = 1 THEN 'followup'
+                            WHEN snoozed = 1 THEN 'snoozed'
+                            ELSE 'object'
+                       END as tag
                 FROM tns_objects 
                 WHERE name IN ({placeholders})
-            ''', object_names)
+            ''', tuple(object_names))
             
             results = cursor.fetchall()
             conn.close()
@@ -363,17 +416,38 @@ def register_api_routes(app):
             data = request.get_json() or {}
             hour_offset = data.get('hour_offset', 0)
             
-            result = tns_scheduler.manual_download(hour_offset)
+            # Download TNS data
+            utc_now = datetime.now(timezone.utc)
+            utc_hr = f"{(utc_now.hour - hour_offset) % 24:02d}"
             
-            return jsonify({
-                'success': True,
-                'message': f'Successfully processed {result["total_processed"]} TNS objects ({result["imported"]} new, {result["updated"]} updated)',
-                'imported_count': result['imported'],
-                'updated_count': result['updated'],
-                'total_processed': result['total_processed']
-            })
+            download_success = download_TNS_api_hr(utc_hr, debug=True)
+            
+            if not download_success:
+                return jsonify({'error': 'Download failed'}), 500
+            
+            # Import to database
+            SAVE_DIR = pathlib.Path("app/data/tns_api_download_work")
+            work_csv = SAVE_DIR / "tns_public_objects_WORK.csv"
+            
+            import_success = addin_database(work_csv, debug=True)
+            
+            if import_success:
+                stats = get_tns_statistics()
+                recent = stats.get('recent_downloads', [])
+                latest = recent[0] if recent else {}
+                
+                return jsonify({
+                    'success': True,
+                    'message': f'Successfully downloaded and imported TNS data',
+                    'imported_count': latest.get('imported_count', 0),
+                    'updated_count': latest.get('updated_count', 0)
+                })
+            else:
+                return jsonify({'error': 'Import failed'}), 500
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': str(e)}), 500
 
     @app.route('/api/tns/search', methods=['POST'])
@@ -415,8 +489,14 @@ def register_api_routes(app):
             return jsonify({'error': 'Access denied'}), 403
         
         try:
-            status = auto_snooze_scheduler.get_status()
-            return jsonify({'success': True, 'status': status})
+            stats = get_auto_snooze_stats()
+            return jsonify({
+                'success': True, 
+                'status': {
+                    'snoozed_count': stats.get('snoozed_count', 0),
+                    'finished_count': stats.get('finished_count', 0)
+                }
+            })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 

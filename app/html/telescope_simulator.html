@@ -17,8 +17,11 @@
             <div class="sky-map-section">
                 <div class="sky-map-container">
                     <div class="sky-map-header">
-                        <h2>Telescope Simulator</h2>
-                        <p>Interactive telescope simulation with real sky data</p>
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 5px;">
+                            <h2 style="margin: 0;">Telescope Simulator</h2>
+                            <a href="{{ url_for('mount_torque') }}" class="compact-btn" style="text-decoration: none; padding: 4px 12px; font-size: 0.9rem; display: inline-flex; align-items: center; justify-content: center;">Mount Torque</a>
+                        </div>
+                        <!-- <p>Interactive telescope simulation with real sky data</p> -->
                         
                         <!-- Survey Selection Embedded -->
                         <div class="survey-selection-embedded">

@@ -3,6 +3,11 @@ let aladin;
 let isAladinReady = false;
 let currentSurvey = 'CDS/P/DSS2/color';
 
+const ICONS = {
+    chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+    chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+};
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeAladin();
@@ -44,7 +49,7 @@ function initializeAladin() {
                 showContextMenu: false,
                 allowFullZoomout: true,
                 realFullscreen: true,
-                reticleColor: '#46ffaf',
+                reticleColor: '#C5A059',
                 reticleSize: 20,
                 showStatusBar: false,
             });
@@ -126,11 +131,11 @@ function toggleCard(cardId) {
     if (cardContent.classList.contains('collapsed')) {
         cardContent.classList.remove('collapsed');
         icon.classList.remove('collapsed');
-        icon.textContent = '▼';
+        icon.innerHTML = ICONS.chevronDown;
     } else {
         cardContent.classList.add('collapsed');
         icon.classList.add('collapsed');
-        icon.textContent = '▶';
+        icon.innerHTML = ICONS.chevronRight;
     }
 }
 
@@ -145,9 +150,9 @@ function toggleTileCenters() {
         
         // Update icon
         if (tileCentersContent.classList.contains('collapsed')) {
-            tileCentersIcon.textContent = '▶';
+            tileCentersIcon.innerHTML = ICONS.chevronRight;
         } else {
-            tileCentersIcon.textContent = '▼';
+            tileCentersIcon.innerHTML = ICONS.chevronDown;
         }
     }
 }
@@ -209,7 +214,7 @@ function calculateFOV() {
     const fRatio = effectiveFocalLength / aperture;
     const pixelSizeX = (sensorWidth / resX) * 1000; // in microns
     const pixelSizeY = (sensorHeight / resY) * 1000;
-    const pixelScale = (pixelSizeX / effectiveFocalLength) * 206265; // arcsec/pixel
+    const pixelScale = (pixelSizeX / effectiveFocalLength) * 206.265; // arcsec/pixel
     
     const fovWidthDeg = (sensorWidth / effectiveFocalLength) * 57.2958;
     const fovHeightDeg = (sensorHeight / effectiveFocalLength) * 57.2958;
@@ -672,7 +677,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
                 rect.setAttribute('width', frameWidthPx);
                 rect.setAttribute('height', frameHeightPx);
                 rect.setAttribute('fill', 'none');
-                rect.setAttribute('stroke', '#46ffaf');
+                rect.setAttribute('stroke', '#C5A059');
                 rect.setAttribute('stroke-width', '2');
                 rect.setAttribute('stroke-opacity', '0.8');
                 
@@ -695,7 +700,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
                         overlapRect.setAttribute('width', overlapPx);
                         overlapRect.setAttribute('height', frameHeightPx);
                         overlapRect.setAttribute('fill', 'none');
-                        overlapRect.setAttribute('stroke', '#46ffaf');
+                        overlapRect.setAttribute('stroke', '#C5A059');
                         overlapRect.setAttribute('stroke-width', '1');
                         overlapRect.setAttribute('stroke-opacity', '0.5');
                         overlapRect.setAttribute('stroke-dasharray', '5,5');
@@ -717,7 +722,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
                         overlapRect.setAttribute('width', frameWidthPx);
                         overlapRect.setAttribute('height', overlapPyPx);
                         overlapRect.setAttribute('fill', 'none');
-                        overlapRect.setAttribute('stroke', '#46ffaf');
+                        overlapRect.setAttribute('stroke', '#C5A059');
                         overlapRect.setAttribute('stroke-width', '1');
                         overlapRect.setAttribute('stroke-opacity', '0.5');
                         overlapRect.setAttribute('stroke-dasharray', '5,5');
@@ -737,7 +742,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
                     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                     text.setAttribute('x', frameX + frameWidthPx / 2);
                     text.setAttribute('y', frameY + frameHeightPx / 2);
-                    text.setAttribute('fill', '#46ffaf');
+                    text.setAttribute('fill', '#C5A059');
                     text.setAttribute('font-size', '12');
                     text.setAttribute('font-family', 'Arial');
                     text.setAttribute('text-anchor', 'middle');
@@ -763,7 +768,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
         hLine.setAttribute('y1', centerY);
         hLine.setAttribute('x2', centerX + crosshairSize);
         hLine.setAttribute('y2', centerY);
-        hLine.setAttribute('stroke', '#46ffaf');
+        hLine.setAttribute('stroke', '#C5A059');
         hLine.setAttribute('stroke-width', '1');
         hLine.setAttribute('stroke-opacity', '0.6');
         
@@ -772,7 +777,7 @@ function createFixedFOVOverlay(tilesX, tilesY, fovWidth, fovHeight, overlap, rot
         vLine.setAttribute('y1', centerY - crosshairSize);
         vLine.setAttribute('x2', centerX);
         vLine.setAttribute('y2', centerY + crosshairSize);
-        vLine.setAttribute('stroke', '#46ffaf');
+        vLine.setAttribute('stroke', '#C5A059');
         vLine.setAttribute('stroke-width', '1');
         vLine.setAttribute('stroke-opacity', '0.6');
         
