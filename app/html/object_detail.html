@@ -115,19 +115,19 @@
                         </div>
                         <div class="info-item">
                             <span class="info-label">Reporting Group:</span>
-                            <span class="info-value">{{ object_data.reporting_group or 'N/A' }}</span>
+                            <span class="info-value" id="reportingGroup">{{ object_data.reporting_group or 'N/A' }}</span>
                         </div>
                         <div class="info-item">
                             <span class="info-label">Discovery Survey:</span>
-                            <span class="info-value">{{ object_data.source_group or 'N/A' }}</span>
+                            <span class="info-value" id="discoverySurvey">{{ object_data.source_group or 'N/A' }}</span>
                         </div>
                         <div class="info-item">
                             <span class="info-label">Brightest Mag:</span>
-                            <span class="info-value">{{ object_data.brightest_mag or 'N/A' }}</span>
+                            <span class="info-value" id="brightestMag">{{ object_data.brightest_mag or 'N/A' }}</span>
                         </div>
                         <div class="info-item">
                             <span class="info-label">Brightest M:</span>
-                            <span class="info-value">{{ object_data.brightest_abs_mag or '--' }}</span>
+                            <span class="info-value" id="brightestAbsMag">{{ object_data.brightest_abs_mag or '--' }}</span>
                         </div>
                     </div>
                     
@@ -576,7 +576,7 @@
     <!-- Notification Container -->
     <div class="notification-container" id="notificationContainer"></div>
 
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
 </body>
 </html>

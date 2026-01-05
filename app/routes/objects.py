@@ -35,6 +35,10 @@ def register_object_routes(app):
         try:
             object_name = urllib.parse.unquote(object_name)
             
+            # Update absolute magnitude and brightest mag
+            from modules.postgres_database import update_object_abs_mag
+            update_object_abs_mag(object_name)
+            
             # Try exact match first using direct SQL query
             from modules.postgres_database import get_tns_db_connection
             conn = get_tns_db_connection()
@@ -56,7 +60,7 @@ def register_object_routes(app):
                           reporting_groupid, reporting_group, source_groupid, source_group,
                           discoverydate, discoverymag, discmagfilter, filter, reporters,
                           time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                          creationdate, lastmodified,
+                          creationdate, lastmodified, brightest_mag, brightest_abs_mag,
                           {tag_logic}
                    FROM tns_objects 
                    WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
@@ -65,7 +69,7 @@ def register_object_routes(app):
                           reporting_groupid, reporting_group, source_groupid, source_group,
                           discoverydate, discoverymag, discmagfilter, filter, reporters,
                           time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                          creationdate, lastmodified,
+                          creationdate, lastmodified, brightest_mag, brightest_abs_mag,
                           {tag_logic}
                    FROM tns_objects 
                    WHERE name ILIKE %s"""
@@ -101,47 +105,8 @@ def register_object_routes(app):
                 flash(f'Object {object_name} not found.', 'error')
                 return redirect(url_for('marshal'))
             
-            # Calculate brightest mag and abs mag
-            try:
-                photometry_data = TNSObjectDB.get_photometry(object_name)
-                if photometry_data:
-                    valid_points = [p for p in photometry_data if p.get('magnitude') is not None]
-                    if valid_points:
-                        brightest_point = min(valid_points, key=lambda x: float(x['magnitude']))
-                        brightest_mag_val = float(brightest_point['magnitude'])
-                        
-                        # Format brightest mag
-                        filt = brightest_point.get('filter', '')
-                        matching_obj['brightest_mag'] = f"{brightest_mag_val:.2f}"
-                        if filt:
-                            matching_obj['brightest_mag'] += f" ({filt})"
-                        
-                        # Calculate Abs Mag
-                        redshift = matching_obj.get('redshift')
-                        ra = matching_obj.get('ra')
-                        dec = matching_obj.get('declination')
-                        
-                        if redshift and redshift > 0:
-                            distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
-                            if isinstance(distance_mpc, (int, float)):
-                                distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
-                                k_correction = 2.5 * math.log10(1 + redshift)
-                                
-                                extinction = 0
-                                if ra is not None and dec is not None:
-                                    # Use specific filter for extinction
-                                    ext_filt = filt if filt else 'V'
-                                    ext = ext_M_calculator.get_extinction(ra, dec, ext_filt)
-                                    if isinstance(ext, (int, float)):
-                                        extinction = ext
-                                
-                                abs_mag = brightest_mag_val - distance_modulus - k_correction - extinction
-                                matching_obj['brightest_abs_mag'] = f"{abs_mag:.2f}"
-                                if filt:
-                                    matching_obj['brightest_abs_mag'] += f" ({filt})"
-            except Exception as e:
-                print(f"Error calculating brightest values: {e}")
-                pass
+            # Values are already calculated by update_object_abs_mag and fetched from DB
+            # No need to recalculate here
 
             # Convert datetime objects to strings for template compatibility
             if matching_obj:
@@ -170,6 +135,10 @@ def register_object_routes(app):
             # Construct TNS-style name from year and letters
             object_name = f"{year}{letters}"
             
+            # Update absolute magnitude and brightest mag
+            from modules.postgres_database import update_object_abs_mag
+            update_object_abs_mag(object_name)
+            
             # Search for object by constructed name
             results = search_tns_objects(search_term=object_name, limit=10)
             
@@ -196,47 +165,8 @@ def register_object_routes(app):
                 flash(f'Object {object_name} not found.', 'error')
                 return redirect(url_for('marshal'))
             
-            # Calculate brightest mag and abs mag
-            try:
-                photometry_data = TNSObjectDB.get_photometry(object_name)
-                if photometry_data:
-                    valid_points = [p for p in photometry_data if p.get('magnitude') is not None]
-                    if valid_points:
-                        brightest_point = min(valid_points, key=lambda x: float(x['magnitude']))
-                        brightest_mag_val = float(brightest_point['magnitude'])
-                        
-                        # Format brightest mag
-                        filt = brightest_point.get('filter', '')
-                        matching_obj['brightest_mag'] = f"{brightest_mag_val:.2f}"
-                        if filt:
-                            matching_obj['brightest_mag'] += f" ({filt})"
-                        
-                        # Calculate Abs Mag
-                        redshift = matching_obj.get('redshift')
-                        ra = matching_obj.get('ra')
-                        dec = matching_obj.get('declination')
-                        
-                        if redshift and redshift > 0:
-                            distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
-                            if isinstance(distance_mpc, (int, float)):
-                                distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
-                                k_correction = 2.5 * math.log10(1 + redshift)
-                                
-                                extinction = 0
-                                if ra is not None and dec is not None:
-                                    # Use specific filter for extinction
-                                    ext_filt = filt if filt else 'V'
-                                    ext = ext_M_calculator.get_extinction(ra, dec, ext_filt)
-                                    if isinstance(ext, (int, float)):
-                                        extinction = ext
-                                
-                                abs_mag = brightest_mag_val - distance_modulus - k_correction - extinction
-                                matching_obj['brightest_abs_mag'] = f"{abs_mag:.2f}"
-                                if filt:
-                                    matching_obj['brightest_abs_mag'] += f" ({filt})"
-            except Exception as e:
-                print(f"Error calculating brightest values: {e}")
-                pass
+            # Values are already calculated by update_object_abs_mag and fetched from DB
+            # No need to recalculate here
 
             # Convert datetime objects to strings for template compatibility
             if matching_obj:
@@ -345,6 +275,10 @@ def register_object_routes(app):
         try:
             object_name = urllib.parse.unquote(object_name)
             
+            # Update absolute magnitude and brightest mag before fetching
+            from modules.postgres_database import update_object_abs_mag
+            update_object_abs_mag(object_name)
+            
             # First try exact match
             from modules.postgres_database import get_tns_db_connection
             conn = get_tns_db_connection()
@@ -356,7 +290,7 @@ def register_object_routes(app):
                        reporting_groupid, reporting_group, source_groupid, source_group,
                        discoverydate, discoverymag, discmagfilter, filter, reporters,
                        time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                       creationdate, lastmodified,
+                       creationdate, lastmodified, brightest_mag, brightest_abs_mag,
                        CASE 
                             WHEN finish_follow = 1 THEN 'finished'
                             WHEN follow = 1 THEN 'followup'
@@ -376,7 +310,7 @@ def register_object_routes(app):
                           'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
                           'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
                           'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                          'creationdate', 'lastmodified', 'tag']
+                          'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tag']
                 obj = dict(zip(columns, exact_result))
             else:
                 # Fallback to search function

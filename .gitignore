@@ -64,3 +64,5 @@ Thumbs.db
 OLD/
 data/
 app/modules/download_phot.py
+Cross_match_data/
+import_cross_match.py

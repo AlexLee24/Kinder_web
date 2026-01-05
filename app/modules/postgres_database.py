@@ -264,6 +264,57 @@ def init_tns_database():
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_object ON comments(object_name)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_created ON comments(created_at)')
         
+        # Cross Match Results table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cross_match_results (
+                id SERIAL PRIMARY KEY,
+                target_name TEXT NOT NULL,
+                catalog_name TEXT NOT NULL,
+                match_data TEXT,
+                separation_arcsec DOUBLE PRECISION,
+                is_host BOOLEAN DEFAULT FALSE,
+                flag BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (target_name) REFERENCES tns_objects(name) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Check if is_host column exists, if not add it
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='cross_match_results' AND column_name='is_host'
+        """)
+        if not cursor.fetchone():
+            cursor.execute('ALTER TABLE cross_match_results ADD COLUMN is_host BOOLEAN DEFAULT FALSE')
+
+        # Check if updated_at column exists, if not add it
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='cross_match_results' AND column_name='updated_at'
+        """)
+        if not cursor.fetchone():
+            cursor.execute('ALTER TABLE cross_match_results ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP')
+            
+        # Target Images table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS target_images (
+                id SERIAL PRIMARY KEY,
+                target_name TEXT NOT NULL UNIQUE,
+                image_data BYTEA NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (target_name) REFERENCES tns_objects(name) ON DELETE CASCADE
+            )
+        ''')
+        
+        # Create indexes for cross match results
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cm_target ON cross_match_results(target_name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cm_created ON cross_match_results(created_at)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cm_flag ON cross_match_results(flag)')
+        
         conn.commit()
         cursor.close()
         
@@ -466,6 +517,25 @@ class TNSObjectDB:
             
         return [dict(row) for row in results]
     
+    @staticmethod
+    def get_object_details(object_name):
+        """Get details for a TNS object"""
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=extras.DictCursor)
+            
+            cursor.execute('''
+                SELECT name, ra, declination, discoverydate, internal_names, type, redshift
+                FROM tns_objects 
+                WHERE name = %s
+            ''', (object_name,))
+            
+            result = cursor.fetchone()
+            cursor.close()
+            
+        if result:
+            return dict(result)
+        return None
+
     @staticmethod
     def delete_photometry_point(point_id):
         """Delete photometry point"""
@@ -1107,6 +1177,542 @@ def get_auto_snooze_stats():
         cursor.close()
         
     return stats
+
+def get_available_dates():
+    """Get list of dates that have cross match results"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT created_at::date as date 
+                FROM cross_match_results 
+                ORDER BY date DESC
+            """)
+            dates = [row[0].strftime('%Y-%m-%d') for row in cur.fetchall()]
+            cur.close()
+            return dates
+    except Exception as e:
+        print(f"Error getting available dates: {e}")
+        return []
+
+def get_cross_match_results(limit=1000, date=None):
+    """Get cross match results from database"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            
+            # Check if flag column exists, if not add it
+            try:
+                cur.execute("SELECT flag FROM cross_match_results LIMIT 1")
+            except psycopg2.Error:
+                conn.rollback()
+                cur.execute("ALTER TABLE cross_match_results ADD COLUMN flag BOOLEAN DEFAULT FALSE")
+                conn.commit()
+            
+            query = "SELECT * FROM cross_match_results"
+            params = []
+            
+            if date:
+                query += " WHERE created_at::date = %s"
+                params.append(date)
+                
+            query += " ORDER BY created_at DESC"
+            
+            if limit and not date: # Only apply limit if no date is specified (show all for a specific date)
+                query += " LIMIT %s"
+                params.append(limit)
+                
+            cur.execute(query, tuple(params))
+            results = cur.fetchall()
+            cur.close()
+            return results
+    except Exception as e:
+        print(f"Error getting cross match results: {e}")
+        return []
+
+def update_cross_match_flag(result_id, flag_value):
+    """Update flag status for a cross match result"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE cross_match_results 
+                SET flag = %s 
+                WHERE id = %s
+            """, (flag_value, result_id))
+            conn.commit()
+            cur.close()
+            return True
+    except Exception as e:
+        print(f"Error updating flag: {e}")
+        return False
+
+def save_flag_objects(flag_list):
+    """
+    Save flagged objects to database.
+    flag_list: list of [name_prefix, name, ra, declination, discoverydate, internal_names]
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            count = 0
+            for item in flag_list:
+                # item structure: ['name_prefix', 'name', 'ra', 'declination', 'discoverydate', 'internal_names']
+                if len(item) < 2:
+                    continue
+                    
+                name = item[1]
+                
+                # Check if object exists in cross_match_results
+                cur.execute("SELECT id FROM cross_match_results WHERE target_name = %s", (name,))
+                results = cur.fetchall()
+                
+                if results:
+                    # Update existing matches to be flagged
+                    cur.execute("UPDATE cross_match_results SET flag = TRUE WHERE target_name = %s", (name,))
+                    count += 1
+                else:
+                    # Insert a new record indicating it's a flagged object
+                    # We use a special catalog name 'FLAGGED_LIST'
+                    # Check if it exists in tns_objects
+                    cur.execute("SELECT 1 FROM tns_objects WHERE name = %s", (name,))
+                    if cur.fetchone():
+                        cur.execute("""
+                            INSERT INTO cross_match_results 
+                            (target_name, catalog_name, match_data, separation_arcsec, flag)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (name, 'FLAGGED_LIST', '{}', 0, True))
+                        count += 1
+                    else:
+                        # If not in tns_objects, we might want to insert it?
+                        # But we need more data. For now, just skip and log.
+                        print(f"Warning: Flagged object {name} not found in tns_objects. Skipping.")
+            
+            conn.commit()
+            print(f"Processed {len(flag_list)} flagged objects. Updated/Inserted {count} records.")
+            
+    except Exception as e:
+        print(f"Error saving flag objects: {e}")
+
+import json
+
+def save_cross_match_results(results_list):
+    """
+    Save cross match results to database.
+    results_list: list of dictionaries containing match data.
+    Each dict must have: 'tns_name', 'is_Host', and match details.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            count = 0
+            for result in results_list:
+                target_name = result.get('tns_name')
+                if not target_name:
+                    continue
+                
+                # Determine catalog name
+                if 'lens_catalog' in result:
+                    catalog_name = f"Lens_{result['lens_catalog']}"
+                else:
+                    catalog_name = 'DESI'
+                
+                separation = float(result.get('separation_arcsec', 0))
+                is_host = result.get('is_Host', False)
+                
+                # Prepare match_data (remove TNS fields to avoid duplication)
+                match_data = result.copy()
+                tns_fields = ['tns_name_prefix', 'tns_name', 'tns_ra', 'tns_dec', 
+                              'tns_discoverydate', 'tns_internal_names', 'lens_catalog']
+                for field in tns_fields:
+                    match_data.pop(field, None)
+                
+                # Check if this specific match already exists (to avoid duplicates on re-run)
+                # We use separation as a proxy for uniqueness
+                # Removed date check to avoid duplicates when processing overlapping days (e.g. past 3 days)
+                check_query = """
+                    SELECT id FROM cross_match_results 
+                    WHERE target_name = %s 
+                    AND catalog_name = %s 
+                    AND abs(separation_arcsec - %s) < 0.0001
+                """
+                cur.execute(check_query, (target_name, catalog_name, separation))
+                existing_id = cur.fetchone()
+                
+                if existing_id:
+                    # Update the existing record
+                    update_query = """
+                        UPDATE cross_match_results
+                        SET match_data = %s,
+                            is_host = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                    """
+                    cur.execute(update_query, (json.dumps(match_data, default=str), is_host, existing_id[0]))
+                else:
+                    insert_query = """
+                        INSERT INTO cross_match_results 
+                        (target_name, catalog_name, match_data, separation_arcsec, is_host)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """
+                    cur.execute(insert_query, (
+                        target_name, 
+                        catalog_name, 
+                        json.dumps(match_data, default=str), 
+                        separation,
+                        is_host
+                    ))
+                count += 1
+            
+            conn.commit()
+            print(f"Saved {count} cross match results to database.")
+            
+    except Exception as e:
+        print(f"Error saving cross match results: {e}")
+
+def save_target_image(target_name, image_data):
+    """
+    Save target image to database.
+    image_data: bytes
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            # Check if image exists
+            cur.execute("SELECT id FROM target_images WHERE target_name = %s", (target_name,))
+            existing = cur.fetchone()
+            
+            if existing:
+                cur.execute("""
+                    UPDATE target_images 
+                    SET image_data = %s, updated_at = CURRENT_TIMESTAMP 
+                    WHERE target_name = %s
+                """, (image_data, target_name))
+            else:
+                cur.execute("""
+                    INSERT INTO target_images (target_name, image_data) 
+                    VALUES (%s, %s)
+                """, (target_name, image_data))
+            
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Error saving target image for {target_name}: {e}")
+        return False
+
+def get_target_image(target_name):
+    """
+    Get target image from database.
+    Returns bytes or None.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT image_data FROM target_images WHERE target_name = %s", (target_name,))
+            result = cur.fetchone()
+            if result:
+                return result[0] # Return bytes
+            return None
+    except Exception as e:
+        print(f"Error getting target image for {target_name}: {e}")
+        return None
+
+def set_cross_match_host(match_id, target_name):
+    """
+    Set a specific match as host for a target.
+    Sets is_host=True for match_id, and False for all other matches of this target.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            # Reset all matches for this target to False
+            cur.execute("""
+                UPDATE cross_match_results 
+                SET is_host = FALSE 
+                WHERE target_name = %s
+            """, (target_name,))
+            
+            # Set selected match to True
+            cur.execute("""
+                UPDATE cross_match_results 
+                SET is_host = TRUE 
+                WHERE id = %s
+            """, (match_id,))
+            
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Error setting host for {target_name}: {e}")
+        return False
+
+def unset_cross_match_host(target_name):
+    """
+    Unset host for a target (set is_host=False for all matches).
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            cur.execute("""
+                UPDATE cross_match_results 
+                SET is_host = FALSE 
+                WHERE target_name = %s
+            """, (target_name,))
+            
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Error unsetting host for {target_name}: {e}")
+        return False
+
+def update_object_abs_mag(target_name):
+    """
+    Recalculate and update brightest_abs_mag for an object based on its current redshift and brightest_mag.
+    """
+    print(f"DEBUG: update_object_abs_mag called for {target_name}")
+    try:
+        # Try relative import first (for module usage)
+        from . import ext_M_calculator
+    except ImportError:
+        try:
+            # Try absolute import (for script usage)
+            import modules.ext_M_calculator as ext_M_calculator
+        except ImportError:
+            print("Could not import ext_M_calculator")
+            return False
+
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            
+            # 0. Resolve canonical name
+            # Try exact match on name, or prefix+name, or case-insensitive match
+            cur.execute("""
+                SELECT name, name_prefix, redshift, ra, declination, discmagfilter
+                FROM tns_objects 
+                WHERE name = %s 
+                   OR (COALESCE(name_prefix, '') || name) = %s
+                   OR name ILIKE %s
+                LIMIT 1
+            """, (target_name, target_name, target_name))
+            obj = cur.fetchone()
+            
+            if not obj:
+                print(f"DEBUG: Object {target_name} not found in tns_objects")
+                return False
+                
+            canonical_name = obj['name']
+            print(f"DEBUG: Resolved {target_name} to canonical name {canonical_name}")
+            
+            # 1. Always recalculate brightest_mag from photometry
+            # Fetch all photometry to handle potential text/mixed types in magnitude column
+            # Query for both canonical name and input name to be safe
+            possible_names = [canonical_name, target_name]
+            # Also try name without prefix if it exists (e.g. AT2025wny -> 2025wny)
+            if obj.get('name_prefix') and canonical_name.startswith(obj['name_prefix']):
+                possible_names.append(canonical_name[len(obj['name_prefix']):])
+            
+            cur.execute("""
+                SELECT magnitude, filter 
+                FROM photometry 
+                WHERE object_name = ANY(%s) AND magnitude IS NOT NULL
+            """, (list(set(possible_names)),))
+            rows = cur.fetchall()
+            
+            print(f"DEBUG: Found {len(rows)} photometry points for names {possible_names}")
+            
+            brightest_mag = None
+            brightest_filter = None
+            
+            # Find minimum numeric magnitude in Python
+            min_mag = float('inf')
+            
+            for row in rows:
+                try:
+                    mag_val = row['magnitude']
+                    
+                    # Debug print for problematic values
+                    # print(f"DEBUG: Processing mag_val: {mag_val} (type: {type(mag_val)})")
+                    
+                    # Handle string magnitudes (e.g. ">19.5")
+                    if isinstance(mag_val, str):
+                        # Skip upper limits
+                        if '>' in mag_val:
+                            continue
+                        val = float(mag_val)
+                    # Handle float magnitudes that might be stored as float but we want to be safe
+                    elif isinstance(mag_val, (int, float)):
+                        val = float(mag_val)
+                    else:
+                        # Try to convert anything else to string first then check
+                        str_val = str(mag_val)
+                        if '>' in str_val:
+                            continue
+                        val = float(str_val)
+                        
+                    # Ensure val is float
+                    if not isinstance(val, float):
+                        val = float(val)
+                        
+                    # Ensure min_mag is float
+                    if not isinstance(min_mag, float):
+                        min_mag = float(min_mag)
+                        
+                    if val < min_mag:
+                        min_mag = val
+                        brightest_filter = row['filter']
+                except Exception as e:
+                    # print(f"DEBUG: Error processing photometry point: {e}")
+                    continue
+            
+            if min_mag != float('inf'):
+                brightest_mag = min_mag
+                # print(f"DEBUG: Calculated brightest_mag: {brightest_mag} (Filter: {brightest_filter})")
+                
+                # Update brightest_mag in tns_objects
+                cur.execute("""
+                    UPDATE tns_objects 
+                    SET brightest_mag = %s 
+                    WHERE name = %s
+                """, (brightest_mag, canonical_name))
+                conn.commit() # Commit the brightest_mag update
+                # print("DEBUG: Updated brightest_mag in DB")
+            else:
+                # print("DEBUG: No valid magnitude found")
+                pass
+            
+            redshift = obj['redshift']
+            ra = obj['ra']
+            dec = obj['declination']
+            
+            # If we still don't have brightest_mag, we can't calculate abs mag
+            if brightest_mag is None:
+                # print("DEBUG: brightest_mag is None, skipping abs mag calc")
+                return False
+                
+            # Parse redshift if it's a string
+            try:
+                if isinstance(redshift, str):
+                    import re
+                    match = re.search(r"[-+]?\d*\.\d+|\d+", redshift)
+                    if match:
+                        z = float(match.group())
+                    else:
+                        # print(f"DEBUG: Could not parse redshift string: {redshift}")
+                        return False
+                elif redshift is None:
+                    # print("DEBUG: Redshift is None")
+                    return False
+                else:
+                    z = float(redshift)
+            except (ValueError, TypeError) as e:
+                # print(f"DEBUG: Redshift parse error: {e}")
+                return False
+                
+            if z <= 0:
+                # print(f"DEBUG: Invalid redshift z={z}")
+                return False
+                
+            # Calculate extinction
+            filter_name = 'r' # Default
+            
+            # Try to get filter from brightest point
+            if brightest_filter:
+                filter_name = brightest_filter
+            elif obj['discmagfilter']:
+                 filter_name = obj['discmagfilter']
+                 
+            try:
+                extinction = ext_M_calculator.get_extinction(ra, dec, filter_name)
+                if not isinstance(extinction, (int, float)):
+                    extinction = 0
+            except Exception as e:
+                # print(f"DEBUG: Extinction calc error: {e}")
+                extinction = 0
+                
+            # print(f"DEBUG: Calculating Abs Mag with mag={brightest_mag}, z={z}, ext={extinction}")
+            
+            # Calculate Abs Mag
+            if brightest_mag is not None:
+                abs_mag = ext_M_calculator.apm_to_abm(brightest_mag, z, extinction)
+                # print(f"DEBUG: Calculated abs_mag: {abs_mag}")
+                
+                if isinstance(abs_mag, (int, float)):
+                    cur.execute("""
+                        UPDATE tns_objects 
+                        SET brightest_abs_mag = %s 
+                        WHERE name = %s
+                    """, (abs_mag, canonical_name))
+                    conn.commit()
+                    # print("DEBUG: Updated brightest_abs_mag in DB")
+                    return True
+                else:
+                    # print(f"DEBUG: abs_mag result is not number: {abs_mag}")
+                    pass
+                
+        return False
+    except Exception as e:
+        print(f"Error updating abs mag for {target_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def update_tns_redshift(target_name, redshift_str):
+    """
+    Update redshift in tns_objects table.
+    redshift_str can be text like '0.03 (DESI)'
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            
+            # Check if redshift column is text or numeric
+            cur.execute("""
+                SELECT data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'tns_objects' AND column_name = 'redshift'
+            """)
+            col_type = cur.fetchone()[0]
+            
+            if 'char' in col_type or 'text' in col_type:
+                # It's text, we can save the string directly
+                cur.execute("""
+                    UPDATE tns_objects 
+                    SET redshift = %s 
+                    WHERE name = %s
+                """, (redshift_str, target_name))
+            else:
+                # It's numeric, we must extract the number
+                # Try to extract float from string
+                import re
+                match = re.search(r"[-+]?\d*\.\d+|\d+", str(redshift_str))
+                if match:
+                    val = float(match.group())
+                    cur.execute("""
+                        UPDATE tns_objects 
+                        SET redshift = %s 
+                        WHERE name = %s
+                    """, (val, target_name))
+                else:
+                    print(f"Could not extract numeric redshift from {redshift_str}")
+                    return False
+            
+            conn.commit()
+            
+            # Trigger absolute magnitude update
+            try:
+                update_object_abs_mag(target_name)
+            except Exception as e:
+                print(f"Error triggering abs mag update: {e}")
+                
+            return True
+    except Exception as e:
+        print(f"Error updating redshift for {target_name}: {e}")
+        return False
 
 if __name__ == "__main__":
     init_tns_database()

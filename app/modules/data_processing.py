@@ -64,6 +64,22 @@ class DataVisualization:
         """Create interactive photometry plot from database data"""
         if not photometry_data:
             return None
+            
+        # Ensure redshift, ra, dec are floats
+        try:
+            redshift = float(redshift) if redshift is not None else None
+        except (ValueError, TypeError):
+            redshift = None
+            
+        try:
+            ra = float(ra) if ra is not None else None
+        except (ValueError, TypeError):
+            ra = None
+            
+        try:
+            dec = float(dec) if dec is not None else None
+        except (ValueError, TypeError):
+            dec = None
         
         # Group data by filter and telescope
         grouped_data = {}
@@ -72,10 +88,29 @@ class DataVisualization:
         all_mags = []
         
         for point in photometry_data:
-            if point.get('mjd'):
-                all_mjds.append(point.get('mjd'))
-            if point.get('magnitude'):
-                all_mags.append(point.get('magnitude'))
+            # Safely get and cast values
+            mjd = point.get('mjd')
+            try:
+                mjd = float(mjd) if mjd is not None else None
+            except (ValueError, TypeError):
+                mjd = None
+                
+            mag = point.get('magnitude')
+            try:
+                mag = float(mag) if mag is not None else None
+            except (ValueError, TypeError):
+                mag = None
+                
+            err = point.get('magnitude_error')
+            try:
+                err = float(err) if err is not None else 0
+            except (ValueError, TypeError):
+                err = 0
+
+            if mjd is not None:
+                all_mjds.append(mjd)
+            if mag is not None:
+                all_mags.append(mag)
                 
             filter_name = point.get('filter', 'Unknown')
             telescope = point.get('telescope', 'Unknown')
@@ -90,9 +125,9 @@ class DataVisualization:
                     'telescope': telescope
                 }
             
-            grouped_data[key]['mjd'].append(point.get('mjd'))
-            grouped_data[key]['magnitude'].append(point.get('magnitude'))
-            grouped_data[key]['magnitude_error'].append(point.get('magnitude_error', 0))
+            grouped_data[key]['mjd'].append(mjd)
+            grouped_data[key]['magnitude'].append(mag)
+            grouped_data[key]['magnitude_error'].append(err)
         
         # Calculate distance modulus and extinction shift
         distance_modulus = 0

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DETECT - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="detect-home-container">
+        <h1 class="main-title">DETECT</h1>
+
+        <div class="section-card pipeline-section">
+            <h2>pipeline</h2>
+            <div class="pipeline-flow">
+                <span class="step">TNS object</span>
+                <span class="arrow">→</span>
+                <span class="step">Cross Match</span>
+                <span class="arrow">→</span>
+                <span class="step">Calculate</span>
+            </div>
+        </div>
+
+        <div class="section-card results-section">
+            <h2>Results</h2>
+            <div class="results-links">
+                {% if latest_date %}
+                <a href="{{ url_for('detect_results', detect_results=latest_date) }}" class="result-link newest">
+                    Newest Result ({{ latest_date }})
+                </a>
+                {% else %}
+                <span class="result-link disabled">No Results Available</span>
+                {% endif %}
+                
+                <!-- Archive Result links to the results page with the latest date (or default), 
+                     where the user can use the dropdown to select other dates. -->
+                <a href="{{ url_for('detect_results', detect_results=latest_date) }}" class="result-link archive">
+                    Archive Result
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

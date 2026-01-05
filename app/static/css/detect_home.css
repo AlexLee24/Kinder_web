@@ -1,0 +1,115 @@
+body {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    /* background-color: #f5f5dc; */
+    background-image: url('../photo/6888.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    margin: 0;
+    padding-top: 100px; /* Space for navbar */
+    color: #333;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.detect-home-container {
+    width: 100%;
+    max-width: 900px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    align-items: center;
+}
+
+.main-title {
+    font-size: 6rem;
+    font-weight: 400;
+    letter-spacing: 5px;
+    margin: 0 0 20px 0;
+    color: #eecaff;
+    text-align: center;
+}
+
+.section-card {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    padding: 50px;
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    color: white;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.section-card h2 {
+    font-size: 2.5rem;
+    font-weight: 300;
+    margin-top: 0;
+    margin-bottom: 40px;
+    color: #fff;
+    text-transform: capitalize;
+    border-bottom: 1px solid rgba(70, 255, 175, 0.3);
+    padding-bottom: 15px;
+    display: inline-block;
+}
+
+.pipeline-flow {
+    font-size: 1.8rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.step {
+    color: #46ffaf;
+    font-weight: 500;
+    text-shadow: 0 0 10px rgba(70, 255, 175, 0.3);
+}
+
+.arrow {
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 300;
+}
+
+.results-links {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    align-items: center;
+}
+
+.result-link {
+    display: block;
+    font-size: 2rem;
+    color: #fff;
+    text-decoration: none;
+    padding: 20px 40px;
+    border-radius: 15px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 80%;
+    font-weight: 300;
+}
+
+.result-link:hover {
+    background: rgba(70, 255, 175, 0.15);
+    border-color: #46ffaf;
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+    color: #46ffaf;
+}
+
+.result-link.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    background: rgba(255, 255, 255, 0.02);
+}

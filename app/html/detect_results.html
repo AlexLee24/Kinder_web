@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detection Results - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
+    {% include '_favicon.html' %}
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="marshal-container">
+        <div class="control-panel">
+            <div class="panel-header">
+                <h1>DETECT Daily Results</h1>
+            </div>
+            <div class="date-selector">
+                <label for="dateSelect">Select Date:</label>
+                <select id="dateSelect" onchange="changeDate(this)">
+                    {% for date in available_dates %}
+                        <option value="{{ date }}" {% if date == selected_date %}selected{% endif %}>
+                            {{ date }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="content-area">
+            {% if results %}
+            
+            <!-- Summary Table -->
+            <h2>Summary Table</h2>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Flag</th>
+                        <th>Object</th>
+                        <th>TNS Coords</th>
+                        <th>Match (Catalog)</th>
+                        <th>Sep (")</th>
+                        <th>Z</th>
+                        <th>Abs Mag</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in summary_results %}
+                    <tr>
+                        {% if session.user and session.user.is_admin %}
+                        <td style="text-align: center;">
+                            <span class="flag-btn {% if result.is_flagged %}active{% endif %}" 
+                                  onclick="toggleFlag('{{ result.flag_id }}', this)"
+                                  title="Toggle Flag">
+                                ★
+                            </span>
+                        </td>
+                        {% endif %}
+                        <td>
+                            <a href="/object/{{ result.target_name }}" style="color:#fff; font-size:1.1em; text-decoration: underline;"><strong>{{ result.target_name }}</strong></a>
+                        </td>
+                        <td>
+                            {{ "%.2f"|format(result.tns_info.ra|float) if result.tns_info.ra != 'N/A' else '-' }}, 
+                            {{ "%.2f"|format(result.tns_info.dec|float) if result.tns_info.dec != 'N/A' else '-' }}
+                        </td>
+                        <td>
+                            <span class="badge">{{ result.catalog_name }}</span>
+                        </td>
+                        <td>
+                            {{ "%.2f"|format(result.separation_arcsec) }}
+                        </td>
+                        <td>
+                            {% if result.z is not none %}
+                                {{ "%.4f"|format(result.z) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if result.abs_mag is not none %}
+                                {% set am = result.abs_mag|float %}
+                                {% set sep = result.separation_arcsec|float %}
+                                {% if am < -20 or am > -15 %}
+                                    {% if sep < 10 %}
+                                        <span style="color: #ff4444; font-weight: bold;">{{ "%.2f"|format(result.abs_mag) }}</span>
+                                    {% else %}
+                                        <span style="color: #ffaa00;">{{ "%.2f"|format(result.abs_mag) }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    {{ "%.2f"|format(result.abs_mag) }}
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="#{{ result.id }}" class="btn-details">Details</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- Detailed Analysis -->
+            <h2>Detailed Analysis</h2>
+            
+            {% for result in results %}
+            <div id="{{ result.id }}" class="anchor">
+                <h3><a href="/object/{{ result.target_name }}" style="color: inherit; text-decoration: none;">{{ result.target_name }}</a></h3>
+                <div class="meta-info">
+                    <strong>Discovery Date:</strong> {{ result.tns_info.discoverydate }} &nbsp;|&nbsp; 
+                    <strong>Internal Names:</strong> {{ result.tns_info.internal_names }} &nbsp;|&nbsp;
+                    <strong>TNS Coords:</strong> {{ result.tns_info.ra }}, {{ result.tns_info.dec }}
+                </div>
+                
+                <div class="section-title">Visual Inspection</div>
+                <div class="featured-container">
+                    <div class="featured-image-box">
+                        <h4>DESI Finder Chart</h4>
+                        <div style="text-align: center;">
+                            <img src="{{ url_for('detect_image', target_name=result.target_name) }}" 
+                                 alt="DESI Image for {{ result.target_name }}"
+                                 style="max-width: 100%; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);"
+                                 onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'padding: 20px; border: 1px dashed #555; color: #888;\'>Image not available</div>';">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-title">Photometry</div>
+                <div id="plot-{{ result.id }}" class="plot-container">
+                    {% if result.plot_html %}
+                        {{ result.plot_html | safe }}
+                    {% else %}
+                        <div style="text-align:center; padding-top:200px; color:#888;">No photometry data available</div>
+                    {% endif %}
+                </div>
+                
+                <div class="section-title">Match Details</div>
+                <table class="results-table" style="margin-top: 10px;">
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>ID</th>
+                            <th>Coords</th>
+                            <th>Sep (")</th>
+                            <th>Z</th>
+                            <th>Abs Mag</th>
+                            <th>Score / Grade (Lens only)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for match in result.matches %}
+                        <tr>
+                            <td>{{ match.catalog_name }}</td>
+                            <td>
+                                {% if match.match_data.get('id') %}
+                                    {{ "%d"|format(match.match_data.get('id')|int) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if match.match_data.get('ra') %}
+                                    {{ "%.3f"|format(match.match_data.get('ra')|float) }}, 
+                                    {{ "%.3f"|format(match.match_data.get('dec')|float) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ "%.2f"|format(match.separation_arcsec) }}</td>
+                            <td>
+                                {% if match.z is not none %}
+                                    {{ "%.4f"|format(match.z) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if match.abs_mag is not none %}
+                                    {% set am = match.abs_mag|float %}
+                                    {% set sep = match.separation_arcsec|float %}
+                                    {% if am < -20 or am > -15 %}
+                                        {% if sep < 10 %}
+                                            <span style="color: #ff4444; font-weight: bold;">{{ "%.2f"|format(match.abs_mag) }}</span>
+                                        {% else %}
+                                            <span style="color: #ffaa00;">{{ "%.2f"|format(match.abs_mag) }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        {{ "%.2f"|format(match.abs_mag) }}
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if 'Hsu' in match.catalog_name or 'Hsu' in match.match_data.get('match_source', '') %}
+                                    Grade: {{ match.match_data.get('Grade', '-') }}
+                                {% elif 'Karp' in match.catalog_name or 'Karp' in match.match_data.get('match_source', '') %}
+                                    Prob: {{ "%.3f"|format(match.match_data.get('LENS_PROBABILITY')|float) if match.match_data.get('LENS_PROBABILITY') else '-' }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            {% if session.user and session.user.is_admin %}
+                            <td>
+                                {% if match.is_host %}
+                                    <span class="badge-host">HOST</span>
+                                    <button class="btn-action btn-clear" onclick="unsetHost('{{ result.target_name }}')">
+                                        Clear
+                                    </button>
+                                {% else %}
+                                    <button class="btn-action" onclick="setHost('{{ match.id }}', '{{ result.target_name }}', '{{ match.z }}', '{{ match.catalog_name }}')">
+                                        Set Host
+                                    </button>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <hr>
+            </div>
+            {% endfor %}
+
+            {% else %}
+            <div class="no-results">
+                <p>No detection results found for this date.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <button id="backToTopBtn" title="Go to top">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 15l-6-6-6 6"/>
+        </svg>
+    </button>
+
+    <script src="{{ url_for('static', filename='js/detect_results.js') }}"></script>
+</body>
+</html>

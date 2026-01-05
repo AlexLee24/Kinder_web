@@ -24,6 +24,7 @@
             <nav class="main-nav">
                 <!-- Left Navigation -->
                 <ul class="nav-left">
+                    <li><a href="{{ url_for('detect_results') }}">DETECT</a></li>
                     <li><a href="{{ url_for('marshal') }}">Marshal</a></li>
                     <li class="dropdown">
                         <a href="#" class="dropdown-toggle" {% if current_path in ['/', '/astronomy_tools', '/object_visibility'] %}class="active"{% endif %}>

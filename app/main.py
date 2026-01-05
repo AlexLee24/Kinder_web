@@ -8,6 +8,7 @@ import os
 import atexit
 from werkzeug.routing import BaseConverter
 from werkzeug.middleware.proxy_fix import ProxyFix
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Load environment variables
 # Use relative path to kinder.env (1 level up from app/)
@@ -16,11 +17,20 @@ load_dotenv(os.path.join(basedir, '..', 'kinder.env'))
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(current_dir, "modules"))
+# Add DETECT_pipe modules to path
+sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
+
 # Import modules
 from modules.config import config
 from modules.database import init_database
 from modules.postgres_database import init_tns_database, check_db_connection
 from modules.calendar_database import init_calendar_database
+
+try:
+    from modules.DETECT_pipe.modules._daily_run import daily_run
+except ImportError as e:
+    print(f"Warning: Could not import daily_run: {e}")
+    def daily_run(): pass
 
 # Create Flask app
 app = Flask(__name__, template_folder='html', static_folder='static')
@@ -73,6 +83,24 @@ google = oauth.register(
 # ===============================================================================
 from routes import register_routes
 register_routes(app)
+
+# ===============================================================================
+# SCHEDULER CONFIGURATION
+# ===============================================================================
+def init_scheduler():
+    try:
+        scheduler = BackgroundScheduler()
+        # Run at 02:00 UTC daily
+        scheduler.add_job(func=daily_run, trigger="cron", hour=2, minute=0, timezone='UTC')
+        scheduler.start()
+        atexit.register(lambda: scheduler.shutdown())
+        print("Scheduler started: daily_run scheduled for 02:00 UTC")
+    except Exception as e:
+        print(f"Failed to start scheduler: {e}")
+
+# Initialize scheduler (ensure it only runs once in production/debug)
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    init_scheduler()
 
 # ===============================================================================
 # APPLICATION STARTUP
