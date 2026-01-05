@@ -2598,7 +2598,9 @@ function escapeHtml(text) {
 // Aladin Lite variables and functions
 let aladinInstance = null;
 // let currentSurvey = 'CDS/P/DESI-Legacy-Surveys/DR10/color';
+// let currentSurvey = 'https://alasky.cds.unistra.fr/CDS/P/DSS2/color';
 let currentSurvey = 'CDS/P/DSS2/color';
+// let currentSurvey = 'https://alasky.cds.unistra.fr/DSS/DSS2Color';
 let currentFOV = 0.05;
 
 // Initialize Aladin Lite
@@ -2713,6 +2715,7 @@ function changeSurvey() {
     console.log(`Changing survey to: ${currentSurvey}`);
 
     try {
+        
         aladinInstance.setImageSurvey(currentSurvey);
     } catch (error) {
         console.error('Error changing survey:', error);
