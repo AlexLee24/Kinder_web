@@ -8,15 +8,17 @@ import time
 from datetime import datetime
 
 # ---- User settings ----
-SAVE_DIR = pathlib.Path("./data/tns_api_download_work")
-TNS_DIR = pathlib.Path("./data/tns_daily")
+current_dir = pathlib.Path(os.path.dirname(os.path.abspath(__file__)))
+SAVE_DIR = current_dir / "data" / "tns_api_download_work"
+TNS_DIR = current_dir / "data" / "tns_daily"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 TNS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---- BOT settings ----
 from dotenv import load_dotenv
 project_root = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = "/Volumes/Mac_mini/Lab_Macmini/DETECT/.env"
+# dotenv_path = "/Volumes/Mac_mini/Lab_Macmini/DETECT/.env"
+dotenv_path = os.path.join(project_root, "../../../../kinder.env")
 load_dotenv(dotenv_path)
 env = os.getenv
 tns_host     = env("TNS_HOST")

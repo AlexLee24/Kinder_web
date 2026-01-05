@@ -181,7 +181,8 @@ if __name__ == "__main__":
         {'ra': 150.1250, 'dec': 2.5670, 'redshift': 0.540, 'name': 'Galaxy3'},
     ]
     
-    output_path = "/Volumes/Mac_mini/Lab_Macmini/DETECT/data/desi_image/marked_desi_image.png"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(current_dir, "data", "desi_image", "marked_desi_image.png")
     
     create_marked_image(
         obj_name="Test Object",

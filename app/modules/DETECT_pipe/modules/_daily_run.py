@@ -34,7 +34,8 @@ except ImportError:
     def save_target_image(n, d): pass
     tns_object_db = None
 
-base_path = pathlib.Path("/Volumes/Mac_mini/Lab_Macmini/DETECT")
+# base_path = pathlib.Path("/Volumes/Mac_mini/Lab_Macmini/DETECT")
+base_path = pathlib.Path(os.path.dirname(os.path.abspath(__file__)))
 
 def create_cross_match_list(today):
     yesterday = today - timedelta(days=1)
@@ -405,7 +406,8 @@ def download_DESI_images(date=None):
     print('-'*50)
     print(f"Downloading DESI images for matched objects from database (Date: {date})...")
     # output_dir = base_path / "daily_run" / "data" / "DETECT_images"
-    output_dir = pathlib.Path("/Volumes/Mac_mini/Lab_Macmini/GitHub_Work/kinder_web/app/modules/DETECT_pipe/modules/data/DESI_img")
+    # output_dir = pathlib.Path("/Volumes/Mac_mini/Lab_Macmini/GitHub_Work/kinder_web/app/modules/DETECT_pipe/modules/data/DESI_img")
+    output_dir = base_path / "data" / "DESI_img"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get results from DB

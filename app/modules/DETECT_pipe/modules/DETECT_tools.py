@@ -195,7 +195,8 @@ def generate_light_curve_and_M(object_name, redshift, data_dir, output_dir):
 if __name__ == "__main__":
     name = "2025zmn"
     redshift = 0.012
-    data_dir = "/Volumes/Mac_mini/Lab_Macmini/DETECT/data/photometry"
-    output_dir = "/Volumes/Mac_mini/Lab_Macmini/DETECT/data/light_curves"
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(current_dir, "data", "photometry")
+    output_dir = os.path.join(current_dir, "data", "light_curves")
     path, brightest_mag, brightest_abs_mag = generate_light_curve_and_M(name, redshift, data_dir, output_dir)
     print(brightest_mag, brightest_abs_mag)

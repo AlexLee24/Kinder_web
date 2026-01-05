@@ -10,7 +10,8 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 project_root = os.path.dirname(os.path.abspath(__file__))
-dotenv_path = "/Volumes/Mac_mini/Lab_Macmini/DETECT/.env"
+# dotenv_path = "/Volumes/Mac_mini/Lab_Macmini/DETECT/.env"
+dotenv_path = os.path.join(project_root, "../../../../kinder.env")
 load_dotenv(dotenv_path)
 env = os.getenv
 tns_host     = env("TNS_HOST")
