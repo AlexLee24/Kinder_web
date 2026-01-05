@@ -23,9 +23,9 @@ load_dotenv(dotenv_path)
 env = os.getenv
 tns_host     = env("TNS_HOST")
 api_base_url = env("API_BASE_URL")
-bot_id       = env("BOT_ID")
-bot_name     = env("BOT_NAME")
-api_key      = env("API_KEY") 
+bot_id       = env("TNS_BOT_ID")
+bot_name     = env("TNS_BOT_NAME")
+api_key      = env("TNS_API_KEY") 
 
 # ---- Function to download TNS API data ----
 def download_TNS_api(year, month, day, debug=False):

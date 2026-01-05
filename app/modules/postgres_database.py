@@ -1247,6 +1247,27 @@ def update_cross_match_flag(result_id, flag_value):
         print(f"Error updating flag: {e}")
         return False
 
+def get_flagged_objects():
+    """
+    Fetch all flagged objects from the database.
+    Returns a list of [name_prefix, name, ra, declination, discoverydate, internal_names]
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT t.name_prefix, t.name, t.ra, t.declination, t.discoverydate, t.internal_names
+                FROM tns_objects t
+                JOIN cross_match_results c ON t.name = c.target_name
+                WHERE c.flag = TRUE
+            """)
+            results = cur.fetchall()
+            # Convert to list of lists to match the format expected by _daily_run.py
+            return [list(row) for row in results]
+    except Exception as e:
+        print(f"Error fetching flagged objects: {e}")
+        return []
+
 def save_flag_objects(flag_list):
     """
     Save flagged objects to database.

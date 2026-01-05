@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 
 
 from TNS_api_download import download_TNS_api, distribute_to_daily_files
-from DETECT_flag_object import extract_flag_objects
+# from DETECT_flag_object import extract_flag_objects
 from DESI_cross_match import desi_cross_match
 from LENS_cross_match import lens_cross_match_hsu, lens_cross_match_karp
 from DETECT_get_photometry import get_photometry, upload_photometry_to_db
@@ -25,13 +25,14 @@ sys.path.append(parent_dir)
 sys.path.append(os.path.join(parent_dir, 'modules'))
 
 try:
-    from postgres_database import init_tns_database, save_flag_objects, save_cross_match_results, get_cross_match_results, tns_object_db, save_target_image
+    from postgres_database import init_tns_database, save_flag_objects, save_cross_match_results, get_cross_match_results, tns_object_db, save_target_image, get_flagged_objects
 except ImportError:
     print("Warning: Could not import postgres_database. Database operations may fail.")
     def init_tns_database(): pass
     def save_cross_match_results(r): pass
     def get_cross_match_results(date=None): return []
     def save_target_image(n, d): pass
+    def get_flagged_objects(): return []
     tns_object_db = None
 
 # base_path = pathlib.Path("/Volumes/Mac_mini/Lab_Macmini/DETECT")
@@ -83,35 +84,25 @@ def create_cross_match_list(today):
         cross_match_objects.extend(objects_list)
 
     print('-'*50)
-    print("Loading Flag data...")
-    extract_flag_objects()
-    flag_csv = base_path / "flag/Flag_Object_List.csv"
-    if not os.path.exists(flag_csv):
-        print(f"No data file for flag")
+    print("Loading Flag data from database...")
+    
+    # Get existing names in cross_match_objects
+    existing_names = set(obj[1] for obj in cross_match_objects)
+    
+    # Fetch flagged objects from DB
+    flag_objects = get_flagged_objects()
+    
+    if not flag_objects:
+        print("No flagged objects found in database")
     else:
-        try:
-            df = pd.read_csv(flag_csv)
-        except pd.errors.EmptyDataError:
-            print("Flag file is empty, skipping flag objects")
-            df = pd.DataFrame()
+        # Filter out objects that already exist
+        new_flag_objects = [obj for obj in flag_objects if obj[1] not in existing_names]
         
-        if len(df) == 0:
-            print("No flag objects to process")
+        if new_flag_objects:
+            cross_match_objects.extend(new_flag_objects)
+            print(f"Added {len(new_flag_objects)} new flag objects ({len(flag_objects) - len(new_flag_objects)} duplicates skipped)")
         else:
-            target_cols = ['name_prefix', 'name', 'ra', 'declination', 'discoverydate', 'internal_names']
-            
-            # Get existing names in cross_match_objects
-            existing_names = set(obj[1] for obj in cross_match_objects)
-            
-            # Filter out objects that already exist
-            flag_objects = df[target_cols].values.tolist()
-            new_flag_objects = [obj for obj in flag_objects if obj[1] not in existing_names]
-            
-            if new_flag_objects:
-                cross_match_objects.extend(new_flag_objects)
-                print(f"Added {len(new_flag_objects)} new flag objects ({len(flag_objects) - len(new_flag_objects)} duplicates skipped)")
-            else:
-                print(f"All {len(flag_objects)} flag objects already in list")
+            print(f"All {len(flag_objects)} flag objects already in list")
 
     return cross_match_objects
 
@@ -300,14 +291,15 @@ def match_get_photometry(path_list):
     print(f"Created list with {len(unique_name_list)} unique objects")
     print(unique_name_list)
     print('-'*50)
-    get_photometry(unique_name_list, output_dir="data/photometry")
+    phot_dir = base_path / "data" / "photometry"
+    get_photometry(unique_name_list, output_dir=str(phot_dir))
     
     # Upload to DB
     print("Uploading photometry to database...")
     for item in unique_name_list:
         name = item[0]
         year = name[:4]
-        phot_file = pathlib.Path("data/photometry") / year / f"{name}_photometry.txt"
+        phot_file = phot_dir / year / f"{name}_photometry.txt"
         if phot_file.exists():
             upload_photometry_to_db(name, str(phot_file))
         else:
@@ -338,7 +330,9 @@ def get_lc_and_M_desi(desi_path):
             continue
         
         try:
-            path, brightest_mag, brightest_abs_mag = generate_light_curve_and_M(name, redshift, data_dir="data/photometry", output_dir="daily_run/data/light_curves")
+            phot_dir = base_path / "data" / "photometry"
+            lc_dir = base_path / "daily_run" / "data" / "light_curves"
+            path, brightest_mag, brightest_abs_mag = generate_light_curve_and_M(name, redshift, data_dir=str(phot_dir), output_dir=str(lc_dir))
             print(f"brightest_mag: {brightest_mag}, brightest_abs_mag: {brightest_abs_mag}")
             df.at[idx, 'brightest_mag'] = brightest_mag
             df.at[idx, 'brightest_abs_mag'] = brightest_abs_mag
@@ -388,7 +382,9 @@ def get_lc_and_M_lens(lens_path):
             continue
         
         try:
-            path, brightest_mag, brightest_abs_mag = generate_light_curve_and_M(name, redshift, data_dir="data/photometry", output_dir="daily_run/data/light_curves")
+            phot_dir = base_path / "data" / "photometry"
+            lc_dir = base_path / "daily_run" / "data" / "light_curves"
+            path, brightest_mag, brightest_abs_mag = generate_light_curve_and_M(name, redshift, data_dir=str(phot_dir), output_dir=str(lc_dir))
             print(f"brightest_mag: {brightest_mag}, brightest_abs_mag: {brightest_abs_mag}")
             df.at[idx, 'brightest_mag'] = brightest_mag
             df.at[idx, 'brightest_abs_mag'] = brightest_abs_mag
@@ -536,20 +532,9 @@ def daily_run():
     cross_match_objects = create_cross_match_list(today)
     print(f"Objects to cross-match: {len(cross_match_objects)}")
     
-    # Upload flag objects to DB
-    print('-'*50)
-    print("Uploading flag objects to database...")
-    flag_csv = base_path / "flag/Flag_Object_List.csv"
-    if flag_csv.exists():
-        try:
-            flag_df = pd.read_csv(flag_csv)
-            target_cols = ['name_prefix', 'name', 'ra', 'declination', 'discoverydate', 'internal_names']
-            if all(col in flag_df.columns for col in target_cols):
-                flag_list = flag_df[target_cols].values.tolist()
-                save_flag_objects(flag_list)
-                # print("Skipping save_flag_objects (module missing)")
-        except Exception as e:
-            print(f"Error saving flag objects to DB: {e}")
+    # Upload flag objects to DB - REMOVED (Flag objects are now managed via web interface)
+    # print('-'*50)
+    # print("Uploading flag objects to database...")
     
     cm_list_end = time.time()
     cm_list_duration = cm_list_end - cm_list_start
