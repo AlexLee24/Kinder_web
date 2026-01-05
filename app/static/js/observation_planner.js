@@ -248,6 +248,35 @@ function collectData() {
     return { settings, targets };
 }
 
+function formatForPlot(value, isRA) {
+    if (!value) return value;
+    
+    // If it looks like decimal (no colons, no spaces, no letters)
+    if (/^-?\d+(\.\d+)?$/.test(value)) {
+        let val = parseFloat(value);
+        if (isRA) {
+            // Convert RA from degrees to hours
+            val = val / 15;
+        }
+        
+        const sign = val < 0 ? '-' : '';
+        val = Math.abs(val);
+        
+        const h = Math.floor(val);
+        const m = Math.floor((val - h) * 60);
+        const s = ((val - h - m/60) * 3600).toFixed(2);
+        
+        return `${sign}${h}:${m}:${s}`;
+    }
+    
+    // If it has spaces, replace with colons to be safe
+    if (value.includes(' ')) {
+        return value.trim().replace(/\s+/g, ':');
+    }
+    
+    return value;
+}
+
 async function generateScript() {
     const data = collectData();
     
@@ -286,8 +315,8 @@ async function generateScript() {
                     timezone: "8",
                     targets: data.targets.map(t => ({
                         object_name: t["object name"],
-                        ra: t["RA"],
-                        dec: t["Dec"]
+                        ra: formatForPlot(t["RA"], true),
+                        dec: formatForPlot(t["Dec"], false)
                     }))
                 };
 
