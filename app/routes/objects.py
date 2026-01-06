@@ -139,27 +139,66 @@ def register_object_routes(app):
             from modules.postgres_database import update_object_abs_mag
             update_object_abs_mag(object_name)
             
-            # Search for object by constructed name
-            results = search_tns_objects(search_term=object_name, limit=10)
+            # Try exact match first using direct SQL query
+            from modules.postgres_database import get_tns_db_connection
+            conn = get_tns_db_connection()
+            cursor = conn.cursor()
             
-            # Find exact match based on year + letters pattern
+            tag_logic = """
+            CASE 
+                WHEN finish_follow = 1 THEN 'finished'
+                WHEN follow = 1 THEN 'followup'
+                WHEN snoozed = 1 THEN 'snoozed'
+                ELSE 'object'
+            END as tag
+            """
+            
+            # Exact match query - match name exactly (case insensitive)
+            exact_query = f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+                          reporting_groupid, reporting_group, source_groupid, source_group,
+                          discoverydate, discoverymag, discmagfilter, filter, reporters,
+                          time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
+                          creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                          {tag_logic}
+                   FROM tns_objects 
+                   WHERE name ILIKE %s"""
+            
+            cursor.execute(exact_query, (object_name,))
+            result = cursor.fetchone()
             matching_obj = None
-            for obj in results:
-                full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+            
+            if result:
+                columns = [desc[0] for desc in cursor.description]
+                matching_obj = dict(zip(columns, result))
+            
+            conn.close()
+            
+            # If no exact match, fall back to fuzzy search
+            if not matching_obj:
+                results = search_tns_objects(search_term=object_name, limit=50)
                 
-                # Try multiple matching strategies
-                # Strategy 1: Direct match
-                if full_name.lower() == object_name.lower():
-                    matching_obj = obj
-                    break
-                
-                # Strategy 2: Extract year and letters from full name using regex
-                match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
-                if match:
-                    extracted_name = f"{match.group(1)}{match.group(2)}"
-                    if extracted_name.lower() == object_name.lower():
+                # Find exact match based on year + letters pattern
+                for obj in results:
+                    full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
+                    name_only = obj.get('name', '').strip()
+                    
+                    # Strategy 1: Direct match on name only
+                    if name_only.lower() == object_name.lower():
                         matching_obj = obj
                         break
+                    
+                    # Strategy 2: Direct match on full name
+                    if full_name.lower() == object_name.lower():
+                        matching_obj = obj
+                        break
+                    
+                    # Strategy 3: Extract year and letters from full name using regex
+                    match = re.search(r'(\d{4})([a-zA-Z]+)$', name_only)
+                    if match:
+                        extracted_name = f"{match.group(1)}{match.group(2)}"
+                        if extracted_name.lower() == object_name.lower():
+                            matching_obj = obj
+                            break
             
             if not matching_obj:
                 flash(f'Object {object_name} not found.', 'error')
@@ -196,17 +235,59 @@ def register_object_routes(app):
         try:
             object_name = f"{year}{letters}"
             
-            # Search for object by name pattern
-            results = search_tns_objects(search_term=object_name, limit=10)
+            # Try exact match first using direct SQL query
+            from modules.postgres_database import get_tns_db_connection
+            conn = get_tns_db_connection()  
+            cursor = conn.cursor()
             
-            # Find exact match
+            # Exact match query - match name exactly (case insensitive)
+            cursor.execute("""
+                SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+                       reporting_groupid, reporting_group, source_groupid, source_group,
+                       discoverydate, discoverymag, discmagfilter, filter, reporters,
+                       time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
+                       creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                       CASE 
+                            WHEN finish_follow = 1 THEN 'finished'
+                            WHEN follow = 1 THEN 'followup'
+                            WHEN snoozed = 1 THEN 'snoozed'
+                            ELSE 'object'
+                       END as tag
+                FROM tns_objects 
+                WHERE name ILIKE %s
+            """, (object_name,))
+            
+            result = cursor.fetchone()
             matching_obj = None
-            for obj in results:
-                full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
-                match = re.search(r'(\d{4})([a-zA-Z]+)', full_name)
-                if match and match.group(1) == str(year) and match.group(2).lower() == letters.lower():
-                    matching_obj = obj
-                    break
+            
+            if result:
+                columns = ['objid', 'name_prefix', 'name', 'ra', 'declination', 'redshift', 'typeid', 'type',
+                          'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
+                          'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
+                          'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
+                          'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tag']
+                matching_obj = dict(zip(columns, result))
+            
+            conn.close()
+            
+            # If no exact match, fall back to fuzzy search
+            if not matching_obj:
+                results = search_tns_objects(search_term=object_name, limit=50)
+                
+                # Find exact match
+                for obj in results:
+                    name_only = obj.get('name', '').strip()
+                    
+                    # Strategy 1: Direct match on name only
+                    if name_only.lower() == object_name.lower():
+                        matching_obj = obj
+                        break
+                    
+                    # Strategy 2: Extract year and letters using regex with end anchor
+                    match = re.search(r'(\d{4})([a-zA-Z]+)$', name_only)
+                    if match and match.group(1) == str(year) and match.group(2).lower() == letters.lower():
+                        matching_obj = obj
+                        break
             
             if not matching_obj:
                 return jsonify({'success': False, 'error': 'Object not found'}), 404
@@ -284,9 +365,10 @@ def register_object_routes(app):
             conn = get_tns_db_connection()
             cursor = conn.cursor()
             
-            # Get exact match using SQL
-            cursor.execute("""
-                SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+            # Get exact match using SQL - try multiple queries
+            exact_queries = [
+                # Full name match (prefix + name)
+                """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
                        reporting_groupid, reporting_group, source_groupid, source_group,
                        discoverydate, discoverymag, discmagfilter, filter, reporters,
                        time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
@@ -298,10 +380,30 @@ def register_object_routes(app):
                             ELSE 'object'
                        END as tag
                 FROM tns_objects 
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s
-            """, (object_name,))
+                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
+                # Name only match (exact)
+                """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
+                       reporting_groupid, reporting_group, source_groupid, source_group,
+                       discoverydate, discoverymag, discmagfilter, filter, reporters,
+                       time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
+                       creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                       CASE 
+                            WHEN finish_follow = 1 THEN 'finished'
+                            WHEN follow = 1 THEN 'followup'
+                            WHEN snoozed = 1 THEN 'snoozed'
+                            ELSE 'object'
+                       END as tag
+                FROM tns_objects 
+                WHERE name ILIKE %s"""
+            ]
             
-            exact_result = cursor.fetchone()
+            exact_result = None
+            for query in exact_queries:
+                cursor.execute(query, (object_name,))
+                exact_result = cursor.fetchone()
+                if exact_result:
+                    break
+            
             conn.close()
             
             if exact_result:
@@ -313,12 +415,22 @@ def register_object_routes(app):
                           'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tag']
                 obj = dict(zip(columns, exact_result))
             else:
-                # Fallback to search function
-                results = search_tns_objects(search_term=object_name, limit=1)
-                if not results or len(results) == 0:
-                    return jsonify({'error': 'Object not found'}), 404
+                # Fallback to search function with more results
+                results = search_tns_objects(search_term=object_name, limit=50)
                 
-                obj = results[0]
+                # Find exact match in results
+                obj = None
+                for result in results:
+                    full_name = (result.get('name_prefix', '') + result.get('name', '')).strip()
+                    name_only = result.get('name', '').strip()
+                    
+                    if (full_name.lower() == object_name.lower() or 
+                        name_only.lower() == object_name.lower()):
+                        obj = result
+                        break
+                
+                if not obj:
+                    return jsonify({'error': 'Object not found'}), 404
             
             full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
             if not full_name and obj.get('name'):
