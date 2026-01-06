@@ -858,7 +858,6 @@ function enterPhotometryEditMode() {
     
     // Update button states
     const editBtn = document.getElementById('photometryEditBtn');
-    const addBtn = document.getElementById('addPhotometryBtn');
     const plotContainer = document.getElementById('photometryPlot');
     const tableContainer = document.getElementById('photometryTableContainer');
     
@@ -866,7 +865,6 @@ function enterPhotometryEditMode() {
         editBtn.innerHTML = `<span class="btn-icon">${ICONS.view}</span> View Plot`;
         editBtn.title = 'Switch back to plot view';
     }
-    if (addBtn) addBtn.style.display = 'inline-flex';
     if (plotContainer) plotContainer.style.display = 'none';
     if (tableContainer) tableContainer.style.display = 'block';
     
@@ -888,7 +886,10 @@ function populatePhotometryTable() {
         row.dataset.index = index;
         row.dataset.pointId = point.id;
         
-        const isUpperLimit = point.magnitude_error === null || point.magnitude_error === 0;
+        const isUpperLimit = point.magnitude_error === null || 
+                             point.magnitude_error === undefined || 
+                             Number.isNaN(point.magnitude_error) ||
+                             (typeof point.magnitude_error === 'number' && !isFinite(point.magnitude_error));
         
         row.innerHTML = `
             <td>${point.mjd}</td>
@@ -975,7 +976,6 @@ function exitPhotometryEditMode() {
     
     // Update button states
     const editBtn = document.getElementById('photometryEditBtn');
-    const addBtn = document.getElementById('addPhotometryBtn');
     const plotContainer = document.getElementById('photometryPlot');
     const tableContainer = document.getElementById('photometryTableContainer');
     
@@ -983,12 +983,11 @@ function exitPhotometryEditMode() {
         editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Edit`;
         editBtn.title = 'Edit photometry data';
     }
-    if (addBtn) addBtn.style.display = 'none';
     if (plotContainer) plotContainer.style.display = 'block';
     if (tableContainer) tableContainer.style.display = 'none';
 }
 
-function addPhotometryPoint() {
+async function addPhotometryPoint() {
     const form = document.getElementById('addPhotometryForm');
     const errorDiv = document.getElementById('addFormError');
     const errorText = document.getElementById('addErrorText');
@@ -1033,31 +1032,61 @@ function addPhotometryPoint() {
     // Hide error
     if (errorDiv) errorDiv.style.display = 'none';
     
-    // Add to pending changes
+    // Prepare data for API
     const newPoint = {
         mjd: mjd,
         magnitude: magnitude,
         magnitude_error: isUpperLimit ? null : magnitudeError,
-        filter_name: filter,
-        telescope: telescope,
-        isNew: true
+        filter: filter,
+        telescope: telescope
     };
     
-    photometryChanges.toAdd.push(newPoint);
+    // Parse object name to get year and letters
+    const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
+    if (!match) {
+        if (errorDiv && errorText) {
+            errorText.innerHTML = 'Invalid object name format';
+            errorDiv.style.display = 'flex';
+        }
+        return;
+    }
     
-    // Add to local data for immediate display
-    photometryData.push({
-        ...newPoint,
-        id: 'new_' + Date.now(), // Temporary ID
-    });
+    const year = match[1];
+    const letters = match[2];
     
-    // Refresh table
-    populatePhotometryTable();
-    
-    // Close modal
-    closeAddPhotometryModal();
-    
-    showNotification('Point added to pending changes', 'success');
+    // Directly save to database via API
+    try {
+        const response = await fetch(`/api/object/${year}${letters}/photometry`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(newPoint)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Photometry point added successfully', 'success');
+            closeAddPhotometryModal();
+            
+            // Reload photometry data to show the new point
+            setTimeout(() => {
+                loadPhotometryPlot();
+            }, 500);
+        } else {
+            if (errorDiv && errorText) {
+                errorText.innerHTML = result.error || 'Failed to add photometry point';
+                errorDiv.style.display = 'flex';
+            }
+        }
+    } catch (error) {
+        console.error('Error adding photometry point:', error);
+        if (errorDiv && errorText) {
+            errorText.innerHTML = 'Network error: ' + error.message;
+            errorDiv.style.display = 'flex';
+        }
+    }
 }
 
 function cancelPhotometryEdit() {
@@ -1522,9 +1551,13 @@ function validatePhotometryData(content) {
         }
         
         // Handle magnitude (could be upper limit)
-        if (magStr.startsWith('>')) {
+        // Upper limit: magnitude starts with ">" OR error is "nan"/"none"/"null"/empty
+        const errLower = errStr.toLowerCase();
+        const isNonDetection = errLower === 'nan' || errLower === 'none' || errLower === 'null' || errLower === '' || errLower === '-';
+        
+        if (magStr.startsWith('>') || isNonDetection) {
             dataPoint.isUpperLimit = true;
-            dataPoint.magnitude = parseFloat(magStr.substring(1));
+            dataPoint.magnitude = magStr.startsWith('>') ? parseFloat(magStr.substring(1)) : parseFloat(magStr);
             dataPoint.magnitude_error = null;
             if (dataPoint.status === 'valid') {
                 dataPoint.status = 'warning';
@@ -1541,9 +1574,12 @@ function validatePhotometryData(content) {
             }
             
             if (isNaN(dataPoint.magnitude_error) || dataPoint.magnitude_error < 0) {
+                // Treat as upper limit if error is invalid
+                dataPoint.isUpperLimit = true;
+                dataPoint.magnitude_error = null;
                 if (dataPoint.status === 'valid') {
                     dataPoint.status = 'warning';
-                    dataPoint.statusText = 'Invalid error';
+                    dataPoint.statusText = 'Upper Limit';
                 }
             }
         }

@@ -103,9 +103,12 @@ class DataVisualization:
                 
             err = point.get('magnitude_error')
             try:
-                err = float(err) if err is not None else 0
+                err = float(err) if err is not None else None
+                # Check for NaN
+                if err is not None and (err != err):  # NaN check
+                    err = None
             except (ValueError, TypeError):
-                err = 0
+                err = None
 
             if mjd is not None:
                 all_mjds.append(mjd)
@@ -202,13 +205,15 @@ class DataVisualization:
             symbol = telescope_symbols.get(telescope, 'circle')
             
             # Separate points with and without errors
+            # Upper limits: magnitude_error is None or NaN (non-detection)
             with_errors = []
             without_errors = []
             
             for i, error in enumerate(data['magnitude_error']):
-                if error and error > 0:
+                if error is not None and error == error and error > 0:  # Valid positive error
                     with_errors.append(i)
                 else:
+                    # None, NaN, or 0 => upper limit (non-detection)
                     without_errors.append(i)
             
             # Add trace for points with error bars

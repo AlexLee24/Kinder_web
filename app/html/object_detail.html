@@ -267,7 +267,7 @@
                                 </span>
                                 Edit
                             </button>
-                            <button class="action-btn-small add" onclick="showAddPhotometryForm()" id="addPhotometryBtn" style="display: none;">
+                            <button class="action-btn-small add" onclick="showAddPhotometryForm()" id="addPhotometryBtn">
                                 <span class="btn-icon">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                 </span>
@@ -470,12 +470,12 @@
                     <pre>59123.456   18.24   0.05   g   SLT
 59124.567   18.31   0.06   r   LOT
 59125.678   18.45   0.08   i   
-59126.789   >19.5   0.0    g   </pre>
+59126.789   19.53   nan    g   </pre>
                     <p><strong>Notes:</strong></p>
                     <ul>
                         <li>Columns can be separated by spaces or tabs</li>
                         <li>Telescope column is optional (will default to "Unknown")</li>
-                        <li>Use ">" for upper limits (error will be ignored)</li>
+                        <li>Use "nan" at error for upper limits</li>
                         <li>Lines starting with "#" will be ignored</li>
                     </ul>
                 </div>

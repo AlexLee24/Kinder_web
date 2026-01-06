@@ -640,6 +640,19 @@ def register_object_routes(app):
     # ===============================================================================
     # OBJECT DATA API
     # ===============================================================================
+    def sanitize_for_json(data):
+        """Convert NaN and Inf values to None for JSON serialization"""
+        import math
+        if isinstance(data, list):
+            return [sanitize_for_json(item) for item in data]
+        elif isinstance(data, dict):
+            return {key: sanitize_for_json(value) for key, value in data.items()}
+        elif isinstance(data, float):
+            if math.isnan(data) or math.isinf(data):
+                return None
+            return data
+        return data
+
     @app.route('/api/object/<int:year><alpha:letters>/photometry')
     def get_object_photometry(year, letters):
         if 'user' not in session:
@@ -652,6 +665,8 @@ def register_object_routes(app):
             TNSObjectDB.sync_last_photometry_date(object_name)
             
             photometry = TNSObjectDB.get_photometry(object_name)
+            # Sanitize NaN values before JSON serialization
+            photometry = sanitize_for_json(photometry)
             return jsonify({
                 'success': True,
                 'photometry': photometry,
