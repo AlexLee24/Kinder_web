@@ -232,7 +232,7 @@ function loadLocationImage() {
     const ra = parseFloat(objectData.ra);
     const dec = parseFloat(objectData.declination);
     
-    const jpg_url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ra}&dec=${dec}&pixscale=0.1&layer=ls-dr10-grz&size=600`;
+    const jpg_url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ra}&dec=${dec}&pixscale=0.1&layer=ls-dr10-grz&size=600&zoom=16&desi-spec-dr1`;
     
     console.log(`Loading location image from: ${jpg_url}`);
     
@@ -427,7 +427,7 @@ function openDESI() {
     
     const ra = parseFloat(objectData.ra);
     const dec = parseFloat(objectData.declination);
-    const DESIUrl = `https://www.legacysurvey.org/viewer?ra=${ra}&dec=${dec}&zoom=14&mark=${ra},${dec}&layer=ls-dr10-grz`
+    const DESIUrl = `https://www.legacysurvey.org/viewer?ra=${ra}&dec=${dec}&zoom=14&mark=${ra},${dec}&layer=ls-dr10-grz&zoom=16&desi-spec-dr1`
     window.open(DESIUrl, '_blank');
 }
 
