@@ -43,7 +43,7 @@ def check_db_connection():
         print(f"[ERROR] Failed to connect to PostgreSQL database: {e}")
         return False
 
-def init_connection_pool(minconn=2, maxconn=10):
+def init_connection_pool(minconn=2, maxconn=60):
     """Initialize PostgreSQL connection pool for write optimization"""
     global connection_pool
     if connection_pool is None:
@@ -694,18 +694,18 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
     
     # Magnitude range filter
     if app_mag_min is not None:
-        query += ' AND discoverymag >= %s'
+        query += ' AND CAST(discoverymag AS NUMERIC) >= %s'
         params.append(app_mag_min)
     if app_mag_max is not None:
-        query += ' AND discoverymag <= %s'
+        query += ' AND CAST(discoverymag AS NUMERIC) <= %s'
         params.append(app_mag_max)
     
     # Redshift range filter
     if redshift_min is not None:
-        query += ' AND redshift >= %s'
+        query += ' AND CAST(redshift AS NUMERIC) >= %s'
         params.append(redshift_min)
     if redshift_max is not None:
-        query += ' AND redshift <= %s'
+        query += ' AND CAST(redshift AS NUMERIC) <= %s'
         params.append(redshift_max)
     
     # Discoverer filter
