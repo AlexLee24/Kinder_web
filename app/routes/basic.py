@@ -23,7 +23,7 @@ def register_basic_routes(app):
         user_groups = []
         user_data = None
         
-        from modules.database import user_exists, get_users
+        from modules.web_postgres_database import user_exists, get_users
         if user_exists(user_email):
             users = get_users()
             user_data = users.get(user_email, {})

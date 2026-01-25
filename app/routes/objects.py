@@ -11,7 +11,7 @@ from modules.postgres_database import (
     search_tns_objects, update_object_status, update_object_activity, get_tns_db_connection,
     TNSObjectDB
 )
-from modules.database import (
+from modules.web_postgres_database import (
     get_all_groups, get_object_permissions, grant_object_permission, 
     revoke_object_permission, check_object_access
 )

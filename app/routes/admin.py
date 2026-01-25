@@ -5,7 +5,7 @@ from flask import render_template, redirect, url_for, session, flash, request, j
 from authlib.common.security import generate_token
 from datetime import datetime
 
-from modules.database import (
+from modules.web_postgres_database import (
     get_users, update_user, delete_user, user_exists,
     get_groups, create_group, delete_group, group_exists,
     add_user_to_group, remove_user_from_group, user_in_group,
@@ -94,7 +94,7 @@ def register_admin_routes(app):
                 invited_at=invitation['invited_at']
             )
         else:
-            from modules.database import save_user
+            from modules.web_postgres_database import save_user
             save_user(
                 email=user_email,
                 name=session['user']['name'],
@@ -159,6 +159,7 @@ def register_admin_routes(app):
         
         # Get settings
         custom_targets_public = get_setting('custom_targets_public_access', 'false') == 'true'
+        open_registration = get_setting('open_registration', 'true') == 'true'
         
         return render_template('admin.html', 
                              current_path='/admin',
@@ -166,7 +167,8 @@ def register_admin_routes(app):
                              groups=groups,
                              invitations=invitations,
                              current_user_email=current_user_email,
-                             custom_targets_public=custom_targets_public)
+                             custom_targets_public=custom_targets_public,
+                             open_registration=open_registration)
 
     @app.route('/admin/settings/save', methods=['POST'])
     def save_settings():

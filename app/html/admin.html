@@ -18,7 +18,7 @@
             <!-- Data Consistency Check -->
             <div class="consistency-check">
                 <button class="btn btn-info" onclick="checkDataConsistency()">
-                    Check Data Consistency
+                    Chcek database connection
                 </button>
                 <span id="consistencyStatus" class="consistency-status"></span>
             </div>
@@ -99,7 +99,14 @@
                                     <span class="no-groups">No groups</span>
                                 {% endif %}
                             </td>
-                            <td>{{ user.get('invited_at', user.get('last_login', 'Unknown'))[:10] }}</td>
+                            <td>
+                                {% set active_date = user.invited_at or user.last_login %}
+                                {% if active_date %}
+                                    {{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
+                                {% else %}
+                                    Unknown
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="action-buttons">
                                     {% if email != session.user.email %}
@@ -144,7 +151,7 @@
                     <p class="group-description">{{ group.description or 'No description' }}</p>
                     <div class="group-info">
                         <p><strong>Members:</strong> {{ group.members|length }}</p>
-                        <p><strong>Created:</strong> {{ group.created_at[:10] }}</p>
+                        <p><strong>Created:</strong> {{ group.created_at.strftime('%Y-%m-%d') if group.created_at and group.created_at.strftime is defined else (group.created_at[:10] if group.created_at else 'Unknown') }}</p>
                     </div>
                     
                     <div class="group-details" id="details-{{ loop.index0 }}" style="display: none;">
@@ -223,7 +230,7 @@
                                     {{ invitation.status.title() }}
                                 </span>
                             </td>
-                            <td>{{ invitation.invited_at[:10] }}</td>
+                            <td>{{ invitation.invited_at.strftime('%Y-%m-%d') if invitation.invited_at and invitation.invited_at.strftime is defined else (invitation.invited_at[:10] if invitation.invited_at else 'Unknown') }}</td>
                             <td>
                                 <div class="action-buttons">
                                     {% if invitation.status == 'pending' %}
@@ -264,6 +271,21 @@
                             <input type="checkbox" id="customTargetsAccess" 
                                    {% if custom_targets_public %}checked{% endif %}
                                    onchange="toggleCustomTargetsAccess(this)">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 15px;">
+                    <div class="setting-info">
+                        <label for="openRegistration" style="display: block; font-weight: bold; margin-bottom: 5px;">Open Registration</label>
+                        <p class="setting-desc" style="color: #aaa; font-size: 0.9em; margin: 0;">If enabled, anyone with a Google account can sign up. If disabled, new users can only join via invitation.</p>
+                    </div>
+                    <div class="toggle-switch">
+                        <label class="switch">
+                            <input type="checkbox" id="openRegistration" 
+                                   {% if open_registration %}checked{% endif %}
+                                   onchange="toggleOpenRegistration(this)">
                             <span class="slider round"></span>
                         </label>
                     </div>

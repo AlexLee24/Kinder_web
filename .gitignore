@@ -66,3 +66,5 @@ data/
 app/modules/download_phot.py
 Cross_match_data/
 import_cross_match.py
+app/modules/DETECT_pipe/modules/
+migrate_data.py

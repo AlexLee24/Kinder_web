@@ -1,6 +1,6 @@
 from flask import render_template, request, jsonify, session, redirect, url_for
 from modules.postgres_database import get_db_connection
-from modules.database import get_setting, set_setting, get_users, get_groups
+from modules.web_postgres_database import get_setting, set_setting, get_users, get_groups
 from functools import wraps
 import json
 

@@ -20,6 +20,7 @@
         <div class="control-panel">
             <div class="panel-header">
                 <h1>Transient Marshal</h1>
+                <h3>Data since 2016-01</h3>
                 <div class="status-info">
                     <span class="total-count">{{ total_count }} objects</span>
                     <span class="last-sync">
@@ -85,6 +86,12 @@
                         <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg> Snoozed</span>
                     </div>
                 </div>
+                <div class="small-stat-card flag clickable" onclick="filterByStatus('flag')" title="Click to filter Flagged objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="flagCount">{{ flag_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Flag</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Search and Filter Tools -->
@@ -99,15 +106,15 @@
                         <button class="clear-btn" onclick="clearAllFilters()">
                             Clear
                         </button>
+                        <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
+                            <span>Advanced Filters</span>
+                            <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </button>
                     </div>
                 </div>
 
                 <!-- Advanced Filters -->
                 <div class="advanced-filters">
-                    <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
-                        <span>Advanced Filters</span>
-                        <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
-                    </button>
                     
                     <div class="advanced-filters-content" id="advancedFiltersContent">
                         <div class="filter-row">
@@ -130,6 +137,7 @@
                                     <option value="followup">Follow-up</option>
                                     <option value="finished">Finished</option>
                                     <option value="snoozed">Snoozed</option>
+                                    <option value="flag">Flagged</option>
                                 </select>
                                 <div class="filter-tooltip">Filter by current status tag</div>
                             </div>
@@ -226,9 +234,9 @@
                     <button class="view-btn" data-view="table" onclick="switchView('table')">
                         Table
                     </button>
-                    <button class="view-btn" data-view="compact" onclick="switchView('compact')">
+                    <!-- <button class="view-btn" data-view="compact" onclick="switchView('compact')">
                         Compact
-                    </button>
+                    </button> -->
                 </div>
                 
                 <div class="sort-controls">
@@ -239,6 +247,7 @@
                         <option value="magnitude">Discovery Magnitude</option>
                         <option value="brightest_mag">Brightest Mag</option>
                         <option value="brightest_abs_mag">Brightest M</option>
+                        <option value="redshift">Redshift</option>
                     </select>
                     <button class="sort-order-btn" onclick="toggleSortOrder()" id="sortOrderBtn">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
@@ -320,41 +329,29 @@
                     </div>
                     
                     <div class="object-info">
-                        {% if obj.discoverymag %}
                         <div class="info-item">
-                            <span>Discovery Mag = {{ obj.discoverymag }}</span>
+                            <span>Discovery Mag = {{ obj.discoverymag or '---' }}</span>
                         </div>
-                        {% endif %}
 
-                        {% if obj.brightest_mag %}
                         <div class="info-item">
-                            <span>Brightest Mag = {{ obj.brightest_mag }}</span>
+                            <span>Brightest Mag = {{ obj.brightest_mag or '---' }}</span>
                         </div>
-                        {% endif %}
                         
-                        {% if obj.brightest_abs_mag %}
                         <div class="info-item">
-                            <span>Brightest M = {{ obj.brightest_abs_mag }}</span>
+                            <span>Redshift = {{ obj.redshift or '---' }}</span>
                         </div>
-                        {% endif %}
+
+                        <div class="info-item">
+                            <span>Brightest M = {{ obj.brightest_abs_mag or '---' }}</span>
+                        </div>
                         
-                        {% if obj.redshift %}
                         <div class="info-item">
-                            <span>z = {{ obj.redshift }}</span>
+                            <span>Date: {{ obj.discoverydate[:10] if obj.discoverydate else '---' }}</span>
                         </div>
-                        {% endif %}
                         
-                        {% if obj.discoverydate %}
                         <div class="info-item">
-                            <span>Date: {{ obj.discoverydate[:10] }}</span>
+                            <span>Source: {{ obj.source_group or '---' }}</span>
                         </div>
-                        {% endif %}
-                        
-                        {% if obj.source_group %}
-                        <div class="info-item">
-                            <span>Source: {{ obj.source_group }}</span>
-                        </div>
-                        {% endif %}
                     </div>
                 </div>
                 
@@ -404,8 +401,8 @@
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Object Name</th>
-                                <th>Classification</th>
+                                <th class="name-column">Object Name</th>
+                                <th class="class-column">Class</th>
                                 <th>RA (J2000)</th>
                                 <th>Dec (J2000)</th>
                                 <th>Discover Mag</th>
@@ -414,7 +411,7 @@
                                 <th>Redshift</th>
                                 <th>Discovery Date</th>
                                 <th>Discoverer</th>
-                                <th>Tag</th>
+                                <th class="tag-column">Tag</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -528,6 +525,12 @@
 
     <!-- Notification Container -->
     <div class="notification-container" id="notificationContainer"></div>
+
+    <button id="backToTopBtn" title="Go to top">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 15l-6-6-6 6"/>
+        </svg>
+    </button>
 
     <script src="{{ url_for('static', filename='js/marshal.js') }}"></script>
 </body>

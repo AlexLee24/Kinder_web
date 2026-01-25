@@ -243,17 +243,17 @@ li a.active::after {
 
 .header-content .main-nav ul li.dropdown .dropdown-content li a.active,
 .header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
-    color: #C5A059;
+    color: rgb(197, 160, 89);
 }
 
 .header-content .main-nav ul li.dropdown .dropdown-content {
     position: absolute;
     top: 100%;
     left: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: rgb(95, 95, 95);
     backdrop-filter: blur(15px) saturate(180%);
     -webkit-backdrop-filter: blur(15px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgb(197, 159, 89);
     min-width: 200px;
     border-radius: 15px;
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);

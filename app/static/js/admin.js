@@ -14,6 +14,13 @@ const ICONS = {
 // Initialize users data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadUsersData();
+    
+    // Restore active tab if exists
+    const activeTab = sessionStorage.getItem('adminActiveTab');
+    if (activeTab) {
+        showTab(activeTab);
+    }
+    
     // Auto-check consistency when page loads
     setTimeout(checkDataConsistency, 1000);
 });
@@ -81,14 +88,24 @@ function clearSearch() {
 
 // Tab functionality
 function showTab(tabName) {
+    // Save state
+    sessionStorage.setItem('adminActiveTab', tabName);
+
     const tabContents = document.querySelectorAll('.tab-content');
     tabContents.forEach(content => content.classList.remove('active'));
     
     const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => button.classList.remove('active'));
+    tabButtons.forEach(button => {
+        button.classList.remove('active');
+        if (button.getAttribute('onclick') && button.getAttribute('onclick').includes(`'${tabName}'`)) {
+            button.classList.add('active');
+        }
+    });
     
-    document.getElementById(tabName + '-tab').classList.add('active');
-    event.target.classList.add('active');
+    const targetTab = document.getElementById(tabName + '-tab');
+    if (targetTab) {
+        targetTab.classList.add('active');
+    }
 }
 
 // Modal functions
@@ -833,7 +850,7 @@ async function checkDataConsistency() {
                 statusElement.className = 'consistency-status issues-found';
                 showConsistencyResults(result.issues);
             } else {
-                statusElement.textContent = 'No issues found';
+                statusElement.textContent = '';
                 statusElement.className = 'consistency-status no-issues';
                 showNotification('Data consistency check passed - no issues found!', 'success');
             }
@@ -942,14 +959,45 @@ function toggleCustomTargetsAccess(checkbox) {
         if (data.success) {
             // Optional: show success toast
             console.log('Setting saved');
+            showNotification('Setting saved successfully', 'success');
         } else {
-            alert('Failed to save setting: ' + data.error);
+            showNotification('Failed to save setting: ' + data.error, 'error');
             checkbox.checked = !isChecked; // Revert
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error saving setting');
+        showNotification('Error saving setting', 'error');
+        checkbox.checked = !isChecked; // Revert
+    });
+}
+
+function toggleOpenRegistration(checkbox) {
+    const isChecked = checkbox.checked;
+    
+    fetch('/admin/settings/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            key: 'open_registration',
+            value: isChecked
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('Setting saved');
+            showNotification('Registration policy updated successfully', 'success');
+        } else {
+            showNotification('Failed to save setting: ' + data.error, 'error');
+            checkbox.checked = !isChecked; // Revert
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error saving setting', 'error');
         checkbox.checked = !isChecked; // Revert
     });
 }

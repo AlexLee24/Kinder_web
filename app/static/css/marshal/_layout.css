@@ -102,7 +102,7 @@
 /* Secondary Statistics */
 .secondary-stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-3xl);
 }
@@ -373,7 +373,8 @@
 .search-input-group {
     display: flex;
     gap: var(--spacing-md);
-    max-width: 500px;
+    max-width: 100%;
+    align-items: center;
 }
 
 .search-input-group input {

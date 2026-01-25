@@ -14,7 +14,8 @@ const ICONS = {
     followup: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>',
     inbox: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg>',
     finished: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>',
-    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>'
+    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>',
+    flag: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'
 };
 
 let objectData = null;
@@ -57,6 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (objectName) {
         loadObjectData();
+        checkFlagStatus();
     } else {
         showNotification('Object name not found', 'error');
     }
@@ -3049,5 +3051,98 @@ function revokePermission() {
         console.error('Error revoking permission:', error);
         statusDiv.textContent = 'Error revoking permission';
         statusDiv.style.color = '#dc3545';
+    });
+}
+
+// Flag Management
+function checkFlagStatus() {
+    if (!cleanObjectName) return;
+    
+    // If cleanObjectName is not set yet (might happen if this is called too early), try to get it from URL
+    if (!cleanObjectName && objectName) {
+        cleanObjectName = extractYearAndLetters(objectName);
+    } 
+    
+    if (!cleanObjectName) return;
+    
+    fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/flag_status`)
+        .then(response => response.json())
+        .then(data => {
+            const btn = document.getElementById('flagBtn');
+            if (btn && data.is_flagged) {
+                btn.classList.add('active');
+                btn.innerHTML = `${ICONS.flag} Remove Flag`;
+                btn.title = "Remove flag from this object";
+            } else if (btn) {
+                btn.classList.remove('active');
+                btn.innerHTML = `${ICONS.flag} Flag`;
+                btn.title = "Flag this object as important";
+            }
+        })
+        .catch(err => console.error('Error checking flag status:', err));
+}
+
+function toggleFlag() {
+    if (!cleanObjectName) {
+        if (objectName) cleanObjectName = extractYearAndLetters(objectName);
+        else return;
+    }
+    
+    // Get current state
+    const btn = document.getElementById('flagBtn');
+    if (!btn) return;
+    
+    const isCurrentlyFlagged = btn.classList.contains('active');
+    const newState = !isCurrentlyFlagged;
+    
+    // Optimistic UI update
+    if (newState) {
+        btn.classList.add('active');
+        btn.innerHTML = `${ICONS.flag} Remove Flag`;
+        btn.title = "Remove flag from this object";
+    } else {
+        btn.classList.remove('active');
+        btn.innerHTML = `${ICONS.flag} Flag`;
+        btn.title = "Flag this object as important";
+    }
+    
+    fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/toggle_flag`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ flag: newState })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            // Revert on error
+            showNotification('Failed to toggle flag', 'error');
+            if (isCurrentlyFlagged) {
+                btn.classList.add('active');
+                btn.innerHTML = `${ICONS.flag} Remove Flag`;
+                btn.title = "Remove flag from this object";
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = `${ICONS.flag} Flag`;
+                btn.title = "Flag this object as important";
+            }
+        } else {
+             showNotification(newState ? 'Object flagged' : 'Flag removed', 'success');
+        }
+    })
+    .catch(err => {
+        console.error('Error toggling flag:', err);
+        showNotification('Error toggling flag', 'error');
+        // Revert UI
+        if (isCurrentlyFlagged) {
+            btn.classList.add('active');
+            btn.innerHTML = `${ICONS.flag} Remove Flag`;
+            btn.title = "Remove flag from this object";
+        } else {
+            btn.classList.remove('active');
+            btn.innerHTML = `${ICONS.flag} Flag`;
+            btn.title = "Flag this object as important";
+        }
     });
 }

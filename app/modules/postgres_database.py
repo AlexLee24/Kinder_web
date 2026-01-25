@@ -683,6 +683,8 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
             query += ' AND finish_follow = 1'
         elif tag == 'snoozed':
             query += ' AND snoozed = 1'
+        elif tag == 'flag':
+            query += ' AND EXISTS (SELECT 1 FROM cross_match_results c WHERE c.target_name = tns_objects.name AND c.flag = TRUE)'
     
     # Date range filter
     if date_from:
@@ -766,6 +768,15 @@ def get_tag_statistics():
         cursor.execute('SELECT COUNT(*) FROM tns_objects WHERE snoozed = 1')
         stats['snoozed'] = cursor.fetchone()[0]
         
+        # Flag count (from cross_match_results where flag = TRUE)
+        cursor.execute("""
+            SELECT COUNT(DISTINCT t.name) 
+            FROM tns_objects t
+            JOIN cross_match_results c ON t.name = c.target_name
+            WHERE c.flag = TRUE
+        """)
+        stats['flag'] = cursor.fetchone()[0]
+        
         cursor.close()
         
     return stats
@@ -818,45 +829,50 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
     
     query = '''
         SELECT 
-            objid, name_prefix, name, ra, declination, redshift, typeid, type,
-            reporting_groupid, reporting_group, source_groupid, source_group,
-            discoverydate, discoverymag, discmagfilter, filter, reporters,
-            time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-            creationdate, last_photometry_date, lastmodified, brightest_mag, brightest_abs_mag,
+            t.objid, t.name_prefix, t.name, t.ra, t.declination, t.redshift, t.typeid, t.type,
+            t.reporting_groupid, t.reporting_group, t.source_groupid, t.source_group,
+            t.discoverydate, t.discoverymag, t.discmagfilter, t.filter, t.reporters,
+            t.time_received, t.internal_names, t.discovery_ads_bibcode, t.class_ads_bibcodes,
+            t.creationdate, t.last_photometry_date, t.lastmodified, t.brightest_mag, t.brightest_abs_mag,
             CASE 
-                WHEN finish_follow = 1 THEN 'finished'
-                WHEN follow = 1 THEN 'followup'
-                WHEN snoozed = 1 THEN 'snoozed'
+                WHEN t.finish_follow = 1 THEN 'finished'
+                WHEN t.follow = 1 THEN 'followup'
+                WHEN t.snoozed = 1 THEN 'snoozed'
                 ELSE 'object'
             END as tag
-        FROM tns_objects
-        WHERE 1=1
+        FROM tns_objects t
     '''
     
     params = []
+
+    # Tag filter - applied to JOIN if necessary
+    # if tag == 'flag':
+    #     query += ' JOIN cross_match_results c ON t.name = c.target_name'
+    
+    query += ' WHERE 1=1'
     
     # Search term filter
     if search_term:
-        query += ' AND (name ILIKE %s OR name_prefix || name ILIKE %s)'
+        query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s)'
         search_pattern = f'%{search_term}%'
         params.extend([search_pattern, search_pattern])
     
     # Object type filter
     if object_type:
         if object_type == 'AT':
-            query += " AND name_prefix = 'AT'"
+            query += " AND t.name_prefix = 'AT'"
         elif object_type == 'Classified':
-            query += " AND name_prefix != 'AT'"
+            query += " AND t.name_prefix != 'AT'"
         else:
-            query += ' AND type = %s'
+            query += ' AND t.type = %s'
             params.append(object_type)
     
     # Date range filter
     if date_from:
-        query += ' AND discoverydate >= %s'
+        query += ' AND t.discoverydate >= %s'
         params.append(date_from)
     if date_to:
-        query += ' AND discoverydate <= %s'
+        query += ' AND t.discoverydate <= %s'
         params.append(date_to)
     
     # Magnitude range filter (support both mag_min/mag_max and app_mag_min/app_mag_max)
@@ -864,64 +880,66 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
     mag_max_val = app_mag_max if app_mag_max is not None else mag_max
     
     if mag_min_val is not None:
-        query += ' AND discoverymag >= %s'
+        query += ' AND t.discoverymag >= %s'
         params.append(mag_min_val)
     if mag_max_val is not None:
-        query += ' AND discoverymag <= %s'
+        query += ' AND t.discoverymag <= %s'
         params.append(mag_max_val)
     
     # Redshift range filter
     if redshift_min is not None:
-        query += ' AND redshift >= %s'
+        query += ' AND t.redshift >= %s'
         params.append(redshift_min)
     if redshift_max is not None:
-        query += ' AND redshift <= %s'
+        query += ' AND t.redshift <= %s'
         params.append(redshift_max)
     
     # Discoverer filter
     if discoverer:
-        query += ' AND (source_group ILIKE %s OR reporting_group ILIKE %s OR reporters ILIKE %s)'
+        query += ' AND (t.source_group ILIKE %s OR t.reporting_group ILIKE %s OR t.reporters ILIKE %s)'
         discoverer_pattern = f'%{discoverer}%'
         params.extend([discoverer_pattern, discoverer_pattern, discoverer_pattern])
     
     # Brightest Mag filter
     if brightest_mag_min is not None:
-        query += ' AND brightest_mag >= %s'
+        query += ' AND t.brightest_mag >= %s'
         params.append(brightest_mag_min)
     if brightest_mag_max is not None:
-        query += ' AND brightest_mag <= %s'
+        query += ' AND t.brightest_mag <= %s'
         params.append(brightest_mag_max)
 
     # Brightest Abs Mag filter
     if brightest_abs_mag_min is not None:
-        query += ' AND brightest_abs_mag >= %s'
+        query += ' AND t.brightest_abs_mag >= %s'
         params.append(brightest_abs_mag_min)
     if brightest_abs_mag_max is not None:
-        query += ' AND brightest_abs_mag <= %s'
+        query += ' AND t.brightest_abs_mag <= %s'
         params.append(brightest_abs_mag_max)
     
     # Tag filter
     if tag:
         if tag == 'object':
-            query += ' AND inbox = 1 AND snoozed = 0'
+            query += ' AND t.inbox = 1 AND t.snoozed = 0'
         elif tag == 'followup':
-            query += ' AND follow = 1 AND finish_follow = 0'
+            query += ' AND t.follow = 1 AND t.finish_follow = 0'
         elif tag == 'finished':
-            query += ' AND finish_follow = 1'
+            query += ' AND t.finish_follow = 1'
         elif tag == 'snoozed':
-            query += ' AND snoozed = 1'
+            query += ' AND t.snoozed = 1'
+        elif tag == 'flag':
+             query += ' AND EXISTS (SELECT 1 FROM cross_match_results c WHERE c.target_name = t.name AND c.flag = TRUE)'
     
     # Sorting
     valid_sort_columns = ['discoverydate', 'lastmodified', 'discoverymag', 'name', 'time_received', 'last_photometry_date', 'brightest_mag', 'brightest_abs_mag']
     
     if sort_by == 'last_photometry_date':
         sort_direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
-        query += f' ORDER BY COALESCE(last_photometry_date, lastmodified) {sort_direction} NULLS LAST'
+        query += f' ORDER BY COALESCE(t.last_photometry_date, t.lastmodified) {sort_direction} NULLS LAST'
     elif sort_by in valid_sort_columns:
         sort_direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
-        query += f' ORDER BY {sort_by} {sort_direction} NULLS LAST'
+        query += f' ORDER BY t.{sort_by} {sort_direction} NULLS LAST'
     else:
-        query += ' ORDER BY discoverydate DESC NULLS LAST'
+        query += ' ORDER BY t.discoverydate DESC NULLS LAST'
     
     # Limit and Offset
     query += ' LIMIT %s OFFSET %s'
@@ -941,47 +959,52 @@ def get_filtered_stats(search_term='', object_type='', tag=None, date_from=None,
     """Get statistics based on filters"""
     
     # Build base query with filters
-    base_query = 'SELECT COUNT(*) FROM tns_objects WHERE 1=1'
+    base_query = 'SELECT COUNT(*) FROM tns_objects t WHERE 1=1'
+    
     base_params = []
     
+    # Tag Filter (if 'flag', use EXISTS to avoid duplicates)
+    if tag == 'flag':
+        base_query += ' AND EXISTS (SELECT 1 FROM cross_match_results c WHERE c.target_name = t.name AND c.flag = TRUE)'
+
     # Apply same filters as search_tns_objects
     if search_term:
-        base_query += ' AND (name ILIKE %s OR name_prefix || name ILIKE %s)'
+        base_query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s)'
         search_pattern = f'%{search_term}%'
         base_params.extend([search_pattern, search_pattern])
     
     if object_type:
         if object_type == 'AT':
-            base_query += " AND name_prefix = 'AT'"
+            base_query += " AND t.name_prefix = 'AT'"
         elif object_type == 'Classified':
-            base_query += " AND name_prefix != 'AT'"
+            base_query += " AND t.name_prefix != 'AT'"
         else:
-            base_query += ' AND type = %s'
+            base_query += ' AND t.type = %s'
             base_params.append(object_type)
     
     if date_from:
-        base_query += ' AND discoverydate >= %s'
+        base_query += ' AND t.discoverydate >= %s'
         base_params.append(date_from)
     if date_to:
-        base_query += ' AND discoverydate <= %s'
+        base_query += ' AND t.discoverydate <= %s'
         base_params.append(date_to)
     
     if app_mag_min is not None:
-        base_query += ' AND discoverymag >= %s'
+        base_query += ' AND t.discoverymag >= %s'
         base_params.append(app_mag_min)
     if app_mag_max is not None:
-        base_query += ' AND discoverymag <= %s'
+        base_query += ' AND t.discoverymag <= %s'
         base_params.append(app_mag_max)
     
     if redshift_min is not None:
-        base_query += ' AND redshift >= %s'
+        base_query += ' AND t.redshift >= %s'
         base_params.append(redshift_min)
     if redshift_max is not None:
-        base_query += ' AND redshift <= %s'
+        base_query += ' AND t.redshift <= %s'
         base_params.append(redshift_max)
     
     if discoverer:
-        base_query += ' AND (source_group ILIKE %s OR reporting_group ILIKE %s OR reporters ILIKE %s)'
+        base_query += ' AND (t.source_group ILIKE %s OR t.reporting_group ILIKE %s OR t.reporters ILIKE %s)'
         discoverer_pattern = f'%{discoverer}%'
         base_params.extend([discoverer_pattern, discoverer_pattern, discoverer_pattern])
     
@@ -992,48 +1015,59 @@ def get_filtered_stats(search_term='', object_type='', tag=None, date_from=None,
             'inbox_count': 0,
             'followup_count': 0,
             'finished_count': 0,
-            'snoozed_count': 0
+            'snoozed_count': 0,
+            'flag_count': 0
         }
         
         # If no tag filter, get counts for all tags
         if not tag:
             # Inbox count
-            query = base_query + ' AND inbox = 1 AND snoozed = 0'
+            query = base_query + ' AND t.inbox = 1 AND t.snoozed = 0'
             cursor.execute(query, base_params)
             stats['inbox_count'] = cursor.fetchone()[0]
             
             # Follow-up count
-            query = base_query + ' AND follow = 1 AND finish_follow = 0'
+            query = base_query + ' AND t.follow = 1 AND t.finish_follow = 0'
             cursor.execute(query, base_params)
             stats['followup_count'] = cursor.fetchone()[0]
             
             # Finished count
-            query = base_query + ' AND finish_follow = 1'
+            query = base_query + ' AND t.finish_follow = 1'
             cursor.execute(query, base_params)
             stats['finished_count'] = cursor.fetchone()[0]
             
             # Snoozed count
-            query = base_query + ' AND snoozed = 1'
+            query = base_query + ' AND t.snoozed = 1'
             cursor.execute(query, base_params)
             stats['snoozed_count'] = cursor.fetchone()[0]
+            
+            # Flag Count (use EXISTS)
+            flag_query = base_query + ' AND EXISTS (SELECT 1 FROM cross_match_results c WHERE c.target_name = t.name AND c.flag = TRUE)'
+            cursor.execute(flag_query, base_params)
+            stats['flag_count'] = cursor.fetchone()[0]
+
         else:
             # Get count for specific tag
             if tag == 'object':
-                query = base_query + ' AND inbox = 1 AND snoozed = 0'
+                query = base_query + ' AND t.inbox = 1 AND t.snoozed = 0'
                 cursor.execute(query, base_params)
                 stats['inbox_count'] = cursor.fetchone()[0]
             elif tag == 'followup':
-                query = base_query + ' AND follow = 1 AND finish_follow = 0'
+                query = base_query + ' AND t.follow = 1 AND t.finish_follow = 0'
                 cursor.execute(query, base_params)
                 stats['followup_count'] = cursor.fetchone()[0]
             elif tag == 'finished':
-                query = base_query + ' AND finish_follow = 1'
+                query = base_query + ' AND t.finish_follow = 1'
                 cursor.execute(query, base_params)
                 stats['finished_count'] = cursor.fetchone()[0]
             elif tag == 'snoozed':
-                query = base_query + ' AND snoozed = 1'
+                query = base_query + ' AND t.snoozed = 1'
                 cursor.execute(query, base_params)
                 stats['snoozed_count'] = cursor.fetchone()[0]
+            elif tag == 'flag':
+                # Base query already has EXISTS clause
+                cursor.execute(base_query, base_params)
+                stats['flag_count'] = cursor.fetchone()[0]
         
         cursor.close()
         
@@ -1733,6 +1767,48 @@ def update_tns_redshift(target_name, redshift_str):
             return True
     except Exception as e:
         print(f"Error updating redshift for {target_name}: {e}")
+        return False
+
+def get_object_flag_status(object_name):
+    """Check if an object is flagged in cross_match_results"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS(
+                    SELECT 1 
+                    FROM cross_match_results 
+                    WHERE target_name = %s AND flag = TRUE
+                )
+            """, (object_name,))
+            result = cur.fetchone()
+            is_flagged = result[0] if result else False
+            cur.close()
+            return is_flagged
+    except Exception as e:
+        print(f"Error checking flag status: {e}")
+        return False
+
+def update_object_flag_by_name(object_name, flag_value):
+    """Update flag status for all cross match results with the given target name"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE cross_match_results 
+                SET flag = %s 
+                WHERE target_name = %s
+            """, (flag_value, object_name))
+            conn.commit()
+            rows_updated = cur.rowcount
+            cur.close()
+            # If no rows were updated, it might be that there is no cross_match_result for this object yet.
+            # In that case, we might need to insert one? 
+            # But cross_match_results usually come from the detection pipeline.
+            # For now, let's assume we can only flag objects that have been processed.
+            return True # Return true even if 0 rows updated to indicate no DB error
+    except Exception as e:
+        print(f"Error updating flag by name: {e}")
         return False
 
 if __name__ == "__main__":

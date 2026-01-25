@@ -1361,6 +1361,11 @@
     color: white; 
 }
 
+.status-btn-compact.flag { 
+    background: linear-gradient(135deg, #ff7675, #d63031); 
+    color: white; 
+}
+
 .status-btn-compact:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);

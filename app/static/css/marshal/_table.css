@@ -126,3 +126,21 @@
 .table-tag-indicator.snoozed {
     background: linear-gradient(45deg, var(--snoozed-color), var(--purple-dark));
 }
+/* Column Widths */
+.tag-column,
+.tag-cell {
+    min-width: 140px;
+    white-space: nowrap;
+}
+
+.name-column,
+.object-name-cell {
+    min-width: 160px;
+    white-space: nowrap;
+}
+
+.class-column,
+.class-cell {
+    min-width: 100px;
+    white-space: nowrap;
+}

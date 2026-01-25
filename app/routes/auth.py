@@ -3,7 +3,7 @@ Authentication routes (Google OAuth, login, logout)
 """
 from flask import session, flash, redirect, url_for, request
 from datetime import datetime
-from modules.database import user_exists, get_users, get_user, save_user, update_user
+from modules.web_postgres_database import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation
 from modules.config import config
 
 def register_auth_routes(app):
@@ -109,14 +109,32 @@ def register_auth_routes(app):
                         last_login=datetime.now().isoformat()
                     )
                 else:
-                    save_user(
-                        email=user_email,
-                        name=user_info.get('name'),
-                        picture=user_info.get('picture'),
-                        is_admin=is_admin,
-                        last_login=datetime.now().isoformat(),
-                        invited_at=datetime.now().isoformat()
-                    )
+                    # Check registration policy
+                    open_registration = get_setting('open_registration', 'true') == 'true'
+                    allow_registration = open_registration
+                    
+                    if not allow_registration:
+                        # Check if user has a valid invitation
+                        token = session.get('pending_invitation')
+                        if token:
+                            invitation = get_invitation(token)
+                            # Verify invitation matches this email and is pending
+                            if invitation and invitation['email'] == user_email and invitation['status'] == 'pending':
+                                allow_registration = True
+                    
+                    if allow_registration:
+                        save_user(
+                            email=user_email,
+                            name=user_info.get('name'),
+                            picture=user_info.get('picture'),
+                            is_admin=is_admin,
+                            last_login=datetime.now().isoformat(),
+                            invited_at=datetime.now().isoformat()
+                        )
+                    else:
+                        session.pop('user', None)
+                        flash('Registration is currently by invitation only.', 'error')
+                        return redirect(url_for('login'))
                 
                 if 'pending_invitation' in session:
                     return redirect(url_for('accept_invitation', token=session['pending_invitation']))

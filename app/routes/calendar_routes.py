@@ -5,7 +5,7 @@ import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
 
-from modules.database import get_users, user_exists, check_object_access
+from modules.web_postgres_database import get_users, user_exists, check_object_access
 from modules.calendar_database import (
     get_calendar_events, create_calendar_event, update_calendar_event, 
     delete_calendar_event, get_calendar_categories, create_calendar_category

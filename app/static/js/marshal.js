@@ -23,7 +23,8 @@ const ICONS = {
     inbox: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg>',
     followup: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>',
     finished: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>',
-    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>'
+    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>',
+    flag: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'
 };
 
 // Initialize when page loads
@@ -124,6 +125,8 @@ function loadInitialStats() {
                     followup_count: 0,
                     finished_count: 0,
                     snoozed_count: 0,
+                    flag_count: 0,
+                    flag_count: 0,
                     at_count: 0,
                     classified_count: 0,
                     total_count: 0
@@ -196,8 +199,8 @@ function loadInitialObjects() {
             const text = item.textContent;
             if (text.includes('Discovery Mag =')) {
                 discoveryMag = text.replace('Discovery Mag =', '').trim();
-            } else if (text.includes('z =')) {
-                redshift = text.replace('z =', '').trim();
+            } else if (text.includes('Redshift =') || text.includes('z =')) {
+                redshift = text.replace('Redshift =', '').replace('z =', '').trim();
             } else if (text.includes('Date:')) {
                 discoveryDate = text.replace('Date:', '').trim();
             } else if (text.includes('Source:')) {
@@ -218,6 +221,8 @@ function loadInitialObjects() {
                 tag: 'object',
                 magnitude: card.dataset.magnitude || discoveryMag || '',
                 redshift: card.dataset.redshift || redshift || '',
+                brightest_mag: card.dataset.brightestMag || '',
+                brightest_abs_mag: card.dataset.brightestAbsMag || '',
                 ra: raElement ? raElement.textContent.trim() : '',
                 dec: decElement ? decElement.textContent.trim() : '',
                 source: source || '',
@@ -442,7 +447,9 @@ function mapSortField(frontendField) {
         'redshift': 'redshift',
         'lastmodified': 'lastmodified',
         'last_update': 'lastmodified',
-        'last_photometry': 'last_photometry_date'
+        'last_photometry': 'last_photometry_date',
+        'brightest_mag': 'brightest_mag',
+        'brightest_abs_mag': 'brightest_abs_mag'
     };
     
     return fieldMap[frontendField] || 'discoverydate';
@@ -529,23 +536,26 @@ function generateTableView() {
         } else {
             objectLink = `/object/${encodeURIComponent(obj.name)}`;
         }
+
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
         
         row.innerHTML = `
             <td class="object-name-cell">
                 <a href="${objectLink}" target="_blank">${obj.name}</a>
             </td>
-            <td>
+            <td class="class-cell">
                 <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
             </td>
-            <td class="coord-cell">${obj.ra || 'N/A'}</td>
-            <td class="coord-cell">${obj.dec || 'N/A'}</td>
+            <td class="coord-cell">${formattedRA}</td>
+            <td class="coord-cell">${formattedDec}</td>
             <td class="magnitude-cell">${obj.magnitude || 'N/A'}</td>
             <td class="magnitude-cell">${obj.brightest_mag || 'N/A'}</td>
             <td class="magnitude-cell">${obj.brightest_abs_mag || 'N/A'}</td>
             <td class="redshift-cell">${obj.redshift || 'N/A'}</td>
             <td class="date-cell">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</td>
             <td class="discoverer-cell">${obj.source ? obj.source.slice(0, 30) : 'N/A'}</td>
-            <td>
+            <td class="tag-cell">
                 <span class="tag-badge ${obj.tag}">
                     ${getTagDisplayName(obj.tag)}
                 </span>
@@ -584,12 +594,15 @@ function generateCompactView() {
         } else {
             objectLink = `/object/${encodeURIComponent(obj.name)}`;
         }
+
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
         
         item.innerHTML = `
             <div class="compact-main">
                 <a href="${objectLink}" target="_blank" class="compact-name">${obj.name}</a>
                 <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
-                <span class="compact-coords">${obj.ra || 'N/A'}, ${obj.dec || 'N/A'}</span>
+                <span class="compact-coords">${formattedRA}, ${formattedDec}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
                 ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest Mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
                 ${obj.brightest_abs_mag ? `<span class="compact-magnitude" title="Brightest Abs Mag">M=${parseFloat(obj.brightest_abs_mag).toFixed(1)}</span>` : ''}
@@ -666,29 +679,29 @@ function generateCardsView() {
                 </div>
                 
                 <div class="object-info">
-                    ${obj.magnitude ? `
-                        <div class="info-item">
-                            <span>Discovery Mag = ${obj.magnitude}</span>
-                        </div>
-                    ` : ''}
+                    <div class="info-item">
+                        <span>Discovery Mag = ${obj.magnitude || '---'}</span>
+                    </div>
                     
-                    ${obj.redshift ? `
-                        <div class="info-item">
-                            <span>z = ${obj.redshift}</span>
-                        </div>
-                    ` : ''}
+                    <div class="info-item">
+                        <span>Brightest Mag = ${obj.brightest_mag || '---'}</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span>Redshift = ${obj.redshift || '---'}</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span>Brightest M = ${obj.brightest_abs_mag || '---'}</span>
+                    </div>
                     
-                    ${obj.discovery_date ? `
-                        <div class="info-item">
-                            <span>Date: ${obj.discovery_date.substring(0, 10)}</span>
-                        </div>
-                    ` : ''}
+                    <div class="info-item">
+                        <span>Date: ${obj.discovery_date ? obj.discovery_date.substring(0, 10) : '---'}</span>
+                    </div>
                     
-                    ${obj.source ? `
-                        <div class="info-item">
-                            <span>Source: ${obj.source}</span>
-                        </div>
-                    ` : ''}
+                    <div class="info-item">
+                        <span>Source: ${obj.source || '---'}</span>
+                    </div>
                 </div>
             </div>
             
@@ -883,6 +896,8 @@ function updateCountersFromStats(stats) {
     document.getElementById('followupCount').textContent = stats.followup_count || 0;
     document.getElementById('finishedCount').textContent = stats.finished_count || 0;
     document.getElementById('snoozedCount').textContent = stats.snoozed_count || 0;
+    const flagCount = document.getElementById('flagCount');
+    if (flagCount) flagCount.textContent = stats.flag_count || 0;
     
     const atCountElement = document.querySelector('.big-stat-card.at .stat-number');
     const classifiedCountElement = document.querySelector('.big-stat-card.classified .stat-number');
@@ -1103,12 +1118,12 @@ function sortObjects() {
             let bTime = b.last_photometry || b.lastmodified || '';
             aVal = aTime ? new Date(aTime) : new Date('1900-01-01');
             bVal = bTime ? new Date(bTime) : new Date('1900-01-01');
-        } else if (sortBy === 'magnitude') {
+        } else if (sortBy === 'magnitude' || sortBy === 'brightest_mag' || sortBy === 'brightest_abs_mag') {
             aVal = aVal ? parseFloat(aVal) : 99;
             bVal = bVal ? parseFloat(bVal) : 99;
         } else if (sortBy === 'redshift') {
-            aVal = parseFloat(aVal) || 0;
-            bVal = parseFloat(bVal) || 0;
+            aVal = parseFloat(aVal) || -1;
+            bVal = parseFloat(bVal) || -1;
         } else {
             aVal = aVal.toString().toLowerCase();
             bVal = bVal.toString().toLowerCase();
@@ -1484,3 +1499,18 @@ function showNotification(message, type = 'info') {
 
 
 window.isAdmin = document.querySelector('[data-admin="true"]') !== null;
+// Back to Top Button Logic
+const backToTopBtn = document.getElementById("backToTopBtn");
+if (backToTopBtn) {
+    window.onscroll = function() {
+        if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
+            backToTopBtn.style.display = "block";
+        } else {
+            backToTopBtn.style.display = "none";
+        }
+    };
+
+    backToTopBtn.addEventListener("click", function() {
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+}

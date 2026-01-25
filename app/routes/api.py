@@ -9,7 +9,8 @@ from flask import request, jsonify, session
 from modules.postgres_database import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics, get_filtered_stats, get_distinct_classifications,
-    update_object_status, update_object_activity, get_auto_snooze_stats
+    update_object_status, update_object_activity, get_auto_snooze_stats,
+    get_object_flag_status, update_object_flag_by_name
 )
 from modules.Manual_tns_download_snoozed import download_TNS_api_hr, addin_database, auto_snoozed
 from modules.download_phot import process_single_object_workflow
@@ -132,6 +133,35 @@ def register_api_routes(app):
             traceback.print_exc()
             return jsonify({'error': f'Database error: {str(e)}'}), 500
 
+    @app.route('/api/object/<path:object_name>/flag_status', methods=['GET'])
+    def get_flag_status(object_name):
+        """Get flag status for an object"""
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        object_name = urllib.parse.unquote(object_name)
+        is_flagged = get_object_flag_status(object_name)
+        return jsonify({'is_flagged': is_flagged})
+
+    @app.route('/api/object/<path:object_name>/toggle_flag', methods=['POST'])
+    def update_flag_status(object_name):
+        """Toggle flag status for an object"""
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        object_name = urllib.parse.unquote(object_name)
+        data = request.get_json()
+        flag_status = data.get('flag')
+        
+        if flag_status is None:
+            return jsonify({'error': 'Missing flag status'}), 400
+            
+        success = update_object_flag_by_name(object_name, flag_status)
+        if success:
+            return jsonify({'success': True, 'is_flagged': flag_status})
+        else:
+            return jsonify({'error': 'Database error'}), 500
+
     @app.route('/api/auto-snooze/manual-run', methods=['POST'])
     def manual_auto_snooze():
         """Manually trigger auto-snooze check"""
@@ -179,6 +209,7 @@ def register_api_routes(app):
                 'followup_count': tag_stats.get('followup', 0),
                 'finished_count': tag_stats.get('finished', 0),
                 'snoozed_count': tag_stats.get('snoozed', 0),
+                'flag_count': tag_stats.get('flag', 0),
                 'at_count': at_count,
                 'classified_count': classified_count,
                 'total_count': total_count
@@ -199,6 +230,7 @@ def register_api_routes(app):
                     'followup_count': 0,
                     'finished_count': 0,
                     'snoozed_count': 0,
+                    'flag_count': 0,
                     'at_count': 0,
                     'classified_count': 0,
                     'total_count': 0

@@ -19,6 +19,7 @@
     --followup-color: #FFD54F;
     --finished-color: #90CAF9;
     --snoozed-color: #F06292;
+    --flag-color: #EF5350;
     
     /* Glass Effect */
     --glass-bg: rgba(20, 20, 30, 0.85);
