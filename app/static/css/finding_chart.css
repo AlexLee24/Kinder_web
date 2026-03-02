@@ -18,7 +18,7 @@
 
 body {
     font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/M31ver4-2.jpg');
+    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../photo/M31ver4-2.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;

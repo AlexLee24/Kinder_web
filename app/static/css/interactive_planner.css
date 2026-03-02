@@ -18,7 +18,7 @@
 
 body {
     font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/M31ver4-2.jpg');
+    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../photo/M31ver4-2.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
@@ -483,4 +483,113 @@ body {
         height: 50vh;
         min-height: 350px;
     }
+}
+
+/* ==================== DB SEARCH ==================== */
+.db-search-wrap {
+    position: relative;
+    margin-bottom: 10px;
+}
+
+.db-search-input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 5px 10px;
+    transition: border-color 0.2s;
+}
+
+.db-search-input-row:focus-within {
+    border-color: var(--accent-color);
+    background: rgba(255,255,255,0.10);
+}
+
+.db-search-input-row svg {
+    flex-shrink: 0;
+    opacity: 0.45;
+}
+
+.db-search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    padding: 0;
+}
+
+.db-search-input::placeholder { color: rgba(255,255,255,0.3); }
+
+.db-search-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: rgba(255,255,255,0.35);
+    padding: 0;
+    line-height: 1;
+    display: none;
+}
+.db-search-clear:hover { color: #ff6b6b; }
+
+.db-dropdown {
+    position: fixed;   /* portal: sits on top of all stacking contexts */
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 9999;
+    max-height: 260px;
+    overflow-y: auto;
+    display: none;
+}
+
+.db-dropdown.open { display: block; }
+
+.db-dd-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition: background 0.15s;
+}
+
+.db-dd-item:last-child { border-bottom: none; }
+.db-dd-item:hover,
+.db-dd-item.active { background: rgba(255,255,255,0.09); }
+
+.db-dd-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.db-dd-meta {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.4);
+    white-space: nowrap;
+}
+
+.db-dd-add {
+    font-size: 0.75rem;
+    color: var(--accent-color);
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.db-dropdown-msg {
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.35);
+    text-align: center;
 }

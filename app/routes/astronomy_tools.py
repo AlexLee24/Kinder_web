@@ -506,7 +506,7 @@ def register_astronomy_routes(app):
                     try:
                         from datetime import datetime as _dt
                         transit_dt_utc = _dt.strptime(transit_str, '%Y/%m/%d %H:%M:%S').replace(tzinfo=pytz.utc)
-                        transit_local_str = transit_dt_utc.astimezone(local_tz).strftime('%Y/%m/%d %H:%M:%S')
+                        transit_local_str = transit_dt_utc.astimezone(tz_obj).strftime('%Y/%m/%d %H:%M:%S')
                     except Exception:
                         transit_local_str = transit_str
                 except Exception:
@@ -566,6 +566,37 @@ def register_astronomy_routes(app):
             return jsonify({'success': True, 'script': script})
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
+
+    # ===============================================================================
+    # TARGET AUTOCOMPLETE (for visibility planner)
+    # ===============================================================================
+    @app.route('/api/target_autocomplete')
+    def target_autocomplete():
+        """Quick DB search returning name/ra/dec for autocomplete."""
+        q = request.args.get('q', '').strip()
+        if len(q) < 2:
+            return jsonify([])
+        try:
+            from modules.postgres_database import search_tns_objects
+            rows = search_tns_objects(search_term=q, limit=10)
+            out = []
+            for r in rows:
+                prefix = r.get('name_prefix', '') or ''
+                name   = (prefix + (r.get('name', '') or '')).strip()
+                ra     = r.get('ra', '')
+                dec    = r.get('declination', '')
+                if not name or ra is None or dec is None:
+                    continue
+                out.append({
+                    'name': name,
+                    'ra':   str(ra),
+                    'dec':  str(dec),
+                    'type': str(r.get('type', '') or prefix or ''),
+                    'mag':  str(r.get('discoverymag', '') or ''),
+                })
+            return jsonify(out)
+        except Exception as e:
+            return jsonify([])
 
     # ===============================================================================
     # FINDING CHART

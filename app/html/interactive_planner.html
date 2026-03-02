@@ -53,6 +53,19 @@
             <!-- Target List -->
             <div class="settings-section">
                 <h3>Targets</h3>
+
+                <!-- DB search -->
+                <div class="db-search-wrap" id="db-search-wrap">
+                    <div class="db-search-input-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="db-search-input" id="db-search-input"
+                               placeholder="Search database target..." autocomplete="off" />
+                        <button class="db-search-clear" id="db-search-clear" title="Clear">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+
                 <div id="target-list-container">
                     <!-- Target rows will be added here -->
                 </div>
@@ -205,8 +218,8 @@
         row.innerHTML = `
             <div class="target-color" style="background:${color}"></div>
             <input type="text" class="target-name" placeholder="Name" value="${data.name || ''}" />
-            <input type="text" class="target-ra" placeholder="RA (e.g. 5:35:17 or 83.82)" value="${data.ra || ''}" />
-            <input type="text" class="target-dec" placeholder="Dec (e.g. -5:23:24 or -5.39)" value="${data.dec || ''}" />
+            <input type="text" class="target-ra" placeholder="RA (hms/deg)" value="${data.ra || ''}" />
+            <input type="text" class="target-dec" placeholder="Dec (dms/deg)" value="${data.dec || ''}" />
             <button class="btn-remove" title="Remove target">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -637,7 +650,129 @@
     }
 
     // =========================================================================
+    // DB SEARCH AUTOCOMPLETE
+    // =========================================================================
+    (function() {
+        const input    = document.getElementById('db-search-input');
+        const wrap     = document.getElementById('db-search-wrap');
+        const clearBtn = document.getElementById('db-search-clear');
+        let searchTimer = null;
+        let activeIdx   = -1;
+        let lastResults = [];
+
+        // Create dropdown portal element dynamically so it always exists
+        const dropdown = document.createElement('div');
+        dropdown.id = 'db-dropdown';
+        dropdown.className = 'db-dropdown';
+        document.body.appendChild(dropdown);
+
+        // Position dropdown under the search box using fixed coords (portal pattern)
+        function positionDropdown() {
+            const rect = wrap.getBoundingClientRect();
+            dropdown.style.top    = (rect.bottom + 4) + 'px';
+            dropdown.style.left   = rect.left + 'px';
+            dropdown.style.width  = rect.width + 'px';
+        }
+
+        function openDropdown(html) {
+            positionDropdown();
+            dropdown.innerHTML = html;
+            dropdown.classList.add('open');
+        }
+        function closeDropdown() {
+            dropdown.classList.remove('open');
+            dropdown.innerHTML = '';
+            activeIdx = -1;
+        }
+        function highlight(idx) {
+            const items = dropdown.querySelectorAll('.db-dd-item');
+            items.forEach((el, i) => el.classList.toggle('active', i === idx));
+            activeIdx = idx;
+        }
+        function pickResult(r) {
+            // Fill first empty row (no RA & no Dec) to preserve colors
+            let replaced = false;
+            for (const row of document.querySelectorAll('.target-row')) {
+                const ra  = row.querySelector('.target-ra').value.trim();
+                const dec = row.querySelector('.target-dec').value.trim();
+                if (!ra && !dec) {
+                    row.querySelector('.target-name').value = r.name;
+                    row.querySelector('.target-ra').value   = r.ra;
+                    row.querySelector('.target-dec').value  = r.dec;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) addTargetRow({ name: r.name, ra: r.ra, dec: r.dec });
+            scheduleUpdate();
+            input.value = '';
+            clearBtn.style.display = 'none';
+            closeDropdown();
+        }
+
+        input.addEventListener('input', function() {
+            const q = this.value.trim();
+            clearBtn.style.display = q ? 'block' : 'none';
+            clearTimeout(searchTimer);
+            if (q.length < 2) { closeDropdown(); return; }
+            openDropdown('<div class="db-dropdown-msg">Searching…</div>');
+            searchTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch(`/api/target_autocomplete?q=${encodeURIComponent(q)}`);
+                    lastResults = await resp.json();
+                    if (!lastResults.length) {
+                        openDropdown('<div class="db-dropdown-msg">No results found</div>');
+                        return;
+                    }
+                    const html = lastResults.map((r, i) => {
+                        const meta = [r.type, r.mag ? `mag ${r.mag}` : ''].filter(Boolean).join(' · ');
+                        return `<div class="db-dd-item" data-idx="${i}">
+                            <span class="db-dd-name">${r.name}</span>
+                            ${meta ? `<span class="db-dd-meta">${meta}</span>` : ''}
+                            <span class="db-dd-add">+ Add</span>
+                        </div>`;
+                    }).join('');
+                    openDropdown(html);
+                    dropdown.querySelectorAll('.db-dd-item').forEach(el => {
+                        el.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            pickResult(lastResults[+this.dataset.idx]);
+                        });
+                    });
+                } catch (e) {
+                    openDropdown('<div class="db-dropdown-msg">Error fetching results</div>');
+                }
+            }, 300);
+        });
+
+        input.addEventListener('keydown', function(e) {
+            const items = dropdown.querySelectorAll('.db-dd-item');
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(activeIdx + 1, items.length - 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(activeIdx - 1, 0)); }
+            else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); pickResult(lastResults[activeIdx]); }
+            else if (e.key === 'Escape') { closeDropdown(); input.blur(); }
+        });
+
+        clearBtn.addEventListener('click', function() {
+            input.value = '';
+            this.style.display = 'none';
+            closeDropdown();
+            input.focus();
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!wrap.contains(e.target) && e.target !== dropdown && !dropdown.contains(e.target))
+                closeDropdown();
+        });
+        // Re-position on scroll / resize
+        window.addEventListener('scroll', function() { if (dropdown.classList.contains('open')) positionDropdown(); }, true);
+        window.addEventListener('resize', function() { if (dropdown.classList.contains('open')) positionDropdown(); });
+    })();
+
+    // =========================================================================
     // SCROLL EFFECT
+    // (db-dropdown portal is appended to body below)
     // =========================================================================
     window.addEventListener('scroll', function() {
         const header = document.querySelector('header');
@@ -646,5 +781,6 @@
         }
     });
     </script>
+
 </body>
 </html>
