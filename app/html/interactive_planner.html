@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Visibility Planner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/interactive_planner.css') }}">
+    <meta name="description" content="Interactive Visibility Planner">
+    {% include '_favicon.html' %}
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="page-header">
+        <h1>Interactive Visibility Planner</h1>
+        <p>Real-time astronomical target visibility calculator</p>
+    </div>
+
+    <div class="container-main">
+        <!-- Left Panel: Controls -->
+        <div class="controls-panel">
+
+            <!-- Observatory Settings -->
+            <div class="settings-section">
+                <h3>Observatory Settings</h3>
+                <div class="form-group">
+                    <label for="date">Date</label>
+                    <input type="date" id="date" />
+                </div>
+                <div class="form-group">
+                    <label for="telescope">Observatory</label>
+                    <select id="telescope">
+                        <option value="Other">Other</option>
+                        <option value="Lulin" selected>NCU Lulin Observatory</option>
+                        <option value="LasCampanas">Las Campanas Observatory</option>
+                        <option value="Palomar">Palomar Observatory</option>
+                        <option value="KTO">Taiwan Kenting Observatory</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="location">Location (Lon Lat Alt)</label>
+                    <input type="text" id="location" placeholder="120:52:21.5 23:28:10.0 2800" />
+                </div>
+                <div class="form-group">
+                    <label for="timezone">UTC Offset</label>
+                    <input type="number" id="timezone" placeholder="+8" min="-12" max="12" />
+                </div>
+            </div>
+
+            <!-- Target List -->
+            <div class="settings-section">
+                <h3>Targets</h3>
+                <div id="target-list-container">
+                    <!-- Target rows will be added here -->
+                </div>
+                <button class="btn btn-add" id="add-target-btn" title="Add Target">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Target
+                </button>
+            </div>
+
+            <!-- Display Options -->
+            <div class="settings-section">
+                <h3>Display Options</h3>
+                <div class="form-group-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-sun" checked /> Sun
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-moon" checked /> Moon
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="show-twilight" checked /> Twilight
+                    </label>
+                </div>
+            </div>
+
+            <!-- Moon Info -->
+            <div class="info-panel" id="moon-info-panel" style="display:none;">
+                <h3>Moon Info</h3>
+                <div class="info-item"><span class="info-label">Moon Phase</span><span id="info-moon-phase">--</span></div>
+                <div class="info-item"><span class="info-label">Moonrise (UTC)</span><span id="info-moonrise-utc">--</span></div>
+                <div class="info-item"><span class="info-label">Moonrise (Local)</span><span id="info-moonrise-local">--</span></div>
+                <div class="info-item"><span class="info-label">Moonset (UTC)</span><span id="info-moonset-utc">--</span></div>
+                <div class="info-item"><span class="info-label">Moonset (Local)</span><span id="info-moonset-local">--</span></div>
+            </div>
+
+            <!-- Target Details -->
+            <div class="info-panel" id="target-info-panel" style="display:none;">
+                <h3>Target Details</h3>
+                <div id="target-details-list"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Plot -->
+        <div class="plot-panel">
+            <div id="visibility-plot" class="plot-container">
+                <div class="plot-placeholder" id="plot-placeholder">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                        <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                    <p>Set date and add targets to generate plot</p>
+                </div>
+            </div>
+            <div class="plot-status" id="plot-status"></div>
+        </div>
+    </div>
+
+    <script>
+    // =========================================================================
+    // STATE
+    // =========================================================================
+    let debounceTimer = null;
+    let currentData = null;
+    const DEBOUNCE_MS = 600;
+
+    const TARGET_COLORS = [
+        '#00D4FF', '#FF6B6B', '#51CF66', '#FFD43B', '#CC5DE8',
+        '#FF922B', '#20C997', '#F06595', '#74C0FC', '#A9E34B',
+        '#845EF7', '#FCC419', '#22B8CF', '#E64980', '#94D82D',
+        '#5C7CFA', '#FF8787', '#63E6BE', '#FAB005', '#DA77F2'
+    ];
+
+    // =========================================================================
+    // INIT
+    // =========================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set default date to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('date').value = today;
+
+        // Trigger telescope change to fill default location
+        handleTelescopeChange();
+
+        // Add first empty target row
+        addTargetRow();
+
+        // Check URL params for auto-fill
+        const urlParams = new URLSearchParams(window.location.search);
+        const objName = urlParams.get('object_name');
+        const ra = urlParams.get('ra');
+        const dec = urlParams.get('dec');
+        if (objName && ra && dec) {
+            const firstRow = document.querySelector('.target-row');
+            if (firstRow) {
+                firstRow.querySelector('.target-name').value = objName;
+                firstRow.querySelector('.target-ra').value = ra;
+                firstRow.querySelector('.target-dec').value = dec;
+            }
+            scheduleUpdate();
+        }
+
+        // Event listeners
+        document.getElementById('date').addEventListener('change', scheduleUpdate);
+        document.getElementById('telescope').addEventListener('change', function() {
+            handleTelescopeChange();
+            scheduleUpdate();
+        });
+        document.getElementById('location').addEventListener('change', scheduleUpdate);
+        document.getElementById('timezone').addEventListener('change', scheduleUpdate);
+        document.getElementById('add-target-btn').addEventListener('click', function() { addTargetRow(); });
+        document.getElementById('show-sun').addEventListener('change', renderPlot);
+        document.getElementById('show-moon').addEventListener('change', renderPlot);
+        document.getElementById('show-twilight').addEventListener('change', renderPlot);
+    });
+
+    // =========================================================================
+    // TELESCOPE PRESETS
+    // =========================================================================
+    function handleTelescopeChange() {
+        const t = document.getElementById('telescope').value;
+        const loc = document.getElementById('location');
+        const tz = document.getElementById('timezone');
+        const presets = {
+            'Lulin':        { loc: '120:52:21.5 23:28:10.0 2800', tz: 8 },
+            'KTO':          { loc: '120:41:53.54 22:03:0.64 40',  tz: 8 },
+            'Palomar':      { loc: '-116:51:50.0 33:21:21.0 1706', tz: -8 },
+            'LasCampanas':  { loc: '-70:41:33.0 -29:00:51.12 2282', tz: -3 }
+        };
+        if (presets[t]) {
+            loc.value = presets[t].loc;
+            tz.value = presets[t].tz;
+        } else {
+            loc.value = '';
+            tz.value = '';
+        }
+    }
+
+    // =========================================================================
+    // TARGET ROW MANAGEMENT
+    // =========================================================================
+    function addTargetRow(data = {}) {
+        const container = document.getElementById('target-list-container');
+        const idx = container.children.length;
+        const color = TARGET_COLORS[idx % TARGET_COLORS.length];
+
+        const row = document.createElement('div');
+        row.className = 'target-row';
+        row.dataset.color = color;
+        row.innerHTML = `
+            <div class="target-color" style="background:${color}"></div>
+            <input type="text" class="target-name" placeholder="Name" value="${data.name || ''}" />
+            <input type="text" class="target-ra" placeholder="RA (e.g. 5:35:17 or 83.82)" value="${data.ra || ''}" />
+            <input type="text" class="target-dec" placeholder="Dec (e.g. -5:23:24 or -5.39)" value="${data.dec || ''}" />
+            <button class="btn-remove" title="Remove target">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        `;
+
+        // Event bindings
+        row.querySelector('.target-name').addEventListener('input', scheduleUpdate);
+        row.querySelector('.target-ra').addEventListener('change', scheduleUpdate);
+        row.querySelector('.target-dec').addEventListener('change', scheduleUpdate);
+        row.querySelector('.target-ra').addEventListener('keydown', function(e) { if(e.key==='Enter') scheduleUpdate(); });
+        row.querySelector('.target-dec').addEventListener('keydown', function(e) { if(e.key==='Enter') scheduleUpdate(); });
+        row.querySelector('.btn-remove').addEventListener('click', function() {
+            row.remove();
+            recolorTargets();
+            scheduleUpdate();
+        });
+
+        container.appendChild(row);
+    }
+
+    function recolorTargets() {
+        document.querySelectorAll('.target-row').forEach((row, i) => {
+            const c = TARGET_COLORS[i % TARGET_COLORS.length];
+            row.dataset.color = c;
+            row.querySelector('.target-color').style.background = c;
+        });
+    }
+
+    // =========================================================================
+    // COORDINATE PARSING (client-side preprocessing)
+    // =========================================================================
+    function parseAndFormatRA(raw) {
+        raw = raw.trim();
+        // Pure decimal degrees → convert to H:M:S
+        if (/^[\d.]+$/.test(raw)) {
+            const deg = parseFloat(raw);
+            const h = deg / 15;
+            const hh = Math.floor(h);
+            const mm = Math.floor((h - hh) * 60);
+            const ss = ((h - hh) * 60 - mm) * 60;
+            return `${hh}:${mm}:${ss.toFixed(2)}`;
+        }
+        // HMS formats: 5h35m17s, 5h 35m 17s
+        let m = raw.match(/^(\d{1,2})[hH]\s*(\d{1,2})[mM]\s*([\d.]+)[sS]?$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        // Colon format
+        m = raw.match(/^(\d{1,2}):([\d]{1,2}):([\d.]+)$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        // Space separated
+        m = raw.match(/^(\d{1,2})\s+(\d{1,2})\s+([\d.]+)$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        return raw; // let backend handle it
+    }
+
+    function parseAndFormatDec(raw) {
+        raw = raw.trim();
+        // Pure decimal degrees
+        if (/^[+-]?[\d.]+$/.test(raw)) {
+            const deg = parseFloat(raw);
+            const sign = deg < 0 ? -1 : 1;
+            const abs = Math.abs(deg);
+            const dd = Math.floor(abs);
+            const mm = Math.floor((abs - dd) * 60);
+            const ss = ((abs - dd) * 60 - mm) * 60;
+            return `${sign < 0 ? '-' : ''}${dd}:${mm}:${ss.toFixed(2)}`;
+        }
+        // DMS with symbols: -5°23'24" or similar
+        let m = raw.match(/^([+-]?\d{1,3})[°dD:]\s*(\d{1,2})[′':]\s*([\d.]+)[″"sS]?$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        // Colon format
+        m = raw.match(/^([+-]?\d{1,3}):([\d]{1,2}):([\d.]+)$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        // Space separated
+        m = raw.match(/^([+-]?\d{1,3})\s+(\d{1,2})\s+([\d.]+)$/);
+        if (m) return `${m[1]}:${m[2]}:${parseFloat(m[3]).toFixed(2)}`;
+        return raw;
+    }
+
+    // =========================================================================
+    // DATA FETCHING
+    // =========================================================================
+    function scheduleUpdate() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchVisibilityData, DEBOUNCE_MS);
+    }
+
+    function collectTargets() {
+        const rows = document.querySelectorAll('.target-row');
+        const targets = [];
+        rows.forEach((row, idx) => {
+            const name = row.querySelector('.target-name').value.trim() || `Target_${idx + 1}`;
+            const raRaw = row.querySelector('.target-ra').value.trim();
+            const decRaw = row.querySelector('.target-dec').value.trim();
+            if (raRaw && decRaw) {
+                targets.push({
+                    name: name,
+                    ra: parseAndFormatRA(raRaw),
+                    dec: parseAndFormatDec(decRaw)
+                });
+            }
+        });
+        return targets;
+    }
+
+    async function fetchVisibilityData() {
+        const date = document.getElementById('date').value;
+        const location = document.getElementById('location').value.trim();
+        const timezone = document.getElementById('timezone').value;
+        const telescope = document.getElementById('telescope').value;
+        const targets = collectTargets();
+
+        if (!date || !location || timezone === '') {
+            return;
+        }
+
+        setStatus('Computing...', 'loading');
+
+        try {
+            const resp = await fetch('/api/visibility_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, location, timezone, telescope, targets })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                currentData = data;
+                renderPlot();
+                updateInfoPanels(data);
+                setStatus('', '');
+            } else {
+                setStatus(data.error || 'Error computing data', 'error');
+            }
+        } catch (e) {
+            setStatus('Network error: ' + e.message, 'error');
+        }
+    }
+
+    // =========================================================================
+    // PLOTLY RENDERING
+    // =========================================================================
+    function renderPlot() {
+        if (!currentData) return;
+        const data = currentData;
+
+        const showSun = document.getElementById('show-sun').checked;
+        const showMoon = document.getElementById('show-moon').checked;
+        const showTwilight = document.getElementById('show-twilight').checked;
+
+        const times = data.times_utc;
+        const tw = data.twilight_utc;
+        const offsetSign = data.timezone_offset >= 0 ? '+' : '';
+        const localLabel = `Local Time (${data.timezone_name}, UTC${offsetSign}${data.timezone_offset})`;
+
+        // Hide placeholder
+        const ph = document.getElementById('plot-placeholder');
+        if (ph) ph.style.display = 'none';
+
+        const traces = [];
+        const shapes = [];
+        const annotations = [];
+
+        // Twilight fills — use matching timezone
+        if (showTwilight && tw) {
+            // Daytime before sunset
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: times[0], x1: tw.sunset[0], y0: 0, y1: 1,
+                fillcolor: 'rgba(135,180,250,0.12)', line: { width: 0 }, layer: 'below'
+            });
+            // Civil twilight (evening)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.sunset[0], x1: tw.civil[0], y0: 0, y1: 1,
+                fillcolor: 'rgba(100,140,200,0.18)', line: { width: 0 }, layer: 'below'
+            });
+            // Nautical twilight (evening)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.civil[0], x1: tw.nautical[0], y0: 0, y1: 1,
+                fillcolor: 'rgba(40,60,120,0.28)', line: { width: 0 }, layer: 'below'
+            });
+            // Astronomical twilight (evening)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.nautical[0], x1: tw.astronomical[0], y0: 0, y1: 1,
+                fillcolor: 'rgba(15,15,60,0.40)', line: { width: 0 }, layer: 'below'
+            });
+            // Full night
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.astronomical[0], x1: tw.astronomical[1], y0: 0, y1: 1,
+                fillcolor: 'rgba(0,0,20,0.55)', line: { width: 0 }, layer: 'below'
+            });
+            // Astronomical twilight (morning)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.astronomical[1], x1: tw.nautical[1], y0: 0, y1: 1,
+                fillcolor: 'rgba(15,15,60,0.40)', line: { width: 0 }, layer: 'below'
+            });
+            // Nautical twilight (morning)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.nautical[1], x1: tw.civil[1], y0: 0, y1: 1,
+                fillcolor: 'rgba(40,60,120,0.28)', line: { width: 0 }, layer: 'below'
+            });
+            // Civil twilight (morning)
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.civil[1], x1: tw.sunset[1], y0: 0, y1: 1,
+                fillcolor: 'rgba(100,140,200,0.18)', line: { width: 0 }, layer: 'below'
+            });
+            // Daytime after sunrise
+            shapes.push({
+                type: 'rect', xref: 'x', yref: 'paper',
+                x0: tw.sunset[1], x1: times[times.length - 1], y0: 0, y1: 1,
+                fillcolor: 'rgba(135,180,250,0.12)', line: { width: 0 }, layer: 'below'
+            });
+
+            // Annotations
+            annotations.push(
+                { x: tw.sunset[0], y: 87, text: 'Sunset', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.5)' }, textangle: -90, yref: 'y' },
+                { x: tw.astronomical[0], y: 87, text: 'Ast.Twi.', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.45)' }, textangle: -90, yref: 'y' },
+                { x: tw.astronomical[1], y: 87, text: 'Ast.Twi.', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.45)' }, textangle: -90, yref: 'y' },
+                { x: tw.sunset[1], y: 87, text: 'Sunrise', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.5)' }, textangle: -90, yref: 'y' }
+            );
+        }
+
+        // Sun track
+        if (showSun) {
+            traces.push({
+                x: times, y: data.sun_alts,
+                mode: 'lines', name: 'Sun',
+                line: { color: '#FFD700', width: 1.5, dash: 'dash' },
+                hovertemplate: 'Alt: %{y:.1f}°<extra></extra>'
+            });
+        }
+
+        // Moon track
+        if (showMoon) {
+            traces.push({
+                x: times, y: data.moon_alts,
+                mode: 'lines', name: `Moon (${data.moon_info.phase}%)`,
+                line: { color: 'rgba(200,200,200,0.6)', width: 1.5, dash: 'dot' },
+                hovertemplate: 'Alt: %{y:.1f}°<extra></extra>'
+            });
+        }
+
+        // Target tracks
+        const targetRows = document.querySelectorAll('.target-row');
+        data.targets.forEach((t, i) => {
+            const color = targetRows[i] ? targetRows[i].dataset.color : TARGET_COLORS[i % TARGET_COLORS.length];
+            const moonSepStr = t.moon_separation != null ? t.moon_separation.toFixed(1) + '°' : '--';
+            const hoverTexts = t.altitudes.map((alt, j) => {
+                const am = alt > 0 ? (1 / Math.sin(alt * Math.PI / 180)).toFixed(2) : '--';
+                return `Alt: ${alt.toFixed(1)}° | Az: ${t.azimuths[j].toFixed(1)}° | AM: ${am} | Moon Sep: ${moonSepStr}`;
+            });
+            traces.push({
+                x: times, y: t.altitudes,
+                mode: 'lines', name: t.name,
+                line: { color: color, width: 2.5 },
+                text: hoverTexts,
+                hovertemplate: '%{text}<extra></extra>'
+            });
+        });
+
+        // 30° airmass=2 guideline
+        shapes.push({
+            type: 'line', xref: 'x', yref: 'y',
+            x0: times[0], x1: times[times.length - 1], y0: 30, y1: 30,
+            line: { color: 'rgba(255,255,255,0.12)', width: 1, dash: 'dot' }
+        });
+
+        // Dummy trace — forces xaxis2 (top local) and yaxis2 (right airmass) to render
+        traces.push({
+            x: [times[0]], y: [0],
+            xaxis: 'x2', yaxis: 'y2',
+            mode: 'markers',
+            marker: { opacity: 0, size: 0 },
+            showlegend: false,
+            hoverinfo: 'skip'
+        });
+
+        // Airmass right-axis (always shown)
+        const altTicks = [10, 20, 30, 50, 70, 90];
+        const airmassLabels = altTicks.map(a => (1 / Math.sin(a * Math.PI / 180)).toFixed(2));
+
+        // Compute local time tick labels for top x-axis
+        const utcDates = times.map(t => new Date(t));
+        const offsetMs = data.timezone_offset * 3600000;
+        const topTickVals = [];
+        const topTickTexts = [];
+        let tickT = new Date(utcDates[0]);
+        tickT.setUTCMinutes(0, 0, 0);
+        tickT = new Date(tickT.getTime() + 3600000);
+        while (tickT <= utcDates[utcDates.length - 1]) {
+            topTickVals.push(tickT.toISOString());
+            const lt = new Date(tickT.getTime() + offsetMs);
+            topTickTexts.push(lt.getUTCHours().toString().padStart(2, '0') + ':' + lt.getUTCMinutes().toString().padStart(2, '0'));
+            tickT = new Date(tickT.getTime() + 3600000);
+        }
+
+        const layout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(12,12,30,0.88)',
+            font: { family: 'Inter, sans-serif', color: 'rgba(255,255,255,0.85)' },
+            margin: { t: 100, r: 90, b: 80, l: 55 },
+            title: {
+                text: `Visibility Plot — ${data.obs_date}`,
+                font: { size: 15, color: 'rgba(255,255,255,0.85)' },
+                y: 0.99
+            },
+            xaxis: {
+                title: { text: 'UTC Time', font: { size: 11 } },
+                gridcolor: 'rgba(255,255,255,0.06)',
+                tickfont: { size: 10 },
+                showgrid: true,
+                tickformat: '%H:%M',
+                dtick: 3600000,
+                domain: [0, 1]
+            },
+            xaxis2: {
+                overlaying: 'x',
+                side: 'top',
+                matches: 'x',
+                domain: [0, 1],
+                title: { text: localLabel, font: { size: 10, color: 'rgba(255,255,255,0.55)' }, standoff: 2 },
+                tickvals: topTickVals,
+                ticktext: topTickTexts,
+                tickfont: { size: 10, color: 'rgba(255,255,255,0.6)' },
+                showgrid: false,
+                zeroline: false
+            },
+            yaxis: {
+                title: { text: 'Altitude [deg]', font: { size: 11 } },
+                range: [0, 90],
+                gridcolor: 'rgba(255,255,255,0.06)',
+                tickfont: { size: 10 },
+                dtick: 10,
+                zeroline: true,
+                zerolinecolor: 'rgba(255,100,100,0.3)'
+            },
+            yaxis2: {
+                title: { text: 'Airmass [sec(z)]', font: { color: 'rgba(255,255,255,0.6)', size: 11 }, standoff: 10 },
+                overlaying: 'y', side: 'right',
+                range: [0, 90],
+                tickvals: altTicks,
+                ticktext: airmassLabels,
+                showgrid: false,
+                tickfont: { color: 'rgba(255,255,255,0.45)', size: 10 },
+                zeroline: false
+            },
+            legend: {
+                orientation: 'h',
+                x: 0.5,
+                y: -0.18,
+                xanchor: 'center',
+                yanchor: 'top',
+                bgcolor: 'rgba(0,0,0,0.35)',
+                bordercolor: 'rgba(255,255,255,0.08)',
+                borderwidth: 1,
+                font: { size: 10 }
+            },
+            shapes: shapes,
+            annotations: annotations,
+            hovermode: 'x unified',
+            dragmode: 'zoom'
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            displaylogo: false,
+            toImageButtonOptions: {
+                format: 'png', filename: `visibility_${data.obs_date}`,
+                height: 1000, width: 1600, scale: 2
+            }
+        };
+
+        Plotly.react('visibility-plot', traces, layout, config);
+    }
+
+    // =========================================================================
+    // INFO PANELS
+    // =========================================================================
+    function updateInfoPanels(data) {
+        // Moon info
+        const moonPanel = document.getElementById('moon-info-panel');
+        moonPanel.style.display = 'block';
+        document.getElementById('info-moon-phase').textContent = data.moon_info.phase + '%';
+        document.getElementById('info-moonrise-utc').textContent = data.moon_info.rise_utc;
+        document.getElementById('info-moonrise-local').textContent = data.moon_info.rise_local;
+        document.getElementById('info-moonset-utc').textContent = data.moon_info.set_utc;
+        document.getElementById('info-moonset-local').textContent = data.moon_info.set_local;
+
+        // Target details
+        const detailPanel = document.getElementById('target-info-panel');
+        const detailList = document.getElementById('target-details-list');
+        if (data.targets.length > 0) {
+            detailPanel.style.display = 'block';
+            detailList.innerHTML = data.targets.map((t, i) => {
+                const color = TARGET_COLORS[i % TARGET_COLORS.length];
+                const maxAlt = Math.max(...t.altitudes);
+                return `
+                    <div class="target-detail-row">
+                        <span class="target-detail-color" style="background:${color}"></span>
+                        <div class="target-detail-info">
+                            <strong>${t.name}</strong>
+                            <span>Transit (UTC): ${t.transit_time_utc || 'N/A'}</span>
+                            <span>Transit (Local): ${t.transit_time_local || 'N/A'}</span>
+                            <span>Max Alt: ${maxAlt.toFixed(1)}°</span>
+                            <span>Moon Sep: ${t.moon_separation != null ? t.moon_separation + '°' : 'N/A'}</span>
+                        </div>
+                    </div>`;
+            }).join('');
+        } else {
+            detailPanel.style.display = 'none';
+        }
+    }
+
+    // =========================================================================
+    // STATUS
+    // =========================================================================
+    function setStatus(msg, type) {
+        const el = document.getElementById('plot-status');
+        el.textContent = msg;
+        el.className = 'plot-status' + (type ? ' status-' + type : '');
+    }
+
+    // =========================================================================
+    // SCROLL EFFECT
+    // =========================================================================
+    window.addEventListener('scroll', function() {
+        const header = document.querySelector('header');
+        if (header) {
+            header.classList.toggle('scrolled', window.scrollY > 20);
+        }
+    });
+    </script>
+</body>
+</html>

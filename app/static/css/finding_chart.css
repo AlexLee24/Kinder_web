@@ -1,0 +1,533 @@
+/* ==================== FINDING CHART STYLES ==================== */
+:root {
+    --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
+    --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
+    --accent-color: #C5A059;
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.85);
+    --text-muted: rgba(255, 255, 255, 0.5);
+    --shadow-primary: 0 8px 32px rgba(0,0,0,0.2);
+    --border-radius: 16px;
+    --border-radius-sm: 10px;
+    --transition: all 0.25s ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    background-image: url('../photo/M31ver4-2.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    min-height: 100vh;
+    color: var(--text-primary);
+}
+
+/* ==================== PAGE HEADER ==================== */
+.page-header {
+    max-width: 1800px;
+    margin: 130px auto 0;
+    padding: 0 28px 20px;
+}
+
+.page-header h1 {
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.page-header p {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ==================== LAYOUT ==================== */
+.container-main {
+    display: flex;
+    gap: 24px;
+    max-width: 1800px;
+    margin: 0 auto 60px;
+    padding: 0 28px;
+    align-items: flex-start;
+}
+
+/* ==================== CONTROLS PANEL (LEFT) ==================== */
+.controls-panel {
+    flex: 0 0 35%;
+    min-width: 280px;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    top: 90px;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.controls-panel::-webkit-scrollbar { width: 4px; }
+.controls-panel::-webkit-scrollbar-track { background: transparent; }
+.controls-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+.controls-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ==================== SETTINGS SECTIONS ==================== */
+.settings-section {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    box-shadow: var(--shadow-primary);
+}
+
+.settings-section h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-color);
+    margin-bottom: 6px;
+}
+
+.section-hint {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    opacity: 0.75;
+    font-style: italic;
+}
+
+/* Checkbox rows inside Star Annotations */
+.form-group-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.form-group-row.indented {
+    padding-left: 20px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.inline-num {
+    width: 60px;
+    padding: 3px 6px;
+    font-size: 0.85rem;
+    background: var(--input-bg, rgba(255,255,255,0.1));
+    border: 1px solid var(--border, rgba(255,255,255,0.15));
+    border-radius: 6px;
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.inline-num:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.unit-label {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+/* ==================== FORM ELEMENTS ==================== */
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: var(--transition);
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: var(--accent-color);
+    background: rgba(255,255,255,0.1);
+    box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.15);
+}
+
+.form-group select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='rgba(255,255,255,0.5)' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+}
+
+.form-group select option,
+.form-group select optgroup {
+    background: #1a1a2e;
+    color: white;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+}
+
+/* ==================== CHECKBOX ROW ==================== */
+.form-group-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-bottom: 10px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+
+/* ==================== MINI TABS ==================== */
+.mini-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 3px;
+}
+
+.mini-tab {
+    flex: 1;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.mini-tab.active {
+    background: rgba(197, 160, 89, 0.2);
+    color: var(--accent-color);
+}
+
+.mini-tab:hover:not(.active) {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.06);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.fov-result {
+    font-size: 0.82rem;
+    color: var(--accent-color);
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: rgba(197, 160, 89, 0.08);
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+}
+
+/* ==================== GENERATE BUTTON ==================== */
+.btn-generate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 20px;
+    background: var(--primary-gradient);
+    border: none;
+    border-radius: var(--border-radius-sm);
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 4px 15px rgba(197, 160, 89, 0.3);
+}
+
+.btn-generate:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(197, 160, 89, 0.4);
+}
+
+.btn-generate:active {
+    transform: translateY(0);
+}
+
+.btn-generate:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ==================== CHART PANEL (RIGHT) ==================== */
+.chart-panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.chart-container {
+    width: 100%;
+    min-height: 500px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-primary);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chart-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 60px 20px;
+}
+
+.chart-placeholder p {
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+/* ==================== CHART ACTIONS ==================== */
+.chart-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px;
+}
+
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-action:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.chart-info {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-family: 'Courier New', monospace;
+}
+
+/* ==================== STATUS BAR ==================== */
+.chart-status {
+    font-size: 0.88rem;
+    min-height: 20px;
+    padding: 0 4px;
+}
+
+.status-loading {
+    color: var(--accent-color);
+}
+
+.status-loading::before {
+    content: '⟳ ';
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+.status-error {
+    color: #ff6b6b;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 1200px) {
+    .page-header {
+        margin-top: 100px;
+    }
+    .container-main {
+        flex-direction: column;
+    }
+    .controls-panel {
+        flex: 0 0 100%;
+        min-width: unset;
+        max-width: unset;
+        position: static;
+        max-height: unset;
+        overflow-y: visible;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        margin-top: 80px;
+        padding: 0 16px 16px;
+    }
+    .page-header h1 {
+        font-size: 1.4rem;
+    }
+    .container-main {
+        padding: 0 12px;
+    }
+    .chart-container {
+        min-height: 300px;
+    }
+}
+
+/* ==================== LOG PANEL ==================== */
+.log-panel {
+    max-width: 1800px;
+    margin: 0 auto 48px;
+    padding: 0 28px;
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-bottom: none;
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+}
+
+.log-clear {
+    padding: 3px 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.log-clear:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+
+.log-body {
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    padding: 10px 14px;
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.log-body::-webkit-scrollbar { width: 4px; }
+.log-body::-webkit-scrollbar-track { background: transparent; }
+.log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+.log-line {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+    white-space: pre-wrap;
+    word-break: break-all;
+    line-height: 1.5;
+}
+
+.log-line.log-ok   { color: #6ee7b7; }
+.log-line.log-err  { color: #fca5a5; }
+.log-line.log-warn { color: #fcd34d; }

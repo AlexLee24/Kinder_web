@@ -1,0 +1,486 @@
+/* ==================== INTERACTIVE PLANNER STYLES ==================== */
+:root {
+    --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
+    --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
+    --accent-color: #C5A059;
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.85);
+    --text-muted: rgba(255, 255, 255, 0.5);
+    --shadow-primary: 0 8px 32px rgba(0,0,0,0.2);
+    --border-radius: 16px;
+    --border-radius-sm: 10px;
+    --transition: all 0.25s ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    background-image: url('../photo/M31ver4-2.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    min-height: 100vh;
+    color: var(--text-primary);
+}
+
+/* ==================== PAGE HEADER ==================== */
+.page-header {
+    max-width: 1800px;
+    margin: 130px auto 0;
+    padding: 0 28px 20px;
+}
+
+.page-header h1 {
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.page-header p {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ==================== LAYOUT ==================== */
+.container-main {
+    display: flex;
+    gap: 24px;
+    max-width: 1800px;
+    margin: 0 auto 60px;
+    padding: 0 28px;
+    align-items: flex-start;
+}
+
+/* ==================== CONTROLS PANEL (LEFT) ==================== */
+.controls-panel {
+    flex: 0 0 35%;
+    min-width: 280px;
+    max-width: 500px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    top: 90px;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+/* Custom scrollbar for controls panel */
+.controls-panel::-webkit-scrollbar { width: 4px; }
+.controls-panel::-webkit-scrollbar-track { background: transparent; }
+.controls-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+.controls-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+/* ==================== SETTINGS SECTIONS ==================== */
+.settings-section {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    box-shadow: var(--shadow-primary);
+}
+
+.settings-section h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-color);
+    margin-bottom: 12px;
+}
+
+/* ==================== FORM ELEMENTS ==================== */
+.form-group {
+    margin-bottom: 10px;
+}
+
+.form-group:last-child {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    transition: var(--transition);
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    border-color: var(--accent-color);
+    background: rgba(255,255,255,0.1);
+    box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.15);
+}
+
+.form-group select {
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='rgba(255,255,255,0.5)' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+}
+
+.form-group select option {
+    background: #1a1a2e;
+    color: white;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.7);
+    cursor: pointer;
+}
+
+/* ==================== CHECKBOX ROW ==================== */
+.form-group-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-bottom: 10px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--accent-color);
+    cursor: pointer;
+}
+
+/* ==================== TARGET LIST ==================== */
+#target-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.target-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 6px 8px;
+    transition: var(--transition);
+}
+
+.target-row:hover {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+}
+
+.target-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.target-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: var(--transition);
+}
+
+.target-row input:focus {
+    border-color: var(--accent-color);
+    background: rgba(255,255,255,0.1);
+}
+
+.target-row .target-name {
+    flex: 0.8;
+}
+
+.target-row .target-ra,
+.target-row .target-dec {
+    flex: 1;
+}
+
+.btn-remove {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.3);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.btn-remove:hover {
+    color: #ff6b6b;
+    background: rgba(255,100,100,0.1);
+}
+
+/* ==================== BUTTONS ==================== */
+.btn-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-add:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+/* ==================== INFO PANELS ==================== */
+.info-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-primary);
+}
+
+.info-panel h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-color);
+    margin-bottom: 10px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 0.92rem;
+}
+
+.info-label {
+    color: var(--text-muted);
+}
+
+.info-item span:last-child {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* ==================== TARGET DETAILS ==================== */
+.target-detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.target-detail-row:last-child {
+    border-bottom: none;
+}
+
+.target-detail-color {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex-shrink: 0;
+}
+
+.target-detail-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.88rem;
+}
+
+.target-detail-info strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.target-detail-info span {
+    color: var(--text-muted);
+}
+
+/* ==================== PLOT PANEL (RIGHT) ==================== */
+.plot-panel {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.plot-container {
+    width: 100%;
+    height: 72vh;
+    min-height: 600px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-primary);
+    overflow: hidden;
+    position: relative;
+}
+
+.plot-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.plot-placeholder p {
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+/* ==================== STATUS BAR ==================== */
+.plot-status {
+    font-size: 0.88rem;
+    min-height: 20px;
+    padding: 0 4px;
+}
+
+.status-loading {
+    color: var(--accent-color);
+}
+
+.status-loading::before {
+    content: '⟳ ';
+    display: inline-block;
+    animation: spin 1s linear infinite;
+}
+
+.status-error {
+    color: #ff6b6b;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== PLOTLY OVERRIDES ==================== */
+.plot-container .js-plotly-plot .plotly .modebar {
+    top: 8px !important;
+    right: 8px !important;
+}
+
+.plot-container .js-plotly-plot .plotly .modebar-btn {
+    color: rgba(255,255,255,0.4) !important;
+}
+
+.plot-container .js-plotly-plot .plotly .modebar-btn:hover {
+    color: rgba(255,255,255,0.8) !important;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 1200px) {
+    .page-header {
+        margin-top: 100px;
+    }
+    .container-main {
+        flex-direction: column;
+    }
+    .controls-panel {
+        flex: 0 0 100%;
+        min-width: unset;
+        max-width: unset;
+        position: static;
+        max-height: unset;
+        overflow-y: visible;
+    }
+    .plot-container {
+        height: 60vh;
+        min-height: 500px;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        margin-top: 80px;
+        padding: 0 16px 16px;
+    }
+    .page-header h1 {
+        font-size: 1.4rem;
+    }
+    .container-main {
+        padding: 0 12px;
+    }
+    .target-row {
+        flex-wrap: wrap;
+    }
+    .target-row .target-name,
+    .target-row .target-ra,
+    .target-row .target-dec {
+        flex: 1 1 calc(33% - 10px);
+        min-width: 80px;
+    }
+    .plot-container {
+        height: 50vh;
+        min-height: 350px;
+    }
+}
