@@ -636,17 +636,46 @@ def register_astronomy_routes(app):
             slit_pa         = float(data.get('slit_pa', 0.0))
             logs_pre = [f'[INFO] show_mag={show_mag}  show_names={show_names}  max_stars={max_stars}']
 
-            # Resolve coordinates
+            # Resolve coordinates — auto-detect format
+            def _parse_coord(ra_s, dec_s):
+                """Try every sensible unit combination; return SkyCoord or raise."""
+                ra_s  = str(ra_s).strip()
+                dec_s = str(dec_s).strip()
+                # Heuristic: if RA string is a plain decimal number (no colon / h / m)
+                # it is degrees, not hourangle.
+                import re as _re
+                ra_is_decimal  = bool(_re.match(r'^[+-]?[\d]+\.?[\d]*$', ra_s))
+                dec_is_decimal = bool(_re.match(r'^[+-]?[\d]+\.?[\d]*$', dec_s))
+                attempts = []
+                if ra_is_decimal and dec_is_decimal:
+                    # Both plain numbers → degrees first
+                    attempts = [
+                        (u.deg, u.deg),
+                        (u.hourangle, u.deg),
+                    ]
+                else:
+                    # Has colons / letters → HMS/DMS first
+                    attempts = [
+                        (u.hourangle, u.deg),
+                        (u.deg, u.deg),
+                    ]
+                for ra_unit, dec_unit in attempts:
+                    try:
+                        return SkyCoord(ra_s, dec_s, unit=(ra_unit, dec_unit))
+                    except Exception:
+                        continue
+                raise ValueError(f'Cannot parse coordinates: RA={ra_s!r} Dec={dec_s!r}')
+
             try:
-                coord = SkyCoord(ra_str, dec_str, unit=(u.hourangle, u.deg))
+                if ra_str or dec_str:
+                    coord = _parse_coord(ra_str, dec_str)
+                else:
+                    coord = SkyCoord.from_name(target_name)
             except Exception:
                 try:
-                    coord = SkyCoord(ra_str, dec_str, unit=(u.deg, u.deg))
+                    coord = SkyCoord.from_name(target_name)
                 except Exception:
-                    try:
-                        coord = SkyCoord.from_name(target_name)
-                    except Exception:
-                        return jsonify({'error': f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}'}), 400
+                    return jsonify({'error': f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}'}), 400
 
             ra_deg = coord.ra.deg
             dec_deg = coord.dec.deg

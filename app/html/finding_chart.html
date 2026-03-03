@@ -478,8 +478,9 @@
         }
         function pickResult(r) {
             document.getElementById('target-name').value = r.name;
-            document.getElementById('target-ra').value   = r.ra;
-            document.getElementById('target-dec').value  = r.dec;
+            // DB returns decimal degrees — send as-is; backend auto-detects decimal vs HMS
+            document.getElementById('target-ra').value  = r.ra;
+            document.getElementById('target-dec').value = r.dec;
             input.value = '';
             clearBtn.style.display = 'none';
             closeDropdown();
