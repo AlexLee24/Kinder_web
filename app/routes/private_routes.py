@@ -5,7 +5,7 @@ import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
 
-from modules.web_postgres_database import get_users, user_exists, check_object_access
+from modules.web_postgres_database import get_users, user_exists, check_object_access, get_groups
 from modules.calendar_database import (
     get_calendar_events, create_calendar_event, update_calendar_event, 
     delete_calendar_event, get_calendar_categories, create_calendar_category
@@ -36,7 +36,12 @@ def register_private_routes(app):
             flash('Access denied. GREAT Lab members only.', 'error')
             return redirect(url_for('home'))
         
-        return render_template('private_area.html', current_path='/private')
+        all_groups = []
+        if is_admin:
+            groups_dict = get_groups()
+            all_groups = list(groups_dict.keys())
+        
+        return render_template('private_area.html', current_path='/private', all_groups=all_groups)
 
     
     from modules.web_postgres_database import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target

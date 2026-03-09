@@ -968,3 +968,80 @@ function saveObservationLog(event) {
     });
 }
 
+// Admin Permissions Management for Private Area
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('active-permissions')) {
+        loadPrivateAreaPermissions();
+    }
+});
+
+function loadPrivateAreaPermissions() {
+    fetch('/api/object/private_area/permissions')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const container = document.getElementById('active-permissions');
+                // Keep the locked GREATLab group
+                container.innerHTML = `<div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #aaa; display: flex; align-items: center; gap: 5px;">
+                    <span>greatlab</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>`;
+                
+                data.permissions.forEach(perm => {
+                    const groupName = perm.group_name || perm.name || perm;
+                    if (groupName === 'greatlab') return; // Skip if greatlab was somehow in DB
+                    
+                    const badge = document.createElement('div');
+                    badge.style.cssText = 'background: rgba(77,184,255,0.15); border: 1px solid rgba(77,184,255,0.3); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #4db8ff; display: flex; align-items: center; gap: 8px;';
+                    badge.innerHTML = `
+                        <span>${groupName}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="cursor: pointer; opacity: 0.7;" onclick="removePrivateAreaPermission('${groupName}')" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    `;
+                    container.appendChild(badge);
+                });
+            }
+        });
+}
+
+function addPrivateAreaPermission() {
+    const groupName = document.getElementById('new-permission-group').value;
+    if (!groupName) return;
+    
+    fetch('/api/object/private_area/permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_name: groupName })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('new-permission-group').value = '';
+            loadPrivateAreaPermissions();
+        } else {
+            alert(data.error || 'Failed to add permission');
+        }
+    });
+}
+
+function removePrivateAreaPermission(groupName) {
+    if (!confirm(`Are you sure you want to remove access for ${groupName}?`)) return;
+    
+    fetch('/api/object/private_area/permissions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_name: groupName })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            loadPrivateAreaPermissions();
+        } else {
+            alert(data.error || 'Failed to remove permission');
+        }
+    });
+}
+
+
