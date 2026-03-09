@@ -24,6 +24,262 @@ def register_api_routes(app):
     # ===============================================================================
     # OBJECT MANAGEMENT API
     # ===============================================================================
+    @app.route('/api/generate_key', methods=['POST'])
+    def generate_key():
+        if 'user' not in session or session['user'].get('role') == 'guest':
+            return jsonify({'success': False, 'error': 'API keys are only available for authorized users.'}), 403
+
+        email = session['user']['email']
+        from modules.web_postgres_database import generate_api_key_for_user
+        new_key = generate_api_key_for_user(email)
+        
+        if new_key:
+            session['user']['api_key'] = new_key
+            session.modified = True
+            return jsonify({'success': True, 'api_key': new_key})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to generate API key.'}), 500
+
+    @app.route('/api/test', methods=['GET', 'POST'])
+    def api_test():
+        # Authentication via header
+        api_key = request.headers.get('X-API-Key')
+        
+        if not api_key:
+            return jsonify({'success': False, 'error': 'Missing API Key in headers (X-API-Key)'}), 401
+            
+        from modules.web_postgres_database import get_user_by_api_key
+        user = get_user_by_api_key(api_key)
+        
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid API Key'}), 401
+            
+        # Return testing information
+        return jsonify({
+            'success': True,
+            'message': 'API Authentication successful!',
+            'user': {
+                'name': user.get('name'),
+                'email': user.get('email'),
+                'role': user.get('role', 'user'),
+                'is_admin': user.get('is_admin', False),
+                'groups': user.get('groups', [])
+            }
+        })
+
+    @app.route('/api/v1/observation_targets', methods=['GET'])
+    def api_v1_observation_targets():
+        """
+        Public API: Get observation target list (SLT and/or LOT).
+        Auth:  X-API-Key header  OR  ?api_key= query param
+        Filter: ?telescope=SLT|LOT  (optional, returns both if omitted)
+        
+        Response example:
+        {
+          "success": true,
+          "generated_at": "2026-03-09T12:00:00",
+          "requested_by": "user@example.com",
+          "SLT": [ {...}, ... ],
+          "LOT": [ {...}, ... ]
+        }
+        """
+        # Accept key via header or query param
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
+
+        if not api_key:
+            return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
+
+        from modules.web_postgres_database import get_user_by_api_key, get_observation_targets
+        user = get_user_by_api_key(api_key)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
+
+        # Optional telescope filter
+        telescope_filter = request.args.get('telescope', '').strip().upper()
+        if telescope_filter and telescope_filter not in ('SLT', 'LOT'):
+            return jsonify({'success': False, 'error': 'telescope must be SLT or LOT'}), 400
+
+        try:
+            all_targets = get_observation_targets()
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
+
+        slt = [t for t in all_targets if t['telescope'] == 'SLT']
+        lot = [t for t in all_targets if t['telescope'] == 'LOT']
+
+        resp = {
+            'success': True,
+            'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'requested_by': user.get('email'),
+        }
+
+        if telescope_filter == 'SLT':
+            resp['SLT'] = slt
+        elif telescope_filter == 'LOT':
+            resp['LOT'] = lot
+        else:
+            resp['SLT'] = slt
+            resp['LOT'] = lot
+
+        return jsonify(resp)
+
+    @app.route('/api/v1/observation_logs', methods=['GET', 'POST'])
+    def api_v1_observation_logs():
+        """
+        API: Get or upsert observation logs.
+        Auth: X-API-Key header OR ?api_key= query param
+
+        GET  /api/v1/observation_logs?year=2026&month=3
+        POST /api/v1/observation_logs
+             Body (JSON):
+               {
+                 "target_name":    "SN2025wny",  -- required
+                 "telescope":      "LOT",         -- optional
+                 "obs_date":       "2026-03-09",  -- required (YYYY-MM-DD)
+                 "is_triggered":   true,          -- optional
+                 "trigger_filter": "rp",          -- optional
+                 "trigger_exp":    300,           -- optional (seconds)
+                 "trigger_count":  12,            -- optional (frames)
+                 "is_observed":    false,         -- optional
+                 "observed_filter": "rp",         -- optional
+                 "observed_exp":   300,           -- optional
+                 "observed_count": 12,            -- optional
+                 "user_name":      "Alex"         -- optional, auto-fills from API key owner
+               }
+
+        DELETE (via POST with action=delete):
+             Body (JSON):
+               {
+                 "action":      "delete",
+                 "target_name": "SN2025wny",
+                 "obs_date":    "2026-03-09"
+               }
+        """
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
+        if not api_key:
+            return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
+
+        from modules.web_postgres_database import (
+            get_user_by_api_key, get_observation_logs,
+            upsert_observation_log, get_observation_targets
+        )
+        user = get_user_by_api_key(api_key)
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
+
+        try:
+            if request.method == 'GET':
+                year = request.args.get('year', type=int)
+                month = request.args.get('month', type=int)
+                if not year or not month:
+                    return jsonify({'success': False, 'error': 'year and month query params are required'}), 400
+
+                logs = get_observation_logs(year, month)
+                for log in logs:
+                    if log.get('obs_date') and hasattr(log['obs_date'], 'strftime'):
+                        log['obs_date'] = log['obs_date'].strftime('%Y-%m-%d')
+
+                return jsonify({
+                    'success': True,
+                    'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'requested_by': user.get('email'),
+                    'year': year,
+                    'month': month,
+                    'logs': logs
+                })
+
+            elif request.method == 'POST':
+                data = request.get_json(silent=True) or {}
+                action = data.get('action', 'upsert')
+
+                target_name = data.get('target_name', '').strip()
+                telescope_hint = data.get('telescope', '').strip().upper()
+                obs_date = data.get('obs_date', '').strip()
+
+                if not target_name or not obs_date:
+                    return jsonify({'success': False, 'error': 'target_name and obs_date are required'}), 400
+
+                # Validate obs_date format
+                try:
+                    datetime.strptime(obs_date, '%Y-%m-%d')
+                except ValueError:
+                    return jsonify({'success': False, 'error': 'obs_date must be YYYY-MM-DD format'}), 400
+
+                # Resolve target_name -> target_id
+                all_targets = get_observation_targets()
+                matched = [t for t in all_targets if t['name'].lower() == target_name.lower()]
+                if telescope_hint:
+                    scoped = [t for t in matched if t['telescope'].upper() == telescope_hint]
+                    if scoped:
+                        matched = scoped
+                if not matched:
+                    available = [t['name'] for t in all_targets]
+                    return jsonify({'success': False, 'error': f'Target "{target_name}" not found. Available: {available}'}), 404
+                if len(matched) > 1:
+                    ambiguous = [{'name': t['name'], 'telescope': t['telescope'], 'id': t['id']} for t in matched]
+                    return jsonify({'success': False, 'error': 'Ambiguous target name. Specify telescope.', 'matches': ambiguous}), 400
+                target = matched[0]
+                target_id = target['id']
+
+                if action == 'delete':
+                    from modules.web_postgres_database import delete_observation_log
+                    ok = delete_observation_log(target_id, obs_date)
+                    if ok:
+                        return jsonify({'success': True, 'message': f'Log deleted for {target_name} on {obs_date}'})
+                    else:
+                        return jsonify({'success': False, 'error': 'Failed to delete log or log not found'}), 500
+                else:
+                    import json as _json
+                    def _norm_filter(val):
+                        """Accept list[dict] or plain string; always store as JSON string."""
+                        if not val:
+                            return None
+                        if isinstance(val, list):
+                            return _json.dumps(val)
+                        return str(val)  # legacy plain string kept as-is
+
+                    is_triggered = bool(data.get('is_triggered', False))
+                    is_observed  = bool(data.get('is_observed', False))
+                    trigger_filter  = _norm_filter(data.get('trigger_filter'))
+                    trigger_exp     = int(data['trigger_exp']) if data.get('trigger_exp') else None
+                    trigger_count   = int(data['trigger_count']) if data.get('trigger_count') else None
+                    observed_filter = _norm_filter(data.get('observed_filter'))
+                    observed_exp    = int(data['observed_exp']) if data.get('observed_exp') else None
+                    observed_count  = int(data['observed_count']) if data.get('observed_count') else None
+                    # Auto-fill user_name from API key owner if not provided
+                    user_name = data.get('user_name') or user.get('name') or user.get('email')
+
+                    ok = upsert_observation_log(
+                        target_id, obs_date, user_name, is_triggered, is_observed,
+                        trigger_filter, trigger_exp, trigger_count,
+                        observed_filter, observed_exp, observed_count
+                    )
+                    if ok:
+                        return jsonify({
+                            'success': True,
+                            'message': 'Log saved',
+                            'log': {
+                                'target_name': target['name'],
+                                'telescope': target['telescope'],
+                                'target_id': target_id,
+                                'obs_date': obs_date,
+                                'user_name': user_name,
+                                'is_triggered': is_triggered,
+                                'trigger_filter': trigger_filter,
+                                'trigger_exp': trigger_exp,
+                                'trigger_count': trigger_count,
+                                'is_observed': is_observed,
+                                'observed_filter': observed_filter,
+                                'observed_exp': observed_exp,
+                                'observed_count': observed_count
+                            }
+                        })
+                    else:
+                        return jsonify({'success': False, 'error': 'Failed to save log'}), 500
+
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/objects', methods=['POST'])
     def add_object():
         """Add a new object to the database"""

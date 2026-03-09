@@ -20,6 +20,9 @@ def register_marshal_routes(app):
         if 'user' not in session:
             flash('Please log in to access Marshal.', 'warning')
             return redirect(url_for('login'))
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            flash('Access denied. This page is not available for Guest users.', 'error')
+            return redirect(url_for('home'))
         
         try:
             # Get initial counts for statistics

@@ -1,0 +1,813 @@
+/* Override main-banner from home.css to allow scrolling and change layout */
+.main-banner {
+    height: auto !important;
+    min-height: 100vh !important;
+    padding-top: 100px !important;
+    padding-bottom: 50px !important;
+    background-attachment: fixed !important;
+    align-items: flex-start !important; /* allow content to flow down */
+    position: relative;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* Allow container to be wide enough to hold a 1000px calendar without squeezing */
+.main-banner .container {
+    max-width: 90%; 
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* 
+ * Change banner-content from 2-column grid (home.css default) 
+ * to a 1-column flex layout so the large calendar fits 
+ */
+.banner-content {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2rem !important;
+    align-items: center !important;
+    padding: 0 1rem !important;
+    min-height: auto !important;
+    width: 100%;
+    box-sizing: border-box !important;
+}
+
+/* Make both left (text/log) and right (calendar) take full width */
+.banner-left {
+    width: 100%;
+    align-items: center !important;
+    text-align: center;
+    padding: 0 !important;
+}
+
+.banner-left .title-section h1 {
+    justify-content: center;
+}
+
+.banner-left .banner-info {
+    align-items: center;
+}
+
+.banner-right {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+}
+
+/* Standardize the dark glass sections */
+.banner-left .private-section,
+.banner-right .private-section {
+    max-width: 1050px; /* fit the 1000px calendar nicely */
+    margin: 1rem auto;
+}
+
+.private-section {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    box-sizing: border-box;
+    backdrop-filter: blur(5px);
+}
+
+.private-section h3 {
+    margin-bottom: 1rem;
+    color: #4db8ff;
+    font-size: 1.5rem;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.private-section h4 {
+    margin-bottom: 1rem;
+    color: #c3c3c3;
+    font-size: 0.8rem;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.placeholder-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    color: #aaa;
+    font-weight: 300;
+}
+
+/* Calendar Specific Styles */
+.calendar-container {
+    flex-grow: 1; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center;
+    width: 100%;
+    overflow-x: auto; /* Handle horizontal scroll safely if viewport gets too narrow */
+    border-radius: 8px;
+    background: rgba(0,0,0,0.3);
+}
+
+.calendar-container iframe {
+    /* Limit the calendar width slightly to fit nicely internally */
+    min-width: 1000px;
+    max-width: 1000px; /* Force iframe size to user spec */
+    border-radius: 8px;
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 1050px) {
+    .calendar-container {
+        justify-content: flex-start;
+    }
+}
+
+/* ===================== Private Area Page Layout ===================== */
+
+.pa-title-section {
+    text-align: center;
+    margin-bottom: 0.5rem;
+}
+
+.pa-title-section h1 {
+    justify-content: center;
+}
+
+.pa-title-section .institution {
+    margin-top: 5px;
+}
+
+.pa-calendar-wrap {
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
+    overflow-x: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-bottom: 1rem;
+}
+
+.pa-calendar-wrap iframe {
+    border-width: 0;
+    border-radius: 8px;
+    background: transparent;
+    display: block;
+}
+
+/* ===================== Observation Log Section ===================== */
+
+.pa-obs-section {
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0 auto;
+}
+
+.pa-obs-section h3 {
+    margin-bottom: 1.5rem;
+}
+
+/* Action buttons row */
+.pa-obs-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pa-btn-slt {
+    padding: 0.6rem 1.2rem;
+    background: #4db8ff;
+    color: #000;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pa-btn-lot {
+    padding: 0.6rem 1.2rem;
+    background: #68707a;
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Tabs */
+.pa-tabs-header {
+    display: flex;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 1rem;
+}
+
+.pa-tab-btn {
+    padding: 0.8rem 2rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-weight: bold;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #aaa;
+}
+
+.pa-tab-btn.active {
+    color: #4db8ff;
+    border-bottom-color: #4db8ff;
+}
+
+/* Target table */
+.pa-target-table {
+    width: 100%;
+    text-align: left;
+    border-collapse: collapse;
+}
+
+.pa-target-table thead tr {
+    background: rgba(255,255,255,0.05);
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.pa-target-table th {
+    padding: 0.8rem 0.5rem;
+}
+
+.pa-target-table th.col-note {
+    width: 30%;
+}
+
+.pa-target-table td {
+    padding: 0.8rem 0.5rem;
+}
+
+.pa-target-table tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Table cell helpers */
+.pa-td-name {
+    color: #fff;
+    white-space: nowrap;
+}
+
+.pa-td-coord {
+    font-family: monospace;
+    color: #aaa;
+    white-space: nowrap;
+}
+
+.pa-td-priority {
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.pa-td-filter-exp {
+    color: #aaa;
+    white-space: nowrap;
+}
+
+.pa-td-note {
+    color: #ccc;
+    word-break: break-word;
+}
+
+.pa-td-actions {
+    white-space: nowrap;
+}
+
+.pa-program-badge {
+    background: #00796b;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-left: 5px;
+}
+
+.pa-mag-display {
+    color: #aaa;
+    font-size: 0.8rem;
+}
+
+.pa-empty-row {
+    padding: 2rem;
+    text-align: center;
+    color: #aaa;
+}
+
+/* Action buttons in table */
+.pa-btn-edit {
+    padding: 0.3rem 0.6rem;
+    background: #4db8ff;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 4px;
+    font-weight: 500;
+}
+
+.pa-btn-remove {
+    padding: 0.3rem 0.6rem;
+    background: #ff4d4d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* ===================== Modal ===================== */
+
+.pa-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(2px);
+}
+
+.pa-modal-box {
+    background: #2a2c31;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    box-sizing: border-box;
+    margin: 0;
+    overflow-y: auto;
+    padding: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.05);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.pa-modal-box h3 {
+    margin-top: 0;
+    font-size: 1.4rem;
+    font-weight: normal;
+    margin-bottom: 1.5rem;
+    color: #fff;
+}
+
+/* Form grid rows */
+.pa-form-row {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pa-form-row.two-col {
+    grid-template-columns: 1fr 1fr;
+}
+
+.pa-form-row.priority-row {
+    grid-template-columns: 1fr 100px;
+    align-items: end;
+}
+
+/* Text input shared style */
+.pa-input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: #202124;
+    border: 1px solid #141517;
+    color: white;
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.pa-input::placeholder {
+    color: #666;
+}
+
+/* Floating-label field group */
+.pa-field {
+    position: relative;
+    border: 1px solid #141517;
+    border-radius: 6px;
+    background: #202124;
+    padding-top: 0.3rem;
+}
+
+.pa-field-label {
+    position: absolute;
+    top: -8px;
+    left: 10px;
+    background: #2a2c31;
+    padding: 0 4px;
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.pa-field select,
+.pa-field input {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: transparent;
+    border: none;
+    color: white;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.pa-field select {
+    appearance: none;
+}
+
+/* Search dropdown */
+.pa-search-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1e1f23;
+    border: 1px solid #333;
+    border-radius: 0 0 6px 6px;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 2000;
+}
+
+.pa-search-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #2a2c31;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pa-search-item:hover {
+    background: #333;
+}
+
+.pa-search-item-name {
+    color: #4db8ff;
+    font-weight: bold;
+}
+
+.pa-search-item-type {
+    color: #888;
+    font-size: 0.8rem;
+    margin-left: 8px;
+}
+
+.pa-search-item-mag {
+    color: #aaa;
+    font-size: 0.8rem;
+    margin-left: 8px;
+}
+
+.pa-search-item-coord {
+    color: #666;
+    font-size: 0.75rem;
+}
+
+.pa-search-empty {
+    padding: 10px 12px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* LOT program container */
+.pa-lot-program {
+    display: none;
+    margin-bottom: 1.5rem;
+}
+
+.pa-lot-program .pa-field {
+    width: 50%;
+}
+
+/* Auto exposure container */
+.pa-auto-exp-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 1.5rem;
+}
+
+.pa-btn-auto-exp {
+    padding: 0.5rem 1.2rem;
+    background: linear-gradient(135deg, #4db8ff, #0077cc);
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+}
+
+.pa-auto-exp-hint {
+    color: #ffb74d;
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-left: 10px;
+}
+
+/* Observation configuration */
+.pa-obs-config h4 {
+    font-size: 1rem;
+    font-weight: normal;
+    margin-bottom: 0.8rem;
+    color: #fff;
+}
+
+.pa-filter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.pa-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.pa-filter-row .pa-field {
+    flex: 1;
+}
+
+.pa-filter-row .pa-field.filter-name {
+    max-width: 150px;
+}
+
+.pa-filter-row .pa-field.filter-exp {
+    max-width: 120px;
+}
+
+.pa-filter-row .pa-field.filter-count {
+    max-width: 100px;
+}
+
+.pa-filter-subtotal {
+    color: #aaa;
+    font-size: 0.9rem;
+    width: 60px;
+}
+
+.pa-btn-remove-filter {
+    background: transparent;
+    border: none;
+    color: #ff4d4d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+}
+
+.pa-filter-actions {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.pa-btn-link {
+    background: transparent;
+    color: #4db8ff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pa-total-exposure {
+    font-size: 0.85rem;
+    color: #4db8ff;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    display: none;
+}
+
+/* Note field */
+.pa-note-field {
+    margin-bottom: 2rem;
+}
+
+/* Modal footer buttons */
+.pa-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.pa-btn-cancel {
+    padding: 0.6rem 1.5rem;
+    background: transparent;
+    color: #aaa;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.pa-btn-save {
+    padding: 0.6rem 1.5rem;
+    background: #1c1f24;
+    color: #4db8ff;
+    border: none;
+    border-radius: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ===================== Observation Log UI ===================== */
+.pa-obs-log-section {
+    width: 100%;
+    max-width: 100% !important;
+    margin: 2rem auto 0;
+}
+
+.pa-log-controls {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.pa-log-container {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.pa-log-grid-container {
+    overflow-x: auto;
+    width: 100%;
+    position: relative;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.pa-log-grid {
+    width: max-content;
+    border-collapse: collapse;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+.pa-log-grid th, .pa-log-grid td {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.5rem;
+    text-align: center;
+    vertical-align: middle;
+    min-width: 80px;
+}
+
+/* First Column Fixed */
+.pa-log-grid th:first-child, .pa-log-grid td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #1e1e1e; /* Ensure the fixed column is not transparent */
+    border-right: 2px solid rgba(255,255,255,0.2);
+    text-align: left;
+    min-width: 250px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+}
+
+.pa-log-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #2a2a2a;
+    color: #aaa;
+    font-weight: 600;
+}
+
+/* Header Top-Left Corner Fixed Above Everything */
+.pa-log-grid thead th:first-child {
+    z-index: 3;
+}
+
+/* Cell content layout */
+.pa-log-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.pa-log-cell-user {
+    color: #4db8ff;
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.pa-log-cell-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* Colors for existing vs new targets: Solid background to avoid overlap transparency */
+.pa-log-target-active {
+    background-color: #3b3b22 !important;
+    color: #ffeb3b !important;
+}
+
+.pa-log-target-missing {
+    background-color: #402424 !important;
+    color: #ff6b6b !important;
+}
+
+/* Rounded Today and Refresh buttons */
+.pa-btn-log-action {
+    padding: 0.5rem 1rem;
+    background: #1c1f24;
+    color: #4db8ff;
+    border: 1px solid #4db8ff;
+    border-radius: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 10px;
+}
+
+.pa-btn-log-action:hover {
+    background: #4db8ff;
+    color: #000;
+}
+
+/* Scrollbar styles for Log Grid */
+.pa-log-grid-container::-webkit-scrollbar {
+    width: 8px;
+    height: 10px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+
+#content-SLT, #content-LOT {
+    overflow-x: auto;
+    width: 100%;
+}

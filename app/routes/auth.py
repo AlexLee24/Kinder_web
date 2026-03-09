@@ -70,6 +70,7 @@ def register_auth_routes(app):
                 user_email = user_info.get('email')
                 
                 is_admin = False
+                role = 'guest'
                 is_great_lab_member = False
                 existing_user_data = None
                 
@@ -77,11 +78,13 @@ def register_auth_routes(app):
                     users = get_users()
                     existing_user_data = users[user_email]
                     is_admin = existing_user_data.get('is_admin', False)
+                    role = existing_user_data.get('role', 'guest')
                     user_groups = existing_user_data.get('groups', [])
                     is_great_lab_member = 'GREAT_Lab' in user_groups
                 else:
                     if user_email == config.ADMIN_EMAIL:
                         is_admin = True
+                        role = 'admin'
                 
                 display_name = user_info.get('name')
                 display_picture = user_info.get('picture')
@@ -95,6 +98,7 @@ def register_auth_routes(app):
                     'name': display_name,
                     'picture': display_picture,
                     'is_admin': is_admin,
+                    'role': role,
                     'is_great_lab_member': is_great_lab_member
                 }
                 
@@ -109,32 +113,15 @@ def register_auth_routes(app):
                         last_login=datetime.now().isoformat()
                     )
                 else:
-                    # Check registration policy
-                    open_registration = get_setting('open_registration', 'true') == 'true'
-                    allow_registration = open_registration
-                    
-                    if not allow_registration:
-                        # Check if user has a valid invitation
-                        token = session.get('pending_invitation')
-                        if token:
-                            invitation = get_invitation(token)
-                            # Verify invitation matches this email and is pending
-                            if invitation and invitation['email'] == user_email and invitation['status'] == 'pending':
-                                allow_registration = True
-                    
-                    if allow_registration:
-                        save_user(
-                            email=user_email,
-                            name=user_info.get('name'),
-                            picture=user_info.get('picture'),
-                            is_admin=is_admin,
-                            last_login=datetime.now().isoformat(),
-                            invited_at=datetime.now().isoformat()
-                        )
-                    else:
-                        session.pop('user', None)
-                        flash('Registration is currently by invitation only.', 'error')
-                        return redirect(url_for('login'))
+                    save_user(
+                        email=user_email,
+                        name=user_info.get('name'),
+                        picture=user_info.get('picture'),
+                        is_admin=is_admin,
+                        role=role,
+                        last_login=datetime.now().isoformat(),
+                        invited_at=datetime.now().isoformat()
+                    )
                 
                 if 'pending_invitation' in session:
                     return redirect(url_for('accept_invitation', token=session['pending_invitation']))

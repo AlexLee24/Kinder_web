@@ -69,7 +69,7 @@
                             <th>Avatar</th>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Admin</th>
+                            <th>Role</th>
                             <th>Groups</th>
                             <th>Joined</th>
                             <th>Actions</th>
@@ -84,11 +84,9 @@
                             <td>{{ user.name }}</td>
                             <td>{{ email }}</td>
                             <td>
-                                {% if user.get('is_admin') %}
-                                    <span class="status-badge status-admin">Admin</span>
-                                {% else %}
-                                    <span class="status-badge status-user">User</span>
-                                {% endif %}
+                                <span class="status-badge status-{{ user.get('role', 'guest') }}" style="text-transform: capitalize;">
+                                    {{ user.get('role', 'guest') }}
+                                </span>
                             </td>
                             <td>
                                 {% if user.get('groups') %}
@@ -110,9 +108,11 @@
                             <td>
                                 <div class="action-buttons">
                                     {% if email != session.user.email %}
-                                    <button class="btn-small btn-warning" onclick="toggleAdminStatus('{{ email }}')">
-                                        {{ 'Remove Admin' if user.get('is_admin') else 'Make Admin' }}
-                                    </button>
+                                    <select style="padding: 2px 4px; border-radius: 4px; background: #333; color: white; margin-right: 5px;" onchange="changeUserRole('{{ email }}', this.value)">
+                                        <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
+                                        <option value="user" {% if user.get('role') == 'user' %}selected{% endif %}>User</option>
+                                        <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
+                                    </select>
                                     <button class="btn-small btn-danger" onclick="deleteUser('{{ email }}')">
                                         Delete
                                     </button>
@@ -206,7 +206,7 @@
                     <thead>
                         <tr>
                             <th>Email</th>
-                            <th>Admin Role</th>
+                            <th>Role</th>
                             <th>Invited By</th>
                             <th>Status</th>
                             <th>Invited At</th>
@@ -218,11 +218,9 @@
                         <tr>
                             <td>{{ invitation.email }}</td>
                             <td>
-                                {% if invitation.get('is_admin') %}
-                                    <span class="status-badge status-admin">Admin</span>
-                                {% else %}
-                                    <span class="status-badge status-user">User</span>
-                                {% endif %}
+                                <span class="status-badge status-{{ invitation.get('role', 'user') }}" style="text-transform: capitalize;">
+                                    {{ invitation.get('role', 'user') }}
+                                </span>
                             </td>
                             <td>{{ invitation.invited_by }}</td>
                             <td>
@@ -263,7 +261,7 @@
                 <h3 style="color: #C5A059; margin-bottom: 15px;">Page Access Control</h3>
                 <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px;">
                     <div class="setting-info">
-                        <label for="customTargetsAccess" style="display: block; font-weight: bold; margin-bottom: 5px;">Custom Targets Page Access</label>
+                        <label for="customTargetsAccess" style="color: #ffffff;display: block; font-weight: bold; margin-bottom: 5px;">Custom Targets Page Access</label>
                         <p class="setting-desc" style="color: #aaa; font-size: 0.9em; margin: 0;">Allow non-admin users to view the Custom Targets page.</p>
                     </div>
                     <div class="toggle-switch">
@@ -276,21 +274,6 @@
                     </div>
                 </div>
 
-                <div class="setting-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 15px;">
-                    <div class="setting-info">
-                        <label for="openRegistration" style="display: block; font-weight: bold; margin-bottom: 5px;">Open Registration</label>
-                        <p class="setting-desc" style="color: #aaa; font-size: 0.9em; margin: 0;">If enabled, anyone with a Google account can sign up. If disabled, new users can only join via invitation.</p>
-                    </div>
-                    <div class="toggle-switch">
-                        <label class="switch">
-                            <input type="checkbox" id="openRegistration" 
-                                   {% if open_registration %}checked{% endif %}
-                                   onchange="toggleOpenRegistration(this)">
-                            <span class="slider round"></span>
-                        </label>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -321,15 +304,16 @@
             </div>
             <form onsubmit="inviteUser(event)">
                 <div class="form-group">
-                    <label for="userEmail">Email Address *</label>
-                    <input type="email" id="userEmail" required>
+                    <label for="userEmail">Email Address (Optional)</label>
+                    <input type="email" id="userEmail">
                 </div>
                 <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="isAdmin">
-                        <span class="checkmark"></span>
-                        Grant administrator privileges
-                    </label>
+                    <label for="inviteRole">User Role</label>
+                    <select id="inviteRole" style="width: 100%; padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                        <option value="guest">Guest</option>
+                        <option value="user" selected>User</option>
+                        <option value="admin">Admin</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">

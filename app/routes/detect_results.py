@@ -1,5 +1,5 @@
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
-from modules.postgres_database import get_cross_match_results, update_cross_match_flag, get_available_dates, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
+from modules.postgres_database import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -9,6 +9,10 @@ def register_detect_results_routes(app):
     @app.route('/detect_image/<target_name>')
     def detect_image(target_name):
         if 'user' not in session:
+            return "Unauthorized", 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            return "Unauthorized", 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
             return "Unauthorized", 401
             
         image_data = get_target_image(target_name)
@@ -25,6 +29,10 @@ def register_detect_results_routes(app):
     @app.route('/api/set_host', methods=['POST'])
     def set_host():
         if 'user' not in session:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
             return jsonify({'success': False, 'message': 'Unauthorized'}), 401
             
         data = request.json
@@ -59,6 +67,10 @@ def register_detect_results_routes(app):
     def unset_host():
         if 'user' not in session:
             return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
             
         data = request.json
         target_name = data.get('target_name')
@@ -76,6 +88,12 @@ def register_detect_results_routes(app):
         if 'user' not in session:
             flash('Please log in to access Detect Results.', 'warning')
             return redirect(url_for('login'))
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            flash('Access denied. This page is not available for Guest users.', 'error')
+            return redirect(url_for('home'))
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            flash('Access denied. This page is not available for Guest users.', 'error')
+            return redirect(url_for('home'))
             
         # Get date from query parameter
         selected_date = request.args.get('detect_results')
@@ -86,10 +104,12 @@ def register_detect_results_routes(app):
         
         # If no date selected, render the homepage
         if not selected_date:
-            return render_template('detect_home.html', 
-                                   latest_date=latest_date, 
+            daily_counts = get_daily_match_counts()
+            return render_template('detect_home.html',
+                                   latest_date=latest_date,
+                                   daily_counts=daily_counts,
                                    current_path='/detect')
-            
+
         results = get_cross_match_results(date=selected_date)
         
         # Group results by target
@@ -220,15 +240,15 @@ def register_detect_results_routes(app):
             best_match = processed_matches[0]
             
             # Generate plot for the target (using best match's Z for reference)
-            plot_html = None
+            plot_json = None
             try:
                 ra = best_match['tns_info']['ra']
                 dec = best_match['tns_info']['dec']
                 ra = float(ra) if ra != 'N/A' else None
                 dec = float(dec) if dec != 'N/A' else None
                 
-                plot_html = DataVisualization.create_photometry_plot_from_db(
-                    photometry, best_match.get('z'), ra, dec
+                plot_json = DataVisualization.create_photometry_plot_from_db(
+                    photometry, best_match.get('z'), ra, dec, as_json=True
                 )
             except Exception as e:
                 print(f"Error generating plot for {target_name}: {e}")
@@ -237,7 +257,7 @@ def register_detect_results_routes(app):
                 'target_name': target_name,
                 'id': best_match.get('id'),
                 'tns_info': best_match.get('tns_info'),
-                'plot_html': plot_html,
+                'plot_json': plot_json,
                 'matches': processed_matches,
                 'best_match': best_match,
                 'is_flagged': best_match.get('is_flagged'),
@@ -250,17 +270,37 @@ def register_detect_results_routes(app):
         
         # Summary results (best match from each target)
         summary_results = [t['best_match'] for t in final_target_list]
+        
+        daily_counts = get_daily_match_counts()
             
         return render_template('detect_results.html', 
                              results=final_target_list, 
                              summary_results=summary_results,
                              current_path='/detect',
                              available_dates=available_dates,
+                             daily_counts=daily_counts,
                              selected_date=selected_date)
+
+    @app.route('/detect/archives')
+    def detect_archives():
+        if 'user' not in session:
+            flash('Please log in to access Detect Archives.', 'warning')
+            return redirect(url_for('login'))
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            flash('Access denied. This page is not available for Guest users.', 'error')
+            return redirect(url_for('home'))
+        daily_counts = get_daily_match_counts()
+        return render_template('detect_archives.html',
+                               daily_counts=daily_counts,
+                               current_path='/detect/archives')
 
     @app.route('/api/toggle_flag', methods=['POST'])
     def toggle_flag():
         if 'user' not in session:
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+        elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
             return jsonify({'success': False, 'message': 'Unauthorized'}), 401
             
         data = request.json

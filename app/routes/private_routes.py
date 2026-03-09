@@ -13,7 +13,7 @@ from modules.calendar_database import (
 from modules.ics_generator import generate_ics_calendar
 
 
-def register_calendar_routes(app):
+def register_private_routes(app):
     """Register calendar routes with the Flask app"""
     
     # ===============================================================================
@@ -28,12 +28,191 @@ def register_calendar_routes(app):
         user_email = session['user']['email']
         
         # Check permissions for 'private_area'
-        # Treat 'private_area' as a resource name in the object_permissions table
-        if not check_object_access('private_area', user_email):
-            flash('Access denied.', 'error')
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        has_object_access = check_object_access('private_area', user_email)
+        
+        if not (is_great_lab or is_admin or has_object_access):
+            flash('Access denied. GREAT Lab members only.', 'error')
             return redirect(url_for('home'))
         
         return render_template('private_area.html', current_path='/private')
+
+    
+    from modules.web_postgres_database import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target
+
+    @app.route('/api/members', methods=['GET'])
+    def api_members():
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        from modules.web_postgres_database import get_users
+        users = get_users()
+        members = []
+        for email, u in users.items():
+            if u.get('role') in ['user', 'admin', 'guest'] or True:
+                members.append({
+                    'email': email,
+                    'name': u.get('name', ''),
+                    'picture': u.get('picture', '')
+                })
+        # Sort by name
+        members.sort(key=lambda x: x['name'])
+        return jsonify({'success': True, 'members': members})
+
+    @app.route('/api/targets', methods=['GET', 'POST'])
+    def api_observation_targets():
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        
+        if request.method == 'GET':
+            targets = get_observation_targets()
+            return jsonify({'success': True, 'targets': targets})
+            
+        elif request.method == 'POST':
+            if not (is_great_lab or is_admin):
+                return jsonify({'error': 'Forbidden'}), 403
+                
+            data = request.json
+            new_id = save_observation_target(
+                telescope=data.get('telescope'),
+                name=data.get('name'),
+                mag=data.get('mag'),
+                ra=data.get('ra'),
+                dec=data.get('dec'),
+                priority=data.get('priority'),
+                repeat_count=data.get('repeat_count', 0),
+                auto_exposure=data.get('auto_exposure', True),
+                filters=data.get('filters', []),
+                plan=data.get('plan'),
+                program=data.get('program'),
+                note_gl=data.get('note_gl', ''),
+                user_email=session['user']['email']
+            )
+            
+            if new_id:
+                return jsonify({'success': True, 'id': new_id})
+            else:
+                return jsonify({'error': 'Database error'}), 500
+
+    @app.route('/api/targets/<int:target_id>', methods=['DELETE'])
+    def api_observation_target_delete(target_id):
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        if not (is_great_lab or is_admin):
+            return jsonify({'error': 'Forbidden'}), 403
+            
+        if delete_observation_target(target_id):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Database error'}), 500
+
+    @app.route('/api/targets/<int:target_id>', methods=['PUT'])
+    def api_observation_target_update(target_id):
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        if not (is_great_lab or is_admin):
+            return jsonify({'error': 'Forbidden'}), 403
+            
+        data = request.json
+        if update_observation_target(
+            target_id=target_id,
+            telescope=data.get('telescope'),
+            name=data.get('name'),
+            mag=data.get('mag'),
+            ra=data.get('ra'),
+            dec=data.get('dec'),
+            priority=data.get('priority'),
+            repeat_count=data.get('repeat_count', 0),
+            auto_exposure=data.get('auto_exposure', False),
+            filters=data.get('filters', []),
+            plan=data.get('plan'),
+            program=data.get('program'),
+            note_gl=data.get('note_gl', '')
+        ):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Database error'}), 500
+
+    @app.route('/api/search_target')
+    def api_search_target():
+        """Search TNS objects by name for autocomplete"""
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        
+        q = request.args.get('q', '').strip()
+        if len(q) < 2:
+            return jsonify({'results': []})
+        
+        try:
+            from modules.postgres_database import get_db_connection
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                search_pattern = f'%{q}%'
+                cursor.execute('''
+                    SELECT name, name_prefix, ra, declination, redshift, discoverymag, type
+                    FROM tns_objects
+                    WHERE name ILIKE %s OR name_prefix || name ILIKE %s OR internal_names ILIKE %s
+                    ORDER BY discoverydate DESC
+                    LIMIT 15
+                ''', (search_pattern, search_pattern, search_pattern))
+                rows = cursor.fetchall()
+                results = []
+                for r in rows:
+                    results.append({
+                        'name': r[0],
+                        'prefix': r[1] or '',
+                        'ra': r[2],
+                        'dec': r[3],
+                        'redshift': r[4],
+                        'mag': r[5],
+                        'type': r[6] or ''
+                    })
+                cursor.close()
+            return jsonify({'results': results})
+        except Exception as e:
+            print(f"Search error: {e}")
+            return jsonify({'results': []})
+
+    @app.route('/api/auto_exposure')
+    def api_auto_exposure():
+        """Return auto exposure config from observation_script lookup table"""
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+        mag = request.args.get('mag', '').strip()
+        telescope = request.args.get('telescope', 'SLT').strip()
+        if not mag:
+            return jsonify({'error': 'mag parameter required'}), 400
+
+        try:
+            from modules.observation_script import exposure_time
+            result = exposure_time(mag)
+            if isinstance(result, str):
+                # "Too faint to observe" or "Invalid magnitude"
+                return jsonify({'error': result})
+
+            # result is dict like {"up": "60sec*1", "gp": "30sec*1", ...}
+            filters = []
+            for filt, val in result.items():
+                parts = val.replace('sec*', ' ').split()
+                exp = int(parts[0])
+                count = int(parts[1])
+                filters.append({'filter': filt, 'exp': exp, 'count': count})
+
+            return jsonify({'success': True, 'filters': filters, 'telescope': telescope})
+        except Exception as e:
+            print(f"Auto exposure error: {e}")
+            return jsonify({'error': str(e)}), 500
 
     @app.route('/private/calendar')
     def private_calendar():
@@ -516,3 +695,65 @@ def register_calendar_routes(app):
     #         })
     #     except Exception as e:
     #         return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/observation_logs', methods=['GET', 'POST'])
+    def api_get_observation_logs():
+        if 'user' not in session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+        try:
+            if request.method == 'GET':
+                year = request.args.get('year', type=int)
+                month = request.args.get('month', type=int)
+                if not year or not month:
+                    return jsonify({'success': False, 'error': 'Year and month are required'}), 400
+                    
+                from modules.web_postgres_database import get_observation_logs
+                logs = get_observation_logs(year, month)
+                
+                # Format dates to string
+                for log in logs:
+                    if log['obs_date']:
+                        log['obs_date'] = log['obs_date'].strftime('%Y-%m-%d')
+                        
+                return jsonify({'success': True, 'logs': logs})
+            elif request.method == 'POST':
+                data = request.json
+                target_id = data.get('target_id')
+                obs_date = data.get('obs_date')
+                # Auto-fill user_name from session if not provided
+                user_name = data.get('user_name') or session['user'].get('name') or session['user'].get('email')
+                is_triggered = data.get('is_triggered', False)
+                is_observed = data.get('is_observed', False)
+                import json as _json
+                def _norm_filter(val):
+                    if not val:
+                        return None
+                    if isinstance(val, list):
+                        return _json.dumps(val)
+                    return str(val)
+                trigger_filter  = _norm_filter(data.get('trigger_filter'))
+                observed_filter = _norm_filter(data.get('observed_filter'))
+                
+                if not target_id or not obs_date:
+                    return jsonify({'success': False, 'error': 'Target ID and Date required'}), 400
+                    
+                from modules.web_postgres_database import upsert_observation_log
+                success = upsert_observation_log(
+                    target_id, obs_date, user_name, is_triggered, is_observed,
+                    trigger_filter,
+                    int(data['trigger_exp']) if data.get('trigger_exp') else None,
+                    int(data['trigger_count']) if data.get('trigger_count') else None,
+                    observed_filter,
+                    int(data['observed_exp']) if data.get('observed_exp') else None,
+                    int(data['observed_count']) if data.get('observed_count') else None
+                )
+                
+                if success:
+                    return jsonify({'success': True})
+                else:
+                    return jsonify({'success': False, 'error': 'Failed to save log'}), 500
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    return app

@@ -187,3 +187,66 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// ===============================================================================
+// API KEY FUNCTIONALITY
+// ===============================================================================
+
+function toggleApiKeyVisibility(event) {
+    const input = document.getElementById('apiKeyDisplay');
+    const btn = event.currentTarget;
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = 'Hide';
+    } else {
+        input.type = 'password';
+        btn.textContent = 'Show';
+    }
+}
+
+function copyApiKey() {
+    const input = document.getElementById('apiKeyDisplay');
+    if (input.value === 'No API key generated' || !input.value) return;
+    
+    // temporarily change to text to copy
+    const ogType = input.type;
+    input.type = 'text';
+    input.select();
+    document.execCommand('copy');
+    input.type = ogType;
+    
+    showNotification('API Key copied to clipboard!', 'success');
+}
+
+async function generateNewApiKey(event) {
+    if (!confirm('Are you sure? Any existing integrations using your old key will immediately stop working.')) return;
+    
+    const btn = event.currentTarget;
+    const ogText = btn.textContent;
+    btn.textContent = 'Generating...';
+    btn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/generate_key', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            document.getElementById('apiKeyDisplay').value = data.api_key;
+            showNotification('New API Key generated successfully!', 'success');
+            btn.textContent = 'Regenerate API Key';
+        } else {
+            showNotification('Error: ' + (data.error || 'Failed generating'), 'error');
+            btn.textContent = ogText;
+        }
+    } catch (error) {
+        showNotification('An error occurred during generation', 'error');
+        btn.textContent = ogText;
+    } finally {
+        btn.disabled = false;
+    }
+}

@@ -76,8 +76,10 @@
                         <div class="info-item">
                             <span class="info-label">Account Type:</span>
                             <span class="info-value">
-                                {% if session.user.is_admin %}
+                                {% if session.user.get('role') == 'admin' or session.user.is_admin %}
                                     Administrator
+                                {% elif session.user.get('role', 'guest') == 'guest' %}
+                                    Guest
                                 {% else %}
                                     User
                                 {% endif %}
@@ -90,19 +92,40 @@
                         {% if user_data and user_data.last_login %}
                         <div class="info-item">
                             <span class="info-label">Last Login:</span>
-                            <span class="info-value">{{ user_data.last_login[:19] if user_data.last_login else 'Unknown' }}</span>
+                            <span class="info-value">{{ (user_data.last_login | string)[:19] if user_data.last_login else 'Unknown' }}</span>
                         </div>
                         {% endif %}
-                        {% if user_data and user_data.invited_at %}
+                                                {% if user_data and user_data.invited_at %}
                         <div class="info-item">
                             <span class="info-label">Member Since:</span>
-                            <span class="info-value">{{ user_data.invited_at[:10] if user_data.invited_at else 'Unknown' }}</span>
+                            <span class="info-value">{{ (user_data.invited_at | string)[:10] if user_data.invited_at else 'Unknown' }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- NEW API KEY SECTION -->
+                        {% if session.user.get('role') != 'guest' %}
+                        <div class="info-item api-key-section" style="grid-column: 1 / -1; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                            <span class="info-label" style="display: block; margin-bottom: 8px;">Your API Key:</span>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <input type="password" id="apiKeyDisplay" readonly 
+                                       value="{{ user_data.api_key if user_data and user_data.api_key else 'No API key generated' }}" 
+                                       style="flex-grow: 1; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-family: monospace;">
+                                
+                                <button onclick="toggleApiKeyVisibility(event)" class="btn-api btn-api-secondary" style="min-width: 70px;">Show</button>
+                                <button onclick="copyApiKey()" class="btn-api btn-api-secondary" style="padding: 0 12px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+                                <button onclick="generateNewApiKey(event)" class="btn-api btn-api-warning" style="white-space: nowrap;">
+                                    {{ 'Regenerate' if user_data and user_data.api_key else 'Generate' }} API Key
+                                </button>
+                            </div>
+                            <p style="font-size: 0.85rem; color: #aaa; margin-top: 8px;">
+                                Use this key to authenticate external connections to Kinder. Do not share it!
+                            </p>
                         </div>
                         {% endif %}
                     </div>
                 </div>
 
-                {% if session.user.is_admin %}
+                <!-- {% if session.user.is_admin %}
                 <div class="admin-section">
                     <h3>Administrator Actions</h3>
                     <div class="admin-actions">
@@ -111,7 +134,7 @@
                         </a>
                     </div>
                 </div>
-                {% endif %}
+                {% endif %} -->
             </div>
         </div>
     </div>

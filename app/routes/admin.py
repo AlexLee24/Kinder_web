@@ -38,30 +38,35 @@ def register_admin_routes(app):
         
         data = request.get_json()
         email = data.get('email', '').strip()
-        is_admin = data.get('is_admin', False)
+        role = data.get('role', 'user')
         send_email = data.get('send_email', False)
         
-        if not email:
-            return jsonify({'error': 'Email is required'}), 400
+        if send_email and not email:
+            return jsonify({'error': 'Email is required to send email'}), 400
         
-        if user_exists(email):
+        if email and user_exists(email):
             return jsonify({'error': 'User already exists'}), 400
         
         token = generate_token()
         
-        if not create_invitation(token, email, is_admin, session['user']['email']):
+        is_admin = (role == 'admin')
+        # If email is empty string, store None
+        final_email = email if email else None
+        
+        if not create_invitation(token, final_email, is_admin, role, session['user']['email']):
             return jsonify({'error': 'Failed to create invitation'}), 500
         
         email_sent = False
-        if send_email:
-            invitation_link = url_for('accept_invitation', token=token, _external=True)
-            email_sent = send_invitation_email(email, invitation_link)
+        invitation_link = url_for('accept_invitation', token=token, _external=True)
+        if send_email and email:
+            email_sent = send_invitation_email(final_email, invitation_link)
         
         return jsonify({
             'success': True, 
             'message': 'Invitation created successfully',
             'email_sent': email_sent,
-            'invitation_token': token
+            'invitation_token': token,
+            'invitation_link': invitation_link
         })
 
     @app.route('/invitation/<token>')

@@ -1,9 +1,14 @@
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-color: #f5f5dc;
-    margin: 100px;
+    background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.8)), url('../photo/6888.jpg');
+    background-attachment: fixed;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    margin: 0;
+    padding-top: 100px;
     padding-bottom: 40px;
-    color: #333;
+    color: #f0f0f0;
 }
 
 .marshal-container {
@@ -310,5 +315,24 @@ hr {
 
 #backToTopBtn svg {
     display: block;
+}
+
+
+/* Enhancements for Date Selector */
+.control-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid rgba(70, 255, 175, 0.3);
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+}
+
+.date-selector select {
+    transition: all 0.3s ease;
+}
+
+.date-selector select:hover {
+    border-color: #46ffaf !important;
 }
 

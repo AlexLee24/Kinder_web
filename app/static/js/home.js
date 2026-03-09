@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function changeImage() {
+        if (!imgElement) return;
         // Fade out
         imgElement.style.opacity = '0';
         

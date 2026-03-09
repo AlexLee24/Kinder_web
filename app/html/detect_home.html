@@ -12,36 +12,58 @@
 
     <div class="detect-home-container">
         <h1 class="main-title">DETECT</h1>
-        <h2>Daily Transient Event Cross-matching Tool</h2>
+        <h2 class="sub-title">Daily Transient Event Cross-matching Tool</h2>
 
-        <div class="section-card pipeline-section">
-            <h2>pipeline</h2>
-            <div class="pipeline-flow">
-                <span class="step">TNS object</span>
-                <span class="arrow">→</span>
-                <span class="step">Cross Match</span>
-                <span class="arrow">→</span>
-                <span class="step">Calculate</span>
+        <div class="content-wrapper">
+            <div class="section-card pipeline-section">
+                <h2>pipeline</h2>
+                <div class="pipeline-image-container">
+                    <img src="{{ url_for('static', filename='photo/DETECT.png') }}" alt="DETECT Pipeline Flow" class="pipeline-img">
+                    <div class="pipeline-credit">Created with Xmind</div>
+                </div>
             </div>
-        </div>
 
-        <div class="section-card results-section">
-            <h2>Results</h2>
-            <div class="results-links">
-                {% if latest_date %}
-                <a href="{{ url_for('detect_results', detect_results=latest_date) }}" class="result-link newest">
-                    Newest Result ({{ latest_date }})
+            <div class="section-card results-section">
+                <h2>Results</h2>
+                <div class="results-links">
+                {% if daily_counts and daily_counts|length > 0 %}
+                {% set newest = daily_counts[0] %}
+                <a href="{{ url_for('detect_results', detect_results=newest.date) if newest.count > 0 else '#' }}" 
+                   class="result-link newest {% if newest.count == 0 %}no-match{% endif %} {% if newest.has_lens %}lens-match{% endif %}"
+                   {% if newest.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
+                    Newest Result ({{ newest.date }})
+                    <span class="count-badge">{{ newest.count }} targets matched</span>
+                    {% if newest.has_lens %}<span class="lens-badge">🔭 LENS MATCH!</span>{% endif %}
                 </a>
+                
+                {% if daily_counts|length > 1 %}
+                <div class="archive-title">Recent Archives</div>
+                <div class="archive-grid">
+                    {% for item in daily_counts[1:9] %}
+                    <a href="{{ url_for('detect_results', detect_results=item.date) if item.count > 0 else '#' }}" 
+                       class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}"
+                       {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
+                        <span class="date">{{ item.date }}</span>
+                        <span class="count">{{ item.count }} targets</span>
+                        {% if item.has_lens %}<span class="lens-badge-small">🔭 LENS</span>{% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if daily_counts|length > 9 %}
+                <div class="archive-btn-container">
+                    <a href="{{ url_for('detect_archives') }}" class="all-archives-btn">
+                        Explore All Archives
+                    </a>
+                </div>
+                {% endif %}
+
                 {% else %}
                 <span class="result-link disabled">No Results Available</span>
                 {% endif %}
-                
-                <!-- Archive Result links to the results page with the latest date (or default), 
-                     where the user can use the dropdown to select other dates. -->
-                <a href="{{ url_for('detect_results', detect_results=latest_date) }}" class="result-link archive">
-                    Archive Result
-                </a>
             </div>
+        </div>
         </div>
     </div>
 </body>

@@ -344,7 +344,7 @@ async function inviteUser(event) {
     event.preventDefault();
     
     const email = document.getElementById('userEmail').value;
-    const isAdmin = document.getElementById('isAdmin').checked;
+    const roleValue = document.getElementById('inviteRole') ? document.getElementById('inviteRole').value : 'user';
     const sendEmail = document.getElementById('sendEmail').checked;
     
     try {
@@ -355,7 +355,7 @@ async function inviteUser(event) {
             },
             body: JSON.stringify({
                 email: email,
-                is_admin: isAdmin,
+                role: roleValue,
                 send_email: sendEmail
             })
         });
@@ -363,15 +363,19 @@ async function inviteUser(event) {
         const result = await response.json();
         
         if (result.success) {
-            let message = 'Invitation sent successfully!';
-            if (sendEmail) {
+            let message = 'Invitation created successfully!';
+            if (sendEmail && email) {
                 message += result.email_sent ? 
                     ' Email notification sent.' : 
                     ' Email notification failed to send.';
+                showNotification(message, 'success');
+                closeModal('inviteUserModal');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                prompt('Invitation link generated! Copy the link below:', result.invitation_link);
+                closeModal('inviteUserModal');
+                location.reload();
             }
-            showNotification(message, 'success');
-            closeModal('inviteUserModal');
-            setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
         }

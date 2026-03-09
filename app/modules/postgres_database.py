@@ -1212,6 +1212,41 @@ def get_auto_snooze_stats():
         
     return stats
 
+def get_daily_match_counts():
+    """Get list of ALL dates between first and last match, with count of unique targets and if lens matches occurred."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                WITH dates AS (
+                    SELECT generate_series(
+                        (SELECT MIN(created_at::date) FROM cross_match_results),
+                        (SELECT MAX(created_at::date) FROM cross_match_results),
+                        '1 day'::interval
+                    )::date AS date
+                )
+                SELECT 
+                    d.date, 
+                    COUNT(DISTINCT c.target_name) as unique_targets,
+                    COALESCE(BOOL_OR(c.catalog_name LIKE 'Lens_%'), FALSE) as has_lens
+                FROM dates d
+                LEFT JOIN cross_match_results c ON d.date = c.created_at::date
+                GROUP BY d.date
+                ORDER BY d.date DESC;
+            """)
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    'date': row['date'].strftime('%Y-%m-%d'),
+                    'count': row['unique_targets'],
+                    'has_lens': row['has_lens']
+                })
+            cur.close()
+            return results
+    except Exception as e:
+        print(f"Error getting daily match counts: {e}")
+        return []
+
 def get_available_dates():
     """Get list of dates that have cross match results"""
     try:

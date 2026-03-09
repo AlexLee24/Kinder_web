@@ -24,31 +24,29 @@
             <nav class="main-nav">
                 <!-- Left Navigation -->
                 <ul class="nav-left">
-                    <li><a href="{{ url_for('detect_results') }}">DETECT</a></li>
                     <li><a href="{{ url_for('marshal') }}">Marshal</a></li>
+                    
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" {% if current_path in ['/', '/astronomy_tools', '/object_visibility'] %}class="active"{% endif %}>
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/astronomy_tools', '/telescope_simulator'] %}class="active"{% endif %}>
                             Tools
                             <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </a>
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('astronomy_tools') }}">Astronomy Tools</a></li>
-                            <li><a href="{{ url_for('observation_planner') }}">Observation Planner</a></li>
-                            <li><a href="{{ url_for('interactive_planner') }}">Interactive Visibility Planner</a></li>
-                            <li><a href="{{ url_for('custom_targets_page') }}">Custom Targets</a></li>
-                            <li><a href="{{ url_for('object_plot') }}">Object Visibility Plot</a></li>
                             <li><a href="{{ url_for('telescope_simulator') }}">Telescope Simulator</a></li>
                         </ul>
                     </li>
 
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" {% if current_path in ['/', '/astronomy_tools', '/object_visibility'] %}class="active"{% endif %}>
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/observation_planner', '/custom_targets', '/interactive_planner', '/finding_chart'] %}class="active"{% endif %}>
                             Planners
                             <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </a>
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('interactive_planner') }}">Visibility Plot</a></li>
                             <li><a href="{{ url_for('finding_chart') }}">Finding Chart</a></li>
+                            <li><a href="{{ url_for('observation_planner') }}">Observation Planner</a></li>
+                            <li><a href="{{ url_for('custom_targets_page') }}">Custom Targets</a></li>
                         </ul>
                     </li>
 
@@ -68,6 +66,19 @@
                         </ul>
                     </li>
 
+                    {% if session.user and session.user.get('is_great_lab_member') %}
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/detect_results', '/private'] %}class="active"{% endif %}>
+                            GREATLab
+                            <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="{{ url_for('detect_results') }}">DETECT</a></li>
+                            <li><a href="{{ url_for('private_area') }}">Private Area</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+
                     <!-- {% if session.user and session.user.is_admin %}
                     <li class="dropdown private-area">
                         <a href="{{ url_for('private_area') }}" class="dropdown-toggle" {% if current_path.startswith('/private') %}class="active"{% endif %}>
@@ -85,6 +96,9 @@
                             <a href="#" class="user-menu">
                                 <img src="{{ session.user.picture }}" alt="User Avatar" class="user-avatar">
                                 {{ session.user.name }}
+                                {% if session.user.get('role', 'guest') == 'guest' and not session.user.get('is_admin') %}
+                                    (Guest)
+                                {% endif %}
                             </a>
                             <ul class="dropdown-content">
                                 <li><a href="{{ url_for('profile') }}">Profile</a></li>

@@ -60,7 +60,7 @@ class DataVisualization:
         return filter_colors.get(filter_name, f'rgba(128,128,128,{alpha})')  # 預設灰色
     
     @staticmethod
-    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None):
+    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False):
         """Create interactive photometry plot from database data"""
         if not photometry_data:
             return None

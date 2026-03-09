@@ -70,6 +70,7 @@ def init_database():
                     name TEXT NOT NULL,
                     picture TEXT,
                     is_admin BOOLEAN DEFAULT FALSE,
+                    role VARCHAR(20) DEFAULT 'guest',
                     last_login TIMESTAMP,
                     invited_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -102,8 +103,9 @@ def init_database():
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS invitations (
                     token TEXT PRIMARY KEY,
-                    email TEXT NOT NULL,
+                    email TEXT,
                     is_admin BOOLEAN DEFAULT FALSE,
+                    role VARCHAR(20) DEFAULT 'user',
                     invited_by TEXT REFERENCES users(email),
                     invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'pending',
@@ -133,7 +135,43 @@ def init_database():
                 )
             ''')
             
+            
+            # Observation Targets
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS observation_targets (
+                    id SERIAL PRIMARY KEY,
+                    telescope VARCHAR(10),
+                    name TEXT,
+                    mag TEXT,
+                    ra TEXT,
+                    dec TEXT,
+                    priority VARCHAR(20),
+                    repeat_count INT DEFAULT 0,
+                    auto_exposure BOOLEAN DEFAULT TRUE,
+                    filters JSONB,
+                    plan TEXT,
+                    program TEXT,
+                    created_by TEXT REFERENCES users(email),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+
+            # Observation Logs
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS observation_logs (
+                    id SERIAL PRIMARY KEY,
+                    target_id INTEGER REFERENCES observation_targets(id) ON DELETE CASCADE,
+                    obs_date DATE,
+                    user_name TEXT,
+                    is_triggered BOOLEAN DEFAULT FALSE,
+                    is_observed BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(target_id, obs_date)
+                )
+            """)
             conn.commit()
+
 
 # --- Users ---
 
@@ -177,25 +215,56 @@ def get_users():
             
             return result
 
-def save_user(email, name, picture=None, is_admin=False, last_login=None, invited_at=None):
+def save_user(email, name, picture=None, is_admin=False, role='guest', last_login=None, invited_at=None):
     """Save or update user"""
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             # Upsert in Postgres
             cursor.execute('''
                 INSERT INTO users 
-                (email, name, picture, is_admin, last_login, invited_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                (email, name, picture, is_admin, role, last_login, invited_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (email) 
                 DO UPDATE SET
                     name = EXCLUDED.name,
                     picture = EXCLUDED.picture,
-                    is_admin = EXCLUDED.is_admin,
-                    last_login = EXCLUDED.last_login,
-                    invited_at = EXCLUDED.invited_at
-            ''', (email, name, picture, is_admin, last_login, invited_at))
+                    last_login = EXCLUDED.last_login
+            ''', (email, name, picture, is_admin, role, last_login, invited_at))
             conn.commit()
             return True
+
+
+import secrets
+
+def generate_api_key():
+    """Generates a random API key"""
+    return secrets.token_urlsafe(32)
+
+def generate_api_key_for_user(email):
+    """Generate and save an API key for a specific user"""
+    api_key = generate_api_key()
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('UPDATE users SET api_key = %s WHERE email = %s', (api_key, email))
+            conn.commit()
+    return api_key
+
+def get_user_by_api_key(api_key):
+    """Look up a user by their API key"""
+    if not api_key:
+        return None
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cursor:
+            cursor.execute('SELECT * FROM users WHERE api_key = %s', (api_key,))
+            user = cursor.fetchone()
+            if user:
+                user_dict = dict(user)
+                cursor.execute('SELECT group_name FROM user_groups WHERE user_email = %s', (user['email'],))
+                groups = [row['group_name'] for row in cursor.fetchall()]
+                user_dict['groups'] = groups
+                return user_dict
+            return None
+
 
 def update_user(email, **kwargs):
     """Update user info"""
@@ -343,14 +412,14 @@ def get_invitations():
             
             return result
 
-def create_invitation(token, email, is_admin=False, invited_by=None):
+def create_invitation(token, email=None, is_admin=False, role='user', invited_by=None):
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             try:
                 cursor.execute('''
-                    INSERT INTO invitations (token, email, is_admin, invited_by)
-                    VALUES (%s, %s, %s, %s)
-                ''', (token, email, is_admin, invited_by))
+                    INSERT INTO invitations (token, email, is_admin, role, invited_by)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (token, email, is_admin, role, invited_by))
                 conn.commit()
                 return True
             except psycopg2.IntegrityError:
@@ -543,3 +612,157 @@ def set_setting(key, value):
             ''', (key, str(value)))
             conn.commit()
             return True
+
+
+# --- Observation Targets ---
+def save_observation_target(telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl, user_email):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO observation_targets 
+                (telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            ''', (telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, json.dumps(filters), plan, program, note_gl, user_email))
+            new_id = cursor.fetchone()[0]
+            conn.commit()
+            cursor.close()
+            return new_id
+    except Exception as e:
+        print(f"Error saving target: {e}")
+    return None
+
+def get_observation_targets():
+    targets = []
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl, created_by, created_at
+                FROM observation_targets
+                ORDER BY created_at ASC
+            ''')
+            rows = cursor.fetchall()
+            for row in rows:
+                targets.append({
+                    'id': row[0],
+                    'telescope': row[1],
+                    'name': row[2],
+                    'mag': row[3],
+                    'ra': row[4],
+                    'dec': row[5],
+                    'priority': row[6],
+                    'repeat_count': row[7],
+                    'auto_exposure': row[8],
+                    'filters': row[9],
+                    'plan': row[10],
+                    'program': row[11],
+                    'note_gl': row[12],
+                    'created_by': row[13],
+                    'created_at': row[14].isoformat() if row[14] else None
+                })
+            cursor.close()
+    except Exception as e:
+        print(f"Error fetching targets: {e}")
+    return targets
+
+def delete_observation_target(target_id):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM observation_targets WHERE id = %s', (target_id,))
+            conn.commit()
+            cursor.close()
+            return True
+    except Exception as e:
+        print(f"Error deleting target: {e}")
+    return False
+
+def update_observation_target(target_id, telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE observation_targets
+                SET telescope=%s, name=%s, mag=%s, ra=%s, dec=%s, priority=%s,
+                    repeat_count=%s, auto_exposure=%s, filters=%s, plan=%s, program=%s, note_gl=%s
+                WHERE id=%s
+            ''', (telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, json.dumps(filters), plan, program, note_gl, target_id))
+            conn.commit()
+            cursor.close()
+            return True
+    except Exception as e:
+        print(f"Error updating target: {e}")
+    return False
+
+def get_observation_logs(year, month):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, target_id, obs_date, user_name, is_triggered, is_observed,
+                       trigger_filter, trigger_exp, trigger_count,
+                       observed_filter, observed_exp, observed_count
+                FROM observation_logs
+                WHERE EXTRACT(YEAR FROM obs_date) = %s AND EXTRACT(MONTH FROM obs_date) = %s
+            ''', (year, month))
+            columns = [desc[0] for desc in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                results.append(dict(zip(columns, row)))
+            cursor.close()
+            return results
+    except Exception as e:
+        print(f"Error fetching observation logs: {e}")
+    return []
+
+def upsert_observation_log(target_id, obs_date, user_name, is_triggered, is_observed,
+                            trigger_filter=None, trigger_exp=None, trigger_count=None,
+                            observed_filter=None, observed_exp=None, observed_count=None):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO observation_logs
+                    (target_id, obs_date, user_name, is_triggered, is_observed,
+                     trigger_filter, trigger_exp, trigger_count,
+                     observed_filter, observed_exp, observed_count)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (target_id, obs_date)
+                DO UPDATE SET
+                    user_name       = EXCLUDED.user_name,
+                    is_triggered    = EXCLUDED.is_triggered,
+                    is_observed     = EXCLUDED.is_observed,
+                    trigger_filter  = EXCLUDED.trigger_filter,
+                    trigger_exp     = EXCLUDED.trigger_exp,
+                    trigger_count   = EXCLUDED.trigger_count,
+                    observed_filter = EXCLUDED.observed_filter,
+                    observed_exp    = EXCLUDED.observed_exp,
+                    observed_count  = EXCLUDED.observed_count,
+                    created_at      = CURRENT_TIMESTAMP
+            ''', (target_id, obs_date, user_name, is_triggered, is_observed,
+                  trigger_filter, trigger_exp, trigger_count,
+                  observed_filter, observed_exp, observed_count))
+            conn.commit()
+            cursor.close()
+            return True
+    except Exception as e:
+        print(f"Error upserting observation log: {e}")
+    return False
+
+
+def delete_observation_log(target_id, obs_date):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'DELETE FROM observation_logs WHERE target_id = %s AND obs_date = %s',
+                (target_id, obs_date)
+            )
+            deleted = cursor.rowcount
+            conn.commit()
+            cursor.close()
+            return deleted > 0
+    except Exception as e:
+        print(f"Error deleting observation log: {e}")
+    return False

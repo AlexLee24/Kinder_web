@@ -124,4 +124,3 @@ if (backToTopBtn) {
     });
 }
 
-
