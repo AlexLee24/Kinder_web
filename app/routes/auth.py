@@ -90,8 +90,8 @@ def register_auth_routes(app):
                 display_picture = user_info.get('picture')
                 
                 if existing_user_data:
-                    display_name = existing_user_data.get('name', user_info.get('name'))
-                    display_picture = existing_user_data.get('picture', user_info.get('picture'))
+                    display_name = existing_user_data.get('name') or user_info.get('name')
+                    display_picture = existing_user_data.get('picture') or user_info.get('picture')
                 
                 session['user'] = {
                     'email': user_email,
@@ -108,8 +108,8 @@ def register_auth_routes(app):
                 if user_exists(user_email):
                     update_user(
                         user_email,
-                        name=existing_user_data.get('name', user_info.get('name')),
-                        picture=existing_user_data.get('picture', user_info.get('picture')),
+                        name=existing_user_data.get('name') or user_info.get('name'),
+                        picture=existing_user_data.get('picture') or user_info.get('picture'),
                         last_login=datetime.now().isoformat()
                     )
                 else:
