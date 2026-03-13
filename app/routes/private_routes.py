@@ -1,38 +1,104 @@
 """
 Calendar routes for the Kinder web application.
 """
+import os
 import urllib.parse
+import uuid
 from datetime import datetime
-from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
+from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response, abort
+from werkzeug.utils import secure_filename
 
 from modules.web_postgres_database import get_users, user_exists, check_object_access, get_groups
-from modules.calendar_database import (
-    get_calendar_events, create_calendar_event, update_calendar_event, 
-    delete_calendar_event, get_calendar_categories, create_calendar_category
-)
-from modules.ics_generator import generate_ics_calendar
+
 
 
 def register_private_routes(app):
     """Register calendar routes with the Flask app"""
+
+    tutorials_dir = os.path.join(app.static_folder, 'tutorials')
+    tutorials_env_path = os.path.join(tutorials_dir, '.env')
+    allowed_image_ext = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+
+    def ensure_tutorials_dir():
+        os.makedirs(tutorials_dir, exist_ok=True)
+
+    def can_view_documents():
+        if 'user' not in session:
+            return False
+        return session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)
+
+    def is_admin_user():
+        return 'user' in session and bool(session['user'].get('is_admin', False))
+
+    import json
+    
+    def get_documents_metadata():
+        meta_path = os.path.join(tutorials_dir, 'metadata.json')
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                pass
+        return {'pinned': [], 'order': []}
+
+    def save_documents_metadata(metadata):
+        ensure_tutorials_dir()
+        meta_path = os.path.join(tutorials_dir, 'metadata.json')
+        with open(meta_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+
+    def read_documents_env():
+        config = {
+            'DOCUMENTS_EDITABLE': 'true',
+            'IMPORTANT_MESSAGE': ''
+        }
+
+        if os.path.exists(tutorials_env_path):
+            with open(tutorials_env_path, 'r', encoding='utf-8') as env_file:
+                for raw_line in env_file:
+                    line = raw_line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    config[key.strip()] = value.strip()
+        return config
+
+    def write_documents_env(updates):
+        ensure_tutorials_dir()
+        config = read_documents_env()
+        config.update(updates)
+        with open(tutorials_env_path, 'w', encoding='utf-8') as env_file:
+            env_file.write(f"DOCUMENTS_EDITABLE={config.get('DOCUMENTS_EDITABLE', 'true')}\n")
+            env_file.write(f"IMPORTANT_MESSAGE={config.get('IMPORTANT_MESSAGE', '')}\n")
+
+    def documents_editable():
+        config = read_documents_env()
+        return str(config.get('DOCUMENTS_EDITABLE', 'true')).lower() == 'true'
+
+    def sanitize_document_filename(filename):
+        safe = secure_filename(filename or '')
+        if not safe:
+            return None
+        if not safe.lower().endswith('.md'):
+            safe = f"{safe}.md"
+        return safe
     
     # ===============================================================================
     # PRIVATE AREA
     # ===============================================================================
-    @app.route('/private')
-    def private_area():
+    @app.route('/daily_trigger')
+    def daily_trigger():
         if 'user' not in session:
-            flash('Please log in to access private area.', 'warning')
+            flash('Please log in to access daily trigger.', 'warning')
             return redirect(url_for('login'))
         
         user_email = session['user']['email']
         
-        # Check permissions for 'private_area'
         is_great_lab = session['user'].get('is_great_lab_member', False)
         is_admin = session['user'].get('is_admin', False)
-        has_object_access = check_object_access('private_area', user_email)
         
-        if not (is_great_lab or is_admin or has_object_access):
+        if not (is_great_lab or is_admin):
             flash('Access denied. GREAT Lab members only.', 'error')
             return redirect(url_for('home'))
         
@@ -41,7 +107,234 @@ def register_private_routes(app):
             groups_dict = get_groups()
             all_groups = list(groups_dict.keys())
         
-        return render_template('private_area.html', current_path='/private', all_groups=all_groups)
+        return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups)
+
+    @app.route('/documents')
+    def documents_list():
+        if 'user' not in session:
+            flash('Please log in to access documents.', 'warning')
+            return redirect(url_for('login'))
+        
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        
+        if not (is_great_lab or is_admin):
+            flash('Access denied. GREAT Lab members only.', 'error')
+            return redirect(url_for('home'))
+            
+        ensure_tutorials_dir()
+        md_files = []
+        if os.path.exists(tutorials_dir):
+            for f in os.listdir(tutorials_dir):
+                if f.endswith('.md'):
+                    name = f[:-3] # remove .md
+                    md_files.append({"filename": f, "title": name.replace('_', ' ').title()})
+        
+        metadata = get_documents_metadata()
+        pinned = metadata.get('pinned', [])
+        order = metadata.get('order', [])
+        
+        for f in md_files:
+            f['is_pinned'] = f['filename'] in pinned
+            try:
+                f['order_idx'] = order.index(f['filename'])
+            except ValueError:
+                f['order_idx'] = 999999
+                
+        md_files.sort(key=lambda x: (not x['is_pinned'], x['order_idx'], x['title']))
+
+        env_config = read_documents_env()
+        important_message = env_config.get('IMPORTANT_MESSAGE', '')
+        
+        return render_template(
+            'documents.html',
+            current_path='/documents',
+            documents=md_files,
+            is_admin=is_admin,
+            documents_editable=documents_editable(),
+            important_message=important_message
+        )
+
+    @app.route('/documents/<filename>')
+    def document_view(filename):
+        if 'user' not in session:
+            flash('Please log in to access documents.', 'warning')
+            return redirect(url_for('login'))
+            
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        
+        if not (is_great_lab or is_admin):
+            flash('Access denied. GREAT Lab members only.', 'error')
+            return redirect(url_for('home'))
+            
+        safe_filename = sanitize_document_filename(filename)
+        if not safe_filename:
+            abort(404)
+
+        file_path = os.path.join(tutorials_dir, safe_filename)
+        if not os.path.exists(file_path):
+            abort(404)
+
+        env_config = read_documents_env()
+        important_message = env_config.get('IMPORTANT_MESSAGE', '')
+
+        return render_template(
+            'document_view.html',
+            current_path='/documents',
+            filename=safe_filename,
+            title=safe_filename[:-3].replace('_', ' ').title(),
+            is_admin=is_admin,
+            documents_editable=documents_editable(),
+            important_message=important_message
+        )
+
+    @app.route('/api/documents/metadata', methods=['POST'])
+    def api_documents_metadata():
+        if not is_admin_user() and not documents_editable():
+            return jsonify({'error': 'Forbidden'}), 403
+            
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Invalid request'}), 400
+            
+        metadata = get_documents_metadata()
+        
+        if 'pinned' in data:
+            metadata['pinned'] = data['pinned']
+        if 'order' in data:
+            metadata['order'] = data['order']
+            
+        save_documents_metadata(metadata)
+        return jsonify({'success': True})
+
+    @app.route('/api/documents/settings', methods=['GET', 'POST'])
+    def api_documents_settings():
+        if not can_view_documents():
+            return jsonify({'error': 'Forbidden'}), 403
+
+        if request.method == 'GET':
+            config = read_documents_env()
+            return jsonify({
+                'success': True,
+                'documents_editable': str(config.get('DOCUMENTS_EDITABLE', 'true')).lower() == 'true',
+                'important_message': config.get('IMPORTANT_MESSAGE', ''),
+                'is_admin': is_admin_user()
+            })
+
+        if not is_admin_user():
+            return jsonify({'error': 'Admin only'}), 403
+
+        data = request.get_json(silent=True) or {}
+        editable = bool(data.get('documents_editable', True))
+        important_message = str(data.get('important_message', '')).strip()
+        write_documents_env({
+            'DOCUMENTS_EDITABLE': 'true' if editable else 'false',
+            'IMPORTANT_MESSAGE': important_message
+        })
+
+        return jsonify({'success': True})
+
+    @app.route('/api/documents/create', methods=['POST'])
+    def api_documents_create():
+        if not can_view_documents() or not is_admin_user():
+            return jsonify({'error': 'Admin only'}), 403
+        if not documents_editable():
+            return jsonify({'error': 'Editing is disabled'}), 403
+
+        data = request.get_json(silent=True) or {}
+        filename = sanitize_document_filename(data.get('filename', ''))
+        content = str(data.get('content', '')).strip()
+
+        if not filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        ensure_tutorials_dir()
+        file_path = os.path.join(tutorials_dir, filename)
+        if os.path.exists(file_path):
+            return jsonify({'error': 'Document already exists'}), 409
+
+        with open(file_path, 'w', encoding='utf-8') as doc_file:
+            doc_file.write(content if content else f"# {filename[:-3].replace('_', ' ').title()}\n\n")
+
+        return jsonify({'success': True, 'filename': filename})
+
+    @app.route('/api/documents/<filename>/content', methods=['GET', 'PUT'])
+    def api_documents_content(filename):
+        if not can_view_documents():
+            return jsonify({'error': 'Forbidden'}), 403
+
+        safe_filename = sanitize_document_filename(filename)
+        if not safe_filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        file_path = os.path.join(tutorials_dir, safe_filename)
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'Document not found'}), 404
+
+        if request.method == 'GET':
+            with open(file_path, 'r', encoding='utf-8') as doc_file:
+                raw_content = doc_file.read()
+            
+            # Replace {{hide=KEY}} with actual values from env
+            if '{{hide=' in raw_content:
+                env_config = read_documents_env()
+                import re
+                def replace_secret(match):
+                    key = match.group(1).strip()
+                    # Return actual value if it exists, otherwise keep placeholder or visually show it's missing
+                    return env_config.get(key, f"[{key} NOT FOUND IN ENV]")
+                
+                content = re.sub(r'\{\{hide=(.*?)\}\}', replace_secret, raw_content)
+            else:
+                content = raw_content
+
+            return jsonify({
+                'success': True, 
+                'content': content,
+                'raw_content': raw_content # send raw so editor shows {{hide=KEY}}
+            })
+
+        if not is_admin_user():
+            return jsonify({'error': 'Admin only'}), 403
+        if not documents_editable():
+            return jsonify({'error': 'Editing is disabled'}), 403
+
+        data = request.get_json(silent=True) or {}
+        content = str(data.get('content', ''))
+        with open(file_path, 'w', encoding='utf-8') as doc_file:
+            doc_file.write(content)
+
+        return jsonify({'success': True})
+
+    @app.route('/api/documents/upload-image', methods=['POST'])
+    def api_documents_upload_image():
+        if not can_view_documents() or not is_admin_user():
+            return jsonify({'error': 'Admin only'}), 403
+        if not documents_editable():
+            return jsonify({'error': 'Editing is disabled'}), 403
+
+        if 'image' not in request.files:
+            return jsonify({'error': 'Missing image file'}), 400
+
+        image = request.files['image']
+        raw_name = secure_filename(image.filename or '')
+        ext = os.path.splitext(raw_name)[1].lower()
+        if ext not in allowed_image_ext:
+            return jsonify({'error': 'Unsupported image type'}), 400
+
+        images_dir = os.path.join(tutorials_dir, 'images')
+        os.makedirs(images_dir, exist_ok=True)
+        image_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+        image_path = os.path.join(images_dir, image_name)
+        image.save(image_path)
+
+        static_path = f"/static/tutorials/images/{image_name}"
+        return jsonify({
+            'success': True,
+            'image_url': static_path,
+            'markdown': f"![]({static_path})"
+        })
 
     
     from modules.web_postgres_database import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target
@@ -226,9 +519,10 @@ def register_private_routes(app):
             return redirect(url_for('login'))
         
         user_email = session['user']['email']
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
         
-        # Check permissions for 'private_area' (calendar is part of private area)
-        if not check_object_access('private_area', user_email):
+        if not (is_great_lab or is_admin):
             flash('Access denied.', 'error')
             return redirect(url_for('home'))
             
@@ -296,359 +590,6 @@ def register_private_routes(app):
             return redirect(url_for('home'))
         
         return render_template('private_resources.html', current_path='/private/resources')
-
-    # ===============================================================================
-    # CALENDAR API ENDPOINTS
-    # ===============================================================================
-    @app.route('/api/calendar/events')
-    def get_calendar_events_api():
-        """Get calendar events with optional date filtering"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            start_date = request.args.get('start_date')
-            end_date = request.args.get('end_date')
-            
-            events = get_calendar_events(start_date=start_date, end_date=end_date)
-            
-            return jsonify({
-                'success': True,
-                'events': events
-            })
-            
-        except Exception as e:
-            app.logger.error(f"Error getting calendar events: {str(e)}")
-            return jsonify({'error': 'Failed to get events'}), 500
-
-    @app.route('/api/calendar/events', methods=['POST'])
-    def create_calendar_event_api():
-        """Create a new calendar event"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            data = request.get_json()
-            
-            # Validate required fields
-            required_fields = ['title', 'start_date', 'end_date']
-            for field in required_fields:
-                if field not in data or not data[field]:
-                    return jsonify({'error': f'Missing required field: {field}'}), 400
-            
-            # Validate dates
-            try:
-                start_date = datetime.fromisoformat(data['start_date'].replace('Z', '+00:00'))
-                end_date = datetime.fromisoformat(data['end_date'].replace('Z', '+00:00'))
-                
-                if start_date >= end_date:
-                    return jsonify({'error': 'End date must be after start date'}), 400
-                    
-            except ValueError:
-                return jsonify({'error': 'Invalid date format'}), 400
-            
-            # Create event
-            event_data = {
-                'title': data['title'],
-                'description': data.get('description', ''),
-                'start_date': data['start_date'],
-                'end_date': data['end_date'],
-                'all_day': data.get('all_day', False),
-                'location': data.get('location', ''),
-                'category': data.get('category'),
-                'color': data.get('color', '#007AFF'),
-                'created_by': user_email
-            }
-            
-            event_id = create_calendar_event(event_data)
-            
-            return jsonify({
-                'success': True,
-                'message': 'Event created successfully',
-                'event_id': event_id
-            })
-            
-        except Exception as e:
-            app.logger.error(f"Error creating calendar event: {str(e)}")
-            return jsonify({'error': 'Failed to create event'}), 500
-
-    @app.route('/api/calendar/events/<int:event_id>', methods=['PUT'])
-    def update_calendar_event_api(event_id):
-        """Update an existing calendar event"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            data = request.get_json()
-            
-            # Validate required fields
-            required_fields = ['title', 'start_date', 'end_date']
-            for field in required_fields:
-                if field not in data or not data[field]:
-                    return jsonify({'error': f'Missing required field: {field}'}), 400
-            
-            # Validate dates
-            try:
-                start_date = datetime.fromisoformat(data['start_date'].replace('Z', '+00:00'))
-                end_date = datetime.fromisoformat(data['end_date'].replace('Z', '+00:00'))
-                
-                if start_date >= end_date:
-                    return jsonify({'error': 'End date must be after start date'}), 400
-                    
-            except ValueError:
-                return jsonify({'error': 'Invalid date format'}), 400
-            
-            # Update event
-            event_data = {
-                'title': data['title'],
-                'description': data.get('description', ''),
-                'start_date': data['start_date'],
-                'end_date': data['end_date'],
-                'all_day': data.get('all_day', False),
-                'location': data.get('location', ''),
-                'category': data.get('category'),
-                'color': data.get('color', '#007AFF'),
-                'updated_by': user_email
-            }
-            
-            if update_calendar_event(event_id, event_data):
-                return jsonify({
-                    'success': True,
-                    'message': 'Event updated successfully'
-                })
-            else:
-                return jsonify({'error': 'Event not found or update failed'}), 404
-            
-        except Exception as e:
-            app.logger.error(f"Error updating calendar event {event_id}: {str(e)}")
-            return jsonify({'error': 'Failed to update event'}), 500
-
-    @app.route('/api/calendar/events/<int:event_id>', methods=['DELETE'])
-    def delete_calendar_event_api(event_id):
-        """Delete a calendar event"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            if delete_calendar_event(event_id):
-                return jsonify({
-                    'success': True,
-                    'message': 'Event deleted successfully'
-                })
-            else:
-                return jsonify({'error': 'Event not found'}), 404
-            
-        except Exception as e:
-            app.logger.error(f"Error deleting calendar event {event_id}: {str(e)}")
-            return jsonify({'error': 'Failed to delete event'}), 500
-
-    @app.route('/api/calendar/categories')
-    def get_calendar_categories_api():
-        """Get all calendar categories"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            categories = get_calendar_categories()
-            
-            return jsonify({
-                'success': True,
-                'categories': categories
-            })
-            
-        except Exception as e:
-            app.logger.error(f"Error getting calendar categories: {str(e)}")
-            return jsonify({'error': 'Failed to get categories'}), 500
-
-    @app.route('/api/calendar/categories', methods=['POST'])
-    def create_calendar_category_api():
-        """Create a new calendar category"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            data = request.get_json()
-            
-            # Validate required fields
-            if 'name' not in data or not data['name']:
-                return jsonify({'error': 'Category name is required'}), 400
-            
-            if len(data['name'].strip()) < 2:
-                return jsonify({'error': 'Category name must be at least 2 characters'}), 400
-            
-            if len(data['name'].strip()) > 50:
-                return jsonify({'error': 'Category name must be less than 50 characters'}), 400
-            
-            # Create category
-            category_data = {
-                'name': data['name'].strip(),
-                'color': data.get('color', '#007AFF'),
-                'description': data.get('description', ''),
-                'created_by': user_email
-            }
-            
-            category_id = create_calendar_category(category_data)
-            
-            return jsonify({
-                'success': True,
-                'message': 'Category created successfully',
-                'category_id': category_id
-            })
-            
-        except Exception as e:
-            app.logger.error(f"Error creating calendar category: {str(e)}")
-            return jsonify({'error': 'Failed to create category'}), 500
-
-    @app.route('/api/calendar/ics')
-    def get_calendar_ics():
-        """Generate and return ICS calendar file"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            # Get all events
-            events = get_calendar_events()
-            categories = get_calendar_categories()
-            
-            # Generate ICS content
-            ics_content = generate_ics_calendar(events, categories)
-            
-            # Return as downloadable file
-            response = Response(
-                ics_content,
-                mimetype='text/calendar',
-                headers={
-                    'Content-Disposition': 'attachment; filename=great_lab_calendar.ics',
-                    'Content-Type': 'text/calendar; charset=utf-8'
-                }
-            )
-            
-            return response
-            
-        except Exception as e:
-            app.logger.error(f"Error generating ICS calendar: {str(e)}")
-            return jsonify({'error': 'Failed to generate calendar'}), 500
-
-    @app.route('/api/calendar/subscribe-url')
-    def get_calendar_subscribe_url():
-        """Get the subscription URL for the calendar"""
-        if 'user' not in session:
-            return jsonify({'error': 'Access denied'}), 403
-        
-        # Check GREAT Lab membership
-        user_email = session['user']['email']
-        if not user_exists(user_email):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        if 'GREAT_Lab' not in user_groups:
-            return jsonify({'error': 'Access denied. GREAT Lab members only'}), 403
-        
-        try:
-            base_url = request.url_root.rstrip('/')
-            subscribe_url = f"{base_url}/api/calendar/ics"
-            
-            return jsonify({
-                'success': True,
-                'subscribe_url': subscribe_url,
-                'google_calendar_url': f"https://calendar.google.com/calendar/u/0/r/settings/addbyurl?cid={urllib.parse.quote(subscribe_url)}",
-                'instructions': {
-                    'google': 'Click Google Calendar link or manually add URL to Google Calendar',
-                    'apple': 'Copy subscription URL and select "Subscribe to Calendar" in Apple Calendar',
-                    'outlook': 'Copy subscription URL and select "Add Calendar from Internet" in Outlook'
-                }
-            })
-            
-        except Exception as e:
-            app.logger.error(f"Error getting subscribe URL: {str(e)}")
-            return jsonify({'error': 'Failed to get subscribe URL'}), 500
 
     # ===============================================================================
     # DEBUG ROUTES

@@ -12,7 +12,6 @@ def register_routes(app):
     from . import private_routes
     from . import basic
     from . import marshal
-    from . import custom_targets
     from . import detect_results
     
     # Register blueprints
@@ -24,5 +23,4 @@ def register_routes(app):
     private_routes.register_private_routes(app)
     basic.register_basic_routes(app)
     marshal.register_marshal_routes(app)
-    custom_targets.register_custom_targets_routes(app)
     detect_results.register_detect_results_routes(app)

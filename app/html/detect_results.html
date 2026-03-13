@@ -131,8 +131,8 @@
                 
                 <div class="section-title">Photometry</div>
                 <div id="plot-{{ result.id }}" class="plot-container">
-                    {% if result.plot_html %}
-                        {{ result.plot_html | safe }}
+                    {% if result.plot_json %}
+                        <div id="plotly-div-{{ result.id }}" class="plotly-chart" data-plot="{{ result.plot_json }}"></div>
                     {% else %}
                         <div style="text-align:center; padding-top:200px; color:#888;">No photometry data available</div>
                     {% endif %}

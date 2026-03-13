@@ -29,11 +29,17 @@ def register_object_routes(app):
     def object_detail_generic(object_name):
         """Generic object detail route for all object names"""
         if 'user' not in session:
+            session['next_url'] = request.url
             flash('Please log in to access object data.', 'warning')
             return redirect(url_for('login'))
         
         try:
             object_name = urllib.parse.unquote(object_name)
+
+            # Log view
+            from modules.postgres_database import TNSObjectDB
+            user_email = session['user'].get('email')
+            TNSObjectDB.log_object_view(object_name, user_email)
             
             # Update absolute magnitude and brightest mag
             from modules.postgres_database import update_object_abs_mag
@@ -128,12 +134,18 @@ def register_object_routes(app):
     @app.route('/object/<int:year><alpha:letters>')
     def object_detail_tns_format(year, letters):
         if 'user' not in session:
+            session['next_url'] = request.url
             flash('Please log in to access object data.', 'warning')
             return redirect(url_for('login'))
         
         try:
             # Construct TNS-style name from year and letters
             object_name = f"{year}{letters}"
+
+            # Log view
+            from modules.postgres_database import TNSObjectDB
+            user_email = session['user'].get('email')
+            TNSObjectDB.log_object_view(object_name, user_email)
             
             # Update absolute magnitude and brightest mag
             from modules.postgres_database import update_object_abs_mag
@@ -750,12 +762,11 @@ def register_object_routes(app):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    @app.route('/api/object/<int:year><alpha:letters>/spectroscopy', methods=['POST'])
-    def upload_spectroscopy(year, letters):
+    @app.route('/api/object/<string:object_name>/spectroscopy', methods=['POST'])
+    def upload_spectroscopy_generic(object_name):
         if 'user' not in session or not session['user'].get('is_admin'):
             return jsonify({'error': 'Access denied'}), 403
-        
-        object_name = f"{year}{letters}"
+            
         data = request.get_json()
         
         try:
@@ -775,6 +786,11 @@ def register_object_routes(app):
             })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/object/<int:year><alpha:letters>/spectroscopy', methods=['POST'])
+    def upload_spectroscopy(year, letters):
+        object_name = f"{year}{letters}"
+        return upload_spectroscopy_generic(object_name)
 
     @app.route('/api/photometry/<int:point_id>', methods=['DELETE'])
     def delete_photometry_point(point_id):
@@ -840,7 +856,17 @@ def register_object_routes(app):
                     'message': 'No photometry data available'
                 })
             
-            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data, redshift=redshift, ra=ra, dec=dec)
+            apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
+            apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
+
+            plot_html = DataVisualization.create_photometry_plot_from_db(
+                photometry_data, 
+                redshift=redshift, 
+                ra=ra, 
+                dec=dec,
+                apply_extinction=apply_extinction,
+                apply_k_corr=apply_k_corr
+            )
             
             return jsonify({
                 'success': True,
@@ -925,10 +951,22 @@ def register_object_routes(app):
                     'message': 'No photometry data available for this object'
                 })
             
-            # Get redshift from object data
+            # Get redshift, ra, dec from object data
             redshift = results[0].get('redshift')
+            ra = results[0].get('ra')
+            dec = results[0].get('declination')
             
-            plot_html = DataVisualization.create_photometry_plot_from_db(photometry_data, redshift=redshift)
+            apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
+            apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
+
+            plot_html = DataVisualization.create_photometry_plot_from_db(
+                photometry_data, 
+                redshift=redshift,
+                ra=ra,
+                dec=dec,
+                apply_extinction=apply_extinction,
+                apply_k_corr=apply_k_corr
+            )
             
             return jsonify({
                 'success': True,

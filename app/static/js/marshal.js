@@ -39,6 +39,9 @@ document.addEventListener('DOMContentLoaded', function() {
             showNotification('Forced complete refresh', 'info');
         }
     });
+
+    // Populate Sidebar Widgets
+    fetchDashboardWidgets();
     
     // Rest of initialization code...
     currentFilters = {
@@ -631,7 +634,6 @@ function generateCardsView() {
     cardsContainer.innerHTML = '';
     
     if (filteredObjects.length === 0) {
-        cardsContainer.innerHTML = '<div class="no-objects">No objects found</div>';
         return;
     }
     
@@ -923,7 +925,6 @@ function updateCountersFromStats(stats) {
         const tableBody = document.getElementById('tableBody');
         const compactContainer = document.getElementById('compactView');
         
-        if (cardsContainer) cardsContainer.innerHTML = '<div class="no-objects">No objects found</div>';
         if (tableBody) tableBody.innerHTML = '';
         if (compactContainer) compactContainer.innerHTML = '';
         
@@ -1122,8 +1123,16 @@ function sortObjects() {
             aVal = aVal ? parseFloat(aVal) : 99;
             bVal = bVal ? parseFloat(bVal) : 99;
         } else if (sortBy === 'redshift') {
-            aVal = parseFloat(aVal) || -1;
-            bVal = parseFloat(bVal) || -1;
+            // Put N/A values at the very bottom regardless of order
+            let aValid = aVal && !isNaN(parseFloat(aVal));
+            let bValid = bVal && !isNaN(parseFloat(bVal));
+            
+            if (!aValid && !bValid) return 0;
+            if (!aValid) return 1;    // a is N/A -> a goes to bottom
+            if (!bValid) return -1;   // b is N/A -> b goes to bottom
+            
+            aVal = parseFloat(aVal);
+            bVal = parseFloat(bVal);
         } else {
             aVal = aVal.toString().toLowerCase();
             bVal = bVal.toString().toLowerCase();
@@ -1196,25 +1205,26 @@ function performSearch() {
 }
 
 function toggleAdvancedFilters() {
-    const content = document.getElementById('advancedFiltersContent');
-    const toggle = document.getElementById('advancedToggle');
-    const arrow = toggle.querySelector('.toggle-arrow');
+    const modal = document.getElementById('advancedFilterModal');
     
-    if (content.style.display === 'none' || !content.classList.contains('show')) {
-        content.style.display = 'block';
-        setTimeout(() => content.classList.add('show'), 10);
-        // arrow.textContent = '▲';
-        arrow.style.transform = 'rotate(180deg)';
+    if (modal.style.display === 'flex') {
+        modal.style.display = 'none';
         
-        const filterGroups = content.querySelectorAll('.filter-group');
-        filterGroups.forEach((group, index) => {
-            group.style.animationDelay = `${(index + 1) * 0.1}s`;
-        });
+        // Remove click outside listener
+        if (window.advancedFilterOutsideClick) {
+            modal.removeEventListener('click', window.advancedFilterOutsideClick);
+            window.advancedFilterOutsideClick = null;
+        }
     } else {
-        content.classList.remove('show');
-        setTimeout(() => content.style.display = 'none', 400);
-        // arrow.textContent = '▼';
-        arrow.style.transform = 'rotate(0deg)';
+        modal.style.display = 'flex';
+        
+        // Add click outside listener
+        window.advancedFilterOutsideClick = function(event) {
+            if (event.target === modal) {
+                toggleAdvancedFilters();
+            }
+        };
+        modal.addEventListener('click', window.advancedFilterOutsideClick);
     }
 }
 
@@ -1226,7 +1236,13 @@ function applyAdvancedFilters() {
     }
     
     currentFilters.search = document.getElementById('searchInput').value.trim();
-    currentFilters.classification = document.getElementById('classificationFilter').value;
+    // Get array of selected values for classification
+    const classSelect = document.getElementById('classificationFilter');
+    const selectedClasses = Array.from(classSelect.selectedOptions)
+        .map(opt => opt.value)
+        .filter(val => val !== '');
+    currentFilters.classification = selectedClasses.join(',');
+    
     currentFilters.tag = document.getElementById('tagFilter').value;
     currentFilters.date_from = document.getElementById('dateFrom').value;
     currentFilters.date_to = document.getElementById('dateTo').value;
@@ -1361,7 +1377,8 @@ function clearAllFilters() {
     currentStatusFilter = '';
     
     document.getElementById('searchInput').value = '';
-    document.getElementById('classificationFilter').value = '';
+    const classFilter = document.getElementById('classificationFilter');
+    if (classFilter) Array.from(classFilter.options).forEach((opt, i) => opt.selected = (i === 0));
     document.getElementById('tagFilter').value = '';
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';
@@ -1407,6 +1424,103 @@ function clearAllFilters() {
     showNotification('All filters cleared', 'info');
 }
 
+// Sidebar Widget Functions
+async function fetchDashboardWidgets() {
+    try {
+        // Fetch recent comments
+        const commentsResponse = await fetch('/api/marshal/recent-comments');
+        if (commentsResponse.ok) {
+            const data = await commentsResponse.json();
+            if (data.success && data.comments) {
+                renderRecentComments(data.comments);
+            }
+        }
+
+        // Fetch top viewed initially (without mode argument uses default '30days')
+        loadTopViewed();
+    } catch (err) {
+        console.error('Error fetching dashboard widgets:', err);
+    }
+}
+
+async function loadTopViewed() {
+    try {
+        const modeSelect = document.getElementById('topViewedMode');
+        const mode = modeSelect ? modeSelect.value : '30days';
+        const viewedResponse = await fetch(`/api/marshal/top-viewed?mode=${mode}`);
+        if (viewedResponse.ok) {
+            const data = await viewedResponse.json();
+            if (data.success) {
+                renderTopViewed(data.targets);
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching top viewed:', err);
+    }
+}
+
+function renderRecentComments(comments) {
+    const list = document.getElementById('recentCommentsList');
+    if (!list) return;
+    
+    if (!comments || comments.length === 0) {
+        list.innerHTML = '<li class="empty-message">No recent comments</li>';
+        return;
+    }
+    
+    list.innerHTML = '';
+    comments.forEach(c => {
+        const li = document.createElement('li');
+        const d = new Date(c.created_at);
+        
+        // Escape content to prevent HTML injection / unintended animations like <marquee>
+        const contentDiv = document.createElement('div');
+        contentDiv.style.marginTop = '4px';
+        contentDiv.style.fontSize = '0.9em';
+        contentDiv.style.color = 'rgba(255,255,255,0.8)';
+        
+        const safeUserName = c.user_name || 'User';
+        contentDiv.textContent = `${safeUserName}: "${c.content}"`;
+        contentDiv.style.fontStyle = 'italic';
+        
+        li.innerHTML = `
+            <strong><a href="/object/${encodeURIComponent(c.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${c.object_name}</a></strong>
+            <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
+        `;
+        li.appendChild(contentDiv);
+        list.appendChild(li);
+    });
+}
+
+function renderTopViewed(targets) {
+    const list = document.getElementById('topViewedList');
+    if (!list) return;
+    
+    if (!targets || targets.length === 0) {
+        list.innerHTML = '<li class="empty-message">No objects viewed recently</li>';
+        return;
+    }
+    
+    list.innerHTML = '';
+    targets.forEach((t, index) => {
+        const li = document.createElement('li');
+        const typeLabel = t.object_type && t.object_type !== 'Unknown' ? `<span style="font-size:0.8em; color:#888; margin-left: 6px;">(${t.object_type})</span>` : '';
+        li.innerHTML = `
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+                <span style="font-weight:bold; color:var(--text-muted); min-width: 20px;">${index + 1}.</span>
+                <strong style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <a href="/object/${encodeURIComponent(t.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${t.object_name}${typeLabel}</a>
+                </strong>
+                <span style="font-size:0.85em; color:var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    ${t.view_count}
+                </span>
+            </div>
+        `;
+        list.appendChild(li);
+    });
+}
+
 function forceRefreshAll() {
     console.log('Forcing complete refresh...');
     
@@ -1429,7 +1543,8 @@ function forceRefreshAll() {
     
     // Clear all filters in UI
     document.getElementById('searchInput').value = '';
-    document.getElementById('classificationFilter').value = '';
+    const classFilter = document.getElementById('classificationFilter');
+    if (classFilter) Array.from(classFilter.options).forEach((opt, i) => opt.selected = (i === 0));
     document.getElementById('tagFilter').value = '';
     document.getElementById('dateFrom').value = '';
     document.getElementById('dateTo').value = '';

@@ -187,6 +187,22 @@ def init_tns_database():
             )
         ''')
         
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS object_views (
+                id SERIAL PRIMARY KEY,
+                object_name TEXT NOT NULL,
+                user_email TEXT,
+                view_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS object_view_counts (
+                object_name TEXT PRIMARY KEY,
+                view_count INTEGER DEFAULT 0
+            )
+        ''')
+
         # Comments table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS comments (
@@ -583,6 +599,31 @@ class TNSObjectDB:
         return comment_id
     
     @staticmethod
+    def get_recent_comments(limit=5):
+        """Get the most recent comments globally"""
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=extras.DictCursor)
+            
+            cursor.execute('''
+                SELECT id, object_name, user_email, user_name, user_picture, content, created_at
+                FROM comments 
+                ORDER BY created_at DESC
+                LIMIT %s
+            ''', (limit,))
+            
+            results = cursor.fetchall()
+            cursor.close()
+            
+        comments = []
+        for row in results:
+            comment = dict(row)
+            if comment.get('created_at'):
+                comment['created_at'] = comment['created_at'].isoformat()
+            comments.append(comment)
+            
+        return comments
+
+    @staticmethod
     def get_comments(object_name):
         """Get all comments for an object"""
         with get_db_connection() as conn:
@@ -608,6 +649,70 @@ class TNSObjectDB:
             
         return comments
     
+    @staticmethod
+    def log_object_view(object_name, user_email=None):
+        """Record an object view event (tracks both individual views and total count)"""
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Log detailed view
+                cursor.execute('''
+                    INSERT INTO object_views (object_name, user_email)
+                    VALUES (%s, %s)
+                ''', (object_name, user_email))
+                
+                # Update total count
+                cursor.execute('''
+                    INSERT INTO object_view_counts (object_name, view_count)
+                    VALUES (%s, 1)
+                    ON CONFLICT (object_name) 
+                    DO UPDATE SET view_count = object_view_counts.view_count + 1
+                ''', (object_name,))
+                conn.commit()
+                cursor.close()
+        except Exception as e:
+            print(f"Error logging view for {object_name}: {e}")
+
+    @staticmethod
+    def get_top_viewed_objects(days=30, limit=5, mode='30days'):
+        """Get the most viewed objects
+        mode: '30days' for recent views, 'all' for total all-time views
+        """
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=extras.DictCursor)
+            
+            if mode == 'all':
+                cursor.execute('''
+                    SELECT v.object_name, v.view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    FROM object_view_counts v
+                    LEFT JOIN tns_objects t 
+                      ON t.name = REPLACE(v.object_name, 'AT', '') 
+                      OR t.name = REPLACE(v.object_name, 'SN', '')
+                      OR (COALESCE(t.name_prefix, '') || COALESCE(t.name, '')) = v.object_name
+                    GROUP BY v.object_name, v.view_count
+                    ORDER BY v.view_count DESC
+                    LIMIT %s
+                ''', (limit,))
+            else:
+                cursor.execute('''
+                    SELECT v.object_name, COUNT(*) as view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    FROM object_views v
+                    LEFT JOIN tns_objects t 
+                      ON t.name = REPLACE(v.object_name, 'AT', '') 
+                      OR t.name = REPLACE(v.object_name, 'SN', '')
+                      OR (COALESCE(t.name_prefix, '') || COALESCE(t.name, '')) = v.object_name
+                    WHERE v.view_time >= NOW() - INTERVAL '%s days'
+                    GROUP BY v.object_name
+                    ORDER BY view_count DESC
+                    LIMIT %s
+                ''', (days, limit))
+            
+            results = cursor.fetchall()
+            cursor.close()
+            
+        return [dict(row) for row in results]
+
     @staticmethod
     def delete_comment(comment_id):
         """Delete comment"""
@@ -665,13 +770,20 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
     
     # Object type filter
     if object_type:
-        if object_type == 'AT':
-            query += " AND name_prefix = 'AT'"
-        elif object_type == 'Classified':
-            query += " AND name_prefix != 'AT'"
-        else:
-            query += ' AND type = %s'
-            params.append(object_type)
+        types = [t.strip() for t in object_type.split(',') if t.strip()]
+        if types:
+            type_conditions = []
+            for t in types:
+                if t == 'AT':
+                    type_conditions.append("name_prefix = 'AT'")
+                elif t == 'Classified':
+                    type_conditions.append("name_prefix != 'AT'")
+                else:
+                    type_conditions.append("type = %s")
+                    params.append(t)
+            
+            if type_conditions:
+                query += f" AND ({' OR '.join(type_conditions)})"
     
     # Tag filter
     if tag:
@@ -859,13 +971,20 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
     
     # Object type filter
     if object_type:
-        if object_type == 'AT':
-            query += " AND t.name_prefix = 'AT'"
-        elif object_type == 'Classified':
-            query += " AND t.name_prefix != 'AT'"
-        else:
-            query += ' AND t.type = %s'
-            params.append(object_type)
+        types = [t.strip() for t in object_type.split(',') if t.strip()]
+        if types:
+            type_conditions = []
+            for t in types:
+                if t == 'AT':
+                    type_conditions.append("t.name_prefix = 'AT'")
+                elif t == 'Classified':
+                    type_conditions.append("t.name_prefix != 'AT'")
+                else:
+                    type_conditions.append("t.type = %s")
+                    params.append(t)
+            
+            if type_conditions:
+                query += f" AND ({' OR '.join(type_conditions)})"
     
     # Date range filter
     if date_from:
@@ -930,11 +1049,16 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
              query += ' AND EXISTS (SELECT 1 FROM cross_match_results c WHERE c.target_name = t.name AND c.flag = TRUE)'
     
     # Sorting
-    valid_sort_columns = ['discoverydate', 'lastmodified', 'discoverymag', 'name', 'time_received', 'last_photometry_date', 'brightest_mag', 'brightest_abs_mag']
+    valid_sort_columns = ['discoverydate', 'lastmodified', 'discoverymag', 'name', 'time_received', 'last_photometry_date', 'brightest_mag', 'brightest_abs_mag', 'redshift']
     
     if sort_by == 'last_photometry_date':
         sort_direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
         query += f' ORDER BY COALESCE(t.last_photometry_date, t.lastmodified) {sort_direction} NULLS LAST'
+    elif sort_by == 'redshift':
+        sort_direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
+        # Treat 0 or negative redshift like NULL so they don't get sorted with actual values if wanted, 
+        # or just sort NULLS LAST.
+        query += f' ORDER BY t.redshift {sort_direction} NULLS LAST'
     elif sort_by in valid_sort_columns:
         sort_direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
         query += f' ORDER BY t.{sort_by} {sort_direction} NULLS LAST'
@@ -974,13 +1098,20 @@ def get_filtered_stats(search_term='', object_type='', tag=None, date_from=None,
         base_params.extend([search_pattern, search_pattern])
     
     if object_type:
-        if object_type == 'AT':
-            base_query += " AND t.name_prefix = 'AT'"
-        elif object_type == 'Classified':
-            base_query += " AND t.name_prefix != 'AT'"
-        else:
-            base_query += ' AND t.type = %s'
-            base_params.append(object_type)
+        types = [t.strip() for t in object_type.split(',') if t.strip()]
+        if types:
+            type_conditions = []
+            for t in types:
+                if t == 'AT':
+                    type_conditions.append("t.name_prefix = 'AT'")
+                elif t == 'Classified':
+                    type_conditions.append("t.name_prefix != 'AT'")
+                else:
+                    type_conditions.append("t.type = %s")
+                    base_params.append(t)
+            
+            if type_conditions:
+                base_query += f" AND ({' OR '.join(type_conditions)})"
     
     if date_from:
         base_query += ' AND t.discoverydate >= %s'

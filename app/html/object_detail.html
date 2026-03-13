@@ -47,7 +47,7 @@
                             <button class="action-btn visibility" onclick="openVisibilityPlot()">
                                 Visibility Plot
                             </button>
-                            <button class="copy-coords-btn" onclick="copyCoordinates()">
+                            <button class="action-btn visibility" onclick="copyCoordinates()">
                                 Copy Coordinates
                             </button>
                             {% if session.user and session.user.is_admin %}
@@ -264,6 +264,16 @@
                     <div class="card-header">
                         <h3>Photometry <span id="lastPhotometryDate" style="font-size: 0.8em; font-weight: normal; color: #666; margin-left: 10px;"></span></h3>
                         <div class="card-actions">
+                            <div class="plot-controls" style="display: inline-flex; gap: 10px; margin-right: 15px; align-items: center; font-size: 0.85em;">
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="applyExtinction" checked onchange="loadPhotometryPlot()">
+                                    Galactic Extinction
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                    <input type="checkbox" id="applyKCorr" checked onchange="loadPhotometryPlot()">
+                                    K-correction
+                                </label>
+                            </div>
                             {% if session.user and session.user.is_admin %}
                             <button class="action-btn-small edit" onclick="togglePhotometryEditMode()" id="photometryEditBtn">
                                 <span class="btn-icon">
@@ -337,11 +347,15 @@
                         <h3>Spectroscopy</h3>
                         <div class="card-actions">
                             <button class="action-btn-small upload" onclick="uploadSpectrum()">
-                                <span class="btn-icon"></span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                </span>
                                 Upload
                             </button>
                             <button class="action-btn-small refresh" onclick="loadSpectrumPlot()">
-                                <span class="btn-icon"></span>
+                                <span class="btn-icon">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                                </span>
                                 Refresh
                             </button>
                         </div>
@@ -451,7 +465,7 @@
     </div>
 
     <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-overlay" id="loadingOverlay" style="display: flex;">
         <div class="loading-spinner">
             <div class="spinner"></div>
             <div class="loading-text">Loading object details...</div>
@@ -529,6 +543,75 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
                 <button class="btn btn-primary" id="uploadBtn" onclick="uploadPhotometryData()" disabled>Upload Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Spectrum Modal -->
+    <div class="modal" id="uploadSpectrumModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Spectroscopy Data</h3>
+                <span class="close" onclick="closeSpectrumUploadModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="upload-instructions">
+                    <h4>Data Format:</h4>
+                    <p>Upload a text file (.dat, .ascii, .txt) with the following format (one point per line):</p>
+                    <pre>Wavelength   Intensity</pre>
+                    <p><strong>Notes:</strong></p>
+                    <ul>
+                        <li>Columns can be separated by spaces, tabs, or commas</li>
+                        <li>Lines starting with "#" or letters will be ignored</li>
+                    </ul>
+                    
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="spectrumTelescope">Telescope/Instrument (Optional):</label>
+                        <input type="text" id="spectrumTelescope" class="form-control" placeholder="e.g. Lulin/LOT">
+                    </div>
+                </div>
+                
+                <div class="upload-area">
+                    <input type="file" id="spectrumFile" accept=".txt,.dat,.ascii,.csv" style="display: none;">
+                    <div class="file-drop-zone" id="spectrumFileDropZone">
+                        <div class="drop-icon"></div>
+                        <div class="drop-text">
+                            <p>Click to select file or drag and drop</p>
+                            <p class="drop-subtext">Supported formats: .txt, .dat, .ascii, .csv</p>
+                        </div>
+                    </div>
+                    <div class="selected-file" id="spectrumSelectedFile" style="display: none;">
+                        <span class="file-icon"></span>
+                        <span class="file-name" id="spectrumFileName"></span>
+                        <button class="remove-file" onclick="removeSpectrumSelectedFile()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                    </div>
+                </div>
+                
+                <div class="upload-preview" id="spectrumUploadPreview" style="display: none;">
+                    <h4>Data Preview:</h4>
+                    <div class="preview-table-container">
+                        <table class="preview-table" id="spectrumPreviewTable">
+                            <thead>
+                                <tr>
+                                    <th>Wavelength</th>
+                                    <th>Intensity</th>
+                                </tr>
+                            </thead>
+                            <tbody id="spectrumPreviewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="preview-summary" id="spectrumPreviewSummary"></div>
+                </div>
+
+                <div class="upload-error" id="spectrumUploadError" style="display: none;">
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
+                    <div class="error-text" id="spectrumErrorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSpectrumUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="spectrumUploadBtn" onclick="submitSpectrumData()" disabled>Upload Spectrum</button>
             </div>
         </div>
     </div>

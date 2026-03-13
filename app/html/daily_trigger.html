@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Private Area - Kinder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Trigger - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
-    <meta name="description" content="GREAT Lab Private Area">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/daily_trigger.css') }}">
+    <meta name="description" content="GREAT Lab Daily Trigger">
     {% include '_favicon.html' %}
 </head>
 <body>
@@ -17,13 +18,23 @@
                 <div class="pa-title-section">
                     <h1>
                         <img src="{{ url_for('static', filename='photo/Kinder_light.png') }}" alt="Kinder Logo" class="home-logo">
-                        GREAT Lab Members Area
+                        GREAT Lab Daily Trigger
                     </h1>
                     <p class="institution">Resources, schedules, and observation logs.</p>
                 </div>
 
-                <div class="pa-calendar-wrap">
-                    <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" width="1000" height="900" frameborder="0" scrolling="no"></iframe>
+                <div class="pa-widgets-container">
+                    <div class="pa-calendar-wrap">
+                        <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no"></iframe>
+                    </div>
+                    
+                    <div class="pa-weather-wrap">
+                        <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"></iframe>
+                        <div style="text-align: right; margin-top: 5px; font-size: 0.8rem; opacity: 0.7;">
+                            <!-- DO NOT REMOVE THIS LINK -->
+                            <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener" style="color: #fff; text-decoration: none;">meteoblue</a>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="private-section pa-obs-section">
@@ -148,59 +159,6 @@
                     <h4>Design by Aiswarya Sankar Kachiprath</h4>
 
                 </div>
-
-                {% if session.get('user', {}).get('is_admin') %}
-                <div class="private-section" style="margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleAdminPermissions()">
-                        <h3 style="margin: 0; color: #ff6b6b; display: flex; align-items: center; gap: 8px;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                            Admin Only: Visibility Settings
-                        </h3>
-                        <svg id="admin-toggle-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </div>
-                    
-                    <div id="pa-admin-permissions-content" style="display: none; margin-top: 15px; padding: 15px; background: rgba(255,100,100,0.05); border: 1px solid rgba(255,100,100,0.3); border-radius: 8px;">
-                        <span style="color: #ff6b6b; margin-bottom: 10px; display: block; font-size: 0.9rem;">
-                            Select which additional groups can view this Private Area. (The 'greatlab' group is locked by default.)
-                        </span>
-                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
-                            <select id="new-permission-group" class="pa-input" style="width: 250px; padding: 8px; background: #2a2a2a; color: white;">
-                                <option value="">-- Select Group --</option>
-                                {% for group in all_groups %}
-                                    {% if group != 'greatlab' %}
-                                        <option value="{{ group }}">{{ group }}</option>
-                                    {% endif %}
-                                {% endfor %}
-                            </select>
-                            <button onclick="addPrivateAreaPermission()" class="pa-btn-save" style="padding: 8px 15px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                                Add Group
-                            </button>
-                        </div>
-                        <div id="active-permissions" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                            <!-- Locked GREATLab group -->
-                            <div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #aaa; display: flex; align-items: center; gap: 5px;">
-                                <span>greatlab</span>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                            </div>
-                            <!-- Dynamic permissions will be loaded here -->
-                        </div>
-                    </div>
-                </div>
-                
-                <script>
-                function toggleAdminPermissions() {
-                    const content = document.getElementById('pa-admin-permissions-content');
-                    const icon = document.getElementById('admin-toggle-icon');
-                    if (content.style.display === 'none') {
-                        content.style.display = 'block';
-                        icon.innerHTML = '<polyline points="18 15 12 9 6 15"></polyline>';
-                    } else {
-                        content.style.display = 'none';
-                        icon.innerHTML = '<polyline points="6 9 12 15 18 9"></polyline>';
-                    }
-                }
-                </script>
-                {% endif %}
 
             </div>
         </div>
@@ -388,6 +346,6 @@
 
 
 <script src="{{ url_for('static', filename='js/home.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/private_area.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
 </body>
 </html>

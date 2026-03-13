@@ -1,9 +1,11 @@
 """
 Admin routes for the Kinder web application.
 """
-from flask import render_template, redirect, url_for, session, flash, request, jsonify
+from flask import render_template, redirect, url_for, session, flash, request, jsonify, current_app
 from authlib.common.security import generate_token
 from datetime import datetime
+import os
+import re
 
 from modules.web_postgres_database import (
     get_users, update_user, delete_user, user_exists,
@@ -29,123 +31,46 @@ def register_admin_routes(app):
     """Register admin routes with the Flask app"""
     
     # ===============================================================================
-    # INVITATION SYSTEM
+    # USER MANAGEMENT (Direct Add)
     # ===============================================================================
-    @app.route('/admin/invite-user', methods=['POST'])
-    def invite_user():
+    @app.route('/admin/add-user', methods=['POST'])
+    def add_user():
         if 'user' not in session or not session['user'].get('is_admin'):
             return jsonify({'error': 'Access denied'}), 403
-        
+            
         data = request.get_json()
         email = data.get('email', '').strip()
         role = data.get('role', 'user')
-        send_email = data.get('send_email', False)
+        name = data.get('name', '').strip()
         
-        if send_email and not email:
-            return jsonify({'error': 'Email is required to send email'}), 400
-        
-        if email and user_exists(email):
-            return jsonify({'error': 'User already exists'}), 400
-        
-        token = generate_token()
+        if not email:
+            return jsonify({'error': 'Email is required'}), 400
+            
+        if user_exists(email):
+            # If user already exists, maybe just update their role
+            from modules.web_postgres_database import update_user
+            update_user(email, is_admin=(role == 'admin'), role=role)
+            return jsonify({'success': True, 'message': 'User already existed, role updated.'})
+            
+        # Create new user directly in database
+        from modules.web_postgres_database import save_user
         
         is_admin = (role == 'admin')
-        # If email is empty string, store None
-        final_email = email if email else None
-        
-        if not create_invitation(token, final_email, is_admin, role, session['user']['email']):
-            return jsonify({'error': 'Failed to create invitation'}), 500
-        
-        email_sent = False
-        invitation_link = url_for('accept_invitation', token=token, _external=True)
-        if send_email and email:
-            email_sent = send_invitation_email(final_email, invitation_link)
-        
-        return jsonify({
-            'success': True, 
-            'message': 'Invitation created successfully',
-            'email_sent': email_sent,
-            'invitation_token': token,
-            'invitation_link': invitation_link
-        })
-
-    @app.route('/invitation/<token>')
-    def accept_invitation(token):
-        invitation = get_invitation(token)
-        
-        if not invitation:
-            flash('Invalid or expired invitation.', 'error')
-            return redirect(url_for('home'))
-        
-        if invitation['status'] != 'pending':
-            flash('This invitation has already been used.', 'warning')
-            return redirect(url_for('home'))
-        
-        if 'user' not in session:
-            session['pending_invitation'] = token
-            flash('Please log in to accept the invitation.', 'info')
-            return redirect(url_for('login'))
-        
-        if session['user']['email'] != invitation['email']:
-            flash('This invitation is for a different email address.', 'error')
-            return redirect(url_for('home'))
-        
-        user_email = session['user']['email']
-        
-        if user_exists(user_email):
-            update_user(
-                user_email,
-                is_admin=invitation['is_admin'],
-                invited_at=invitation['invited_at']
-            )
+        if not name:
+            name = email.split('@')[0]
+            
+        if save_user(
+            email=email,
+            name=name,
+            picture='/static/img/default-avatar.png',  # Default picture
+            is_admin=is_admin,
+            role=role,
+            invited_at=datetime.utcnow().isoformat(),
+            last_login=None
+        ):
+            return jsonify({'success': True, 'message': 'User added successfully'})
         else:
-            from modules.web_postgres_database import save_user
-            save_user(
-                email=user_email,
-                name=session['user']['name'],
-                picture=session['user']['picture'],
-                is_admin=invitation['is_admin'],
-                invited_at=invitation['invited_at'],
-                last_login=datetime.now().isoformat()
-            )
-        
-        session['user']['is_admin'] = invitation['is_admin']
-        update_user_session_groups(user_email)
-        delete_invitation(token)
-        session.pop('pending_invitation', None)
-        
-        admin_msg = " with administrator privileges" if invitation['is_admin'] else ""
-        flash(f'Successfully joined the platform{admin_msg}!', 'success')
-        return redirect(url_for('profile'))
-
-    @app.route('/admin/delete-invitation', methods=['POST'])
-    def delete_invitation_route():
-        if 'user' not in session or not session['user'].get('is_admin'):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        data = request.get_json()
-        token = data.get('token')
-        
-        if not token:
-            return jsonify({'error': 'Invitation token is required'}), 400
-        
-        if delete_invitation(token):
-            return jsonify({'success': True, 'message': 'Invitation deleted successfully'})
-        else:
-            return jsonify({'error': 'Failed to delete invitation or invitation not found'}), 500
-
-    @app.route('/admin/clean-invitations', methods=['POST'])
-    def clean_invitations():
-        if 'user' not in session or not session['user'].get('is_admin'):
-            return jsonify({'error': 'Access denied'}), 403
-        
-        cleaned_count = clean_accepted_invitations()
-        
-        return jsonify({
-            'success': True, 
-            'message': f'Cleaned {cleaned_count} accepted invitations',
-            'cleaned_count': cleaned_count
-        })
+            return jsonify({'error': 'Failed to add user to database'}), 500
 
     # ===============================================================================
     # ADMIN PANEL
@@ -163,7 +88,6 @@ def register_admin_routes(app):
         current_user_email = session['user']['email']
         
         # Get settings
-        custom_targets_public = get_setting('custom_targets_public_access', 'false') == 'true'
         open_registration = get_setting('open_registration', 'true') == 'true'
         
         return render_template('admin.html', 
@@ -172,7 +96,6 @@ def register_admin_routes(app):
                              groups=groups,
                              invitations=invitations,
                              current_user_email=current_user_email,
-                             custom_targets_public=custom_targets_public,
                              open_registration=open_registration)
 
     @app.route('/admin/settings/save', methods=['POST'])
@@ -490,3 +413,54 @@ def register_admin_routes(app):
             'message': f'Cleaned {cleaned_count} data consistency issues',
             'cleaned_count': cleaned_count
         })
+
+    # ===============================================================================
+    # DOCUMENT RESOURCE MANAGEMENT
+    # ===============================================================================
+    @app.route('/admin/documents/clean-images', methods=['POST'])
+    def clean_unused_images():
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+            
+        try:
+            tutorials_dir = os.path.join(current_app.root_path, 'static', 'tutorials')
+            images_dir = os.path.join(tutorials_dir, 'images')
+            
+            if not os.path.exists(images_dir):
+                return jsonify({'success': True, 'message': 'No images directory found', 'cleaned_count': 0})
+                
+            # 1. Collect all images on disk
+            all_images = set(os.listdir(images_dir))
+            
+            # 2. Extract referenced images from all markdown files
+            used_images = set()
+            for filename in os.listdir(tutorials_dir):
+                if filename.endswith('.md'):
+                    filepath = os.path.join(tutorials_dir, filename)
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Match formats like markdown image ![](images/xxx.png) or HTML <img src=".../images/xxx.png">
+                        # But more simply, check if image name exists in text
+                        for img in all_images:
+                            if img in content:
+                                used_images.add(img)
+                                
+            # 3. Determine unused images
+            unused_images = all_images - used_images
+            
+            # 4. Remove unused images
+            cleaned_count = 0
+            for img in unused_images:
+                try:
+                    os.remove(os.path.join(images_dir, img))
+                    cleaned_count += 1
+                except Exception as e:
+                    print(f"Error removing image {img}: {e}")
+                    
+            return jsonify({
+                'success': True,
+                'message': f'Cleaned {cleaned_count} unused image(s)',
+                'cleaned_count': cleaned_count
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500

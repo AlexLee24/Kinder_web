@@ -247,7 +247,7 @@
         justify-content: center;
     }
 
-    .action-btn, .copy-coords-btn, .edit-btn, .delete-btn {
+    .action-btn, .edit-btn, .delete-btn {
         width: 100%;
         justify-content: center;
     }

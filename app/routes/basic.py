@@ -23,7 +23,8 @@ def register_basic_routes(app):
         user_groups = []
         user_data = None
         
-        from modules.web_postgres_database import user_exists, get_users
+        from modules.web_postgres_database import user_exists, get_users, get_groups
+        all_groups = []
         if user_exists(user_email):
             users = get_users()
             user_data = users.get(user_email, {})
@@ -32,9 +33,21 @@ def register_basic_routes(app):
             session['user']['name'] = user_data.get('name', session['user']['name'])
             session['user']['picture'] = user_data.get('picture', session['user']['picture'])
             session['user']['is_admin'] = user_data.get('is_admin', False)
-            session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups
+            from modules.web_postgres_database import check_object_access
+            session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', session['user']['email'])
+            
+            # Fetch all available groups to display
+            groups_dict = get_groups()
+            for g_name, g_data in groups_dict.items():
+                all_groups.append({
+                    'name': g_name,
+                    'description': g_data.get('description', ''),
+                    'member_count': len(g_data.get('members', [])),
+                    'is_member': g_name in user_groups
+                })
         
         return render_template('profile.html', 
                              current_path='/profile',
                              user_groups=user_groups,
-                             user_data=user_data)
+                             user_data=user_data,
+                             all_groups=all_groups)

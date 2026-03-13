@@ -153,22 +153,48 @@
     margin-top: 5px;
 }
 
-.pa-calendar-wrap {
+.pa-widgets-container {
     width: 100%;
-    max-width: 1000px;
-    margin: 0 auto;
-    overflow-x: auto;
     display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
     justify-content: center;
-    align-items: center;
+    align-items: stretch;
     padding-bottom: 1rem;
 }
 
-.pa-calendar-wrap iframe {
+.pa-calendar-wrap, .pa-weather-wrap {
+    flex: 1;
+    min-width: 400px;
+    max-width: 50%;
+    display: flex;
+    flex-direction: column;
+}
+
+.pa-calendar-wrap {
+    /* overridden padding from prev style */
+    padding-bottom: 0;
+}
+
+.pa-weather-wrap {
+    border-radius: 8px;
+    background: transparent;
+}
+
+.pa-calendar-wrap iframe, .pa-weather-wrap iframe {
     border-width: 0;
     border-radius: 8px;
     background: transparent;
     display: block;
+    width: 100% !important;
+    height: 900px !important;
+}
+
+/* On smaller screens, stack them */
+@media (max-width: 1200px) {
+    .pa-calendar-wrap, .pa-weather-wrap {
+        max-width: 100%;
+    }
 }
 
 /* ===================== Observation Log Section ===================== */
@@ -810,4 +836,41 @@
 #content-SLT, #content-LOT {
     overflow-x: auto;
     width: 100%;
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 768px) {
+    /* Observation Log Grid adjustments for mobile */
+    .pa-log-grid th:first-child, .pa-log-grid td:first-child {
+        min-width: 100px;
+        max-width: 110px;
+        font-size: 0.8rem;
+        white-space: normal;
+        word-break: break-word;
+        padding: 0.5rem;
+    }
+
+    .pa-log-grid th, .pa-log-grid td {
+        min-width: 60px;
+        padding: 0.4rem;
+        font-size: 0.85rem;
+    }
+
+    /* Wrap log controls */
+    .pa-log-controls {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .pa-log-controls select {
+        margin-right: 0 !important;
+        flex: 1 1 45%;
+        width: auto !important;
+    }
+    
+    .pa-btn-log-action {
+        margin-right: 0;
+        flex: 1 1 45%;
+        justify-content: center;
+    }
 }

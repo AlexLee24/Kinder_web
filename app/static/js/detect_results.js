@@ -124,3 +124,18 @@ if (backToTopBtn) {
     });
 }
 
+document.addEventListener('DOMContentLoaded', function() {
+    const plotlyDivs = document.querySelectorAll('.plotly-chart');
+    plotlyDivs.forEach(div => {
+        const plotDataString = div.getAttribute('data-plot');
+        if (plotDataString) {
+            try {
+                const plotData = JSON.parse(plotDataString);
+                Plotly.newPlot(div.id, plotData.data, plotData.layout, plotData.config);
+            } catch (e) {
+                console.error("Error drawing plot for", div.id, e);
+            }
+        }
+    });
+});
+

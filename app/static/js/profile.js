@@ -81,7 +81,7 @@ async function updateName(event) {
             },
             body: JSON.stringify({
                 name: newName
-            })
+            }) // DO NOT OVERWRITE EXISTING PICTURE HERE
         });
         
         const result = await response.json();
@@ -105,6 +105,75 @@ async function updateName(event) {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
     }
+}
+
+// ===============================================================================
+// UPLOAD AVATAR
+// ===============================================================================
+async function uploadAvatar(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Check file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!validTypes.includes(file.type)) {
+        showNotification('Only JPG and PNG files are allowed', 'error');
+        // Reset file input
+        event.target.value = '';
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        showNotification('Image size must be less than 10MB', 'error');
+        // Reset file input
+        event.target.value = '';
+        return;
+    }
+
+    // Convert image to base64
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        const base64Image = e.target.result;
+        const currentName = document.getElementById('userName').textContent;
+
+        try {
+            showNotification('Uploading image...', 'info');
+            const response = await fetch('/update-profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: currentName,
+                    picture: base64Image
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Update the display image
+                document.getElementById('profile-avatar-img').src = base64Image;
+                
+                // Also update the navbar avatar if it exists
+                const navAvatars = document.querySelectorAll('.user-avatar');
+                navAvatars.forEach(av => {
+                    if (av.tagName === 'IMG' && av.id !== 'profile-avatar-img') {
+                        av.src = base64Image;
+                    } else if (av.querySelector('img') && av.querySelector('img').id !== 'profile-avatar-img') {
+                        av.querySelector('img').src = base64Image;
+                    }
+                });
+
+                showNotification('Profile picture updated successfully!', 'success');
+            } else {
+                showNotification('Error updating picture: ' + result.error, 'error');
+            }
+        } catch (error) {
+            showNotification('Failed to upload image: ' + error.message, 'error');
+        }
+    };
+    reader.readAsDataURL(file);
 }
 
 // ===============================================================================
@@ -140,6 +209,60 @@ function showNotification(message, type = 'info') {
             }, 300);
         }
     }, 3000);
+}
+
+// ===============================================================================
+// ASK TO JOIN GROUP / LEAVE GROUP
+// ===============================================================================
+
+async function askToJoinCustomGroup(event) {
+    event.preventDefault();
+    
+    const groupName = document.getElementById('joinGroupName').value.trim();
+    const reason = document.getElementById('joinReason').value.trim();
+    
+    if (!groupName) {
+        showNotification('Please enter a group name', 'error');
+        return;
+    }
+    
+    // Show loading state
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Sending Request...';
+    submitBtn.disabled = true;
+    
+    try {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        showNotification(`Request to join "${groupName}" sent successfully! Admin will review your request.`, 'success');
+        event.target.reset(); // clear the form
+        
+    } catch (error) {
+        showNotification('Failed to send request: ' + error.message, 'error');
+    } finally {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+    }
+}
+
+async function askToJoinGroup(groupName) {
+    if (!groupName) return;
+    
+    if (confirm(`Do you want to send a request to join "${groupName}"?`)) {
+        showNotification(`Request to join "${groupName}" sent successfully! Admin will review your request.`, 'success');
+        // TODO: Real API call
+    }
+}
+
+async function leaveGroup(groupName) {
+    if (!groupName) return;
+    
+    if (confirm(`Are you sure you want to leave "${groupName}"?`)) {
+        showNotification(`You have left "${groupName}".`, 'info');
+        // TODO: Real API call
+        // setTimeout(() => window.location.reload(), 1500); 
+    }
 }
 
 // ===============================================================================

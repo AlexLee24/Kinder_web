@@ -60,7 +60,7 @@ class DataVisualization:
         return filter_colors.get(filter_name, f'rgba(128,128,128,{alpha})')  # 預設灰色
     
     @staticmethod
-    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False):
+    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False, apply_extinction=True, apply_k_corr=True):
         """Create interactive photometry plot from database data"""
         if not photometry_data:
             return None
@@ -144,10 +144,11 @@ class DataVisualization:
                 distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
                 if isinstance(distance_mpc, (int, float)):
                     distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
-                    k_correction = 2.5 * math.log10(1 + redshift)
+                    if apply_k_corr:
+                        k_correction = 2.5 * math.log10(1 + redshift)
                     
                     # Calculate extinction if RA/Dec available
-                    if ra is not None and dec is not None:
+                    if ra is not None and dec is not None and apply_extinction:
                         # Use V band as reference for the axis
                         ref_filter = 'V'
                         
@@ -192,8 +193,10 @@ class DataVisualization:
             telescope = data['telescope']
             
             # Calculate specific absolute magnitude for this filter
-            filter_specific_shift = distance_modulus + k_correction
-            if ra is not None and dec is not None and ext_M_calculator:
+            filter_specific_shift = distance_modulus
+            if apply_k_corr:
+                filter_specific_shift += k_correction
+            if apply_extinction and ra is not None and dec is not None and ext_M_calculator:
                 try:
                     ext = ext_M_calculator.get_extinction(ra, dec, filter_name)
                     if isinstance(ext, (int, float)):
@@ -218,19 +221,18 @@ class DataVisualization:
             
             # Add trace for points with error bars
             if with_errors:
-                # Calculate absolute magnitudes for hover
-                abs_mags = []
+                # Calculate absolute magnitudes and store errors for hover
+                custom_data = []
                 for i in with_errors:
                     mag = data['magnitude'][i]
-                    if mag is not None:
-                        abs_mags.append(mag - filter_specific_shift)
-                    else:
-                        abs_mags.append(None)
+                    err = data['magnitude_error'][i]
+                    abs_mag = (mag - filter_specific_shift) if mag is not None else None
+                    custom_data.append([abs_mag, err])
                         
                 trace_with_errors = go.Scatter(
                     x=[data['mjd'][i] for i in with_errors],
                     y=[data['magnitude'][i] for i in with_errors],
-                    customdata=abs_mags,
+                    customdata=custom_data,
                     mode='markers',
                     name=f'{filter_name} ({telescope})',
                     marker=dict(
@@ -246,8 +248,8 @@ class DataVisualization:
                     ),
                     hovertemplate='<b>%{fullData.name}</b><br>' +
                                   'MJD: %{x:.3f}<br>' +
-                                  'App. Mag: %{y:.3f}<br>' +
-                                  'Abs. Mag: %{customdata:.3f}<br>' +
+                                  'App. Mag: %{y:.3f} ± %{customdata[1]:.3f}<br>' +
+                                  'Abs. Mag: %{customdata[0]:.3f}<br>' +
                                   '<extra></extra>'
                 )
                 traces.append(trace_with_errors)
@@ -387,6 +389,10 @@ class DataVisualization:
         ))
         
         fig = go.Figure(data=traces, layout=layout)
+        
+        if as_json:
+            import json
+            return fig.to_json()
         
         # Convert to HTML div
         plot_div = pyo.plot(fig, output_type='div', include_plotlyjs=False)

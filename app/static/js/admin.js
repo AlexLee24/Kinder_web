@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Auto-check consistency when page loads
     setTimeout(checkDataConsistency, 1000);
+    
+    // Load GREATLab permissions for settings tab
+    loadGreatLabPermissions();
 });
 
 // Load users data for search functionality
@@ -109,8 +112,8 @@ function showTab(tabName) {
 }
 
 // Modal functions
-function showInviteUserModal() {
-    document.getElementById('inviteUserModal').style.display = 'block';
+function showAddUserModal() {
+    document.getElementById('addUserModal').style.display = 'block';
 }
 
 function showCreateGroupModal() {
@@ -339,43 +342,38 @@ window.onclick = function(event) {
     });
 }
 
-// Invite User
-async function inviteUser(event) {
+// Add User Directly
+async function addUser(event) {
     event.preventDefault();
     
     const email = document.getElementById('userEmail').value;
-    const roleValue = document.getElementById('inviteRole') ? document.getElementById('inviteRole').value : 'user';
-    const sendEmail = document.getElementById('sendEmail').checked;
+    const roleValue = document.getElementById('userRole') ? document.getElementById('userRole').value : 'user';
+    const name = document.getElementById('userName').value;
+    
+    if (!email) {
+        showNotification('Email is required', 'error');
+        return;
+    }
     
     try {
-        const response = await fetch('/admin/invite-user', {
+        const response = await fetch('/admin/add-user', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 email: email,
-                role: roleValue,
-                send_email: sendEmail
+                name: name || email.split('@')[0],
+                role: roleValue
             })
         });
         
         const result = await response.json();
         
         if (result.success) {
-            let message = 'Invitation created successfully!';
-            if (sendEmail && email) {
-                message += result.email_sent ? 
-                    ' Email notification sent.' : 
-                    ' Email notification failed to send.';
-                showNotification(message, 'success');
-                closeModal('inviteUserModal');
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                prompt('Invitation link generated! Copy the link below:', result.invitation_link);
-                closeModal('inviteUserModal');
-                location.reload();
-            }
+            showNotification('User added successfully!', 'success');
+            closeModal('addUserModal');
+            setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
         }
@@ -945,35 +943,113 @@ async function cleanDataConsistency() {
     }
 }
 
-function toggleCustomTargetsAccess(checkbox) {
-    const isChecked = checkbox.checked;
-    
-    fetch('/admin/settings/save', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            key: 'custom_targets_public_access',
-            value: isChecked
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
+/* ================= GREATLab Permissions Management ================= */
+async function loadGreatLabPermissions() {
+    try {
+        const response = await fetch('/api/object/greatlab_routes/permissions');
+        const data = await response.json();
+        
         if (data.success) {
-            // Optional: show success toast
-            console.log('Setting saved');
-            showNotification('Setting saved successfully', 'success');
-        } else {
-            showNotification('Failed to save setting: ' + data.error, 'error');
-            checkbox.checked = !isChecked; // Revert
+            const container = document.getElementById('active-permissions');
+            if (!container) return;
+            
+            // Keep the locked GREAT_Lab element
+            const lockedHtml = `
+                <div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #aaa; display: flex; align-items: center; gap: 5px;">
+                    <span>GREAT_Lab</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+            `;
+            
+            let dynamicHtml = '';
+            
+            if (data.permissions && Array.isArray(data.permissions)) {
+                // Determine whether data.permissions is an array of objects or strings 
+                // Wait, daily_trigger.js did: const groupName = perm.group_name || perm.name || perm;
+                
+                const filteredGroups = data.permissions.filter(perm => {
+                    const gName = perm.group_name || perm.name || perm;
+                    return gName !== 'GREAT_Lab' && gName !== 'greatlab';
+                });
+                
+                dynamicHtml = filteredGroups.map(perm => {
+                    const groupName = perm.group_name || perm.name || perm;
+                    return `
+                    <div style="background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #ff6b6b; display: flex; align-items: center; gap: 8px;">
+                        <span>${groupName}</span>
+                        <svg onclick="removeGreatLabPermission('${groupName}')" style="cursor: pointer; opacity: 0.7;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </div>
+                `}).join('');
+            }
+            
+            container.innerHTML = lockedHtml + dynamicHtml;
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        showNotification('Error saving setting', 'error');
-        checkbox.checked = !isChecked; // Revert
-    });
+    } catch (error) {
+        console.error('Error loading permissions:', error);
+    }
+}
+
+async function addGreatLabPermission() {
+    const groupSelect = document.getElementById('new-permission-group');
+    const groupName = groupSelect.value;
+    
+    if (!groupName) {
+        showNotification('Please select a group first.', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/object/greatlab_routes/permissions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                group_name: groupName
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            groupSelect.value = '';
+            loadGreatLabPermissions();
+            showNotification('Permission added successfully!', 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred.', 'error');
+    }
+}
+
+async function removeGreatLabPermission(groupName) {
+    if (!confirm(`Are you sure you want to remove access for the '${groupName}' group?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/object/greatlab_routes/permissions', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                group_name: groupName
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            loadGreatLabPermissions();
+            showNotification('Permission removed successfully!', 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred.', 'error');
+    }
 }
 
 function toggleOpenRegistration(checkbox) {
@@ -1003,5 +1079,36 @@ function toggleOpenRegistration(checkbox) {
         console.error('Error:', error);
         showNotification('Error saving setting', 'error');
         checkbox.checked = !isChecked; // Revert
+    });
+}
+
+function cleanDocumentImages() {
+    if (!confirm('Are you sure you want to clean up unused uploaded images? This will permanently delete images not referenced in any markdown documents.')) {
+        return;
+    }
+    
+    const statusEl = document.getElementById('cleanImagesStatus');
+    statusEl.innerHTML = 'Cleaning...';
+    
+    fetch('/admin/documents/clean-images', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${data.message}</span>`;
+            showNotification(data.message, 'success');
+        } else {
+            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} Error: ${data.error}</span>`;
+            showNotification('Failed to clean images: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} An error occurred</span>`;
+        showNotification('Error cleaning images', 'error');
     });
 }

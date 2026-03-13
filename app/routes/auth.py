@@ -1,9 +1,9 @@
 """
 Authentication routes (Google OAuth, login, logout)
 """
-from flask import session, flash, redirect, url_for, request
+from flask import session, flash, redirect, url_for, request, jsonify, g
 from datetime import datetime
-from modules.web_postgres_database import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation
+from modules.web_postgres_database import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation, check_object_access
 from modules.config import config
 
 def register_auth_routes(app):
@@ -33,6 +33,8 @@ def register_auth_routes(app):
             user_data = get_user(user_email)
             
             if user_data:
+                g.current_user = user_data
+                
                 # Update admin status if changed
                 current_is_admin = user_data.get('is_admin', False)
                 if session['user'].get('is_admin') != current_is_admin:
@@ -41,7 +43,7 @@ def register_auth_routes(app):
                 
                 # Update groups/membership if changed
                 user_groups = user_data.get('groups', [])
-                is_great_lab_member = 'GREAT_Lab' in user_groups
+                is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
                 if session['user'].get('is_great_lab_member') != is_great_lab_member:
                     session['user']['is_great_lab_member'] = is_great_lab_member
                     session.modified = True
@@ -52,7 +54,7 @@ def register_auth_routes(app):
             user_data = users.get(user_email, {})
             user_groups = user_data.get('groups', [])
             
-            session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups
+            session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
             session.modified = True
 
     @app.route('/auth/google')
@@ -80,7 +82,7 @@ def register_auth_routes(app):
                     is_admin = existing_user_data.get('is_admin', False)
                     role = existing_user_data.get('role', 'guest')
                     user_groups = existing_user_data.get('groups', [])
-                    is_great_lab_member = 'GREAT_Lab' in user_groups
+                    is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
                 else:
                     if user_email == config.ADMIN_EMAIL:
                         is_admin = True
@@ -92,11 +94,16 @@ def register_auth_routes(app):
                 if existing_user_data:
                     display_name = existing_user_data.get('name') or user_info.get('name')
                     display_picture = existing_user_data.get('picture') or user_info.get('picture')
+                    
+                # Prevent huge base64 strings in session cookie (limit 4KB)
+                session_picture = display_picture
+                if session_picture and session_picture.startswith('data:image'):
+                    session_picture = user_info.get('picture') # fallback to google picture for cookie
                 
                 session['user'] = {
                     'email': user_email,
                     'name': display_name,
-                    'picture': display_picture,
+                    'picture': session_picture,
                     'is_admin': is_admin,
                     'role': role,
                     'is_great_lab_member': is_great_lab_member
@@ -126,6 +133,10 @@ def register_auth_routes(app):
                 if 'pending_invitation' in session:
                     return redirect(url_for('accept_invitation', token=session['pending_invitation']))
                 
+                next_url = session.pop('next_url', None)
+                if next_url:
+                    return redirect(next_url)
+                
                 return redirect(url_for('home'))
             else:
                 flash('Login failed, please try again.', 'error')
@@ -145,15 +156,24 @@ def register_auth_routes(app):
     @app.route('/update-profile', methods=['POST'])
     def update_profile():
         if 'user' not in session:
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Not logged in'}), 401
             return redirect(url_for('login'))
         
         user_email = session['user']['email']
         
         try:
-            name = request.form.get('name', '').strip()
-            picture = request.form.get('picture', '').strip()
+            if request.is_json:
+                data = request.get_json()
+                name = data.get('name', '').strip()
+                picture = data.get('picture', '').strip()
+            else:
+                name = request.form.get('name', '').strip()
+                picture = request.form.get('picture', '').strip()
             
             if not name:
+                if request.is_json:
+                    return jsonify({'success': False, 'error': 'Name cannot be empty.'}), 400
                 flash('Name cannot be empty.', 'error')
                 return redirect(url_for('profile'))
             
@@ -165,20 +185,31 @@ def register_auth_routes(app):
                     user_email,
                     name=name,
                     picture=picture or current_data.get('picture', ''),
-                    is_admin=current_data.get('is_admin', False),
-                    groups=current_data.get('groups', [])
+                    is_admin=current_data.get('is_admin', False)
                 )
                 
                 session['user']['name'] = name
-                session['user']['picture'] = picture or session['user']['picture']
+                # Never store large base64 strings in the session cookie (limit 4KB)
+                if picture and not picture.startswith('data:image'):
+                    session['user']['picture'] = picture
+                
+                # Failsafe: if a base64 string accidentally got stuck in the session, clear it
+                if session['user'].get('picture', '').startswith('data:image'):
+                    session['user']['picture'] = ''
                 session.modified = True
                 
+                if request.is_json:
+                    return jsonify({'success': True, 'message': 'Profile updated successfully'})
                 flash('Profile updated successfully!', 'success')
             else:
+                if request.is_json:
+                    return jsonify({'success': False, 'error': 'User not found.'}), 404
                 flash('User not found.', 'error')
                 
         except Exception as e:
             print(f"Profile update error: {e}")
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Error updating profile.'}), 500
             flash('Error updating profile.', 'error')
         
         return redirect(url_for('profile'))

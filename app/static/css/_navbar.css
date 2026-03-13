@@ -78,7 +78,7 @@ header .container {
     min-height: 40px;
 }
 
-li a {
+.main-nav li a {
     position: relative; 
     color: #ffffff;
     text-decoration: none;
@@ -89,7 +89,7 @@ li a {
     min-height: 40px;
 }
 
-li a::after {
+.main-nav li a::after {
     content: "";
     position: absolute;
     left: 50%;
@@ -101,8 +101,8 @@ li a::after {
     transition: width 0.3s ease;
 }
 
-li a:hover::after,
-li a.active::after {
+.main-nav li a:hover::after,
+.main-nav li a.active::after {
     width: 100%;
 }
 
@@ -381,10 +381,11 @@ li a.active::after {
     transform: translateY(-9px) rotate(-45deg);
 }
 
-/* Media query for small screens (max-width: 768px) */
-@media (max-width: 768px) {
+/* Media query for small screens (max-width: 992px) */
+@media (max-width: 992px) {
     header {
-        padding: 10px 20px;
+        width: 95%;
+        padding: 10px 15px;
         min-height: 60px;
     }
     
@@ -402,6 +403,7 @@ li a.active::after {
 
     .header-content .logo {
         margin-bottom: 0;
+        margin-right: 0;
         font-size: 20px;
         height: auto;
         min-height: 30px;
@@ -491,9 +493,10 @@ li a.active::after {
         transform: none;
         display: none;
         width: 100%;
+        text-align: center;
     }
 
-    .dropdown:hover .dropdown-content {
+    .dropdown.mobile-active .dropdown-content {
         display: block;
     }
     

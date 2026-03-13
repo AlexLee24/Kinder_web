@@ -21,7 +21,6 @@ sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
 from modules.config import config
 from modules.web_postgres_database import init_database
 from modules.postgres_database import init_tns_database, check_db_connection
-from modules.calendar_database import init_calendar_database
 
 # Create Flask app
 app = Flask(__name__, template_folder='html', static_folder='static')
@@ -43,7 +42,6 @@ app.url_map.converters['alpha'] = AlphaConverter
 # Initialize databases
 init_database()
 init_tns_database()
-init_calendar_database()
 
 import re
 @app.template_filter('regex_search')

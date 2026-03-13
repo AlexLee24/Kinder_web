@@ -5,7 +5,7 @@
 }
 
 .toggle-advanced {
-    background: linear-gradient(135deg, rgba(197, 160, 89, 0.15), rgba(160, 128, 64, 0.15));
+    background: linear-gradient(135deg, rgba(197, 160, 89, 0.5), rgba(160, 128, 64, 0.5));
     border: 1px solid rgba(197, 160, 89, 0.3);
     padding: 16px 24px;
     border-radius: 25px;
@@ -58,44 +58,11 @@
 }
 
 .advanced-filters-content {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-top: none;
-    padding: 30px;
-    border-radius: 25px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    position: relative;
-    box-shadow: 
-        0 10px 40px rgba(0, 0, 0, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    margin-top: 5px;
-    opacity: 0;
-    transform: translateY(-10px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    display: none;
-}
-
-.advanced-filters-content.show {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-.advanced-filters-content::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, 
-        transparent, 
-        rgba(197, 160, 89, 0.6), 
-        rgba(160, 128, 64, 0.6),
-        rgba(197, 160, 89, 0.6),
-        transparent
-    );
-    border-radius: 25px 25px 0 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    box-shadow: none;
+    margin-top: 0;
 }
 
 .filter-row {

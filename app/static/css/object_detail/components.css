@@ -188,6 +188,7 @@
 .action-btn.edit,
 .action-btn.export,
 .action-btn.external,
+.action-btn.copy-coords,
 .action-btn.visibility {
     background: rgba(255, 255, 255, 0.05);
     color: var(--text-secondary);
@@ -406,31 +407,6 @@
     font-size: 16px;
     color: var(--primary-color);
     font-weight: bold;
-}
-
-/* Copy Coordinates Button */
-.copy-coords-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, #C5A059, #a08040);
-    color: white;
-    border: none;
-    border-radius: 25px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.copy-coords-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(197, 160, 89, 0.3);
-    background: linear-gradient(135deg, #d4b779, #8c7038);
 }
 
 /* Breadcrumb */

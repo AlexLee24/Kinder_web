@@ -8,7 +8,8 @@
 
 /* Page-specific overrides and customizations */
 .object-detail-container {
-    max-width: 1400px;
+    max-width: 1800px;
+    width: 95%;
     margin: 120px auto 40px;
     padding: 20px;
     min-height: calc(100vh - 160px);
@@ -37,7 +38,7 @@
 
 .detail-content {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: 1fr 600px;
     gap: 30px;
     align-items: start;
 }

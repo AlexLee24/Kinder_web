@@ -18,6 +18,7 @@ def register_marshal_routes(app):
     @app.route('/marshal')
     def marshal():
         if 'user' not in session:
+            session['next_url'] = request.url
             flash('Please log in to access Marshal.', 'warning')
             return redirect(url_for('login'))
         elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
@@ -124,3 +125,29 @@ def register_marshal_routes(app):
                                  total_count=0,
                                  use_api_mode=True,
                                  initial_limit=0)
+
+    @app.route('/api/marshal/recent-comments')
+    def get_marshal_recent_comments():
+        try:
+            from modules.postgres_database import TNSObjectDB
+            comments = TNSObjectDB.get_recent_comments(limit=5)
+            # Add formatted date snippet and trim content
+            for c in comments:
+                if len(c['content']) > 50:
+                    c['content'] = c['content'][:47] + '...'
+            return jsonify({'success': True, 'comments': comments})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/marshal/top-viewed')
+    def get_marshal_top_viewed():
+        try:
+            from modules.postgres_database import TNSObjectDB
+            mode = request.args.get('mode', '30days')
+            targets = TNSObjectDB.get_top_viewed_objects(days=30, limit=5, mode=mode)
+            return jsonify({
+                'success': True, 
+                'targets': targets
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500

@@ -6,6 +6,25 @@
     <title>Transient Marshal - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     {% include '_favicon.html' %}
+    <style>
+        .loading-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px;
+            width: 100%;
+            grid-column: 1 / -1;
+            min-height: 200px;
+        }
+        .loading-overlay p {
+            color: #ffffff;
+            font-size: 1.2rem;
+            margin-top: 15px;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+    </style>
 </head>
 <body>
     {% include '_navbar.html' %}
@@ -16,11 +35,13 @@
     {% endif %}
 
     <div class="marshal-container">
-        <!-- Top Control Panel -->
-        <div class="control-panel">
+        <!-- Top Section Splitter -->
+        <div class="top-section-split">
+            <!-- Top Control Panel -->
+            <div class="control-panel">
             <div class="panel-header">
                 <h1>Transient Marshal</h1>
-                <h3>Data since 2016-01</h3>
+                <!-- <h3>Data since 2016-01</h3> -->
                 <div class="status-info">
                     <span class="total-count">{{ total_count }} objects</span>
                     <span class="last-sync">
@@ -55,7 +76,7 @@
                 <div class="big-stat-card classified">
                     <div class="stat-info">
                         <span class="stat-number">{{ classified_count }}</span>
-                        <span class="stat-label">Classified</span>
+                        <span class="stat-label">SN</span>
                     </div>
                 </div>
             </div>
@@ -89,7 +110,7 @@
                 <div class="small-stat-card flag clickable" onclick="filterByStatus('flag')" title="Click to filter Flagged objects">
                     <div class="stat-info">
                         <span class="stat-number" id="flagCount">{{ flag_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Flag</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Flag for DETECT</span>
                     </div>
                 </div>
             </div>
@@ -107,7 +128,7 @@
                             Clear
                         </button>
                         <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
-                            <span>Advanced Filters</span>
+                            <span>Filters</span>
                             <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </button>
                     </div>
@@ -116,16 +137,27 @@
                 <!-- Advanced Filters -->
                 <div class="advanced-filters">
                     
-                    <div class="advanced-filters-content" id="advancedFiltersContent">
+                </div>
+
+                <!-- Advanced Filters Modal -->
+                <div class="modal-overlay" id="advancedFilterModal" style="display: none;">
+                    <div class="upload-modal" style="max-width: 800px; background: var(--glass-bg); color: white; border: 1px solid var(--glass-border); padding: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin:0;">Advanced Filters</h3>
+                        <button class="close-modal" onclick="toggleAdvancedFilters()" style="background:none; border:none; color:white; cursor:pointer;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                    <div class="advanced-filters-content" id="advancedFiltersContent" style="display:block;">
                         <div class="filter-row">
                             <!-- Classification Filter -->
                             <div class="filter-group">
                                 <label>Classification</label>
-                                <select id="classificationFilter">
+                                <select id="classificationFilter" multiple style="height: 100px;">
                                     <option value="">All Classifications</option>
                                     <!-- Dynamic options will be populated by JavaScript -->
                                 </select>
-                                <div class="filter-tooltip">Filter by object classification type</div>
+                                <div class="filter-tooltip">Filter by object classification type (hold Ctrl/Cmd to select multiple)</div>
                             </div>
                             
                             <!-- Tag Filter -->
@@ -205,17 +237,18 @@
                             </div>
                         </div>
                         
-                        <div class="filter-row">
+                        <div class="filter-row" style="margin-top:20px;">
                             <div class="filter-actions">
-                                <button class="apply-advanced-btn" onclick="applyAdvancedFilters()">
+                                <button class="apply-advanced-btn" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
                                     Apply Filters
                                 </button>
-                                <button class="clear-btn" onclick="clearAllFilters()">
+                                <button class="clear-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
                                     Clear All
                                 </button>
                             </div>
                         </div>
                     </div>
+                </div>
                 </div>
 
                 <!-- Admin Tools -->
@@ -256,6 +289,48 @@
             </div>
         </div>
 
+        <!-- Right Side Panel -->
+        <div class="dashboard-side-panel">
+            <div class="side-panel-grid">
+                <!-- Top Viewed -->
+                <div class="side-widget">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin-bottom: 0;">Top Viewed</h3>
+                        <select id="topViewedMode" onchange="loadTopViewed()" style="padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--glass-bg); color: var(--text-primary);">
+                            <option value="all">All Time</option>
+                            <option value="30days">30 Days</option>
+                        </select>
+                    </div>
+                    <ul class="widget-list" id="topViewedList">
+                        <!-- Items populated by JS/Backend -->
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </div>
+
+                <!-- Recent Comments -->
+                <div class="side-widget">
+                    <h3>Recent Comments</h3>
+                    <ul class="widget-list" id="recentCommentsList">
+                        <!-- Items populated by JS/Backend -->
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </div>
+
+                <!-- Empty Block 1 -->
+                <div class="side-widget empty-widget">
+                    <h3>Reserved Block 1</h3>
+                    <div class="widget-placeholder">Coming soon</div>
+                </div>
+
+                <!-- Empty Block 2 -->
+                <div class="side-widget empty-widget">
+                    <h3>Reserved Block 2</h3>
+                    <div class="widget-placeholder">Coming soon</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
         <!-- Main Content Area -->
         <div class="content-area">
             <!-- Top Pagination Controls -->
@@ -274,6 +349,13 @@
                     </select>
                 </div>
             </div>
+
+            <!-- Pre-loader if objects are not initially provided -->
+            {% if not objects %}
+            <div id="loadingIndicator" class="loading-overlay" style="display: flex;">
+                <div class="spinner"></div><p>Loading objects...</p>
+            </div>
+            {% endif %}
 
             <!-- Cards View -->
             <div class="objects-grid" id="cardsView">

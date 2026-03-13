@@ -1,5 +1,6 @@
 .env
 kinder.env
+app/static/tutorials/.env
 .DS_Store
 Thumbs.db
 
@@ -69,3 +70,4 @@ import_cross_match.py
 app/modules/DETECT_pipe/modules/
 migrate_data.py
 test*.py
+.github/

@@ -32,6 +32,9 @@ let photometryChanges = {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Object detail page loaded, initializing...');
     
+    // Show loading overlay immediately when DOM is ready
+    showLoading(true, 'Loading page data...');
+
     const upperLimitCheckbox = document.getElementById('addIsUpperLimit');
     const magnitudeErrorInput = document.getElementById('addMagnitudeError');
     
@@ -399,7 +402,7 @@ function copyCoordinates() {
     const fullName = getFullObjectName(objectData) || objectName;
     const ra = parseFloat(objectData.ra).toFixed(6);
     const dec = parseFloat(objectData.declination).toFixed(6);
-    const coordText = `${ra}\n${dec}`;
+    const coordText = `${ra} ${dec}`;
     
     navigator.clipboard.writeText(coordText).then(() => {
         showNotification('Coordinates copied to clipboard', 'success');
@@ -706,9 +709,12 @@ function loadPhotometryPlot() {
     const year = match[1];
     const letters = match[2];
     
+    const applyExtinction = document.getElementById('applyExtinction')?.checked ?? true;
+    const applyKCorr = document.getElementById('applyKCorr')?.checked ?? true;
+
     // Load both plot and raw data
     Promise.all([
-        fetch(`/api/object/${year}${letters}/photometry/plot`),
+        fetch(`/api/object/${year}${letters}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
         fetch(`/api/object/${year}${letters}/photometry`)
     ]).then(responses => {
         return Promise.all(responses.map(r => r.json()));
@@ -1211,25 +1217,8 @@ function loadSpectrumPlot() {
     if (loadingDiv) loadingDiv.style.display = 'flex';
     if (spectrumContainer) spectrumContainer.innerHTML = '';
     
-    const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-    if (!match) {
-        console.error('Cannot parse year and letters from:', cleanObjectName);
-        if (loadingDiv) loadingDiv.style.display = 'none';
-        if (spectrumContainer) {
-            spectrumContainer.innerHTML = `
-                <div class="no-data">
-                    <span class="no-data-icon">${ICONS.error}</span>
-                    <span class="no-data-text">Invalid object name format</span>
-                </div>
-            `;
-        }
-        return;
-    }
-    
-    const year = match[1];
-    const letters = match[2];
-    
-    const apiUrl = `/api/object/${year}${letters}/spectrum/plot`;
+    // Use generic API endpoint to support both TNS name and generic object name
+    const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectrum/plot`;
     console.log('API URL:', apiUrl);
     
     fetch(apiUrl)
@@ -1388,7 +1377,208 @@ function uploadPhotometry() {
 }
 
 function uploadSpectrum() {
-    showNotification('Spectrum upload - Feature coming soon!', 'info');
+    const modal = document.getElementById('uploadSpectrumModal');
+    if (modal) {
+        modal.style.display = 'block';
+        resetSpectrumUploadModal();
+        setupSpectrumFileUpload();
+    }
+}
+
+function closeSpectrumUploadModal() {
+    const modal = document.getElementById('uploadSpectrumModal');
+    if (modal) {
+        modal.style.display = 'none';
+        resetSpectrumUploadModal();
+    }
+}
+
+function resetSpectrumUploadModal() {
+    const elements = {
+        spectrumFile: document.getElementById('spectrumFile'),
+        selectedFile: document.getElementById('spectrumSelectedFile'),
+        fileDropZone: document.getElementById('spectrumFileDropZone'),
+        uploadPreview: document.getElementById('spectrumUploadPreview'),
+        uploadError: document.getElementById('spectrumUploadError'),
+        uploadBtn: document.getElementById('spectrumUploadBtn'),
+        telescopeInput: document.getElementById('spectrumTelescope')
+    };
+    
+    if (elements.spectrumFile) elements.spectrumFile.value = '';
+    if (elements.selectedFile) elements.selectedFile.style.display = 'none';
+    if (elements.fileDropZone) elements.fileDropZone.style.display = 'block';
+    if (elements.uploadPreview) elements.uploadPreview.style.display = 'none';
+    if (elements.uploadError) elements.uploadError.style.display = 'none';
+    if (elements.uploadBtn) elements.uploadBtn.disabled = true;
+    if (elements.telescopeInput) elements.telescopeInput.value = '';
+    window.currentSpectrumData = [];
+}
+
+function setupSpectrumFileUpload() {
+    const fileInput = document.getElementById('spectrumFile');
+    const dropZone = document.getElementById('spectrumFileDropZone');
+    
+    if (!fileInput || !dropZone) {
+        console.error('File input elements not found');
+        return;
+    }
+    
+    const newDropZone = dropZone.cloneNode(true);
+    dropZone.parentNode.replaceChild(newDropZone, dropZone);
+    const newFileInput = fileInput.cloneNode(true);
+    fileInput.parentNode.replaceChild(newFileInput, fileInput);
+    
+    newDropZone.addEventListener('click', () => { newFileInput.click(); });
+    newFileInput.addEventListener('change', handleSpectrumFileSelect);
+    newDropZone.addEventListener('dragover', (e) => { e.preventDefault(); newDropZone.classList.add('dragover'); });
+    newDropZone.addEventListener('dragleave', () => { newDropZone.classList.remove('dragover'); });
+    newDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        newDropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            newFileInput.files = e.dataTransfer.files;
+            handleSpectrumFileSelect();
+        }
+    });
+}
+
+function handleSpectrumFileSelect() {
+    const fileInput = document.getElementById('spectrumFile');
+    const file = fileInput.files[0];
+    if (!file) return;
+    
+    const fileName = document.getElementById('spectrumFileName');
+    const selectedFile = document.getElementById('spectrumSelectedFile');
+    const dropZone = document.getElementById('spectrumFileDropZone');
+    
+    if (fileName) fileName.textContent = file.name;
+    if (selectedFile) selectedFile.style.display = 'flex';
+    if (dropZone) dropZone.style.display = 'none';
+    
+    const reader = new FileReader();
+    reader.onload = function(e) { validateSpectrumData(e.target.result); };
+    reader.readAsText(file);
+}
+
+function removeSpectrumSelectedFile() {
+    resetSpectrumUploadModal();
+}
+
+function validateSpectrumData(content) {
+    const lines = content.split('\n');
+    const validData = [];
+    const errors = [];
+    let lineNumber = 0;
+    
+    for (let line of lines) {
+        lineNumber++;
+        line = line.trim();
+        
+        if (!line || line.startsWith('#') || /^[a-zA-Z]/.test(line)) continue;
+        
+        const parts = line.split(/[\s,]+/);
+        if (parts.length < 2) continue;
+        
+        const wavelength = parseFloat(parts[0]);
+        const intensity = parseFloat(parts[1]);
+        
+        if (isNaN(wavelength) || isNaN(intensity)) {
+            errors.push(`Line ${lineNumber}: Invalid number format`);
+            continue;
+        }
+        
+        validData.push({ wavelength, intensity });
+    }
+    
+    window.currentSpectrumData = validData;
+    showSpectrumPreview(validData, errors);
+}
+
+function showSpectrumPreview(data, errors) {
+    const previewDiv = document.getElementById('spectrumUploadPreview');
+    const errorDiv = document.getElementById('spectrumUploadError');
+    const tableBody = document.getElementById('spectrumPreviewTableBody');
+    const summary = document.getElementById('spectrumPreviewSummary');
+    const uploadBtn = document.getElementById('spectrumUploadBtn');
+    
+    tableBody.innerHTML = '';
+    
+    if (errors.length > 0 && errorDiv) {
+        errorDiv.style.display = 'flex';
+        const errorText = document.getElementById('spectrumErrorText');
+        if (errorText) errorText.innerHTML = errors.join('<br>');
+    } else if (errorDiv) {
+        errorDiv.style.display = 'none';
+    }
+    
+    if (data.length === 0) {
+        uploadBtn.disabled = true;
+        return;
+    }
+    
+    previewDiv.style.display = 'block';
+    
+    let displayData = data;
+    if (data.length > 10) {
+        displayData = [...data.slice(0, 5), { isEllipsis: true }, ...data.slice(-5)];
+    }
+    
+    displayData.forEach(point => {
+        const row = document.createElement('tr');
+        if (point.isEllipsis) {
+            row.innerHTML = `<td colspan="2" style="text-align: center;">... (${data.length - 10} more rows) ...</td>`;
+        } else {
+            row.innerHTML = `
+                <td>${point.wavelength.toFixed(4)}</td>
+                <td>${point.intensity.toExponential(4)}</td>
+            `;
+        }
+        tableBody.appendChild(row);
+    });
+    
+    if (summary) summary.innerHTML = `<strong>Total valid points:</strong> ${data.length}`;
+    uploadBtn.disabled = false;
+}
+
+function submitSpectrumData() {
+    if (!window.currentSpectrumData || window.currentSpectrumData.length === 0) return;
+    
+    const telescope = document.getElementById('spectrumTelescope').value || 'Unknown';
+    const uploadBtn = document.getElementById('spectrumUploadBtn');
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+    
+    const payload = {
+        wavelength: window.currentSpectrumData.map(d => d.wavelength),
+        intensity: window.currentSpectrumData.map(d => d.intensity),
+        telescope: telescope
+    };
+    
+    const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectroscopy`;
+    
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeSpectrumUploadModal();
+            showNotification('Spectroscopy uploaded successfully!', 'success');
+            loadSpectrumPlot();
+        } else {
+            throw new Error(data.error || 'Upload failed');
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading spectrum:', error);
+        showNotification('Failed to upload spectrum: ' + error.message, 'error');
+    })
+    .finally(() => {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload Spectrum';
+    });
 }
 
 function closeUploadModal() {
@@ -1842,7 +2032,7 @@ function openVisibilityPlot() {
             dec: decDMS
         });
         
-        const url = `/object_plot?${params.toString()}`;
+        const url = `/interactive_planner?${params.toString()}`;
         window.open(url, '_blank');
         
     } catch (error) {

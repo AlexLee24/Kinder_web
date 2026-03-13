@@ -139,10 +139,6 @@ def register_astronomy_routes(app):
     # ===============================================================================
     # OBSERVATION PLANNING
     # ===============================================================================
-    @app.route('/object_plot.html')
-    @app.route('/object_plot')
-    def object_plot():
-        return render_template('object_plot.html', current_path='/object_plot.html')
 
     @app.route('/telescope_simulator')
     def telescope_simulator():
