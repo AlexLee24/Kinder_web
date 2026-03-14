@@ -1,7 +1,6 @@
 .env
 kinder.env
-# app/static/tutorials/*.md
-# app/static/tutorials/*.json
+app/static/tutorials/*
 .DS_Store
 Thumbs.db
 
