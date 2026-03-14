@@ -1,14 +1,30 @@
 /* Override main-banner from home.css to allow scrolling and change layout */
+body {
+    background-color: #000;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('../photo/NCU.jpg') no-repeat center center;
+    background-size: cover;
+    will-change: transform;
+}
+
 .main-banner {
+    background: transparent !important; /* Move background to fixed pseudo-element to prevent scroll flickering */
     height: auto !important;
     min-height: 100vh !important;
     padding-top: 100px !important;
     padding-bottom: 50px !important;
-    background-attachment: fixed !important;
     align-items: flex-start !important; /* allow content to flow down */
     position: relative;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow-y: visible !important;
 }
 
 /* Allow container to be wide enough to hold a 1000px calendar without squeezing */

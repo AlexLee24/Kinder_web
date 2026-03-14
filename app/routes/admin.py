@@ -14,7 +14,8 @@ from modules.web_postgres_database import (
     get_invitations, create_invitation, get_invitation, update_invitation,
     delete_invitation, clean_accepted_invitations,
     check_data_consistency, clean_data_consistency,
-    get_setting, set_setting
+    get_setting, set_setting,
+    get_group_requests, update_group_request_status, get_group_request, delete_group_request
 )
 from modules.email_utils import send_invitation_email
 
@@ -84,6 +85,7 @@ def register_admin_routes(app):
         users = get_users()
         groups = get_groups()
         invitations = get_invitations()
+        group_requests = get_group_requests('pending')
         
         current_user_email = session['user']['email']
         
@@ -95,8 +97,30 @@ def register_admin_routes(app):
                              users=users,
                              groups=groups,
                              invitations=invitations,
+                             group_requests=group_requests,
                              current_user_email=current_user_email,
                              open_registration=open_registration)
+
+    @app.route('/admin/group-requests/<int:request_id>/<action>', methods=['POST'])
+    def handle_group_request(request_id, action):
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+            
+        req = get_group_request(request_id)
+        if not req:
+            return jsonify({'error': 'Request not found'}), 404
+            
+        if action == 'approve':
+            if add_user_to_group(req['user_email'], req['group_name']):
+                update_group_request_status(request_id, 'approved')
+                return jsonify({'success': True, 'message': 'Request approved'})
+            return jsonify({'error': 'Failed to add user to group'}), 500
+            
+        elif action == 'reject':
+            update_group_request_status(request_id, 'rejected')
+            return jsonify({'success': True, 'message': 'Request rejected'})
+            
+        return jsonify({'error': 'Invalid action'}), 400
 
     @app.route('/admin/settings/save', methods=['POST'])
     def save_settings():

@@ -126,6 +126,18 @@ def init_database():
                 )
             ''')
 
+            # Group Requests
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS group_requests (
+                    id SERIAL PRIMARY KEY,
+                    user_email TEXT REFERENCES users(email) ON DELETE CASCADE,
+                    group_name TEXT REFERENCES groups(name) ON DELETE CASCADE,
+                    status VARCHAR(20) DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (user_email, group_name)
+                )
+            ''')
+
             # System Settings
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS system_settings (
@@ -397,6 +409,73 @@ def user_in_group(user_email, group_name):
                 WHERE user_email = %s AND group_name = %s
             ''', (user_email, group_name))
             return cursor.fetchone() is not None
+
+# --- Group Requests ---
+
+def create_group_request(user_email, group_name):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            try:
+                cursor.execute('''
+                    INSERT INTO group_requests (user_email, group_name)
+                    VALUES (%s, %s)
+                ''', (user_email, group_name))
+                conn.commit()
+                return True
+            except psycopg2.IntegrityError:
+                conn.rollback()
+                return False
+
+def get_group_requests(status='pending'):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                SELECT r.id, r.user_email, u.name as user_name, r.group_name, r.status, r.created_at
+                FROM group_requests r
+                JOIN users u ON r.user_email = u.email
+                WHERE r.status = %s
+                ORDER BY r.created_at DESC
+            ''', (status,))
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+def update_group_request_status(request_id, status):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                UPDATE group_requests
+                SET status = %s
+                WHERE id = %s
+            ''', (status, request_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+def delete_group_request(request_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('DELETE FROM group_requests WHERE id = %s', (request_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+def get_group_request(request_id):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('SELECT * FROM group_requests WHERE id = %s', (request_id,))
+            row = cursor.fetchone()
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+            return None
+
+def get_user_group_requests(user_email):
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('''
+                SELECT group_name, status 
+                FROM group_requests 
+                WHERE user_email = %s
+            ''', (user_email,))
+            return {row[0]: row[1] for row in cursor.fetchall()}
 
 # --- Invitations ---
 

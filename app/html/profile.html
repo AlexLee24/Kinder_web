@@ -121,6 +121,8 @@
                                     <div class="group-actions">
                                         {% if group.is_member %}
                                             <button class="btn-api btn-api-secondary" onclick="leaveGroup('{{ group.name }}')">Leave</button>
+                                        {% elif group.request_status == 'pending' %}
+                                            <button class="btn-api btn-api-secondary" disabled>Pending...</button>
                                         {% else %}
                                             <button class="btn-api btn-api-warning" onclick="askToJoinGroup('{{ group.name }}')">Join</button>
                                         {% endif %}

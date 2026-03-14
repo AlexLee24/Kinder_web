@@ -23,12 +23,14 @@ def register_basic_routes(app):
         user_groups = []
         user_data = None
         
-        from modules.web_postgres_database import user_exists, get_users, get_groups
+        from modules.web_postgres_database import user_exists, get_users, get_groups, get_user_group_requests
         all_groups = []
+        user_requests = {}
         if user_exists(user_email):
             users = get_users()
             user_data = users.get(user_email, {})
             user_groups = user_data.get('groups', [])
+            user_requests = get_user_group_requests(user_email)
             
             session['user']['name'] = user_data.get('name', session['user']['name'])
             session['user']['picture'] = user_data.get('picture', session['user']['picture'])
@@ -43,7 +45,8 @@ def register_basic_routes(app):
                     'name': g_name,
                     'description': g_data.get('description', ''),
                     'member_count': len(g_data.get('members', [])),
-                    'is_member': g_name in user_groups
+                    'is_member': g_name in user_groups,
+                    'request_status': user_requests.get(g_name)
                 })
         
         return render_template('profile.html', 
@@ -51,3 +54,40 @@ def register_basic_routes(app):
                              user_groups=user_groups,
                              user_data=user_data,
                              all_groups=all_groups)
+
+    from flask import request, jsonify
+    from modules.web_postgres_database import create_group_request, remove_user_from_group, group_exists
+
+    @app.route('/api/profile/join_group', methods=['POST'])
+    def api_join_group():
+        if 'user' not in session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+            
+        data = request.json
+        group_name = data.get('group_name')
+        
+        if not group_name or not group_exists(group_name):
+            return jsonify({'success': False, 'error': 'Invalid group name'}), 400
+            
+        user_email = session['user']['email']
+        if create_group_request(user_email, group_name):
+            return jsonify({'success': True, 'message': f'Request to join {group_name} sent.'})
+        else:
+            return jsonify({'success': False, 'error': 'Request already exists or failed to create.'})
+
+    @app.route('/api/profile/leave_group', methods=['POST'])
+    def api_leave_group():
+        if 'user' not in session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+            
+        data = request.json
+        group_name = data.get('group_name')
+        
+        if not group_name:
+            return jsonify({'success': False, 'error': 'Group name required'}), 400
+            
+        user_email = session['user']['email']
+        if remove_user_from_group(user_email, group_name):
+            return jsonify({'success': True, 'message': f'Left {group_name}.'})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to leave group.'})

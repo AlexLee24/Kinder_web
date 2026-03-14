@@ -132,6 +132,39 @@
                 <button class="btn btn-primary" onclick="showCreateGroupModal()">Create New Group</button>
             </div>
             
+            {% if group_requests %}
+            <div class="group-requests-section" style="margin-bottom: 30px;">
+                <h3 style="color: #C5A059; margin-top: 0; margin-bottom: 15px;">Pending Join Requests</h3>
+                <div class="users-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Group</th>
+                                <th>Requested At</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in group_requests %}
+                            <tr>
+                                <td>{{ req.user_email }}</td>
+                                <td><span class="group-badge">{{ req.group_name }}</span></td>
+                                <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="btn-small btn-primary" onclick="handleGroupRequest({{ req.id }}, 'approve')">Approve</button>
+                                        <button class="btn-small btn-danger" onclick="handleGroupRequest({{ req.id }}, 'reject')">Reject</button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="groups-grid">
                 {% for group_name, group in groups.items() %}
                 <div class="group-card" id="group-{{ loop.index0 }}">

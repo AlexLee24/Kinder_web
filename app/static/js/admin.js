@@ -1112,3 +1112,30 @@ function cleanDocumentImages() {
         showNotification('Error cleaning images', 'error');
     });
 }
+
+// Handle Group Requests
+async function handleGroupRequest(requestId, action) {
+    if (action === 'reject' && !confirm('Are you sure you want to reject this request?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/admin/group-requests/${requestId}/${action}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification(`Request ${action}d successfully.`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}

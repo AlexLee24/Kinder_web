@@ -250,8 +250,22 @@ async function askToJoinGroup(groupName) {
     if (!groupName) return;
     
     if (confirm(`Do you want to send a request to join "${groupName}"?`)) {
-        showNotification(`Request to join "${groupName}" sent successfully! Admin will review your request.`, 'success');
-        // TODO: Real API call
+        try {
+            const response = await fetch('/api/profile/join_group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_name: groupName })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showNotification(result.message, 'success');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            showNotification('An error occurred: ' + error.message, 'error');
+        }
     }
 }
 
@@ -259,9 +273,22 @@ async function leaveGroup(groupName) {
     if (!groupName) return;
     
     if (confirm(`Are you sure you want to leave "${groupName}"?`)) {
-        showNotification(`You have left "${groupName}".`, 'info');
-        // TODO: Real API call
-        // setTimeout(() => window.location.reload(), 1500); 
+        try {
+            const response = await fetch('/api/profile/leave_group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_name: groupName })
+            });
+            const result = await response.json();
+            if (result.success) {
+                showNotification(result.message, 'info');
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                showNotification(result.error, 'error');
+            }
+        } catch (error) {
+            showNotification('An error occurred: ' + error.message, 'error');
+        }
     }
 }
 
