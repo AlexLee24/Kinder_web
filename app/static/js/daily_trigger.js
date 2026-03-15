@@ -178,8 +178,15 @@ function formatTargetCoordValue(rawRA, rawDec) {
 function toggleTargetCoordDisplayMode() {
     targetCoordDisplayMode = targetCoordDisplayMode === 'sexagesimal' ? 'decimal' : 'sexagesimal';
     if (!Array.isArray(allTargetsCache) || allTargetsCache.length === 0) return;
-    renderTable('SLT', allTargetsCache.filter(function(t) { return t.telescope === 'SLT'; }));
-    renderTable('LOT', allTargetsCache.filter(function(t) { return t.telescope === 'LOT'; }));
+    
+    ['SLT', 'LOT'].forEach(telescope => {
+        let targets = allTargetsCache.filter(function(t) { return t.telescope === telescope; });
+        let state = currentSortState[telescope];
+        if (state) {
+            targets = applySort(targets, state.column, state.dir);
+        }
+        renderTable(telescope, targets);
+    });
 }
 
 // ===================== Modal =====================
@@ -293,14 +300,28 @@ function renderFilterRows() {
     container.innerHTML = '';
 
     let totalSec = 0;
+    const predefinedFilters = ['up', 'gp', 'rp', 'ip', 'zp'];
 
     obsFilters.forEach(function(row, idx) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'pa-filter-row';
 
-        let rowHtml = '<div class="pa-field filter-name">' +
+        const isPredefined = predefinedFilters.includes(row.filter);
+        const dropdownValue = isPredefined ? row.filter : (row.filter ? 'custom' : '');
+        const customDisplay = (!isPredefined && row.filter) ? 'inline-block' : 'none';
+
+        let rowHtml = '<div class="pa-field filter-name" style="position: relative;">' +
             '<span class="pa-field-label">Filter</span>' +
-            '<input type="text" value="' + row.filter + '" onchange="updateFilterRow(' + idx + ', \'filter\', this.value)">' +
+            '<select onchange="if(this.value === \'custom\') { this.nextElementSibling.style.display=\'inline-block\'; this.nextElementSibling.focus(); } else { this.nextElementSibling.style.display=\'none\'; updateFilterRow(' + idx + ', \'filter\', this.value); }">' +
+                '<option value="" ' + (!row.filter ? 'selected' : '') + ' disabled>Select...</option>' +
+                '<option value="up" ' + (row.filter === 'up' ? 'selected' : '') + '>up</option>' +
+                '<option value="gp" ' + (row.filter === 'gp' ? 'selected' : '') + '>gp</option>' +
+                '<option value="rp" ' + (row.filter === 'rp' ? 'selected' : '') + '>rp</option>' +
+                '<option value="ip" ' + (row.filter === 'ip' ? 'selected' : '') + '>ip</option>' +
+                '<option value="zp" ' + (row.filter === 'zp' ? 'selected' : '') + '>zp</option>' +
+                '<option value="custom" ' + (dropdownValue === 'custom' ? 'selected' : '') + '>Custom...</option>' +
+            '</select>' +
+            '<input type="text" value="' + (!isPredefined ? row.filter : '') + '" placeholder="Custom Filter" style="display:' + customDisplay + '; margin-top: 5px; width: 100%;" onchange="updateFilterRow(' + idx + ', \'filter\', this.value)">' +
             '</div>';
 
         rowHtml += '<div class="pa-field filter-exp">' +
@@ -403,14 +424,80 @@ async function addObservationTarget(event) {
 }
 
 // ===================== Load & Render =====================
+let sortDirections = {};
+let currentSortState = {
+    'SLT': { column: 'priority', dir: 'desc' },
+    'LOT': { column: 'priority', dir: 'desc' }
+};
+
+function applySort(targets, column, dir) {
+    const priorityValues = { 'Urgent': 4, 'High': 3, 'Normal': 2, 'Low': 1 };
+    return targets.sort((a, b) => {
+        let valA, valB;
+        if (column === 'priority') {
+            valA = priorityValues[a.priority] || 0;
+            valB = priorityValues[b.priority] || 0;
+        } else if (column === 'total_exp') {
+            valA = 0;
+            if (a.filters) {
+                a.filters.forEach(f => {
+                    if (f.exp && f.count) valA += parseInt(f.exp) * parseInt(f.count);
+                });
+            }
+            valB = 0;
+            if (b.filters) {
+                b.filters.forEach(f => {
+                    if (f.exp && f.count) valB += parseInt(f.exp) * parseInt(f.count);
+                });
+            }
+        }
+        
+        if (valA < valB) return dir === 'asc' ? -1 : 1;
+        if (valA > valB) return dir === 'asc' ? 1 : -1;
+        return 0;
+    });
+}
+
+function sortTargets(telescope, column) {
+    let key = telescope + '_' + column;
+    if (!sortDirections[key]) {
+        sortDirections[key] = 'asc';
+    } else {
+        sortDirections[key] = sortDirections[key] === 'asc' ? 'desc' : 'asc';
+    }
+    let dir = sortDirections[key];
+    
+    currentSortState[telescope] = { column: column, dir: dir };
+    
+    let targets = allTargetsCache.filter(function(t) { return t.telescope === telescope; });
+    targets = applySort(targets, column, dir);
+    
+    renderTable(telescope, targets);
+    
+    // Update sort icon
+    const tableId = telescope.toLowerCase() + '-head';
+    const ths = document.querySelectorAll('#' + tableId + ' th.pa-sortable span');
+    ths.forEach(span => span.textContent = '↕');
+    
+    const thSpan = document.querySelector('#' + tableId + ' th[onclick*="' + column + '"] span');
+    if (thSpan) {
+        thSpan.textContent = dir === 'asc' ? '↑' : '↓';
+    }
+}
+
 async function loadTargets() {
     try {
         const response = await fetch('/api/targets');
         const data = await response.json();
         if (data.success) {
             allTargetsCache = data.targets;
-            renderTable('SLT', data.targets.filter(function(t) { return t.telescope === 'SLT'; }));
-            renderTable('LOT', data.targets.filter(function(t) { return t.telescope === 'LOT'; }));
+            
+            // Ensure first programmatic sort triggers 'desc' order
+            sortDirections['SLT_priority'] = 'asc';
+            sortDirections['LOT_priority'] = 'asc';
+            
+            sortTargets('SLT', 'priority');
+            sortTargets('LOT', 'priority');
         }
     } catch (e) {
         console.error('Error loading targets:', e);
@@ -424,7 +511,8 @@ function getObjectRouteName(name) {
     const routeName = trimmedName.replace(/^(AT|SN)\s*/i, '').trim();
     if (!routeName) return null;
 
-    if (routeName.toUpperCase().startsWith('EP')) {
+    const upperName = routeName.toUpperCase();
+    if (upperName.startsWith('EP') || upperName === 'AUTOFLAT' || upperName === 'BIAS' || upperName === 'DARK') {
         return null;
     }
 
@@ -450,7 +538,7 @@ function renderTable(telescope, targets) {
 
     if (targets.length === 0) {
         const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="7" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
+        emptyRow.innerHTML = '<td colspan="8" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
         tableBody.appendChild(emptyRow);
         return;
     }
@@ -461,6 +549,7 @@ function renderTable(telescope, targets) {
         else if (t.priority === 'High') priorityColor = '#ffa64d';
 
         let filterExpHTML = '';
+        let totalExp = 0;
 
         if (!t.filters || t.filters.length === 0) {
             filterExpHTML = '-';
@@ -469,6 +558,10 @@ function renderTable(telescope, targets) {
             t.filters.forEach(function(f) {
                 if (!f || !f.filter) return;
                 
+                if (f.exp && f.count) {
+                    totalExp += (parseInt(f.exp) * parseInt(f.count));
+                }
+
                 let bgStyle = 'linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0.05))';
                 let fStr = f.filter.toLowerCase();
                 
@@ -527,6 +620,7 @@ function renderTable(telescope, targets) {
             '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + coordDisplay.ra + ' <br> ' + coordDisplay.dec + '</td>' +
             '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + t.priority + repeatInfo + '</td>' +
             '<td class="pa-td-filter-exp">' + filterExpHTML + '</td>' +
+            '<td class="pa-td-total-exp">' + totalExp + ' s</td>' +
             '<td class="pa-td-note">' + (t.plan || '-') + '</td>' +
             '<td class="pa-td-note-gl">' + (t.note_gl || '-') + '</td>' +
             '<td class="pa-td-actions">' +
@@ -853,7 +947,10 @@ async function renderLogGrid(initialLoad = false) {
     // Filter SLT and LOT: only show targets that have at least one log in this month
     let sltTargets = monthlyTargets.filter(t => t.telescope === 'SLT');
     let lotTargets = monthlyTargets.filter(t => t.telescope === 'LOT');
-    let discontinuedTargets = monthlyTargets.filter(t => t.telescope !== 'SLT' && t.telescope !== 'LOT');
+    
+    const calibrationNames = ['AUTOFLAT', 'BIAS', 'DARK'];
+    let discontinuedTargets = monthlyTargets.filter(t => t.telescope !== 'SLT' && t.telescope !== 'LOT' && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
+    let calibrationTargets = monthlyTargets.filter(t => calibrationNames.includes((t.name || '').trim().toUpperCase()));
 
     const getPriorityRank = (priority) => {
         const p = (priority || '').toString().trim().toLowerCase();
@@ -874,6 +971,7 @@ async function renderLogGrid(initialLoad = false) {
     sortByPriority(sltTargets);
     sortByPriority(lotTargets);
     sortByPriority(discontinuedTargets);
+    sortByPriority(calibrationTargets);
 
     // Build the grid
     let headHtml = '<tr><th>Target \\ Date</th>';
@@ -1037,6 +1135,7 @@ async function renderLogGrid(initialLoad = false) {
     renderRows(sltTargets, 'SLT');
     renderRows(lotTargets, 'LOT');
     renderRows(discontinuedTargets, 'DISCONTINUED');
+    renderRows(calibrationTargets, 'CALIBRATION');
 
     if (initialLoad) {
         setTimeout(scrollToToday, 500); // Give DOM time to render
@@ -1150,13 +1249,28 @@ function renderLogFilterRows(type) {
     const container = document.getElementById(`log-${type}-filter-rows`);
     if (!container) return;
     container.innerHTML = '';
+    const predefinedFilters = ['up', 'gp', 'rp', 'ip', 'zp'];
+
     arr.forEach((row, idx) => {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'pa-filter-row';
+        const isPredefined = predefinedFilters.includes(row.filter);
+        const dropdownValue = isPredefined ? row.filter : (row.filter ? 'custom' : '');
+        const customDisplay = (!isPredefined && row.filter) ? 'inline-block' : 'none';
+
         rowDiv.innerHTML =
-            `<div class="pa-field filter-name">` +
+            `<div class="pa-field filter-name" style="position: relative;">` +
                 `<span class="pa-field-label">Filter</span>` +
-                `<input type="text" value="${row.filter}" onchange="updateLogFilterRow('${type}', ${idx}, 'filter', this.value)">` +
+                `<select onchange="if(this.value === 'custom') { this.nextElementSibling.style.display='inline-block'; this.nextElementSibling.focus(); } else { this.nextElementSibling.style.display='none'; updateLogFilterRow('${type}', ${idx}, 'filter', this.value); }">` +
+                    `<option value="" ${!row.filter ? 'selected' : ''} disabled>Select...</option>` +
+                    `<option value="up" ${row.filter === 'up' ? 'selected' : ''}>up</option>` +
+                    `<option value="gp" ${row.filter === 'gp' ? 'selected' : ''}>gp</option>` +
+                    `<option value="rp" ${row.filter === 'rp' ? 'selected' : ''}>rp</option>` +
+                    `<option value="ip" ${row.filter === 'ip' ? 'selected' : ''}>ip</option>` +
+                    `<option value="zp" ${row.filter === 'zp' ? 'selected' : ''}>zp</option>` +
+                    `<option value="custom" ${dropdownValue === 'custom' ? 'selected' : ''}>Custom...</option>` +
+                `</select>` +
+                `<input type="text" value="${!isPredefined ? row.filter : ''}" placeholder="Custom Filter" style="display:${customDisplay}; margin-top: 5px; width: 100%;" onchange="updateLogFilterRow('${type}', ${idx}, 'filter', this.value)">` +
             `</div>` +
             `<div class="pa-field filter-exp">` +
                 `<span class="pa-field-label">Exp (sec)</span>` +

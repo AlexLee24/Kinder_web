@@ -72,17 +72,18 @@
                         <table class="pa-target-table">
                             <thead id="slt-head">
                                 <tr>
-                                    <th>Target</th>
-                                    <th>RA / DEC</th>
-                                    <th>Priority</th>
-                                    <th>Filter / Exposure</th>
+                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-ra-dec">RA / DEC</th>
+                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></th>
+                                    <th class="pa-col-filter">Filter / Exposure</th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>
-                                    <th>Actions</th>
+                                    <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="slt-list">
-                                <tr><td colspan="7" class="pa-empty-row">No SLT targets added yet.</td></tr>
+                                <tr><td colspan="8" class="pa-empty-row">No SLT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -92,17 +93,18 @@
                         <table class="pa-target-table">
                             <thead id="lot-head">
                                 <tr>
-                                    <th>Target</th>
-                                    <th>RA / DEC</th>
-                                    <th>Priority</th>
-                                    <th>Filter / Exposure</th>
+                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-ra-dec">RA / DEC</th>
+                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></th>
+                                    <th class="pa-col-filter">Filter / Exposure</th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>
-                                    <th>Actions</th>
+                                    <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lot-list">
-                                <tr><td colspan="7" class="pa-empty-row">No LOT targets added yet.</td></tr>
+                                <tr><td colspan="8" class="pa-empty-row">No LOT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>

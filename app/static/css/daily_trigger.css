@@ -29,7 +29,7 @@ body::before {
 
 /* Allow container to be wide enough to hold a 1000px calendar without squeezing */
 .main-banner .container {
-    max-width: 90%; 
+    max-width: 97%; 
     width: 100%;
     margin: 0 auto;
 }
@@ -288,6 +288,7 @@ body::before {
     width: 100%;
     text-align: left;
     border-collapse: collapse;
+    table-layout: fixed; /* Added this to enforce column widths */
 }
 
 .pa-target-table thead tr {
@@ -298,14 +299,25 @@ body::before {
 
 .pa-target-table th {
     padding: 0.8rem 0.5rem;
+    word-wrap: break-word; /* Allows text to wrap */
 }
 
+/* Base column width defaults - you can adjust these percentages */
+.pa-col-target { width: 14%; }
+.pa-col-ra-dec { width: 12%; }
+.pa-col-priority { width: 8%; }
+.pa-col-filter { width: 12%; }
+.pa-col-total-exp { width: 10%; }
+.pa-col-actions { width: 16%; }
+
 .pa-target-table th.col-note {
-    width: 30%;
+    width: 14%; /* Reduced from 30% to fit other columns */
 }
 
 .pa-target-table td {
     padding: 0.8rem 0.5rem;
+    word-wrap: break-word; /* Allows text to wrap */
+    overflow-wrap: break-word;
 }
 
 .pa-target-table tbody tr {
@@ -315,7 +327,6 @@ body::before {
 /* Table cell helpers */
 .pa-td-name {
     color: #fff;
-    white-space: nowrap;
     /* Removed display: flex; as it overrides table-cell's native vertical-align: middle */
 }
 
@@ -423,26 +434,19 @@ body::before {
 .pa-td-coord {
     font-family: monospace;
     color: #aaa;
-    white-space: nowrap;
 }
 
 .pa-td-priority {
     font-weight: bold;
-    white-space: nowrap;
 }
 
 .pa-td-filter-exp {
     color: #aaa;
-    white-space: nowrap;
 }
 
 .pa-td-note {
     color: #ccc;
     word-break: break-word;
-}
-
-.pa-td-actions {
-    white-space: nowrap;
 }
 
 .pa-program-badge {
@@ -1075,4 +1079,20 @@ body::before {
         flex: 1 1 45%;
         justify-content: center;
     }
+}
+
+.pa-target-table th.pa-sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.pa-target-table th.pa-sortable:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.pa-target-table th.pa-sortable span {
+    font-size: 0.8rem;
+    opacity: 0.5;
+    margin-left: 4px;
 }
