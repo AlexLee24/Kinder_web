@@ -56,6 +56,66 @@ def get_db_connection():
     finally:
         pool.putconn(conn)
 
+
+def _split_csv_values(raw_value):
+    if raw_value is None:
+        return []
+    s = str(raw_value).strip()
+    if not s:
+        return []
+    return [x.strip() for x in s.split(',') if x.strip()]
+
+
+def _normalize_log_filter_columns(filter_value, exp_value, count_value):
+    """Normalize log filter payloads into comma-separated columns."""
+    rows = []
+
+    if isinstance(filter_value, list):
+        rows = [x for x in filter_value if isinstance(x, dict)]
+    elif isinstance(filter_value, str):
+        raw = filter_value.strip()
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    rows = [x for x in parsed if isinstance(x, dict)]
+                elif isinstance(parsed, dict):
+                    rows = [parsed]
+            except Exception:
+                rows = []
+
+    if not rows:
+        filters = _split_csv_values(filter_value)
+        exp_list = _split_csv_values(exp_value)
+        count_list = _split_csv_values(count_value)
+        for i, f in enumerate(filters):
+            rows.append({
+                'filter': f,
+                'exp': exp_list[i] if i < len(exp_list) else (exp_list[0] if len(exp_list) == 1 else None),
+                'count': count_list[i] if i < len(count_list) else (count_list[0] if len(count_list) == 1 else None),
+            })
+
+    clean_rows = []
+    for row in rows:
+        f_name = str(row.get('filter', '')).strip()
+        if not f_name:
+            continue
+        exp = row.get('exp')
+        cnt = row.get('count')
+        clean_rows.append({
+            'filter': f_name,
+            'exp': str(exp).strip() if exp not in (None, '') else '',
+            'count': str(cnt).strip() if cnt not in (None, '') else ''
+        })
+
+    if not clean_rows:
+        return None, None, None
+
+    filter_csv = ','.join([r['filter'] for r in clean_rows])
+    exp_csv = ','.join([r['exp'] for r in clean_rows]) if any(r['exp'] for r in clean_rows) else None
+    count_csv = ','.join([r['count'] for r in clean_rows]) if any(r['count'] for r in clean_rows) else None
+    return filter_csv, exp_csv, count_csv
+
 def init_database():
     """Initialize database tables"""
     # Create DB if not exists - logic is tricky inside app since we connect to specific DB.
@@ -195,13 +255,52 @@ def init_database():
             # Migration: add columns to observation_logs if not exist
             try:
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_filter TEXT')
-                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_exp INTEGER')
-                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_count INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_exp TEXT')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_count TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_filter TEXT')
-                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_exp INTEGER')
-                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_count INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_exp TEXT')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_count TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
+                # Allow multiple values like "300,300" and "4,1" for multi-filter logs.
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_exp TYPE TEXT USING trigger_exp::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_count TYPE TEXT USING trigger_count::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_exp TYPE TEXT USING observed_exp::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_count TYPE TEXT USING observed_count::TEXT')
+                cursor.execute('''
+                    UPDATE observation_logs
+                    SET trigger_filter = (
+                            SELECT string_agg(elem->>'filter', ',' ORDER BY ord)
+                            FROM jsonb_array_elements(trigger_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        ),
+                        trigger_exp = (
+                            SELECT string_agg(COALESCE(elem->>'exp', ''), ',' ORDER BY ord)
+                            FROM jsonb_array_elements(trigger_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        ),
+                        trigger_count = (
+                            SELECT string_agg(COALESCE(elem->>'count', ''), ',' ORDER BY ord)
+                            FROM jsonb_array_elements(trigger_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        )
+                    WHERE trigger_filter IS NOT NULL
+                      AND TRIM(trigger_filter) LIKE '[%'
+                ''')
+                cursor.execute('''
+                    UPDATE observation_logs
+                    SET observed_filter = (
+                            SELECT string_agg(elem->>'filter', ',' ORDER BY ord)
+                            FROM jsonb_array_elements(observed_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        ),
+                        observed_exp = (
+                            SELECT string_agg(COALESCE(elem->>'exp', ''), ',' ORDER BY ord)
+                            FROM jsonb_array_elements(observed_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        ),
+                        observed_count = (
+                            SELECT string_agg(COALESCE(elem->>'count', ''), ',' ORDER BY ord)
+                            FROM jsonb_array_elements(observed_filter::jsonb) WITH ORDINALITY AS x(elem, ord)
+                        )
+                    WHERE observed_filter IS NOT NULL
+                      AND TRIM(observed_filter) LIKE '[%'
+                ''')
                 cursor.execute('''
                     UPDATE observation_logs l
                     SET target_name = t.name
@@ -910,11 +1009,22 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                             observed_filter=None, observed_exp=None, observed_count=None,
                             priority=None):
     try:
+        trigger_filter, trigger_exp, trigger_count = _normalize_log_filter_columns(
+            trigger_filter, trigger_exp, trigger_count
+        )
+        observed_filter, observed_exp, observed_count = _normalize_log_filter_columns(
+            observed_filter, observed_exp, observed_count
+        )
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             try:
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_exp TYPE TEXT USING trigger_exp::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_count TYPE TEXT USING trigger_count::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_exp TYPE TEXT USING observed_exp::TEXT')
+                cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_count TYPE TEXT USING observed_count::TEXT')
 
                 cursor.execute('''
                     UPDATE observation_logs

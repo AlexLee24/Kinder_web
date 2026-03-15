@@ -439,6 +439,20 @@ def register_admin_routes(app):
         })
 
     # ===============================================================================
+    # MANUAL BACKUP
+    # ===============================================================================
+    @app.route('/admin/backup-now', methods=['POST'])
+    def backup_now():
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+        try:
+            from modules.backup import run_daily_backup
+            run_daily_backup(force=True)
+            return jsonify({'success': True, 'message': 'Backup completed successfully'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    # ===============================================================================
     # DOCUMENT RESOURCE MANAGEMENT
     # ===============================================================================
     @app.route('/admin/documents/clean-images', methods=['POST'])

@@ -227,11 +227,11 @@ def register_api_routes(app):
                     is_triggered = bool(data.get('is_triggered', False))
                     is_observed  = bool(data.get('is_observed', False))
                     trigger_filter  = _norm_filter(data.get('trigger_filter'))
-                    trigger_exp     = int(data['trigger_exp']) if data.get('trigger_exp') else None
-                    trigger_count   = int(data['trigger_count']) if data.get('trigger_count') else None
+                    trigger_exp     = data.get('trigger_exp') if data.get('trigger_exp') is not None else None
+                    trigger_count   = data.get('trigger_count') if data.get('trigger_count') is not None else None
                     observed_filter = _norm_filter(data.get('observed_filter'))
-                    observed_exp    = int(data['observed_exp']) if data.get('observed_exp') else None
-                    observed_count  = int(data['observed_count']) if data.get('observed_count') else None
+                    observed_exp    = data.get('observed_exp') if data.get('observed_exp') is not None else None
+                    observed_count  = data.get('observed_count') if data.get('observed_count') is not None else None
                     # Auto-fill user_name from API key owner if not provided
                     user_name = data.get('user_name') or user.get('name') or user.get('email')
                     priority = data.get('priority', '').strip() or None

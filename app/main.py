@@ -74,6 +74,17 @@ from routes import register_routes
 register_routes(app)
 
 # ===============================================================================
+# DAILY BACKUP SCHEDULER
+# ===============================================================================
+from apscheduler.schedulers.background import BackgroundScheduler
+from modules.backup import run_daily_backup
+
+_scheduler = BackgroundScheduler(daemon=True)
+_scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
+_scheduler.start()
+run_daily_backup()  # run once immediately on startup
+
+# ===============================================================================
 # APPLICATION STARTUP
 # ===============================================================================
 

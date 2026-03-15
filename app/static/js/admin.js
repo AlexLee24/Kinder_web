@@ -836,6 +836,29 @@ async function deleteGroup(groupName) {
     }
 }
 
+async function triggerManualBackup() {
+    const statusEl = document.getElementById('backupStatus');
+    statusEl.textContent = 'Backing up...';
+    statusEl.className = 'consistency-status checking';
+    try {
+        const response = await fetch('/admin/backup-now', { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+            statusEl.textContent = result.message;
+            statusEl.className = 'consistency-status no-issues';
+            showNotification(result.message, 'success');
+        } else {
+            statusEl.textContent = 'Backup failed';
+            statusEl.className = 'consistency-status error';
+            showNotification('Backup failed: ' + result.error, 'error');
+        }
+    } catch (error) {
+        statusEl.textContent = 'Backup failed';
+        statusEl.className = 'consistency-status error';
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}
+
 // Data consistency check and cleanup
 async function checkDataConsistency() {
     const statusElement = document.getElementById('consistencyStatus');

@@ -300,11 +300,7 @@
         <div class="pa-modal-box">
             <h3>Add / Edit Observation Log</h3>
             <form onsubmit="saveObservationLog(event)">
-                <div class="pa-form-row two-col">
-                    <div class="pa-field">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Date</span>
-                        <div id="log-edit-date-display" class="pa-input" style="display:flex; align-items:center; min-height:40px; opacity:0.9;"></div>
-                    </div>
+                <div class="pa-form-row">
                     <div class="pa-field">
                         <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Member</span>
                         <select id="log-edit-user" class="pa-input" required>
@@ -373,7 +369,7 @@
 
                 <div class="pa-modal-footer" style="margin-top: 20px;">
                     <button type="button" onclick="closeLogModal()" class="pa-btn-cancel">Cancel</button>
-                    <button type="button" onclick="clearLogEditFields()" class="pa-btn-cancel">Clear</button>
+                    <button type="button" onclick="deleteObservationLog()" class="pa-btn-cancel">Delete</button>
                     <button type="submit" class="pa-btn-save">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         Save Log

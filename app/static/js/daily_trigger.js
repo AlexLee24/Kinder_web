@@ -696,6 +696,70 @@ function initObservationLog() {
         });
 }
 
+function splitLogCsv(rawValue) {
+    if (rawValue === null || rawValue === undefined) return [];
+    const s = String(rawValue).trim();
+    if (!s) return [];
+    return s.split(',').map(x => x.trim()).filter(Boolean);
+}
+
+function parseLogFilterRows(filterVal, expVal, countVal) {
+    if (!filterVal) return [];
+
+    try {
+        const parsed = JSON.parse(filterVal);
+        if (Array.isArray(parsed)) {
+            return parsed
+                .filter(x => x && x.filter)
+                .map(x => ({
+                    filter: x.filter,
+                    exp: x.exp != null && x.exp !== '' ? Number(x.exp) : 0,
+                    count: x.count != null && x.count !== '' ? Number(x.count) : 1
+                }));
+        }
+    } catch (e) {
+        // Keep legacy non-JSON paths below.
+    }
+
+    const filters = splitLogCsv(filterVal);
+    const expList = splitLogCsv(expVal);
+    const countList = splitLogCsv(countVal);
+
+    return filters.map((f, idx) => {
+        const expRaw = expList[idx] !== undefined ? expList[idx] : (expList.length === 1 ? expList[0] : '0');
+        const cntRaw = countList[idx] !== undefined ? countList[idx] : (countList.length === 1 ? countList[0] : '1');
+        return {
+            filter: f,
+            exp: Number(expRaw) || 0,
+            count: Number(cntRaw) || 1
+        };
+    });
+}
+
+function packLogFilterColumns(filters) {
+    if (!Array.isArray(filters) || filters.length === 0) {
+        return { filter: null, exp: null, count: null };
+    }
+
+    const clean = filters
+        .filter(x => x && x.filter && String(x.filter).trim())
+        .map(x => ({
+            filter: String(x.filter).trim(),
+            exp: Number(x.exp) || 0,
+            count: Number(x.count) || 1
+        }));
+
+    if (clean.length === 0) {
+        return { filter: null, exp: null, count: null };
+    }
+
+    return {
+        filter: clean.map(x => x.filter).join(','),
+        exp: clean.map(x => String(x.exp)).join(','),
+        count: clean.map(x => String(x.count)).join(',')
+    };
+}
+
 async function renderLogGrid(initialLoad = false) {
     const yearSelect = document.getElementById('log-year');
     const monthSelect = document.getElementById('log-month');
@@ -872,15 +936,6 @@ async function renderLogGrid(initialLoad = false) {
                     const user = log.user_name || '-';
                     const normalizedUser = normalizeLogUserName(user);
 
-                    // Parse filter list (JSON array or legacy single value)
-                    const parseLogFilters = (filterVal, exp, count) => {
-                        if (!filterVal) return [];
-                        try {
-                            const parsed = JSON.parse(filterVal);
-                            if (Array.isArray(parsed)) return parsed;
-                        } catch(e) {}
-                        return [{ filter: filterVal, exp: exp, count: count }];
-                    };
                     const renderFilterList = (filters) => {
                         if (!filters || filters.length === 0) return '';
                         const rows = filters.map(f => {
@@ -894,8 +949,8 @@ async function renderLogGrid(initialLoad = false) {
                         return `<div style="display:flex;flex-direction:column;gap:3px;margin-top:3px;">${rows}</div>`;
                     };
 
-                    const trigFilters = parseLogFilters(log.trigger_filter, log.trigger_exp, log.trigger_count);
-                    const obsFiltersLog = parseLogFilters(log.observed_filter, log.observed_exp, log.observed_count);
+                    const trigFilters = parseLogFilterRows(log.trigger_filter, log.trigger_exp, log.trigger_count);
+                    const obsFiltersLog = parseLogFilterRows(log.observed_filter, log.observed_exp, log.observed_count);
                     
                     const isFilterVisible = document.getElementById('log-show-filter-checkbox') ? document.getElementById('log-show-filter-checkbox').checked : true;
                     const trigDetail = isFilterVisible ? renderFilterList(trigFilters) : '';
@@ -1041,6 +1096,7 @@ const LOG_USER_NAME_MAP = {
     'Janet': 'Ting-Wan Chen',
     'Cheng-Han': '賴政翰',
     'Ze Ning': '王泽宁',
+    "Auto Pipeline": "AutoPipeline",
 
 };
 
@@ -1123,12 +1179,10 @@ function openLogModal() {
     if (!modal) return;
     modal.style.display = 'flex';
 
-    // Reset hidden/display date + target (filled in openLogModalEdit)
+    // Reset hidden date/target (filled in openLogModalEdit)
     document.getElementById('log-edit-date').value = '';
     document.getElementById('log-edit-target-id').value = '';
-    const dateDisplay = document.getElementById('log-edit-date-display');
     const targetDisplay = document.getElementById('log-edit-target-display');
-    if (dateDisplay) dateDisplay.textContent = '-';
     if (targetDisplay) targetDisplay.textContent = '-';
 
     // Reset all fields
@@ -1154,12 +1208,10 @@ function closeLogModal() {
 function openLogModalEdit(targetId, dateStr) {
     openLogModal();
 
-    // Pre-fill target/date hidden values + readonly display
+    // Pre-fill target/date hidden values
     document.getElementById('log-edit-target-id').value = targetId || '';
     document.getElementById('log-edit-date').value = dateStr || '';
-    const dateDisplay = document.getElementById('log-edit-date-display');
     const targetDisplay = document.getElementById('log-edit-target-display');
-    if (dateDisplay) dateDisplay.textContent = dateStr || '-';
     if (targetDisplay) targetDisplay.textContent = targetId || '-';
 
     // Pre-fill from existing log if exists
@@ -1201,18 +1253,8 @@ function openLogModalEdit(targetId, dateStr) {
     document.getElementById('log-edit-trigger-status').checked = !!log.is_triggered;
     document.getElementById('log-edit-obs-status').checked    = !!log.is_observed;
 
-    // Parse and fill filter rows
-    const parseLogFiltersEdit = (filterVal, exp, count) => {
-        if (!filterVal) return [];
-        try {
-            const parsed = JSON.parse(filterVal);
-            if (Array.isArray(parsed)) return parsed;
-        } catch(e) {}
-        return [{ filter: filterVal, exp: exp || 0, count: count || 1 }];
-    };
-
-    logTriggerFilters  = parseLogFiltersEdit(log.trigger_filter,  log.trigger_exp,  log.trigger_count);
-    logObservedFilters = parseLogFiltersEdit(log.observed_filter, log.observed_exp, log.observed_count);
+    logTriggerFilters  = parseLogFilterRows(log.trigger_filter,  log.trigger_exp,  log.trigger_count);
+    logObservedFilters = parseLogFilterRows(log.observed_filter, log.observed_exp, log.observed_count);
     renderLogFilterRows('trigger');
     renderLogFilterRows('observed');
     toggleLogFields();
@@ -1229,6 +1271,43 @@ function clearLogEditFields() {
     renderLogFilterRows('trigger');
     renderLogFilterRows('observed');
     toggleLogFields();
+}
+
+function deleteObservationLog() {
+    const target_name = document.getElementById('log-edit-target-id').value;
+    const obs_date = document.getElementById('log-edit-date').value;
+
+    if (!target_name || !obs_date) {
+        alert('Missing target or date for delete.');
+        return;
+    }
+
+    if (!confirm('Delete this observation log?')) return;
+
+    fetch('/api/observation_logs', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            action: 'delete',
+            target_name: target_name,
+            obs_date: obs_date
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            closeLogModal();
+            renderLogGrid(false);
+        } else {
+            alert('Failed to delete log: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting observation log:', error);
+        alert('Server error deleting observation log.');
+    });
 }
 
 function toggleLogFields() {
@@ -1258,18 +1337,21 @@ function saveObservationLog(event) {
     const program = ((document.getElementById('log-edit-program') || {}).value || '').trim();
     const priority = basePriority ? (program ? `${basePriority} - ${program}` : basePriority) : null;
 
+    const triggerPacked = packLogFilterColumns(logTriggerFilters);
+    const observedPacked = packLogFilterColumns(logObservedFilters);
+
     const payload = {
         target_name:     target_name,
         obs_date:        obs_date,
         user_name:       user_id,
         is_triggered:    trigger_status,
         is_observed:     obs_status,
-        trigger_filter:  logTriggerFilters.length > 0 ? JSON.stringify(logTriggerFilters) : null,
-        trigger_exp:     null,
-        trigger_count:   null,
-        observed_filter: logObservedFilters.length > 0 ? JSON.stringify(logObservedFilters) : null,
-        observed_exp:    null,
-        observed_count:  null,
+        trigger_filter:  triggerPacked.filter,
+        trigger_exp:     triggerPacked.exp,
+        trigger_count:   triggerPacked.count,
+        observed_filter: observedPacked.filter,
+        observed_exp:    observedPacked.exp,
+        observed_count:  observedPacked.count,
         priority:        priority
     };
 
@@ -1284,8 +1366,7 @@ function saveObservationLog(event) {
     .then(data => {
         if (data.success) {
             closeLogModal();
-            renderLogGrid(false); // Reload logs
-            setTimeout(() => { location.reload(); }, 500);
+            renderLogGrid(false);
         } else {
             alert('Failed to save log: ' + (data.error || 'Unknown error'));
         }

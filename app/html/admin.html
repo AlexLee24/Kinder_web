@@ -17,9 +17,13 @@
             <!-- Data Consistency Check -->
             <div class="consistency-check">
                 <button class="btn btn-info" onclick="checkDataConsistency()">
-                    Chcek database connection
+                    Check database connection
+                </button>
+                <button class="btn btn-warning" onclick="triggerManualBackup()" style="margin-left: 10px;">
+                    Backup Now
                 </button>
                 <span id="consistencyStatus" class="consistency-status"></span>
+                <span id="backupStatus" class="consistency-status" style="margin-left: 10px;"></span>
             </div>
         </div>
 
@@ -153,8 +157,8 @@
                                 <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</td>
                                 <td>
                                     <div class="action-buttons">
-                                        <button class="btn-small btn-primary" onclick="handleGroupRequest({{ req.id }}, 'approve')">Approve</button>
-                                        <button class="btn-small btn-danger" onclick="handleGroupRequest({{ req.id }}, 'reject')">Reject</button>
+                                        <button class="btn-small btn-primary" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'approve')">Approve</button>
+                                        <button class="btn-small btn-danger" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'reject')">Reject</button>
                                     </div>
                                 </td>
                             </tr>
