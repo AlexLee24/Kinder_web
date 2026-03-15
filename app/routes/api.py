@@ -101,6 +101,8 @@ def register_api_routes(app):
 
         try:
             all_targets = get_observation_targets()
+            # Filter out inactive targets
+            all_targets = [t for t in all_targets if t.get('is_active', True)]
         except Exception as e:
             return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
 
@@ -161,7 +163,7 @@ def register_api_routes(app):
 
         from modules.web_postgres_database import (
             get_user_by_api_key, get_observation_logs,
-            upsert_observation_log, get_observation_targets
+            upsert_observation_log
         )
         user = get_user_by_api_key(api_key)
         if not user:
@@ -205,25 +207,9 @@ def register_api_routes(app):
                 except ValueError:
                     return jsonify({'success': False, 'error': 'obs_date must be YYYY-MM-DD format'}), 400
 
-                # Resolve target_name -> target_id
-                all_targets = get_observation_targets()
-                matched = [t for t in all_targets if t['name'].lower() == target_name.lower()]
-                if telescope_hint:
-                    scoped = [t for t in matched if t['telescope'].upper() == telescope_hint]
-                    if scoped:
-                        matched = scoped
-                if not matched:
-                    available = [t['name'] for t in all_targets]
-                    return jsonify({'success': False, 'error': f'Target "{target_name}" not found. Available: {available}'}), 404
-                if len(matched) > 1:
-                    ambiguous = [{'name': t['name'], 'telescope': t['telescope'], 'id': t['id']} for t in matched]
-                    return jsonify({'success': False, 'error': 'Ambiguous target name. Specify telescope.', 'matches': ambiguous}), 400
-                target = matched[0]
-                target_id = target['id']
-
                 if action == 'delete':
                     from modules.web_postgres_database import delete_observation_log
-                    ok = delete_observation_log(target_id, obs_date)
+                    ok = delete_observation_log(target_name, obs_date)
                     if ok:
                         return jsonify({'success': True, 'message': f'Log deleted for {target_name} on {obs_date}'})
                     else:
@@ -248,20 +234,21 @@ def register_api_routes(app):
                     observed_count  = int(data['observed_count']) if data.get('observed_count') else None
                     # Auto-fill user_name from API key owner if not provided
                     user_name = data.get('user_name') or user.get('name') or user.get('email')
+                    priority = data.get('priority', '').strip() or None
 
                     ok = upsert_observation_log(
-                        target_id, obs_date, user_name, is_triggered, is_observed,
+                        target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
-                        observed_filter, observed_exp, observed_count
+                        observed_filter, observed_exp, observed_count,
+                        priority=priority
                     )
                     if ok:
                         return jsonify({
                             'success': True,
                             'message': 'Log saved',
                             'log': {
-                                'target_name': target['name'],
-                                'telescope': target['telescope'],
-                                'target_id': target_id,
+                                'target_name': target_name,
+                                'telescope': telescope_hint or None,
                                 'obs_date': obs_date,
                                 'user_name': user_name,
                                 'is_triggered': is_triggered,
@@ -271,7 +258,8 @@ def register_api_routes(app):
                                 'is_observed': is_observed,
                                 'observed_filter': observed_filter,
                                 'observed_exp': observed_exp,
-                                'observed_count': observed_count
+                                'observed_count': observed_count,
+                                'priority': priority
                             }
                         })
                     else:

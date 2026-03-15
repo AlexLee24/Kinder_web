@@ -2,7 +2,9 @@ let obsFilters = [];
 let logTriggerFilters = [];
 let logObservedFilters = [];
 let logDict = {};
+let availableLogMonths = [];
 let searchTimeout = null;
+let targetCoordDisplayMode = 'sexagesimal';
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Private Area loaded.");
@@ -116,6 +118,68 @@ function degToDMS(deg) {
     let mm = Math.floor(remainder);
     let ss = (remainder - mm) * 60;
     return sign + String(dd).padStart(2, '0') + ':' + String(mm).padStart(2, '0') + ':' + ss.toFixed(1).padStart(4, '0');
+}
+
+function parseRAToDeg(rawRA) {
+    if (rawRA == null) return null;
+    const s = String(rawRA).trim();
+    if (!s) return null;
+
+    if (s.includes(':')) {
+        const parts = s.split(':').map(p => parseFloat(p));
+        if (parts.some(v => Number.isNaN(v))) return null;
+        const hh = parts[0] || 0;
+        const mm = parts[1] || 0;
+        const ss = parts[2] || 0;
+        return (hh + mm / 60 + ss / 3600) * 15;
+    }
+
+    const v = parseFloat(s);
+    return Number.isNaN(v) ? null : v;
+}
+
+function parseDecToDeg(rawDec) {
+    if (rawDec == null) return null;
+    const s = String(rawDec).trim();
+    if (!s) return null;
+
+    if (s.includes(':')) {
+        const sign = s.startsWith('-') ? -1 : 1;
+        const clean = s.replace(/^[-+]/, '');
+        const parts = clean.split(':').map(p => parseFloat(p));
+        if (parts.some(v => Number.isNaN(v))) return null;
+        const dd = parts[0] || 0;
+        const mm = parts[1] || 0;
+        const ss = parts[2] || 0;
+        return sign * (dd + mm / 60 + ss / 3600);
+    }
+
+    const v = parseFloat(s);
+    return Number.isNaN(v) ? null : v;
+}
+
+function formatTargetCoordValue(rawRA, rawDec) {
+    const raDeg = parseRAToDeg(rawRA);
+    const decDeg = parseDecToDeg(rawDec);
+
+    if (targetCoordDisplayMode === 'decimal') {
+        return {
+            ra: raDeg != null ? raDeg.toFixed(5) : (rawRA || '-'),
+            dec: decDeg != null ? decDeg.toFixed(5) : (rawDec || '-')
+        };
+    }
+
+    return {
+        ra: raDeg != null ? degToHMS(raDeg) : (rawRA || '-'),
+        dec: decDeg != null ? degToDMS(decDeg) : (rawDec || '-')
+    };
+}
+
+function toggleTargetCoordDisplayMode() {
+    targetCoordDisplayMode = targetCoordDisplayMode === 'sexagesimal' ? 'decimal' : 'sexagesimal';
+    if (!Array.isArray(allTargetsCache) || allTargetsCache.length === 0) return;
+    renderTable('SLT', allTargetsCache.filter(function(t) { return t.telescope === 'SLT'; }));
+    renderTable('LOT', allTargetsCache.filter(function(t) { return t.telescope === 'LOT'; }));
 }
 
 // ===================== Modal =====================
@@ -353,6 +417,31 @@ async function loadTargets() {
     }
 }
 
+function getObjectRouteName(name) {
+    if (!name || typeof name !== 'string') return null;
+
+    const trimmedName = name.trim();
+    const routeName = trimmedName.replace(/^(AT|SN)\s*/i, '').trim();
+    if (!routeName) return null;
+
+    if (routeName.toUpperCase().startsWith('EP')) {
+        return null;
+    }
+
+    return routeName;
+}
+
+function renderObjectNameLink(name, label) {
+    const routeName = getObjectRouteName(name);
+    const displayLabel = label || name || '-';
+
+    if (!routeName) {
+        return '<span style="vertical-align:middle;">' + displayLabel + '</span>';
+    }
+
+    return '<a href="/object/' + encodeURIComponent(routeName) + '" target="_blank" rel="noopener noreferrer" style="vertical-align:middle; color: inherit; text-decoration: none;">' + displayLabel + '</a>';
+}
+
 function renderTable(telescope, targets) {
     const tableBody = document.getElementById(telescope.toLowerCase() + '-list');
     if (!tableBody) return;
@@ -416,14 +505,32 @@ function renderTable(telescope, targets) {
             repeatInfo = '<br>(repeat: ' + t.repeat_count + ')';
         }
 
+        let activeToggle = '<label class="pa-action-switch" title="Toggle API visibility">' +
+            '<input type="checkbox" onchange="toggleTargetActive(' + t.id + ', this.checked)" ' + (t.is_active !== false ? 'checked' : '') + '>' +
+            '<span class="pa-action-slider"></span>' +
+            '</label>';
+
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td class="pa-td-name">' + t.name + ' ' + programBadge + ' <br>' + magDisplay + '</td>' +
-            '<td class="pa-td-coord">' + (t.ra || '') + ' <br> ' + (t.dec || '') + '</td>' +
+        if (t.is_active === false) {
+            tr.style.opacity = '0.5';
+        }
+
+        const targetNameHtml = renderObjectNameLink(t.name, t.name);
+        const coordDisplay = formatTargetCoordValue(t.ra, t.dec);
+
+        tr.innerHTML = '<td class="pa-td-name" style="vertical-align: middle;">' +
+            '<div class="pa-td-name-content" style="display:flex; flex-direction:column; align-items:flex-start; justify-content:center;">' +
+                '<div style="display:flex; align-items:center; gap:8px;">' + targetNameHtml + ' ' + programBadge + '</div>' +
+                '<div style="margin-top: 4px;">' + magDisplay + '</div>' +
+            '</div>' +
+            '</td>' +
+            '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + coordDisplay.ra + ' <br> ' + coordDisplay.dec + '</td>' +
             '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + t.priority + repeatInfo + '</td>' +
             '<td class="pa-td-filter-exp">' + filterExpHTML + '</td>' +
             '<td class="pa-td-note">' + (t.plan || '-') + '</td>' +
             '<td class="pa-td-note-gl">' + (t.note_gl || '-') + '</td>' +
             '<td class="pa-td-actions">' +
+                activeToggle +
                 '<button onclick="editTarget(' + t.id + ')" class="pa-btn-edit">Edit</button>' +
                 '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-remove">Remove</button>' +
             '</td>';
@@ -492,6 +599,27 @@ async function deleteTarget(id) {
     }
 }
 
+async function toggleTargetActive(id, isActive) {
+    try {
+        const response = await fetch('/api/targets/' + id + '/toggle', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_active: isActive })
+        });
+        const data = await response.json();
+        if (data.success) {
+            loadTargets();
+        } else {
+            alert('Failed to update status: ' + data.error);
+            loadTargets();
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error updating status');
+        loadTargets();
+    }
+}
+
 // ===================== Observation Log =====================
 
 function initObservationLog() {
@@ -500,30 +628,72 @@ function initObservationLog() {
     
     if (!yearSelect || !monthSelect) return;
 
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-
-    // Populate years (e.g., 2024 to 2030)
-    for (let y = currentYear - 2; y <= currentYear + 3; y++) {
-        let opt = document.createElement('option');
-        opt.value = y;
-        opt.textContent = y;
-        if (y === currentYear) opt.selected = true;
-        yearSelect.appendChild(opt);
-    }
-
-    // Populate months
     const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    for (let m = 1; m <= 12; m++) {
-        let opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = monthNames[m-1];
-        if (m === currentMonth) opt.selected = true;
-        monthSelect.appendChild(opt);
-    }
 
-    renderLogGrid(true); // pass true to indicate initial load to scroll to today
+    const populateMonthsForYear = (year, preferredMonth = null) => {
+        const y = parseInt(year);
+        const months = availableLogMonths
+            .filter(x => parseInt(x.year) === y)
+            .map(x => parseInt(x.month))
+            .sort((a, b) => b - a);
+
+        monthSelect.innerHTML = '';
+        months.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = monthNames[m - 1];
+            monthSelect.appendChild(opt);
+        });
+
+        if (months.length === 0) return false;
+        const useMonth = preferredMonth && months.includes(parseInt(preferredMonth))
+            ? parseInt(preferredMonth)
+            : months[0];
+        monthSelect.value = String(useMonth);
+        return true;
+    };
+
+    fetch('/api/observation_log_months')
+        .then(res => res.json())
+        .then(data => {
+            availableLogMonths = (data && data.success && Array.isArray(data.months)) ? data.months : [];
+
+            yearSelect.innerHTML = '';
+            monthSelect.innerHTML = '';
+
+            if (availableLogMonths.length === 0) {
+                yearSelect.innerHTML = '<option value="">No Data</option>';
+                monthSelect.innerHTML = '<option value="">No Data</option>';
+                return;
+            }
+
+            const years = Array.from(new Set(availableLogMonths.map(x => parseInt(x.year)))).sort((a, b) => b - a);
+            years.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y;
+                yearSelect.appendChild(opt);
+            });
+
+            const latest = availableLogMonths
+                .map(x => ({ year: parseInt(x.year), month: parseInt(x.month) }))
+                .sort((a, b) => (b.year - a.year) || (b.month - a.month))[0];
+
+            yearSelect.value = String(latest.year);
+            populateMonthsForYear(latest.year, latest.month);
+
+            yearSelect.onchange = () => {
+                const ok = populateMonthsForYear(yearSelect.value);
+                if (ok) renderLogGrid(false);
+            };
+            monthSelect.onchange = () => renderLogGrid(false);
+
+            renderLogGrid(true); // pass true to indicate initial load to scroll to today
+        })
+        .catch(() => {
+            yearSelect.innerHTML = '<option value="">No Data</option>';
+            monthSelect.innerHTML = '<option value="">No Data</option>';
+        });
 }
 
 async function renderLogGrid(initialLoad = false) {
@@ -536,6 +706,11 @@ async function renderLogGrid(initialLoad = false) {
 
     const year = parseInt(yearSelect.value);
     const month = parseInt(monthSelect.value);
+    if (!year || !month) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        return;
+    }
 
     // Calculate days in month
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -575,18 +750,66 @@ async function renderLogGrid(initialLoad = false) {
         console.error("Log Grid Fetch error", e);
     }
     
-    // Quick lookup dict for logs by target_id + date
+    // Quick lookup dict for logs by target_name + date
     logDict = {};
-    const activeTargetIds = new Set();
+    const activeTargetNames = new Set();
     logData.forEach(log => {
-        logDict[`${log.target_id}_${log.obs_date}`] = log;
-        // Include target if there's ANY log entry for it in this month (not just triggered ones)
-        activeTargetIds.add(log.target_id);
+        const tName = (log.target_name || '').trim();
+        if (!tName) return;
+        logDict[`${tName}_${log.obs_date}`] = log;
+        // Include target if there's an actual trigger or observed log for it in this month
+        if (log.is_triggered || log.is_observed) {
+            activeTargetNames.add(tName);
+        }
+    });
+
+    // If there are no active target logs in this month at all, clear grid
+    if (activeTargetNames.size === 0) {
+        thead.innerHTML = '';
+        tbody.innerHTML = '<tr><td style="padding:20px;text-align:center;color:#aaa;" colspan="100%">No observation records for this month.</td></tr>';
+        return;
+    }
+
+    const targetByName = new Map(logTargets.map(t => [(t.name || '').trim(), t]));
+    const monthlyTargets = [];
+    activeTargetNames.forEach(name => {
+        if (targetByName.has(name)) {
+            monthlyTargets.push(targetByName.get(name));
+        } else {
+            monthlyTargets.push({
+                id: null,
+                name: name,
+                telescope: 'DISCONTINUED',
+                is_active: false,
+                is_discontinued: true
+            });
+        }
     });
 
     // Filter SLT and LOT: only show targets that have at least one log in this month
-    let sltTargets = logTargets.filter(t => t.telescope === 'SLT' && activeTargetIds.has(t.id));
-    let lotTargets = logTargets.filter(t => t.telescope === 'LOT' && activeTargetIds.has(t.id));
+    let sltTargets = monthlyTargets.filter(t => t.telescope === 'SLT');
+    let lotTargets = monthlyTargets.filter(t => t.telescope === 'LOT');
+    let discontinuedTargets = monthlyTargets.filter(t => t.telescope !== 'SLT' && t.telescope !== 'LOT');
+
+    const getPriorityRank = (priority) => {
+        const p = (priority || '').toString().trim().toLowerCase();
+        if (p === 'urgent') return 0;
+        if (p === 'high') return 1;
+        if (p === 'normal') return 2;
+        return 9;
+    };
+
+    const sortByPriority = (targets) => {
+        return targets.sort((a, b) => {
+            const rankDiff = getPriorityRank(a.priority) - getPriorityRank(b.priority);
+            if (rankDiff !== 0) return rankDiff;
+            return (a.name || '').localeCompare((b.name || ''));
+        });
+    };
+
+    sortByPriority(sltTargets);
+    sortByPriority(lotTargets);
+    sortByPriority(discontinuedTargets);
 
     // Build the grid
     let headHtml = '<tr><th>Target \\ Date</th>';
@@ -622,27 +845,32 @@ async function renderLogGrid(initialLoad = false) {
             const tr = document.createElement('tr');
             
             let displayName = t.name;
-            let displayTarget = '';
-            if (prefix === 'LOT') {
-                let prog = t.program ? `${t.program}` : '';
-                displayTarget = `LOT ${prog} - ${displayName}`;
-            } else {
-                displayTarget = `SLT - ${displayName}`;
+            const nameHtml = renderObjectNameLink(t.name, displayName);
+            let displayTarget = nameHtml;
+
+            let targetClass = 'pa-log-target-missing';
+            if (t.is_active === false || t.is_discontinued) {
+                targetClass = 'pa-log-target-missing';
+            } else if (prefix === 'LOT') {
+                targetClass = 'pa-log-target-active';
+            } else if (prefix === 'SLT') {
+                targetClass = 'pa-log-target-slt';
             }
 
             // Target column
-            tr.innerHTML = `<td class="pa-log-target-active">${displayTarget}</td>`;
+            tr.innerHTML = `<td class="${targetClass}" style="vertical-align: middle;">${displayTarget}</td>`;
 
             // Dates cells
             let dateCells = '';
             dates.forEach(d => {
-                const logKey = `${t.id}_${d.dateStr}`;
+                const logKey = `${t.name}_${d.dateStr}`;
                 const log = logDict[logKey];
                 
                 if (log) {
                     const trigIcon = log.is_triggered ? checkSvg : crossSvg;
                     const obsIcon = log.is_observed ? checkSvg : crossSvg;
                     const user = log.user_name || '-';
+                    const normalizedUser = normalizeLogUserName(user);
 
                     // Parse filter list (JSON array or legacy single value)
                     const parseLogFilters = (filterVal, exp, count) => {
@@ -668,45 +896,77 @@ async function renderLogGrid(initialLoad = false) {
 
                     const trigFilters = parseLogFilters(log.trigger_filter, log.trigger_exp, log.trigger_count);
                     const obsFiltersLog = parseLogFilters(log.observed_filter, log.observed_exp, log.observed_count);
-                    const trigDetail = renderFilterList(trigFilters);
-                    const obsDetail  = renderFilterList(obsFiltersLog);
+                    
+                    const isFilterVisible = document.getElementById('log-show-filter-checkbox') ? document.getElementById('log-show-filter-checkbox').checked : true;
+                    const trigDetail = isFilterVisible ? renderFilterList(trigFilters) : '';
+                    const obsDetail  = isFilterVisible ? renderFilterList(obsFiltersLog) : '';
+
+                    const priorityBadge = (() => {
+                        const p = (log.priority || '').trim();
+                        if (!p) return '<span style="color:#555;">—</span>';
+
+                        let priorityKey = p;
+                        if (p.includes('-')) {
+                            priorityKey = p.split('-')[0].trim();
+                        }
+
+                        let color = '#aaa';
+                        if (priorityKey.toLowerCase() === 'urgent') color = '#ef5350';
+                        else if (priorityKey.toLowerCase() === 'high') color = '#ff9f43';
+                        return `<span style="color:${color};font-weight:600;font-size:11px;">${p}</span>`;
+                    })();
                     
                     const userDisplay = (() => {
-                        let mb = membersMap[user] || null;
+                        let mb = membersMap[normalizedUser] || membersMap[user] || null;
                         if (!mb && typeof user === 'string') {
                             let match = user.match(/\(([^)]+)\)/);
                             if (match) mb = membersMap[match[1]];
                         }
+
+                        let displayName = (normalizedUser || user || '').split(' ')[0]; // Default to first part
+
                         if (mb) {
-                            return `<img src="${mb.picture || '/static/photo/default_avatar.png'}" style="width:14px;height:14px;border-radius:50%;object-fit:cover;"> ${mb.name || mb.email.split('@')[0]}`;
+                            let fullName = mb.name || mb.email.split('@')[0];
+                            displayName = fullName.split(' ')[0]; // Extract just the first word
+
+                            if (mb.picture) {
+                                return `<img src="${mb.picture}" style="width:14px;height:14px;border-radius:50%;object-fit:cover;" title="${fullName}"> ${displayName}`;
+                            } else {
+                                // Fallback to an initial-based avatar or simple text if picture is null
+                                const intl = (displayName || '?').charAt(0).toUpperCase();
+                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#4db8ff;color:#fff;font-size:9px;font-weight:bold;" title="${fullName}">${intl}</span> ${displayName}`;
+                            }
                         }
-                        return user;
+                        return displayName;
                     })();
-                    const editBtn = `<button onclick="openLogModalEdit(${t.id},'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:auto;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t.name || '')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
 
                     dateCells += `
-                        <td data-cell-date="${d.dateStr}" data-target-id="${t.id}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
+                        <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell">
-                                <div class="pa-log-cell-user" style="display:flex; align-items:center; gap:4px; font-size:12px;">
+                                <div class="pa-log-cell-user" style="display:flex; align-items:center; justify-content:center; width:100%; gap:4px; font-size:12px;">
                                     ${userDisplay}${editBtn}
                                 </div>
                                 <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
+                                    ${priorityBadge}
+                                </div>
+                                <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
                                     <div style="display:flex;align-items:center;gap:4px;">Trigger ${trigIcon}</div>
-                                    ${trigDetail || '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>'}
+                                    ${trigDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>' : '')}
                                 </div>
                                 <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
                                     <div style="display:flex;align-items:center;gap:4px;">Observed ${obsIcon}</div>
-                                    ${obsDetail || '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>'}
+                                    ${obsDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>' : '')}
                                 </div>
                             </div>
                         </td>
                     `;
                 } else {
-                    const editBtnEmpty = `<button onclick="openLogModalEdit(${t.id},'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:auto;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
-                        <td data-cell-date="${d.dateStr}" data-target-id="${t.id}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
+                        <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell">
-                                <div class="pa-log-cell-user" style="display:flex;align-items:center;color:#666;">-${editBtnEmpty}</div>
+                                <div class="pa-log-cell-user" style="display:flex;align-items:center;justify-content:center;width:100%;color:#666;">-${editBtnEmpty}</div>
                                 <div class="pa-log-cell-status" style="color: #666;">Trigger -</div>
                                 <div class="pa-log-cell-status" style="color: #666;">Observed -</div>
                             </div>
@@ -721,6 +981,7 @@ async function renderLogGrid(initialLoad = false) {
 
     renderRows(sltTargets, 'SLT');
     renderRows(lotTargets, 'LOT');
+    renderRows(discontinuedTargets, 'DISCONTINUED');
 
     if (initialLoad) {
         setTimeout(scrollToToday, 500); // Give DOM time to render
@@ -761,8 +1022,33 @@ function scrollToToday() {
 // Log Modal (Add/Edit)
 // ==========================================
 
+function toggleLogFilterDisplay() {
+    // Re-render the grid without fetching data from network again
+    // For simplicity we just call renderLogGrid but without changing data.
+    // It will fetch again right now, which is safe but you can optimize to cache if needed.
+    renderLogGrid(false);
+}
+
 let membersCache = [];
 let membersMap = {};
+
+// Legacy log user names mapping to current member names.
+// Add more pairs here when old records use outdated names.
+const LOG_USER_NAME_MAP = {
+    'Amar': 'Amar Aryan',
+    'M H Lee': '李孟翰',
+    'Aiswarya': 'Aiswarya Sankar Kachiprath',
+    'Janet': 'Ting-Wan Chen',
+    'Cheng-Han': '賴政翰',
+    'Ze Ning': '王泽宁',
+
+};
+
+function normalizeLogUserName(rawName) {
+    const key = (rawName || '').toString().trim();
+    if (!key) return '';
+    return LOG_USER_NAME_MAP[key] || key;
+}
 
 function fetchMembers() {
     fetch('/api/members')
@@ -837,22 +1123,18 @@ function openLogModal() {
     if (!modal) return;
     modal.style.display = 'flex';
 
-    // Populate Target options
-    const selectTarget = document.getElementById('log-edit-target-id');
-    selectTarget.innerHTML = '<option value="">-- Select Target --</option>';
-    if (typeof allTargetsCache !== 'undefined') {
-        allTargetsCache.forEach(t => {
-            selectTarget.innerHTML += `<option value="${t.id}">${t.name} (${t.telescope})</option>`;
-        });
-    }
-
-    // Default Date to today
-    const tzoffset = (new Date()).getTimezoneOffset() * 60000;
-    const localISOTime = (new Date(Date.now() - tzoffset)).toISOString().slice(0, 10);
-    document.getElementById('log-edit-date').value = localISOTime;
+    // Reset hidden/display date + target (filled in openLogModalEdit)
+    document.getElementById('log-edit-date').value = '';
+    document.getElementById('log-edit-target-id').value = '';
+    const dateDisplay = document.getElementById('log-edit-date-display');
+    const targetDisplay = document.getElementById('log-edit-target-display');
+    if (dateDisplay) dateDisplay.textContent = '-';
+    if (targetDisplay) targetDisplay.textContent = '-';
 
     // Reset all fields
     document.getElementById('log-edit-user').value = '';
+    document.getElementById('log-edit-priority').value = 'Normal';
+    document.getElementById('log-edit-program').value = '';
     document.getElementById('log-edit-trigger-status').checked = false;
     document.getElementById('log-edit-obs-status').checked = false;
     logTriggerFilters = [];
@@ -872,20 +1154,48 @@ function closeLogModal() {
 function openLogModalEdit(targetId, dateStr) {
     openLogModal();
 
-    // Pre-fill target
-    const selectTarget = document.getElementById('log-edit-target-id');
-    selectTarget.value = targetId;
-
-    // Pre-fill date
-    document.getElementById('log-edit-date').value = dateStr;
+    // Pre-fill target/date hidden values + readonly display
+    document.getElementById('log-edit-target-id').value = targetId || '';
+    document.getElementById('log-edit-date').value = dateStr || '';
+    const dateDisplay = document.getElementById('log-edit-date-display');
+    const targetDisplay = document.getElementById('log-edit-target-display');
+    if (dateDisplay) dateDisplay.textContent = dateStr || '-';
+    if (targetDisplay) targetDisplay.textContent = targetId || '-';
 
     // Pre-fill from existing log if exists
     const log = logDict[`${targetId}_${dateStr}`];
+
+    // Priority/Program - pre-fill from log or default to target's current values
+    const prioritySelect = document.getElementById('log-edit-priority');
+    const programInput = document.getElementById('log-edit-program');
+    if (prioritySelect) {
+        const targetInfo = (allTargetsCache || []).find(t => (t.name || '').trim() === (targetId || '').trim());
+        const rawPriority = ((log && log.priority) ? log.priority : ((targetInfo && targetInfo.priority) || 'Normal')).toString().trim();
+
+        let basePriority = rawPriority;
+        let programText = '';
+        if (rawPriority.includes('-')) {
+            const parts = rawPriority.split('-');
+            basePriority = (parts.shift() || 'Normal').trim();
+            programText = parts.join('-').trim();
+        } else if (targetInfo && targetInfo.program) {
+            programText = targetInfo.program;
+        }
+
+        const pLower = basePriority.toLowerCase();
+        if (pLower === 'urgent') prioritySelect.value = 'Urgent';
+        else if (pLower === 'high') prioritySelect.value = 'High';
+        else prioritySelect.value = 'Normal';
+
+        if (programInput) programInput.value = programText;
+    }
+
     if (!log) return;
 
     // User
     const selectUser = document.getElementById('log-edit-user');
-    selectUser.value = log.user_name || '';
+    const mappedUser = normalizeLogUserName(log.user_name || '');
+    selectUser.value = mappedUser || log.user_name || '';
 
     // Checkboxes
     document.getElementById('log-edit-trigger-status').checked = !!log.is_triggered;
@@ -908,6 +1218,19 @@ function openLogModalEdit(targetId, dateStr) {
     toggleLogFields();
 }
 
+function clearLogEditFields() {
+    document.getElementById('log-edit-user').value = '';
+    document.getElementById('log-edit-priority').value = 'Normal';
+    document.getElementById('log-edit-program').value = '';
+    document.getElementById('log-edit-trigger-status').checked = false;
+    document.getElementById('log-edit-obs-status').checked = false;
+    logTriggerFilters = [];
+    logObservedFilters = [];
+    renderLogFilterRows('trigger');
+    renderLogFilterRows('observed');
+    toggleLogFields();
+}
+
 function toggleLogFields() {
     const trig = document.getElementById('log-edit-trigger-status').checked;
     const obs  = document.getElementById('log-edit-obs-status').checked;
@@ -920,19 +1243,23 @@ function toggleLogFields() {
 function saveObservationLog(event) {
     if (event) event.preventDefault();
 
-    const target_id = document.getElementById('log-edit-target-id').value;
+    const target_name = document.getElementById('log-edit-target-id').value;
     const obs_date = document.getElementById('log-edit-date').value;
     const user_id = document.getElementById('log-edit-user').value;
     const trigger_status = document.getElementById('log-edit-trigger-status').checked;
     const obs_status = document.getElementById('log-edit-obs-status').checked;
 
-    if (!target_id || !obs_date || !user_id) {
-        alert("Please select Date, Target, and User.");
+    if (!target_name || !obs_date || !user_id) {
+        alert("Missing required fields: Date, Target, or User.");
         return;
     }
 
+    const basePriority = (document.getElementById('log-edit-priority') || {}).value || '';
+    const program = ((document.getElementById('log-edit-program') || {}).value || '').trim();
+    const priority = basePriority ? (program ? `${basePriority} - ${program}` : basePriority) : null;
+
     const payload = {
-        target_id:       parseInt(target_id),
+        target_name:     target_name,
         obs_date:        obs_date,
         user_name:       user_id,
         is_triggered:    trigger_status,
@@ -942,7 +1269,8 @@ function saveObservationLog(event) {
         trigger_count:   null,
         observed_filter: logObservedFilters.length > 0 ? JSON.stringify(logObservedFilters) : null,
         observed_exp:    null,
-        observed_count:  null
+        observed_count:  null,
+        priority:        priority
     };
 
     fetch('/api/observation_logs', {
@@ -967,5 +1295,4 @@ function saveObservationLog(event) {
         alert('Server error saving observation log.');
     });
 }
-
 

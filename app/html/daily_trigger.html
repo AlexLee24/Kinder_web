@@ -139,6 +139,10 @@
                             </svg>
                             Refresh
                         </button>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; color: #fff; cursor: pointer; margin-left: 15px; font-size: 0.9rem;">
+                            <input type="checkbox" id="log-show-filter-checkbox" style="width: 16px; height: 16px; accent-color: #4db8ff;" onchange="toggleLogFilterDisplay()">
+                            Show Filter
+                        </label>
                         <!-- <button onclick="openLogModal()" class="pa-btn-log-action" style="margin-left: 10px; border-color: #4db8ff; color: #4db8ff;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 20h9"></path>
@@ -148,7 +152,27 @@
                         </button> -->
                     </div>
 
+                    <div class="pa-log-legend">
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-cyan"></span>
+                            <span>LOT follow-up</span>
+                        </div>
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-orange"></span>
+                            <span>SLT follow-up</span>
+                        </div>
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-grey"></span>
+                            <span>Discontinued target</span>
+                        </div>
+                    </div>
+
                     <div class="pa-log-container">
+                        <!-- Top Dual Scrollbar -->
+                        <div class="pa-log-grid-top-scrollbar" id="log-grid-top-scrollbar">
+                            <div id="log-grid-top-scrollbar-dummy" style="height: 1px;"></div>
+                        </div>
+
                         <div class="pa-log-grid-container" id="log-grid-container">
                             <table class="pa-log-grid" id="log-grid">
                                 <thead id="log-grid-head"></thead>
@@ -279,7 +303,7 @@
                 <div class="pa-form-row two-col">
                     <div class="pa-field">
                         <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Date</span>
-                        <input type="date" id="log-edit-date" class="pa-input" required>
+                        <div id="log-edit-date-display" class="pa-input" style="display:flex; align-items:center; min-height:40px; opacity:0.9;"></div>
                     </div>
                     <div class="pa-field">
                         <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Member</span>
@@ -292,9 +316,25 @@
                 <div class="pa-form-row" style="margin-top: 15px;">
                     <div class="pa-field" style="width: 100%;">
                         <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Target</span>
-                        <select id="log-edit-target-id" class="pa-input" style="width: 100%;" required>
-                            <option value="">-- Select Target --</option>
+                        <div id="log-edit-target-display" class="pa-input" style="display:flex; align-items:center; min-height:40px; opacity:0.9;"></div>
+                    </div>
+                </div>
+
+                <input type="hidden" id="log-edit-date" required>
+                <input type="hidden" id="log-edit-target-id" required>
+
+                <div class="pa-form-row" style="margin-top: 15px;">
+                    <div class="pa-field" style="width: 160px;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Priority</span>
+                        <select id="log-edit-priority" class="pa-input">
+                            <option value="Normal">Normal</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
                         </select>
+                    </div>
+                    <div class="pa-field" style="width: 100%; margin-top: 12px;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Program</span>
+                        <input type="text" id="log-edit-program" class="pa-input" placeholder="e.g. R01">
                     </div>
                 </div>
 
@@ -333,6 +373,7 @@
 
                 <div class="pa-modal-footer" style="margin-top: 20px;">
                     <button type="button" onclick="closeLogModal()" class="pa-btn-cancel">Cancel</button>
+                    <button type="button" onclick="clearLogEditFields()" class="pa-btn-cancel">Clear</button>
                     <button type="submit" class="pa-btn-save">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         Save Log

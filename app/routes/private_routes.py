@@ -411,6 +411,27 @@ def register_private_routes(app):
         else:
             return jsonify({'error': 'Database error'}), 500
 
+    @app.route('/api/targets/<int:target_id>/toggle', methods=['PUT'])
+    def api_observation_target_toggle(target_id):
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+        if not (is_great_lab or is_admin):
+            return jsonify({'error': 'Forbidden'}), 403
+            
+        data = request.json
+        is_active = data.get('is_active')
+        if is_active is None:
+            return jsonify({'error': 'is_active field required'}), 400
+            
+        from modules.web_postgres_database import update_observation_target_status
+        if update_observation_target_status(target_id, bool(is_active)):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Database error'}), 500
+
     @app.route('/api/targets/<int:target_id>', methods=['PUT'])
     def api_observation_target_update(target_id):
         if 'user' not in session:
@@ -642,6 +663,18 @@ def register_private_routes(app):
     #     except Exception as e:
     #         return jsonify({'error': str(e)}), 500
 
+    @app.route('/api/observation_log_months', methods=['GET'])
+    def api_get_observation_log_months():
+        if 'user' not in session:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+        try:
+            from modules.web_postgres_database import get_observation_log_months
+            months = get_observation_log_months()
+            return jsonify({'success': True, 'months': months})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/observation_logs', methods=['GET', 'POST'])
     def api_get_observation_logs():
         if 'user' not in session:
@@ -665,7 +698,7 @@ def register_private_routes(app):
                 return jsonify({'success': True, 'logs': logs})
             elif request.method == 'POST':
                 data = request.json
-                target_id = data.get('target_id')
+                target_name = (data.get('target_name') or '').strip()
                 obs_date = data.get('obs_date')
                 # Auto-fill user_name from session if not provided
                 user_name = data.get('user_name') or session['user'].get('name') or session['user'].get('email')
@@ -680,19 +713,29 @@ def register_private_routes(app):
                     return str(val)
                 trigger_filter  = _norm_filter(data.get('trigger_filter'))
                 observed_filter = _norm_filter(data.get('observed_filter'))
+                priority = data.get('priority') or None
+
+                # Backward compatibility: older clients may still send target_id
+                if not target_name and data.get('target_id'):
+                    from modules.web_postgres_database import get_observation_targets
+                    tid = int(data.get('target_id'))
+                    t = next((x for x in get_observation_targets() if x.get('id') == tid), None)
+                    if t:
+                        target_name = (t.get('name') or '').strip()
                 
-                if not target_id or not obs_date:
-                    return jsonify({'success': False, 'error': 'Target ID and Date required'}), 400
+                if not target_name or not obs_date:
+                    return jsonify({'success': False, 'error': 'Target Name and Date required'}), 400
                     
                 from modules.web_postgres_database import upsert_observation_log
                 success = upsert_observation_log(
-                    target_id, obs_date, user_name, is_triggered, is_observed,
+                    target_name, obs_date, user_name, is_triggered, is_observed,
                     trigger_filter,
                     int(data['trigger_exp']) if data.get('trigger_exp') else None,
                     int(data['trigger_count']) if data.get('trigger_count') else None,
                     observed_filter,
                     int(data['observed_exp']) if data.get('observed_exp') else None,
-                    int(data['observed_count']) if data.get('observed_count') else None
+                    int(data['observed_count']) if data.get('observed_count') else None,
+                    priority=priority
                 )
                 
                 if success:

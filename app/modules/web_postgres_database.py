@@ -164,24 +164,60 @@ def init_database():
                     plan TEXT,
                     program TEXT,
                     created_by TEXT REFERENCES users(email),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    note_gl TEXT,
+                    is_active BOOLEAN DEFAULT TRUE
                 )
             ''')
+            
+            # Migration
+            try:
+                cursor.execute('ALTER TABLE observation_targets ADD COLUMN IF NOT EXISTS note_gl TEXT')
+                cursor.execute('ALTER TABLE observation_targets ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE')
+            except Exception as e:
+                pass
 
 
             # Observation Logs
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS observation_logs (
                     id SERIAL PRIMARY KEY,
-                    target_id INTEGER REFERENCES observation_targets(id) ON DELETE CASCADE,
+                    target_name TEXT,
                     obs_date DATE,
                     user_name TEXT,
                     is_triggered BOOLEAN DEFAULT FALSE,
                     is_observed BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(target_id, obs_date)
+                    UNIQUE(target_name, obs_date)
                 )
             """)
+
+            # Migration: add columns to observation_logs if not exist
+            try:
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_filter TEXT')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_exp INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS trigger_count INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_filter TEXT')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_exp INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_count INTEGER')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
+                cursor.execute('''
+                    UPDATE observation_logs l
+                    SET target_name = t.name
+                    FROM observation_targets t
+                    WHERE l.target_name IS NULL
+                      AND l.target_id = t.id
+                ''')
+                cursor.execute('''
+                    UPDATE observation_logs
+                    SET target_id = NULL
+                    WHERE target_name IS NOT NULL
+                ''')
+                cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_observation_logs_target_name_obs_date ON observation_logs(target_name, obs_date)")
+            except Exception as e:
+                pass
+
             conn.commit()
 
 
@@ -711,13 +747,28 @@ def save_observation_target(telescope, name, mag, ra, dec, priority, repeat_coun
         print(f"Error saving target: {e}")
     return None
 
+def update_observation_target_status(target_id: int, is_active: bool) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE observation_targets
+                SET is_active = %s
+                WHERE id = %s
+            ''', (is_active, target_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error updating target status: {e}")
+        return False
+
 def get_observation_targets():
     targets = []
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT id, telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl, created_by, created_at
+                SELECT id, telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl, created_by, created_at, is_active
                 FROM observation_targets
                 ORDER BY created_at ASC
             ''')
@@ -738,7 +789,8 @@ def get_observation_targets():
                     'program': row[11],
                     'note_gl': row[12],
                     'created_by': row[13],
-                    'created_at': row[14].isoformat() if row[14] else None
+                    'created_at': row[14].isoformat() if row[14] else None,
+                    'is_active': row[15] if row[15] is not None else True
                 })
             cursor.close()
     except Exception as e:
@@ -774,54 +826,145 @@ def update_observation_target(target_id, telescope, name, mag, ra, dec, priority
         print(f"Error updating target: {e}")
     return False
 
+def get_observation_log_months():
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute('''
+                    SELECT DISTINCT
+                        EXTRACT(YEAR FROM l.obs_date) as yr,
+                        EXTRACT(MONTH FROM l.obs_date) as mo
+                    FROM observation_logs l
+                    LEFT JOIN observation_targets t ON l.target_id = t.id
+                    WHERE COALESCE(NULLIF(TRIM(l.target_name), ''), NULLIF(TRIM(t.name), '')) IS NOT NULL
+                      AND (l.is_triggered = TRUE OR l.is_observed = TRUE)
+                    ORDER BY yr DESC, mo DESC
+                ''')
+            except Exception as col_err:
+                # Fallback for very old schema without target_name/target_id compatibility
+                if getattr(col_err, 'pgcode', None) == '42703':
+                    conn.rollback()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT DISTINCT EXTRACT(YEAR FROM obs_date) as yr, EXTRACT(MONTH FROM obs_date) as mo
+                        FROM observation_logs
+                        WHERE is_triggered = TRUE OR is_observed = TRUE
+                        ORDER BY yr DESC, mo DESC
+                    ''')
+                else:
+                    raise
+            results = []
+            for row in cursor.fetchall():
+                results.append({'year': int(row[0]), 'month': int(row[1])})
+            cursor.close()
+            return results
+    except Exception as e:
+        print(f"Error fetching observation log months: {e}")
+    return []
+
 def get_observation_logs(year, month):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, target_id, obs_date, user_name, is_triggered, is_observed,
-                       trigger_filter, trigger_exp, trigger_count,
-                       observed_filter, observed_exp, observed_count
-                FROM observation_logs
-                WHERE EXTRACT(YEAR FROM obs_date) = %s AND EXTRACT(MONTH FROM obs_date) = %s
-            ''', (year, month))
+            try:
+                cursor.execute('''
+                    SELECT l.id,
+                           l.target_name,
+                           l.obs_date, l.user_name, l.is_triggered, l.is_observed,
+                           trigger_filter, trigger_exp, trigger_count,
+                           observed_filter, observed_exp, observed_count, priority
+                    FROM observation_logs l
+                    WHERE EXTRACT(YEAR FROM l.obs_date) = %s AND EXTRACT(MONTH FROM l.obs_date) = %s
+                ''', (year, month))
+            except Exception as col_err:
+                if getattr(col_err, 'pgcode', None) == '42703':  # undefined_column
+                    conn.rollback()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT l.id,
+                               COALESCE(t.name, CONCAT('Deleted target #', l.target_id::text)) AS target_name,
+                               l.obs_date, l.user_name, l.is_triggered, l.is_observed,
+                               trigger_filter, trigger_exp, trigger_count,
+                               observed_filter, observed_exp, observed_count
+                        FROM observation_logs l
+                        LEFT JOIN observation_targets t ON l.target_id = t.id
+                        WHERE EXTRACT(YEAR FROM l.obs_date) = %s AND EXTRACT(MONTH FROM l.obs_date) = %s
+                    ''', (year, month))
+                else:
+                    raise
             columns = [desc[0] for desc in cursor.description]
             results = []
             for row in cursor.fetchall():
-                results.append(dict(zip(columns, row)))
+                d = dict(zip(columns, row))
+                d.setdefault('priority', None)
+                results.append(d)
             cursor.close()
             return results
     except Exception as e:
         print(f"Error fetching observation logs: {e}")
     return []
 
-def upsert_observation_log(target_id, obs_date, user_name, is_triggered, is_observed,
+def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_observed,
                             trigger_filter=None, trigger_exp=None, trigger_count=None,
-                            observed_filter=None, observed_exp=None, observed_count=None):
+                            observed_filter=None, observed_exp=None, observed_count=None,
+                            priority=None):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                INSERT INTO observation_logs
-                    (target_id, obs_date, user_name, is_triggered, is_observed,
-                     trigger_filter, trigger_exp, trigger_count,
-                     observed_filter, observed_exp, observed_count)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (target_id, obs_date)
-                DO UPDATE SET
-                    user_name       = EXCLUDED.user_name,
-                    is_triggered    = EXCLUDED.is_triggered,
-                    is_observed     = EXCLUDED.is_observed,
-                    trigger_filter  = EXCLUDED.trigger_filter,
-                    trigger_exp     = EXCLUDED.trigger_exp,
-                    trigger_count   = EXCLUDED.trigger_count,
-                    observed_filter = EXCLUDED.observed_filter,
-                    observed_exp    = EXCLUDED.observed_exp,
-                    observed_count  = EXCLUDED.observed_count,
-                    created_at      = CURRENT_TIMESTAMP
-            ''', (target_id, obs_date, user_name, is_triggered, is_observed,
-                  trigger_filter, trigger_exp, trigger_count,
-                  observed_filter, observed_exp, observed_count))
+            try:
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
+
+                cursor.execute('''
+                    UPDATE observation_logs
+                    SET user_name = %s,
+                        is_triggered = %s,
+                        is_observed = %s,
+                        trigger_filter = %s,
+                        trigger_exp = %s,
+                        trigger_count = %s,
+                        observed_filter = %s,
+                        observed_exp = %s,
+                        observed_count = %s,
+                        priority = %s,
+                        created_at = CURRENT_TIMESTAMP
+                    WHERE target_name = %s AND obs_date = %s
+                ''', (
+                    user_name, is_triggered, is_observed,
+                    trigger_filter, trigger_exp, trigger_count,
+                    observed_filter, observed_exp, observed_count,
+                    priority,
+                    target_name, obs_date
+                ))
+
+                if cursor.rowcount == 0:
+                    cursor.execute('''
+                        INSERT INTO observation_logs
+                            (target_name, obs_date, user_name, is_triggered, is_observed,
+                             trigger_filter, trigger_exp, trigger_count,
+                             observed_filter, observed_exp, observed_count, priority)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (
+                        target_name, obs_date, user_name, is_triggered, is_observed,
+                        trigger_filter, trigger_exp, trigger_count,
+                        observed_filter, observed_exp, observed_count, priority
+                    ))
+            except Exception as write_err:
+                if getattr(write_err, 'pgcode', None) == '42703':  # undefined_column (very old schema)
+                    conn.rollback()
+                    cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO observation_logs
+                        (target_name, obs_date, user_name, is_triggered, is_observed,
+                         trigger_filter, trigger_exp, trigger_count,
+                         observed_filter, observed_exp, observed_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ''', (
+                        target_name, obs_date, user_name, is_triggered, is_observed,
+                        trigger_filter, trigger_exp, trigger_count,
+                        observed_filter, observed_exp, observed_count
+                    ))
             conn.commit()
             cursor.close()
             return True
@@ -830,13 +973,13 @@ def upsert_observation_log(target_id, obs_date, user_name, is_triggered, is_obse
     return False
 
 
-def delete_observation_log(target_id, obs_date):
+def delete_observation_log(target_name, obs_date):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'DELETE FROM observation_logs WHERE target_id = %s AND obs_date = %s',
-                (target_id, obs_date)
+                'DELETE FROM observation_logs WHERE target_name = %s AND obs_date = %s',
+                (target_name, obs_date)
             )
             deleted = cursor.rowcount
             conn.commit()

@@ -77,7 +77,7 @@ body::before {
 /* Standardize the dark glass sections */
 .banner-left .private-section,
 .banner-right .private-section {
-    max-width: 1050px; /* fit the 1000px calendar nicely */
+    max-width: 97%; /* fit the 1000px calendar nicely */
     margin: 1rem auto;
 }
 
@@ -316,6 +316,108 @@ body::before {
 .pa-td-name {
     color: #fff;
     white-space: nowrap;
+    /* Removed display: flex; as it overrides table-cell's native vertical-align: middle */
+}
+
+/* Add a wrapper class for the contents to handle flex alignment instead */
+.pa-td-name-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Vertical switch for target is_active */
+.pa-v-switch {
+    display: inline-block;
+    position: relative;
+    width: 20px;
+    height: 36px;
+}
+
+.pa-v-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.pa-v-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #555;
+    border-radius: 20px;
+    transition: .4s;
+}
+
+.pa-v-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: .4s;
+}
+
+.pa-v-switch input:checked + .pa-v-slider {
+    background-color: #4db8ff;
+}
+
+.pa-v-switch input:checked + .pa-v-slider:before {
+    transform: translateY(-16px);
+}
+
+.pa-action-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.pa-action-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.pa-action-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4a4f56;
+    transition: 0.2s;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.pa-action-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    top: 2px;
+    background-color: #fff;
+    transition: 0.2s;
+    border-radius: 50%;
+}
+
+.pa-action-switch input:checked + .pa-action-slider {
+    background-color: #4db8ff;
+}
+
+.pa-action-switch input:checked + .pa-action-slider:before {
+    transform: translateX(16px);
 }
 
 .pa-td-coord {
@@ -717,6 +819,43 @@ body::before {
     align-items: center;
 }
 
+.pa-log-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 1rem;
+    color: #d6d6d6;
+    font-size: 0.9rem;
+}
+
+.pa-log-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pa-log-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: 0 0 12px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 0 8px rgba(255, 255, 255, 0.08);
+}
+
+.pa-log-legend-dot-cyan {
+    background: #2bd9ff;
+}
+
+.pa-log-legend-dot-orange {
+    background: #ff9f43;
+}
+
+.pa-log-legend-dot-grey {
+    background: #9aa0a6;
+}
+
 .pa-log-container {
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -728,23 +867,50 @@ body::before {
     overflow-x: auto;
     width: 100%;
     position: relative;
-    max-height: 600px;
-    overflow-y: auto;
+    /* max-height: 600px; - Removed to show full height */
+}
+
+.pa-log-grid-top-scrollbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+    /* Styling scrollbar height */
+    height: 12px;
+    margin-bottom: 2px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar {
+    height: 10px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #777;
 }
 
 .pa-log-grid {
     width: max-content;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     color: #fff;
     font-size: 0.9rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .pa-log-grid th, .pa-log-grid td {
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     padding: 0.5rem;
     text-align: center;
     vertical-align: middle;
     min-width: 80px;
+    background-clip: padding-box; /* Prevent sticky column leaking */
 }
 
 /* First Column Fixed */
@@ -753,10 +919,11 @@ body::before {
     left: 0;
     z-index: 2;
     background: #1e1e1e; /* Ensure the fixed column is not transparent */
-    border-right: 2px solid rgba(255,255,255,0.2);
+    border-right: 2px solid rgba(255,255,255,0.2) !important;
     text-align: left;
     min-width: 250px;
     box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+    padding-left: 0.25rem; /* Make text a bit more to the left */
 }
 
 .pa-log-grid thead th {
@@ -798,13 +965,21 @@ body::before {
 
 /* Colors for existing vs new targets: Solid background to avoid overlap transparency */
 .pa-log-target-active {
-    background-color: #3b3b22 !important;
-    color: #ffeb3b !important;
+    background-color: #233744 !important;
+    color: #2bd9ff !important;
+    background-clip: padding-box !important;
+}
+
+.pa-log-target-slt {
+    background-color: #463726 !important;
+    color: #ff9f43 !important;
+    background-clip: padding-box !important;
 }
 
 .pa-log-target-missing {
-    background-color: #402424 !important;
-    color: #ff6b6b !important;
+    background-color: #2f3236 !important;
+    color: #9aa0a6 !important;
+    background-clip: padding-box !important;
 }
 
 /* Rounded Today and Refresh buttons */
@@ -876,6 +1051,17 @@ body::before {
     .pa-log-controls {
         flex-wrap: wrap;
         gap: 8px;
+    }
+
+    .pa-log-legend {
+        gap: 10px;
+        font-size: 0.82rem;
+    }
+
+    .pa-log-legend-dot {
+        width: 10px;
+        height: 10px;
+        flex-basis: 10px;
     }
     
     .pa-log-controls select {
