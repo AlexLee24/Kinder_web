@@ -14,11 +14,11 @@ dotenv_path = os.path.join(basedir, '..', '..', 'kinder.env')
 # Force reload of environment variables
 load_dotenv(dotenv_path, override=True)
 
-DB_HOST = os.getenv("PG_HOST", "localhost")
-DB_PORT = os.getenv("PG_PORT", "5432")
-DB_NAME = os.getenv("PG_DATABASE", "tns_data")
-DB_USER = os.getenv("PG_USER", "postgres")
-DB_PASSWORD = os.getenv("PG_PASSWORD", "")
+DB_HOST = os.getenv("PG_HOST")
+DB_PORT = os.getenv("PG_PORT")
+DB_NAME = os.getenv("PG_DATABASE")
+DB_USER = os.getenv("PG_USER")
+DB_PASSWORD = os.getenv("PG_PASSWORD")
 
 print(f"DEBUG: Loaded DB Config - Host: {DB_HOST}, Port: {DB_PORT}, DB: {DB_NAME}")
 
