@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const filename = meta.dataset.filename;
     const isAdmin = meta.dataset.isAdmin === 'true';
-    let editable = meta.dataset.editable === 'true';
+    // Always allow editing on the client side; server may still enforce permissions.
+    let editable = true;
 
     let markdownText = '';
     let rawMarkdownText = '';
@@ -24,34 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusText.style.color = isError ? '#ff7b72' : '#98a2b3';
     };
 
-    if (editToggle) {
-        editToggle.addEventListener('change', async () => {
-            const isChecked = editToggle.checked;
-            try {
-                const resp = await fetch('/api/documents/settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        documents_editable: isChecked,
-                        important_message: ''
-                    })
-                });
-                const data = await resp.json();
-                if (!resp.ok || !data.success) {
-                    throw new Error(data.error || 'Failed to update settings');
-                }
-                editable = isChecked;
-                if (toggleEditBtn) toggleEditBtn.disabled = !editable;
-                if (!editable && editing) {
-                    switchMode(false);
-                }
-                setStatus('Settings updated.', false);
-            } catch (err) {
-                editToggle.checked = !isChecked; 
-                setStatus(err.message, true);
-            }
-        });
-    }
+    // Removed editToggle/server-controlled editable setting — client-side editing always allowed.
 
     const renderMarkdown = () => {
         contentDiv.innerHTML = marked.parse(markdownText || '');
@@ -85,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             setStatus('', false);
         } else {
-            setStatus(editable ? '' : 'Editing is disabled by admin setting.', false);
+            setStatus('', false);
         }
     };
 
@@ -119,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const saveDocument = async () => {
-        if (!isAdmin || !editable) return;
+        if (!isAdmin) return;
         if (!editor) return;
 
         setStatus('Saving...', false);
@@ -167,10 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (toggleEditBtn) {
         toggleEditBtn.addEventListener('click', () => {
-            if (!editable) {
-                setStatus('Editing is disabled by admin setting.', true);
-                return;
-            }
             switchMode(true);
         });
     }
@@ -187,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (editor) {
         editor.addEventListener('paste', async (event) => {
-            if (!isAdmin || !editable || !editing) return;
+            if (!editing) return;
             const items = event.clipboardData?.items || [];
             const imageItem = Array.from(items).find(item => item.type && item.type.startsWith('image/'));
             if (!imageItem) return;

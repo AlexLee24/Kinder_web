@@ -36,13 +36,21 @@
             line-height: 1.6;
             font-size: 1.1rem;
         }
-        .markdown-content h1, 
-        .markdown-content h2, 
-        .markdown-content h3 {
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3,
+        .markdown-content h4,
+        .markdown-content h5,
+        .markdown-content h6 {
             color: #fff;
             border-bottom: 1px solid var(--border-color, #333);
             padding-bottom: 8px;
             margin-top: 1.5em;
+            text-align: left !important;
+            /* Ensure headings inside .private-section (which may set display:flex) are not flex containers */
+            display: block !important;
+            justify-content: flex-start !important;
+            align-items: flex-start !important;
         }
         .markdown-content h1 { font-size: 2rem; }
         .markdown-content h2 { font-size: 1.5rem; }
@@ -50,6 +58,17 @@
         
         .markdown-content p {
             margin: 1em 0;
+            text-align: left;
+        }
+        /* Ensure common markdown elements are left-aligned and not overridden by global styles */
+        .markdown-content p,
+        .markdown-content ul,
+        .markdown-content ol,
+        .markdown-content li,
+        .markdown-content blockquote,
+        .markdown-content th,
+        .markdown-content td {
+            text-align: left !important;
         }
         .markdown-content a {
             color: var(--primary-color, #4facfe);
@@ -236,11 +255,17 @@
                         <p style="margin: 0 0 8px 0; color: #e7e7e7;"><strong>Markdown Guide:</strong></p>
                         <ul style="list-style: none; padding-left: 0; margin: 0; color: #a8b3cf; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                             <li><code># H1</code> | <code>## H2</code> | <code>### H3</code></li>
-                            <li><code>**bold**</code> | <code>*italic*</code></li>
-                            <li><code>[Link Title](https://...)</code></li>
-                            <li><code>- List item</code></li>
-                            <li><code>{{ '{{' }}hide=KEY{{ '}}' }}</code> (Hides value via .env)</li>
-                            <li style="grid-column: 1 / -1; margin-top: 4px; color: #98c379;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg> <strong>Images:</strong> Paste image directly into the editor below to upload & insert automatically.</li>
+                            <li><code>**Bold**</code> | <code>*Italic*</code></li>
+                            <li><code>[Link](https://...)</code> | <code>&lt;br&gt;</code> (Line Break)</li>
+                            <li><code>- List</code> | <code>1. Ordered</code></li>
+                            <li><code>&amp;emsp;</code> (Indent) | <code>---</code> (Divider)</li>
+                            <li><code>{{ '{{' }}hide=KEY{{ '}}' }}</code> (Env Secret)</li>
+                            <li style="grid-column: 1 / -1; margin-top: 4px; color: #98c379;">
+                                <strong>Images:</strong> Paste directly to upload & insert.
+                            </li>
+                            <li style="grid-column: 1 / -1; color: #e06c75;">
+                                <strong>Code:</strong> Use <code>```</code> to preserve indentation.
+                            </li>
                         </ul>
                     </div>
 
@@ -258,11 +283,6 @@
                             <button class="doc-btn secondary" id="cancelEditBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Cancel</button>
                             <span class="doc-status" id="docStatusText"></span>
                         </div>
-                        
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="documentsEditableToggle" {% if documents_editable %}checked{% endif %}>
-                            <span style="font-size: 0.9rem; color: #a8b3cf;">Enable document editing (for admin)</span>
-                        </label>
                     </div>
                     {% endif %}
                 </div>
