@@ -13,6 +13,64 @@ def register_basic_routes(app):
     def login():
         return render_template('login.html', current_path='/login')
 
+    @app.route('/games')
+    def games():
+        return render_template('games.html', current_path='/games')
+
+    import os, json
+    from datetime import datetime
+    
+    LEADERBOARD_FILE = os.path.join('app', 'data', '1a2b_leaderboard.json')
+
+    @app.route('/api/games/leaderboard', methods=['GET'])
+    def get_leaderboard():
+        if os.path.exists(LEADERBOARD_FILE):
+            with open(LEADERBOARD_FILE, 'r') as f:
+                try:
+                    data = json.load(f)
+                except:
+                    data = []
+        else:
+            data = []
+        
+        # Sort by attempts (ascending)
+        data.sort(key=lambda x: x['attempts'])
+        return jsonify(data[:10])  # Return top 10
+
+    @app.route('/api/games/leaderboard', methods=['POST'])
+    def submit_score():
+        data = request.json
+        attempts = data.get('attempts')
+        
+        if not attempts or not isinstance(attempts, int):
+            return jsonify({'success': False, 'error': 'Invalid attempts'}), 400
+            
+        name = session.get('user', {}).get('name', 'User') if 'user' in session else 'User'
+        
+        record = {
+            'name': name,
+            'attempts': attempts,
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        records = []
+        if os.path.exists(LEADERBOARD_FILE):
+            with open(LEADERBOARD_FILE, 'r') as f:
+                try:
+                    records = json.load(f)
+                except:
+                    pass
+                    
+        records.append(record)
+        
+        # Ensure the directory exists
+        os.makedirs(os.path.dirname(LEADERBOARD_FILE), exist_ok=True)
+        
+        with open(LEADERBOARD_FILE, 'w') as f:
+            json.dump(records, f)
+            
+        return jsonify({'success': True})
+
     @app.route('/profile')
     def profile():
         if 'user' not in session:

@@ -508,18 +508,23 @@
         const airmassLabels = altTicks.map(a => (1 / Math.sin(a * Math.PI / 180)).toFixed(2));
 
         // Compute local time tick labels for top x-axis
-        const utcDates = times.map(t => new Date(t));
+        // Force UTC parsing: append 'Z' if missing so browsers don't treat as local time
+        const toUtcMs = s => new Date(
+            (s.includes('Z') || s.match(/[+-]\d{2}:\d{2}$/)) ? s : s.replace(' ', 'T') + 'Z'
+        ).getTime();
+        const firstMs = toUtcMs(times[0]);
+        const lastMs  = toUtcMs(times[times.length - 1]);
         const offsetMs = data.timezone_offset * 3600000;
-        const topTickVals = [];
+        const topTickVals  = [];
         const topTickTexts = [];
-        let tickT = new Date(utcDates[0]);
-        tickT.setUTCMinutes(0, 0, 0);
-        tickT = new Date(tickT.getTime() + 3600000);
-        while (tickT <= utcDates[utcDates.length - 1]) {
-            topTickVals.push(tickT.toISOString());
-            const lt = new Date(tickT.getTime() + offsetMs);
+        // Start at the first whole UTC hour after the data begins
+        let tickMs = (Math.floor(firstMs / 3600000) + 1) * 3600000;
+        while (tickMs <= lastMs) {
+            // Format without 'Z' to match backend string format (Plotly treats both consistently)
+            topTickVals.push(new Date(tickMs).toISOString().slice(0, 19));
+            const lt = new Date(tickMs + offsetMs);
             topTickTexts.push(lt.getUTCHours().toString().padStart(2, '0') + ':' + lt.getUTCMinutes().toString().padStart(2, '0'));
-            tickT = new Date(tickT.getTime() + 3600000);
+            tickMs += 3600000;
         }
 
         const layout = {

@@ -76,8 +76,10 @@ body::before {
 
 /* Standardize the dark glass sections */
 .banner-left .private-section,
-.banner-right .private-section {
-    max-width: 97%; /* fit the 1000px calendar nicely */
+.banner-right .private-section,
+.pa-obs-section,
+.pa-obs-log-section {
+    max-width: 90%; /* Fit page properly */
     margin: 1rem auto;
 }
 
@@ -159,6 +161,7 @@ body::before {
 .pa-title-section {
     text-align: center;
     margin-bottom: 0.5rem;
+    width: 100%;
 }
 
 .pa-title-section h1 {
@@ -170,7 +173,8 @@ body::before {
 }
 
 .pa-widgets-container {
-    width: 100%;
+    width: 90%;
+    margin: 0 auto;
     display: flex;
     flex-wrap: wrap;
     gap: 20px;

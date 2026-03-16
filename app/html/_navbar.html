@@ -28,13 +28,15 @@
                     <li><a href="{{ url_for('marshal') }}">Marshal</a></li>
                     
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" {% if current_path in ['/astronomy_tools', '/telescope_simulator'] %}class="active"{% endif %}>
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/astronomy_tools', '/telescope_simulator', '/mount_3d', '/games'] %}class="active"{% endif %}>
                             Tools
                             <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </a>
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('astronomy_tools') }}">Astronomy Tools</a></li>
                             <li><a href="{{ url_for('telescope_simulator') }}">Telescope Simulator</a></li>
+                            <!-- <li><a href="{{ url_for('mount_3d') }}">3D Mount Simulator</a></li> -->
+                            <li><a href="{{ url_for('games') }}">Games</a></li>
                         </ul>
                     </li>
 

@@ -49,6 +49,10 @@ def register_astronomy_routes(app):
     def mount_torque():
         return render_template('mount_torque.html', current_path='/mount_torque')
 
+    @app.route('/mount_3d')
+    def mount_3d():
+        return render_template('mount_3d.html', current_path='/mount_3d')
+
     @app.route('/calculate_redshift', methods=['POST'])
     def calculate_redshift():
         try:

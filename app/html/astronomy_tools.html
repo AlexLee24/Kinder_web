@@ -4,47 +4,51 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Astronomy Tools - Kinder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/astronomy_tools.css') }}">
     {% include '_favicon.html' %}
 </head>
 <body>
     {% include '_navbar.html' %}
 
-    <div class="container main-content">
-        
-        <div class="tool-section">
-            <h2>Calculator</h2>
-            <p class="section-description">Calculate distances and absolute magnitudes from redshift data</p>
-            
-            <div class="calculator-grid">
-                <div class="input-section">
-                    <h3>Input Parameters</h3>
-                    
+    <div class="page-header">
+        <h1>Astronomy Tools</h1>
+        <p>Distance calculator, coordinate converter &amp; date converter</p>
+    </div>
+
+    <div class="at-container">
+
+        <!-- Distance & Magnitude Calculator -->
+        <div class="settings-section">
+            <h3>
+                <svg class="section-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Distance &amp; Magnitude Calculator
+            </h3>
+            <p class="at-desc">Calculate distances and absolute magnitudes from redshift data</p>
+            <div class="at-tool-grid">
+                <div class="at-col">
                     <div class="form-group">
-                        <label for="redshift-value">Redshift (z) <span class="required">*</span></label>
-                        <input type="number" step="any" id="redshift-value" name="redshift-value" placeholder="e.g. 0.039">
+                        <label for="redshift-value">Redshift (z) <span class="at-required">*</span></label>
+                        <input type="number" step="any" id="redshift-value" placeholder="e.g. 0.039">
                     </div>
-                    
                     <div class="form-group">
                         <label for="redshift-error">Redshift error (optional)</label>
-                        <input type="number" step="any" id="redshift-error" name="redshift-error" placeholder="e.g. 0.016">
+                        <input type="number" step="any" id="redshift-error" placeholder="e.g. 0.016">
                     </div>
-                    
-                    <div class="divider"></div>
-                    
+                    <div class="at-divider"></div>
                     <div class="form-group">
                         <label for="apparent-magnitude">Apparent magnitude (m)</label>
-                        <input type="number" step="any" id="apparent-magnitude" name="apparent-magnitude" placeholder="e.g. 15.3">
+                        <input type="number" step="any" id="apparent-magnitude" placeholder="e.g. 15.3">
                     </div>
-                    
                     <div class="form-group">
                         <label for="extinction">Extinction (A)</label>
-                        <input type="number" step="any" id="extinction" name="extinction" placeholder="e.g. 0.3" value="0">
+                        <input type="number" step="any" id="extinction" placeholder="e.g. 0.3" value="0">
                     </div>
-                    
                     <div class="form-group">
                         <label for="distance-unit">Distance Unit</label>
-                        <select id="distance-unit" name="distance-unit">
+                        <select id="distance-unit">
                             <option value="km">Kilometers (km)</option>
                             <option value="ly">Light-years (ly)</option>
                             <option value="pc">Parsecs (pc)</option>
@@ -52,95 +56,106 @@
                             <option value="Gpc">Gigaparsecs (Gpc)</option>
                         </select>
                     </div>
-                    
-                    <div class="button-group">
-                        <button type="button" class="tool-button tertiary" onclick="calculateBoth()">
-                            Calculate
-                        </button>
-                    </div>
+                    <button type="button" class="at-btn" onclick="calculateBoth()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Calculate
+                    </button>
                 </div>
-                
-                <div class="results-section">
-                    <h3>Results</h3>
-                    <div id="combined-result" class="result-display">
-                        <div class="placeholder-text">
-                            Enter redshift value and click calculate to see results
-                        </div>
+                <div class="at-col">
+                    <div id="combined-result" class="at-result-box">
+                        <div class="at-placeholder">Enter redshift value and click Calculate to see results</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="tool-section">
-            <h2>Coordinate Conversion</h2>
-            <p class="section-description">Convert between different coordinate formats</p>
-            
-            <div class="coordinate-grid">
-                <div class="coordinate-section">
-                    <h3>Right Ascension (RA)</h3>
+        <!-- Coordinate Conversion -->
+        <div class="settings-section">
+            <h3>
+                <svg class="section-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                Coordinate Conversion
+            </h3>
+            <p class="at-desc">Convert between different coordinate formats</p>
+            <div class="at-tool-grid">
+                <!-- Left Input Side -->
+                <div class="at-col">
+                    <div class="at-col-title">Right Ascension (RA)</div>
                     <div class="form-group">
                         <label for="ra-hms">RA (hh:mm:ss)</label>
-                        <input type="text" id="ra-hms" name="ra-hms" placeholder="e.g. 12:34:56.78">
+                        <input type="text" id="ra-hms" placeholder="e.g. 12:34:56.78">
                     </div>
                     <div class="form-group">
                         <label for="ra-decimal">RA (Decimal °)</label>
-                        <input type="number" step="any" id="ra-decimal" name="ra-decimal" placeholder="e.g. 188.720">
+                        <input type="number" step="any" id="ra-decimal" placeholder="e.g. 188.720">
                     </div>
-                    <button type="button" class="tool-button" onclick="convertRA()">Convert RA</button>
-                    <div id="ra-result" class="result-section"></div>
-                </div>
-                
-                <div class="coordinate-section">
-                    <h3>Declination (DEC)</h3>
+                    <button type="button" class="at-btn" onclick="convertRA()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        Convert RA
+                    </button>
+                    
+                    <div class="at-divider"></div>
+                    
+                    <div class="at-col-title">Declination (DEC)</div>
                     <div class="form-group">
                         <label for="dec-dms">DEC (±dd:mm:ss)</label>
-                        <input type="text" id="dec-dms" name="dec-dms" placeholder="e.g. -23:45:12.34">
+                        <input type="text" id="dec-dms" placeholder="e.g. -23:45:12.34">
                     </div>
                     <div class="form-group">
                         <label for="dec-decimal">DEC (Decimal °)</label>
-                        <input type="number" step="any" id="dec-decimal" name="dec-decimal" placeholder="e.g. -23.753">
+                        <input type="number" step="any" id="dec-decimal" placeholder="e.g. -23.753">
                     </div>
-                    <button type="button" class="tool-button" onclick="convertDEC()">Convert DEC</button>
-                    <div id="dec-result" class="result-section"></div>
+                    <button type="button" class="at-btn" onclick="convertDEC()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        Convert DEC
+                    </button>
+                </div>
+                
+                <!-- Right Output Side -->
+                <div class="at-col">
+                    <div id="ra-result" class="at-result-box" style="min-height: 150px; margin-bottom: 20px;">
+                        <div class="at-placeholder">RA result will appear here</div>
+                    </div>
+                    <div id="dec-result" class="at-result-box" style="min-height: 150px;">
+                        <div class="at-placeholder">DEC result will appear here</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="tool-section">
-            <h2>Date Conversion</h2>
-            <p class="section-description">Convert between different astronomical date formats</p>
-            
-            <div class="date-grid">
-                <div class="date-input-section">
+        <!-- Date Conversion -->
+        <div class="settings-section">
+            <h3>
+                <svg class="section-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Date Conversion
+            </h3>
+            <p class="at-desc">Convert between different astronomical date formats</p>
+            <div class="at-tool-grid">
+                <div class="at-col">
                     <div class="form-group">
                         <label for="mjd">Modified Julian Date (MJD)</label>
-                        <input type="number" step="any" id="mjd" name="mjd" placeholder="e.g. 59000.5">
+                        <input type="number" step="any" id="mjd" placeholder="e.g. 59000.5">
                     </div>
-                    
                     <div class="form-group">
                         <label for="jd">Julian Date (JD)</label>
-                        <input type="number" step="any" id="jd" name="jd" placeholder="e.g. 2459000.5">
+                        <input type="number" step="any" id="jd" placeholder="e.g. 2459000.5">
                     </div>
-                    
                     <div class="form-group">
                         <label for="common-date">Common Date</label>
-                        <input type="datetime-local" id="common-date" name="common-date" step="1">
+                        <input type="datetime-local" id="common-date" step="1">
                     </div>
-                    
-                    <button type="button" class="tool-button" onclick="convertDate()">
+                    <button type="button" class="at-btn" onclick="convertDate()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                         Convert Date
                     </button>
                 </div>
-                
-                <div class="date-result-section">
-                    <div id="date-result" class="result-section">
-                        <div class="placeholder-text">
-                            Enter any date format to see conversions
-                        </div>
+                <div class="at-col">
+                    <div id="date-result" class="at-result-box">
+                        <div class="at-placeholder">Enter any date format to see conversions</div>
                     </div>
                 </div>
             </div>
         </div>
+
     </div>
 
     <script src="{{ url_for('static', filename='js/astronomy_tools.js') }}"></script>
