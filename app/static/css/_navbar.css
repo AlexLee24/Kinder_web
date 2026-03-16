@@ -4,7 +4,7 @@ header {
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     padding: 20px 20px;
     position: fixed;
-    top: 20px;
+    top: 10px;
     left: 50%;                     
     transform: translateX(-50%);   
     width: 70%;
@@ -17,7 +17,7 @@ header {
     transition: all 0.3s ease;
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-weight: 300;
-    min-height: 60px;
+    min-height: 50px;
     box-sizing: border-box;
 }
 
@@ -201,7 +201,7 @@ header .container {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     transition: all 0.3s ease;
-    height: 40px;
+    height: 5s0px;
     box-sizing: border-box;
     min-width: 120px;
 }
@@ -212,8 +212,8 @@ header .container {
 }
 
 .user-avatar {
-    width: 24px;
-    height: 24px;
+    width: 35px;
+    height: 35px;
     border-radius: 50%;
     border: 2px solid rgba(255, 255, 255, 0.3);
     flex-shrink: 0;
@@ -471,7 +471,7 @@ header .container {
     
     .user-menu {
         height: auto;
-        min-height: 36px;
+        min-height: 436px;
         padding: 10px;
         justify-content: center;
     }

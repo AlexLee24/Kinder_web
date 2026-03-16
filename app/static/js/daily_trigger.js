@@ -21,6 +21,54 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Ensure filters are displayed in a fixed, preferred order.
+function sortFiltersInPlace(arr) {
+    if (!Array.isArray(arr) || arr.length <= 1) return;
+    const order = ['up','gp','rp','ip','zp','yp','u','b','v','r','i','other'];
+    arr.forEach((it, idx) => { it._origIndex = idx; });
+    arr.sort((a, b) => {
+        const ka = (a.filter || '').toString().trim().toLowerCase();
+        const kb = (b.filter || '').toString().trim().toLowerCase();
+        const ia = order.indexOf(ka);
+        const ib = order.indexOf(kb);
+        const ra = ia === -1 ? 999 : ia;
+        const rb = ib === -1 ? 999 : ib;
+        if (ra !== rb) return ra - rb;
+        return a._origIndex - b._origIndex;
+    });
+    arr.forEach(it => { delete it._origIndex; });
+}
+
+// Sorting helper specifically for log display: supports calibration-only sorting
+function sortLogFilters(arr, isCalibrationTarget) {
+    if (!Array.isArray(arr) || arr.length <= 1) return;
+    const order = ['up','gp','rp','ip','zp','yp','u','b','v','r','i','other'];
+    arr.forEach((it, idx) => { it._origIndex = idx; });
+    arr.sort((a, b) => {
+        const fa = (a.filter || '').toString().trim().toLowerCase();
+        const fb = (b.filter || '').toString().trim().toLowerCase();
+        const ea = Number(a.exp) || 0;
+        const eb = Number(b.exp) || 0;
+
+        if (isCalibrationTarget) {
+            // For calibration targets (DARK/BIAS) sort by exposure seconds ascending
+            if (ea !== eb) return ea - eb;
+            if (a.count !== b.count) return (Number(a.count)||0) - (Number(b.count)||0);
+            return a._origIndex - b._origIndex;
+        }
+
+        // For normal targets: sort by preferred filter order, then by exposure seconds asc
+        const ia = order.indexOf(fa);
+        const ib = order.indexOf(fb);
+        const ra = ia === -1 ? 999 : ia;
+        const rb = ib === -1 ? 999 : ib;
+        if (ra !== rb) return ra - rb;
+        if (ea !== eb) return ea - eb;
+        return a._origIndex - b._origIndex;
+    });
+    arr.forEach(it => { delete it._origIndex; });
+}
+
 function switchTab(tabId) {
     const tabs = ['SLT', 'LOT'];
     tabs.forEach(t => {
@@ -297,6 +345,8 @@ function renderFilterRows() {
     const totalText = document.getElementById('total-exposure-text');
 
     if (!container) return;
+    // Sort obsFilters into preferred order before rendering
+    sortFiltersInPlace(obsFilters);
     container.innerHTML = '';
 
     let totalSec = 0;
@@ -782,7 +832,16 @@ function initObservationLog() {
             };
             monthSelect.onchange = () => renderLogGrid(false);
 
-            renderLogGrid(true); // pass true to indicate initial load to scroll to today
+            // Ensure members are loaded before the initial log render so avatars appear
+            try {
+                fetchMembers().then(() => {
+                    renderLogGrid(true);
+                }).catch(() => {
+                    renderLogGrid(true);
+                });
+            } catch (e) {
+                renderLogGrid(true);
+            }
         })
         .catch(() => {
             yearSelect.innerHTML = '<option value="">No Data</option>';
@@ -973,6 +1032,17 @@ async function renderLogGrid(initialLoad = false) {
     sortByPriority(discontinuedTargets);
     sortByPriority(calibrationTargets);
 
+    // Extract targets that are marked Urgent in the Targets table (skip discontinued)
+    const urgentTargets = monthlyTargets.filter(t => {
+        const p = ((t.priority || '') + '').toString().trim().toLowerCase();
+        return p === 'urgent' && !t.is_discontinued;
+    });
+    const urgentNames = new Set(urgentTargets.map(t => (t.name||'').toString()));
+    sltTargets = sltTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+    lotTargets = lotTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+    discontinuedTargets = discontinuedTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+    calibrationTargets = calibrationTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+
     // Build the grid
     let headHtml = '<tr><th>Target \\ Date</th>';
     dates.forEach(d => {
@@ -1004,6 +1074,7 @@ async function renderLogGrid(initialLoad = false) {
     // Function to render rows
     const renderRows = (targets, prefix) => {
         targets.forEach(t => {
+            const calibNoFilterNames = new Set(['DARK', 'BIAS']);
             const tr = document.createElement('tr');
             
             let displayName = t.name;
@@ -1035,10 +1106,19 @@ async function renderLogGrid(initialLoad = false) {
                     const normalizedUser = normalizeLogUserName(user);
 
                     const renderFilterList = (filters) => {
+                        const tNameUpper = ((t.name||'')+ '').toString().trim().toUpperCase();
                         if (!filters || filters.length === 0) return '';
+                        const isCalib = calibNoFilterNames.has(tNameUpper);
                         const rows = filters.map(f => {
-                            const badge = filterBadgeHTML(f.filter || '?');
-                            const expCount = [f.exp ? `${f.exp}s` : '', f.count ? `\u00d7${f.count}` : ''].filter(Boolean).join(' ');
+                            let badge = '';
+                            if (isCalib) {
+                                // Show a small grey single-letter badge: B for BIAS, D for DARK
+                                const letter = (tNameUpper === 'BIAS') ? 'B' : (tNameUpper === 'DARK' ? 'D' : ((String(f.filter||'')||'').charAt(0) || '?').toUpperCase());
+                                badge = `<span style="background:#9e9e9e;padding:1px 6px;border-radius:3px;font-size:11px;color:#fff;font-family:monospace;border:1px solid rgba(0,0,0,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.3);">${letter}</span>`;
+                            } else {
+                                badge = filterBadgeHTML(f.filter || '?');
+                            }
+                            const expCount = [f.exp ? `${f.exp}s` : '', f.count ? `×${f.count}` : ''].filter(Boolean).join(' ');
                             return `<div style="display:flex;align-items:center;white-space:nowrap;font-size:0.82rem;">` +
                                    `<span style="display:inline-block;width:32px;text-align:center;">${badge}</span>` +
                                    `<span style="margin-left:6px;color:#aaa;font-family:monospace;">${expCount}</span>` +
@@ -1049,6 +1129,12 @@ async function renderLogGrid(initialLoad = false) {
 
                     const trigFilters = parseLogFilterRows(log.trigger_filter, log.trigger_exp, log.trigger_count);
                     const obsFiltersLog = parseLogFilterRows(log.observed_filter, log.observed_exp, log.observed_count);
+                    // Determine if this target is a calibration (DARK/BIAS)
+                    const tNameUpperLocal = ((t.name||'')+ '').toString().trim().toUpperCase();
+                    const isCalibLocal = calibNoFilterNames.has(tNameUpperLocal);
+                    // Sort filters for log display: calibration by exposure asc; otherwise by filter order then exp asc
+                    sortLogFilters(trigFilters, isCalibLocal);
+                    sortLogFilters(obsFiltersLog, isCalibLocal);
                     
                     const isFilterVisible = document.getElementById('log-show-filter-checkbox') ? document.getElementById('log-show-filter-checkbox').checked : true;
                     const trigDetail = isFilterVisible ? renderFilterList(trigFilters) : '';
@@ -1096,20 +1182,25 @@ async function renderLogGrid(initialLoad = false) {
 
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
-                            <div class="pa-log-cell">
-                                <div class="pa-log-cell-user" style="display:flex; align-items:center; justify-content:center; width:100%; gap:4px; font-size:12px;">
-                                    ${userDisplay}${editBtn}
+                            <div class="pa-log-cell" style="width:100%;">
+                                <div class="pa-log-cell-top" style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;">
+                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">${userDisplay}</div>
+                                    <div style="flex:0 0 auto;margin:0 8px;text-align:center;">${priorityBadge}</div>
+                                    <div style="flex:0 0 auto;">${editBtn}</div>
                                 </div>
-                                <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
-                                    ${priorityBadge}
+
+                                <div class="pa-log-cell-status-row" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px;width:100%;align-items:center;">
+                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Trigger</span><span style="margin-left:6px;">${trigIcon}</span></div>
+                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Observed</span><span style="margin-left:6px;">${obsIcon}</span></div>
                                 </div>
-                                <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
-                                    <div style="display:flex;align-items:center;gap:4px;">Trigger ${trigIcon}</div>
-                                    ${trigDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>' : '')}
-                                </div>
-                                <div class="pa-log-cell-status" style="font-size:12px; margin-top:4px;">
-                                    <div style="display:flex;align-items:center;gap:4px;">Observed ${obsIcon}</div>
-                                    ${obsDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;padding-left:4px;">--</div>' : '')}
+
+                                <div class="pa-log-cell-filters" style="margin-top:8px;width:100%;display:flex;justify-content:space-between;gap:12px;">
+                                    <div class="pa-log-trigger-filters" style="width:48%;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                                        ${trigDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;">--</div>' : '')}
+                                    </div>
+                                    <div class="pa-log-observed-filters" style="width:48%;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                                        ${obsDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;">--</div>' : '')}
+                                    </div>
                                 </div>
                             </div>
                         </td>
@@ -1118,10 +1209,17 @@ async function renderLogGrid(initialLoad = false) {
                     const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
-                            <div class="pa-log-cell">
-                                <div class="pa-log-cell-user" style="display:flex;align-items:center;justify-content:center;width:100%;color:#666;">-${editBtnEmpty}</div>
-                                <div class="pa-log-cell-status" style="color: #666;">Trigger -</div>
-                                <div class="pa-log-cell-status" style="color: #666;">Observed -</div>
+                            <div class="pa-log-cell" style="width:100%;">
+                                <div class="pa-log-cell-top" style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#666;">
+                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">- ${editBtnEmpty}</div>
+                                    <div style="flex:0 0 auto;margin:0 8px;text-align:center;color:#666;"><span style="color:#777;">—</span></div>
+                                    <div style="flex:0 0 auto;"></div>
+                                </div>
+
+                                <div class="pa-log-cell-status-row" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px;width:100%;align-items:center;color:#666;">
+                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Trigger</span><span style="margin-left:6px;color:#fff;">-</span></div>
+                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Observed</span><span style="margin-left:6px;color:#fff;">-</span></div>
+                                </div>
                             </div>
                         </td>
                     `;
@@ -1132,6 +1230,25 @@ async function renderLogGrid(initialLoad = false) {
         });
     };
 
+    // Render urgent-last targets first (grouped by telescope order SLT->LOT->DISCONTINUED->CALIBRATION)
+    if (urgentTargets && urgentTargets.length) {
+        const urgentSLT = urgentTargets.filter(t => (t.telescope||'').toString() === 'SLT');
+        const urgentLOT = urgentTargets.filter(t => (t.telescope||'').toString() === 'LOT');
+        const urgentDisc = urgentTargets.filter(t => {
+            const up = (t.telescope||'').toString();
+            const tName = ((t.name||'')+ '').toString().trim().toUpperCase();
+            const isCal = ['AUTOFLAT','BIAS','DARK'].includes(tName);
+            return up !== 'SLT' && up !== 'LOT' && !isCal;
+        });
+        const urgentCal = urgentTargets.filter(t => ['AUTOFLAT','BIAS','DARK'].includes(((t.name||'')+ '').toString().trim().toUpperCase()));
+
+        if (urgentSLT.length) renderRows(urgentSLT, 'SLT');
+        if (urgentLOT.length) renderRows(urgentLOT, 'LOT');
+        if (urgentDisc.length) renderRows(urgentDisc, 'DISCONTINUED');
+        if (urgentCal.length) renderRows(urgentCal, 'CALIBRATION');
+    }
+
+    // Then render normal groups in order SLT -> LOT -> Discontinued -> Calibration
     renderRows(sltTargets, 'SLT');
     renderRows(lotTargets, 'LOT');
     renderRows(discontinuedTargets, 'DISCONTINUED');
@@ -1206,26 +1323,28 @@ function normalizeLogUserName(rawName) {
 }
 
 function fetchMembers() {
-    fetch('/api/members')
+    return fetch('/api/members')
         .then(res => res.json())
         .then(data => {
             if (data.success || data.status === 'success') {
-                membersCache = data.members || data.data;
+                membersCache = data.members || data.data || [];
                 const selectUser = document.getElementById('log-edit-user');
-                selectUser.innerHTML = '<option value="">-- Select Member --</option>';
+                if (selectUser) selectUser.innerHTML = '<option value="">-- Select Member --</option>';
                 membersCache.forEach(m => {
                     const email = m.email || m.id;
                     const name = m.name || email;
                     membersMap[name] = m;
                     membersMap[email] = m;
-                    selectUser.innerHTML += `<option value="${name}">${name}</option>`;
+                    if (selectUser) selectUser.innerHTML += `<option value="${name}">${name}</option>`;
                 });
             }
+            return data;
+        })
+        .catch(err => {
+            console.error('Failed to fetch members', err);
+            throw err;
         });
 }
-
-// Fetch members once on page load
-fetchMembers();
 
 function addLogFilterRow(type, filterName) {
     const arr = type === 'trigger' ? logTriggerFilters : logObservedFilters;
@@ -1248,6 +1367,15 @@ function renderLogFilterRows(type) {
     const arr = type === 'trigger' ? logTriggerFilters : logObservedFilters;
     const container = document.getElementById(`log-${type}-filter-rows`);
     if (!container) return;
+    // If editing a calibration target (DARK/BIAS), don't render filters
+    const editTarget = (document.getElementById('log-edit-target-id') || {}).value || '';
+    const editTargetUpper = (editTarget || '').toString().trim().toUpperCase();
+    if (editTargetUpper === 'DARK' || editTargetUpper === 'BIAS') {
+        container.innerHTML = '';
+        return;
+    }
+    // Sort the log filter array into preferred order before rendering
+    sortFiltersInPlace(arr);
     container.innerHTML = '';
     const predefinedFilters = ['up', 'gp', 'rp', 'ip', 'zp'];
 
