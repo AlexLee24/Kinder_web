@@ -1,7 +1,10 @@
 """
 Admin routes for the Kinder web application.
 """
+import logging
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, current_app
+
+logger = logging.getLogger(__name__)
 from authlib.common.security import generate_token
 from datetime import datetime
 import os
@@ -493,7 +496,7 @@ def register_admin_routes(app):
                     os.remove(os.path.join(images_dir, img))
                     cleaned_count += 1
                 except Exception as e:
-                    print(f"Error removing image {img}: {e}")
+                    logger.error('Error removing image %s: %s', img, e)
                     
             return jsonify({
                 'success': True,

@@ -1,7 +1,10 @@
 """
 API routes for the Kinder web application.
 """
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 import urllib.parse
 from datetime import datetime, timezone
 from flask import request, jsonify, session
@@ -489,7 +492,7 @@ def register_api_routes(app):
             
         try:
             object_name = urllib.parse.unquote(object_name)
-            print(f"Fetching photometry for {object_name}")
+            logger.info('Fetching photometry for %s', object_name)
             
             # Run the workflow
             process_single_object_workflow(object_name)

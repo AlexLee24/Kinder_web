@@ -194,6 +194,7 @@
         .l-info    { color: rgba(255,255,255,0.82); }
         .l-debug   { color: rgba(255,255,255,0.38); }
         .l-sep     { color: rgba(255,255,255,0.22); }
+        .l-ts      { color: rgba(255,255,255,0.30); }
     </style>
 </head>
 <body>
@@ -247,14 +248,37 @@
             return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
+        // Color palette for different log sources
+        const SRC_COLORS = [
+            '#79c0ff', '#56d364', '#d2a8ff', '#ffa657',
+            '#f78166', '#4ec9b0', '#f0883e', '#a5d6ff',
+            '#ffcb6b', '#b3f0a8', '#89ddff', '#c792ea',
+        ];
+
+        function sourceColor(name) {
+            let h = 0;
+            for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+            return SRC_COLORS[h % SRC_COLORS.length];
+        }
+
+        const LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)\] (.*)/;
+
         function colorize(text) {
             return text.split('\n').map(line => {
                 if (line === '') return '<span style="display:block;height:0"></span>';
+                const m = LOG_RE.exec(line);
+                if (m) {
+                    const [, ts, src, msg] = m;
+                    let msgCls = 'l-info';
+                    if (/\bERROR\b/i.test(msg))         msgCls = 'l-error';
+                    else if (/\bWARN(ING)?\b/i.test(msg)) msgCls = 'l-warning';
+                    else if (/\bDEBUG\b/i.test(msg))      msgCls = 'l-debug';
+                    const sc = sourceColor(src);
+                    return `<span class="l-ts">${esc(ts)}</span> <span style="color:${sc}">[${esc(src)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
+                }
+                // fallback for non-standard lines (separators, etc.)
                 let cls = 'l-info';
-                if (/\[ERROR\s*\]/.test(line)) cls = 'l-error';
-                else if (/\[WARNING\s*\]/.test(line)) cls = 'l-warning';
-                else if (/\[DEBUG\s*\]/.test(line)) cls = 'l-debug';
-                else if (/^[-=]{3}/.test(line)) cls = 'l-sep';
+                if (/^[-=]{3}/.test(line)) cls = 'l-sep';
                 return `<span class="${cls}">${esc(line)}</span>`;
             }).join('\n');
         }

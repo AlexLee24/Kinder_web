@@ -116,7 +116,7 @@ def setup_logging(log_dir: str) -> None:
 
     handler = DailyFileHandler(log_dir, backup_count=7)
     formatter = logging.Formatter(
-        fmt='%(asctime)s [%(levelname)-8s] %(name)s - %(message)s',
+        fmt='%(asctime)s [%(name)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
     handler.setFormatter(formatter)

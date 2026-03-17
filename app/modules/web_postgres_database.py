@@ -1,4 +1,4 @@
-
+import logging
 import psycopg2
 from psycopg2 import pool, extras
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -19,6 +19,8 @@ DB_USER = os.getenv("PG_USER", "postgres")
 DB_PASSWORD = os.getenv("PG_PASSWORD", "")
 DB_NAME = "kinder_web"  # Specific for this module
 
+logger = logging.getLogger(__name__)
+
 # Connection pool
 connection_pool = None
 
@@ -37,7 +39,7 @@ def init_connection_pool(minconn=1, maxconn=20):
                 password=DB_PASSWORD
             )
         except Exception as e:
-            print(f"Error initializing connection pool for {DB_NAME}: {e}")
+            logger.error('Error initializing connection pool for %s: %s', DB_NAME, e)
             raise e
     return connection_pool
 
@@ -843,7 +845,7 @@ def save_observation_target(telescope, name, mag, ra, dec, priority, repeat_coun
             cursor.close()
             return new_id
     except Exception as e:
-        print(f"Error saving target: {e}")
+        logger.error('Error saving target: %s', e)
     return None
 
 def update_observation_target_status(target_id: int, is_active: bool) -> bool:
@@ -858,7 +860,7 @@ def update_observation_target_status(target_id: int, is_active: bool) -> bool:
             conn.commit()
             return cursor.rowcount > 0
     except Exception as e:
-        print(f"Error updating target status: {e}")
+        logger.error('Error updating target status: %s', e)
         return False
 
 def get_observation_targets():
@@ -893,7 +895,7 @@ def get_observation_targets():
                 })
             cursor.close()
     except Exception as e:
-        print(f"Error fetching targets: {e}")
+        logger.error('Error fetching targets: %s', e)
     return targets
 
 def delete_observation_target(target_id):
@@ -905,8 +907,7 @@ def delete_observation_target(target_id):
             cursor.close()
             return True
     except Exception as e:
-        print(f"Error deleting target: {e}")
-    return False
+        logger.error('Error deleting target: %s', e)
 
 def update_observation_target(target_id, telescope, name, mag, ra, dec, priority, repeat_count, auto_exposure, filters, plan, program, note_gl):
     try:
@@ -922,8 +923,7 @@ def update_observation_target(target_id, telescope, name, mag, ra, dec, priority
             cursor.close()
             return True
     except Exception as e:
-        print(f"Error updating target: {e}")
-    return False
+        logger.error('Error updating target: %s', e)
 
 def get_observation_log_months():
     try:
@@ -959,8 +959,7 @@ def get_observation_log_months():
             cursor.close()
             return results
     except Exception as e:
-        print(f"Error fetching observation log months: {e}")
-    return []
+        logger.error('Error fetching observation log months: %s', e)
 
 def get_observation_logs(year, month):
     try:
@@ -1001,8 +1000,7 @@ def get_observation_logs(year, month):
             cursor.close()
             return results
     except Exception as e:
-        print(f"Error fetching observation logs: {e}")
-    return []
+        logger.error('Error fetching observation logs: %s', e)
 
 def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_observed,
                             trigger_filter=None, trigger_exp=None, trigger_count=None,
@@ -1079,8 +1077,7 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
             cursor.close()
             return True
     except Exception as e:
-        print(f"Error upserting observation log: {e}")
-    return False
+        logger.error('Error upserting observation log: %s', e)
 
 
 def delete_observation_log(target_name, obs_date):
@@ -1096,5 +1093,4 @@ def delete_observation_log(target_name, obs_date):
             cursor.close()
             return deleted > 0
     except Exception as e:
-        print(f"Error deleting observation log: {e}")
-    return False
+        logger.error('Error deleting observation log: %s', e)

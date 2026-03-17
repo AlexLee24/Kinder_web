@@ -1,6 +1,9 @@
+import logging
 import os
 import pathlib
 import requests
+
+logger = logging.getLogger(__name__)
 import json
 import zipfile
 import pandas as pd
@@ -42,8 +45,8 @@ def download_TNS_api_hr(hr, debug=False):
     }
     
     if debug:
-        print(f"URL: {tns_link}")
-        print(f"Headers: {headers}")
+        logger.debug('URL: %s', tns_link)
+        logger.debug('Headers: %s', headers)
     
     # Retry logic: 10s, 30s, 60s
     retry_delays = [10, 30, 60]
@@ -53,7 +56,7 @@ def download_TNS_api_hr(hr, debug=False):
     while attempt < max_attempts:
         if attempt > 0:
             delay = retry_delays[attempt - 1]
-            print(f"Waiting {delay} seconds before retry {attempt}/{len(retry_delays)}...")
+            logger.info('Waiting %d seconds before retry %d/%d...', delay, attempt, len(retry_delays))
             time.sleep(delay)
         
         response = requests.post(tns_link, headers=headers, data=data)
@@ -63,13 +66,13 @@ def download_TNS_api_hr(hr, debug=False):
             with open(output_file, 'wb') as f:
                 f.write(response.content)
             if debug:
-                print(f"Data successfully saved to: {output_file}")
+                logger.debug('Data successfully saved to: %s', output_file)
             
             # Unzip the file
             with zipfile.ZipFile(output_file, 'r') as zip_ref:
                 zip_ref.extractall(SAVE_DIR)
             if debug:
-                print(f"File unzipped to: {SAVE_DIR}")
+                logger.debug('File unzipped to: %s', SAVE_DIR)
             
             # Rename the extracted CSV file
             extracted_csv = SAVE_DIR / f"tns_public_objects_{hr}.csv"
@@ -80,27 +83,28 @@ def download_TNS_api_hr(hr, debug=False):
                     renamed_csv.unlink()
                 extracted_csv.rename(renamed_csv)
                 if debug:
-                    print(f"Renamed extracted file to: {renamed_csv}")
+                        logger.debug('Renamed extracted file to: %s', renamed_csv)
             
             # Remove the zip file
             output_file.unlink()
             if debug:
-                print(f"Removed zip file: {output_file}")
-            print(f"Download and extraction completed for {hr}")
+                logger.debug('Removed zip file: %s', output_file)
+            logger.info('Download and extraction completed for %s', hr)
             return True
         elif response.status_code == 404:
-            print(f"Error: File not found (404) for {hr}")
+            logger.error('File not found (404) for %s', hr)
             return False
         else:
-            print(f"Error: Request failed with status code: {response.status_code}")
+            logger.error('Request failed with status code: %d', response.status_code)
             attempt += 1
             if attempt >= max_attempts:
-                print(f"Failed after {len(retry_delays)} retries. Stopping.")
-                return False
+                logger.error('Failed after %d retries. Stopping.', len(retry_delays))
+    return False
+
 
 def download_TNS_api(year, month, day, debug=False):
     download_url = f"https://www.wis-tns.org/system/files/tns_public_objects/tns_public_objects_{year}{month:02d}{day:02d}.csv.zip"
-    
+
     # Set headers with bot info
     headers = {
         'user-agent': f'tns_marker{{"tns_id":{bot_id},"type":"bot","name":"{bot_name}"}}'
@@ -112,8 +116,8 @@ def download_TNS_api(year, month, day, debug=False):
     }
     
     if debug:
-        print(f"URL: {download_url}")
-        print(f"Headers: {headers}")
+        logger.debug('URL: %s', download_url)
+        logger.debug('Headers: %s', headers)
     
     # Retry logic: 10s, 30s, 60s
     retry_delays = [10, 30, 60]
@@ -123,7 +127,7 @@ def download_TNS_api(year, month, day, debug=False):
     while attempt < max_attempts:
         if attempt > 0:
             delay = retry_delays[attempt - 1]
-            print(f"Waiting {delay} seconds before retry {attempt}/{len(retry_delays)}...")
+            logger.info('Waiting %d seconds before retry %d/%d...', delay, attempt, len(retry_delays))
             time.sleep(delay)
         
         response = requests.post(download_url, headers=headers, data=data)
@@ -133,13 +137,13 @@ def download_TNS_api(year, month, day, debug=False):
             with open(output_file, 'wb') as f:
                 f.write(response.content)
             if debug:
-                print(f"Data successfully saved to: {output_file}")
+                logger.debug('Data successfully saved to: %s', output_file)
             
             # Unzip the file
             with zipfile.ZipFile(output_file, 'r') as zip_ref:
                 zip_ref.extractall(SAVE_DIR)
             if debug:
-                print(f"File unzipped to: {SAVE_DIR}")
+                logger.debug('File unzipped to: %s', SAVE_DIR)
             
             # Rename the extracted CSV file
             extracted_csv = SAVE_DIR / f"tns_public_objects_{year}{month:02d}{day:02d}.csv"
@@ -150,28 +154,26 @@ def download_TNS_api(year, month, day, debug=False):
                     renamed_csv.unlink()
                 extracted_csv.rename(renamed_csv)
                 if debug:
-                    print(f"Renamed extracted file to: {renamed_csv}")
+                        logger.debug('Renamed extracted file to: %s', renamed_csv)
             
             # Remove the zip file
             output_file.unlink()
             if debug:
-                print(f"Removed zip file: {output_file}")
-            print(f"Download and extraction completed for {year}-{month:02d}-{day:02d}")
+                logger.debug('Removed zip file: %s', output_file)
+            logger.info('Download and extraction completed for %d-%02d-%02d', year, month, day)
             return True
         elif response.status_code == 404:
-            print(f"Error: File not found (404) for {year}-{month:02d}-{day:02d}")
+            logger.error('File not found (404) for %d-%02d-%02d', year, month, day)
             return False
         else:
-            print(f"Error: Request failed with status code: {response.status_code}")
+            logger.error('Request failed with status code: %d', response.status_code)
             attempt += 1
             if attempt >= max_attempts:
-                print(f"Failed after {len(retry_delays)} retries. Stopping.")
-                return False
+                logger.error('Failed after %d retries. Stopping.', len(retry_delays))
+    return False
 
 
 def addin_database(filepath, debug=False):
-    """Import CSV data into PostgreSQL TNS database with write optimization"""
-    
     # Log download attempt at the very beginning
     utc_now = datetime.now(timezone.utc)
     hour_utc = utc_now.strftime('%Y-%m-%d_%H')
@@ -180,7 +182,7 @@ def addin_database(filepath, debug=False):
     
     if not os.path.exists(filepath):
         error_msg = f"File not found: {filepath}"
-        print(f"Error: {error_msg}")
+        logger.error(error_msg)
         update_download_log(log_id, 'failed', records_imported=0, records_updated=0, error_message=error_msg)
         return False
     
@@ -228,7 +230,7 @@ def addin_database(filepath, debug=False):
                         if new_lastmodified and existing_lastmodified:
                             if new_lastmodified <= existing_lastmodified:
                                 if debug:
-                                    print(f"Skipping {cleaned_row.get('name')}: existing data is newer")
+                                    logger.debug('Skipping %s: existing data is newer', cleaned_row.get('name'))
                                 skipped_count += 1
                                 continue
                         
@@ -276,7 +278,7 @@ def addin_database(filepath, debug=False):
                             ''', update_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
-                                print(f"Committed {len(update_batch)} updates")
+                                logger.debug('Committed %d updates', len(update_batch))
                             update_batch = []
                     else:
                         # Prepare insert data
@@ -321,7 +323,7 @@ def addin_database(filepath, debug=False):
                             ''', insert_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
-                                print(f"Committed {len(insert_batch)} inserts")
+                                logger.debug('Committed %d inserts', len(insert_batch))
                             insert_batch = []
             
             # Execute remaining batches
@@ -338,7 +340,7 @@ def addin_database(filepath, debug=False):
                     WHERE objid = %s
                 ''', update_batch, page_size=BATCH_SIZE)
                 if debug:
-                    print(f"Committed final {len(update_batch)} updates")
+                    logger.debug('Committed final %d updates', len(update_batch))
             
             if insert_batch:
                 extras.execute_batch(cursor, '''
@@ -351,19 +353,19 @@ def addin_database(filepath, debug=False):
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0, 0, 0)
                 ''', insert_batch, page_size=BATCH_SIZE)
                 if debug:
-                    print(f"Committed final {len(insert_batch)} inserts")
+                    logger.debug('Committed final %d inserts', len(insert_batch))
             
             conn.commit()
             cursor.close()
         
-        print(f"Import completed: {imported_count} new, {updated_count} updated, {skipped_count} skipped")
+        logger.info('Import completed: %d new, %d updated, %d skipped', imported_count, updated_count, skipped_count)
         
         # Update download log with success
         update_download_log(log_id, 'completed', records_imported=imported_count, records_updated=updated_count)
         return True
         
     except Exception as e:
-        print(f"Error importing CSV: {e}")
+        logger.error('Error importing CSV: %s', e)
         import traceback
         traceback.print_exc()
         
@@ -387,7 +389,7 @@ def auto_snoozed(time_now_utc, debug=False):
             cutoff_date = (time_now_utc - timedelta(days=15)).strftime('%Y-%m-%d')
             
             if debug:
-                print(f"Processing tns_objects table with cutoff date: {cutoff_date}")
+                logger.debug('Processing tns_objects table with cutoff date: %s', cutoff_date)
             
             # Find objects in inbox with old photometry or old lastmodified
             cursor.execute('''
@@ -415,7 +417,7 @@ def auto_snoozed(time_now_utc, debug=False):
                     ''', (objid,))
                     finished_follow_count += 1
                     if debug:
-                        print(f"Snoozed & finished follow: {name} (last_phot: {last_phot_date})")
+                        logger.debug('Snoozed & finished follow: %s (last_phot: %s)', name, last_phot_date)
                 else:
                     # Update: inbox=0, snoozed=1 (no change to follow/finish_follow)
                     cursor.execute('''
@@ -424,18 +426,18 @@ def auto_snoozed(time_now_utc, debug=False):
                         WHERE objid = %s
                     ''', (objid,))
                     if debug:
-                        print(f"Snoozed: {name} (last_phot: {last_phot_date})")
+                        logger.debug('Snoozed: %s (last_phot: %s)', name, last_phot_date)
                 
                 snoozed_count += 1
             
             conn.commit()
             cursor.close()
         
-        print(f"Auto-snooze completed: {snoozed_count} objects snoozed ({finished_follow_count} finished follow)")
+        logger.info('Auto-snooze completed: %d objects snoozed (%d finished follow)', snoozed_count, finished_follow_count)
         return True
         
     except Exception as e:
-        print(f"Error in auto_snoozed: {e}")
+        logger.error('Error in auto_snoozed: %s', e)
         import traceback
         traceback.print_exc()
         return False

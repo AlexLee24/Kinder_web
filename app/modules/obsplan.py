@@ -4,8 +4,11 @@ Original Code is written by Phil Cigan
 Link of the original code: https://github.com/pjcigan/obsplanning
 """
 
+import logging
 import pytz
 import ephem
+
+logger = logging.getLogger(__name__)
 import numpy as np
 
 from datetime import datetime, timedelta
@@ -679,7 +682,7 @@ def calculate_twilight_times(obsframe, startdate, verbose=False):
     t_astro = [tmp_obs.previous_setting(ephem.Sun(), use_center=True),
                tmp_obs.next_rising(ephem.Sun(), use_center=True)]
     if verbose:
-        print('Sunset: %s, Sunrise: %s' % (sunset[0], sunset[1]))
+        logger.debug('Sunset: %s, Sunrise: %s', sunset[0], sunset[1])
     return np.array(sunset), np.array(t_civil), np.array(t_naut), np.array(t_astro)
 
 # -----------------------------------------------------------------------------
@@ -807,7 +810,7 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
                           xytext=[meantransit_dt + timedelta(minutes=-25), 85.],
                           va='top', rotation=90, color='0.5')
         except Exception as e:
-            print(f"{meantransit}, Error：{e}")
+            logger.error('%s, Error: %s', meantransit, e)
     
     axin.set_xlim(times_utc[0], times_utc[-1])
     

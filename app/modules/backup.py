@@ -1,8 +1,11 @@
+import logging
 import os
 import subprocess
 import glob
 from datetime import datetime
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '..', '..', 'kinder.env'))
@@ -63,7 +66,7 @@ def run_daily_backup(force=False):
         filepath = os.path.join(BACKUP_DIR, filename)
 
         if os.path.exists(filepath) and not force:
-            print(f"[backup] {filename} already exists, skipping.")
+            logger.info('%s already exists, skipping.', filename)
             continue
 
         env = os.environ.copy()
@@ -87,13 +90,13 @@ def run_daily_backup(force=False):
             )
             if result.returncode == 0:
                 size = os.path.getsize(filepath)
-                print(f"[backup] {filename} saved ({size // 1024} KB)")
+                logger.info('%s saved (%d KB)', filename, size // 1024)
             else:
-                print(f"[backup] ERROR dumping {db}: {result.stderr.strip()}")
+                logger.error('ERROR dumping %s: %s', db, result.stderr.strip())
                 if os.path.exists(filepath):
                     os.remove(filepath)
         except Exception as e:
-            print(f"[backup] Exception dumping {db}: {e}")
+            logger.error('Exception dumping %s: %s', db, e)
             if os.path.exists(filepath):
                 os.remove(filepath)
 
@@ -108,6 +111,6 @@ def _prune_old_backups():
         for f in excess:
             try:
                 os.remove(f)
-                print(f"[backup] Pruned old backup: {os.path.basename(f)}")
+                logger.info('Pruned old backup: %s', os.path.basename(f))
             except Exception as e:
-                print(f"[backup] Failed to prune {f}: {e}")
+                logger.error('Failed to prune %s: %s', f, e)

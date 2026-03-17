@@ -1,7 +1,10 @@
 """
 Calendar routes for the Kinder web application.
 """
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 import urllib.parse
 import uuid
 from datetime import datetime
@@ -499,7 +502,7 @@ def register_private_routes(app):
                 cursor.close()
             return jsonify({'results': results})
         except Exception as e:
-            print(f"Search error: {e}")
+            logger.error('Search error: %s', e)
             return jsonify({'results': []})
 
     @app.route('/api/auto_exposure')
@@ -530,7 +533,7 @@ def register_private_routes(app):
 
             return jsonify({'success': True, 'filters': filters, 'telescope': telescope})
         except Exception as e:
-            print(f"Auto exposure error: {e}")
+            logger.error('Auto exposure error: %s', e)
             return jsonify({'error': str(e)}), 500
 
     @app.route('/private/calendar')

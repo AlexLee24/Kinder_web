@@ -1,3 +1,4 @@
+import logging
 import psycopg2
 from psycopg2 import pool, extras
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -20,7 +21,8 @@ DB_NAME = os.getenv("PG_DATABASE")
 DB_USER = os.getenv("PG_USER")
 DB_PASSWORD = os.getenv("PG_PASSWORD")
 
-print(f"DEBUG: Loaded DB Config - Host: {DB_HOST}, Port: {DB_PORT}, DB: {DB_NAME}")
+logger = logging.getLogger(__name__)
+logger.debug('Loaded DB Config - Host: %s, Port: %s, DB: %s', os.getenv('PG_HOST'), os.getenv('PG_PORT'), os.getenv('PG_DATABASE'))
 
 # Connection pool for write optimization
 connection_pool = None
@@ -28,7 +30,7 @@ connection_pool = None
 def check_db_connection():
     """Check connection to PostgreSQL database and print status"""
     try:
-        print(f"Attempting to connect to PostgreSQL at {DB_HOST}:{DB_PORT} (DB: {DB_NAME})...")
+        logger.info('Attempting to connect to PostgreSQL at %s:%s (DB: %s)...', DB_HOST, DB_PORT, DB_NAME)
         conn = psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
@@ -37,10 +39,10 @@ def check_db_connection():
             password=DB_PASSWORD
         )
         conn.close()
-        print(f"[SUCCESS] Successfully connected to PostgreSQL database '{DB_NAME}' at {DB_HOST}")
+        logger.info("Connected to PostgreSQL database '%s' at %s", DB_NAME, DB_HOST)
         return True
     except Exception as e:
-        print(f"[ERROR] Failed to connect to PostgreSQL database: {e}")
+        logger.error('Failed to connect to PostgreSQL database: %s', e)
         return False
 
 def init_connection_pool(minconn=2, maxconn=60):
@@ -101,12 +103,12 @@ def init_tns_database():
         cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}'")
         if not cursor.fetchone():
             cursor.execute(f"CREATE DATABASE {DB_NAME}")
-            print(f"Created database: {DB_NAME}")
+            logger.info('Created database: %s', DB_NAME)
         
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f"Database creation check: {e}")
+        logger.debug('DB creation check: %s', e)
     
     # Connect to target database and create tables
     with get_db_connection() as conn:
@@ -153,7 +155,7 @@ def init_tns_database():
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_mag DOUBLE PRECISION")
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_abs_mag DOUBLE PRECISION")
         except Exception as e:
-            print(f"Migration note: {e}")
+            logger.debug('Migration note: %s', e)
         
         # Photometry table
         cursor.execute('''
@@ -257,7 +259,7 @@ def init_tns_database():
             cursor.execute("ALTER TABLE custom_targets ADD COLUMN IF NOT EXISTS exposures TEXT")
             cursor.execute("ALTER TABLE custom_targets ADD COLUMN IF NOT EXISTS counts TEXT")
         except Exception as e:
-            print(f"Migration note: {e}")
+            logger.debug('Migration note: %s', e)
         
         # Create indexes for TNS objects
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_tns_objid ON tns_objects(objid)')
@@ -334,7 +336,7 @@ def init_tns_database():
         conn.commit()
         cursor.close()
         
-    print("PostgreSQL database initialized with all tables")
+    logger.info('PostgreSQL database initialized with all tables')
 
 def log_download_attempt(hour_utc, filename=""):
     """Log a download attempt to database"""
@@ -672,7 +674,7 @@ class TNSObjectDB:
                 conn.commit()
                 cursor.close()
         except Exception as e:
-            print(f"Error logging view for {object_name}: {e}")
+            logger.error('Error logging view for %s: %s', object_name, e)
 
     @staticmethod
     def get_top_viewed_objects(days=30, limit=5, mode='30days'):
@@ -1284,14 +1286,14 @@ def update_object_status(object_name, status):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            print(f"DEBUG: Updating status for object '{object_name}' to '{status}'") # Debug print
+            logger.debug("Updating status for object '%s' to '%s'", object_name, status)
             cursor.execute(query, (object_name,))
             row_count = cursor.rowcount
             conn.commit()
             cursor.close()
             
             if row_count == 0:
-                print(f"DEBUG: No rows updated for object '{object_name}'. Trying case-insensitive match.")
+                logger.debug("No rows updated for object '%s'. Trying case-insensitive match.", object_name)
                 # Fallback 1: Try case-insensitive match on name
                 query_insensitive = query.replace("WHERE name = %s", "WHERE name ILIKE %s")
                 with get_db_connection() as conn2:
@@ -1302,7 +1304,7 @@ def update_object_status(object_name, status):
                     cursor2.close()
             
             if row_count == 0:
-                print(f"DEBUG: Still no rows updated. Trying full name match (prefix + name).")
+                logger.debug('Still no rows updated. Trying full name match (prefix + name).')
                 # Fallback 2: Try matching concatenation of name_prefix and name
                 query_fullname = query.replace("WHERE name = %s", "WHERE (COALESCE(name_prefix, '') || name) ILIKE %s")
                 with get_db_connection() as conn3:
@@ -1312,10 +1314,10 @@ def update_object_status(object_name, status):
                     conn3.commit()
                     cursor3.close()
             
-            print(f"DEBUG: Rows updated: {row_count}")
+            logger.debug('Rows updated: %d', row_count)
             return row_count > 0
     except Exception as e:
-        print(f"Error updating status: {e}")
+        logger.error('Error updating status: %s', e)
         return False
 
 def update_object_activity(objid, activity_type=None):
@@ -1375,7 +1377,7 @@ def get_daily_match_counts():
             cur.close()
             return results
     except Exception as e:
-        print(f"Error getting daily match counts: {e}")
+        logger.error('Error getting daily match counts: %s', e)
         return []
 
 def get_available_dates():
@@ -1392,7 +1394,7 @@ def get_available_dates():
             cur.close()
             return dates
     except Exception as e:
-        print(f"Error getting available dates: {e}")
+        logger.error('Error getting available dates: %s', e)
         return []
 
 def get_cross_match_results(limit=1000, date=None):
@@ -1427,7 +1429,7 @@ def get_cross_match_results(limit=1000, date=None):
             cur.close()
             return results
     except Exception as e:
-        print(f"Error getting cross match results: {e}")
+        logger.error('Error getting cross match results: %s', e)
         return []
 
 def update_cross_match_flag(result_id, flag_value):
@@ -1444,7 +1446,7 @@ def update_cross_match_flag(result_id, flag_value):
             cur.close()
             return True
     except Exception as e:
-        print(f"Error updating flag: {e}")
+        logger.error('Error updating flag: %s', e)
         return False
 
 def get_flagged_objects():
@@ -1465,7 +1467,7 @@ def get_flagged_objects():
             # Convert to list of lists to match the format expected by _daily_run.py
             return [list(row) for row in results]
     except Exception as e:
-        print(f"Error fetching flagged objects: {e}")
+        logger.error('Error fetching flagged objects: %s', e)
         return []
 
 def save_flag_objects(flag_list):
@@ -1508,13 +1510,13 @@ def save_flag_objects(flag_list):
                     else:
                         # If not in tns_objects, we might want to insert it?
                         # But we need more data. For now, just skip and log.
-                        print(f"Warning: Flagged object {name} not found in tns_objects. Skipping.")
+                        logger.warning('Flagged object %s not found in tns_objects. Skipping.', name)
             
             conn.commit()
-            print(f"Processed {len(flag_list)} flagged objects. Updated/Inserted {count} records.")
+            logger.info('Processed %d flagged objects. Updated/Inserted %d records.', len(flag_list), count)
             
     except Exception as e:
-        print(f"Error saving flag objects: {e}")
+        logger.error('Error saving flag objects: %s', e)
 
 import json
 
@@ -1588,10 +1590,10 @@ def save_cross_match_results(results_list):
                 count += 1
             
             conn.commit()
-            print(f"Saved {count} cross match results to database.")
+            logger.info('Saved %d cross match results to database.', count)
             
     except Exception as e:
-        print(f"Error saving cross match results: {e}")
+        logger.error('Error saving cross match results: %s', e)
 
 def save_target_image(target_name, image_data):
     """
@@ -1621,7 +1623,7 @@ def save_target_image(target_name, image_data):
             conn.commit()
             return True
     except Exception as e:
-        print(f"Error saving target image for {target_name}: {e}")
+        logger.error('Error saving target image for %s: %s', target_name, e)
         return False
 
 def get_target_image(target_name):
@@ -1638,7 +1640,7 @@ def get_target_image(target_name):
                 return result[0] # Return bytes
             return None
     except Exception as e:
-        print(f"Error getting target image for {target_name}: {e}")
+        logger.error('Error getting target image for %s: %s', target_name, e)
         return None
 
 def set_cross_match_host(match_id, target_name):
@@ -1667,7 +1669,7 @@ def set_cross_match_host(match_id, target_name):
             conn.commit()
             return True
     except Exception as e:
-        print(f"Error setting host for {target_name}: {e}")
+        logger.error('Error setting host for %s: %s', target_name, e)
         return False
 
 def unset_cross_match_host(target_name):
@@ -1687,14 +1689,14 @@ def unset_cross_match_host(target_name):
             conn.commit()
             return True
     except Exception as e:
-        print(f"Error unsetting host for {target_name}: {e}")
+        logger.error('Error unsetting host for %s: %s', target_name, e)
         return False
 
 def update_object_abs_mag(target_name):
     """
     Recalculate and update brightest_abs_mag for an object based on its current redshift and brightest_mag.
     """
-    print(f"DEBUG: update_object_abs_mag called for {target_name}")
+    logger.debug('update_object_abs_mag called for %s', target_name)
     try:
         # Try relative import first (for module usage)
         from . import ext_M_calculator
@@ -1703,7 +1705,7 @@ def update_object_abs_mag(target_name):
             # Try absolute import (for script usage)
             import modules.ext_M_calculator as ext_M_calculator
         except ImportError:
-            print("Could not import ext_M_calculator")
+            logger.error('Could not import ext_M_calculator')
             return False
 
     try:
@@ -1723,11 +1725,11 @@ def update_object_abs_mag(target_name):
             obj = cur.fetchone()
             
             if not obj:
-                print(f"DEBUG: Object {target_name} not found in tns_objects")
+                logger.debug('Object %s not found in tns_objects', target_name)
                 return False
                 
             canonical_name = obj['name']
-            print(f"DEBUG: Resolved {target_name} to canonical name {canonical_name}")
+            logger.debug('Resolved %s to canonical name %s', target_name, canonical_name)
             
             # 1. Always recalculate brightest_mag from photometry
             # Fetch all photometry to handle potential text/mixed types in magnitude column
@@ -1744,7 +1746,7 @@ def update_object_abs_mag(target_name):
             """, (list(set(possible_names)),))
             rows = cur.fetchall()
             
-            print(f"DEBUG: Found {len(rows)} photometry points for names {possible_names}")
+            logger.debug('Found %d photometry points for names %s', len(rows), possible_names)
             
             brightest_mag = None
             brightest_filter = None
@@ -1877,7 +1879,7 @@ def update_object_abs_mag(target_name):
                 
         return False
     except Exception as e:
-        print(f"Error updating abs mag for {target_name}: {e}")
+        logger.error('Error updating abs mag for %s: %s', target_name, e)
         import traceback
         traceback.print_exc()
         return False
@@ -1919,7 +1921,7 @@ def update_tns_redshift(target_name, redshift_str):
                         WHERE name = %s
                     """, (val, target_name))
                 else:
-                    print(f"Could not extract numeric redshift from {redshift_str}")
+                    logger.warning('Could not extract numeric redshift from %s', redshift_str)
                     return False
             
             conn.commit()
@@ -1928,11 +1930,11 @@ def update_tns_redshift(target_name, redshift_str):
             try:
                 update_object_abs_mag(target_name)
             except Exception as e:
-                print(f"Error triggering abs mag update: {e}")
+                logger.error('Error triggering abs mag update: %s', e)
                 
             return True
     except Exception as e:
-        print(f"Error updating redshift for {target_name}: {e}")
+        logger.error('Error updating redshift for %s: %s', target_name, e)
         return False
 
 def get_object_flag_status(object_name):
@@ -1952,7 +1954,7 @@ def get_object_flag_status(object_name):
             cur.close()
             return is_flagged
     except Exception as e:
-        print(f"Error checking flag status: {e}")
+        logger.error('Error checking flag status: %s', e)
         return False
 
 def update_object_flag_by_name(object_name, flag_value):
@@ -1974,9 +1976,9 @@ def update_object_flag_by_name(object_name, flag_value):
             # For now, let's assume we can only flag objects that have been processed.
             return True # Return true even if 0 rows updated to indicate no DB error
     except Exception as e:
-        print(f"Error updating flag by name: {e}")
+        logger.error('Error updating flag by name: %s', e)
         return False
 
 if __name__ == "__main__":
     init_tns_database()
-    print("Database initialization completed")
+    logger.info('Database initialization completed')

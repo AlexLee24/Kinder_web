@@ -1,3 +1,4 @@
+import logging
 import os
 import numpy as np
 import plotly.graph_objects as go
@@ -5,6 +6,8 @@ import plotly.offline as pyo
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import math
+
+logger = logging.getLogger(__name__)
 
 # Import external module for absolute magnitude calculation
 try:
@@ -156,7 +159,7 @@ class DataVisualization:
                         if not isinstance(extinction_shift, (int, float)):
                             extinction_shift = 0
             except Exception as e:
-                print(f"Error calculating absolute magnitude parameters: {e}")
+                logger.error('Error calculating absolute magnitude parameters: %s', e)
                 distance_modulus = 0
         elif redshift and redshift > 0:
             # Fallback to simple calculation if module not available

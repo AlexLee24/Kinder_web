@@ -1,7 +1,10 @@
 """
 Authentication routes (Google OAuth, login, logout)
 """
+import logging
 from flask import session, flash, redirect, url_for, request, jsonify, g
+
+logger = logging.getLogger(__name__)
 from datetime import datetime
 from modules.web_postgres_database import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation, check_object_access
 from modules.config import config
@@ -143,7 +146,7 @@ def register_auth_routes(app):
                 return redirect(url_for('login'))
                 
         except Exception as e:
-            print(f"Login error: {e}")
+            logger.error('Login error: %s', e)
             flash('Login failed, please try again.', 'error')
             return redirect(url_for('login'))
 
@@ -207,7 +210,7 @@ def register_auth_routes(app):
                 flash('User not found.', 'error')
                 
         except Exception as e:
-            print(f"Profile update error: {e}")
+            logger.error('Profile update error: %s', e)
             if request.is_json:
                 return jsonify({'success': False, 'error': 'Error updating profile.'}), 500
             flash('Error updating profile.', 'error')

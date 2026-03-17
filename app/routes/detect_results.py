@@ -1,4 +1,7 @@
+import logging
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
+
+logger = logging.getLogger(__name__)
 from modules.postgres_database import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
@@ -216,7 +219,7 @@ def register_detect_results_routes(app):
                             if isinstance(calculated_abs_mag, dict):
                                 calculated_abs_mag = None
                     except Exception as e:
-                        print(f"Error calculating abs mag for {target_name}: {e}")
+                        logger.error('Error calculating abs mag for %s: %s', target_name, e)
                 
                 if calculated_abs_mag is not None:
                     row['abs_mag'] = calculated_abs_mag
@@ -251,7 +254,7 @@ def register_detect_results_routes(app):
                     photometry, best_match.get('z'), ra, dec, as_json=True
                 )
             except Exception as e:
-                print(f"Error generating plot for {target_name}: {e}")
+                logger.error('Error generating plot for %s: %s', target_name, e)
             
             target_obj = {
                 'target_name': target_name,
