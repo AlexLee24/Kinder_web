@@ -45,7 +45,7 @@ def fetch_inbox_photometry():
                 continue
             _progress["current"] = i
             try:
-                logger.info(f"Fetching photometry for {name}")
+                logger.info(f"============ {i}/{len(objects)} {name}: fetching photometry ============")
                 process_single_object_workflow(name)
                 success_count += 1
                 _progress["success"] = success_count
