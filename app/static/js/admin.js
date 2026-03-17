@@ -1105,6 +1105,56 @@ function toggleOpenRegistration(checkbox) {
     });
 }
 
+function runPhotometryFetch() {
+    const btn = document.getElementById('runPhotFetchBtn');
+    const statusEl = document.getElementById('photFetchStatus');
+
+    btn.disabled = true;
+    statusEl.innerHTML = 'Starting...';
+
+    fetch('/admin/run-photometry-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${data.message}</span>`;
+            showNotification(data.message, 'success');
+            // Poll until done
+            const poll = setInterval(() => {
+                fetch('/admin/photometry-fetch-status')
+                    .then(r => r.json())
+                    .then(s => {
+                        if (!s.running) {
+                            clearInterval(poll);
+                            btn.disabled = false;
+                            const total = s.total || 0;
+                            const success = s.success || 0;
+                            const failed = s.failed || 0;
+                            const noData = total - success - failed;
+                            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} Done — ${total} objects: ${success} fetched, ${noData} no data, ${failed} failed</span>`;
+                        } else {
+                            const cur = s.current || 0;
+                            const tot = s.total || '?';
+                            statusEl.innerHTML = `Running... ${cur}/${tot}`;
+                        }
+                    });
+            }, 3000);
+        } else {
+            btn.disabled = false;
+            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            showNotification(data.message || data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} An error occurred</span>`;
+        showNotification('Error starting photometry fetch', 'error');
+    });
+}
+
 function cleanDocumentImages() {
     if (!confirm('Are you sure you want to clean up unused uploaded images? This will permanently delete images not referenced in any markdown documents.')) {
         return;

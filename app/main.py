@@ -17,6 +17,10 @@ load_dotenv(os.path.join(current_dir, '..', 'kinder.env'))
 sys.path.append(os.path.join(current_dir, "modules"))
 sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
 
+# Setup daily log file BEFORE other imports so all output is captured
+from modules.log_setup import setup_logging
+setup_logging(os.path.join(current_dir, 'log'))
+
 # Import modules
 from modules.config import config
 from modules.web_postgres_database import init_database
@@ -78,9 +82,12 @@ register_routes(app)
 # ===============================================================================
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
+from modules.phot_scheduler import fetch_inbox_photometry
 
 _scheduler = BackgroundScheduler(daemon=True)
 _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
+# Daily photometry fetch for all Inbox objects at 03:00 UTC+8 = 19:00 UTC
+_scheduler.add_job(fetch_inbox_photometry, 'cron', hour=19, minute=0, id='daily_phot_fetch')
 _scheduler.start()
 run_daily_backup()  # run once immediately on startup
 

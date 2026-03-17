@@ -71,3 +71,7 @@ app/modules/DETECT_pipe/modules/
 migrate_data.py
 test*.py
 .github/
+
+app/log
+app/log/
+app/log/*

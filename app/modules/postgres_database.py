@@ -1740,7 +1740,7 @@ def update_object_abs_mag(target_name):
             cur.execute("""
                 SELECT magnitude, filter 
                 FROM photometry 
-                WHERE object_name = ANY(%s) AND magnitude IS NOT NULL
+                WHERE object_name = ANY(%s) AND magnitude IS NOT NULL AND magnitude_error > 0
             """, (list(set(possible_names)),))
             rows = cur.fetchall()
             

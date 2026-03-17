@@ -502,3 +502,33 @@ def register_admin_routes(app):
             })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    # ===============================================================================
+    # PHOTOMETRY SCHEDULER
+    # ===============================================================================
+    @app.route('/admin/run-photometry-fetch', methods=['POST'])
+    def run_photometry_fetch():
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+
+        from modules.phot_scheduler import fetch_inbox_photometry, is_running
+        import threading
+
+        if is_running():
+            return jsonify({'success': False, 'message': 'Photometry fetch is already running'}), 409
+
+        def _run():
+            fetch_inbox_photometry()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return jsonify({'success': True, 'message': 'Photometry fetch started in background'})
+
+    @app.route('/admin/photometry-fetch-status')
+    def photometry_fetch_status():
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+
+        from modules.phot_scheduler import is_running, get_progress
+        progress = get_progress()
+        return jsonify({'running': is_running(), **progress})

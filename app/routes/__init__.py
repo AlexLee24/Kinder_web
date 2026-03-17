@@ -13,6 +13,7 @@ def register_routes(app):
     from . import basic
     from . import marshal
     from . import detect_results
+    from . import log_routes
     
     # Register blueprints
     auth.register_auth_routes(app)
@@ -24,3 +25,4 @@ def register_routes(app):
     basic.register_basic_routes(app)
     marshal.register_marshal_routes(app)
     detect_results.register_detect_results_routes(app)
+    log_routes.register_log_routes(app)

@@ -262,6 +262,20 @@
             </div>
             
             <div class="settings-card" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 style="color: #C5A059; margin-bottom: 15px;">Inbox Photometry Fetch</h3>
+                <p style="color: #aaa; margin-bottom: 15px;">Fetch photometry for all Inbox objects. Runs automatically every day at 09:00 UTC+8. Click to trigger immediately.</p>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary" style="padding: 8px 15px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: text-bottom; margin-right: 5px;">
+                            <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        Run Now
+                    </button>
+                    <span id="photFetchStatus" style="font-size: 0.9rem; color: #a8b3cf;"></span>
+                </div>
+            </div>
+
+            <div class="settings-card" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
                 <h3 style="color: #C5A059; margin-bottom: 15px;">Document Images Management</h3>
                 <p style="color: #aaa; margin-bottom: 15px;">Clean up unused uploaded images that are no longer referenced by any markdown document to save disk space.</p>
                 <div style="display: flex; gap: 10px; align-items: center;">
