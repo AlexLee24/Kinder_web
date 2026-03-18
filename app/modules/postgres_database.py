@@ -388,11 +388,16 @@ class TNSObjectDB:
             cursor.execute('''
                 INSERT INTO photometry (object_name, mjd, magnitude, magnitude_error, filter, telescope)
                 VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (object_name, mjd, filter, telescope) DO NOTHING
                 RETURNING id
             ''', (object_name, mjd, magnitude, magnitude_error, filter_name, telescope))
             
-            point_id = cursor.fetchone()[0]
-            
+            result = cursor.fetchone()
+            if result:
+                point_id = result[0]
+            else:
+                point_id = None
+                
             # Update object's last_photometry_date if this point is newer
             # MJD 40587 is 1970-01-01. Convert MJD to Unix timestamp (seconds)
             cursor.execute('''
@@ -448,6 +453,7 @@ class TNSObjectDB:
             extras.execute_batch(cursor, '''
                 INSERT INTO photometry (object_name, mjd, magnitude, magnitude_error, filter, telescope)
                 VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (object_name, mjd, filter, telescope) DO NOTHING
             ''', photometry_data, page_size=1000)
             
             conn.commit()
