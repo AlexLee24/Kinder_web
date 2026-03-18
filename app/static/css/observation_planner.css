@@ -285,7 +285,7 @@ select.form-control option {
 .targets-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 1000px;
+    min-width: 100%;
 }
 
 .targets-table th {

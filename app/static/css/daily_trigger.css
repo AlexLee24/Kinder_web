@@ -144,7 +144,7 @@ body::before {
 
 .calendar-container iframe {
     /* Limit the calendar width slightly to fit nicely internally */
-    min-width: 1000px;
+    min-width: 100%;
     max-width: 1000px; /* Force iframe size to user spec */
     border-radius: 8px;
 }
@@ -185,8 +185,8 @@ body::before {
 
 .pa-calendar-wrap, .pa-weather-wrap {
     flex: 1;
-    min-width: 400px;
-    max-width: 50%;
+    min-width: 300px;
+    max-width: 100%;
     display: flex;
     flex-direction: column;
 }
@@ -929,7 +929,7 @@ body::before {
     background: #1e1e1e; /* Ensure the fixed column is not transparent */
     border-right: 2px solid rgba(255,255,255,0.2) !important;
     text-align: left;
-    min-width: 250px;
+    min-width: 140px;
     box-shadow: 2px 0 5px rgba(0,0,0,0.5);
     padding-left: 0.25rem; /* Make text a bit more to the left */
 }
@@ -1037,54 +1037,6 @@ body::before {
     width: 100%;
 }
 
-/* Mobile adjustments */
-@media screen and (max-width: 768px) {
-    /* Observation Log Grid adjustments for mobile */
-    .pa-log-grid th:first-child, .pa-log-grid td:first-child {
-        min-width: 100px;
-        max-width: 110px;
-        font-size: 0.8rem;
-        white-space: normal;
-        word-break: break-word;
-        padding: 0.5rem;
-    }
-
-    .pa-log-grid th, .pa-log-grid td {
-        min-width: 60px;
-        padding: 0.4rem;
-        font-size: 0.85rem;
-    }
-
-    /* Wrap log controls */
-    .pa-log-controls {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .pa-log-legend {
-        gap: 10px;
-        font-size: 0.82rem;
-    }
-
-    .pa-log-legend-dot {
-        width: 10px;
-        height: 10px;
-        flex-basis: 10px;
-    }
-    
-    .pa-log-controls select {
-        margin-right: 0 !important;
-        flex: 1 1 45%;
-        width: auto !important;
-    }
-    
-    .pa-btn-log-action {
-        margin-right: 0;
-        flex: 1 1 45%;
-        justify-content: center;
-    }
-}
-
 .pa-target-table th.pa-sortable {
     cursor: pointer;
     user-select: none;
@@ -1099,4 +1051,139 @@ body::before {
     font-size: 0.8rem;
     opacity: 0.5;
     margin-left: 4px;
+}
+
+/* ========================================================= */
+/* BRAND NEW MOBILE VIEW FOR DAILY TRIGGER (Cards & Grid) */
+/* ========================================================= */
+@media screen and (max-width: 768px) {
+    /* Maximize screen real estate */
+    .private-section {
+        padding: 1rem 0.5rem;
+        max-width: 98%;
+    }
+
+    /* --- Header & Buttons Layout --- */
+    .pa-obs-section > div:first-child {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 15px;
+    }
+    .pa-obs-section h3 {
+        position: static !important;
+        transform: none !important;
+        text-align: center;
+        margin: 10px 0 !important;
+    }
+    .pa-tabs-header {
+        justify-content: center;
+        width: 100%;
+    }
+    .pa-obs-actions {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px !important;
+        width: 100%;
+    }
+    .pa-obs-actions button {
+        width: 100%;
+        justify-content: center;
+        margin: 0 !important;
+    }
+    .pa-obs-actions button[onclick="openVisibilityPlot()"] {
+        grid-column: span 2;
+    }
+
+    /* --- Target Table to Cards Redesign --- */
+    .pa-target-table, .pa-target-table tbody {
+        display: block;
+        width: 100%;
+    }
+    .pa-target-table thead {
+        display: none; /* Hide standard headers */
+    }
+    .pa-target-table tr {
+        display: block;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(77, 184, 255, 0.3);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        padding: 0.5rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    }
+    .pa-target-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.8rem 0.5rem;
+        border-bottom: 1px dotted rgba(255, 255, 255, 0.1);
+        text-align: right;
+        font-size: 0.95rem;
+    }
+    .pa-target-table td:last-child {
+        border-bottom: none;
+    }
+    
+    /* Inject Header Labels dynamically inside Flex */
+    .pa-target-table td::before {
+        font-weight: 600;
+        color: #4db8ff;
+        text-align: left;
+        flex-shrink: 0;
+        margin-right: 15px;
+    }
+    .pa-target-table td:nth-of-type(1)::before { content: "Target"; }
+    .pa-target-table td:nth-of-type(2)::before { content: "RA / DEC"; }
+    .pa-target-table td:nth-of-type(3)::before { content: "Priority"; }
+    .pa-target-table td:nth-of-type(4)::before { content: "Filter / Exp"; }
+    .pa-target-table td:nth-of-type(5)::before { content: "Total Exp(s)"; }
+    .pa-target-table td:nth-of-type(6)::before { content: "Note"; }
+    .pa-target-table td:nth-of-type(7)::before { content: "Note(GL)"; }
+    .pa-target-table td:nth-of-type(8)::before { content: "Actions"; }
+
+    /* Fix inner alignments */
+    .pa-target-table td > * {
+        text-align: right;
+        max-width: 65%;
+        word-break: break-word;
+    }
+    .pa-td-name-content {
+        justify-content: flex-end;
+    }
+
+    /* Edge case: empty row */
+    .pa-target-table .pa-empty-row {
+        display: block;
+        text-align: center;
+        padding: 2rem;
+        color: #aaa;
+    }
+    .pa-target-table .pa-empty-row::before {
+        display: none !important;
+    }
+
+    /* --- Log Grid Area Controls (Thumb friendly) --- */
+    .pa-log-controls {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px !important;
+        margin-bottom: 1rem !important;
+    }
+    .pa-log-controls > * {
+        margin: 0 !important;
+        width: 100% !important;
+    }
+    .pa-log-controls select, .pa-log-controls button {
+        height: 48px; /* Easier to tap */
+        font-size: 0.95rem;
+    }
+    #logShowFilterBtn {
+        grid-column: span 2;
+    }
+    
+    .pa-log-legend {
+        justify-content: center;
+        gap: 15px;
+        margin-top: 15px;
+    }
 }

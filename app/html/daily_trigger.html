@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Trigger - Kinder</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/daily_trigger.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
@@ -14,7 +15,7 @@
         .pa-log-grid { table-layout: fixed; width: 100%; }
         .pa-log-grid th, .pa-log-grid td { text-align: center; vertical-align: top; }
         /* First column (Target) should be wider, other date columns equal width */
-        .pa-log-grid thead th:first-child, .pa-log-grid tbody td:first-child { width: 240px; text-align: left; }
+        .pa-log-grid thead th:first-child, .pa-log-grid tbody td:first-child { width: 140px; text-align: left; }
         .pa-log-grid thead th[data-col-date], .pa-log-grid tbody td[data-cell-date] { width: 200px; max-width: 200px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .pa-log-cell { display:flex; flex-direction:column; align-items:center; }
         .pa-log-legend { justify-content: center; display:flex; gap:12px; }
@@ -98,33 +99,41 @@
                 </div>
 
                 <div class="private-section pa-obs-section">
-                    <h3>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10 9 9 9 8 9"></polyline>
-                        </svg>
-                        Observation Targets
-                    </h3>
-                    
-                    <!-- Observation Input Action -->
-                    <div class="pa-obs-actions">
-                        <button onclick="openTargetModal('SLT')" class="pa-btn-slt">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            Add SLT Target
-                        </button>
-                        <button onclick="openTargetModal('LOT')" class="pa-btn-lot">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            Add LOT Target
-                        </button>
-                    </div>
-
-                    <!-- Tabs Header -->
-                    <div class="pa-tabs-header">
-                        <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn active">SLT Targets</button>
-                        <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn">LOT Targets</button>
+                    <!-- Header and Tabs container -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <!-- Tabs Header -->
+                        <div class="pa-tabs-header" style="margin-bottom: 0;">
+                            <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn active">SLT Targets</button>
+                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn">LOT Targets</button>
+                        </div>
+                        
+                        <!-- Header Title -->
+                        <h3 style="margin: 0; position: absolute; left: 50%; transform: translateX(-50%);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            Observation Targets
+                        </h3>
+                        
+                        <!-- Observation Input Action -->
+                        <div class="pa-obs-actions" style="margin-bottom: 0; display: flex; gap: 10px; align-items: center;">
+                            <button onclick="openVisibilityPlot()" class="pa-btn-log-action" style="background-color: rgba(77, 184, 255, 0.15); border: 1px solid rgba(77, 184, 255, 0.3); color: #4db8ff; border-radius: 8px; padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                Check Visibility
+                            </button>
+                            <button onclick="openTargetModal('SLT')" class="pa-btn-slt" id="btn-add-slt">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add SLT Target
+                            </button>
+                            <button onclick="openTargetModal('LOT')" class="pa-btn-lot" id="btn-add-lot" style="display: none;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add LOT Target
+                            </button>
+                        </div>
                     </div>
 
                     <!-- SLT Container -->
@@ -261,7 +270,7 @@
                         <div id="search-results-dropdown" class="pa-search-dropdown"></div>
                     </div>
                     <div>
-                        <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Magnitude" class="pa-input">
+                        <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Newest Magnitude" class="pa-input">
                     </div>
                 </div>
                 
@@ -438,6 +447,32 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Visibility Plot Modal -->
+    <div id="visibilityPlotModal" class="pa-modal-overlay">
+        <div class="pa-modal-box" style="max-width: 90vw; width: 1200px; height: 85vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Visibility Plot (<span id="vp-tab-name">SLT</span>)</h3>
+                <button type="button" onclick="closeVisibilityPlot()" class="pa-btn-cancel" style="padding: 6px 12px;">Close</button>
+            </div>
+            
+            <!-- Body area -->
+            <div style="display: flex; gap: 20px; flex: 1; min-height: 0;">
+                <!-- Left: Plotly Plot -->
+                <div style="flex: 1; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative;">
+                    <div id="vp-loading" style="position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); color: #aaa;">Computing visibility...</div>
+                    <div id="vp-plot-area" style="width: 100%; height: 100%;"></div>
+                </div>
+                <!-- Right: Target List with Toggles -->
+                <div style="width: 250px; background: rgba(0,0,0,0.15); border-radius: 8px; padding: 15px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05);">
+                    <h4 style="margin-top: 0; color: #aaa; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Targets</h4>
+                    <div id="vp-target-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- JS generated target toggles -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 

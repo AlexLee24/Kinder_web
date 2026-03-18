@@ -19,47 +19,56 @@
     <div class="object-detail-container">
         <!-- Header Section -->
         <div class="object-header">
-            <div class="header-main">
-                <div class="header-left">
-                    <!-- Breadcrumb -->
-                    <div class="breadcrumb">
-                        <a href="{{ url_for('marshal') }}" class="breadcrumb-link">Marshal</a>
-                        <span class="breadcrumb-separator"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
-                        <span class="breadcrumb-current" id="breadcrumbCurrent">{{ object_name }}</span>
-                    </div>
-                    
-                    <!-- Object Title and Meta -->
-                    <div class="object-title-section">
-                        <h1 class="object-name" id="objectName">{{ object_name }}</h1>
-                        <div class="object-meta">
-                            <span class="discovery-date" id="discoveryDateDisplay">
-                                Discovered: {{ object_data.discoverydate[:10] if object_data.discoverydate else 'Unknown' }}
-                            </span>
-                            <!-- <span class="discovery-date" id="discoveryDateDisplay">
-                                Object ID: {{ object_data.objid or 'N/A' }}
-                            </span> -->
-                            <span class="classification-badge {{ (object_data.type or 'at')|lower|replace(' ', '-') }}" id="classificationBadge">
-                                {{ object_data.type or 'AT' }}
-                            </span>
-                            <div class="tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
-                                {{ object_data.tag|title or 'Inbox' }}
-                            </div>
-                            <button class="action-btn visibility" onclick="openVisibilityPlot()">
-                                Visibility Plot
-                            </button>
-                            <button class="action-btn visibility" onclick="copyCoordinates()">
-                                Copy Coordinates
-                            </button>
-                            {% if session.user and session.user.is_admin %}
-                            <button class="edit-btn" onclick="editObjects()">
-                                Edit
-                            </button>
-                            <button class="delete-btn" onclick="deleteObjects()">
-                                Delete
-                            </button>
-                            {% endif %}
+            <!-- Top Section (Always Visible) -->
+            <div class="header-top-section">
+                <!-- Breadcrumb -->
+                <div class="breadcrumb">
+                    <a href="{{ url_for('marshal') }}" class="breadcrumb-link">Marshal</a>
+                    <span class="breadcrumb-separator"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
+                    <span class="breadcrumb-current" id="breadcrumbCurrent">{{ object_name }}</span>
+                </div>
+                
+                <!-- Object Title and Meta -->
+                <div class="object-title-section">
+                    <h1 class="object-name" id="objectName">{{ object_name }}</h1>
+                    <div class="object-meta">
+                        <span class="discovery-date" id="discoveryDateDisplay">
+                            Discovered: {{ object_data.discoverydate[:10] if object_data.discoverydate else 'Unknown' }}
+                        </span>
+                        <span class="classification-badge {{ (object_data.type or 'at')|lower|replace(' ', '-') }}" id="classificationBadge">
+                            {{ object_data.type or 'AT' }}
+                        </span>
+                        <div class="tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
+                            {{ object_data.tag|title or 'Inbox' }}
                         </div>
+                        <button class="action-btn visibility" onclick="openVisibilityPlot()">
+                            Visibility Plot
+                        </button>
+                        <button class="action-btn visibility" onclick="copyCoordinates()">
+                            Copy Coordinates
+                        </button>
+                        {% if session.user and session.user.is_admin %}
+                        <button class="edit-btn" onclick="editObjects()">
+                            Edit z
+                        </button>
+                        <!-- <button class="delete-btn" onclick="deleteObjects()">
+                            Delete
+                        </button> -->
+                        {% endif %}
                     </div>
+                </div>
+            </div>
+
+            <!-- Mobile Toggle -->
+            <input type="checkbox" id="mobileHeaderToggle" class="mobile-toggle-checkbox" style="display: none;">
+            <label for="mobileHeaderToggle" class="mobile-toggle-label">
+                <span class="show-txt">▼ Show Basic Info & Actions</span>
+                <span class="hide-txt" style="display: none;">▲ Hide Basic Info & Actions</span>
+            </label>
+
+            <!-- Collapsible Section -->
+            <div class="header-main collapsible-section">
+                <div class="header-left">
                     
                     <!-- Basic Information Grid -->
                     <div class="basic-info-grid">

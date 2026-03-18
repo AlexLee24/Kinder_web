@@ -219,7 +219,15 @@ header .container {
     flex-shrink: 0;
 }
 
-/* Dropdown Menu */
+/* Dropdown Menu Arrow Animation */
+.dropdown-arrow svg {
+    transition: transform 0.3s ease;
+}
+
+.dropdown.mobile-active .dropdown-arrow svg {
+    transform: rotate(180deg);
+}
+
 .header-content .main-nav ul li.dropdown {
     position: relative;
     display: flex;
@@ -381,8 +389,8 @@ header .container {
     transform: translateY(-9px) rotate(-45deg);
 }
 
-/* Media query for small screens (max-width: 992px) */
-@media (max-width: 992px) {
+/* Media query for small screens (max-width: 1375px) */
+@media (max-width: 1375px) {
     header {
         width: 95%;
         padding: 10px 15px;
@@ -417,8 +425,8 @@ header .container {
     .main-nav {
         position: absolute;
         top: 100%;
-        left: 0;
-        width: 100%;
+        left: -15px; /* offset the padding of header */
+        width: calc(100% + 30px); /* Fill the whole header width */
         background: rgba(20, 20, 20, 0.95);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
@@ -429,6 +437,8 @@ header .container {
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-top: none;
         margin-top: 10px;
+        z-index: 999;
+        box-sizing: border-box;
     }
 
     .main-nav.active {
@@ -457,6 +467,10 @@ header .container {
         min-height: auto;
         display: block;
         padding: 10px;
+    }
+
+    .main-nav li a::after {
+        display: none;
     }
     
     .nav a.login-button {
@@ -494,10 +508,15 @@ header .container {
         display: none;
         width: 100%;
         text-align: center;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out, padding 0.3s ease;
     }
 
     .dropdown.mobile-active .dropdown-content {
         display: block;
+        max-height: 500px; /* 足夠大的數值以容納子選單 */
+        padding-top: 10px;
     }
     
     .dropdown-content li {
@@ -513,6 +532,88 @@ header .container {
     .dropdown-content li a:hover {
         background: transparent;
         color: #fff;
+    }
+}
+
+/* ========================================================= */
+/* GLOBAL MOBILE RESPONSIVENESS FIXES (Applies to all pages) */
+/* ========================================================= */
+@media screen and (max-width: 992px) {
+    /* Prevent iframes (calendar, charts, etc) from breaking width */
+    iframe {
+        max-width: 100% !important;
+    }
+    
+    /* Ensure tables can be scrolled instead of squished out of viewport */
+    table, .pa-target-table, .pa-log-grid {
+        display: block !important;
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Force any overflowing generic container to not stretch body */
+    .main-banner, .banner-content {
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .container {
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Stack flex/grid elements vertically to prevent squishing */
+    .pa-widgets-container, .banner-content {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    /* Make flex children take full width */
+    .pa-calendar-wrap, .pa-weather-wrap, .pa-obs-section, .pa-obs-log-section, .private-section, .banner-left, .banner-right {
+        max-width: 100% !important;
+        width: 100% !important;
+        min-width: unset !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Control buttons / tabs to wrap / shrink gracefully */
+    .pa-tabs-header {
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+    }
+    
+    .pa-obs-actions {
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        margin-top: 10px !important;
+        position: static !important;
+    }
+    
+    /* Title and main headers can't be absolute on mobile if space is needed */
+    .pa-obs-section h3 {
+        position: static !important;
+        transform: none !important;
+        margin-bottom: 10px !important;
+    }
+
+    /* Log section fixes */
+    .pa-log-controls {
+        flex-wrap: wrap !important;
+    }
+
+    /* Avoid horizontal overflow entirely in html/body */
+    html, body {
+        overflow-x: hidden;
+        width: 100%;
     }
 }
 

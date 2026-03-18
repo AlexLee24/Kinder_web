@@ -174,10 +174,36 @@
             overflow-x: auto;
             max-height: calc(100vh - 360px);
             min-height: 400px;
+            position: relative;
         }
         .log-pre-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
         .log-pre-wrap::-webkit-scrollbar-track { background: transparent; }
         .log-pre-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(8,8,22,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-left-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         #logPre {
             margin: 0;
@@ -210,7 +236,7 @@
         <div class="log-controls-bar">
             <span id="liveDot" class="live-dot off"></span>
             <span class="ctrl-label-text">Date:</span>
-            <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
+            <!-- <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select> -->
             <label class="ctrl-follow">
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
@@ -232,6 +258,9 @@
                 &nbsp;·&nbsp; server output
             </div>
             <div class="log-pre-wrap" id="logWrap">
+                <div id="loadingOverlay" class="loading-overlay">
+                    <div class="spinner"></div>
+                </div>
                 <pre id="logPre"></pre>
             </div>
         </div>
@@ -306,21 +335,50 @@
             return await res.json();
         }
 
+        function showLoading(show) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (show) overlay.classList.add('active');
+            else overlay.classList.remove('active');
+        }
+
         async function loadFull(date) {
+            showLoading(true);
             logOffset = 0;
             lineCount = 0;
             document.getElementById('logPre').innerHTML = '';
+            
+            // Allow UI to update loading state before blocking thread
+            await new Promise(r => setTimeout(r, 10));
+
             const label = date === todayStr ? `${date}  (Today)` : date;
             document.getElementById('statDate').textContent = label;
             document.getElementById('logFileName').textContent = `${date}.log`;
             document.getElementById('statLines').textContent = 'Lines: 0';
             document.getElementById('statBytes').textContent = '0 B';
 
-            const data = await fetchContent(date, 0);
-            if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
-            appendHtml(data.content || '(No entries yet)');
-            logOffset = data.offset || 0;
-            scrollToBottom();
+            try {
+                const data = await fetchContent(date, 0);
+                if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
+                
+                // Parse large logs with requestAnimationFrame to prevent complete freezing
+                const content = data.content || '(No entries yet)';
+                
+                // If it's a huge log, we assign it directly instead of creating spans line by line for initials
+                if (content.length > 500000) { 
+                    const pre = document.getElementById('logPre');
+                    pre.innerHTML = colorize(content);
+                    lineCount = content.split('\n').filter(l => l.trim()).length;
+                    document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
+                    document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
+                } else {
+                    appendHtml(content);
+                }
+
+                logOffset = data.offset || 0;
+                scrollToBottom();
+            } finally {
+                showLoading(false);
+            }
         }
 
         async function pollNew() {

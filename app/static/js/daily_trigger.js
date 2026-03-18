@@ -74,10 +74,14 @@ function switchTab(tabId) {
     tabs.forEach(t => {
         document.getElementById('content-' + t).style.display = (t === tabId) ? 'block' : 'none';
         const btn = document.getElementById('tab-' + t);
+        const addBtn = document.getElementById('btn-add-' + t.toLowerCase());
+        
         if (t === tabId) {
             btn.classList.add('active');
+            if(addBtn) addBtn.style.display = 'flex';
         } else {
             btn.classList.remove('active');
+            if(addBtn) addBtn.style.display = 'none';
         }
     });
 }
@@ -1617,5 +1621,295 @@ function saveObservationLog(event) {
         console.error('Error saving observation log:', error);
         alert('Server error saving observation log.');
     });
+}
+
+// ==========================================
+// Visibility Plot Modal
+// ==========================================
+let vpCurrentData = null;
+const TARGET_COLORS = ['#fbbf24', '#ff7675', '#a78bfa', '#34d399', '#38bdf8', '#fb7185', '#818cf8', '#f87171', '#4ade80'];
+
+function closeVisibilityPlot() {
+    document.getElementById('visibilityPlotModal').style.display = 'none';
+    Plotly.purge('vp-plot-area'); // Clear Plotly internal state completely to ensure re-render works next time
+}
+
+async function openVisibilityPlot() {
+    const activeTelescope = document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT';
+    document.getElementById('vp-tab-name').textContent = activeTelescope;
+    document.getElementById('visibilityPlotModal').style.display = 'flex';
+    
+    // Clear previous plot but keep loading text
+    document.getElementById('vp-plot-area').innerHTML = '';
+    document.getElementById('vp-target-list').innerHTML = '';
+    const loadingEl = document.getElementById('vp-loading');
+    if (loadingEl) loadingEl.style.display = 'block';
+
+    // Wait for the targets to be fully loaded if not already
+    let targetsForPlot = allTargetsCache.filter(t => t.telescope === activeTelescope);
+    if (!allTargetsCache || allTargetsCache.length === 0) {
+        await loadTargets();
+        targetsForPlot = allTargetsCache.filter(t => t.telescope === activeTelescope);
+    }
+    if (!targetsForPlot || targetsForPlot.length === 0) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        document.getElementById('vp-plot-area').innerHTML = '<div style="color:#aaa; text-align:center; padding-top: 50px;">No targets available to plot.</div>';
+        return;
+    }
+
+    // Format targets for API
+    const targets = targetsForPlot.filter(t => t.ra && t.dec).map(t => ({
+        name: t.name,
+        ra: t.ra,
+        dec: t.dec
+    }));
+
+    if (targets.length === 0) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        document.getElementById('vp-plot-area').innerHTML = '<div style="color:#aaa; text-align:center; padding-top: 50px;">No targets with valid RA/Dec.</div>';
+        return;
+    }
+
+    // Determine Date (if hour < 12, use yesterday)
+    const now = new Date();
+    if (now.getHours() < 12) {
+        now.setDate(now.getDate() - 1);
+    }
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    try {
+        const resp = await fetch('/api/visibility_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: dateStr,
+                location: "120:52:21 23:28:10 2862",
+                timezone: "8",
+                telescope: activeTelescope,
+                targets: targets
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            vpCurrentData = data;
+            renderVisibilityPlot();
+            renderVisibilityToggleList();
+            if (loadingEl) loadingEl.style.display = 'none';
+        } else {
+            console.error('API Error:', data.error);
+            if (loadingEl) loadingEl.style.display = 'none';
+            document.getElementById('vp-plot-area').innerHTML = `<div style="color:#f44336; text-align:center; padding-top: 50px;">Error: ${data.error}</div>`;
+        }
+    } catch (e) {
+        console.error('Network error:', e);
+        if (loadingEl) loadingEl.style.display = 'none';
+        document.getElementById('vp-plot-area').innerHTML = '<div style="color:#f44336; text-align:center; padding-top: 50px;">Network error.</div>';
+    }
+}
+
+function renderVisibilityToggleList() {
+    if (!vpCurrentData || !vpCurrentData.targets) return;
+    
+    // We also need the original target data to know if it's active
+    const activeTelescope = document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT';
+    const targetsForPlot = allTargetsCache.filter(t => t.telescope === activeTelescope && t.ra && t.dec);
+
+    const listEl = document.getElementById('vp-target-list');
+    let html = '';
+    
+    vpCurrentData.targets.forEach((t, i) => {
+        const color = TARGET_COLORS[i % TARGET_COLORS.length];
+        
+        // Find matching target in cache to get its ID and current active status
+        const cacheTarget = targetsForPlot.find(ct => ct.name === t.name);
+        const isActive = cacheTarget && cacheTarget.is_active !== false;
+        
+        html += `
+            <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 4px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${color}; opacity: ${isActive ? '1' : '0.3'};" id="vp-color-${i}"></div>
+                    <span style="color: ${isActive ? '#eee' : '#666'}; font-size: 13px;" id="vp-label-${i}">${t.name}</span>
+                </div>
+                <input type="checkbox" ${isActive ? 'checked' : ''} 
+                       onchange="toggleVPTraceAndDB(${i}, this.checked, ${cacheTarget ? cacheTarget.id : 'null'})" 
+                       style="accent-color: #4db8ff;">
+            </label>
+        `;
+    });
+    listEl.innerHTML = html;
+}
+
+async function toggleVPTraceAndDB(targetIndex, isChecked, targetId) {
+    if (!vpCurrentData) return;
+    // Trace order: Sun + Moon + Targets
+    const baseTraces = 2; 
+    const traceIdx = baseTraces + targetIndex;
+    
+    Plotly.restyle('vp-plot-area', {
+        visible: isChecked ? true : 'legendonly'
+    }, [traceIdx]);
+    
+    // Update visual style in the list
+    const labelEl = document.getElementById(`vp-label-${targetIndex}`);
+    const colorEl = document.getElementById(`vp-color-${targetIndex}`);
+    if (labelEl) labelEl.style.color = isChecked ? '#eee' : '#666';
+    if (colorEl) colorEl.style.opacity = isChecked ? '1' : '0.3';
+
+    // Update DB with the new toggle state (wait for it to sync so normal list triggers updates)
+    if (targetId) {
+        try {
+            await fetch('/api/targets/' + targetId + '/toggle', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: isChecked })
+            });
+            // Also need to refresh the normal target list in the background
+            loadTargets();
+        } catch (e) {
+            console.error('Failed to toggle target in DB:', e);
+        }
+    }
+}
+
+function renderVisibilityPlot() {
+    const data = vpCurrentData;
+    const times = data.times_utc;
+    const tw = data.twilight_utc;
+
+    const traces = [];
+    const shapes = [];
+    const annotations = [];
+
+    // Twilight fills
+    if (tw) {
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.sunset[0], x1: tw.civil[0], y0: 0, y1: 1, fillcolor: 'rgba(100,140,200,0.18)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.civil[0], x1: tw.nautical[0], y0: 0, y1: 1, fillcolor: 'rgba(40,60,120,0.28)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.nautical[0], x1: tw.astronomical[0], y0: 0, y1: 1, fillcolor: 'rgba(15,15,60,0.40)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.astronomical[0], x1: tw.astronomical[1], y0: 0, y1: 1, fillcolor: 'rgba(0,0,20,0.55)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.astronomical[1], x1: tw.nautical[1], y0: 0, y1: 1, fillcolor: 'rgba(15,15,60,0.40)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.nautical[1], x1: tw.civil[1], y0: 0, y1: 1, fillcolor: 'rgba(40,60,120,0.28)', line: { width: 0 }, layer: 'below' });
+        shapes.push({ type: 'rect', xref: 'x', yref: 'paper', x0: tw.civil[1], x1: tw.sunset[1], y0: 0, y1: 1, fillcolor: 'rgba(100,140,200,0.18)', line: { width: 0 }, layer: 'below' });
+
+        annotations.push(
+            { x: tw.sunset[0], y: 87, text: 'Sunset', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.5)' }, textangle: -90, yref: 'y' },
+            { x: tw.astronomical[0], y: 87, text: 'Ast.Twi.', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.45)' }, textangle: -90, yref: 'y' },
+            { x: tw.astronomical[1], y: 87, text: 'Ast.Twi.', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.45)' }, textangle: -90, yref: 'y' },
+            { x: tw.sunset[1], y: 87, text: 'Sunrise', showarrow: false, font: { size: 9, color: 'rgba(255,255,255,0.5)' }, textangle: -90, yref: 'y' }
+        );
+    }
+
+    // 0: Sun
+    traces.push({
+        x: times, y: data.sun_alts,
+        mode: 'lines', name: 'Sun',
+        line: { color: '#FFD700', width: 1.5, dash: 'dash' },
+        hovertemplate: 'Alt: %{y:.1f}°<extra></extra>',
+        showlegend: false
+    });
+
+    // 1: Moon
+    traces.push({
+        x: times, y: data.moon_alts,
+        mode: 'lines', name: `Moon (${data.moon_info.phase}%)`,
+        line: { color: 'rgba(200,200,200,0.6)', width: 1.5, dash: 'dot' },
+        hovertemplate: 'Alt: %{y:.1f}°<extra></extra>',
+        showlegend: false
+    });
+
+    // Targets (starts from index 2)
+    const activeTelescope = document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT';
+    const targetsForPlot = allTargetsCache.filter(t => t.telescope === activeTelescope && t.ra && t.dec);
+
+    data.targets.forEach((t, i) => {
+        const color = TARGET_COLORS[i % TARGET_COLORS.length];
+        const cacheTarget = targetsForPlot.find(ct => ct.name === t.name);
+        const isActive = cacheTarget && cacheTarget.is_active !== false;
+
+        const hoverTexts = t.altitudes.map((alt) => {
+            const am = alt > 0 ? (1 / Math.sin(alt * Math.PI / 180)).toFixed(2) : '--';
+            return `Alt: ${alt.toFixed(1)}° | AM: ${am}`;
+        });
+        
+        traces.push({
+            x: times, y: t.altitudes,
+            mode: 'lines', name: t.name,
+            line: { color: color, width: 2.5 },
+            text: hoverTexts,
+            hovertemplate: '%{text}<extra></extra>',
+            showlegend: false,
+            visible: isActive ? true : 'legendonly'
+        });
+    });
+
+    // Dummy trace — forces xaxis2 (top local) to render
+    traces.push({
+        x: [times[0]], y: [0],
+        xaxis: 'x2',
+        mode: 'markers',
+        marker: { opacity: 0, size: 0 },
+        showlegend: false,
+        hoverinfo: 'skip'
+    });
+
+    // 30° guideline
+    shapes.push({
+        type: 'line', xref: 'x', yref: 'y',
+        x0: times[0], x1: times[times.length - 1], y0: 30, y1: 30,
+        line: { color: 'rgba(255,255,255,0.12)', width: 1, dash: 'dot' }
+    });
+
+    // Top X-Axis Local Time Setup
+    const toUtcMs = s => new Date((s.includes('Z') || s.match(/[+-]\d{2}:\d{2}$/)) ? s : s.replace(' ', 'T') + 'Z').getTime();
+    const firstMs = toUtcMs(times[0]);
+    const lastMs  = toUtcMs(times[times.length - 1]);
+    const offsetMs = data.timezone_offset * 3600000;
+    const topTickVals  = [];
+    const topTickTexts = [];
+    let tickMs = (Math.floor(firstMs / 3600000) + 1) * 3600000;
+    while (tickMs <= lastMs) {
+        topTickVals.push(new Date(tickMs).toISOString().slice(0, 19));
+        const lt = new Date(tickMs + offsetMs);
+        topTickTexts.push(lt.getUTCHours().toString().padStart(2, '0') + ':' + lt.getUTCMinutes().toString().padStart(2, '0'));
+        tickMs += 3600000;
+    }
+
+    const layout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(12,12,30,0)',
+        font: { family: 'Inter, sans-serif', color: 'rgba(255,255,255,0.85)' },
+        margin: { t: 40, r: 40, b: 40, l: 40 },
+        xaxis: {
+            title: '',
+            gridcolor: 'rgba(255,255,255,0.06)',
+            tickfont: { size: 10 },
+            showgrid: true,
+            tickformat: '%H:%M',
+            dtick: 3600000
+        },
+        xaxis2: {
+            overlaying: 'x', side: 'top', matches: 'x',
+            title: '',
+            tickvals: topTickVals, ticktext: topTickTexts,
+            tickfont: { size: 10, color: 'rgba(255,255,255,0.6)' },
+            showgrid: false, zeroline: false
+        },
+        yaxis: {
+            title: { text: 'Alt [°]', font: { size: 11 } },
+            range: [0, 90],
+            gridcolor: 'rgba(255,255,255,0.06)',
+            tickfont: { size: 10 },
+            dtick: 10, zeroline: true, zerolinecolor: 'rgba(255,100,100,0.3)'
+        },
+        shapes: shapes,
+        annotations: annotations,
+        hovermode: 'x unified',
+        dragmode: 'zoom'
+    };
+
+    const config = { responsive: true, displayModeBar: false };
+    Plotly.react('vp-plot-area', traces, layout, config);
 }
 
