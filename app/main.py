@@ -86,8 +86,7 @@ from modules.phot_scheduler import fetch_inbox_photometry
 
 _scheduler = BackgroundScheduler(daemon=True)
 _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
-# Daily photometry fetch for all Inbox objects at 03:00 UTC+8 = 19:00 UTC
-_scheduler.add_job(fetch_inbox_photometry, 'cron', hour=19, minute=0, id='daily_phot_fetch')
+_scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
 _scheduler.start()
 run_daily_backup()  # run once immediately on startup
 
