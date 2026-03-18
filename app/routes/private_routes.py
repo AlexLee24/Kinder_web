@@ -112,6 +112,21 @@ def register_private_routes(app):
         
         return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups)
 
+    @app.route('/greatlab_info')
+    def greatlab_info():
+        if 'user' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+
+        is_great_lab = session['user'].get('is_great_lab_member', False)
+        is_admin = session['user'].get('is_admin', False)
+
+        if not (is_great_lab or is_admin):
+            flash('Access denied. GREAT Lab members only.', 'error')
+            return redirect(url_for('home'))
+
+        return render_template('greatlab_info.html', current_path='/greatlab_info')
+
     @app.route('/documents')
     def documents_list():
         if 'user' not in session:
@@ -360,6 +375,64 @@ def register_private_routes(app):
         # Sort by name
         members.sort(key=lambda x: x['name'])
         return jsonify({'success': True, 'members': members})
+
+    # ===============================================================================
+    # GREAT LAB INFO
+    # ===============================================================================
+
+    def get_greatlab_links_path():
+        return os.path.join(app.root_path, 'data', 'greatlab_links.json')
+
+    @app.route('/api/greatlab_links', methods=['GET', 'POST'])
+    def api_greatlab_links():
+        if 'user' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+            
+        links_path = get_greatlab_links_path()
+        
+        if request.method == 'GET':
+            if os.path.exists(links_path):
+                with open(links_path, 'r', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                        return jsonify({'success': True, 'data': data})
+                    except json.JSONDecodeError:
+                        pass
+            
+            # Default preset if file not found or corrupted
+            default_data = [
+                {
+                    "title": "Telescopes & Facilities",
+                    "cards": [
+                        {
+                            "title": "Lulin Observatory",
+                            "links": [
+                                {
+                                    "url": "https://www.lulin.ncu.edu.tw/weather/",
+                                    "title": "Lulin weather/status",
+                                    "desc": "NCU Lulin Observatory"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+            return jsonify({'success': True, 'data': default_data})
+            
+        elif request.method == 'POST':
+            is_great_lab = session['user'].get('is_great_lab_member', False)
+            is_admin = session['user'].get('is_admin', False)
+            
+            if not (is_great_lab or is_admin):
+                return jsonify({'error': 'Forbidden. GREAT Lab members only.'}), 403
+                
+            data = request.json.get('data', [])
+            os.makedirs(os.path.dirname(links_path), exist_ok=True)
+            
+            with open(links_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+                
+            return jsonify({'success': True})
 
     @app.route('/api/targets', methods=['GET', 'POST'])
     def api_observation_targets():

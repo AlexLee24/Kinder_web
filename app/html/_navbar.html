@@ -77,6 +77,7 @@
                             <li><a href="{{ url_for('detect_results') }}">DETECT</a></li>
                             <li><a href="{{ url_for('daily_trigger') }}">Daily Trigger</a></li>
                             <li><a href="{{ url_for('documents_list') }}">Documents</a></li>
+                            <li><a href="{{ url_for('greatlab_info') }}">Lab Info</a></li>
                             {% if session.user.is_admin %}
                                 <li><a href="{{ url_for('log_viewer') }}">Web Log</a></li>
                             {% endif %}

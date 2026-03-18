@@ -33,7 +33,7 @@
                    {% if newest.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                     Newest Result ({{ newest.date }})
                     <span class="count-badge">{{ newest.count }} targets matched</span>
-                    {% if newest.has_lens %}<span class="lens-badge">🔭 LENS MATCH!</span>{% endif %}
+                    {% if newest.has_lens %}<span class="lens-badge">LENS MATCH!</span>{% endif %}
                 </a>
                 
                 {% if daily_counts|length > 1 %}
@@ -45,7 +45,7 @@
                        {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                         <span class="date">{{ item.date }}</span>
                         <span class="count">{{ item.count }} targets</span>
-                        {% if item.has_lens %}<span class="lens-badge-small">🔭 LENS</span>{% endif %}
+                        {% if item.has_lens %}<span class="lens-badge-small">LENS</span>{% endif %}
                     </a>
                     {% endfor %}
                 </div>
