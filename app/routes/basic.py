@@ -20,7 +20,7 @@ def register_basic_routes(app):
     import os, json
     from datetime import datetime
     
-    LEADERBOARD_FILE = os.path.join('app', 'data', '1a2b_leaderboard.json')
+    LEADERBOARD_FILE = os.path.join('data', '1a2b_leaderboard.json')
 
     @app.route('/api/games/leaderboard', methods=['GET'])
     def get_leaderboard():
