@@ -2,12 +2,12 @@
 header {
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    padding: 20px 20px;
+    padding: clamp(10px, 1.5vw, 20px) clamp(10px, 1.5vw, 20px);
     position: fixed;
     top: 10px;
     left: 50%;                     
     transform: translateX(-50%);   
-    width: 70%;
+    width: clamp(70%, 90vw, 95%);
     max-width: 95%;
     z-index: 100;
     box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
@@ -49,21 +49,21 @@ header .container {
 .header-content .logo {
     text-decoration: none;
     color: #ffffff;
-    margin-right: 30px;
+    margin-right: clamp(10px, 2.5vw, 30px);
     display: flex;
     align-items: center;
     height: 40px;
 }
 
 .header-content .logo img {
-    height: 50px;
+    height: clamp(35px, 4vw, 50px);
     width: auto;
-    margin-right: 10px;
+    margin-right: clamp(5px, 1vw, 10px);
 }
 
 .header-content .logo p {
     margin: 0;
-    font-size: 24px;
+    font-size: clamp(16px, 1.8vw, 24px);
     font-weight: 300;
     color: #ffffff;
     letter-spacing: 1px;
@@ -116,14 +116,14 @@ header .container {
 }
 
 .nav-left li {
-    margin-left: 30px;
+    margin-left: clamp(10px, 2.5vw, 30px);
     display: flex;
     align-items: center;
     min-height: 40px;
 }
 
 .nav-left li a {
-    font-size: 18px;
+    font-size: clamp(13px, 1.5vw, 18px);
     font-weight: 300;
     letter-spacing: 0.5px;
 }
@@ -148,14 +148,14 @@ header .container {
 }
 
 .nav-right li {
-    margin-left: 30px;
+    margin-left: clamp(10px, 2.5vw, 30px);
     display: flex;
     align-items: center;
     min-height: 40px;
 }
 
 .nav-right li a {
-    font-size: 18px;
+    font-size: clamp(13px, 1.5vw, 18px);
     font-weight: 300;
     letter-spacing: 0.5px;
 }
@@ -173,10 +173,10 @@ header .container {
 .nav a.login-button {
     background-color: #C5A059;
     color: #fff;
-    padding: 10px 20px;
+    padding: clamp(6px, 1vw, 10px) clamp(12px, 1.8vw, 20px);
     border-radius: 25px;
     text-decoration: none;
-    font-size: 18px;
+    font-size: clamp(13px, 1.5vw, 18px);
     font-weight: 300;
     letter-spacing: 0.5px;
     transition: all 0.3s ease;
@@ -290,7 +290,7 @@ header .container {
     color: #ffffff;
     text-decoration: none;
     display: block;
-    font-size: 18px;
+    font-size: clamp(14px, 1.5vw, 18px);
     font-weight: 300;
     letter-spacing: 0.5px;
     min-height: auto;
@@ -389,8 +389,8 @@ header .container {
     transform: translateY(-9px) rotate(-45deg);
 }
 
-/* Media query for small screens (max-width: 1375px) */
-@media (max-width: 1375px) {
+/* Media query for small screens (max-width: 780px) */
+@media (max-width: 780px) {
     header {
         width: 95%;
         padding: 10px 15px;

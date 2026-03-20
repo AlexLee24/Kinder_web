@@ -236,7 +236,7 @@
         <div class="log-controls-bar">
             <span id="liveDot" class="live-dot off"></span>
             <span class="ctrl-label-text">Date:</span>
-            <!-- <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select> -->
+            <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
             <label class="ctrl-follow">
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
@@ -321,6 +321,19 @@
             lineCount += content.split('\n').filter(l => l.trim()).length;
             document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
             document.getElementById('statBytes').textContent = `${logOffset} B`;
+            
+            // 避免長時間掛機導致的 DOM 數量無限增長
+            const MAX_POLL_CHUNKS = 500;
+            while (pre.children.length > MAX_POLL_CHUNKS) {
+                if (pre.firstChild && pre.firstChild.tagName === 'DIV') {
+                    if (pre.children.length > 2) pre.removeChild(pre.children[1]);
+                    else break;
+                } else if (pre.firstChild) {
+                    pre.removeChild(pre.firstChild);
+                } else {
+                    break;
+                }
+            }
         }
 
         function scrollToBottom() {
@@ -360,19 +373,37 @@
                 const data = await fetchContent(date, 0);
                 if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
                 
-                // Parse large logs with requestAnimationFrame to prevent complete freezing
                 const content = data.content || '(No entries yet)';
+                const allLines = content.split('\n');
                 
-                // If it's a huge log, we assign it directly instead of creating spans line by line for initials
-                if (content.length > 500000) { 
-                    const pre = document.getElementById('logPre');
-                    pre.innerHTML = colorize(content);
-                    lineCount = content.split('\n').filter(l => l.trim()).length;
-                    document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
-                    document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
-                } else {
-                    appendHtml(content);
+                lineCount = allLines.filter(l => l.trim()).length;
+                
+                const MAX_RENDER_LINES = 300;
+                let renderLines = allLines;
+                let truncated = false;
+                
+                if (renderLines.length > MAX_RENDER_LINES) {
+                    renderLines = renderLines.slice(-MAX_RENDER_LINES);
+                    truncated = true;
                 }
+
+                const pre = document.getElementById('logPre');
+                pre.innerHTML = colorize(renderLines.join('\n'));
+                
+                if (truncated) {
+                    const truncMsg = document.createElement('div');
+                    truncMsg.style.textAlign = 'center';
+                    truncMsg.style.padding = '8px';
+                    truncMsg.style.color = '#e3b341';
+                    truncMsg.style.fontSize = '0.85rem';
+                    truncMsg.style.borderBottom = '1px dashed rgba(255,255,255,0.1)';
+                    truncMsg.style.marginBottom = '10px';
+                    truncMsg.innerHTML = `<i>--- Only show  ${MAX_RENDER_LINES} lines ---</i>`;
+                    pre.insertBefore(truncMsg, pre.firstChild);
+                }
+
+                document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
+                document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
 
                 logOffset = data.offset || 0;
                 scrollToBottom();

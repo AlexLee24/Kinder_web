@@ -2,6 +2,9 @@ let obsFilters = [];
 let logTriggerFilters = [];
 let logObservedFilters = [];
 let logDict = {};
+let cachedLogData = [];
+let cachedLogYear = null;
+let cachedLogMonth = null;
 let availableLogMonths = [];
 let searchTimeout = null;
 let targetCoordDisplayMode = 'sexagesimal';
@@ -487,6 +490,11 @@ let currentSortState = {
 function applySort(targets, column, dir) {
     const priorityValues = { 'Urgent': 4, 'High': 3, 'Normal': 2, 'Low': 1 };
     return targets.sort((a, b) => {
+        // Always put inactive targets at the bottom
+        const aActive = a.is_active !== false ? 0 : 1;
+        const bActive = b.is_active !== false ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+
         let valA, valB;
         if (column === 'priority') {
             valA = priorityValues[a.priority] || 0;
@@ -917,7 +925,7 @@ function packLogFilterColumns(filters) {
     };
 }
 
-async function renderLogGrid(initialLoad = false) {
+async function renderLogGrid(initialLoad = false, skipFetch = false) {
     const yearSelect = document.getElementById('log-year');
     const monthSelect = document.getElementById('log-month');
     const thead = document.getElementById('log-grid-head');
@@ -951,24 +959,33 @@ async function renderLogGrid(initialLoad = false) {
     // Fetch targets and corresponding logs
     let logTargets = [];
     let logData = [];
-    try {
-        const [respTargets, respLogs] = await Promise.all([
-            fetch('/api/targets'),
-            fetch(`/api/observation_logs?year=${year}&month=${month}`)
-        ]);
-        
-        const dataTargets = await respTargets.json();
-        const dataLogs = await respLogs.json();
-        
-        if (dataTargets.success) {
-            allTargetsCache = dataTargets.targets;
-            logTargets = dataTargets.targets;
+    const isCacheValid = skipFetch && allTargetsCache.length > 0 && cachedLogYear === year && cachedLogMonth === month;
+    if (isCacheValid) {
+        logTargets = allTargetsCache;
+        logData = cachedLogData;
+    } else {
+        try {
+            const [respTargets, respLogs] = await Promise.all([
+                fetch('/api/targets'),
+                fetch(`/api/observation_logs?year=${year}&month=${month}`)
+            ]);
+            
+            const dataTargets = await respTargets.json();
+            const dataLogs = await respLogs.json();
+            
+            if (dataTargets.success) {
+                allTargetsCache = dataTargets.targets;
+                logTargets = dataTargets.targets;
+            }
+            if (dataLogs.success) {
+                logData = dataLogs.logs;
+                cachedLogData = dataLogs.logs;
+                cachedLogYear = year;
+                cachedLogMonth = month;
+            }
+        } catch (e) {
+            console.error("Log Grid Fetch error", e);
         }
-        if (dataLogs.success) {
-            logData = dataLogs.logs;
-        }
-    } catch (e) {
-        console.error("Log Grid Fetch error", e);
     }
     
     // Quick lookup dict for logs by target_name + date
@@ -1008,12 +1025,25 @@ async function renderLogGrid(initialLoad = false) {
     });
 
     // Filter SLT and LOT: only show targets that have at least one log in this month
-    let sltTargets = monthlyTargets.filter(t => t.telescope === 'SLT');
-    let lotTargets = monthlyTargets.filter(t => t.telescope === 'LOT');
-    
     const calibrationNames = ['AUTOFLAT', 'BIAS', 'DARK'];
-    let discontinuedTargets = monthlyTargets.filter(t => t.telescope !== 'SLT' && t.telescope !== 'LOT' && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
+
+    // Separate active vs inactive DB targets (SLT/LOT), and discontinued (not in DB)
+    let activeLotTargets = monthlyTargets.filter(t => t.telescope === 'LOT' && t.is_active !== false);
+    let activeSltTargets = monthlyTargets.filter(t => t.telescope === 'SLT' && t.is_active !== false);
+    let inactiveDbTargets = monthlyTargets.filter(t =>
+        (t.telescope === 'LOT' || t.telescope === 'SLT') &&
+        t.is_active === false &&
+        !calibrationNames.includes((t.name || '').trim().toUpperCase())
+    );
+    let discontinuedTargets = monthlyTargets.filter(t =>
+        t.telescope !== 'SLT' && t.telescope !== 'LOT' &&
+        !calibrationNames.includes((t.name || '').trim().toUpperCase())
+    );
     let calibrationTargets = monthlyTargets.filter(t => calibrationNames.includes((t.name || '').trim().toUpperCase()));
+
+    // Keep legacy aliases for backward compat (used in urgent extraction below)
+    let sltTargets = activeSltTargets;
+    let lotTargets = activeLotTargets;
 
     const getPriorityRank = (priority) => {
         const p = (priority || '').toString().trim().toLowerCase();
@@ -1033,19 +1063,32 @@ async function renderLogGrid(initialLoad = false) {
 
     sortByPriority(sltTargets);
     sortByPriority(lotTargets);
+    sortByPriority(inactiveDbTargets);
     sortByPriority(discontinuedTargets);
     sortByPriority(calibrationTargets);
 
-    // Extract targets that are marked Urgent in the Targets table (skip discontinued)
+    // Extract urgent targets: active only (is_active !== false, not discontinued)
     const urgentTargets = monthlyTargets.filter(t => {
         const p = ((t.priority || '') + '').toString().trim().toLowerCase();
-        return p === 'urgent' && !t.is_discontinued;
+        return p === 'urgent' && !t.is_discontinued && t.is_active !== false;
     });
     const urgentNames = new Set(urgentTargets.map(t => (t.name||'').toString()));
     sltTargets = sltTargets.filter(t => !urgentNames.has((t.name||'').toString()));
     lotTargets = lotTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+    inactiveDbTargets = inactiveDbTargets.filter(t => !urgentNames.has((t.name||'').toString()));
     discontinuedTargets = discontinuedTargets.filter(t => !urgentNames.has((t.name||'').toString()));
     calibrationTargets = calibrationTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+
+    // Apply target name filter if provided
+    const targetSearchEl = document.getElementById('log-target-search');
+    const targetSearchVal = targetSearchEl ? targetSearchEl.value.trim().toLowerCase() : '';
+    const nameMatchFn = t => !targetSearchVal || (t.name || '').toLowerCase().includes(targetSearchVal);
+    const filteredUrgent = urgentTargets.filter(nameMatchFn);
+    const filteredLOT = lotTargets.filter(nameMatchFn);
+    const filteredSLT = sltTargets.filter(nameMatchFn);
+    const filteredInactive = inactiveDbTargets.filter(nameMatchFn);
+    const filteredDisc = discontinuedTargets.filter(nameMatchFn);
+    const filteredCal = calibrationTargets.filter(nameMatchFn);
 
     // Build the grid
     let headHtml = '<tr><th>Target \\ Date</th>';
@@ -1088,9 +1131,9 @@ async function renderLogGrid(initialLoad = false) {
             let targetClass = 'pa-log-target-missing';
             if (t.is_active === false || t.is_discontinued) {
                 targetClass = 'pa-log-target-missing';
-            } else if (prefix === 'LOT') {
+            } else if (t.telescope === 'LOT') {
                 targetClass = 'pa-log-target-active';
-            } else if (prefix === 'SLT') {
+            } else if (t.telescope === 'SLT') {
                 targetClass = 'pa-log-target-slt';
             }
 
@@ -1234,29 +1277,19 @@ async function renderLogGrid(initialLoad = false) {
         });
     };
 
-    // Render urgent-last targets first (grouped by telescope order SLT->LOT->DISCONTINUED->CALIBRATION)
-    if (urgentTargets && urgentTargets.length) {
-        const urgentSLT = urgentTargets.filter(t => (t.telescope||'').toString() === 'SLT');
-        const urgentLOT = urgentTargets.filter(t => (t.telescope||'').toString() === 'LOT');
-        const urgentDisc = urgentTargets.filter(t => {
-            const up = (t.telescope||'').toString();
-            const tName = ((t.name||'')+ '').toString().trim().toUpperCase();
-            const isCal = ['AUTOFLAT','BIAS','DARK'].includes(tName);
-            return up !== 'SLT' && up !== 'LOT' && !isCal;
-        });
-        const urgentCal = urgentTargets.filter(t => ['AUTOFLAT','BIAS','DARK'].includes(((t.name||'')+ '').toString().trim().toUpperCase()));
-
-        if (urgentSLT.length) renderRows(urgentSLT, 'SLT');
+    // Render order: Urgent -> LOT -> SLT -> Inactive DB targets -> Discontinued -> Calibration
+    if (filteredUrgent && filteredUrgent.length) {
+        const urgentLOT = filteredUrgent.filter(t => (t.telescope||'').toString() === 'LOT');
+        const urgentSLT = filteredUrgent.filter(t => (t.telescope||'').toString() === 'SLT');
         if (urgentLOT.length) renderRows(urgentLOT, 'LOT');
-        if (urgentDisc.length) renderRows(urgentDisc, 'DISCONTINUED');
-        if (urgentCal.length) renderRows(urgentCal, 'CALIBRATION');
+        if (urgentSLT.length) renderRows(urgentSLT, 'SLT');
     }
 
-    // Then render normal groups in order SLT -> LOT -> Discontinued -> Calibration
-    renderRows(sltTargets, 'SLT');
-    renderRows(lotTargets, 'LOT');
-    renderRows(discontinuedTargets, 'DISCONTINUED');
-    renderRows(calibrationTargets, 'CALIBRATION');
+    renderRows(filteredLOT, 'LOT');
+    renderRows(filteredSLT, 'SLT');
+    renderRows(filteredInactive, 'INACTIVE');
+    renderRows(filteredDisc, 'DISCONTINUED');
+    renderRows(filteredCal, 'CALIBRATION');
 
     if (initialLoad) {
         setTimeout(scrollToToday, 500); // Give DOM time to render
