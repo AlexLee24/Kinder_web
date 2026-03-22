@@ -243,7 +243,7 @@ def register_api_routes(app):
                         target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
                         observed_filter, observed_exp, observed_count,
-                        priority=priority
+                        priority=priority, telescope_use=telescope_hint
                     )
                     if ok:
                         return jsonify({

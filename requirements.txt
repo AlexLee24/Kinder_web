@@ -1,0 +1,34 @@
+# Web framework
+flask
+werkzeug
+authlib
+python-dotenv
+
+# Database
+psycopg2-binary
+
+# Astronomy
+astropy
+astroquery
+ephem
+dustmaps
+pytz
+timezonefinder
+
+# Data & computation
+numpy
+pandas
+matplotlib
+plotly
+
+# Web scraping & HTTP
+requests
+beautifulsoup4
+playwright
+tqdm
+
+# Image processing
+Pillow
+
+# Other
+apscheduler

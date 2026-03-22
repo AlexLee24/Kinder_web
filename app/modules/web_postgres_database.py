@@ -263,6 +263,7 @@ def init_database():
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_exp TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS observed_count TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS telescope_use VARCHAR(10)')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
                 # Allow multiple values like "300,300" and "4,1" for multi-filter logs.
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_exp TYPE TEXT USING trigger_exp::TEXT')
@@ -971,7 +972,7 @@ def get_observation_logs(year, month):
                            l.target_name,
                            l.obs_date, l.user_name, l.is_triggered, l.is_observed,
                            trigger_filter, trigger_exp, trigger_count,
-                           observed_filter, observed_exp, observed_count, priority
+                           observed_filter, observed_exp, observed_count, priority, telescope_use
                     FROM observation_logs l
                     WHERE EXTRACT(YEAR FROM l.obs_date) = %s AND EXTRACT(MONTH FROM l.obs_date) = %s
                 ''', (year, month))
@@ -984,7 +985,7 @@ def get_observation_logs(year, month):
                                COALESCE(t.name, CONCAT('Deleted target #', l.target_id::text)) AS target_name,
                                l.obs_date, l.user_name, l.is_triggered, l.is_observed,
                                trigger_filter, trigger_exp, trigger_count,
-                               observed_filter, observed_exp, observed_count
+                               observed_filter, observed_exp, observed_count, telescope_use
                         FROM observation_logs l
                         LEFT JOIN observation_targets t ON l.target_id = t.id
                         WHERE EXTRACT(YEAR FROM l.obs_date) = %s AND EXTRACT(MONTH FROM l.obs_date) = %s
@@ -1005,7 +1006,7 @@ def get_observation_logs(year, month):
 def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_observed,
                             trigger_filter=None, trigger_exp=None, trigger_count=None,
                             observed_filter=None, observed_exp=None, observed_count=None,
-                            priority=None):
+                            priority=None, telescope_use=None):
     try:
         trigger_filter, trigger_exp, trigger_count = _normalize_log_filter_columns(
             trigger_filter, trigger_exp, trigger_count
@@ -1019,11 +1020,18 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
             try:
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS telescope_use VARCHAR(10)')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_exp TYPE TEXT USING trigger_exp::TEXT')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_count TYPE TEXT USING trigger_count::TEXT')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_exp TYPE TEXT USING observed_exp::TEXT')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_count TYPE TEXT USING observed_count::TEXT')
 
+                # Automatically fallback telescope_use if not provided but log is created
+                if not telescope_use:
+                    telescope_use = 'SLT'
+
+                # Since `target_name, obs_date` was the previous UNIQUE key
+                # To allow the same target on SLT and LOT on the same day, we must make sure `telescope_use` is part of the WHERE.
                 cursor.execute('''
                     UPDATE observation_logs
                     SET user_name = %s,
@@ -1036,14 +1044,15 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                         observed_exp = %s,
                         observed_count = %s,
                         priority = %s,
+                        telescope_use = %s,
                         created_at = CURRENT_TIMESTAMP
-                    WHERE target_name = %s AND obs_date = %s
+                    WHERE target_name = %s AND obs_date = %s AND telescope_use = %s
                 ''', (
                     user_name, is_triggered, is_observed,
                     trigger_filter, trigger_exp, trigger_count,
                     observed_filter, observed_exp, observed_count,
-                    priority,
-                    target_name, obs_date
+                    priority, telescope_use,
+                    target_name, obs_date, telescope_use
                 ))
 
                 if cursor.rowcount == 0:
@@ -1051,43 +1060,49 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                         INSERT INTO observation_logs
                             (target_name, obs_date, user_name, is_triggered, is_observed,
                              trigger_filter, trigger_exp, trigger_count,
-                             observed_filter, observed_exp, observed_count, priority)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             observed_filter, observed_exp, observed_count, priority, telescope_use)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
                         target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
-                        observed_filter, observed_exp, observed_count, priority
+                        observed_filter, observed_exp, observed_count, priority, telescope_use
                     ))
             except Exception as write_err:
-                if getattr(write_err, 'pgcode', None) == '42703':  # undefined_column (very old schema)
-                    conn.rollback()
-                    cursor = conn.cursor()
+                conn.rollback()
+                cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO observation_logs
                         (target_name, obs_date, user_name, is_triggered, is_observed,
                          trigger_filter, trigger_exp, trigger_count,
-                         observed_filter, observed_exp, observed_count)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         observed_filter, observed_exp, observed_count, priority, telescope_use)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
                         target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
-                        observed_filter, observed_exp, observed_count
+                        observed_filter, observed_exp, observed_count, priority, telescope_use
                     ))
             conn.commit()
             cursor.close()
             return True
     except Exception as e:
         logger.error('Error upserting observation log: %s', e)
+        return False
 
 
-def delete_observation_log(target_name, obs_date):
+def delete_observation_log(target_name, obs_date, telescope_use=None):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                'DELETE FROM observation_logs WHERE target_name = %s AND obs_date = %s',
-                (target_name, obs_date)
-            )
+            if telescope_use:
+                cursor.execute(
+                    'DELETE FROM observation_logs WHERE target_name = %s AND obs_date = %s AND telescope_use = %s',
+                    (target_name, obs_date, telescope_use)
+                )
+            else:
+                cursor.execute(
+                    'DELETE FROM observation_logs WHERE target_name = %s AND obs_date = %s',
+                    (target_name, obs_date)
+                )
             deleted = cursor.rowcount
             conn.commit()
             cursor.close()

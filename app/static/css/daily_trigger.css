@@ -984,10 +984,42 @@ body::before {
     background-clip: padding-box !important;
 }
 
-.pa-log-target-missing {
-    background-color: #2f3236 !important;
-    color: #9aa0a6 !important;
+.pa-log-target-off {
+    background-color: #3b3b3b !important;
+    color: #c4c4c4 !important;
     background-clip: padding-box !important;
+    position: relative;
+}
+
+.pa-log-target-off::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 12px 0 0 12px;
+    border-color: transparent transparent transparent var(--corner-color, transparent);
+}
+
+.pa-log-target-missing {
+    background-color: #252628 !important;
+    color: #7b8085 !important;
+    background-clip: padding-box !important;
+    position: relative;
+}
+
+.pa-log-target-missing::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 12px 0 0 12px;
+    border-color: transparent transparent transparent var(--corner-color, transparent);
 }
 
 /* Rounded Today and Refresh buttons */

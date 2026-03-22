@@ -991,13 +991,26 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
     // Quick lookup dict for logs by target_name + date
     logDict = {};
     const activeTargetNames = new Set();
+    
+    // Check missing suffixes and optionally add them for consistency here before UI loads it.
     logData.forEach(log => {
-        const tName = (log.target_name || '').trim();
+        let tName = (log.target_name || '').trim();
         if (!tName) return;
-        logDict[`${tName}_${log.obs_date}`] = log;
+
+        // Ensure we assign telescope to log for proper sorting and UI display later without suffix
+        log._inferred_telescope = log.telescope_use || 'SLT';
+        
+        // Strip suffix from name if it exists, so we don't display it
+        tName = tName.replace(/-LOT$/, '').replace(/-SLT$/, '');
+        log.target_name = tName; // mutate the log for view
+        
+        let teleKey = log._inferred_telescope || 'UNKNOWN';
+        let uniqueTargetKey = `${tName}___${teleKey}`;
+        logDict[`${uniqueTargetKey}_${log.obs_date}`] = log;
+
         // Include target if there's an actual trigger or observed log for it in this month
         if (log.is_triggered || log.is_observed) {
-            activeTargetNames.add(tName);
+            activeTargetNames.add(uniqueTargetKey);
         }
     });
 
@@ -1008,18 +1021,39 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
         return;
     }
 
-    const targetByName = new Map(logTargets.map(t => [(t.name || '').trim(), t]));
+    const targetByUnique = new Map();
+    logTargets.forEach(t => {
+        const baseName = (t.name || '').trim().replace(/-LOT$/, '').replace(/-SLT$/, '');
+        let tele = (t.telescope || 'UNKNOWN').toUpperCase();
+        
+        if (tele !== 'LOT' && tele !== 'SLT') {
+            tele = 'SLT'; // Fallback
+        }
+        
+        const key = `${baseName}___${tele}`;
+        if (!targetByUnique.has(key)) targetByUnique.set(key, t);
+    });
+
     const monthlyTargets = [];
-    activeTargetNames.forEach(name => {
-        if (targetByName.has(name)) {
-            monthlyTargets.push(targetByName.get(name));
+    activeTargetNames.forEach(uniqueKey => {
+        let parts = uniqueKey.split('___');
+        let bName = parts[0];
+        let tScope = parts[1];
+        
+        if (targetByUnique.has(uniqueKey)) {
+            let dbTarget = targetByUnique.get(uniqueKey);
+            let t = Object.assign({}, dbTarget, { name: bName, telescope: tScope, _unique_key: uniqueKey });
+            monthlyTargets.push(t);
         } else {
+            // Check if there is ANY target with this baseName to copy some generic info if we want,
+            // but it's fundamentally discontinued for this specific telescope.
             monthlyTargets.push({
                 id: null,
-                name: name,
-                telescope: 'DISCONTINUED',
+                name: bName,
+                telescope: tScope,
                 is_active: false,
-                is_discontinued: true
+                is_discontinued: true,
+                _unique_key: uniqueKey
             });
         }
     });
@@ -1047,9 +1081,9 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
 
     const getPriorityRank = (priority) => {
         const p = (priority || '').toString().trim().toLowerCase();
-        if (p === 'urgent') return 0;
-        if (p === 'high') return 1;
-        if (p === 'normal') return 2;
+        if (p.includes('urgent')) return 0;
+        if (p.includes('high')) return 1;
+        if (p.includes('normal')) return 2;
         return 9;
     };
 
@@ -1070,14 +1104,26 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
     // Extract urgent targets: active only (is_active !== false, not discontinued)
     const urgentTargets = monthlyTargets.filter(t => {
         const p = ((t.priority || '') + '').toString().trim().toLowerCase();
-        return p === 'urgent' && !t.is_discontinued && t.is_active !== false;
+        return p.includes('urgent') && !t.is_discontinued && t.is_active !== false;
     });
-    const urgentNames = new Set(urgentTargets.map(t => (t.name||'').toString()));
-    sltTargets = sltTargets.filter(t => !urgentNames.has((t.name||'').toString()));
-    lotTargets = lotTargets.filter(t => !urgentNames.has((t.name||'').toString()));
-    inactiveDbTargets = inactiveDbTargets.filter(t => !urgentNames.has((t.name||'').toString()));
-    discontinuedTargets = discontinuedTargets.filter(t => !urgentNames.has((t.name||'').toString()));
-    calibrationTargets = calibrationTargets.filter(t => !urgentNames.has((t.name||'').toString()));
+
+    // Sort Urgent targets by LOT then SLT
+    urgentTargets.sort((a, b) => {
+        const tA = (a.telescope || '').toUpperCase();
+        const tB = (b.telescope || '').toUpperCase();
+        if (tA === 'LOT' && tB !== 'LOT') return -1;
+        if (tA !== 'LOT' && tB === 'LOT') return 1;
+        return 0; // if both are same, preserve existing order
+    });
+
+    // We must uniquely identify records when extracting them from overall target lists.
+    // Use `_unique_key` if available.
+    const urgentKeys = new Set(urgentTargets.map(t => t._unique_key));
+    sltTargets = sltTargets.filter(t => !urgentKeys.has(t._unique_key));
+    lotTargets = lotTargets.filter(t => !urgentKeys.has(t._unique_key));
+    inactiveDbTargets = inactiveDbTargets.filter(t => !urgentKeys.has(t._unique_key));
+    discontinuedTargets = discontinuedTargets.filter(t => !urgentKeys.has(t._unique_key));
+    calibrationTargets = calibrationTargets.filter(t => !urgentKeys.has(t._unique_key));
 
     // Apply target name filter if provided
     const targetSearchEl = document.getElementById('log-target-search');
@@ -1129,8 +1175,16 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
             let displayTarget = nameHtml;
 
             let targetClass = 'pa-log-target-missing';
-            if (t.is_active === false || t.is_discontinued) {
+            let cornerColorStyle = '';
+            
+            if (t.is_discontinued) {
                 targetClass = 'pa-log-target-missing';
+                if (t.telescope === 'LOT') cornerColorStyle = '--corner-color: #2bd9ff;';
+                else if (t.telescope === 'SLT') cornerColorStyle = '--corner-color: #ff9f43;';
+            } else if (t.is_active === false) {
+                targetClass = 'pa-log-target-off';
+                if (t.telescope === 'LOT') cornerColorStyle = '--corner-color: #2bd9ff;';
+                else if (t.telescope === 'SLT') cornerColorStyle = '--corner-color: #ff9f43;';
             } else if (t.telescope === 'LOT') {
                 targetClass = 'pa-log-target-active';
             } else if (t.telescope === 'SLT') {
@@ -1138,12 +1192,12 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
             }
 
             // Target column
-            tr.innerHTML = `<td class="${targetClass}" style="vertical-align: middle;">${displayTarget}</td>`;
+            tr.innerHTML = `<td class="${targetClass}" style="vertical-align: middle; ${cornerColorStyle}">${displayTarget}</td>`;
 
             // Dates cells
             let dateCells = '';
             dates.forEach(d => {
-                const logKey = `${t.name}_${d.dateStr}`;
+                const logKey = `${t._unique_key}_${d.dateStr}`;
                 const log = logDict[logKey];
                 
                 if (log) {
@@ -1225,7 +1279,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
                         }
                         return displayName;
                     })();
-                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t.name || '')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
 
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
@@ -1253,7 +1307,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
                         </td>
                     `;
                 } else {
-                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell" style="width:100%;">
@@ -1279,10 +1333,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
 
     // Render order: Urgent -> LOT -> SLT -> Inactive DB targets -> Discontinued -> Calibration
     if (filteredUrgent && filteredUrgent.length) {
-        const urgentLOT = filteredUrgent.filter(t => (t.telescope||'').toString() === 'LOT');
-        const urgentSLT = filteredUrgent.filter(t => (t.telescope||'').toString() === 'SLT');
-        if (urgentLOT.length) renderRows(urgentLOT, 'LOT');
-        if (urgentSLT.length) renderRows(urgentSLT, 'SLT');
+        renderRows(filteredUrgent, 'URGENT');
     }
 
     renderRows(filteredLOT, 'LOT');
@@ -1484,33 +1535,56 @@ function closeLogModal() {
     }
 }
 
-function openLogModalEdit(targetId, dateStr) {
+function openLogModalEdit(uniqueTargetId, dateStr) {
     openLogModal();
 
-    // Pre-fill target/date hidden values
-    document.getElementById('log-edit-target-id').value = targetId || '';
+    let parts = (uniqueTargetId || '').split('___');
+    let rawTargetId = parts[0];
+    let telescope = parts[1] || '';
+
+    let isLot = telescope === 'LOT';
+    let isSlt = telescope === 'SLT';
+
+    document.getElementById('log-edit-target-id').value = rawTargetId;
     document.getElementById('log-edit-date').value = dateStr || '';
+    document.getElementById('log-edit-telescope').value = telescope || '';
+    
     const targetDisplay = document.getElementById('log-edit-target-display');
-    if (targetDisplay) targetDisplay.textContent = targetId || '-';
+    if (targetDisplay) targetDisplay.textContent = rawTargetId || '-';
 
     // Pre-fill from existing log if exists
-    const log = logDict[`${targetId}_${dateStr}`];
+    const log = logDict[`${uniqueTargetId}_${dateStr}`];
 
     // Priority/Program - pre-fill from log or default to target's current values
     const prioritySelect = document.getElementById('log-edit-priority');
     const programInput = document.getElementById('log-edit-program');
     if (prioritySelect) {
-        const targetInfo = (allTargetsCache || []).find(t => (t.name || '').trim() === (targetId || '').trim());
+        const baseTargetName = rawTargetId;
+        const targetInfo = (allTargetsCache || []).find(t => {
+            const tName = (t.name || '').trim();
+            const tTele = (t.telescope || '').toUpperCase();
+            // Try to match both name and telescope if possible
+            return tName === baseTargetName && tTele === telescope;
+        }) || (allTargetsCache || []).find(t => {
+            const tName = (t.name || '').trim();
+            return tName === baseTargetName;
+        });
+
         const rawPriority = ((log && log.priority) ? log.priority : ((targetInfo && targetInfo.priority) || 'Normal')).toString().trim();
 
         let basePriority = rawPriority;
         let programText = '';
         if (rawPriority.includes('-')) {
-            const parts = rawPriority.split('-');
-            basePriority = (parts.shift() || 'Normal').trim();
-            programText = parts.join('-').trim();
+            const partsPri = rawPriority.split('-');
+            basePriority = (partsPri.shift() || 'Normal').trim();
+            programText = partsPri.join('-').trim();
         } else if (targetInfo && targetInfo.program) {
             programText = targetInfo.program;
+        }
+
+        // If user creates a new log on a LOT row and no program exists yet, keep it, but they might need to set it.
+        if (isLot && targetInfo?.program) {
+             programText = targetInfo.program;
         }
 
         const pLower = basePriority.toLowerCase();
@@ -1555,6 +1629,7 @@ function clearLogEditFields() {
 function deleteObservationLog() {
     const target_name = document.getElementById('log-edit-target-id').value;
     const obs_date = document.getElementById('log-edit-date').value;
+    const telescope_use = document.getElementById('log-edit-telescope').value || null;
 
     if (!target_name || !obs_date) {
         alert('Missing target or date for delete.');
@@ -1571,7 +1646,8 @@ function deleteObservationLog() {
         body: JSON.stringify({
             action: 'delete',
             target_name: target_name,
-            obs_date: obs_date
+            obs_date: obs_date,
+            telescope_use: telescope_use
         })
     })
     .then(response => response.json())
@@ -1601,8 +1677,9 @@ function toggleLogFields() {
 function saveObservationLog(event) {
     if (event) event.preventDefault();
 
-    const target_name = document.getElementById('log-edit-target-id').value;
+    let target_name = document.getElementById('log-edit-target-id').value;
     const obs_date = document.getElementById('log-edit-date').value;
+    const telescope_use = document.getElementById('log-edit-telescope').value || null;
     const user_id = document.getElementById('log-edit-user').value;
     const trigger_status = document.getElementById('log-edit-trigger-status').checked;
     const obs_status = document.getElementById('log-edit-obs-status').checked;
@@ -1631,7 +1708,8 @@ function saveObservationLog(event) {
         observed_filter: observedPacked.filter,
         observed_exp:    observedPacked.exp,
         observed_count:  observedPacked.count,
-        priority:        priority
+        priority:        priority,
+        telescope_use:   telescope_use
     };
 
     fetch('/api/observation_logs', {

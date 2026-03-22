@@ -777,12 +777,13 @@ def register_private_routes(app):
                 action = (data.get('action') or '').strip().lower()
                 target_name = (data.get('target_name') or '').strip()
                 obs_date = data.get('obs_date')
+                telescope_use = data.get('telescope_use')
 
                 if action == 'delete':
                     if not target_name or not obs_date:
                         return jsonify({'success': False, 'error': 'Target Name and Date required'}), 400
                     from modules.web_postgres_database import delete_observation_log
-                    deleted = delete_observation_log(target_name, obs_date)
+                    deleted = delete_observation_log(target_name, obs_date, telescope_use)
                     if deleted:
                         return jsonify({'success': True})
                     return jsonify({'success': False, 'error': 'Log not found or failed to delete'}), 404
@@ -801,6 +802,7 @@ def register_private_routes(app):
                 trigger_filter  = _norm_filter(data.get('trigger_filter'))
                 observed_filter = _norm_filter(data.get('observed_filter'))
                 priority = data.get('priority') or None
+                telescope_use = data.get('telescope_use') or None
 
                 # Backward compatibility: older clients may still send target_id
                 if not target_name and data.get('target_id'):
@@ -822,7 +824,8 @@ def register_private_routes(app):
                     observed_filter,
                     data.get('observed_exp') if data.get('observed_exp') is not None else None,
                     data.get('observed_count') if data.get('observed_count') is not None else None,
-                    priority=priority
+                    priority=priority,
+                    telescope_use=telescope_use
                 )
                 
                 if success:
