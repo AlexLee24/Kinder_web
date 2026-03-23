@@ -16,460 +16,244 @@
     <div data-admin="true" style="display: none;"></div>
     {% endif %}
 
+
+
     <div class="object-detail-container">
-        <!-- Header Section -->
-        <div class="object-header">
-            <!-- Top Section (Always Visible) -->
-            <div class="header-top-section">
-                <!-- Breadcrumb -->
-                <div class="breadcrumb">
-                    <a href="{{ url_for('marshal') }}" class="breadcrumb-link">Marshal</a>
-                    <span class="breadcrumb-separator"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></span>
-                    <span class="breadcrumb-current" id="breadcrumbCurrent">{{ object_name }}</span>
+        <!-- Top Navigation Bar -->
+        <div class="top-nav-bar">
+            <div class="top-left-group">
+                <div class="breadcrumb" style="display:inline-flex; align-items:center;">
+                    <a href="{{ url_for('marshal') }}" style="color:#a0a0b0; text-decoration:none;">Marshal</a>
+                    <span style="margin: 0 8px; color:#666;">/</span>
                 </div>
-                
-                <!-- Object Title and Meta -->
-                <div class="object-title-section">
-                    <h1 class="object-name" id="objectName">{{ object_name }}</h1>
-                    <div class="object-meta">
-                        <span class="discovery-date" id="discoveryDateDisplay">
-                            Discovered: {{ object_data.discoverydate[:10] if object_data.discoverydate else 'Unknown' }}
-                        </span>
-                        <span class="classification-badge {{ (object_data.type or 'at')|lower|replace(' ', '-') }}" id="classificationBadge">
-                            {{ object_data.type or 'AT' }}
-                        </span>
-                        <div class="tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
-                            {{ object_data.tag|title or 'Inbox' }}
-                        </div>
-                        <button class="action-btn visibility" onclick="openVisibilityPlot()">
-                            Visibility Plot
-                        </button>
-                        <button class="action-btn visibility" onclick="copyCoordinates()">
-                            Copy Coordinates
-                        </button>
-                        {% if session.user and session.user.is_admin %}
-                        <button class="edit-btn" onclick="editObjects()">
-                            Edit z
-                        </button>
-                        <!-- <button class="delete-btn" onclick="deleteObjects()">
-                            Delete
-                        </button> -->
-                        {% endif %}
-                    </div>
-                </div>
+                <h1 class="object-main-title" id="objectName">{{ object_name }}</h1>
+                <span class="badge type-badge" id="classificationBadge">
+                    {{ object_data.type or 'AT' }}
+                </span>
+                <span class="badge tag-badge" id="statusBadge">
+                    {{ object_data.tag|title or 'Inbox' }}
+                </span>
+                {% if session.user and session.user.is_admin %}
+                <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#ffbe0b;" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round."><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+                </button>
+                {% endif %}
             </div>
-
-            <!-- Mobile Toggle -->
-            <input type="checkbox" id="mobileHeaderToggle" class="mobile-toggle-checkbox" style="display: none;">
-            <label for="mobileHeaderToggle" class="mobile-toggle-label">
-                <span class="show-txt">▼ Show Basic Info & Actions</span>
-                <span class="hide-txt" style="display: none;">▲ Hide Basic Info & Actions</span>
-            </label>
-
-            <!-- Collapsible Section -->
-            <div class="header-main collapsible-section">
-                <div class="header-left">
-                    
-                    <!-- Basic Information Grid -->
-                    <div class="basic-info-grid">
-                        <div class="info-item full-width-item">
-                            <span class="info-label">Internal Name:</span>
-                            <span class="info-value" id="internalName">{{ object_data.internal_names or 'N/A' }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">RA (J2000):</span>
-                            <span class="info-value" id="raValue">
-                                {{ "%.6f°"|format(object_data.ra) if object_data.ra else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Dec (J2000):</span>
-                            <span class="info-value" id="decValue">
-                                {{ "%.6f°"|format(object_data.declination) if object_data.declination else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">RA (HMS):</span>
-                            <span class="info-value" id="raHMS">
-                                <!-- Will be filled by JavaScript -->
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Dec (DMS):</span>
-                            <span class="info-value" id="decDMS">
-                                <!-- Will be filled by JavaScript -->
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Discovery Date:</span>
-                            <span class="info-value" id="discoveryDateInfo">
-                                {{ object_data.discoverydate[:10] if object_data.discoverydate else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Last Update:</span>
-                            <span class="info-value" id="reportDateInfo">
-                                {{ object_data.lastmodified[:10] if object_data.lastmodified else 'N/A' }}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Discovery Mag:</span>
-                            <span class="info-value" id="discoveryMag">
-                                {{ object_data.discoverymag or 'N/A' }}
-                                {% if object_data.discoveryfilter %}({{ object_data.discoveryfilter }}){% endif %}
-                            </span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Redshift:</span>
-                            <span class="info-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Reporting Group:</span>
-                            <span class="info-value" id="reportingGroup">{{ object_data.reporting_group or 'N/A' }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Discovery Survey:</span>
-                            <span class="info-value" id="discoverySurvey">{{ object_data.source_group or 'N/A' }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Brightest Mag:</span>
-                            <span class="info-value" id="brightestMag">{{ object_data.brightest_mag or 'N/A' }}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Brightest M:</span>
-                            <span class="info-value" id="brightestAbsMag">{{ object_data.brightest_abs_mag or '--' }}</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Header Actions Card -->
-                    <div class="header-actions-card">
-                        <!-- Status Management Section -->
-                        {% if session.user and session.user.is_admin %}
-                        <div class="header-section status-section">
-                            <h4 class="section-title">Status Management</h4>
-                            <div class="status-controls-compact">
-                                <div class="status-actions-compact">
-                                    <button class="status-btn-compact inbox" onclick="changeStatus('object')" title="Move to Inbox">
-                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg></span>
-                                        Inbox
-                                    </button>
-                                    <button class="status-btn-compact followup" onclick="changeStatus('followup')" title="Mark for Follow-up">
-                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg></span>
-                                        Follow-up
-                                    </button>
-                                    <button class="status-btn-compact finished" onclick="changeStatus('finished')" title="Mark as Finished">
-                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg></span>
-                                        Finished
-                                    </button>
-                                    <button class="status-btn-compact snoozed" onclick="changeStatus('snoozed')" title="Snooze">
-                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg></span>
-                                        Snooze
-                                    </button>
-                                    <button class="status-btn-compact flag" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">
-                                        <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg></span>
-                                        <span id="flagBtnText">Flag</span>
-                                    </button>
-                                    <button class="status-btn-compact clear" onclick="changeStatus('clear')" title="Clear Follow/Finish">
-                                        <span class="btn-icon"></span>
-                                        Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        {% endif %}
-                        
-                        <!-- External Resources Section -->
-                        <div class="header-section external-section">
-                            <h4 class="section-title">External Resources</h4>
-                            <div class="external-links-compact">
-                                <a href="#" class="external-link-compact tns" onclick="openTNSPage()" title="View on Transient Name Server">
-                                    <span class="link-icon"></span>
-                                    <span class="link-title">TNS</span>
-                                </a>
-                                
-                                <a href="#" class="external-link-compact ned" onclick="openNED()" title="NASA/IPAC Extragalactic Database">
-                                    <span class="link-icon"></span>
-                                    <span class="link-title">NED</span>
-                                </a>
-                                
-                                <a href="#" class="external-link-compact desi" onclick="openDESI()" title="DESI Legacy Survey">
-                                    <span class="link-icon"></span>
-                                    <span class="link-title">DESI LS</span>
-                                </a>
-                                
-                                <a href="#" class="external-link-compact extinction" onclick="openExtinction()" title="Galactic Extinction Calculator">
-                                    <span class="link-icon"></span>
-                                    <span class="link-title">Extinction</span>
-                                </a>
-                            </div>
-                        </div>
-
-                        <!-- Data Actions Section -->
-                        <div class="header-section data-actions-section">
-                            <h4 class="section-title">Data Actions</h4>
-                            <div class="external-links-compact">
-                                <button class="status-btn-compact" onclick="fetchPhotometry()" title="Fetch Photometry from TNS">
-                                    <span class="btn-icon"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span>
-                                    Fetch Photometry
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+            
+            <div class="top-right-group">
+                <div class="coord-box" title="RA / Dec">
+                    RA: {{ "%.5f"|format(object_data.ra) if object_data.ra else '--' }}&deg; &nbsp;|&nbsp;
+                    Dec: {{ "%.5f"|format(object_data.declination) if object_data.declination else '--' }}&deg;
                 </div>
-                
-                <!-- Location Image Section -->
-                <div class="location-image-container">
-                    <div class="location-image" id="locationImage">
-                        <div class="image-loading" id="imageLoading">
-                            <div class="loading-spinner-small"></div>
-                            <span>Loading image...</span>
-                        </div>
-                        <img id="locationImageSrc" style="display: none; cursor: pointer;" alt="Object location" onclick="openDESI()">
-                        <div class="location-marker" id="locationMarker" style="display: none;" onclick="openDESI()"></div>
-                    </div>
-                    <div class="image-info">
-                        <span class="image-credit">DESI Legacy Survey</span>
+                <button class="btn-modern" onclick="copyCoordinates()">Copy Coords</button>
+                <button class="btn-modern" onclick="openVisibilityPlot()">Visibility Chart</button>
+            </div>
+        </div>
+
+        <!-- Middle Section: Details, DESI, Aladin -->
+        <div class="mid-panels-grid">
+            
+            <!-- Panel 1: Details & Tools -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Metadata & Info</h3>
+                    {% if session.user and session.user.is_admin %}
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="editObjects()">Edit Z</button>
+                    {% endif %}
+                </div>
+                <div class="panel-body">
+                    <ul class="detail-list">
+                        <li class="detail-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                            <span class="detail-label">Internal Name</span>
+                            <span class="detail-value" id="internalName" style="font-size: 0.85rem; line-height: 1.3;">{{ object_data.internal_names.split(',')|map('trim')|join(', ') if object_data.internal_names else 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">RA (HMS)</span>
+                            <span class="detail-value" id="raHMS"></span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Dec (DMS)</span>
+                            <span class="detail-value" id="decDMS"></span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Discovery Date</span>
+                            <span class="detail-value">{{ object_data.discoverydate[:10] if object_data.discoverydate else 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Reporting Group</span>
+                            <span class="detail-value">{{ object_data.reporting_group or 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Redshift (z)</span>
+                            <span class="detail-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Distance (Mpc)</span>
+                            <span class="detail-value">
+                                {% if object_data.distance_mpc %}
+                                    {{ "%.2f"|format(object_data.distance_mpc) }}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </span>
+                        </li>
+                        <li class="detail-item" style="border:none;">
+                            <span class="detail-label">Peak Abs Mag (ext and K corr)</span>
+                            <span class="detail-value">
+                                {% if object_data.brightest_abs_mag %}
+                                    {{ "%.3f"|format(object_data.brightest_abs_mag) }} 
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </span>
+                        </li>
+                    </ul>
+                    
+                    <div class="quick-links">
+                        <a href="javascript:void(0)" class="link-btn" onclick="openTNSPage()">TNS</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openNED()">NED</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openDESI()">DESI LS</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openExtinction()">Extinction</a>
                     </div>
                     
-                    <!-- Permission Management (Admin Only) -->
                     {% if session.user and session.user.is_admin %}
-                    <div class="permission-management" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span style="font-size: 0.85rem; font-weight: 600; color: #4a5568;">Data Access Control</span>
-                            <button class="action-btn-small" onclick="togglePermissionManager()" style="padding: 2px 8px; font-size: 0.75rem; background: #f8f9fa; border: 1px solid #ddd; color: #666;">Manage</button>
-                        </div>
-                        <div id="permissionManager" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #eee;">
-                            <div style="margin-bottom: 8px;">
-                                <label style="display: block; font-size: 0.75rem; color: #666; margin-bottom: 4px;">Select User Group:</label>
-                                <select id="groupSelect" style="width: 100%; padding: 6px; font-size: 0.85rem; border: 1px solid #ddd; border-radius: 4px; background: white;">
-                                    <option value="">Loading groups...</option>
-                                </select>
-                            </div>
-                            <div style="display: flex; gap: 8px;">
-                                <button onclick="grantPermission()" style="flex: 1; padding: 6px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: background 0.2s;">Grant Access</button>
-                                <button onclick="revokePermission()" style="flex: 1; padding: 6px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; transition: background 0.2s;">Revoke Access</button>
-                            </div>
-                            <div id="permissionStatus" style="margin-top: 8px; font-size: 0.75rem; color: #666; min-height: 1.2em;"></div>
-                            
-                            <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                                <span style="font-size: 0.75rem; font-weight: 600; color: #666; display: block; margin-bottom: 4px;">Current Access:</span>
-                                <div id="currentPermissionsList" style="font-size: 0.75rem; color: #4a5568; max-height: 60px; overflow-y: auto;">
-                                    Loading...
-                                </div>
-                            </div>
-                        </div>
+                    <div style="margin-top: 16px; display:flex; gap:8px;">
+                        <button class="btn-modern" style="flex:1; border-color:#8338ec; color:#8338ec;" onclick="changeStatus('followup')">Follow-up</button>
+                        <button class="btn-modern" style="flex:1; border-color:#38b000; color:#38b000;" onclick="changeStatus('finished')">Finished</button>
+                        <button class="btn-modern" style="flex:1; border-color:#ff9e00; color:#ff9e00;" onclick="changeStatus('snoozed')">Snooze</button>
                     </div>
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Panel 2: DESI Image -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>DESI Legacy Survey</h3>
+                </div>
+                <div class="panel-body" style="padding:10px;">
+                    <div class="media-container" id="locationImage">
+                        <div class="image-loading" id="imageLoading" style="position:absolute;">
+                            <div class="loading-spinner-small"></div>
+                        </div>
+                        <img id="locationImageSrc" style="display:none; width:100%; height:100%; object-fit:cover; cursor:pointer;" alt="Location" onclick="openDESI()">
+                        <div class="location-marker" id="locationMarker" style="display:none;" onclick="openDESI()"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: Aladin Star Map -->
+            <div class="panel-card" id="star-map">
+                <div class="panel-header">
+                    <h3>Aladin</h3>
+                    <select id="surveySelect" class="btn-modern" style="padding:2px 8px; border:none; outline:none;" onchange="changeSurvey()">
+                        <option value="CDS/P/DSS2/color" selected>DSS2</option>
+                        <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-LS-DR10</option>
+                        <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS-DR1-Color</option>
+                        <option value="CDS/P/HST/color">HST-Color</option>
+                        <option value="CDS/P/Rubin/FirstLook">Rubin-LSST-First-Look</option>
+                    </select>
+                </div>
+                <div class="panel-body" style="padding:10px;">
+                    <div class="media-container">
+                        <div id="aladin-lite-div" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
-        <!-- Main Content -->
-        <div class="detail-content">
-            <!-- Left Column -->
-            <div class="detail-left">
-                <!-- Photometry Card -->
-                <div class="info-card">
-                    <div class="card-header">
-                        <h3>Photometry <span id="lastPhotometryDate" style="font-size: 0.8em; font-weight: normal; color: #666; margin-left: 10px;"></span></h3>
-                        <div class="card-actions">
-                            <div class="plot-controls" style="display: inline-flex; gap: 10px; margin-right: 15px; align-items: center; font-size: 0.85em;">
-                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()">
-                                    Galactic Extinction
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()">
-                                    K-correction
-                                </label>
-                            </div>
-                            {% if session.user and session.user.is_admin %}
-                            <button class="action-btn-small edit" onclick="togglePhotometryEditMode()" id="photometryEditBtn">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                </span>
-                                Edit
-                            </button>
-                            <button class="action-btn-small add" onclick="showAddPhotometryForm()" id="addPhotometryBtn">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                </span>
-                                Add Point
-                            </button>
-                            {% endif %}
-                            <button class="action-btn-small upload" onclick="uploadPhotometry()">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                </span>
-                                Upload
-                            </button>
-                            <button class="action-btn-small refresh" onclick="loadPhotometryPlot()">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                                </span>
-                                Refresh
-                            </button>
-                        </div>
-                    </div>
-                    <div class="card-content">
-                        <div class="photometry-container">
-                            <div class="plot-loading" id="photometryLoading">
-                                <div class="loading-spinner-small"></div>
-                                <span>Loading photometry data...</span>
-                            </div>
-                            <!-- Add photometry data table for editing -->
-                            <div class="photometry-table-container" id="photometryTableContainer" style="display: none;">
-                                <div class="table-header">
-                                    <h4>Photometry Data Points</h4>
-                                    <div class="table-actions">
-                                        <button class="btn btn-secondary" onclick="cancelPhotometryEdit()">Cancel</button>
-                                        <button class="btn btn-primary" onclick="savePhotometryChanges()">Save Changes</button>
-                                    </div>
-                                </div>
-                                <div class="table-wrapper">
-                                    <table class="photometry-table" id="photometryTable">
-                                        <thead>
-                                            <tr>
-                                                <th>MJD</th>
-                                                <th>Magnitude</th>
-                                                <th>Error</th>
-                                                <th>Filter</th>
-                                                <th>Telescope</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="photometryTableBody">
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div class="photometry-grid" id="photometryPlot">
-                                <!-- Plotly chart will be inserted here -->
-                            </div>
-                        </div>
+        <!-- Bottom Section: Photometry, Spectrum, Comments -->
+        <div class="bottom-grid">
+            
+            <!-- Photometry Span 1 Column -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Photometry Analysis <span id="lastPhotometryDate" style="font-size: 0.8em; color: rgba(255,255,255,0.5); font-weight:normal; margin-left:8px;"></span></h3>
+                    <div class="action-row">
+                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc;">
+                            <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()"> Extinction
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc; margin-right:12px;">
+                            <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()"> K-Correction
+                        </label>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="fetchPhotometry()">Fetch Phot</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="uploadPhotometry()">Upload</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="loadPhotometryPlot()">Refresh</button>
                     </div>
                 </div>
-
-                <!-- Spectrum Card -->
-                <div class="info-card">
-                    <div class="card-header">
-                        <h3>Spectroscopy</h3>
-                        <div class="card-actions">
-                            <button class="action-btn-small upload" onclick="uploadSpectrum()">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                                </span>
-                                Upload
-                            </button>
-                            <button class="action-btn-small refresh" onclick="loadSpectrumPlot()">
-                                <span class="btn-icon">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                                </span>
-                                Refresh
-                            </button>
+                <div class="panel-body">
+                    <div style="min-height:400px; display:flex; position:relative;" id="photometryPlotContainer">
+                        <div id="photometryLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
+                            <div class="loading-spinner-small"></div> Loading data...
                         </div>
-                    </div>
-                    <div class="card-content">
-                        <div class="spectrum-container">
-                            <div class="plot-loading" id="spectrumLoading">
-                                <div class="loading-spinner-small"></div>
-                                <span>Loading spectrum data...</span>
-                            </div>
-                            <div class="spectrum-controls" id="spectrumControls" style="display: none;">
-                                <select id="spectrumSelector" onchange="loadSpecificSpectrum()">
-                                    <option value="">All Spectra Overview</option>
-                                </select>
-                            </div>
-                            <div class="photometry-grid" id="spectrumPlot">
-                                <!-- Plotly chart will be inserted here -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Discovery Information Card -->
-                <div class="info-card">
-                    <div class="card-header">
-                        <h3>Empty Space</h3>
-                    </div>
-                    <div class="card-content">
-                        
+                        <div id="photometryPlot" style="flex:1; width:100%;"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Column -->
-            <div class="detail-right">
-                <!-- Aladin Card -->
-                <div class="info-card" id="star-map">
-                    <div class="card-header">
-                        <h3>Star Map by Aladin</h3>
-                        <div class="card-actions">
-                            <div class="survey-selector">
-                                <select id="surveySelect" onchange="changeSurvey()">
-                                    <option value="CDS/P/DSS2/color" selected>DSS2 Color</option>
-                                    <option value="P/2MASS/color">2MASS Color</option>
-                                    <option value="P/SDSS9/color">SDSS9 Color</option>
-                                    <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS Color</option>
-                                    <option value="P/DECaLS/DR5/color">DECaLS Color</option>
-                                    <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-DR10</option>
-                                    <option value="CDS/P/DESI-Legacy-Surveys/DR10/r">DESI-DR10-r</option>
-                                    <option value="CDS/P/Rubin/FirstLook">VeraRubin-LSST</option>
-                                    <option value="simg.de/P/NSNS/DR0_2/ohs8">NSNS-DR02</option>
-                                </select>
+            <!-- DETECT -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>DETECT</h3>
+                    <div class="action-row">
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body" id="detectBody" style="display:flex; flex-direction:column; gap:10px; color:#888; overflow-y:auto; max-height:400px; padding-right:8px;">
+                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                        <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Spectroscopy -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Spectroscopy</h3>
+                    <div class="action-row">
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="uploadSpectrum()">Upload</button>
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <select id="spectrumSelector" class="btn-modern" style="width:100%; margin-bottom:12px; display:none;" onchange="loadSpecificSpectrum()"></select>
+                    <div style="min-height:250px; display:flex; position:relative;">
+                        <div id="spectrumLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
+                            <div class="loading-spinner-small"></div> Mapping...
+                        </div>
+                        <div id="spectrumPlot" style="flex:1; width:100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comments -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Comments</h3>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
+                </div>
+                <div class="panel-body">
+                    <div id="addCommentForm" style="display:none; margin-bottom:16px;">
+                        <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                            <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
+                                <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
                             </div>
                         </div>
-                    </div>
-                    <div class="card-content">
-                        <!-- Aladin Lite -->
-                        <div id="aladin-lite-div" style="display: none;"></div>
                     </div>
                     
-                    <!-- Aladin Scripts -->
-                    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-                    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"></script>
-                </div>
-
-                <!-- Notes Card -->
-                <div class="info-card">
-                    <div class="card-header">
-                        <h3>Comments</h3>
-                        <button class="add-comment-btn" onclick="showAddCommentForm()" id="addCommentBtn">
-                            <span class="btn-icon"></span>
-                            Add Comment
-                        </button>
-                    </div>
-                    <div class="card-content">
-                        <!-- Add Comment Form -->
-                        <div class="add-comment-form" id="addCommentForm" style="display: none;">
-                            <div class="form-group">
-                                <textarea id="commentContent" placeholder="Add your comment..." maxlength="1000" rows="3"></textarea>
-                                <div class="char-counter" id="charCounter">0/1000</div>
-                            </div>
-                            <div class="form-actions">
-                                <button class="btn btn-secondary" onclick="cancelAddComment()">Cancel</button>
-                                <button class="btn btn-primary" onclick="submitComment()">Post Comment</button>
-                            </div>
-                        </div>
-                        
-                        <!-- Comments Container -->
-                        <div class="comments-container" id="commentsContainer">
-                            <div class="comments-loading" id="commentsLoading">
-                                <div class="loading-spinner-small"></div>
-                                <span>Loading comments...</span>
-                            </div>
-                            <div class="no-comments" id="noComments" style="display: none;">
-                                <span class="no-comments-icon"></span>
-                                <span class="no-comments-text">No comments yet. Be the first to comment!</span>
-                            </div>
-                            <div class="comments-list" id="commentsList">
-                                <!-- Comments will be loaded here -->
-                            </div>
-                        </div>
+                    <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
+                        <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
+                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No logs found.</div>
+                        <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
                     </div>
                 </div>
-
             </div>
+            
         </div>
     </div>
 
@@ -675,6 +459,8 @@
     <div class="notification-container" id="notificationContainer"></div>
 
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
 </body>
 </html>

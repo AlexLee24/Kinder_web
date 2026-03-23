@@ -114,6 +114,17 @@ def register_object_routes(app):
             # Values are already calculated by update_object_abs_mag and fetched from DB
             # No need to recalculate here
 
+            # Calculate distance if redshift is available
+            if matching_obj and matching_obj.get('redshift') is not None:
+                try:
+                    from modules.astronomy_calculator import calculate_redshift_distance
+                    z = float(matching_obj['redshift'])
+                    if z > 0:
+                        dist_result = calculate_redshift_distance(z)
+                        matching_obj['distance_mpc'] = dist_result.get('distance_mpc')
+                except Exception as e:
+                    print(f"Error calculating distance: {e}")
+
             # Convert datetime objects to strings for template compatibility
             if matching_obj:
                 for key, value in matching_obj.items():
@@ -218,6 +229,17 @@ def register_object_routes(app):
             
             # Values are already calculated by update_object_abs_mag and fetched from DB
             # No need to recalculate here
+
+            # Calculate distance if redshift is available
+            if matching_obj and matching_obj.get('redshift') is not None:
+                try:
+                    from modules.astronomy_calculator import calculate_redshift_distance
+                    z = float(matching_obj['redshift'])
+                    if z > 0:
+                        dist_result = calculate_redshift_distance(z)
+                        matching_obj['distance_mpc'] = dist_result.get('distance_mpc')
+                except Exception as e:
+                    print(f"Error calculating distance: {e}")
 
             # Convert datetime objects to strings for template compatibility
             if matching_obj:

@@ -1746,9 +1746,9 @@ def update_object_abs_mag(target_name):
                 possible_names.append(canonical_name[len(obj['name_prefix']):])
             
             cur.execute("""
-                SELECT magnitude, filter 
+                SELECT magnitude, filter, magnitude_error
                 FROM photometry 
-                WHERE object_name = ANY(%s) AND magnitude IS NOT NULL AND magnitude_error > 0
+                WHERE object_name = ANY(%s) AND magnitude IS NOT NULL AND magnitude_error > 0 AND CAST(magnitude_error AS FLOAT) <= 0.3
             """, (list(set(possible_names)),))
             rows = cur.fetchall()
             

@@ -285,6 +285,55 @@ def register_api_routes(app):
         except Exception as e:
             return jsonify({'success': False, 'error': str(e)}), 500
 
+    @app.route('/api/object/<object_name>/detect_cross_match', methods=['GET'])
+    def trigger_detect_cross_match(object_name):
+        from modules.detect_cross_match import has_detect_run, get_detect_results_for_target, run_all_detect, save_detect_results
+        from modules.postgres_database import get_db_connection
+        
+        try:
+            object_name = urllib.parse.unquote(object_name)
+            
+            force = request.args.get('force', 'false').lower() == 'true'
+            
+            if force:
+                from modules.postgres_database import get_db_connection
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM detect_cross_match_results WHERE target_name = %s", (object_name,))
+                        conn.commit()
+            
+            # Check if we already ran it
+            if not force and has_detect_run(object_name):
+                # Just get the existing results
+                results = get_detect_results_for_target(object_name)
+                return jsonify({'success': True, 'ran_now': False, 'results': results})
+            
+            # Need to run it, first get RA and Dec
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT ra, declination FROM tns_objects WHERE name = %s", (object_name,))
+                    row = cur.fetchone()
+                    
+            if not row:
+                return jsonify({'success': False, 'error': 'Object not found in database'}), 404
+                
+            ra, dec = row
+            
+            # Execute cross match
+            new_results = run_all_detect(object_name, float(ra), float(dec))
+            
+            # Save results
+            save_detect_results(object_name, new_results)
+            
+            # Fetch formatted results
+            final_results = get_detect_results_for_target(object_name)
+            
+            return jsonify({'success': True, 'ran_now': True, 'results': final_results})
+            
+        except Exception as e:
+            logger.error(f'Error running detect for {object_name}: {str(e)}')
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route('/api/objects', methods=['POST'])
     def add_object():
         """Add a new object to the database"""

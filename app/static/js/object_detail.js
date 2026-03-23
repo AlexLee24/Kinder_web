@@ -196,7 +196,8 @@ function updatePageContent() {
     // Update discovery information
     updateElementText('reportingGroup', objectData.reporting_group || 'N/A');
     updateElementText('discoverySurvey', objectData.source_group || 'N/A');
-    updateElementText('internalName', objectData.internal_names || 'N/A');
+    const displayInternalNames = objectData.internal_names ? objectData.internal_names.split(',').map(s => s.trim()).join(', ') : 'N/A';
+    updateElementText('internalName', displayInternalNames);
     updateElementText('timeReceived', objectData.time_received || 'N/A');
     
     // Update additional data
@@ -221,12 +222,111 @@ function updatePageContent() {
     // Load comment
     loadComments();
 
+    // Init Detect data
+    loadDetectData();
+
     // Initialize Aladin Lite
     initializeAladinWhenReady();
 
     console.log('Page content updated');
 }
 
+function forceDetectRun() {
+    const detectBody = document.getElementById('detectBody');
+    if (!detectBody) return;
+    
+    detectBody.innerHTML = `
+        <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+            <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
+        </div>
+    `;
+
+    fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match?force=true`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderDetectData(data.results);
+            } else {
+                detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${data.error || 'Failed to run cross-match'}</div>`;
+            }
+        })
+        .catch(err => {
+            console.error('Error forcefully running detect:', err);
+            detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Network error running cross-match</div>`;
+        });
+}
+
+function renderDetectData(results) {
+    const detectBody = document.getElementById('detectBody');
+    if (!detectBody) return;
+    
+    if (!results || results.length === 0) {
+        detectBody.innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:100%; color:#888;">No matches found</div>';
+        return;
+    }
+
+    let html = '<ul style="list-style:none; padding:0; margin:0;">';
+    results.forEach(res => {
+        let sep = parseFloat(res.separation_arcsec).toFixed(2);
+        let catalog = res.catalog_name;
+        let mdata = {};
+        try {
+            mdata = typeof res.match_data === 'string' ? JSON.parse(res.match_data) : res.match_data;
+        } catch(e) {
+            mdata = {};
+        }
+        
+        let extraInfo = '';
+        const has = (obj, key) => key in obj && obj[key] !== null && obj[key] !== '';
+
+        if (has(mdata, 'z_lens')) extraInfo += ` | z_lens=${parseFloat(mdata.z_lens).toFixed(3)}`;
+        else if (has(mdata, 'z')) extraInfo += ` | z=${parseFloat(mdata.z).toFixed(3)}`;
+        else if (has(mdata, 'z_spec')) extraInfo += ` | z_spec=${parseFloat(mdata.z_spec).toFixed(3)}`;
+        else if (has(mdata, 'Z_SPEC')) extraInfo += ` | z_spec=${parseFloat(mdata.Z_SPEC).toFixed(3)}`;
+
+        if (has(mdata, 'z_source')) extraInfo += ` | z_source=${parseFloat(mdata.z_source).toFixed(3)}`;
+        if (has(mdata, 'grade')) extraInfo += ` | grade=${mdata.grade}`;
+        if (has(mdata, 'lens_probability')) extraInfo += ` | prob=${parseFloat(mdata.lens_probability).toFixed(3)}`;
+        if (has(mdata, 'rein')) extraInfo += ` | rein_E=${parseFloat(mdata.rein).toFixed(2)}"`;
+        
+        if (has(mdata, 'priority_tag')) {
+            extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${mdata.priority_tag.replace(/_/g, ' ')}</span>`;
+        } else if (has(mdata, 'type') && catalog.includes('DESI')) {
+            extraInfo += ` | type=${mdata.type}`;
+        } else if (has(mdata, 'type') && catalog.includes('LENS_CATALOGUE')) {
+            extraInfo += ` | flag=${mdata.type}`;
+        }
+
+        html += `
+            <li style="border-bottom: 1px solid rgba(255,255,255,0.1); padding: 8px 0; font-size: 0.9em;">
+                <div style="font-weight:bold; color:#00f5d4;">${catalog.replace(/_/g, ' ')}</div>
+                <div style="color:#ccc;">Sep: ${sep}" ${extraInfo}</div>
+            </li>
+        `;
+    });
+    html += '</ul>';
+    
+    detectBody.innerHTML = html;
+}
+
+function loadDetectData() {
+    const detectBody = document.getElementById('detectBody');
+    if (!detectBody) return;
+
+    fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderDetectData(data.results);
+            } else {
+                detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${data.error || 'Failed to analyze'}</div>`;
+            }
+        })
+        .catch(err => {
+            console.error('DETECT Error:', err);
+            detectBody.innerHTML = '<div style="color:var(--danger-color); padding:10px;">Error running DETECT</div>';
+        });
+}
 
 function loadLocationImage() {
     if (!objectData || !objectData.ra || !objectData.declination) {
@@ -725,9 +825,32 @@ function loadPhotometryPlot() {
         // Hide loading
         if (loadingDiv) loadingDiv.style.display = 'none';
         
-        // Store raw data for editing
+            // Store raw data for editing
         if (rawData.success) {
             photometryData = rawData.photometry || [];
+            
+            // Display Peak Abs Mag Extra info (MJD and filter)
+            if (photometryData.length > 0) {
+                const validPoints = photometryData.filter(p => p.magnitude != null && p.magnitude !== '' && p.magnitude_error > 0 && parseFloat(p.magnitude_error) <= 0.3 && !String(p.magnitude).includes('>'));
+                if (validPoints.length > 0) {
+                    const brightestPt = validPoints.reduce((min, p) => parseFloat(p.magnitude) < parseFloat(min.magnitude) ? p : min, validPoints[0]);
+                    
+                    // find the label using array mapping instead of :contains which is not valid in standard querySelector
+                    const allLabels = Array.from(document.querySelectorAll('.detail-label'));
+                    const peakLabel = allLabels.find(lbl => lbl.textContent.includes('Peak Abs Mag'));
+                    
+                    if (peakLabel) {
+                        const peakValue = peakLabel.nextElementSibling;
+                        if (peakValue && !peakValue.innerHTML.includes('at MJD')) {
+                            // Only append if not already appended (could be from template but it's empty)
+                            let currentVal = peakValue.innerText.trim().split(' ')[0];
+                            if (currentVal !== '--' && currentVal !== '') {
+                                peakValue.innerHTML = `${currentVal} <span style="font-size:0.9em; color:#aaa;">at MJD ${parseFloat(brightestPt.mjd).toFixed(2)} (${brightestPt.filter})</span>`;
+                            }
+                        }
+                    }
+                }
+            }
             
             // Update Last Photometry Date in header
             if (Array.isArray(photometryData) && photometryData.length > 0) {
@@ -2848,85 +2971,97 @@ function initializeAladin() {
         // Show loading
         showAladinLoading(true);
 
-        // Initialize Aladin
-        A.init.then(() => {
-            aladinInstance = A.aladin('#aladin-lite-div', {
-                survey: currentSurvey,
-                fov: currentFOV,
-                target: `${ra} ${dec}`,
-                cooFrame: 'ICRS',
-                showReticle: true,
-                showZoomControl: false,
-                showFullscreenControl: true,
-                showLayersControl: false,
-                showGotoControl: false,
-                showShareControl: false,
-                showCatalog: false,
-                showFrame: false,
-                showCooGrid: false,
-                showProjectionControl: false,
-                showSimbadPointerControl: false,
-                showCooGridControl: false,
-                showSettings: false,
-                showLogo: true,
-                showContextMenu: false,
-                allowFullZoomout: true,
-                realFullscreen: true,
-                reticleColor: '#ff0000',
-                reticleSize: 20,
-                showStatusBar: false,
+        const aladinContainer = document.getElementById('aladin-lite-div');
+        if (!aladinContainer) return;
+
+        const targetName = getFullObjectName(objectData) || objectName;
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        #aladin-lite { width: 100%; height: 100%; }
+        /* Fix the input field wrapping visually inside iframe */
+        .aladin-lite input { color: #000; background: #fff; border: 1px solid #ccc;  display: inline-block; width: auto; max-width: none; }
+        .aladin-copyCoords { color: #fff; display: flex; align-items: center; white-space: nowrap; }
+    </style>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+</head>
+<body>
+    <div id="aladin-lite"></div>
+    <script>
+        let aladinInstance;
+        window.onload = function() {
+            A.init.then(() => {
+                aladinInstance = A.aladin('#aladin-lite', {
+                    survey: '${currentSurvey}',
+                    fov: ${currentFOV},
+                    target: '${ra} ${dec}',
+                    cooFrame: 'ICRS',
+                    showReticle: true,
+                    showZoomControl: false,
+                    showFullscreenControl: true,
+                    showLayersControl: false,
+                    showGotoControl: false,
+                    showShareControl: false,
+                    showCatalog: false,
+                    showFrame: false,
+                    showCooGrid: false,
+                    showProjectionControl: false,
+                    showSimbadPointerControl: false,
+                    showCooGridControl: false,
+                    showSettings: false,
+                    showLogo: true,
+                    showContextMenu: false,
+                    allowFullZoomout: true,
+                    realFullscreen: true,
+                    reticleColor: '#ff0000',
+                    reticleSize: 20,
+                    showStatusBar: false,
+                });
+
+                const cat = A.catalog({
+                    name: 'Target',
+                    color: '#ff0000',
+                    sourceSize: 12,
+                    shape: 'cross'
+                });
+                
+                cat.addSources([A.source(${ra}, ${dec}, {name: '${targetName}'})]);
+                aladinInstance.addCatalog(cat);
+
+                // Notify parent that setup is done
+                window.parent.postMessage({type: 'aladinReady'}, '*');
             });
+        };
 
-            // Add target marker
-            const cat = A.catalog({
-                name: 'Target',
-                color: '#ff0000',
-                sourceSize: 12,
-                shape: 'cross'
-            });
-            
-            const targetName = getFullObjectName(objectData) || objectName;
-            cat.addSources([A.source(ra, dec, {name: targetName})]);
-            aladinInstance.addCatalog(cat);
-
-            // Ensure logo and frame are visible
-            setTimeout(() => {
-                try {
-                    // Force show logo and frame elements
-                    const aladinDiv = document.getElementById('aladin-lite-div');
-                    if (aladinDiv) {
-                        const logos = aladinDiv.querySelectorAll('.aladin-logo, .aladin-logoDiv');
-                        logos.forEach(logo => {
-                            if (logo) {
-                                logo.style.display = 'block';
-                                logo.style.visibility = 'visible';
-                                logo.style.opacity = '1';
-                            }
-                        });
-                        
-                        const frames = aladinDiv.querySelectorAll('.aladin-frame, .aladin-location');
-                        frames.forEach(frame => {
-                            if (frame) {
-                                frame.style.display = 'block';
-                                frame.style.visibility = 'visible';
-                                frame.style.opacity = '1';
-                            }
-                        });
-                    }
-                } catch (e) {
-                    console.warn('Could not manually show Aladin elements:', e);
-                }
-            }, 1000);
-
-            // Hide loading and show Aladin
-            showAladinLoading(false);
-            document.getElementById('aladin-lite-div').style.display = 'block';
-
-            console.log('Aladin initialized successfully');
-        }).catch(error => {
-            console.error('Failed to initialize Aladin:', error);
-            showAladinError('Failed to load star map');
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'changeSurvey' && aladinInstance) {
+                aladinInstance.setImageSurvey(event.data.survey);
+            }
         });
+    <\/script>
+</body>
+</html>`;
+
+        const iframe = document.createElement('iframe');
+        iframe.id = 'aladin-iframe';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.allowFullscreen = true;
+        iframe.srcdoc = html;
+
+        aladinContainer.innerHTML = '';
+        aladinContainer.appendChild(iframe);
+        aladinContainer.style.display = 'block';
+
+        showAladinLoading(false);
+        console.log('Aladin inner iframe injected successfully');
 
     } catch (error) {
         console.error('Error initializing Aladin:', error);
@@ -2937,14 +3072,22 @@ function initializeAladin() {
 // Change survey
 function changeSurvey() {
     const surveySelect = document.getElementById('surveySelect');
-    if (!surveySelect || !aladinInstance) return;
+    if (!surveySelect) return;
 
     currentSurvey = surveySelect.value;
     console.log(`Changing survey to: ${currentSurvey}`);
 
     try {
-        
-        aladinInstance.setImageSurvey(currentSurvey);
+        const iframe = document.getElementById('aladin-iframe');
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+                type: 'changeSurvey',
+                survey: currentSurvey
+            }, '*');
+        } else if (aladinInstance) {
+            // Fallback if iframe approach fails
+            aladinInstance.setImageSurvey(currentSurvey);
+        }
     } catch (error) {
         console.error('Error changing survey:', error);
         showNotification('Failed to change survey', 'error');
@@ -2954,17 +3097,12 @@ function changeSurvey() {
 // Refresh star map
 function refreshStarMap() {
     console.log('Refreshing star map...');
-    
-    if (aladinInstance) {
-        try {
-            // Destroy current instance
-            aladinInstance = null;
-            document.getElementById('aladin-lite-div').innerHTML = '';
-        } catch (error) {
-            console.warn('Error destroying Aladin instance:', error);
-        }
-    }
 
+    const aladinDiv = document.getElementById('aladin-lite-div');
+    if (aladinDiv) {
+        aladinDiv.innerHTML = '';
+    }
+    
     // Reinitialize
     setTimeout(() => {
         initializeAladin();
