@@ -709,8 +709,8 @@ function loadPhotometryPlot() {
     const year = match[1];
     const letters = match[2];
     
-    const applyExtinction = document.getElementById('applyExtinction')?.checked ?? true;
-    const applyKCorr = document.getElementById('applyKCorr')?.checked ?? true;
+    const applyExtinction = document.getElementById('applyExtinction')?.checked ?? false;
+    const applyKCorr = document.getElementById('applyKCorr')?.checked ?? false;
 
     // Load both plot and raw data
     Promise.all([

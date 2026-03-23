@@ -554,22 +554,37 @@ def register_private_routes(app):
                 cursor = conn.cursor()
                 search_pattern = f'%{q}%'
                 cursor.execute('''
-                    SELECT name, name_prefix, ra, declination, redshift, discoverymag, type
-                    FROM tns_objects
-                    WHERE name ILIKE %s OR name_prefix || name ILIKE %s OR internal_names ILIKE %s
-                    ORDER BY discoverydate DESC
+                    SELECT 
+                        t.name, 
+                        t.name_prefix, 
+                        t.ra, 
+                        t.declination, 
+                        t.redshift, 
+                        t.discoverymag, 
+                        t.type,
+                        (
+                            SELECT p.magnitude
+                            FROM photometry p
+                            WHERE p.object_name = t.name
+                            ORDER BY p.mjd DESC
+                            LIMIT 1
+                        ) as latest_mag
+                    FROM tns_objects t
+                    WHERE t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s OR t.internal_names ILIKE %s
+                    ORDER BY t.discoverydate DESC
                     LIMIT 15
                 ''', (search_pattern, search_pattern, search_pattern))
                 rows = cursor.fetchall()
                 results = []
                 for r in rows:
+                    latest_mag = r[7] if r[7] is not None else r[5]
                     results.append({
                         'name': r[0],
                         'prefix': r[1] or '',
                         'ra': r[2],
                         'dec': r[3],
                         'redshift': r[4],
-                        'mag': r[5],
+                        'mag': latest_mag,
                         'type': r[6] or ''
                     })
                 cursor.close()
