@@ -32,8 +32,9 @@ let photometryChanges = {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Object detail page loaded, initializing...');
     
-    // Show loading overlay immediately when DOM is ready
-    showLoading(true, 'Loading page data...');
+    // Default hiding page loading overlay to prevent blocking the whole UI
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.style.display = 'none';
 
     const upperLimitCheckbox = document.getElementById('addIsUpperLimit');
     const magnitudeErrorInput = document.getElementById('addMagnitudeError');
@@ -91,7 +92,7 @@ function loadObjectData() {
         return;
     }
     
-    showLoading(true);
+    // We do not show global loading initially anymore. Use inline loading later if needed.
     
     console.log(`=== Starting search for: "${objectName}" ===`);
     console.log(`Clean name (year+letters): "${cleanObjectName}"`);
@@ -115,7 +116,7 @@ function loadObjectData() {
 
 function searchWithCandidates(candidates, index) {
     if (index >= candidates.length) {
-        showLoading(false);
+        // showLoading(false);
         showNotification('Object not found with any search term', 'error');
         return;
     }
@@ -132,7 +133,7 @@ function searchWithCandidates(candidates, index) {
                 console.log('[SUCCESS] Object data loaded successfully:', objectData);
                 updatePageContent();
                 convertCoordinates();
-                showLoading(false);
+                // showLoading(false);
             } else {
                 console.log(`[ERROR] Search failed for "${candidate}", trying next...`);
                 searchWithCandidates(candidates, index + 1);
@@ -140,7 +141,6 @@ function searchWithCandidates(candidates, index) {
         })
         .catch(error => {
             console.error(`Error searching for "${candidate}":`, error);
-            // 嘗試下一個候選
             searchWithCandidates(candidates, index + 1);
         });
 }
@@ -164,7 +164,7 @@ function searchObjectByName(searchName) {
 }
 
 // Update page content with object data
-function updatePageContent() {
+async function updatePageContent() {
     if (!objectData) return;
     
     const displayName = getFullObjectName(objectData) || objectName;
@@ -205,35 +205,37 @@ function updatePageContent() {
     updateElementText('bibcode', objectData.bibcode || 'None');
     updateElementText('externalId', objectData.ext_catalogs || 'None');
     
-    // 直接使用資料庫中的狀態，移除快取相關代碼
     const currentStatus = objectData.tag;
     
     // Update badges
     updateClassificationBadge(objectData.type);
     updateStatusBadge(currentStatus);
-    
-    // Load location image
+
+    // 1. 先觸發本地端組件加載，但不全部阻擋
     loadLocationImage();
-
-    // Load photometry and spectrum plots
-    loadPhotometryPlot();
     loadSpectrumPlot();
-
-    // Load comment
     loadComments();
-
-    // Init Detect data
-    loadDetectData();
-
-    // Initialize Aladin Lite
     initializeAladinWhenReady();
+    
+    // 2. 「等待」本地資料庫的測光 (Photometry) 讀取完成與渲染
+    // 這樣才能確保原本就有的圖表先畫出來，或者顯示出「No data」
+    if (typeof loadPhotometryPlot === 'function') {
+        await loadPhotometryPlot();
+    }
+    
+    // 3. 讓出主頻寬 100 毫秒給瀏覽器更新畫面，然後再去跑較重的 DETECT 跟 Fetch
+    setTimeout(() => {
+        loadDetectData();
+        // 背景默默執行 Fetch Photmetry，自動替換 No data 為 Fetching
+        fetchPhotometry(true);
+    }, 100);
 
     console.log('Page content updated');
 }
 
 function forceDetectRun() {
     const detectBody = document.getElementById('detectBody');
-    if (!detectBody) return;
+    if (!detectBody) return Promise.resolve();
     
     detectBody.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:100%;">
@@ -241,7 +243,7 @@ function forceDetectRun() {
         </div>
     `;
 
-    fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match?force=true`)
+    return fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match?force=true`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -311,13 +313,18 @@ function renderDetectData(results) {
 
 function loadDetectData() {
     const detectBody = document.getElementById('detectBody');
-    if (!detectBody) return;
+    if (!detectBody) return Promise.resolve();
 
-    fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match`)
+    return fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                renderDetectData(data.results);
+                if (data.not_run_yet) {
+                    // 自動執行 DETECT，不再顯示 Not running yet
+                    return forceDetectRun();
+                } else {
+                    renderDetectData(data.results);
+                }
             } else {
                 detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${data.error || 'Failed to analyze'}</div>`;
             }
@@ -329,48 +336,53 @@ function loadDetectData() {
 }
 
 function loadLocationImage() {
-    if (!objectData || !objectData.ra || !objectData.declination) {
-        showImageError('No coordinates available');
-        return;
-    }
-    
-    const ra = parseFloat(objectData.ra);
-    const dec = parseFloat(objectData.declination);
-    
-    const jpg_url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ra}&dec=${dec}&pixscale=0.1&layer=ls-dr10-grz&size=600&zoom=16&desi-spec-dr1`;
-    
-    console.log(`Loading location image from: ${jpg_url}`);
-    
-    const imageElement = document.getElementById('locationImageSrc');
-    const loadingElement = document.getElementById('imageLoading');
-    const markerElement = document.getElementById('locationMarker');
-    
-    if (imageElement && loadingElement && markerElement) {
-        // 顯示載入狀態
-        loadingElement.style.display = 'flex';
-        imageElement.style.display = 'none';
-        markerElement.style.display = 'none';
+    return new Promise((resolve) => {
+        if (!objectData || !objectData.ra || !objectData.declination) {
+            showImageError('No coordinates available');
+            resolve();
+            return;
+        }
         
-        // 載入圖片
-        const img = new Image();
+        const ra = parseFloat(objectData.ra);
+        const dec = parseFloat(objectData.declination);
         
-        img.onload = function() {
-            console.log('Location image loaded successfully');
-            imageElement.src = jpg_url;
-            imageElement.style.display = 'block';
-            loadingElement.style.display = 'none';
-            markerElement.style.display = 'block';
+        const jpg_url = `https://www.legacysurvey.org/viewer/cutout.jpg?ra=${ra}&dec=${dec}&pixscale=0.1&layer=ls-dr10-grz&size=600&zoom=16&desi-spec-dr1`;
+        
+        console.log(`Loading location image from: ${jpg_url}`);
+        
+        const imageElement = document.getElementById('locationImageSrc');
+        const loadingElement = document.getElementById('imageLoading');
+        const markerElement = document.getElementById('locationMarker');
+        
+        if (imageElement && loadingElement && markerElement) {
+            loadingElement.style.display = 'flex';
+            imageElement.style.display = 'none';
+            markerElement.style.display = 'none';
             
-            window.currentLocationImageUrl = jpg_url;
-        };
-        
-        img.onerror = function() {
-            console.error('Failed to load location image');
-            showImageError('Failed to load image');
-        };
-        
-        img.src = jpg_url;
-    }
+            const img = new Image();
+            
+            img.onload = function() {
+                console.log('Location image loaded successfully');
+                imageElement.src = jpg_url;
+                imageElement.style.display = 'block';
+                loadingElement.style.display = 'none';
+                markerElement.style.display = 'block';
+                
+                window.currentLocationImageUrl = jpg_url;
+                resolve();
+            };
+            
+            img.onerror = function() {
+                console.error('Failed to load location image');
+                showImageError('Failed to load image');
+                resolve();
+            };
+            
+            img.src = jpg_url;
+        } else {
+            resolve();
+        }
+    });
 }
 
 function showImageError(message) {
@@ -779,7 +791,7 @@ function getNotificationIcon(type) {
 
 // Photometry plot loading with improved loading states
 function loadPhotometryPlot() {
-    if (!cleanObjectName) return;
+    if (!cleanObjectName) return Promise.resolve();
     
     console.log('Loading photometry plot...');
     console.log('Clean object name:', cleanObjectName);
@@ -788,8 +800,9 @@ function loadPhotometryPlot() {
     const loadingDiv = document.querySelector('#photometryLoading');
     
     // Show loading
-    if (loadingDiv) loadingDiv.style.display = 'flex';
-    if (photometryContainer) photometryContainer.innerHTML = '';
+    const isFetching = photometryContainer && photometryContainer.innerHTML.includes('Fetching latest');
+    if (loadingDiv && !isFetching) loadingDiv.style.display = 'flex';
+    if (photometryContainer && !isFetching) photometryContainer.innerHTML = '';
     
     const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
     if (!match) {
@@ -803,7 +816,7 @@ function loadPhotometryPlot() {
                 </div>
             `;
         }
-        return;
+        return Promise.resolve();
     }
     
     const year = match[1];
@@ -813,7 +826,7 @@ function loadPhotometryPlot() {
     const applyKCorr = document.getElementById('applyKCorr')?.checked ?? false;
 
     // Load both plot and raw data
-    Promise.all([
+    return Promise.all([
         fetch(`/api/object/${year}${letters}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
         fetch(`/api/object/${year}${letters}/photometry`)
     ]).then(responses => {
@@ -922,12 +935,16 @@ function loadPhotometryPlot() {
                     }, 100);
                     
                 } else {
-                    photometryContainer.innerHTML = `
-                        <div class="no-data">
-                            <span class="no-data-icon">${ICONS.noData}</span>
-                            <span class="no-data-text">${plotData.message || 'No photometry data available'}</span>
-                        </div>
-                    `;
+                    // Check if it's currently fetching in background
+                    const isFetching = photometryContainer.innerHTML.includes('Fetching latest');
+                    if (!isFetching) {
+                        photometryContainer.innerHTML = `
+                            <div class="no-data">
+                                <span class="no-data-icon">${ICONS.noData}</span>
+                                <span class="no-data-text">${plotData.message || 'No photometry data available'}</span>
+                            </div>
+                        `;
+                    }
                     
                     // Match star-map height even when no data
                     setTimeout(() => {
@@ -1329,7 +1346,7 @@ async function savePhotometryChanges() {
 
 // Spectrum plot loading with improved loading states
 function loadSpectrumPlot() {
-    if (!cleanObjectName) return;
+    if (!cleanObjectName) return Promise.resolve();
     
     console.log('Loading spectrum plot...');
     
@@ -1344,7 +1361,7 @@ function loadSpectrumPlot() {
     const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectrum/plot`;
     console.log('API URL:', apiUrl);
     
-    fetch(apiUrl)
+    return fetch(apiUrl)
         .then(response => response.json())
         .then(data => {
             // Hide loading
@@ -3194,17 +3211,35 @@ function debounce(func, wait) {
     };
 }
 
-function fetchPhotometry() {
+function fetchPhotometry(silent = false) {
     if (!objectName) {
-        showNotification('Object name not available', 'error');
+        if (!silent) showNotification('Object name not available', 'error');
         return;
     }
     
-    if (!confirm(`Fetch photometry for ${objectName} from TNS? This process may take a moment.`)) {
+    if (!silent && !confirm(`Fetch photometry for ${objectName} from TNS? This process may take a moment.`)) {
         return;
     }
     
-    showLoading(true, 'Downloading data, please do not close...');
+    // Only show loading if it's a manual triggered click (not silent)
+    if (!silent) {
+        showLoading(true, 'Downloading data, please do not close...');
+    }
+    
+    // If silently fetched, you might want to show a small subtle indicator somewhere
+    if (silent) {
+        console.log(`[Auto-Fetch] Fetching photometry for ${objectName} in background...`);
+        const photometryContainer = document.querySelector('#photometryPlot');
+        // Only show fetching message if currently showing "No data"
+        if (photometryContainer && photometryContainer.innerHTML.includes('No photometry data available')) {
+            photometryContainer.innerHTML = `
+                <div class="no-data" style="color: #00f5d4;">
+                    <div class="loading-spinner-small" style="margin-bottom: 8px;"></div>
+                    <span class="no-data-text">Fetching latest photometry from TNS...</span>
+                </div>
+            `;
+        }
+    }
     
     fetch(`/api/object/${encodeURIComponent(objectName)}/fetch_photometry`, {
         method: 'POST',
@@ -3215,20 +3250,32 @@ function fetchPhotometry() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showNotification('Photometry fetch completed successfully', 'success');
-            // Reload the page to show updated data
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
+            if (!silent) {
+                showNotification('Photometry fetch completed successfully', 'success');
+                // Reload the page to show updated data
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                console.log(`[Auto-Fetch] Photometry background fetch successful. Refreshing plot silently.`);
+                // If silent fetch worked, just refresh the plot data without reloading the whole page
+                loadPhotometryPlot();
+            }
         } else {
-            showNotification(`Error: ${data.error}`, 'error');
-            showLoading(false);
+            if (!silent) {
+                showNotification(`Error: ${data.error}`, 'error');
+                showLoading(false);
+            } else {
+                console.warn(`[Auto-Fetch] Error from backend: ${data.error}`);
+            }
         }
     })
     .catch(error => {
         console.error('Error fetching photometry:', error);
-        showNotification('Failed to fetch photometry', 'error');
-        showLoading(false);
+        if (!silent) {
+            showNotification('Failed to fetch photometry', 'error');
+            showLoading(false);
+        }
     });
 }
 

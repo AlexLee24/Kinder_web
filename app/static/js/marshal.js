@@ -1447,15 +1447,28 @@ async function loadTopViewed() {
     try {
         const modeSelect = document.getElementById('topViewedMode');
         const mode = modeSelect ? modeSelect.value : '30days';
-        const viewedResponse = await fetch(`/api/marshal/top-viewed?mode=${mode}`);
-        if (viewedResponse.ok) {
-            const data = await viewedResponse.json();
-            if (data.success) {
-                renderTopViewed(data.targets);
-            }
+        const list = document.getElementById('topViewedList');
+        if (list) {
+            list.innerHTML = '<li class="empty-message"><div class="loading-spinner-small" style="display:inline-block; margin-right:8px;"></div>Loading...</li>';
         }
+        
+        // 讓出主線程，避免卡UI
+        setTimeout(async () => {
+            try {
+                const viewedResponse = await fetch(`/api/marshal/top-viewed?mode=${mode}`);
+                if (viewedResponse.ok) {
+                    const data = await viewedResponse.json();
+                    if (data.success) {
+                        renderTopViewed(data.targets);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching top viewed:', err);
+                if (list) list.innerHTML = '<li class="empty-message">Error loading data</li>';
+            }
+        }, 10);
     } catch (err) {
-        console.error('Error fetching top viewed:', err);
+        console.error('Error in loadTopViewed:', err);
     }
 }
 

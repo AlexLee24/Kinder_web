@@ -308,6 +308,9 @@ def register_api_routes(app):
                 results = get_detect_results_for_target(object_name)
                 return jsonify({'success': True, 'ran_now': False, 'results': results})
             
+            if not force:
+                return jsonify({'success': True, 'ran_now': False, 'results': [], 'not_run_yet': True})
+
             # Need to run it, first get RA and Dec
             with get_db_connection() as conn:
                 with conn.cursor() as cur:

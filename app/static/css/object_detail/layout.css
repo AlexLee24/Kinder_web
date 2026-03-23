@@ -92,11 +92,11 @@
     transform: translate(-50%, -50%);
     width: 20px;
     height: 20px;
-    border: 2px solid var(--primary-color);
+    border: 2px solid yellow;
+    box-shadow: 0 0 0 1px white, inset 0 0 0 1px white;
     border-radius: 50%;
-    background: rgba(197, 160, 89, 0.1);
+    background: transparent;
     z-index: 3;
-    animation: pulse-simple 2s infinite;
 }
 
 .image-info {

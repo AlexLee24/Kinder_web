@@ -198,7 +198,7 @@
                 <div class="panel-header">
                     <h3>DETECT</h3>
                     <div class="action-row">
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Refresh</button>
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Run/Refresh</button>
                     </div>
                 </div>
                 <div class="panel-body" id="detectBody" style="display:flex; flex-direction:column; gap:10px; color:#888; overflow-y:auto; max-height:400px; padding-right:8px;">
@@ -248,7 +248,7 @@
                     
                     <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
                         <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
-                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No logs found.</div>
+                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
                         <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
                     </div>
                 </div>
@@ -258,7 +258,7 @@
     </div>
 
     <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loadingOverlay" style="display: flex;">
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
         <div class="loading-spinner">
             <div class="spinner"></div>
             <div class="loading-text">Loading object details...</div>

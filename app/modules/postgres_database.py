@@ -692,7 +692,7 @@ class TNSObjectDB:
             
             if mode == 'all':
                 cursor.execute('''
-                    SELECT v.object_name, v.view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    SELECT v.object_name, v.view_count as view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
                     FROM object_view_counts v
                     LEFT JOIN tns_objects t 
                       ON t.name = REPLACE(v.object_name, 'AT', '') 
@@ -703,18 +703,25 @@ class TNSObjectDB:
                     LIMIT %s
                 ''', (limit,))
             else:
+                # Optimized query for 30days view
                 cursor.execute('''
-                    SELECT v.object_name, COUNT(*) as view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
-                    FROM object_views v
+                    WITH recent_views AS (
+                        SELECT object_name, COUNT(*) as view_count
+                        FROM object_views
+                        WHERE view_time >= NOW() - INTERVAL '30 days'
+                        GROUP BY object_name
+                        ORDER BY view_count DESC
+                        LIMIT %s
+                    )
+                    SELECT v.object_name, v.view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    FROM recent_views v
                     LEFT JOIN tns_objects t 
                       ON t.name = REPLACE(v.object_name, 'AT', '') 
                       OR t.name = REPLACE(v.object_name, 'SN', '')
                       OR (COALESCE(t.name_prefix, '') || COALESCE(t.name, '')) = v.object_name
-                    WHERE v.view_time >= NOW() - INTERVAL '%s days'
-                    GROUP BY v.object_name
-                    ORDER BY view_count DESC
-                    LIMIT %s
-                ''', (days, limit))
+                    GROUP BY v.object_name, v.view_count
+                    ORDER BY v.view_count DESC
+                ''', (limit,))
             
             results = cursor.fetchall()
             cursor.close()
