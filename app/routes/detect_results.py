@@ -178,7 +178,12 @@ def register_detect_results_routes(app):
                     }
                 
                 # Redshift from THIS match
-                redshift = match_data.get('Z') or match_data.get('z') or match_data.get('redshift') or match_data.get('z(s)')
+                redshift = None
+                for z_key in ['Z', 'z', 'redshift', 'z(s)', 'z_spec', 'z_phot']:
+                    if z_key in match_data and match_data[z_key] is not None and match_data[z_key] != '':
+                        redshift = match_data[z_key]
+                        break
+                        
                 try:
                     redshift = float(redshift) if redshift is not None else None
                 except (ValueError, TypeError):
@@ -194,42 +199,81 @@ def register_detect_results_routes(app):
                 except:
                     ra, dec = None, None
 
-                # Absolute Magnitude Calculation (per match)
+                # Absolute Magnitude Calculation (per match) using latest point
                 calc_z = redshift
                 calculated_abs_mag = None
-                if calc_z is not None and photometry and ra is not None and dec is not None:
+                
+                has_mag_data = bool(photometry) or (tns_details and tns_details.get('discoverymag') is not None)
+                
+                import sys
+                import os
+                is_debug = os.getenv('DEBUG', 'False').lower() in ('true', '1')
+                if is_debug:
+                    print(f"[DEBUG] Target {target_name} match: z={calc_z}, photometry_len={len(photometry) if photometry else 0}, has_tns_mag={tns_details.get('discoverymag') if tns_details else None}, RA={ra}, DEC={dec}", file=sys.stderr, flush=True)
+                    logger.info(f"[DEBUG-LOGGER] Target {target_name} match: z={calc_z}, photometry_len={len(photometry) if photometry else 0}, has_tns_mag={tns_details.get('discoverymag') if tns_details else None}, RA={ra}, DEC={dec}")
+
+                if calc_z is not None and has_mag_data and ra is not None and dec is not None:
                     try:
-                        brightest_point = None
-                        min_mag = float('inf')
-                        for point in photometry:
-                            mag = point.get('magnitude')
-                            if mag is not None:
-                                try:
-                                    mag_val = float(mag)
-                                    if mag_val < min_mag:
-                                        min_mag = mag_val
-                                        brightest_point = point
-                                except:
-                                    continue
+                        latest_mag = None
+                        filter_name = 'V'
                         
-                        if brightest_point:
-                            filter_name = brightest_point.get('filter', 'V')
+                        if photometry:
+                            for point in reversed(photometry):
+                                mag = point.get('magnitude')
+                                if mag is not None:
+                                    try:
+                                        latest_mag = float(mag)
+                                        filter_name = point.get('filter', 'V')
+                                        break
+                                    except:
+                                        continue
+                            if is_debug:
+                                print(f"[DEBUG] Target {target_name} using photometry latest_mag: {latest_mag} filter: {filter_name}", file=sys.stderr, flush=True)
+                        else:
+                            try:
+                                latest_mag = float(tns_details.get('discoverymag'))
+                                filter_name = tns_details.get('filter', 'V')
+                            except:
+                                latest_mag = None
+                            if is_debug:
+                                print(f"[DEBUG] Target {target_name} using TNS discoverymag: {latest_mag} filter: {filter_name}", file=sys.stderr, flush=True)
+
+                        if latest_mag is not None:
                             extinction = get_extinction(ra, dec, filter_name)
-                            calculated_abs_mag = apm_to_abm(min_mag, calc_z, extinction)
+                            if hasattr(extinction, 'item'):
+                                extinction = extinction.item()
+                            calculated_abs_mag = apm_to_abm(latest_mag, calc_z, extinction)
+                            if is_debug:
+                                print(f"[DEBUG] Target {target_name} calc abs_mag: ext={extinction}, result={calculated_abs_mag}", file=sys.stderr, flush=True)
+                                logger.info(f"[DEBUG-LOGGER] Target {target_name} calc abs_mag: ext={extinction}, result={calculated_abs_mag}")
                             if isinstance(calculated_abs_mag, dict):
+                                if is_debug:
+                                    print(f"[DEBUG] Target {target_name} calc error: {calculated_abs_mag}", file=sys.stderr, flush=True)
                                 calculated_abs_mag = None
                     except Exception as e:
                         logger.error('Error calculating abs mag for %s: %s', target_name, e)
+                        if is_debug:
+                            print(f"[DEBUG] Error calculating abs mag: {e}", file=sys.stderr, flush=True)
+                else:
+                    if is_debug:
+                        print(f"[DEBUG] Target {target_name} skipped calc. Details: z={calc_z}, has_mag_data={has_mag_data}, ra={ra}, dec={dec}", file=sys.stderr, flush=True)
+                        logger.info(f"[DEBUG-LOGGER] Target {target_name} skipped calc.")
                 
                 if calculated_abs_mag is not None:
                     row['abs_mag'] = calculated_abs_mag
+                    if is_debug:
+                        print(f"[DEBUG] Target {target_name} SET final abs_mag: {calculated_abs_mag}", file=sys.stderr, flush=True)
                 else:
-                    abs_mag = match_data.get('brightest_abs_mag')
+                    abs_mag = match_data.get('brightest_abs_mag') # fallback or empty
+                    if not abs_mag:
+                        abs_mag = match_data.get('latest_abs_mag') # if it exists
                     try:
                         abs_mag = float(abs_mag) if abs_mag is not None else None
                     except (ValueError, TypeError):
                         abs_mag = None
                     row['abs_mag'] = abs_mag
+                    if is_debug:
+                        print(f"[DEBUG] Target {target_name} FALLBACK abs_mag: {abs_mag}", file=sys.stderr, flush=True)
                     
                 row['is_flagged'] = bool(row.get('flag'))
                 row['flag_id'] = row.get('id')

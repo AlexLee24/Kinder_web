@@ -135,6 +135,7 @@ def register_api_routes(app):
         Auth: X-API-Key header OR ?api_key= query param
 
         GET  /api/v1/observation_logs?year=2026&month=3
+        GET  /api/v1/observation_logs?date=2026-03-09  -- Get for specific date
         POST /api/v1/observation_logs
              Body (JSON):
                {
@@ -176,10 +177,24 @@ def register_api_routes(app):
             if request.method == 'GET':
                 year = request.args.get('year', type=int)
                 month = request.args.get('month', type=int)
-                if not year or not month:
-                    return jsonify({'success': False, 'error': 'year and month query params are required'}), 400
+                date_str = request.args.get('date', type=str)
+                
+                # If a specific date is requested, ignore year/month
+                if date_str:
+                    try:
+                        target_dt = datetime.strptime(date_str, '%Y-%m-%d')
+                        year, month = target_dt.year, target_dt.month
+                    except ValueError:
+                        return jsonify({'success': False, 'error': 'date must be in YYYY-MM-DD format'}), 400
+                elif not year or not month:
+                    return jsonify({'success': False, 'error': 'year/month or a specific date query param is required'}), 400
 
                 logs = get_observation_logs(year, month)
+                
+                # Filter by exact date if date_str is provided
+                if date_str:
+                    logs = [log for log in logs if str(log.get('obs_date', '')) == date_str]
+
                 for log in logs:
                     if log.get('obs_date') and hasattr(log['obs_date'], 'strftime'):
                         log['obs_date'] = log['obs_date'].strftime('%Y-%m-%d')
@@ -188,8 +203,7 @@ def register_api_routes(app):
                     'success': True,
                     'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                     'requested_by': user.get('email'),
-                    'year': year,
-                    'month': month,
+                    'query_params': {'year': year, 'month': month, 'date': date_str},
                     'logs': logs
                 })
 

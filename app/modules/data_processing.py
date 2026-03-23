@@ -30,19 +30,19 @@ class DataVisualization:
             'uvw1': f'rgba(123,104,238,{alpha})',
             
             # 光學濾鏡
-            'u': f'rgba(75,0,130,{alpha})',        # U 濾鏡：靛藍色
-            'U': f'rgba(75,0,130,{alpha})',        # U 濾鏡：靛藍色
+            'u': f'rgba(128,0,128,{alpha})',       # U 濾鏡：紫色
+            'U': f'rgba(128,0,128,{alpha})',       # U 濾鏡：紫色
             'B': f'rgba(0,0,255,{alpha})',         # B 濾鏡：藍色
             'b': f'rgba(0,0,255,{alpha})',         # b 濾鏡：藍色
             'g': f'rgba(44,164,112,{alpha})',      # g 濾鏡：偏綠
-            'V': f'rgba(34,139,34,{alpha})',       # V 濾鏡：正綠
-            'v': f'rgba(34,139,34,{alpha})',       # v 濾鏡：正綠
+            'V': f'rgba(34,139,34,{alpha})',       # V 濾鏡：綠色
+            'v': f'rgba(34,139,34,{alpha})',       # v 濾鏡：綠色
             'r': f'rgba(255,100,100,{alpha})',     # r 濾鏡：偏紅
             'R': f'rgba(255,0,0,{alpha})',         # R 濾鏡：紅色
             'o': f'rgba(255,165,0,{alpha})',       # o 濾鏡：橙色
-            'i': f'rgba(255,105,180,{alpha})',     # i 濾鏡：粉紅
-            'I': f'rgba(255,105,180,{alpha})',     # I 濾鏡：粉紅
-            'z': f'rgba(139,0,0,{alpha})',         # z 濾鏡：深紅
+            'i': f'rgba(139,0,0,{alpha})',         # i 濾鏡：深紅色
+            'I': f'rgba(139,0,0,{alpha})',         # I 濾鏡：深紅色
+            'z': f'rgba(100,0,0,{alpha})',         # z 濾鏡：更深紅
             'Z': f'rgba(139,0,0,{alpha})',         # Z 濾鏡：深紅
             'y': f'rgba(210,105,30,{alpha})',      # y 濾鏡：棕橘色
             'Y': f'rgba(210,105,30,{alpha})',      # Y 濾鏡：棕橘色

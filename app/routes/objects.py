@@ -131,7 +131,7 @@ def register_object_routes(app):
             flash('Error loading object data.', 'error')
             return redirect(url_for('marshal'))
 
-    @app.route('/object/<int:year><alpha:letters>')
+    @app.route('/object/<int:year><string:letters>')
     def object_detail_tns_format(year, letters):
         if 'user' not in session:
             session['next_url'] = request.url

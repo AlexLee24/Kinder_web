@@ -548,7 +548,7 @@ class TNSObjectDB:
             cursor = conn.cursor(cursor_factory=extras.DictCursor)
             
             cursor.execute('''
-                SELECT name, ra, declination, discoverydate, internal_names, type, redshift
+                SELECT name, ra, declination, discoverydate, internal_names, type, redshift, discoverymag, filter
                 FROM tns_objects 
                 WHERE name = %s
             ''', (object_name,))

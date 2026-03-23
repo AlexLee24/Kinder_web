@@ -1157,6 +1157,8 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
         const fStr = filterName.toLowerCase();
         let bg = 'linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0.05))';
         if      (fStr === 'up' || fStr === 'u') bg = 'linear-gradient(to bottom, #8e44ad, #b368d9)';
+        else if (fStr === 'b')                  bg = 'linear-gradient(to bottom, #2196f3, #64b5f6)';
+        else if (fStr === 'v')                  bg = 'linear-gradient(to bottom, #4caf50, #81c784)';
         else if (fStr === 'gp' || fStr === 'g') bg = 'linear-gradient(to bottom, #1785ec, #00a71f)';
         else if (fStr === 'rp' || fStr === 'r') bg = 'linear-gradient(to bottom, #ffb74d, #f53500)';
         else if (fStr === 'ip' || fStr === 'i') bg = 'linear-gradient(to bottom, #ef5350, #a52a2a)';
