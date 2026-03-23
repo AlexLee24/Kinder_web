@@ -12,8 +12,11 @@
     {% include '_navbar.html' %}
     
     <!-- Admin status for JavaScript -->
-    {% if session.user and session.user.is_admin %}
+    {% if session.user %}
+    <div data-user-email="{{ session.user.email }}" style="display: none;"></div>
+    {% if session.user.is_admin %}
     <div data-admin="true" style="display: none;"></div>
+    {% endif %}
     {% endif %}
 
 

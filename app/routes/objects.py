@@ -1146,6 +1146,41 @@ def register_object_routes(app):
             app.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
             return jsonify({'error': 'Failed to delete comment'}), 500
 
+    @app.route('/api/comments/<int:comment_id>', methods=['PUT', 'PATCH'])
+    def update_comment(comment_id):
+        if 'user' not in session:
+            return jsonify({'error': 'Access denied'}), 403
+            
+        try:
+            # Check if comment exists
+            comment = TNSObjectDB.get_comment_by_id(comment_id)
+            if not comment:
+                return jsonify({'error': 'Comment not found'}), 404
+                
+            # Only admin or the comment author can edit
+            if not session['user'].get('is_admin') and session['user'].get('email') != comment['user_email']:
+                return jsonify({'error': 'Access denied: You can only edit your own comments'}), 403
+                
+            data = request.get_json()
+            content = data.get('content', '').strip()
+            
+            if not content:
+                return jsonify({'error': 'Comment content is required'}), 400
+                
+            if len(content) > 1000:
+                return jsonify({'error': 'Comment is too long (maximum 1000 characters)'}), 400
+                
+            if TNSObjectDB.update_comment(comment_id, content):
+                return jsonify({
+                    'success': True,
+                    'message': 'Comment updated successfully'
+                })
+            else:
+                return jsonify({'error': 'Failed to update comment'}), 500
+        except Exception as e:
+            app.logger.error(f"Error updating comment {comment_id}: {str(e)}")
+            return jsonify({'error': 'Failed to update comment'}), 500
+
     # ===============================================================================
     # PERMISSIONS
     # ===============================================================================

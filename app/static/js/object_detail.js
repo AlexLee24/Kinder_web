@@ -2308,10 +2308,13 @@ function createCommentElement(comment) {
     
     // Check if current user is admin
     const isAdmin = document.querySelector('[data-admin="true"]') !== null;
+    const userEmailEl = document.querySelector('[data-user-email]');
+    const currentUserEmail = userEmailEl ? userEmailEl.getAttribute('data-user-email') : null;
+    const canEdit = isAdmin || (currentUserEmail && comment.user_email === currentUserEmail);
     
     // Create avatar
     const avatarContent = comment.user_picture ? 
-        `<img src="${comment.user_picture}" alt="${comment.user_name}" onerror="this.parentNode.innerHTML='${ICONS.user}'; this.parentNode.classList.add('no-image');">` :
+        `<img src="${comment.user_picture}" alt="${comment.user_name}" referrerpolicy="no-referrer" onerror='this.parentNode.classList.add("no-image"); this.outerHTML=\`${ICONS.user}\`;'>` :
         ICONS.user;
     
     commentDiv.innerHTML = `
@@ -2323,18 +2326,76 @@ function createCommentElement(comment) {
                 <span class="comment-author">${escapeHtml(comment.user_name)}</span>
                 <span class="comment-time">${utcTimeStr}</span>
             </div>
-            <div class="comment-text">${escapeHtml(comment.content)}</div>
+            <div class="comment-text" id="comment-text-${comment.id}">${escapeHtml(comment.content).replace(/\\n/g, '<br>')}</div>
+            <div class="comment-edit-box" id="comment-edit-box-${comment.id}" style="display:none; margin-top:8px;">
+                <textarea id="comment-edit-textarea-${comment.id}" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:8px; resize:vertical; font-family:inherit;">${escapeHtml(comment.content)}</textarea>
+                <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; border:none;" onclick="cancelEditComment(${comment.id})">Cancel</button>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; background:#00f5d4; color:#000; border:none;" onclick="saveEditComment(${comment.id})">Save</button>
+                </div>
+            </div>
         </div>
-        ${isAdmin ? `
+        ${canEdit ? `
+        <div class="comment-actions">
+            <button class="comment-action-btn" onclick="startEditComment(${comment.id})" title="Edit comment">
+                ${ICONS.edit}
+            </button>
+            <button class="comment-delete-btn" onclick="deleteComment(${comment.id})" title="Delete comment">
+                ${ICONS.delete}
+            </button>
+        </div>
+        ` : (isAdmin ? `
         <div class="comment-actions">
             <button class="comment-delete-btn" onclick="deleteComment(${comment.id})" title="Delete comment">
                 ${ICONS.delete}
             </button>
         </div>
-        ` : ''}
+        ` : '')}
     `;
     
     return commentDiv;
+}
+
+function startEditComment(commentId) {
+    document.getElementById(`comment-text-${commentId}`).style.display = 'none';
+    document.getElementById(`comment-edit-box-${commentId}`).style.display = 'block';
+}
+
+function cancelEditComment(commentId) {
+    document.getElementById(`comment-text-${commentId}`).style.display = 'block';
+    document.getElementById(`comment-edit-box-${commentId}`).style.display = 'none';
+}
+
+async function saveEditComment(commentId) {
+    const textarea = document.getElementById(`comment-edit-textarea-${commentId}`);
+    const newContent = textarea.value.trim();
+    
+    if (!newContent) {
+        showNotification('Comment cannot be empty', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/comments/${commentId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content: newContent })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification('Comment updated successfully', 'success');
+            loadComments();
+        } else {
+            showNotification(result.error || 'Failed to update comment', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating comment:', error);
+        showNotification('Error updating comment', 'error');
+    }
 }
 
 function showAddCommentForm() {

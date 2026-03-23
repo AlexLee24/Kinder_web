@@ -743,6 +743,24 @@ class TNSObjectDB:
         return deleted
     
     @staticmethod
+    def update_comment(comment_id, content):
+        """Update comment content"""
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE comments 
+                SET content = %s 
+                WHERE id = %s
+            ''', (content, comment_id))
+            updated = cursor.rowcount > 0
+            
+            conn.commit()
+            cursor.close()
+            
+        return updated
+    
+    @staticmethod
     def get_comment_by_id(comment_id):
         """Get specific comment by ID"""
         with get_db_connection() as conn:

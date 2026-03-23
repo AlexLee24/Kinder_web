@@ -1102,6 +1102,23 @@
     opacity: 1;
 }
 
+.comment-action-btn {
+    padding: 4px 8px;
+    background: rgba(100, 100, 100, 0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: 4px;
+}
+
+.comment-action-btn:hover {
+    background: rgba(150, 150, 150, 1);
+    transform: scale(1.05);
+}
+
 .comment-delete-btn {
     padding: 4px 8px;
     background: rgba(255, 107, 107, 0.8);
