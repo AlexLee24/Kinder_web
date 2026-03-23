@@ -9,7 +9,7 @@
 /* Page-specific overrides and customizations */
 .object-detail-container {
     width: 95%;
-    margin: 100px auto 40px;
+    margin: 150px auto 40px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: #e0e0e0;
 }
