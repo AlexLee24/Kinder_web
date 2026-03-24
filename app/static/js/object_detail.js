@@ -1730,21 +1730,23 @@ function closeUploadModal() {
 }
 
 function resetUploadModal() {
-    const elements = {
-        photometryFile: document.getElementById('photometryFile'),
-        selectedFile: document.getElementById('selectedFile'),
-        fileDropZone: document.getElementById('fileDropZone'),
-        uploadPreview: document.getElementById('uploadPreview'),
-        uploadError: document.getElementById('uploadError'),
-        uploadBtn: document.getElementById('uploadBtn')
-    };
-    
-    if (elements.photometryFile) elements.photometryFile.value = '';
-    if (elements.selectedFile) elements.selectedFile.style.display = 'none';
-    if (elements.fileDropZone) elements.fileDropZone.style.display = 'block';
-    if (elements.uploadPreview) elements.uploadPreview.style.display = 'none';
-    if (elements.uploadError) elements.uploadError.style.display = 'none';
-    if (elements.uploadBtn) elements.uploadBtn.disabled = true;
+    const ids = ['photometryFile', 'selectedFile', 'fileDropZone', 'uploadPreview',
+                 'uploadError', 'uploadBtn', 'columnMappingSection', 'uploadProgressSection'];
+    const el = {};
+    ids.forEach(id => { el[id] = document.getElementById(id); });
+
+    if (el.photometryFile) el.photometryFile.value = '';
+    if (el.selectedFile) el.selectedFile.style.display = 'none';
+    if (el.fileDropZone) el.fileDropZone.style.display = 'block';
+    if (el.uploadPreview) el.uploadPreview.style.display = 'none';
+    if (el.uploadError) el.uploadError.style.display = 'none';
+    if (el.uploadBtn) { el.uploadBtn.disabled = true; el.uploadBtn.textContent = 'Upload Data'; }
+    if (el.columnMappingSection) el.columnMappingSection.style.display = 'none';
+    if (el.uploadProgressSection) el.uploadProgressSection.style.display = 'none';
+    window.rawFileLines = null;
+    window.rawFileHeaders = null;
+    window.rawFileParseRow = null;
+    window.parsedPhotometryData = [];
 }
 
 function setupFileUpload() {
@@ -1796,46 +1798,234 @@ function setupFileUpload() {
 function handleFileSelect() {
     const fileInput = document.getElementById('photometryFile');
     const file = fileInput.files[0];
-    
     if (!file) return;
-    
-    // Show selected file
+
     const fileName = document.getElementById('fileName');
     const selectedFile = document.getElementById('selectedFile');
     const dropZone = document.getElementById('fileDropZone');
-    
     if (fileName) fileName.textContent = file.name;
     if (selectedFile) selectedFile.style.display = 'flex';
     if (dropZone) dropZone.style.display = 'none';
-    
-    // Read and validate file
+
+    // Hide previous results
+    const uploadPreview = document.getElementById('uploadPreview');
+    const uploadError = document.getElementById('uploadError');
+    const uploadBtn = document.getElementById('uploadBtn');
+    if (uploadPreview) uploadPreview.style.display = 'none';
+    if (uploadError) uploadError.style.display = 'none';
+    if (uploadBtn) uploadBtn.disabled = true;
+
     const reader = new FileReader();
-    reader.onload = function(e) {
-        const content = e.target.result;
-        validatePhotometryData(content);
-    };
+    reader.onload = function(e) { parsePhotometryFile(e.target.result); };
     reader.readAsText(file);
 }
 
-function removeSelectedFile() {
-    const elements = {
-        photometryFile: document.getElementById('photometryFile'),
-        selectedFile: document.getElementById('selectedFile'),
-        fileDropZone: document.getElementById('fileDropZone'),
-        uploadPreview: document.getElementById('uploadPreview'),
-        uploadError: document.getElementById('uploadError'),
-        uploadBtn: document.getElementById('uploadBtn')
-    };
-    
-    if (elements.photometryFile) elements.photometryFile.value = '';
-    if (elements.selectedFile) elements.selectedFile.style.display = 'none';
-    if (elements.fileDropZone) elements.fileDropZone.style.display = 'block';
-    if (elements.uploadPreview) elements.uploadPreview.style.display = 'none';
-    if (elements.uploadError) elements.uploadError.style.display = 'none';
-    if (elements.uploadBtn) elements.uploadBtn.disabled = true;
+function parsePhotometryFile(content) {
+    const allLines = content.split('\n');
+    let headerLine = null;
+    let headerIdx = -1;
+
+    for (let i = 0; i < allLines.length; i++) {
+        const line = allLines[i].trim();
+        if (line && !line.startsWith('#')) {
+            headerLine = line;
+            headerIdx = i;
+            break;
+        }
+    }
+
+    if (!headerLine) {
+        showUploadError('File is empty or contains only comments.');
+        return;
+    }
+
+    // Detect delimiter
+    const delimiter = headerLine.includes(',') ? ',' : null;
+    const parseRow = delimiter
+        ? (l) => l.split(',').map(s => s.trim())
+        : (l) => l.trim().split(/\s+/);
+
+    const headers = parseRow(headerLine).map(h => h.toLowerCase().trim());
+    window.rawFileLines = allLines.slice(headerIdx + 1);
+    window.rawFileHeaders = headers;
+    window.rawFileParseRow = parseRow;
+
+    const mapping = detectColumnMapping(headers);
+    renderColumnMappingUI(headers, mapping);
+
+    const mappingSection = document.getElementById('columnMappingSection');
+    if (mappingSection) mappingSection.style.display = 'block';
+
+    // Auto-preview if all required columns are found
+    if (mapping.mjd >= 0 && mapping.mag >= 0 && mapping.filter >= 0) {
+        applyColumnMapping();
+    }
 }
 
-function validatePhotometryData(content) {
+function detectColumnMapping(headers) {
+    const mapping = { mjd: -1, mag: -1, err: -1, filter: -1, telescope: -1 };
+    headers.forEach((col, i) => {
+        const c = col.toLowerCase().trim();
+        if (mapping.mjd < 0 && (c === 'mjd' || c === 'jd'))
+            mapping.mjd = i;
+        if (mapping.filter < 0 && (c === 'filter' || c === 'band' || c === 'flt' || c === 'passband'))
+            mapping.filter = i;
+        if (mapping.mag < 0 && (c === 'mag' || c === 'magnitude'))
+            mapping.mag = i;
+        if (mapping.err < 0 && (c === 'err' || c === 'magerr' || c === 'mag_err' || c === 'error'
+                || c === 'dmag' || c.endsWith('err') || c.endsWith('error') || c.endsWith('_err')))
+            mapping.err = i;
+        if (mapping.telescope < 0 && (c === 'telescope' || c === 'tel' || c === 'instrument' || c === 'observer'))
+            mapping.telescope = i;
+    });
+    return mapping;
+}
+
+function renderColumnMappingUI(headers, mapping) {
+    const grid = document.getElementById('columnMappingGrid');
+    if (!grid) return;
+
+    const fields = [
+        { key: 'mjd',       label: 'MJD *',        required: true },
+        { key: 'mag',       label: 'Magnitude *',   required: true },
+        { key: 'err',       label: 'Error',         required: false },
+        { key: 'filter',    label: 'Filter *',      required: true },
+        { key: 'telescope', label: 'Telescope',     required: false }
+    ];
+
+    grid.innerHTML = '';
+    fields.forEach(field => {
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'display:flex; flex-direction:column; gap:4px;';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'font-size:0.8rem; color:#aaa;';
+        label.textContent = field.label;
+
+        const select = document.createElement('select');
+        select.id = `colMap_${field.key}`;
+        select.style.cssText = 'background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 6px; outline:none; font-size:0.85rem; width:100%;';
+
+        if (!field.required) {
+            const noneOpt = document.createElement('option');
+            noneOpt.value = '-1';
+            noneOpt.textContent = '— not used —';
+            select.appendChild(noneOpt);
+        }
+
+        headers.forEach((h, i) => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = h;
+            select.appendChild(opt);
+        });
+
+        const detected = mapping[field.key];
+        select.value = detected >= 0 ? detected : '-1';
+
+        wrapper.appendChild(label);
+        wrapper.appendChild(select);
+        grid.appendChild(wrapper);
+    });
+}
+
+function applyColumnMapping() {
+    const keys = ['mjd', 'mag', 'err', 'filter', 'telescope'];
+    const mapping = {};
+    keys.forEach(k => {
+        const sel = document.getElementById(`colMap_${k}`);
+        mapping[k] = sel ? parseInt(sel.value, 10) : -1;
+    });
+
+    if (mapping.mjd < 0 || mapping.mag < 0 || mapping.filter < 0) {
+        showUploadError('Please map the MJD, Magnitude, and Filter columns.');
+        return;
+    }
+
+    const uploadError = document.getElementById('uploadError');
+    if (uploadError) uploadError.style.display = 'none';
+
+    parseWithMapping(window.rawFileLines, mapping, window.rawFileParseRow);
+}
+
+function parseWithMapping(lines, mapping, parseRow) {
+    const validData = [];
+    const errors = [];
+    let lineNumber = 0;
+
+    for (const raw of lines) {
+        lineNumber++;
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+
+        const parts = parseRow(line);
+
+        const mjdStr   = (parts[mapping.mjd] || '').trim();
+        const magStr   = (parts[mapping.mag] || '').trim();
+        const errStr   = mapping.err >= 0 ? (parts[mapping.err] || '').trim() : '';
+        const filter   = (mapping.filter >= 0 ? (parts[mapping.filter] || '') : '').trim();
+        const telescope = (mapping.telescope >= 0 ? (parts[mapping.telescope] || '') : 'Unknown').trim() || 'Unknown';
+
+        const mjd = parseFloat(mjdStr);
+        const dataPoint = { lineNumber, mjd, magnitude: null, magnitude_error: null, filter,
+                            telescope, isUpperLimit: false, status: 'valid', statusText: 'Valid' };
+
+        if (isNaN(mjd) || mjd < 20000 || mjd > 100000) {
+            dataPoint.status = 'error';
+            dataPoint.statusText = 'Invalid MJD';
+            errors.push(`Line ${lineNumber}: Invalid MJD "${mjdStr}"`);
+        }
+
+        const errLower = errStr.toLowerCase();
+        const isUL = magStr.startsWith('>') || errLower === 'nan' || errLower === 'none'
+                     || errLower === 'null' || errLower === '' || errLower === '-';
+
+        if (isUL) {
+            dataPoint.isUpperLimit = true;
+            dataPoint.magnitude = parseFloat(magStr.replace('>', ''));
+            dataPoint.magnitude_error = null;
+            if (dataPoint.status === 'valid') { dataPoint.status = 'warning'; dataPoint.statusText = 'Upper Limit'; }
+        } else {
+            dataPoint.magnitude = parseFloat(magStr);
+            dataPoint.magnitude_error = parseFloat(errStr);
+            if (isNaN(dataPoint.magnitude)) {
+                dataPoint.status = 'error';
+                dataPoint.statusText = 'Invalid magnitude';
+                errors.push(`Line ${lineNumber}: Invalid magnitude "${magStr}"`);
+            }
+            if (isNaN(dataPoint.magnitude_error) || dataPoint.magnitude_error < 0) {
+                dataPoint.isUpperLimit = true;
+                dataPoint.magnitude_error = null;
+                if (dataPoint.status === 'valid') { dataPoint.status = 'warning'; dataPoint.statusText = 'Upper Limit'; }
+            }
+        }
+
+        if (!filter || filter.length > 10) {
+            dataPoint.status = 'error';
+            dataPoint.statusText = 'Invalid filter';
+            errors.push(`Line ${lineNumber}: Invalid filter "${filter}"`);
+        }
+
+        validData.push(dataPoint);
+    }
+
+    window.parsedPhotometryData = validData;
+    showPreview(validData, errors);
+}
+
+function showUploadError(msg) {
+    const errorDiv = document.getElementById('uploadError');
+    const errorText = document.getElementById('errorText');
+    if (errorDiv) { errorDiv.style.display = 'flex'; }
+    if (errorText) errorText.innerHTML = typeof msg === 'string' ? msg : msg.join('<br>');
+}
+
+function removeSelectedFile() {
+    resetUploadModal();
+}
+
+// validatePhotometryData is replaced by parsePhotometryFile + parseWithMapping
+function _validatePhotometryData_legacy(content) {
     const lines = content.split('\n');
     const validData = [];
     const errors = [];
@@ -1845,14 +2035,10 @@ function validatePhotometryData(content) {
         lineNumber++;
         line = line.trim();
         
-        // Skip empty lines and comments
         if (!line || line.startsWith('#')) continue;
-        
-        // Split by whitespace
         const parts = line.split(/\s+/);
-        
         if (parts.length < 4) {
-            errors.push(`Line ${lineNumber}: Insufficient columns (need at least MJD, mag, err, filter)`);
+            errors.push(`Line ${lineNumber}: Insufficient columns`);
             continue;
         }
         
@@ -1862,28 +2048,14 @@ function validatePhotometryData(content) {
         const filter = parts[3];
         const telescope = parts[4] || 'Unknown';
         
-        // Validate data
-        const dataPoint = {
-            lineNumber,
-            mjd,
-            magnitude: null,
-            magnitude_error: null,
-            filter,
-            telescope,
-            isUpperLimit: false,
-            status: 'valid',
-            statusText: 'Valid'
-        };
+        const dataPoint = { lineNumber, mjd, magnitude: null, magnitude_error: null, filter,
+                            telescope, isUpperLimit: false, status: 'valid', statusText: 'Valid' };
         
-        // Validate MJD
         if (isNaN(mjd) || mjd < 50000 || mjd > 70000) {
-            dataPoint.status = 'error';
-            dataPoint.statusText = 'Invalid MJD';
+            dataPoint.status = 'error'; dataPoint.statusText = 'Invalid MJD';
             errors.push(`Line ${lineNumber}: Invalid MJD value`);
         }
         
-        // Handle magnitude (could be upper limit)
-        // Upper limit: magnitude starts with ">" OR error is "nan"/"none"/"null"/empty
         const errLower = errStr.toLowerCase();
         const isNonDetection = errLower === 'nan' || errLower === 'none' || errLower === 'null' || errLower === '' || errLower === '-';
         
@@ -1891,10 +2063,7 @@ function validatePhotometryData(content) {
             dataPoint.isUpperLimit = true;
             dataPoint.magnitude = magStr.startsWith('>') ? parseFloat(magStr.substring(1)) : parseFloat(magStr);
             dataPoint.magnitude_error = null;
-            if (dataPoint.status === 'valid') {
-                dataPoint.status = 'warning';
-                dataPoint.statusText = 'Upper Limit';
-            }
+            if (dataPoint.status === 'valid') { dataPoint.status = 'warning'; dataPoint.statusText = 'Upper Limit'; }
         } else {
             dataPoint.magnitude = parseFloat(magStr);
             dataPoint.magnitude_error = parseFloat(errStr);
@@ -1936,19 +2105,15 @@ function showPreview(data, errors) {
     const tableBody = document.getElementById('previewTableBody');
     const summary = document.getElementById('previewSummary');
     const uploadBtn = document.getElementById('uploadBtn');
-    
-    if (!previewDiv || !tableBody || !uploadBtn) {
-        console.error('Preview elements not found');
-        return;
-    }
-    
-    // Clear previous data
+
+    if (!previewDiv || !tableBody || !uploadBtn) return;
+
     tableBody.innerHTML = '';
-    
+
     if (errors.length > 0 && errorDiv) {
         errorDiv.style.display = 'flex';
         const errorText = document.getElementById('errorText');
-        if (errorText) errorText.innerHTML = errors.join('<br>');
+        if (errorText) errorText.innerHTML = errors.slice(0, 10).join('<br>') + (errors.length > 10 ? `<br>...and ${errors.length - 10} more` : '');
     } else if (errorDiv) {
         errorDiv.style.display = 'none';
     }
@@ -2002,117 +2167,73 @@ function showPreview(data, errors) {
 }
 
 async function uploadPhotometryData() {
-    if (!cleanObjectName) {
-        showNotification('Object name not found', 'error');
-        return;
-    }
-    
+    if (!cleanObjectName) { showNotification('Object name not found', 'error'); return; }
+
     const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-    if (!match) {
-        showNotification('Invalid object name format', 'error');
-        return;
-    }
-    
+    if (!match) { showNotification('Invalid object name format', 'error'); return; }
+
     const year = match[1];
     const letters = match[2];
-    
-    const tableBody = document.getElementById('previewTableBody');
+
+    const allData = window.parsedPhotometryData || [];
+    const validRows = allData.filter(p => p.status !== 'error');
+    if (validRows.length === 0) { showNotification('No valid rows to upload', 'error'); return; }
+
     const uploadBtn = document.getElementById('uploadBtn');
-    
-    if (!tableBody || !uploadBtn) {
-        console.error('Upload elements not found');
-        return;
-    }
-    
-    const rows = tableBody.querySelectorAll('tr');
-    
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Uploading...';
-    
-    let successCount = 0;
-    let errorCount = 0;
-    
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const cells = row.querySelectorAll('td');
-        
-        // Skip error rows
-        if (cells[5].classList.contains('status-error')) {
-            errorCount++;
-            continue;
-        }
-        
-        const mjd = parseFloat(cells[0].textContent);
-        const magText = cells[1].textContent;
-        const errText = cells[2].textContent;
-        const filter = cells[3].textContent;
-        const telescope = cells[4].textContent;
-        
-        // Parse magnitude (handle upper limits)
-        let magnitude = null;
-        let magnitude_error = null;
-        
-        if (magText.startsWith('>')) {
-            magnitude = parseFloat(magText.substring(1));
-            magnitude_error = null; // Upper limit
-        } else {
-            magnitude = parseFloat(magText);
-            magnitude_error = errText !== 'N/A' ? parseFloat(errText) : null;
-        }
-        
-        try {
-            const response = await fetch(`/api/object/${year}${letters}/photometry`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    mjd: mjd,
-                    magnitude: magnitude,
-                    magnitude_error: magnitude_error,
-                    filter: filter,
-                    telescope: telescope
-                })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                successCount++;
-                // Update row status
-                cells[5].className = 'status-valid';
-                cells[5].textContent = 'Uploaded';
-            } else {
-                errorCount++;
-                cells[5].className = 'status-error';
-                cells[5].textContent = 'Failed';
+    const progressSection = document.getElementById('uploadProgressSection');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const progressText = document.getElementById('uploadProgressText');
+
+    if (uploadBtn) { uploadBtn.disabled = true; uploadBtn.textContent = 'Uploading...'; }
+    if (progressSection) progressSection.style.display = 'block';
+    if (progressBar) progressBar.style.width = '20%';
+    if (progressText) progressText.textContent = `${validRows.length} points...`;
+
+    const points = validRows.map(p => ({
+        mjd: p.mjd,
+        magnitude: p.magnitude,
+        magnitude_error: p.isUpperLimit ? null : p.magnitude_error,
+        filter: p.filter,
+        telescope: p.telescope || 'Unknown'
+    }));
+
+    try {
+        if (progressBar) progressBar.style.width = '60%';
+
+        const response = await fetch(`/api/object/${year}${letters}/photometry/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ points })
+        });
+
+        if (progressBar) progressBar.style.width = '90%';
+        const result = await response.json();
+
+        if (result.success) {
+            if (progressBar) progressBar.style.width = '100%';
+            if (progressText) progressText.textContent = `${result.inserted} / ${result.total} inserted`;
+
+            // Mark table rows as uploaded
+            const tableBody = document.getElementById('previewTableBody');
+            if (tableBody) {
+                tableBody.querySelectorAll('tr').forEach(row => {
+                    const statusCell = row.cells[5];
+                    if (statusCell && !statusCell.classList.contains('status-error')) {
+                        statusCell.className = 'status-valid';
+                        statusCell.textContent = 'Uploaded';
+                    }
+                });
             }
-        } catch (error) {
-            errorCount++;
-            cells[5].className = 'status-error';
-            cells[5].textContent = 'Failed';
-            console.error('Upload error:', error);
+
+            showNotification(`Uploaded ${result.inserted} photometry points`, 'success');
+            setTimeout(() => { loadPhotometryPlot(); closeUploadModal(); }, 900);
+        } else {
+            throw new Error(result.error || 'Upload failed');
         }
-        
-        // Small delay to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    uploadBtn.textContent = 'Upload Data';
-    uploadBtn.disabled = false;
-    
-    // Show results
-    if (successCount > 0) {
-        showNotification(`Successfully uploaded ${successCount} photometry points`, 'success');
-        // Refresh the plot
-        setTimeout(() => {
-            loadPhotometryPlot();
-            closeUploadModal();
-        }, 1000);
-    }
-    
-    if (errorCount > 0) {
-        showNotification(`${errorCount} points failed to upload`, 'error');
+    } catch (err) {
+        showNotification('Upload failed: ' + err.message, 'error');
+        if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload Data'; }
+        if (progressSection) progressSection.style.display = 'none';
     }
 }
 
@@ -3581,4 +3702,188 @@ function toggleFlag() {
             btn.title = "Flag this object as important";
         }
     });
+}
+
+// ==========================================
+// Admin Permissions & Access Control
+// ==========================================
+
+let telescopeRules = [];
+let availableGroups = [];
+let photGroupsList = [];
+let specGroupsList = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Only fetch groups if admin panel exists
+    if (document.querySelector('.admin-settings-panel')) {
+        fetch('/api/groups')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.groups) {
+                availableGroups = data.groups;
+                populateGroupSelects();
+            }
+        })
+        .catch(err => console.error("Error fetching groups:", err));
+    }
+});
+
+function populateGroupSelects() {
+    const selects = ['photGroupSelect', 'specGroupSelect', 'newTelescopeGroup'];
+    selects.forEach(id => {
+        const el = document.getElementById(id);
+        if(!el) return;
+        el.innerHTML = '<option value="">-- Select Group --</option>';
+        availableGroups.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g.name;  // or g.id depending on DB
+            opt.textContent = g.name;
+            el.appendChild(opt);
+        });
+    });
+}
+
+function togglePermVisibility(type) {
+    const isPublic = document.getElementById(`${type}PublicToggle`);
+    if (!isPublic) return;
+    
+    const groupDiv = document.getElementById(`${type}RestrictedGroups`);
+    if (isPublic.checked) {
+        groupDiv.style.display = 'none';
+    } else {
+        groupDiv.style.display = 'block';
+    }
+}
+
+function addGroup(type) {
+    const select = document.getElementById(`${type}GroupSelect`);
+    if (!select) return;
+    const val = select.value;
+    if(!val) return;
+    
+    const list = type === 'phot' ? photGroupsList : specGroupsList;
+    if(!list.includes(val)) {
+        list.push(val);
+        renderGroupBadges(type);
+    }
+    // reset select
+    select.value = '';
+}
+
+function removeGroup(type, index) {
+    const list = type === 'phot' ? photGroupsList : specGroupsList;
+    list.splice(index, 1);
+    renderGroupBadges(type);
+}
+
+function renderGroupBadges(type) {
+    const container = document.getElementById(`${type}GroupBadges`);
+    if(!container) return;
+    const list = type === 'phot' ? photGroupsList : specGroupsList;
+    container.innerHTML = '';
+    
+    list.forEach((grp, idx) => {
+        const badge = document.createElement('span');
+        badge.className = 'badge tag-badge';
+        badge.style.display = 'inline-flex';
+        badge.style.alignItems = 'center';
+        badge.style.gap = '6px';
+        badge.style.background = 'rgba(255,255,255,0.1)';
+        badge.style.border = '1px solid rgba(255,255,255,0.2)';
+        
+        badge.innerHTML = `${escapeHtml(grp)} <span style="cursor:pointer; color:#ff6b6b; font-weight:bold; padding:0 2px;" onclick="removeGroup('${type}', ${idx})" title="Remove">&times;</span>`;
+        container.appendChild(badge);
+    });
+}
+
+function addTelescopeRule() {
+    const telInput = document.getElementById('newTelescopeName');
+    const grpInput = document.getElementById('newTelescopeGroup');
+    const tel = telInput.value.trim();
+    const grp = grpInput.value;
+    
+    if (!tel || !grp) {
+        showNotification('Please enter both telescope name and select a group', 'warning');
+        return;
+    }
+    
+    // Check if telescope rule already exists for this group
+    const exists = telescopeRules.some(r => r.telescope.toLowerCase() === tel.toLowerCase() && r.groups === grp);
+    if (!exists) {
+        telescopeRules.push({ telescope: tel, groups: grp });
+        telInput.value = '';
+        grpInput.value = '';
+        renderTelescopeRules();
+    } else {
+        showNotification('This rule already exists', 'info');
+    }
+}
+
+function removeTelescopeRule(index) {
+    telescopeRules.splice(index, 1);
+    renderTelescopeRules();
+}
+
+function renderTelescopeRules() {
+    const list = document.getElementById('telescopePermsList');
+    if (!list) return;
+    
+    list.innerHTML = '';
+    if (telescopeRules.length === 0) {
+        list.innerHTML = '<div style="font-size:0.8rem; color:#666; font-style:italic;" id="noTelescopeRulesHint">No custom rules</div>';
+        return;
+    }
+    
+    telescopeRules.forEach((rule, idx) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.style.alignItems = 'center';
+        row.style.background = 'rgba(0,0,0,0.3)';
+        row.style.padding = '4px 8px';
+        row.style.borderRadius = '4px';
+        row.style.border = '1px solid rgba(255,255,255,0.1)';
+        row.innerHTML = `
+            <div style="font-size:0.85rem;"><span style="color:#ffbe0b; font-weight:bold;">${escapeHtml(rule.telescope)}</span> &rarr; <span style="color:#ccc;">${escapeHtml(rule.groups)}</span></div>
+            <button class="btn-modern" style="padding:2px 6px; font-size:0.75rem; border-color:#ff6b6b; color:#ff6b6b;" onclick="removeTelescopeRule(${idx})">X</button>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function saveAdminPermissions() {
+    const photPublic = document.getElementById('photPublicToggle').checked;
+    const specPublic = document.getElementById('specPublicToggle').checked;
+    
+    const settings = {
+        photometry_public: photPublic,
+        photometry_groups: photPublic ? '' : photGroupsList.join(','),
+        spectroscopy_public: specPublic,
+        spectroscopy_groups: specPublic ? '' : specGroupsList.join(','),
+        telescope_rules: telescopeRules
+    };
+    
+    console.log('Sending settings:', settings);
+    showNotification('Permissions UI created! Data logged to console.', 'info');
+    
+    // Future backend API call
+    /*
+    fetch(`/api/object/${cleanObjectName}/permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if(data.success) {
+            showNotification('Permissions saved successfully', 'success');
+        } else {
+            showNotification(data.error || 'Error saving settings', 'error');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showNotification('Failed to connect to API', 'error');
+    });
+    */
 }

@@ -784,6 +784,21 @@ def register_object_routes(app):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
+    @app.route('/api/object/<int:year><alpha:letters>/photometry/batch', methods=['POST'])
+    def upload_photometry_batch(year, letters):
+        if 'user' not in session or not session['user'].get('is_admin'):
+            return jsonify({'error': 'Access denied'}), 403
+        object_name = f"{year}{letters}"
+        data = request.get_json()
+        points = data.get('points', [])
+        if not points:
+            return jsonify({'error': 'No points provided'}), 400
+        try:
+            inserted = TNSObjectDB.add_photometry_batch(object_name, points)
+            return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/object/<string:object_name>/spectroscopy', methods=['POST'])
     def upload_spectroscopy_generic(object_name):
         if 'user' not in session or not session['user'].get('is_admin'):

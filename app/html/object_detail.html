@@ -91,7 +91,7 @@
                             <span class="detail-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label">Distance (Mpc)</span>
+                            <span class="detail-label">Luminosity Distance (Mpc)</span>
                             <span class="detail-value">
                                 {% if object_data.distance_mpc %}
                                     {{ "%.2f"|format(object_data.distance_mpc) }}
@@ -258,6 +258,68 @@
             </div>
             
         </div>
+        
+        <!-- Admin Settings Container -->
+        {% if session.user and session.user.is_admin %}
+        <div class="panel-card admin-settings-panel" style="grid-column: 1 / -1; margin-top: 20px;">
+            <div class="panel-header">
+                <h3>Data Permissions & Access Control</h3>
+                <button class="btn-modern" style="padding:4px 12px; font-weight:bold;" onclick="saveAdminPermissions()">Save Settings</button>
+            </div>
+            <div class="panel-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <!-- Photometry Perms -->
+                <div class="perm-section">
+                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Photometry Access</h4>
+                    
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
+                        <input type="checkbox" id="photPublicToggle" checked onchange="togglePermVisibility('phot')"> 
+                        <strong>Public (All users)</strong>
+                    </label>
+                    
+                    <div id="photRestrictedGroups" style="display:none; margin-bottom: 15px; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
+                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
+                        <div style="display:flex; gap:8px;">
+                            <select id="photGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
+                            <button class="btn-modern" onclick="addGroup('phot')" style="padding:4px 10px;">Add</button>
+                        </div>
+                        <div id="photGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+                    </div>
+
+                    <div class="advanced-telescope-perms" style="margin-top: 20px; background: rgba(0,0,0,0.1); padding: 12px; border-radius: 6px;">
+                        <h5 style="margin:0 0 10px 0; font-size: 0.9rem; color: #ccc;">Advanced: Telescope Restrictions</h5>
+                        <p style="font-size:0.8rem; color:#888; margin-bottom:10px;">Enforce specific groups per telescope.</p>
+                        <div id="telescopePermsList" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 10px;">
+                            <div style="font-size:0.8rem; color:#666; font-style:italic;" id="noTelescopeRulesHint">No custom rules</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items: stretch; flex-wrap:wrap;">
+                            <input type="text" id="newTelescopeName" placeholder="Tel (e.g. SLT)" style="flex:1; min-width:80px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; font-size:0.85rem;">
+                            <select id="newTelescopeGroup" style="flex:1; min-width:100px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; outline:none; font-size:0.85rem;"></select>
+                            <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="addTelescopeRule()">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spectroscopy Perms -->
+                <div class="perm-section">
+                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Spectroscopy Access</h4>
+                    
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
+                        <input type="checkbox" id="specPublicToggle" checked onchange="togglePermVisibility('spec')"> 
+                        <strong>Public (All users)</strong>
+                    </label>
+                    
+                    <div id="specRestrictedGroups" style="display:none; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
+                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
+                        <div style="display:flex; gap:8px;">
+                            <select id="specGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
+                            <button class="btn-modern" onclick="addGroup('spec')" style="padding:4px 10px;">Add</button>
+                        </div>
+                        <div id="specGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Loading Overlay -->
@@ -278,22 +340,22 @@
             <div class="modal-body">
                 <div class="upload-instructions">
                     <h4>Data Format:</h4>
-                    <p>Upload a text file with the following format (one observation per line):</p>
-                    <pre>MJD   magnitude   error   filter   telescope</pre>
+                    <p>Upload a <strong>.txt</strong>, <strong>.dat</strong>, or <strong>.csv</strong> file. <strong>A header row is required.</strong> Column names are case-insensitive and order does not matter.</p>
                     <p><strong>Example:</strong></p>
-                    <pre>59123.456   18.24   0.05   g   SLT
-59124.567   18.31   0.06   r   LOT
-59125.678   18.45   0.08   i   
-59126.789   19.53   nan    g   </pre>
-                    <p><strong>Notes:</strong></p>
+                    <pre>mjd         mag    err    filter  telescope
+59123.456   18.24  0.05   g       SLT
+59124.567   18.31  nan    r       LOT</pre>
+                    <p><strong>Recognized column names:</strong></p>
                     <ul>
-                        <li>Columns can be separated by spaces or tabs</li>
-                        <li>Telescope column is optional (will default to "Unknown")</li>
-                        <li>Use "nan" at error for upper limits</li>
-                        <li>Lines starting with "#" will be ignored</li>
+                        <li><strong>MJD:</strong> mjd, jd</li>
+                        <li><strong>Magnitude:</strong> mag, magnitude</li>
+                        <li><strong>Error:</strong> err, magerr, mag_err, error, dmag, *err, *error</li>
+                        <li><strong>Filter:</strong> filter, band, flt, passband</li>
+                        <li><strong>Telescope (optional):</strong> telescope, tel, instrument</li>
                     </ul>
+                    <p style="font-size:0.85rem; color:#aaa;">If auto-detection is wrong, use the column mapping dropdowns to override before previewing.</p>
                 </div>
-                
+
                 <div class="upload-area">
                     <input type="file" id="photometryFile" accept=".txt,.dat,.csv" style="display: none;">
                     <div class="file-drop-zone" id="fileDropZone">
@@ -309,7 +371,16 @@
                         <button class="remove-file" onclick="removeSelectedFile()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                     </div>
                 </div>
-                
+
+                <!-- Column Mapping -->
+                <div id="columnMappingSection" style="display:none; margin-top:14px; background:rgba(0,0,0,0.2); border-radius:8px; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h4 style="margin:0; font-size:0.95rem; color:#ccc;">Column Mapping</h4>
+                        <button class="btn-modern" style="padding:4px 12px; font-size:0.85rem;" onclick="applyColumnMapping()">Apply &amp; Preview</button>
+                    </div>
+                    <div id="columnMappingGrid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;"></div>
+                </div>
+
                 <div class="upload-preview" id="uploadPreview" style="display: none;">
                     <h4>Data Preview:</h4>
                     <div class="preview-table-container">
@@ -324,13 +395,23 @@
                                     <th>Status</th>
                                 </tr>
                             </thead>
-                            <tbody id="previewTableBody">
-                            </tbody>
+                            <tbody id="previewTableBody"></tbody>
                         </table>
                     </div>
                     <div class="preview-summary" id="previewSummary"></div>
                 </div>
-                
+
+                <!-- Upload Progress -->
+                <div id="uploadProgressSection" style="display:none; margin-top:14px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.85rem; color:#aaa;">
+                        <span>Uploading...</span>
+                        <span id="uploadProgressText">0 points</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; height:8px;">
+                        <div id="uploadProgressBar" style="height:100%; background:#00f5d4; transition:width 0.3s ease; width:0%;"></div>
+                    </div>
+                </div>
+
                 <div class="upload-error" id="uploadError" style="display: none;">
                     <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
                     <div class="error-text" id="errorText"></div>

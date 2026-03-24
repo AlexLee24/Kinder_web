@@ -413,6 +413,39 @@ class TNSObjectDB:
         return point_id
     
     @staticmethod
+    def add_photometry_batch(object_name, points):
+        """Batch insert photometry points. points: list of dicts."""
+        if not points:
+            return 0
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            inserted = 0
+            max_mjd = None
+            for p in points:
+                cursor.execute('''
+                    INSERT INTO photometry (object_name, mjd, magnitude, magnitude_error, filter, telescope)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (object_name, mjd, filter, telescope) DO NOTHING
+                    RETURNING id
+                ''', (object_name, p['mjd'], p.get('magnitude'), p.get('magnitude_error'),
+                      p.get('filter'), p.get('telescope', 'Unknown')))
+                if cursor.fetchone():
+                    inserted += 1
+                    if max_mjd is None or p['mjd'] > max_mjd:
+                        max_mjd = p['mjd']
+            if max_mjd is not None:
+                cursor.execute('''
+                    UPDATE tns_objects
+                    SET last_photometry_date = to_timestamp((%s - 40587) * 86400)
+                    WHERE ((COALESCE(name_prefix, '') || COALESCE(name, '')) = %s OR name = %s)
+                    AND (last_photometry_date IS NULL
+                         OR last_photometry_date::timestamp < to_timestamp((%s - 40587) * 86400))
+                ''', (max_mjd, object_name, object_name, max_mjd))
+            conn.commit()
+            cursor.close()
+        return inserted
+
+    @staticmethod
     def sync_last_photometry_date(object_name):
         """Recalculate and update last_photometry_date based on photometry data"""
         with get_db_connection() as conn:
