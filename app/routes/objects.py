@@ -489,83 +489,67 @@ def register_object_routes(app):
         """Edit object data"""
         if 'user' not in session or not session['user'].get('is_admin'):
             return jsonify({'error': 'Access denied - Admin privileges required'}), 403
-        
+
         try:
-            object_name = urllib.parse.unquote(object_name)
             data = request.get_json()
-            
-            # Validate input data
+            if not data:
+                return jsonify({'error': 'Invalid request body'}), 400
+
+            obj_id = data.get('objid')
+            if not obj_id:
+                return jsonify({'error': 'Object ID (objid) is required'}), 400
+
             updates = {}
-            
-            # Basic fields that can be updated - ONLY Redshift allowed now
-            updatable_fields = ['redshift']
-            
-            for field in updatable_fields:
-                if field in data:
-                    value = data[field]
-                    
-                    # Validate specific fields
-                    if field == 'redshift':
-                        if value and value != '':
-                            try:
-                                value = float(value)
-                                if value < 0:
-                                    return jsonify({'error': 'Redshift must be positive'}), 400
-                            except (ValueError, TypeError):
-                                return jsonify({'error': f'Invalid value for {field}'}), 400
-                        else:
-                            value = None
-                    
-                    updates[field] = value
-            
+
+            # redshift
+            if 'redshift' in data:
+                v = data['redshift']
+                if v is not None and v != '':
+                    try:
+                        v = float(v)
+                        if v < 0:
+                            return jsonify({'error': 'Redshift must be positive'}), 400
+                    except (ValueError, TypeError):
+                        return jsonify({'error': 'Invalid redshift value'}), 400
+                else:
+                    v = None
+                updates['redshift'] = v
+
+            # internal_names
+            if 'internal_names' in data:
+                v = data['internal_names']
+                updates['internal_names'] = v.strip() if isinstance(v, str) and v.strip() else None
+
             if not updates:
                 return jsonify({'error': 'No valid fields to update'}), 400
-            
-            # Update database
+
             from modules.postgres_database import get_tns_db_connection
-            
             conn = get_tns_db_connection()
             cursor = conn.cursor()
-            
-            # Build update query
-            set_clauses = []
-            params = []
-            
-            for field, value in updates.items():
-                set_clauses.append(f"{field} = %s")
-                params.append(value)
-            
-            # NOTE: We explicitly DO NOT update lastmodified or updated_at
-            
-            params.append(object_name)  # For WHERE clause
-            
-            update_query = f"""
-                UPDATE tns_objects 
-                SET {', '.join(set_clauses)}
-                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
-            """
-            
-            cursor.execute(update_query, params)
+
+            set_clauses = [f"{k} = %s" for k in updates.keys()]
+            params = list(updates.values()) + [int(obj_id)]
+
+            cursor.execute(
+                f"UPDATE tns_objects SET {', '.join(set_clauses)} WHERE objid = %s",
+                params
+            )
             rows_affected = cursor.rowcount
-            
+
             if rows_affected == 0:
+                conn.rollback()
                 conn.close()
                 return jsonify({'error': 'Object not found'}), 404
-            
+
             conn.commit()
             conn.close()
-            
-            # Update activity timestamp
-            update_object_activity(object_name, "data_edit")
-            
-            updated_fields = list(updates.keys())
-            
+
             return jsonify({
                 'success': True,
-                'message': f'Object {object_name} updated successfully',
-                'updated_fields': updated_fields
+                'message': f'Object updated successfully',
+                'updated_fields': list(updates.keys())
             })
-            
+
         except Exception as e:
             import traceback
             traceback.print_exc()

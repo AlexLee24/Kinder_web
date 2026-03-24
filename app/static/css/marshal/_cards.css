@@ -61,6 +61,16 @@
     color: var(--primary-green);
 }
 
+.ep-alias {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 0.75rem;
+    color: #a0e0ff;
+    opacity: 0.85;
+    font-weight: 400;
+    white-space: nowrap;
+}
+
 .classification-badge {
     padding: 6px var(--spacing-md);
     border-radius: var(--radius-lg);

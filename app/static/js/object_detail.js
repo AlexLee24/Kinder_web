@@ -225,9 +225,14 @@ async function updatePageContent() {
     
     // 3. 讓出主頻寬 100 毫秒給瀏覽器更新畫面，然後再去跑較重的 DETECT 跟 Fetch
     setTimeout(() => {
-        loadDetectData();
-        // 背景默默執行 Fetch Photmetry，自動替換 No data 為 Fetching
-        fetchPhotometry(true);
+        // Only load DETECT if no cached data exists (handled inside loadDetectData)
+        if (!photometryData || photometryData.length === 0) {
+            loadDetectData();
+            // Auto-fetch from TNS only when there's no local photometry data
+            fetchPhotometry(true);
+        } else {
+            loadDetectData();
+        }
     }, 100);
 
     console.log('Page content updated');
@@ -413,7 +418,7 @@ function showImageError(message) {
 function updateClassificationBadge(type) {
     const badge = document.getElementById('classificationBadge');
     if (badge && type) {
-        badge.className = `classification-badge ${type.toLowerCase()}`;
+        badge.className = 'badge type-badge';
         badge.textContent = type;
     }
 }
@@ -422,10 +427,8 @@ function updateStatusBadge(tag) {
     const badge = document.getElementById('statusBadge');
     if (badge) {
         const status = tag || 'object';
-        badge.className = `tag-badge ${status}`;
+        badge.className = `badge tag-badge ${status}`;
         badge.innerHTML = getStatusDisplayName(status);
-        
-        console.log('Status badge updated to:', status, getStatusDisplayName(status));
     }
 }
 
@@ -684,8 +687,8 @@ function changeStatus(newStatus) {
                 // Refresh only the status badge without full page reload
                 const statusBadge = document.getElementById('statusBadge');
                 if (statusBadge) {
-                    statusBadge.className = `tag-badge ${newStatus}`;
-                    statusBadge.textContent = newStatusName;
+                    statusBadge.className = `badge tag-badge ${newStatus}`;
+                    statusBadge.innerHTML = getStatusDisplayName(newStatus);
                 }
             }, 500);
             
@@ -712,11 +715,11 @@ function updateStatusDisplay(newStatus) {
     const statusBadge = document.getElementById('statusBadge');
     if (statusBadge) {
         if (newStatus === 'clear') {
-            statusBadge.className = 'tag-badge';
+            statusBadge.className = 'badge tag-badge';
             statusBadge.textContent = 'Cleared';
         } else {
-            statusBadge.className = `tag-badge ${newStatus}`;
-            statusBadge.textContent = statusNames[newStatus] || newStatus;
+            statusBadge.className = `badge tag-badge ${newStatus}`;
+            statusBadge.innerHTML = getStatusDisplayName(newStatus);
         }
     }
 }
@@ -2831,6 +2834,14 @@ function createEditModal() {
                                 <div class="form-help">Spectroscopic or photometric redshift</div>
                             </div>
                         </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="editInternalNames">Internal Names</label>
+                                <input type="text" id="editInternalNames" placeholder="e.g., EP J123456+654321, AT2024abc">
+                                <div class="form-help">Comma-separated alias names (e.g., EP source IDs)</div>
+                            </div>
+                        </div>
                     </form>
                     
                     <div class="edit-result" id="editResult" style="display: none;">
@@ -2861,7 +2872,8 @@ function populateEditForm() {
     // Populate form fields with current data
     const fields = {
         'editObjectName': fullName,
-        'editRedshift': objectData.redshift || ''
+        'editRedshift': objectData.redshift != null ? objectData.redshift : '',
+        'editInternalNames': objectData.internal_names || ''
     };
     
     for (const [fieldId, value] of Object.entries(fields)) {
@@ -2895,11 +2907,13 @@ function submitEditObject() {
     
     const fullObjectName = getFullObjectName(objectData) || objectName;
     
-    // Collect form data - ONLY Redshift
     const redshiftValue = document.getElementById('editRedshift').value;
-    
+    const internalNamesValue = document.getElementById('editInternalNames')?.value?.trim() ?? null;
+
     const cleanData = {
-        redshift: redshiftValue ? parseFloat(redshiftValue) : null
+        objid: objectData.objid || null,
+        redshift: redshiftValue !== '' ? parseFloat(redshiftValue) : null,
+        internal_names: internalNamesValue || null
     };
     
     // Disable submit button
@@ -2921,6 +2935,16 @@ function submitEditObject() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // Update in-memory objectData and DOM immediately
+            if (cleanData.internal_names !== undefined) {
+                objectData.internal_names = cleanData.internal_names;
+                const el = document.getElementById('internalName');
+                if (el) {
+                    el.textContent = cleanData.internal_names
+                        ? cleanData.internal_names.split(',').map(s => s.trim()).join(', ')
+                        : 'N/A';
+                }
+            }
             showEditResult('success', 'Success!', data.message);
             showNotification('Object updated successfully! Page will refresh in 2 seconds...', 'success');
             setTimeout(() => {

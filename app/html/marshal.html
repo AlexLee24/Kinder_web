@@ -392,6 +392,18 @@
                                 {{ obj.name_prefix or '' }}{{ obj.name }}
                             </a>
                         {% endif %}
+                        {% if obj.internal_names %}
+                            {% set ep_names = [] %}
+                            {% for part in obj.internal_names.split(',') %}
+                                {% set p = part.strip() %}
+                                {% if p.startswith('EP') %}
+                                    {% set _ = ep_names.append(p) %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if ep_names %}
+                                <span class="ep-alias">({{ ep_names|join(', ') }})</span>
+                            {% endif %}
+                        {% endif %}
                     </div>
                     <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
                         {{ obj.type or 'AT' }}

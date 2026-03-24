@@ -384,7 +384,8 @@ function loadObjects(resetPage = false) {
                 lastmodified: obj.lastmodified || '',
                 last_photometry: obj.last_photometry_date || '',
                 brightest_mag: obj.brightest_mag || '',
-                brightest_abs_mag: obj.brightest_abs_mag || ''
+                brightest_abs_mag: obj.brightest_abs_mag || '',
+                internal_names: obj.internal_names || ''
             }));
             
             currentObjects = mappedObjects;
@@ -545,7 +546,7 @@ function generateTableView() {
         
         row.innerHTML = `
             <td class="object-name-cell">
-                <a href="${objectLink}" target="_blank">${obj.name}</a>
+                <a href="${objectLink}" target="_blank">${obj.name}</a>${getEpAliasBadge(obj.internal_names)}
             </td>
             <td class="class-cell">
                 <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
@@ -661,7 +662,7 @@ function generateCardsView() {
                 <div class="object-name">
                     <a href="${objectLink}" target="_blank">
                         ${obj.name}
-                    </a>
+                    </a>${getEpAliasBadge(obj.internal_names)}
                 </div>
                 <div class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">
                     ${obj.classification}
@@ -724,6 +725,15 @@ function generateCardsView() {
         
         cardsContainer.appendChild(card);
     });
+}
+
+function getEpAliasBadge(internalNames) {
+    if (!internalNames) return '';
+    const epNames = internalNames.split(',')
+        .map(s => s.trim())
+        .filter(s => /^EP[A-Z0-9]/.test(s));
+    if (epNames.length === 0) return '';
+    return `<span class="ep-alias">(${epNames.join(', ')})</span>`;
 }
 
 function getTagDisplayName(tag) {
