@@ -194,11 +194,16 @@ def parse_coordinate(coord_str):
     decimal = abs(degrees) + minutes/60.0 + seconds/3600.0
     return sign * decimal
 
+# Absolute path to planners/ov_plot/ (sibling blueprint folder)
+_PLANNERS_OV_PLOT_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', 'planners', 'ov_plot')
+)
+
 @astronomy_tools_bp.route("/generate_plot", methods=["POST"])
 def generate_plot():
     try:
         target_list = []
-        plot_folder = os.path.join(astronomy_tools_bp.root_path, "static", "ov_plot")
+        plot_folder = _PLANNERS_OV_PLOT_DIR
         unique_filename = f"observing_tracks_{uuid.uuid4().hex}.jpg"
         
         try:
@@ -313,7 +318,7 @@ def generate_plot():
         if not os.path.exists(plot_path):
             return jsonify({'error': 'Plot generation failed - file not created'}), 500
         
-        plot_url = f"/static/ov_plot/{unique_filename}"
+        plot_url = f"/ov_plot/{unique_filename}"
         success_message = f"Successfully generated plot for {len(target_list)} targets"
         
         return jsonify({

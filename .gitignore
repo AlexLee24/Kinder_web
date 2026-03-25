@@ -75,3 +75,4 @@ test*.py
 app/log
 app/log/
 app/log/*
+test_photo/

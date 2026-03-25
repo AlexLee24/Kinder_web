@@ -78,6 +78,13 @@ def serve_static_files(filename):
         photo_path = os.path.join(_PHOTO_DIR, photo_name)
         if os.path.isfile(photo_path):
             return send_from_directory(_PHOTO_DIR, photo_name)
+    # Icon files from basic/icon/
+    if filename.startswith('icon/'):
+        icon_name = filename[len('icon/'):]
+        icon_dir = os.path.join(current_dir, 'routes', 'basic', 'icon')
+        icon_path = os.path.join(icon_dir, icon_name)
+        if os.path.isfile(icon_path):
+            return send_from_directory(icon_dir, icon_name)
     abort(404)
 
 import re

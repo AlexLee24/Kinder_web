@@ -19,7 +19,7 @@ from flask import Blueprint
 private_area_bp = Blueprint('private_area', __name__, template_folder='templates', static_folder='static')
 """Register calendar routes with the Flask app"""
 
-tutorials_dir = os.path.join(private_area_bp.static_folder, 'tutorials')
+tutorials_dir = os.path.join(os.path.dirname(__file__), 'tutorials')
 tutorials_env_path = os.path.join(tutorials_dir, '.env')
 allowed_image_ext = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
@@ -348,12 +348,22 @@ def api_documents_upload_image():
     image_path = os.path.join(images_dir, image_name)
     image.save(image_path)
 
-    static_path = f"/static/tutorials/images/{image_name}"
+    static_path = f"/tutorials/images/{image_name}"
     return jsonify({
         'success': True,
         'image_url': static_path,
         'markdown': f"![]({static_path})"
     })
+
+
+@private_area_bp.route('/tutorials/images/<path:filename>')
+def serve_tutorial_image(filename):
+    """Serve images stored in private_area/tutorials/images/."""
+    if '..' in filename or filename.startswith('/'):
+        abort(400)
+    from flask import send_from_directory
+    images_dir = os.path.join(tutorials_dir, 'images')
+    return send_from_directory(images_dir, filename)
 
 
 from modules.web_postgres_database import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target
