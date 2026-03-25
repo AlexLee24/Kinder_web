@@ -1,0 +1,55 @@
+:root {
+    /* Primary Colors */
+    --primary-green: #C5A059; /* Muted Gold */
+    --primary-green-dark: #A08040;
+    --primary-green-light: #D4AF37;
+    
+    /* Secondary Colors */
+    --blue: #64B5F6;
+    --blue-dark: #42A5F5;
+    --orange: #FFB74D;
+    --orange-dark: #FFA726;
+    --purple: #BA68C8;
+    --purple-dark: #AB47BC;
+    --red: #E57373;
+    --red-dark: #EF5350;
+    
+    /* Status Colors */
+    --inbox-color: #81C784;
+    --followup-color: #FFD54F;
+    --finished-color: #90CAF9;
+    --snoozed-color: #F06292;
+    --flag-color: #EF5350;
+    
+    /* Glass Effect */
+    --glass-bg: rgba(20, 20, 30, 0.85);
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    
+    /* Typography */
+    --font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-weight-light: 300;
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 20px;
+    --spacing-2xl: 24px;
+    --spacing-3xl: 30px;
+    
+    /* Border Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 15px;
+    --radius-xl: 20px;
+    --radius-2xl: 25px;
+    
+    /* Transitions */
+    --transition-fast: 0.3s ease;
+    --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}

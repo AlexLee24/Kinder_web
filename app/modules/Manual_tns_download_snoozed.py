@@ -14,7 +14,7 @@ from postgres_database import get_db_connection, log_download_attempt, update_do
 from psycopg2 import extras
 
 # ---- User settings ----
-SAVE_DIR = pathlib.Path("app/data/tns_api_download_work")
+SAVE_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "tns_api_download_work"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---- BOT settings ----

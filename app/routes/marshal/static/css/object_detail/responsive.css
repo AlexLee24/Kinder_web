@@ -1,0 +1,434 @@
+/* Responsive design styles */
+
+@media (max-width: 1024px) {
+    .object-detail-container {
+        margin: 100px auto 30px;
+        padding: 15px;
+    }
+    
+    .detail-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .header-main {
+        flex-direction: column;
+        gap: 25px;
+        align-items: stretch;
+    }
+    
+    .location-image-container {
+        align-self: center;
+        width: 240px;
+    }
+    
+    .location-image {
+        width: 240px;
+        height: 240px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 15px;
+        padding: 15px;
+    }
+    
+    .object-actions {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .object-detail-container {
+        margin: 90px auto 25px;
+        padding: 15px;
+    }
+    
+    .object-name {
+        font-size: 2.2rem;
+    }
+    
+    .coordinates-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .object-actions {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .info-card {
+        margin-bottom: 20px;
+    }
+    
+    .card-header,
+    .card-content {
+        padding: 20px;
+    }
+    
+    .location-image-container {
+        width: 200px;
+    }
+    
+    .location-image {
+        width: 200px;
+        height: 200px;
+    }
+    
+    .location-marker {
+        width: 16px;
+        height: 16px;
+        border-width: 2px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .table-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .table-actions {
+        justify-content: stretch;
+    }
+    
+    .table-actions .btn {
+        flex: 1;
+    }
+    
+    .photometry-table {
+        font-size: 12px;
+    }
+    
+    .photometry-table th,
+    .photometry-table td {
+        padding: 8px 6px;
+    }
+}
+
+@media (max-width: 480px) {
+    .object-detail-container {
+        margin: 80px auto 20px;
+        padding: 10px;
+    }
+    
+    .object-header {
+        padding: 20px;
+    }
+    
+    .object-name {
+        font-size: 1.8rem;
+    }
+    
+    .notification {
+        min-width: 280px;
+    }
+    
+    .notification-container {
+        right: 10px;
+        left: 10px;
+    }
+    
+    .location-image-container {
+        width: 160px;
+    }
+    
+    .location-image {
+        width: 160px;
+        height: 160px;
+    }
+    
+    .location-marker {
+        width: 14px;
+        height: 14px;
+        border-width: 1px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 10px;
+    }
+    
+    .object-actions {
+        gap: 8px;
+    }
+    
+    .action-btn {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+    
+    .modal-header,
+    .modal-body,
+    .modal-footer {
+        padding: 15px;
+    }
+}
+
+/* Tablet specific adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .basic-info-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .coordinates-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1400px) {
+    .object-detail-container {
+        max-width: 1600px;
+    }
+    
+    .detail-content {
+        grid-template-columns: 1fr 450px;
+    }
+    
+    .basic-info-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* High DPI displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .location-image {
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+    }
+}
+/* ==================== MOBILE OPTIMIZATIONS ==================== */
+
+@media (max-width: 768px) {
+    /* Header Section */
+    .object-header {
+        padding: 15px;
+    }
+
+    .header-main {
+        gap: 20px;
+    }
+
+    .object-title-section {
+        text-align: center;
+        align-items: center;
+    }
+
+    .object-name {
+        font-size: 1.8rem;
+        text-align: center;
+    }
+
+    .object-meta {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .classification-badge, .tag-badge {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+    }
+
+    .action-btn, .edit-btn, .delete-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Basic Info Grid */
+    .basic-info-grid {
+        grid-template-columns: 1fr; /* Single column on mobile */
+        gap: 10px;
+    }
+
+    .info-item {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 6px;
+    }
+
+    .info-label {
+        margin-bottom: 0;
+        min-width: 100px;
+    }
+
+    .info-value {
+        text-align: right;
+    }
+
+    /* Header Actions Card */
+    .header-actions-card {
+        padding: 15px;
+    }
+
+    .external-links-compact {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .external-link-compact {
+        width: 100%;
+        justify-content: center;
+        padding: 10px;
+    }
+
+    /* Location Image */
+    .location-image-container {
+        width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    .location-image {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1/1;
+    }
+
+    /* Detail Content - Flexbox order manipulation for mobile */
+    .detail-content {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    /* Override the desktop css grid */
+    .detail-content {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Target specific cards for exact order requirement: 
+       Aladin(order 1), LC(order 2), Spec(order 3), Comment(order 4) 
+    */
+    #star-map {
+        order: 1;
+    }
+    
+    .detail-left > div:nth-child(1) { /* Photometry Card */
+        order: 2;
+    }
+    
+    .detail-left > div:nth-child(2) { /* Spectrum Card */
+        order: 3;
+    }
+    
+    /* Discovery information Card */
+    .detail-left > div:nth-child(3) {
+        order: 5;
+    }
+
+    .detail-right > div:nth-child(2) { /* Notes/Comments Card */
+        order: 4;
+    }
+
+    /* Need to flatten the left/right wrappers so cards can interleave */
+    .detail-left, .detail-right {
+        display: contents; /* Strip out the column wrappers functionally */
+    }
+
+    /* Once children are contents, the gap comes from .detail-content. Make sure elements take full width */
+    .info-card {
+        border-radius: 12px;
+        width: 100%;
+        margin-bottom: 0 !important; /* Let detail-content handle gap */
+    }
+
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .card-actions {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .action-btn-small {
+        flex: 1;
+        justify-content: center;
+        min-width: 80px;
+    }
+
+    /* Photometry & Spectrum */
+    .photometry-container, .spectrum-container {
+        min-height: 300px;
+    }
+
+    /* Comments */
+    .add-comment-form .form-actions {
+        flex-direction: column;
+    }
+
+    .add-comment-form button {
+        width: 100%;
+    }
+    
+    /* ==================== MOBILE HEADER COLLAPSIBLE ==================== */
+    /* The label styling */
+    .mobile-toggle-label {
+        display: block;
+        text-align: center;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        margin: 20px 0 0 0;
+        cursor: pointer;
+        font-weight: bold;
+        color: #4db8ff; /* Default primary-like color */
+        transition: background 0.2s;
+    }
+    .mobile-toggle-label:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Hide the huge block by default on mobile so LC is at the top */
+    .collapsible-section {
+        display: none !important;
+        flex-direction: column;
+        gap: 15px;
+        margin-top: 20px;
+    }
+    
+    /* When checked, show the stuff */
+    .mobile-toggle-checkbox:checked ~ .collapsible-section {
+        display: flex !important;
+        animation: fadeIn 0.3s ease;
+    }
+    
+    /* Swap text when opened */
+    .mobile-toggle-checkbox:checked ~ .mobile-toggle-label .show-txt { 
+        display: none; 
+    }
+    .mobile-toggle-checkbox:checked ~ .mobile-toggle-label .hide-txt { 
+        display: inline !important; 
+    }
+}
+
+/* Hidden by default on desktop */
+.mobile-toggle-checkbox,
+.mobile-toggle-label {
+    display: none;
+}

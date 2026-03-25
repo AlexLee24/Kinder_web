@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Trigger - Kinder</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/daily_trigger.css') }}">
+    <meta name="description" content="GREAT Lab Daily Trigger">
+    {% include '_favicon.html' %}
+    <style>
+        /* Center log section content */
+        .pa-obs-log-section { text-align: center; }
+        .pa-log-grid { table-layout: fixed; width: 100%; }
+        .pa-log-grid th, .pa-log-grid td { text-align: center; vertical-align: top; }
+        /* First column (Target) should be wider, other date columns equal width */
+        .pa-log-grid thead th:first-child, .pa-log-grid tbody td:first-child { width: 140px; text-align: left; }
+        .pa-log-grid thead th[data-col-date], .pa-log-grid tbody td[data-cell-date] { width: 200px; max-width: 200px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .pa-log-cell { display:flex; flex-direction:column; align-items:center; }
+        .pa-log-legend { justify-content: center; display:flex; gap:12px; }
+        .pa-log-legend-item { display:inline-flex; align-items:center; gap:6px; }
+        .pa-log-controls { justify-content: center; display:flex; gap:10px; align-items:center; }
+
+        /* Scroll-to-top button styles */
+        .scroll-to-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            opacity: 0;
+            pointer-events: none;
+            background-color: #1f6feb;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            transition: opacity 0.3s, transform 0.2s, background-color 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+        .scroll-to-top:hover { background-color: #388bfd; transform: translateY(-3px); }
+        /* Make log control buttons uniform size */
+        .pa-log-controls .pa-btn-log-action {
+            min-width: 88px;
+            height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 6px 10px;
+            box-sizing: border-box;
+        }
+        .pa-log-controls .pa-btn-log-action svg { width: 14px; height: 14px; }
+        .pa-log-controls .pa-btn-log-action { font-size: 14px; }
+        .pa-log-controls .pa-input { height: 40px; padding: 6px 10px; box-sizing: border-box; }
+        .pa-log-controls select.pa-input { display: inline-flex; align-items: center; justify-content: center; }
+        /* Normalize the Show Filter label and checkbox to match button height */
+        .pa-log-controls > label { height: 40px; display: inline-flex; align-items: center; gap: 8px; color: #fff; margin-left: 15px; font-size: 14px; }
+        .pa-log-controls > label input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+        /* Make the Show Filter button visually match other control buttons (rounded black background) */
+        .pa-btn-filter-toggle { background: rgba(0,0,0,0.6); border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; }
+        .pa-btn-filter-toggle:hover { background: rgba(0,0,0,0.7); }
+        .pa-btn-filter-toggle span { color: inherit; font-size: 14px; }
+        .pa-btn-filter-toggle.active { background: rgba(77,184,255,0.12); border: 1px solid rgba(77,184,255,0.18); }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="main-banner">
+        <div class="container">
+            <div class="banner-content">
+                <div class="pa-title-section">
+                    <h1>
+                        <img src="{{ url_for('static', filename='photo/Kinder_light.png') }}" alt="Kinder Logo" class="home-logo">
+                        GREAT Lab Daily Trigger
+                    </h1>
+                    <p class="institution">Schedules, and observation logs.</p>
+                </div>
+
+                <div class="pa-widgets-container">
+                    <div class="pa-calendar-wrap">
+                        <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no"></iframe>
+                    </div>
+                    
+                    <div class="pa-weather-wrap">
+                        <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"></iframe>
+                        <div style="text-align: right; margin-top: 5px; font-size: 0.8rem; opacity: 0.7;">
+                            <!-- DO NOT REMOVE THIS LINK -->
+                            <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener" style="color: #fff; text-decoration: none;">meteoblue</a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="private-section pa-obs-section">
+                    <!-- Header and Tabs container -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <!-- Tabs Header -->
+                        <div class="pa-tabs-header" style="margin-bottom: 0;">
+                            <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn active">SLT Targets</button>
+                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn">LOT Targets</button>
+                        </div>
+                        
+                        <!-- Header Title -->
+                        <h3 style="margin: 0; position: absolute; left: 50%; transform: translateX(-50%);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            Observation Targets
+                        </h3>
+                        
+                        <!-- Observation Input Action -->
+                        <div class="pa-obs-actions" style="margin-bottom: 0; display: flex; gap: 10px; align-items: center;">
+                            <button onclick="openVisibilityPlot()" class="pa-btn-log-action" style="background-color: rgba(77, 184, 255, 0.15); border: 1px solid rgba(77, 184, 255, 0.3); color: #4db8ff; border-radius: 8px; padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                Check Visibility
+                            </button>
+                            <button onclick="openTargetModal('SLT')" class="pa-btn-slt" id="btn-add-slt">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add SLT Target
+                            </button>
+                            <button onclick="openTargetModal('LOT')" class="pa-btn-lot" id="btn-add-lot" style="display: none;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add LOT Target
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SLT Container -->
+                    <div id="content-SLT">
+                        <table class="pa-target-table">
+                            <thead id="slt-head">
+                                <tr>
+                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-ra-dec">RA / DEC</th>
+                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></th>
+                                    <th class="pa-col-filter">Filter / Exposure</th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="col-note">Note</th>
+                                    <th class="col-note">Note for GREATLab</th>
+                                    <th class="pa-col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="slt-list">
+                                <tr><td colspan="8" class="pa-empty-row">No SLT targets added yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- LOT Container -->
+                    <div id="content-LOT" style="display: none;">
+                        <table class="pa-target-table">
+                            <thead id="lot-head">
+                                <tr>
+                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-ra-dec">RA / DEC</th>
+                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></th>
+                                    <th class="pa-col-filter">Filter / Exposure</th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="col-note">Note</th>
+                                    <th class="col-note">Note for GREATLab</th>
+                                    <th class="pa-col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lot-list">
+                                <tr><td colspan="8" class="pa-empty-row">No LOT targets added yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+                <!-- Observation Log Section -->
+                <div class="private-section pa-obs-log-section">
+                    <h3>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                        Observation Log
+                    </h3>
+                    
+                    <div class="pa-log-controls">
+                        <select id="log-year" onchange="renderLogGrid()" class="pa-input" style="width: 120px; display: inline-block; margin-right: 10px;"></select>
+                        <select id="log-month" onchange="renderLogGrid()" class="pa-input" style="width: 120px; display: inline-block; margin-right: 10px;"></select>
+                        <button onclick="scrollToToday()" class="pa-btn-log-action">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            Today
+                        </button>
+                        <button onclick="renderLogGrid(false)" class="pa-btn-log-action">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                            Refresh
+                        </button>
+                        <button id="openDataBtn" class="pa-btn-log-action">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-database-search-icon lucide-database-search"><path d="M21 11.693V5"/><path d="m22 22-1.875-1.875"/><path d="M3 12a9 3 0 0 0 8.697 2.998"/><path d="M3 5v14a9 3 0 0 0 9.28 2.999"/><circle cx="18" cy="18" r="3"/><ellipse cx="12" cy="5" rx="9" ry="3"/></svg>
+                            Data
+                        </button>
+                        <button id="logShowFilterBtn" class="pa-btn-log-action" aria-pressed="false">
+                            <span>Show Filter</span>
+                        </button>
+                        <input type="text" id="log-target-search" class="pa-input" placeholder="Search target..." style="width: 150px;" oninput="renderLogGrid(false, true)">
+                        <input type="checkbox" id="log-show-filter-checkbox" style="display:none;" checked />
+
+                    </div>
+
+                    <div class="pa-log-legend">
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-cyan"></span>
+                            <span>LOT follow-up</span>
+                        </div>
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-orange"></span>
+                            <span>SLT follow-up</span>
+                        </div>
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot pa-log-legend-dot-grey"></span>
+                            <span>Off target</span>
+                        </div>
+                        <div class="pa-log-legend-item">
+                            <span class="pa-log-legend-dot" style="background-color:#3b3b3b;border:1px solid #666;"></span>
+                            <span>Discontinued target</span>
+                        </div>
+                    </div>
+
+                    <div class="pa-log-container">
+                        <!-- Top Dual Scrollbar -->
+                        <div class="pa-log-grid-top-scrollbar" id="log-grid-top-scrollbar">
+                            <div id="log-grid-top-scrollbar-dummy" style="height: 1px;"></div>
+                        </div>
+
+                        <div class="pa-log-grid-container" id="log-grid-container">
+                            <table class="pa-log-grid" id="log-grid">
+                                <thead id="log-grid-head"></thead>
+                                <tbody id="log-grid-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <h4>Design by Aiswarya Sankar Kachiprath</h4>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+    
+    <!-- New Target Modal -->
+    <div id="targetModal" class="pa-modal-overlay">
+        <div class="pa-modal-box">
+            <h3>New Target</h3>
+            
+            <form id="add-target-form" onsubmit="addObservationTarget(event)">
+                <!-- Row 1: Target Name / Magnitude -->
+                <div class="pa-form-row two-col">
+                    <div style="position: relative;">
+                        <input type="text" id="obs-name" required placeholder="Target Name (search TNS)" autocomplete="off" oninput="searchTarget(this.value)" class="pa-input">
+                        <div id="search-results-dropdown" class="pa-search-dropdown"></div>
+                    </div>
+                    <div>
+                        <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Newest Magnitude" class="pa-input">
+                    </div>
+                </div>
+                
+
+                    <!-- scroll-to-top button removed from modal; injected globally at end of body -->
+                <!-- Row 2: RA / Dec -->
+                <div class="pa-form-row two-col">
+                    <div>
+                        <input type="text" id="obs-ra" required placeholder="RA (h:m:s or deg)" class="pa-input">
+                    </div>
+                    <div>
+                        <input type="text" id="obs-dec" required placeholder="Dec (d:m:s or deg)" class="pa-input">
+                    </div>
+                </div>
+                
+                <!-- Row 3: Priority / Repeat -->
+                <div class="pa-form-row priority-row">
+                    <div class="pa-field">
+                        <span class="pa-field-label">Priority</span>
+                        <select id="obs-priority">
+                            <option value="Normal">Normal</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="pa-field">
+                        <span class="pa-field-label">Repeat</span>
+                        <input type="number" id="obs-count" value="0" min="0">
+                    </div>
+                </div>
+
+                <!-- Hidden Selected Telescope state -->
+                <input type="hidden" id="obs-telescope" value="SLT">
+
+                <!-- Row 4: LOT Program (conditional) -->
+                <div id="lot-programs-container" class="pa-lot-program">
+                    <div class="pa-field">
+                        <span class="pa-field-label">Program (LOT)</span>
+                        <input type="text" id="obs-program" placeholder="e.g. R01">
+                    </div>
+                </div>
+
+                <!-- Auto exposure button -->
+                <div id="slt-auto-exp-container" class="pa-auto-exp-container">
+                    <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                        Auto Exposure
+                    </button>
+                    <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
+                </div>
+
+                <!-- Observation Configuration -->
+                <div class="pa-obs-config">
+                    <h4>Observation Configuration</h4>
+                    
+                    <div id="filter-rows-container" class="pa-filter-rows">
+                        <!-- JS generated rows -->
+                    </div>
+
+                    <div class="pa-filter-actions">
+                        <button type="button" onclick="addFilterRow('rp')" class="pa-btn-link">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Filter
+                        </button>
+                        <button type="button" onclick="addAllFilters(['up', 'gp', 'rp', 'ip', 'zp'])" class="pa-btn-link">
+                            add All ugriz
+                        </button>
+                    </div>
+
+                    <div id="total-exposure-container" class="pa-total-exposure">
+                        Total exposure: <span id="total-exposure-text"></span>
+                    </div>
+                </div>
+
+                <!-- Note -->
+                <div class="pa-note-field">
+                    <input type="text" id="obs-plan" placeholder="Note (required for Urgent priority)" class="pa-input">
+                </div>
+
+                <!-- Note GL -->
+                <div class="pa-note-field" style="margin-top: 10px;">
+                    <input type="text" id="obs-note-gl" placeholder="Note for GREATLab" class="pa-input">
+                </div>
+
+                <!-- Buttons -->
+                <div class="pa-modal-footer">
+                    <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
+                    <button type="submit" class="pa-btn-save">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Save Target
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Log Modal (Add/Edit) -->
+    <div id="logModal" class="pa-modal-overlay">
+        <div class="pa-modal-box">
+            <h3>Add / Edit Observation Log</h3>
+            <form onsubmit="saveObservationLog(event)">
+                <div class="pa-form-row">
+                    <div class="pa-field">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Member</span>
+                        <select id="log-edit-user" class="pa-input" required>
+                            <option value="">-- Select Member --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pa-form-row" style="margin-top: 15px;">
+                    <div class="pa-field" style="width: 100%;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Target</span>
+                        <div id="log-edit-target-display" class="pa-input" style="display:flex; align-items:center; min-height:40px; opacity:0.9;"></div>
+                    </div>
+                </div>
+
+                <input type="hidden" id="log-edit-date" required>
+                <input type="hidden" id="log-edit-target-id" required>
+                <input type="hidden" id="log-edit-telescope" required>
+
+                <div class="pa-form-row" style="margin-top: 15px;">
+                    <div class="pa-field" style="width: 160px;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Priority</span>
+                        <select id="log-edit-priority" class="pa-input">
+                            <option value="Normal">Normal</option>
+                            <option value="High">High</option>
+                            <option value="Urgent">Urgent</option>
+                        </select>
+                    </div>
+                    <div class="pa-field" style="width: 100%; margin-top: 12px;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Program</span>
+                        <input type="text" id="log-edit-program" class="pa-input" placeholder="e.g. R01">
+                    </div>
+                </div>
+
+                <div class="pa-form-row two-col" style="margin-top: 20px;">
+                    <label style="display: flex; align-items: center; gap: 8px; color: #fff; cursor: pointer;">
+                        <input type="checkbox" id="log-edit-trigger-status" style="width: 18px; height: 18px; accent-color: #4db8ff;" onchange="toggleLogFields()">
+                        Is Triggered
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; color: #fff; cursor: pointer;">
+                        <input type="checkbox" id="log-edit-obs-status" style="width: 18px; height: 18px; accent-color: #4db8ff;" onchange="toggleLogFields()">
+                        Is Observed
+                    </label>
+                </div>
+
+                <!-- Trigger detail fields -->
+                <div id="trigger-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid rgba(77,184,255,0.3); border-radius: 8px; background: rgba(77,184,255,0.05);">
+                    <div style="color: #4db8ff; font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Trigger Details</div>
+                    <div id="log-trigger-filter-rows" class="pa-filter-rows"></div>
+                    <div class="pa-filter-actions">
+                        <button type="button" onclick="addLogFilterRow('trigger', 'rp')" class="pa-btn-link">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Filter
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Observed detail fields -->
+                <div id="observed-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; background: rgba(76,175,80,0.05);">
+                    <div style="color: #4caf50; font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Observed Details</div>
+                    <div id="log-observed-filter-rows" class="pa-filter-rows"></div>
+                    <div class="pa-filter-actions">
+                        <button type="button" onclick="addLogFilterRow('observed', 'rp')" class="pa-btn-link">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Filter
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pa-modal-footer" style="margin-top: 20px;">
+                    <button type="button" onclick="closeLogModal()" class="pa-btn-cancel">Cancel</button>
+                    <button type="button" onclick="deleteObservationLog()" class="pa-btn-cancel">Delete</button>
+                    <button type="submit" class="pa-btn-save">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        Save Log
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Visibility Plot Modal -->
+    <div id="visibilityPlotModal" class="pa-modal-overlay">
+        <div class="pa-modal-box" style="max-width: 90vw; width: 1200px; height: 85vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Visibility Plot (<span id="vp-tab-name">SLT</span>)</h3>
+                <button type="button" onclick="closeVisibilityPlot()" class="pa-btn-cancel" style="padding: 6px 12px;">Close</button>
+            </div>
+            
+            <!-- Body area -->
+            <div style="display: flex; gap: 20px; flex: 1; min-height: 0;">
+                <!-- Left: Plotly Plot -->
+                <div style="flex: 1; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative;">
+                    <div id="vp-loading" style="position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); color: #aaa;">Computing visibility...</div>
+                    <div id="vp-plot-area" style="width: 100%; height: 100%;"></div>
+                </div>
+                <!-- Right: Target List with Toggles -->
+                <div style="width: 250px; background: rgba(0,0,0,0.15); border-radius: 8px; padding: 15px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.05);">
+                    <h4 style="margin-top: 0; color: #aaa; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Targets</h4>
+                    <div id="vp-target-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- JS generated target toggles -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<!-- Required JS file -->
+
+
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
+    <!-- Global scroll-to-top button -->
+    <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+    </button>
+    <script>
+        (function() {
+            var btn = document.getElementById("scrollToTopBtn");
+            if (!btn) return;
+            function updateBtn() {
+                if (window.scrollY > 300) {
+                    btn.style.opacity = "1";
+                    btn.style.pointerEvents = "auto";
+                } else {
+                    btn.style.opacity = "0";
+                    btn.style.pointerEvents = "none";
+                }
+            }
+            window.addEventListener('scroll', updateBtn);
+            // init
+            updateBtn();
+        })();
+    </script>
+    <script>
+        // Attach Data button click handler to avoid long inline onclick
+        (function() {
+            var dataBtn = document.getElementById('openDataBtn');
+            if (!dataBtn) return;
+            dataBtn.addEventListener('click', function() {
+                window.open('https://drive.google.com/drive/folders/1vE5m4ospsew_iNOV9hdz_PxxIY2zW_Vc', '_blank');
+            });
+        })();
+    </script>
+    <script>
+        // Wire up Show Filter button to toggle hidden checkbox and re-render grid
+        (function() {
+            var btn = document.getElementById('logShowFilterBtn');
+            var cb = document.getElementById('log-show-filter-checkbox');
+            if (!btn || !cb) return;
+
+            var svgEye = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-icon lucide-eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+            var svgEyeClosed = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-eye-closed-icon lucide-eye-closed"><path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/></svg>';
+
+            function renderContent() {
+                var icon = cb.checked ? svgEye : svgEyeClosed;
+                btn.innerHTML = icon + '<span>Show Filter</span>';
+            }
+
+            function updateVisual() {
+                renderContent();
+                if (cb.checked) {
+                    btn.classList.add('active');
+                    btn.setAttribute('aria-pressed', 'true');
+                } else {
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-pressed', 'false');
+                }
+            }
+
+            // init
+            updateVisual();
+            btn.addEventListener('click', function() {
+                cb.checked = !cb.checked;
+                updateVisual();
+                // trigger re-render (uses checkbox state inside render)
+                try { renderLogGrid(false); } catch (e) { console.error(e); }
+            });
+        })();
+    </script>
+</body>
+</html>

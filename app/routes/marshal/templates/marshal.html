@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transient Marshal - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
+    {% include '_favicon.html' %}
+    <style>
+        .loading-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px;
+            width: 100%;
+            grid-column: 1 / -1;
+            min-height: 200px;
+        }
+        .loading-overlay p {
+            color: #ffffff;
+            font-size: 1.2rem;
+            margin-top: 15px;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <!-- Admin status for JavaScript -->
+    {% if session.user and session.user.is_admin %}
+    <div data-admin="true" style="display: none;"></div>
+    {% endif %}
+
+    <div class="marshal-container">
+        <!-- Top Section Splitter -->
+        <div class="top-section-split">
+            <!-- Top Control Panel -->
+            <div class="control-panel">
+            <div class="panel-header">
+                <h1>Transient Marshal</h1>
+                <!-- <h3>Data since 2016-01</h3> -->
+                <div class="status-info">
+                    <span class="total-count">{{ total_count }} objects</span>
+                    <span class="last-sync">
+                        Last sync: 
+                        {% if last_sync %}
+                            <span id="lastSync">{{ last_sync.time }}</span>
+                            {% if last_sync.status == 'completed' %}
+                                <span class="sync-status success">
+                                    ({{ last_sync.imported }} new, {{ last_sync.updated }} updated
+                                    {% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})
+                                </span>
+                            {% elif last_sync.status == 'failed' %}
+                                <span class="sync-status error">(Failed)</span>
+                            {% else %}
+                                <span class="sync-status pending">({{ last_sync.status|title }})</span>
+                            {% endif %}
+                        {% else %}
+                            <span id="lastSync">Never</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Main Statistics -->
+            <div class="main-stats">
+                <div class="big-stat-card at">
+                    <div class="stat-info">
+                        <span class="stat-number">{{ at_count }}</span>
+                        <span class="stat-label">AT</span>
+                    </div>
+                </div>
+                <div class="big-stat-card classified">
+                    <div class="stat-info">
+                        <span class="stat-number">{{ classified_count }}</span>
+                        <span class="stat-label">SN</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secondary Statistics -->
+            <div class="secondary-stats">
+                <div class="small-stat-card inbox clickable" onclick="filterByStatus('object')" title="Click to filter Inbox objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="inboxCount">{{ inbox_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg> Inbox</span>
+                    </div>
+                </div>
+                <div class="small-stat-card followup clickable" onclick="filterByStatus('followup')" title="Click to filter Follow-up objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="followupCount">{{ followup_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg> Follow-up</span>
+                    </div>
+                </div>
+                <div class="small-stat-card finished clickable" onclick="filterByStatus('finished')" title="Click to filter Finished objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="finishedCount">{{ finished_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg> Finished</span>
+                    </div>
+                </div>
+                <div class="small-stat-card snoozed clickable" onclick="filterByStatus('snoozed')" title="Click to filter Snoozed objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="snoozedCount">{{ snoozed_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg> Snoozed</span>
+                    </div>
+                </div>
+                <div class="small-stat-card flag clickable" onclick="filterByStatus('flag')" title="Click to filter Flagged objects">
+                    <div class="stat-info">
+                        <span class="stat-number" id="flagCount">{{ flag_count }}</span>
+                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Flag for DETECT</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search and Filter Tools -->
+            <div class="search-tools">
+                <!-- Main Search -->
+                <div class="search-section">
+                    <div class="search-input-group">
+                        <input type="text" id="searchInput" placeholder="Search by name..">
+                        <button class="apply-advanced-btn" onclick="performSearch()">
+                            Search
+                        </button>
+                        <button class="clear-btn" onclick="clearAllFilters()">
+                            Clear
+                        </button>
+                        <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
+                            <span>Filters</span>
+                            <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Advanced Filters -->
+                <div class="advanced-filters">
+                    
+                </div>
+
+                <!-- Advanced Filters Modal -->
+                <div class="modal-overlay" id="advancedFilterModal" style="display: none;">
+                    <div class="upload-modal" style="max-width: 800px; background: var(--glass-bg); color: white; border: 1px solid var(--glass-border); padding: 20px;">
+                    <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin:0;">Advanced Filters</h3>
+                        <button class="close-modal" onclick="toggleAdvancedFilters()" style="background:none; border:none; color:white; cursor:pointer;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                    </div>
+                    <div class="advanced-filters-content" id="advancedFiltersContent" style="display:block;">
+                        <div class="filter-row">
+                            <!-- Classification Filter -->
+                            <div class="filter-group">
+                                <label>Classification</label>
+                                <select id="classificationFilter" multiple style="height: 100px;">
+                                    <option value="">All Classifications</option>
+                                    <!-- Dynamic options will be populated by JavaScript -->
+                                </select>
+                                <div class="filter-tooltip">Filter by object classification type (hold Ctrl/Cmd to select multiple)</div>
+                            </div>
+                            
+                            <!-- Tag Filter -->
+                            <div class="filter-group">
+                                <label>Status Tag</label>
+                                <select id="tagFilter">
+                                    <option value="">All Status</option>
+                                    <option value="object">Inbox</option>
+                                    <option value="followup">Follow-up</option>
+                                    <option value="finished">Finished</option>
+                                    <option value="snoozed">Snoozed</option>
+                                    <option value="flag">Flagged</option>
+                                </select>
+                                <div class="filter-tooltip">Filter by current status tag</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Discovery Date Range</label>
+                                <div class="date-range-group">
+                                    <input type="date" id="dateFrom" placeholder="From">
+                                    <span class="range-separator">—</span>
+                                    <input type="date" id="dateTo" placeholder="To">
+                                </div>
+                                <div class="filter-tooltip">Filter by discovery date range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Apparent Magnitude</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="appMagMin" placeholder="Min mag">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="appMagMax" placeholder="Max mag">
+                                </div>
+                                <div class="filter-tooltip">Filter by apparent magnitude range</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Redshift Range</label>
+                                <div class="redshift-range-group">
+                                    <input type="number" step="0.001" id="redshiftMin" placeholder="Min z">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.001" id="redshiftMax" placeholder="Max z">
+                                </div>
+                                <div class="filter-tooltip">Filter by redshift (z) range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Discoverer/Survey</label>
+                                <input type="text" id="discovererFilter" placeholder="e.g., ATLAS, ZTF, Gaia...">
+                                <div class="filter-tooltip">Filter by discovering survey or group</div>
+                            </div>
+                        </div>
+
+                        <div class="filter-row">
+                            <div class="filter-group">
+                                <label>Brightest Mag Range</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="brightestMagMin" placeholder="Min mag">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="brightestMagMax" placeholder="Max mag">
+                                </div>
+                                <div class="filter-tooltip">Filter by brightest magnitude range</div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <label>Brightest Abs Mag Range</label>
+                                <div class="magnitude-range-group">
+                                    <input type="number" step="0.1" id="brightestAbsMagMin" placeholder="Min M">
+                                    <span class="range-separator">—</span>
+                                    <input type="number" step="0.1" id="brightestAbsMagMax" placeholder="Max M">
+                                </div>
+                                <div class="filter-tooltip">Filter by brightest absolute magnitude range</div>
+                            </div>
+                        </div>
+                        
+                        <div class="filter-row" style="margin-top:20px;">
+                            <div class="filter-actions">
+                                <button class="apply-advanced-btn" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
+                                    Apply Filters
+                                </button>
+                                <button class="clear-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
+                                    Clear All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Admin Tools -->
+                <div class="admin-tools">
+                    {% if session.user and session.user.is_admin %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- View Controls -->
+            <div class="view-controls">
+                <div class="view-toggle">
+                    <button class="view-btn active" data-view="cards" onclick="switchView('cards')">
+                        Cards
+                    </button>
+                    <button class="view-btn" data-view="table" onclick="switchView('table')">
+                        Table
+                    </button>
+                    <!-- <button class="view-btn" data-view="compact" onclick="switchView('compact')">
+                        Compact
+                    </button> -->
+                </div>
+                
+                <div class="sort-controls">
+                    <select id="sortBy" onchange="applySorting()">
+                        <option value="lastmodified">Last Update</option>
+                        <option value="last_photometry">Last Photometry</option>
+                        <option value="discovery_date">Discovery Date</option>
+                        <option value="magnitude">Discovery Magnitude</option>
+                        <option value="brightest_mag">Brightest Mag</option>
+                        <option value="brightest_abs_mag">Brightest M</option>
+                        <option value="redshift">Redshift</option>
+                    </select>
+                    <button class="sort-order-btn" onclick="toggleSortOrder()" id="sortOrderBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side Panel -->
+        <div class="dashboard-side-panel">
+            <div class="side-panel-grid">
+                <!-- Top Viewed -->
+                <div class="side-widget">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h3 style="margin-bottom: 0;">Top Viewed</h3>
+                        <select id="topViewedMode" onchange="loadTopViewed()" style="padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--glass-bg); color: var(--text-primary);">
+                            <option value="all">All Time</option>
+                            <option value="30days">30 Days</option>
+                        </select>
+                    </div>
+                    <ul class="widget-list" id="topViewedList">
+                        <!-- Items populated by JS/Backend -->
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </div>
+
+                <!-- Recent Comments -->
+                <div class="side-widget">
+                    <h3>Recent Comments</h3>
+                    <ul class="widget-list" id="recentCommentsList">
+                        <!-- Items populated by JS/Backend -->
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </div>
+
+                <!-- Empty Block 1 -->
+                <div class="side-widget empty-widget">
+                    <h3>Reserved Block 1</h3>
+                    <div class="widget-placeholder">Coming soon</div>
+                </div>
+
+                <!-- Empty Block 2 -->
+                <div class="side-widget empty-widget">
+                    <h3>Reserved Block 2</h3>
+                    <div class="widget-placeholder">Coming soon</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+        <!-- Main Content Area -->
+        <div class="content-area">
+            <!-- Top Pagination Controls -->
+            <div class="pagination-container top-pagination">
+                <div class="pagination-info">
+                    <span id="topPaginationInfo">Showing 0 of 0 objects</span>
+                </div>
+                <div class="pagination-controls" id="topPaginationControls">
+                </div>
+                <div class="page-size-selector">
+                    <label>Show:</label>
+                    <select id="topPageSizeSelect" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Pre-loader if objects are not initially provided -->
+            {% if not objects %}
+            <div id="loadingIndicator" class="loading-overlay" style="display: flex;">
+                <div class="spinner"></div><p>Loading objects...</p>
+            </div>
+            {% endif %}
+
+            <!-- Cards View -->
+            <div class="objects-grid" id="cardsView">
+                {% for obj in objects %}
+                {% set real_tag = obj.tag or 'object' %}
+                <div class="object-card tag-{{ real_tag }}" 
+                    data-classification="{{ obj.type or 'AT' }}" 
+                    data-discovery="{{ obj.discoverydate or '' }}" 
+                    data-tag="{{ real_tag }}"
+                    data-magnitude="{{ obj.discoverymag or '' }}"
+                    data-redshift="{{ obj.redshift or '' }}"
+                    data-lastmodified="{{ obj.lastmodified or '' }}"
+                    data-lastphotometry="{{ obj.last_photometry_date or '' }}"
+                    data-brightest-mag="{{ obj.brightest_mag or '' }}"
+                    data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}">
+                
+                <div class="card-header">
+                    <div class="object-name">
+                        {% if obj.name and obj.name|length >= 4 %}
+                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                            {% set full_name = (obj.name_prefix or '') + obj.name %}
+                            
+                            {% if year_letters and not obj.name_prefix %}
+                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank">
+                                    {{ obj.name_prefix or '' }}{{ obj.name }}
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" target="_blank">
+                                    {{ obj.name_prefix or '' }}{{ obj.name }}
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('marshal.marshal') }}">
+                                {{ obj.name_prefix or '' }}{{ obj.name }}
+                            </a>
+                        {% endif %}
+                        {% if obj.internal_names %}
+                            {% set ep_names = [] %}
+                            {% for part in obj.internal_names.split(',') %}
+                                {% set p = part.strip() %}
+                                {% if p.startswith('EP') %}
+                                    {% set _ = ep_names.append(p) %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if ep_names %}
+                                <span class="ep-alias">({{ ep_names|join(', ') }})</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
+                        {{ obj.type or 'AT' }}
+                    </div>
+                </div>
+                
+                <div class="card-content">
+                    <div class="coordinates">
+                        <div class="coord-item">
+                            <span class="coord-label">RA:</span>
+                            <span class="coord-value">{{ "%.3f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
+                        </div>
+                        <div class="coord-item">
+                            <span class="coord-label">Dec:</span>
+                            <span class="coord-value">{{ "%.3f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="object-info">
+                        <div class="info-item">
+                            <span>Discovery Mag = {{ obj.discoverymag or '---' }}</span>
+                        </div>
+
+                        <div class="info-item">
+                            <span>Brightest Mag = {{ obj.brightest_mag or '---' }}</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span>Redshift = {{ obj.redshift or '---' }}</span>
+                        </div>
+
+                        <div class="info-item">
+                            <span>Brightest M = {{ obj.brightest_abs_mag or '---' }}</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span>Date: {{ obj.discoverydate[:10] if obj.discoverydate else '---' }}</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span>Source: {{ obj.source_group or '---' }}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card-footer">
+                    <div class="tag-badge {{ real_tag }}">
+                        {% if real_tag == 'followup' %}
+                            Follow-up
+                        {% elif real_tag == 'finished' %}
+                            Finished
+                        {% elif real_tag == 'snoozed' %}
+                            Snoozed
+                        {% else %}
+                            Inbox
+                        {% endif %}
+                    </div>
+                    <div class="last-update">
+                        {{ obj.time_received[:16] if obj.time_received else 'No update' }}
+                    </div>
+                    <div class="card-actions">
+                        {% if obj.name and obj.name|length >= 4 %}
+                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                            {% set full_name = (obj.name_prefix or '') + obj.name %}
+                            
+                            {% if year_letters and not obj.name_prefix %}
+                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank">
+                                    View
+                                </a>
+                            {% else %}
+                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
+                                    View
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
+                                View
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+                {% endfor %}
+            </div>
+
+            <!-- Table View -->
+            <div class="objects-table" id="tableView" style="display: none;">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th class="name-column">Object Name</th>
+                                <th class="class-column">Class</th>
+                                <th>RA (J2000)</th>
+                                <th>Dec (J2000)</th>
+                                <th>Discover Mag</th>
+                                <th>Brightest Mag</th>
+                                <th>Brightest M</th>
+                                <th>Redshift</th>
+                                <th>Discovery Date</th>
+                                <th>Discoverer</th>
+                                <th class="tag-column">Tag</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Compact View -->
+            <div class="objects-compact" id="compactView" style="display: none;">
+            </div>
+
+            <!-- Bottom Pagination Controls -->
+            <div class="pagination-container bottom-pagination">
+                <div class="pagination-info">
+                    <span id="paginationInfo">Showing 0 of 0 objects</span>
+                </div>
+                <div class="pagination-controls" id="paginationControls">
+                </div>
+                <div class="page-size-selector">
+                    <label>Show:</label>
+                    <select id="pageSizeSelect" onchange="changePageSize()">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="uploadModalOverlay" style="display: none;">
+        <div class="upload-modal">
+            <div class="modal-header">
+                <h3> Upload TNS CSV Data</h3>
+                <button class="close-modal" onclick="closeUploadModal()"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            </div>
+            <div class="modal-content">
+                <div class="upload-info">
+                    <p><strong>Supported File Types:</strong></p>
+                    <ul>
+                        <li>.csv files</li>
+                        <li>.zip files (containing CSV)</li>
+                        <li>Max file size: 50MB</li>
+                    </ul>
+                    <p><strong>Important Notes:</strong></p>
+                    <ul>
+                        <li>System will automatically detect new or updated objects</li>
+                        <li>Duplicate objects will be updated based on objid</li>
+                        <li>Please do not close the window during upload</li>
+                    </ul>
+                </div>
+                
+                <div class="upload-section">
+                    <div class="file-drop-zone" id="fileDropZone">
+                        <div class="drop-content">
+                            <div class="upload-icon"></div>
+                            <p>Drag files here or click to select files</p>
+                            <p class="file-types">Supports .csv, .zip formats</p>
+                        </div>
+                        <input type="file" id="csvFileInput" accept=".csv,.zip" style="display: none;">
+                    </div>
+                    
+                    <div class="selected-file" id="selectedFileInfo" style="display: none;">
+                        <div class="file-info">
+                            <span class="file-name" id="selectedFileName"></span>
+                            <span class="file-size" id="selectedFileSize"></span>
+                        </div>
+                        <button class="remove-file" onclick="clearSelectedFile()">Remove</button>
+                    </div>
+                </div>
+                
+                <div class="upload-options">
+                    <label>
+                        <input type="checkbox" id="skipDuplicates" checked>
+                        Skip duplicate records (recommended)
+                    </label>
+                    <label>
+                        <input type="checkbox" id="validateData" checked>
+                        Validate data format
+                    </label>
+                </div>
+                
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="progressText">Preparing upload...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                </div>
+                
+                <div class="upload-result" id="uploadResult" style="display: none;">
+                    <div class="result-content">
+                        <div class="result-icon" id="resultIcon"></div>
+                        <div class="result-text" id="resultText"></div>
+                        <div class="result-stats" id="resultStats"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
+                <button class="upload-btn" onclick="startUpload()" id="startUploadBtn" disabled>
+                     Start Upload
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <button id="backToTopBtn" title="Go to top">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 15l-6-6-6 6"/>
+        </svg>
+    </button>
+
+    <script src="{{ url_for('static', filename='js/marshal.js') }}"></script>
+</body>
+</html>

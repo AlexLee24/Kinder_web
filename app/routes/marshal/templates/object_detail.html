@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="referrer" content="no-referrer">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ object_name }} - Object Detail - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/object_detail_main.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    
+    <!-- Admin status for JavaScript -->
+    {% if session.user %}
+    <div data-user-email="{{ session.user.email }}" style="display: none;"></div>
+    {% if session.user.is_admin %}
+    <div data-admin="true" style="display: none;"></div>
+    {% endif %}
+    {% endif %}
+
+
+
+    <div class="object-detail-container">
+        <!-- Top Navigation Bar -->
+        <div class="top-nav-bar">
+            <div class="top-left-group">
+                <div class="breadcrumb" style="display:inline-flex; align-items:center;">
+                    <a href="{{ url_for('marshal.marshal') }}" style="color:#a0a0b0; text-decoration:none;">Marshal</a>
+                    <span style="margin: 0 8px; color:#666;">/</span>
+                </div>
+                <h1 class="object-main-title" id="objectName">{{ object_name }}</h1>
+                <span class="badge type-badge" id="classificationBadge">
+                    {{ object_data.type or 'AT' }}
+                </span>
+                <span class="badge tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
+                    {{ object_data.tag|title or 'Inbox' }}
+                </span>
+                {% if session.user and session.user.is_admin %}
+                <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#ffbe0b;" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round."><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+                </button>
+                {% endif %}
+            </div>
+            
+            <div class="top-right-group">
+                <div class="coord-box" title="RA / Dec">
+                    RA: {{ "%.5f"|format(object_data.ra) if object_data.ra else '--' }}&deg; &nbsp;|&nbsp;
+                    Dec: {{ "%.5f"|format(object_data.declination) if object_data.declination else '--' }}&deg;
+                </div>
+                <button class="btn-modern" onclick="copyCoordinates()">Copy Coords</button>
+                <button class="btn-modern" onclick="openVisibilityPlot()">Visibility Chart</button>
+            </div>
+        </div>
+
+        <!-- Middle Section: Details, DESI, Aladin -->
+        <div class="mid-panels-grid">
+            
+            <!-- Panel 1: Details & Tools -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Metadata & Info</h3>
+                    {% if session.user and session.user.is_admin %}
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="editObjects()">Edit</button>
+                    {% endif %}
+                </div>
+                <div class="panel-body">
+                    <ul class="detail-list">
+                        <li class="detail-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                            <span class="detail-label">Internal Name</span>
+                            <span class="detail-value" id="internalName" style="font-size: 0.85rem; line-height: 1.3;">{{ object_data.internal_names.split(',')|map('trim')|join(', ') if object_data.internal_names else 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">RA (HMS)</span>
+                            <span class="detail-value" id="raHMS"></span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Dec (DMS)</span>
+                            <span class="detail-value" id="decDMS"></span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Discovery Date</span>
+                            <span class="detail-value">{{ object_data.discoverydate[:10] if object_data.discoverydate else 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Reporting Group</span>
+                            <span class="detail-value">{{ object_data.reporting_group or 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Redshift (z)</span>
+                            <span class="detail-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
+                        </li>
+                        <li class="detail-item">
+                            <span class="detail-label">Luminosity Distance (Mpc)</span>
+                            <span class="detail-value">
+                                {% if object_data.distance_mpc %}
+                                    {{ "%.2f"|format(object_data.distance_mpc) }}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </span>
+                        </li>
+                        <li class="detail-item" style="border:none;">
+                            <span class="detail-label">Peak Abs Mag (ext and K corr)</span>
+                            <span class="detail-value">
+                                {% if object_data.brightest_abs_mag %}
+                                    {{ "%.3f"|format(object_data.brightest_abs_mag) }} 
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </span>
+                        </li>
+                    </ul>
+                    
+                    <div class="quick-links">
+                        <a href="javascript:void(0)" class="link-btn" onclick="openTNSPage()">TNS</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openNED()">NED</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openDESI()">DESI LS</a>
+                        <a href="javascript:void(0)" class="link-btn" onclick="openExtinction()">Extinction</a>
+                    </div>
+                    
+                    {% if session.user and session.user.is_admin %}
+                    <div style="margin-top: 16px; display:flex; gap:8px;">
+                        <button class="btn-modern" style="flex:1; border-color:#8338ec; color:#8338ec;" onclick="changeStatus('followup')">Follow-up</button>
+                        <button class="btn-modern" style="flex:1; border-color:#38b000; color:#38b000;" onclick="changeStatus('finished')">Finished</button>
+                        <button class="btn-modern" style="flex:1; border-color:#ff9e00; color:#ff9e00;" onclick="changeStatus('snoozed')">Snooze</button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Panel 2: DESI Image -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>DESI Legacy Survey</h3>
+                </div>
+                <div class="panel-body" style="padding:10px;">
+                    <div class="media-container" id="locationImage">
+                        <div class="image-loading" id="imageLoading" style="position:absolute;">
+                            <div class="loading-spinner-small"></div>
+                        </div>
+                        <img id="locationImageSrc" style="display:none; width:100%; height:100%; object-fit:cover; cursor:pointer;" alt="Location" onclick="openDESI()">
+                        <div class="location-marker" id="locationMarker" style="display:none;" onclick="openDESI()"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel 3: Aladin Star Map -->
+            <div class="panel-card" id="star-map">
+                <div class="panel-header">
+                    <h3>Aladin</h3>
+                    <select id="surveySelect" class="btn-modern" style="padding:2px 8px; border:none; outline:none;" onchange="changeSurvey()">
+                        <option value="CDS/P/DSS2/color" selected>DSS2</option>
+                        <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-LS-DR10</option>
+                        <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS-DR1-Color</option>
+                        <option value="CDS/P/HST/color">HST-Color</option>
+                        <option value="CDS/P/Rubin/FirstLook">Rubin-LSST-First-Look</option>
+                    </select>
+                </div>
+                <div class="panel-body" style="padding:10px;">
+                    <div class="media-container">
+                        <div id="aladin-lite-div" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Bottom Section: Photometry, Spectrum, Comments -->
+        <div class="bottom-grid">
+            
+            <!-- Photometry Span 1 Column -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Photometry Analysis <span id="lastPhotometryDate" style="font-size: 0.8em; color: rgba(255,255,255,0.5); font-weight:normal; margin-left:8px;"></span></h3>
+                    <div class="action-row">
+                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc;">
+                            <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()"> Extinction
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc; margin-right:12px;">
+                            <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()"> K-Correction
+                        </label>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="fetchPhotometry()">Fetch Phot</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="uploadPhotometry()">Upload</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="loadPhotometryPlot()">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div style="min-height:400px; display:flex; position:relative;" id="photometryPlotContainer">
+                        <div id="photometryLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
+                            <div class="loading-spinner-small"></div> Loading data...
+                        </div>
+                        <div id="photometryPlot" style="flex:1; width:100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DETECT -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>DETECT</h3>
+                    <div class="action-row">
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Run/Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body" id="detectBody" style="display:flex; flex-direction:column; gap:10px; color:#888; overflow-y:auto; max-height:400px; padding-right:8px;">
+                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                        <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Spectroscopy -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Spectroscopy</h3>
+                    <div class="action-row">
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="uploadSpectrum()">Upload</button>
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <select id="spectrumSelector" class="btn-modern" style="width:100%; margin-bottom:12px; display:none;" onchange="loadSpecificSpectrum()"></select>
+                    <div style="min-height:250px; display:flex; position:relative;">
+                        <div id="spectrumLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
+                            <div class="loading-spinner-small"></div> Mapping...
+                        </div>
+                        <div id="spectrumPlot" style="flex:1; width:100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comments -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <h3>Comments</h3>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
+                </div>
+                <div class="panel-body">
+                    <div id="addCommentForm" style="display:none; margin-bottom:16px;">
+                        <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                            <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
+                                <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
+                        <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
+                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
+                        <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <!-- Admin Settings Container -->
+        {% if session.user and session.user.is_admin %}
+        <div class="panel-card admin-settings-panel" style="grid-column: 1 / -1; margin-top: 20px;">
+            <div class="panel-header">
+                <h3>Data Permissions & Access Control</h3>
+                <button class="btn-modern" style="padding:4px 12px; font-weight:bold;" onclick="saveAdminPermissions()">Save Settings</button>
+            </div>
+            <div class="panel-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <!-- Photometry Perms -->
+                <div class="perm-section">
+                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Photometry Access</h4>
+                    
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
+                        <input type="checkbox" id="photPublicToggle" checked onchange="togglePermVisibility('phot')"> 
+                        <strong>Public (All users)</strong>
+                    </label>
+                    
+                    <div id="photRestrictedGroups" style="display:none; margin-bottom: 15px; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
+                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
+                        <div style="display:flex; gap:8px;">
+                            <select id="photGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
+                            <button class="btn-modern" onclick="addGroup('phot')" style="padding:4px 10px;">Add</button>
+                        </div>
+                        <div id="photGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+                    </div>
+
+                    <div class="advanced-telescope-perms" style="margin-top: 20px; background: rgba(0,0,0,0.1); padding: 12px; border-radius: 6px;">
+                        <h5 style="margin:0 0 10px 0; font-size: 0.9rem; color: #ccc;">Advanced: Telescope Restrictions</h5>
+                        <p style="font-size:0.8rem; color:#888; margin-bottom:10px;">Enforce specific groups per telescope.</p>
+                        <div id="telescopePermsList" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 10px;">
+                            <div style="font-size:0.8rem; color:#666; font-style:italic;" id="noTelescopeRulesHint">No custom rules</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items: stretch; flex-wrap:wrap;">
+                            <input type="text" id="newTelescopeName" placeholder="Tel (e.g. SLT)" style="flex:1; min-width:80px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; font-size:0.85rem;">
+                            <select id="newTelescopeGroup" style="flex:1; min-width:100px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; outline:none; font-size:0.85rem;"></select>
+                            <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="addTelescopeRule()">Add</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Spectroscopy Perms -->
+                <div class="perm-section">
+                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Spectroscopy Access</h4>
+                    
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
+                        <input type="checkbox" id="specPublicToggle" checked onchange="togglePermVisibility('spec')"> 
+                        <strong>Public (All users)</strong>
+                    </label>
+                    
+                    <div id="specRestrictedGroups" style="display:none; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
+                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
+                        <div style="display:flex; gap:8px;">
+                            <select id="specGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
+                            <button class="btn-modern" onclick="addGroup('spec')" style="padding:4px 10px;">Add</button>
+                        </div>
+                        <div id="specGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading object details...</div>
+        </div>
+    </div>
+
+    <!-- Upload Photometry Modal -->
+    <div class="modal" id="uploadPhotometryModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Photometry Data</h3>
+                <span class="close" onclick="closeUploadModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="upload-instructions">
+                    <h4>Supported Formats</h4>
+                    <p>Space-separated or comma-separated. With or without a header row. Lines starting with <code>#</code> are ignored.</p>
+                    <pre># With header (auto-detected):
+MJD         magnitude  error   filter  telescope
+59123.456   18.24      0.05    g       SLT
+59124.567   >19.10     nan     r       LOT
+
+# Or pure data (no header — you map columns below):
+59123.456   18.24   0.05   g   SLT
+59124.567  >19.10   nan    r   LOT</pre>
+                    <ul>
+                        <li>Use <strong>&gt;mag</strong> or <strong>error = nan</strong> to mark a non-detection (upper limit)</li>
+                        <li>Telescope column is optional</li>
+                        <li>After selecting a file, map each column and click <strong>Preview</strong></li>
+                    </ul>
+                </div>
+
+                <div class="upload-area">
+                    <input type="file" id="photometryFile" accept=".txt,.dat,.csv" style="display: none;">
+                    <div class="file-drop-zone" id="fileDropZone">
+                        <div class="drop-icon"></div>
+                        <div class="drop-text">
+                            <p>Click to select file or drag and drop</p>
+                            <p class="drop-subtext">Supported formats: .txt, .dat, .csv</p>
+                        </div>
+                    </div>
+                    <div class="selected-file" id="selectedFile" style="display: none;">
+                        <span class="file-icon"></span>
+                        <span class="file-name" id="fileName"></span>
+                        <button class="remove-file" onclick="removeSelectedFile()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                    </div>
+                </div>
+
+                <!-- Column mapping — appears after file is loaded -->
+                <div id="columnMappingSection" style="display: none;">
+                    <div class="col-mapping-header">
+                        <h4>Column Mapping</h4>
+                        <span class="col-mapping-hint">Detected columns from your file — adjust if needed</span>
+                    </div>
+                    <pre class="file-sample-preview" id="fileSampleDisplay"></pre>
+                    <div class="col-mapping-grid" id="columnMappingGrid"></div>
+                    <button class="btn btn-secondary btn-sm" style="margin-top:10px;" onclick="applyColumnMapping()">▶ Preview</button>
+                </div>
+
+                <div class="upload-preview" id="uploadPreview" style="display: none;">
+                    <h4>Data Preview:</h4>
+                    <div class="preview-table-container">
+                        <table class="preview-table" id="previewTable">
+                            <thead>
+                                <tr>
+                                    <th>MJD</th>
+                                    <th>Magnitude</th>
+                                    <th>Error</th>
+                                    <th>Filter</th>
+                                    <th>Telescope</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="previewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="preview-summary" id="previewSummary"></div>
+                </div>
+
+                <div class="upload-error" id="uploadError" style="display: none;">
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
+                    <div class="error-text" id="errorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="uploadBtn" onclick="uploadPhotometryData()" disabled>Upload Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Spectrum Modal -->
+    <div class="modal" id="uploadSpectrumModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Spectroscopy Data</h3>
+                <span class="close" onclick="closeSpectrumUploadModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="upload-instructions">
+                    <h4>Data Format:</h4>
+                    <p>Upload a text file (.dat, .ascii, .txt) with the following format (one point per line):</p>
+                    <pre>Wavelength   Intensity</pre>
+                    <p><strong>Notes:</strong></p>
+                    <ul>
+                        <li>Columns can be separated by spaces, tabs, or commas</li>
+                        <li>Lines starting with "#" or letters will be ignored</li>
+                    </ul>
+                    
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="spectrumTelescope">Telescope/Instrument (Optional):</label>
+                        <input type="text" id="spectrumTelescope" class="form-control" placeholder="e.g. Lulin/LOT">
+                    </div>
+                </div>
+                
+                <div class="upload-area">
+                    <input type="file" id="spectrumFile" accept=".txt,.dat,.ascii,.csv" style="display: none;">
+                    <div class="file-drop-zone" id="spectrumFileDropZone">
+                        <div class="drop-icon"></div>
+                        <div class="drop-text">
+                            <p>Click to select file or drag and drop</p>
+                            <p class="drop-subtext">Supported formats: .txt, .dat, .ascii, .csv</p>
+                        </div>
+                    </div>
+                    <div class="selected-file" id="spectrumSelectedFile" style="display: none;">
+                        <span class="file-icon"></span>
+                        <span class="file-name" id="spectrumFileName"></span>
+                        <button class="remove-file" onclick="removeSpectrumSelectedFile()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                    </div>
+                </div>
+                
+                <div class="upload-preview" id="spectrumUploadPreview" style="display: none;">
+                    <h4>Data Preview:</h4>
+                    <div class="preview-table-container">
+                        <table class="preview-table" id="spectrumPreviewTable">
+                            <thead>
+                                <tr>
+                                    <th>Wavelength</th>
+                                    <th>Intensity</th>
+                                </tr>
+                            </thead>
+                            <tbody id="spectrumPreviewTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="preview-summary" id="spectrumPreviewSummary"></div>
+                </div>
+
+                <div class="upload-error" id="spectrumUploadError" style="display: none;">
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
+                    <div class="error-text" id="spectrumErrorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSpectrumUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="spectrumUploadBtn" onclick="submitSpectrumData()" disabled>Upload Spectrum</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Photometry Point Modal -->
+    <div class="modal" id="addPhotometryModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Photometry Point</h3>
+                <span class="close" onclick="closeAddPhotometryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addPhotometryForm">
+                    <div class="form-group">
+                        <label for="addMjd">MJD:</label>
+                        <input type="number" id="addMjd" step="0.001" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="addMagnitude">Magnitude:</label>
+                        <input type="number" id="addMagnitude" step="0.001" required>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="addIsUpperLimit">
+                            Upper Limit
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="addMagnitudeError">Magnitude Error:</label>
+                        <input type="number" id="addMagnitudeError" step="0.001">
+                    </div>
+                    <div class="form-group">
+                        <label for="addFilter">Filter:</label>
+                        <input type="text" id="addFilter" required placeholder="e.g., g, r, i, V, B">
+                    </div>
+                    <div class="form-group">
+                        <label for="addTelescope">Telescope:</label>
+                        <input type="text" id="addTelescope" placeholder="e.g., SLT, LOT, Unknown">
+                    </div>
+                </form>
+                <div class="form-error" id="addFormError" style="display: none;">
+                    <div class="error-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div>
+                    <div class="error-text" id="addErrorText"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddPhotometryModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addPhotometryPoint()">Add Point</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
+</body>
+</html>

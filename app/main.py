@@ -1,7 +1,7 @@
 # ===============================================================================
 # IMPORTS AND CONFIGURATION
 # ===============================================================================
-from flask import Flask
+from flask import Flask, send_from_directory, abort
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import os
@@ -27,7 +27,7 @@ from modules.web_postgres_database import init_database
 from modules.postgres_database import init_tns_database, check_db_connection
 
 # Create Flask app
-app = Flask(__name__, template_folder='html', static_folder='static')
+app = Flask(__name__, template_folder='html', static_folder=None)
 app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -47,6 +47,39 @@ app.url_map.converters['alpha'] = AlphaConverter
 init_database()
 init_tns_database()
 
+# ===============================================================================
+# STATIC FILE SERVING
+# Static files are distributed across each blueprint's static/ folder.
+# This route merges them all under a single /static/ URL prefix.
+# ===============================================================================
+_BLUEPRINT_STATIC_DIRS = [
+    os.path.join(current_dir, 'routes', 'basic', 'static'),
+    os.path.join(current_dir, 'routes', 'auth', 'static'),
+    os.path.join(current_dir, 'routes', 'astronomy_tools', 'static'),
+    os.path.join(current_dir, 'routes', 'marshal', 'static'),
+    os.path.join(current_dir, 'routes', 'detect', 'static'),
+    os.path.join(current_dir, 'routes', 'games', 'static'),
+    os.path.join(current_dir, 'routes', 'private_area', 'static'),
+    os.path.join(current_dir, 'routes', 'planners', 'static'),
+    os.path.join(current_dir, 'routes', 'web_api', 'static'),
+    os.path.join(current_dir, 'routes', 'web_log', 'static'),
+]
+_PHOTO_DIR = os.path.abspath(os.path.join(current_dir, '..', 'photo'))
+
+@app.route('/static/<path:filename>', endpoint='static')
+def serve_static_files(filename):
+    for directory in _BLUEPRINT_STATIC_DIRS:
+        filepath = os.path.join(directory, filename)
+        if os.path.isfile(filepath):
+            return send_from_directory(directory, filename)
+    # Root-level photo/ directory
+    if filename.startswith('photo/'):
+        photo_name = filename[len('photo/'):]
+        photo_path = os.path.join(_PHOTO_DIR, photo_name)
+        if os.path.isfile(photo_path):
+            return send_from_directory(_PHOTO_DIR, photo_name)
+    abort(404)
+
 import re
 @app.template_filter('regex_search')
 def regex_search(s, pattern):
@@ -60,16 +93,8 @@ def regex_search(s, pattern):
 # ===============================================================================
 # OAUTH CONFIGURATION
 # ===============================================================================
-oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    client_id=config.GOOGLE_CLIENT_ID,
-    client_secret=config.GOOGLE_CLIENT_SECRET,
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={
-        'scope': 'openid email profile'
-    }
-)
+from routes.auth.auth_routes import oauth
+oauth.init_app(app)
 
 # ===============================================================================
 # REGISTER ALL ROUTES

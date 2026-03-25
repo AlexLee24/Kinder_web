@@ -1,0 +1,54 @@
+{
+  "interval": 6500,
+  "transition": 500,
+  "slides": [
+    {
+      "filename": "SLT_SN2024ggi.png",
+      "title": "SN2024ggi",
+      "caption": "SLT g-, r-, and i-band images of SN2024ggi",
+      "author": "Ting-Wan Chen et al 2025 ApJ 983 86",
+      "fit": true,
+      "enabled": true
+    },
+    {
+      "filename": "Kinder_dark_jpg.jpg",
+      "title": "Kinder",
+      "caption": "Kinder — Kilonova Finder Project",
+      "author": "Janet Chen",
+      "fit": true,
+      "enabled": true
+    },
+    {
+      "filename": "M42BG.jpg",
+      "title": "M42 & IC434",
+      "caption": "Orion Nebula (M42) and Horsehead Nebula (IC434) region",
+      "author": "Alex Lee",
+      "fit": true,
+      "enabled": true
+    },
+    {
+      "filename": "M1_LOT.jpg",
+      "title": "Crab Nebula (M1)",
+      "caption": "Crab Nebula (M1) observed with LOT",
+      "author": "ISYA 2025, Janet Chen, Alex Lee",
+      "fit": true,
+      "enabled": true
+    },
+    {
+      "filename": "IC434_LOT.jpg",
+      "title": "Horsehead Nebula (IC434)",
+      "caption": "Horsehead Nebula (IC434) observed with LOT",
+      "author": "ISYA 2025, Janet Chen, Alex Lee",
+      "fit": true,
+      "enabled": true
+    },
+    {
+      "filename": "M43_LOT.jpg",
+      "title": "Messier 43",
+      "caption": "M43, neighbor to M42 (Orion Nebula), observed with LOT",
+      "author": "ISYA 2025, Janet Chen, Alex Lee",
+      "fit": true,
+      "enabled": true
+    }
+  ]
+}

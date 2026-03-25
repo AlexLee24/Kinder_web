@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Log - Kinder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
+    {% include '_favicon.html' %}
+    <style>
+        :root {
+            --accent: #C5A059;
+            --glass-bg: rgba(255,255,255,0.07);
+            --glass-border: rgba(255,255,255,0.13);
+            --text-primary: #ffffff;
+            --text-muted: rgba(255,255,255,0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+            background-image: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
+                              url("{{ url_for('static', filename='photo/M31ver4-2.jpg') }}");
+            background-attachment: fixed;
+            background-size: cover;
+            background-position: center;
+            min-height: 100vh;
+            color: var(--text-primary);
+        }
+
+        .page-header {
+            max-width: 1400px;
+            margin: 130px auto 0;
+            padding: 0 28px 20px;
+        }
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        .page-header p {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .log-wrapper {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 18px 28px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* Controls bar */
+        .log-controls-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 12px 16px;
+        }
+
+        .ctrl-label-text {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .ctrl-select {
+            background: rgba(0,0,0,0.35);
+            color: var(--text-primary);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            outline: none;
+            min-width: 180px;
+            cursor: pointer;
+            transition: border-color .2s;
+        }
+        .ctrl-select:focus { border-color: var(--accent); }
+
+        .ctrl-btn {
+            background: rgba(197,160,89,0.15);
+            color: var(--accent);
+            border: 1px solid rgba(197,160,89,0.35);
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .ctrl-btn:hover { background: rgba(197,160,89,0.28); }
+
+        .ctrl-follow {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+        }
+        .ctrl-follow input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 14px; height: 14px; cursor: pointer;
+        }
+
+        .live-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #3fb950;
+            box-shadow: 0 0 6px #3fb950;
+            flex-shrink: 0;
+            animation: blink 1.4s ease-in-out infinite;
+        }
+        .live-dot.off {
+            background: rgba(255,255,255,0.2);
+            box-shadow: none;
+            animation: none;
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+        .spacer { flex: 1; }
+
+        /* Stats row */
+        .stats-bar {
+            display: flex;
+            gap: 18px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            padding: 0 4px;
+        }
+
+        /* Log panel */
+        .log-panel {
+            background: rgba(8,8,22,0.82);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-panel-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+        .log-panel-header span { color: var(--accent); font-weight: 600; }
+
+        .log-pre-wrap {
+            overflow-y: auto;
+            overflow-x: auto;
+            max-height: calc(100vh - 360px);
+            min-height: 400px;
+            position: relative;
+        }
+        .log-pre-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+        .log-pre-wrap::-webkit-scrollbar-track { background: transparent; }
+        .log-pre-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(8,8,22,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .loading-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-left-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        #logPre {
+            margin: 0;
+            padding: 12px 16px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.79rem;
+            line-height: 1.6;
+            white-space: pre;
+            color: rgba(255,255,255,0.82);
+        }
+
+        .l-error   { color: #ff7b72; }
+        .l-warning { color: #e3b341; }
+        .l-info    { color: rgba(255,255,255,0.82); }
+        .l-debug   { color: rgba(255,255,255,0.38); }
+        .l-sep     { color: rgba(255,255,255,0.22); }
+        .l-ts      { color: rgba(255,255,255,0.30); }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="page-header">
+        <h1>System Log</h1>
+        <p>Real-time server log viewer</p>
+    </div>
+
+    <div class="log-wrapper">
+        <!-- Controls -->
+        <div class="log-controls-bar">
+            <span id="liveDot" class="live-dot off"></span>
+            <span class="ctrl-label-text">Date:</span>
+            <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
+            <label class="ctrl-follow">
+                <input type="checkbox" id="followChk" checked> Follow tail
+            </label>
+            <button class="ctrl-btn" onclick="manualRefresh()">Refresh</button>
+            <button class="ctrl-btn" onclick="clearDisplay()">Clear</button>
+            <div class="spacer"></div>
+            <div class="stats-bar">
+                <span id="statDate">—</span>
+                <span id="statLines">Lines: 0</span>
+                <span id="statBytes">0 B</span>
+            </div>
+        </div>
+
+        <!-- Log output panel -->
+        <div class="log-panel">
+            <div class="log-panel-header">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                <span id="logFileName">—</span>
+                &nbsp;·&nbsp; server output
+            </div>
+            <div class="log-pre-wrap" id="logWrap">
+                <div id="loadingOverlay" class="loading-overlay">
+                    <div class="spinner"></div>
+                </div>
+                <pre id="logPre"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const todayStr = new Date().toISOString().slice(0, 10);
+        let currentDate = todayStr;
+        let logOffset = 0;
+        let lineCount = 0;
+        let pollTimer = null;
+
+        function esc(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Color palette for different log sources
+        const SRC_COLORS = [
+            '#79c0ff', '#56d364', '#d2a8ff', '#ffa657',
+            '#f78166', '#4ec9b0', '#f0883e', '#a5d6ff',
+            '#ffcb6b', '#b3f0a8', '#89ddff', '#c792ea',
+        ];
+
+        function sourceColor(name) {
+            let h = 0;
+            for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+            return SRC_COLORS[h % SRC_COLORS.length];
+        }
+
+        const LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)\] (.*)/;
+
+        function colorize(text) {
+            return text.split('\n').map(line => {
+                if (line === '') return '<span style="display:block;height:0"></span>';
+                const m = LOG_RE.exec(line);
+                if (m) {
+                    const [, ts, src, msg] = m;
+                    let msgCls = 'l-info';
+                    if (/\bERROR\b/i.test(msg))         msgCls = 'l-error';
+                    else if (/\bWARN(ING)?\b/i.test(msg)) msgCls = 'l-warning';
+                    else if (/\bDEBUG\b/i.test(msg))      msgCls = 'l-debug';
+                    const sc = sourceColor(src);
+                    return `<span class="l-ts">${esc(ts)}</span> <span style="color:${sc}">[${esc(src)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
+                }
+                // fallback for non-standard lines (separators, etc.)
+                let cls = 'l-info';
+                if (/^[-=]{3}/.test(line)) cls = 'l-sep';
+                return `<span class="${cls}">${esc(line)}</span>`;
+            }).join('\n');
+        }
+
+        function appendHtml(content) {
+            if (!content) return;
+            const pre = document.getElementById('logPre');
+            const span = document.createElement('span');
+            span.innerHTML = colorize(content);
+            pre.appendChild(span);
+            lineCount += content.split('\n').filter(l => l.trim()).length;
+            document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
+            document.getElementById('statBytes').textContent = `${logOffset} B`;
+            
+            // 避免長時間掛機導致的 DOM 數量無限增長
+            const MAX_POLL_CHUNKS = 500;
+            while (pre.children.length > MAX_POLL_CHUNKS) {
+                if (pre.firstChild && pre.firstChild.tagName === 'DIV') {
+                    if (pre.children.length > 2) pre.removeChild(pre.children[1]);
+                    else break;
+                } else if (pre.firstChild) {
+                    pre.removeChild(pre.firstChild);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function scrollToBottom() {
+            if (document.getElementById('followChk').checked) {
+                const w = document.getElementById('logWrap');
+                w.scrollTop = w.scrollHeight;
+            }
+        }
+
+        async function fetchContent(date, offset) {
+            const res = await fetch(`/api/log/content?date=${encodeURIComponent(date)}&offset=${offset}`);
+            return await res.json();
+        }
+
+        function showLoading(show) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (show) overlay.classList.add('active');
+            else overlay.classList.remove('active');
+        }
+
+        async function loadFull(date) {
+            showLoading(true);
+            logOffset = 0;
+            lineCount = 0;
+            document.getElementById('logPre').innerHTML = '';
+            
+            // Allow UI to update loading state before blocking thread
+            await new Promise(r => setTimeout(r, 10));
+
+            const label = date === todayStr ? `${date}  (Today)` : date;
+            document.getElementById('statDate').textContent = label;
+            document.getElementById('logFileName').textContent = `${date}.log`;
+            document.getElementById('statLines').textContent = 'Lines: 0';
+            document.getElementById('statBytes').textContent = '0 B';
+
+            try {
+                const data = await fetchContent(date, 0);
+                if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
+                
+                const content = data.content || '(No entries yet)';
+                const allLines = content.split('\n');
+                
+                lineCount = allLines.filter(l => l.trim()).length;
+                
+                const MAX_RENDER_LINES = 300;
+                let renderLines = allLines;
+                let truncated = false;
+                
+                if (renderLines.length > MAX_RENDER_LINES) {
+                    renderLines = renderLines.slice(-MAX_RENDER_LINES);
+                    truncated = true;
+                }
+
+                const pre = document.getElementById('logPre');
+                pre.innerHTML = colorize(renderLines.join('\n'));
+                
+                if (truncated) {
+                    const truncMsg = document.createElement('div');
+                    truncMsg.style.textAlign = 'center';
+                    truncMsg.style.padding = '8px';
+                    truncMsg.style.color = '#e3b341';
+                    truncMsg.style.fontSize = '0.85rem';
+                    truncMsg.style.borderBottom = '1px dashed rgba(255,255,255,0.1)';
+                    truncMsg.style.marginBottom = '10px';
+                    truncMsg.innerHTML = `<i>--- Only show  ${MAX_RENDER_LINES} lines ---</i>`;
+                    pre.insertBefore(truncMsg, pre.firstChild);
+                }
+
+                document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
+                document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
+
+                logOffset = data.offset || 0;
+                scrollToBottom();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function pollNew() {
+            try {
+                const data = await fetchContent(currentDate, logOffset);
+                if (data.content) {
+                    appendHtml(data.content);
+                    logOffset = data.offset;
+                    scrollToBottom();
+                }
+            } catch (e) { /* retry next tick */ }
+        }
+
+        function setLive(on) {
+            document.getElementById('liveDot').className = on ? 'live-dot' : 'live-dot off';
+        }
+
+        function startPoll() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(pollNew, 1000);
+            setLive(true);
+        }
+
+        function stopPoll() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            setLive(false);
+        }
+
+        function switchDate(date) {
+            stopPoll();
+            currentDate = date;
+            loadFull(date).then(() => {
+                if (date === todayStr) startPoll();
+            });
+        }
+
+        function manualRefresh() { loadFull(currentDate); }
+
+        function clearDisplay() {
+            document.getElementById('logPre').innerHTML = '';
+            lineCount = 0;
+            logOffset = 0;
+            document.getElementById('statLines').textContent = 'Lines: 0';
+            document.getElementById('statBytes').textContent = '0 B';
+        }
+
+        async function init() {
+            const res = await fetch('/api/log/files');
+            const data = await res.json();
+            const sel = document.getElementById('dateSelect');
+            const dates = data.dates || [];
+
+            if (!dates.length) {
+                sel.innerHTML = '<option value="">No logs available</option>';
+                return;
+            }
+
+            dates.forEach(d => {
+                const o = document.createElement('option');
+                o.value = d;
+                o.textContent = d === todayStr ? `${d}  (Today)` : d;
+                if (d === todayStr) o.selected = true;
+                sel.appendChild(o);
+            });
+
+            currentDate = dates.includes(todayStr) ? todayStr : dates[0];
+            sel.value = currentDate;
+            switchDate(currentDate);
+        }
+
+        window.addEventListener('scroll', function() {
+            const header = document.querySelector('header');
+            if (header) header.classList.toggle('scrolled', window.scrollY > 20);
+        });
+
+        init();
+    </script>
+</body>
+</html>

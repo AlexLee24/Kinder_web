@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finding Chart Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/finding_chart.css') }}">
+    <meta name="description" content="Finding Chart Generator">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="page-header">
+        <h1>Finding Chart Generator</h1>
+        <p>Generate publication-quality finding charts from DSS, DESI Legacy Survey, and Pan-STARRS</p>
+    </div>
+
+    <div class="container-main">
+        <!-- Left Panel: Controls -->
+        <div class="controls-panel">
+
+            <!-- Target Settings -->
+            <div class="settings-section">
+                <h3>Target</h3>
+                <div class="form-group-row" style="margin-bottom:8px;">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="use-db-search" />
+                        Search from database
+                    </label>
+                </div>
+                <div id="db-search-wrap" class="db-search-wrap" style="display:none;">
+                    <div class="db-search-input-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" class="db-search-input" id="db-search-input"
+                               placeholder="Type target name..." autocomplete="off" />
+                        <button class="db-search-clear" id="db-search-clear" title="Clear">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="target-name">Object Name</label>
+                    <input type="text" id="target-name" placeholder="e.g. TransientName(SN2025wny) or CustomTarget" />
+                </div>
+                <div class="form-group">
+                    <label for="target-ra">RA</label>
+                    <input type="text" id="target-ra" placeholder="e.g. HH:MM:SS.SS or Decimal Degrees" />
+                </div>
+                <div class="form-group">
+                    <label for="target-dec">Dec</label>
+                    <input type="text" id="target-dec" placeholder="e.g. DD:MM:SS.SS or Decimal Degrees" />
+                </div>
+            </div>
+
+            <!-- Survey Selection -->
+            <div class="settings-section">
+                <h3>Survey</h3>
+                <div class="form-group">
+                    <label for="survey-select">Image Source</label>
+                    <select id="survey-select">
+                        <optgroup label="DSS (Digital Sky Survey)">
+                            <option value="DSS2 Red">DSS2 Red</option>
+                            <option value="DSS2 Blue">DSS2 Blue</option>
+                            <option value="DSS2 IR">DSS2 IR</option>
+                            <option value="DSS">DSS1</option>
+                        </optgroup>
+                        <optgroup label="DESI Legacy Survey DR10">
+                            <option value="DESI-color" selected>DESI LS — Color (grz)</option>
+                            <option value="DESI-g">DESI LS — g-band</option>
+                            <option value="DESI-r">DESI LS — r-band</option>
+                            <option value="DESI-z">DESI LS — z-band</option>
+                            <option value="DESI-i">DESI LS — i-band</option>
+                        </optgroup>
+                        <optgroup label="Pan-STARRS (PS1)">
+                            <option value="PS1-color">PS1 — Color (gri)</option>
+                            <option value="PS1-g">PS1 — g-band</option>
+                            <option value="PS1-r">PS1 — r-band</option>
+                            <option value="PS1-i">PS1 — i-band</option>
+                            <option value="PS1-z">PS1 — z-band</option>
+                            <option value="PS1-y">PS1 — y-band</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="form-group-row" id="invert-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="invert-check" /> Invert (white background)
+                    </label>
+                </div>
+            </div>
+
+            <!-- Field of View -->
+            <div class="settings-section">
+                <h3>Field of View</h3>
+                <div class="mini-tabs">
+                    <button class="mini-tab active" data-tab="fov-direct">Direct FOV</button>
+                    <button class="mini-tab" data-tab="fov-camera">Camera Setup</button>
+                </div>
+                <div class="tab-content active" id="fov-direct">
+                    <div class="form-group">
+                        <label for="fov-arcmin">FOV (arcmin)</label>
+                        <input type="number" id="fov-arcmin" value="30" min="0.5" max="120" step="0.5" />
+                    </div>
+                </div>
+                <div class="tab-content" id="fov-camera">
+                    <div class="form-group">
+                        <label for="focal-length">Focal Length (mm)</label>
+                        <input type="number" id="focal-length" value="8000" min="10" step="1" />
+                    </div>
+                    <div class="form-group">
+                        <label for="sensor-width">Sensor Width (mm)</label>
+                        <input type="number" id="sensor-width" value="30.72" min="1" step="0.1" />
+                    </div>
+                    <div class="form-group">
+                        <label for="sensor-height">Sensor Height (mm)</label>
+                        <input type="number" id="sensor-height" value="30.72" min="1" step="0.1" />
+                    </div>
+                    <div class="fov-result" id="fov-result">
+                        Computed FOV: --
+                    </div>
+                </div>
+            </div>
+
+            <!-- Star Annotations + Slit (tabbed) -->
+            <div class="settings-section">
+                <h3>Other</h3>
+                <div class="mini-tabs">
+                    <button class="mini-tab active" data-tab="tab-stars">Star Annotations</button>
+                    <button class="mini-tab" data-tab="tab-slit">Spectrograph Slit</button>
+                </div>
+
+                <!-- Tab: Star Annotations -->
+                <div class="tab-content active" id="tab-stars">
+                    <p class="section-hint">Magnitude band auto-selected: V &rarr; r &rarr; R (Tycho-2, UCAC4)</p>
+                    <div class="form-group">
+                        <label for="mag-limit">Show Stars Brighter Than (mag)</label>
+                        <input type="number" id="mag-limit" value="15" min="5" max="20" step="0.5" />
+                    </div>
+                    <div class="form-group-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="show-mag"/>
+                            Show magnitude labels
+                        </label>
+                    </div>
+                    <div class="form-group-row indented" id="max-stars-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use-max-stars" />
+                            Show only brightest
+                        </label>
+                        <input type="number" id="max-stars" value="10" min="1" max="100" step="1"
+                               disabled class="inline-num" title="Number of brightest stars to annotate" />
+                        <span class="unit-label">stars</span>
+                    </div>
+                    <div class="form-group-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="show-names"/>
+                            Show star names
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="name-limit">Show Names Brighter Than (mag)</label>
+                        <input type="number" id="name-limit" value="10" min="3" max="15" step="0.5" />
+                    </div>
+                </div>
+
+                <!-- Tab: Spectrograph Slit -->
+                <div class="tab-content" id="tab-slit">
+                    <div class="form-group-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="show-slit" />
+                            Show slit on chart
+                        </label>
+                    </div>
+                    <div id="slit-controls" style="display:none;">
+                        <div class="form-group">
+                            <label for="slit-pa">PA (deg E of N)</label>
+                            <input type="number" id="slit-pa" value="64.4" min="-180" max="360" step="0.1" />
+                        </div>
+                        <div class="form-group-row">
+                            <div class="form-group" style="flex:1; margin-bottom:0;">
+                                <label for="slit-width">Width (")</label>
+                                <input type="number" id="slit-width" value="1.2" min="0.1" max="30" step="0.1" />
+                            </div>
+                            <div class="form-group" style="flex:1; margin-bottom:0; margin-left:8px;">
+                                <label for="slit-length">Length (")</label>
+                                <input type="number" id="slit-length" value="60" min="1" max="600" step="1" />
+                            </div>
+                        </div>
+                        <p class="section-hint" style="margin-top:6px;">PA=0° = N-S &nbsp;|&nbsp; PA=90° = E-W</p>
+                    </div>
+                </div>
+            </div>
+
+
+            <button class="btn-generate" id="btn-generate">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                Generate Finding Chart
+            </button>
+        </div>
+
+        <!-- Right Panel: Chart Display -->
+        <div class="chart-panel">
+            <div class="chart-container" id="chart-container">
+                <div class="chart-placeholder" id="chart-placeholder">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <p>Set target coordinates and click Generate</p>
+                </div>
+                <img id="chart-image" style="display:none; width:100%; height:auto; border-radius:12px;" />
+            </div>
+            <div class="chart-actions" id="chart-actions" style="display:none;">
+                <button class="btn-action" id="btn-download" title="Download PNG">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                </button>
+                <span class="chart-info" id="chart-info"></span>
+            </div>
+            <div class="chart-status" id="chart-status"></div>
+        </div>
+    </div>
+
+    <!-- Log Panel -->
+    <div class="log-panel" id="log-panel" style="display:none;">
+        <div class="log-header">
+            <span>Fetch Log</span>
+            <button class="log-clear" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-body" id="log-body"></div>
+    </div>
+
+    <script>
+    // =========================================================================
+    // MINI TABS
+    // =========================================================================
+    document.querySelectorAll('.mini-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            const parent = this.closest('.settings-section');
+            parent.querySelectorAll('.mini-tab').forEach(t => t.classList.remove('active'));
+            parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            document.getElementById(this.dataset.tab).classList.add('active');
+        });
+    });
+
+    // =========================================================================
+    // CAMERA FOV CALCULATOR
+    // =========================================================================
+    function updateCameraFOV() {
+        const fl = parseFloat(document.getElementById('focal-length').value);
+        const sw = parseFloat(document.getElementById('sensor-width').value);
+        const sh = parseFloat(document.getElementById('sensor-height').value);
+        const result = document.getElementById('fov-result');
+        if (fl > 0 && sw > 0 && sh > 0) {
+            const fovW = 2 * Math.atan(sw / (2 * fl)) * 180 / Math.PI * 60;
+            const fovH = 2 * Math.atan(sh / (2 * fl)) * 180 / Math.PI * 60;
+            result.textContent = `Computed FOV: ${fovW.toFixed(1)}' × ${fovH.toFixed(1)}' (using larger: ${Math.max(fovW, fovH).toFixed(1)}')`;
+            // Auto-fill direct FOV with the larger dimension
+            document.getElementById('fov-arcmin').value = Math.max(fovW, fovH).toFixed(1);
+        } else {
+            result.textContent = 'Computed FOV: --';
+        }
+    }
+    document.getElementById('focal-length').addEventListener('input', updateCameraFOV);
+    document.getElementById('sensor-width').addEventListener('input', updateCameraFOV);
+    document.getElementById('sensor-height').addEventListener('input', updateCameraFOV);
+
+    // =========================================================================
+    // INVERT TOGGLE VISIBILITY
+    // =========================================================================
+    function updateInvertVisibility() {
+        const survey = document.getElementById('survey-select').value;
+        const row = document.getElementById('invert-row');
+        const isColor = survey.includes('color');
+        row.style.display = isColor ? 'none' : 'flex';
+        if (isColor) document.getElementById('invert-check').checked = false;
+    }
+    document.getElementById('survey-select').addEventListener('change', updateInvertVisibility);
+    updateInvertVisibility();
+
+    // =========================================================================
+    // URL PARAMS AUTO-FILL
+    // =========================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('object_name')) document.getElementById('target-name').value = params.get('object_name');
+        if (params.get('ra')) document.getElementById('target-ra').value = params.get('ra');
+        if (params.get('dec')) document.getElementById('target-dec').value = params.get('dec');
+    });
+
+    // =========================================================================
+    // LOG PANEL
+    // =========================================================================
+    function appendLog(lines) {
+        const panel = document.getElementById('log-panel');
+        const body  = document.getElementById('log-body');
+        panel.style.display = 'block';
+        const ts = new Date().toLocaleTimeString();
+        lines.forEach(line => {
+            const el = document.createElement('div');
+            el.className = 'log-line' +
+                (line.startsWith('[OK]')    ? ' log-ok'    :
+                 line.startsWith('[ERROR]') ? ' log-err'   :
+                 line.startsWith('[WARN]')  ? ' log-warn'  : '');
+            el.textContent = `[${ts}] ${line}`;
+            body.appendChild(el);
+        });
+        body.scrollTop = body.scrollHeight;
+    }
+    function clearLog() {
+        document.getElementById('log-body').innerHTML = '';
+    }
+
+    // =========================================================================
+    // STAR ANNOTATION CONTROLS
+    // =========================================================================
+    function updateMagControls() {
+        const showMag   = document.getElementById('show-mag').checked;
+        const useMax    = document.getElementById('use-max-stars');
+        const maxInput  = document.getElementById('max-stars');
+        const maxRow    = document.getElementById('max-stars-row');
+
+        // When show-mag is off, disable the whole "N brightest" row
+        useMax.disabled  = !showMag;
+        maxInput.disabled = !showMag || !useMax.checked;
+        maxRow.style.opacity = showMag ? '1' : '0.4';
+
+        // Also grey out show-names is independent, nothing to do
+    }
+
+    document.getElementById('show-mag').addEventListener('change', updateMagControls);
+    document.getElementById('use-max-stars').addEventListener('change', function() {
+        const showMag = document.getElementById('show-mag').checked;
+        document.getElementById('max-stars').disabled = !showMag || !this.checked;
+    });
+
+    // Slit controls visibility
+    document.getElementById('show-slit').addEventListener('change', function() {
+        document.getElementById('slit-controls').style.display = this.checked ? 'block' : 'none';
+    });
+
+    // =========================================================================
+    // GENERATE
+    // =========================================================================
+    document.getElementById('btn-generate').addEventListener('click', generateChart);
+
+    async function generateChart() {
+        const name = document.getElementById('target-name').value.trim();
+        const ra = document.getElementById('target-ra').value.trim();
+        const dec = document.getElementById('target-dec').value.trim();
+        const survey = document.getElementById('survey-select').value;
+        const fov = parseFloat(document.getElementById('fov-arcmin').value);
+        const invert = document.getElementById('invert-check').checked;
+        const magLimit = parseFloat(document.getElementById('mag-limit').value);
+        const nameLimit = parseFloat(document.getElementById('name-limit').value);
+        const showMag   = document.getElementById('show-mag').checked;
+        const showNames = document.getElementById('show-names').checked;
+        const useMaxStars = document.getElementById('use-max-stars').checked;
+        const maxStars  = (showMag && useMaxStars)
+            ? parseInt(document.getElementById('max-stars').value) : null;
+        const showSlit  = document.getElementById('show-slit').checked;
+        const slitPa    = parseFloat(document.getElementById('slit-pa').value);
+        const slitWidth = parseFloat(document.getElementById('slit-width').value);
+        const slitLength = parseFloat(document.getElementById('slit-length').value);
+
+        if (!ra && !dec && !name) {
+            setStatus('Please provide target coordinates or name.', 'error');
+            return;
+        }
+
+        setStatus('Generating finding chart... (this may take 10-30s)', 'loading');
+        appendLog([`[INFO] Generating: survey=${survey}  FOV=${fov}'  invert=${invert}`]);
+        document.getElementById('btn-generate').disabled = true;
+
+        try {
+            const resp = await fetch('/api/finding_chart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name, ra, dec, survey, fov,
+                    invert, mag_limit: magLimit, name_limit: nameLimit,
+                    show_mag: showMag, show_names: showNames,
+                    max_stars: maxStars,
+                    show_slit: showSlit, slit_pa: slitPa,
+                    slit_width: slitWidth, slit_length: slitLength
+                })
+            });
+            const data = await resp.json();
+            if (data.logs && data.logs.length) appendLog(data.logs);
+            if (data.success) {
+                const img = document.getElementById('chart-image');
+                img.src = 'data:image/png;base64,' + data.image;
+                img.style.display = 'block';
+                document.getElementById('chart-placeholder').style.display = 'none';
+                document.getElementById('chart-actions').style.display = 'flex';
+                document.getElementById('chart-info').textContent =
+                    `RA: ${data.ra_deg.toFixed(4)}° Dec: ${data.dec_deg.toFixed(4)}° | FOV: ${data.fov_arcmin}'`;
+                setStatus('', '');
+            } else {
+                appendLog([`[ERROR] ${data.error || 'Unknown error'}`]);
+                setStatus(data.error || 'Error generating chart', 'error');
+            }
+        } catch (e) {
+            setStatus('Network error: ' + e.message, 'error');
+        } finally {
+            document.getElementById('btn-generate').disabled = false;
+        }
+    }
+
+    // =========================================================================
+    // DOWNLOAD
+    // =========================================================================
+    document.getElementById('btn-download').addEventListener('click', function() {
+        const img = document.getElementById('chart-image');
+        if (!img.src) return;
+        const a = document.createElement('a');
+        const name = document.getElementById('target-name').value.trim() || 'finding_chart';
+        a.href = img.src;
+        a.download = `finding_chart_${name.replace(/\s+/g, '_')}.png`;
+        a.click();
+    });
+
+    // =========================================================================
+    // STATUS
+    // =========================================================================
+    function setStatus(msg, type) {
+        const el = document.getElementById('chart-status');
+        el.textContent = msg;
+        el.className = 'chart-status' + (type ? ' status-' + type : '');
+    }
+
+    // =========================================================================
+    // DB SEARCH AUTOCOMPLETE (TARGET SECTION)
+    // =========================================================================
+    (function() {
+        const toggle   = document.getElementById('use-db-search');
+        const wrap     = document.getElementById('db-search-wrap');
+        const input    = document.getElementById('db-search-input');
+        const clearBtn = document.getElementById('db-search-clear');
+        let searchTimer = null;
+        let activeIdx   = -1;
+        let lastResults = [];
+
+        // Portal dropdown created in JS to escape backdrop-filter stacking context
+        const dropdown = document.createElement('div');
+        dropdown.className = 'fc-db-dropdown';
+        document.body.appendChild(dropdown);
+
+        toggle.addEventListener('change', function() {
+            wrap.style.display = this.checked ? 'block' : 'none';
+            if (this.checked) input.focus();
+            else closeDropdown();
+        });
+
+        function positionDropdown() {
+            const rect = wrap.getBoundingClientRect();
+            dropdown.style.top   = (rect.bottom + 4) + 'px';
+            dropdown.style.left  = rect.left + 'px';
+            dropdown.style.width = rect.width + 'px';
+        }
+        function openDropdown(html) {
+            positionDropdown();
+            dropdown.innerHTML = html;
+            dropdown.classList.add('open');
+        }
+        function closeDropdown() {
+            dropdown.classList.remove('open');
+            dropdown.innerHTML = '';
+            activeIdx = -1;
+        }
+        function highlight(idx) {
+            dropdown.querySelectorAll('.db-dd-item').forEach((el, i) => el.classList.toggle('active', i === idx));
+            activeIdx = idx;
+        }
+        function pickResult(r) {
+            document.getElementById('target-name').value = r.name;
+            // DB returns decimal degrees — send as-is; backend auto-detects decimal vs HMS
+            document.getElementById('target-ra').value  = r.ra;
+            document.getElementById('target-dec').value = r.dec;
+            input.value = '';
+            clearBtn.style.display = 'none';
+            closeDropdown();
+        }
+
+        input.addEventListener('input', function() {
+            const q = this.value.trim();
+            clearBtn.style.display = q ? 'block' : 'none';
+            clearTimeout(searchTimer);
+            if (q.length < 2) { closeDropdown(); return; }
+            openDropdown('<div class="db-dropdown-msg">Searching…</div>');
+            searchTimer = setTimeout(async () => {
+                try {
+                    const resp = await fetch(`/api/target_autocomplete?q=${encodeURIComponent(q)}`);
+                    lastResults = await resp.json();
+                    if (!lastResults.length) { openDropdown('<div class="db-dropdown-msg">No results found</div>'); return; }
+                    const html = lastResults.map((r, i) => {
+                        const meta = [r.type, r.mag ? `mag ${r.mag}` : ''].filter(Boolean).join(' · ');
+                        return `<div class="db-dd-item" data-idx="${i}">
+                            <span class="db-dd-name">${r.name}</span>
+                            ${meta ? `<span class="db-dd-meta">${meta}</span>` : ''}
+                            <span class="db-dd-add">+ Fill</span>
+                        </div>`;
+                    }).join('');
+                    openDropdown(html);
+                    dropdown.querySelectorAll('.db-dd-item').forEach(el => {
+                        el.addEventListener('mousedown', function(e) {
+                            e.preventDefault();
+                            pickResult(lastResults[+this.dataset.idx]);
+                        });
+                    });
+                } catch(e) { openDropdown('<div class="db-dropdown-msg">Error fetching results</div>'); }
+            }, 300);
+        });
+
+        input.addEventListener('keydown', function(e) {
+            const items = dropdown.querySelectorAll('.db-dd-item');
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(activeIdx+1, items.length-1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(activeIdx-1, 0)); }
+            else if (e.key === 'Enter' && activeIdx >= 0) { e.preventDefault(); pickResult(lastResults[activeIdx]); }
+            else if (e.key === 'Escape') { closeDropdown(); }
+        });
+
+        clearBtn.addEventListener('click', function() {
+            input.value = ''; this.style.display = 'none'; closeDropdown(); input.focus();
+        });
+        document.addEventListener('click', function(e) {
+            if (!wrap.contains(e.target) && !dropdown.contains(e.target)) closeDropdown();
+        });
+        window.addEventListener('scroll', function() { if (dropdown.classList.contains('open')) positionDropdown(); }, true);
+        window.addEventListener('resize',  function() { if (dropdown.classList.contains('open')) positionDropdown(); });
+    })();
+
+    // =========================================================================
+    // SCROLL EFFECT
+    // =========================================================================
+    window.addEventListener('scroll', function() {
+        const header = document.querySelector('header');
+        if (header) header.classList.toggle('scrolled', window.scrollY > 20);
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+/* Exposure Settings Styles */
+.exposure-settings-cell {
+    min-width: 300px;
+}
+
+.auto-toggle-wrapper {
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #C5A059;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #C5A059;
+    cursor: pointer;
+}
+
+.manual-exposures {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.exposure-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.exposure-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.exposure-row .form-control {
+    padding: 6px 8px;
+    font-size: 13px;
+    height: 32px;
+}
+
+.btn-small {
+    padding: 4px 12px;
+    font-size: 12px;
+    border-radius: 15px;
+    width: auto;
+    display: inline-block;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.add-exposure-btn {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(197, 160, 89, 0.5) !important;
+    color: #C5A059 !important;
+    box-shadow: none !important;
+}
+
+.add-exposure-btn:hover {
+    background: rgba(197, 160, 89, 0.2) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.2) !important;
+}
+
+.auto-info {
+    padding: 8px;
+    background: rgba(197, 160, 89, 0.1);
+    border-radius: 6px;
+    border: 1px dashed rgba(197, 160, 89, 0.3);
+    text-align: center;
+}
+
+.text-muted {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.remove-exposure {
+    color: #ff6b6b;
+    opacity: 0.7;
+}
+.remove-exposure:hover {
+    opacity: 1;
+    background: rgba(255, 107, 107, 0.1);
+}

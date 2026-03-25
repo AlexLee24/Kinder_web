@@ -1,6 +1,6 @@
 .env
 kinder.env
-app/static/tutorials/*
+app/routes/private_area/tutorials/*
 .DS_Store
 Thumbs.db
 

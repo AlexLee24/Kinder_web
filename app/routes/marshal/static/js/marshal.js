@@ -1,0 +1,1654 @@
+// Global variables
+let currentView = 'cards';
+let currentObjects = [];
+let filteredObjects = [];
+let currentPage = 1;
+let pageSize = 50;
+let totalPages = 1;
+let totalObjects = 0;
+let sortBy = 'lastmodified';
+let sortOrder = 'desc';
+let isLoading = false;
+let currentFilters = {};
+let useApiMode = false;
+let currentStatusFilter = '';
+
+const ICONS = {
+    chevronUp: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
+    chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+    arrowUp: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>',
+    arrowDown: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>',
+    chevronLeft: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>',
+    chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+    inbox: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg>',
+    followup: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg>',
+    finished: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>',
+    snoozed: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg>',
+    flag: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'
+};
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Marshal page loaded, initializing...');
+    
+    // Add a button or key combination to force refresh (for debugging)
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+            e.preventDefault();
+            forceRefreshAll();
+            showNotification('Forced complete refresh', 'info');
+        }
+    });
+
+    // Populate Sidebar Widgets
+    fetchDashboardWidgets();
+    
+    // Rest of initialization code...
+    currentFilters = {
+        search: '',
+        classification: '',
+        tag: '',
+        date_from: '',
+        date_to: '',
+        app_mag_min: '',
+        app_mag_max: '',
+        redshift_min: '',
+        redshift_max: '',
+        discoverer: ''
+    };
+    
+    checkObjectsCount();
+    loadInitialObjects();
+    setTimeout(() => populateClassificationFilter(), 1000);
+    
+    loadInitialStats();
+    
+    updatePagination();
+    switchView('cards');
+    
+    const filterInputs = document.querySelectorAll('.filter-group select, .filter-group input');
+    filterInputs.forEach(input => {
+        input.addEventListener('focus', function() {
+            this.closest('.filter-group').classList.add('active');
+        });
+        input.addEventListener('blur', function() {
+            this.closest('.filter-group').classList.remove('active');
+        });
+    });
+
+    const tagFilter = document.getElementById('tagFilter');
+    if (tagFilter) {
+        tagFilter.addEventListener('change', function() {
+            const selectedStatus = this.value;
+            console.log(`Tag filter changed to: ${selectedStatus}`);
+            
+            if (selectedStatus === '') {
+                // Clear filter
+                clearStatusFilter();
+            } else {
+                // Apply filter
+                filterByStatus(selectedStatus);
+            }
+        });
+    }
+
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performSearch();
+            }
+        });
+        
+        searchInput.addEventListener('input', function(e) {
+            const value = e.target.value.trim();
+            if (value.length > 0) {
+                console.log(`Search input: ${value}`);
+            }
+        });
+    }
+
+});
+
+function loadInitialStats() {
+    fetch('/api/stats')
+        .then(response => {
+            if (!response.ok) throw new Error(`Stats API error: ${response.status}`);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Stats API response:', data);
+            if (data.success && data.stats) {
+                updateCountersFromStats(data.stats);
+            } else {
+                // If stats API fails, set everything to 0
+                updateCountersFromStats({
+                    inbox_count: 0,
+                    followup_count: 0,
+                    finished_count: 0,
+                    snoozed_count: 0,
+                    flag_count: 0,
+                    flag_count: 0,
+                    at_count: 0,
+                    classified_count: 0,
+                    total_count: 0
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading initial stats:', error);
+            // On error, set everything to 0
+            updateCountersFromStats({
+                inbox_count: 0,
+                followup_count: 0,
+                finished_count: 0,
+                snoozed_count: 0,
+                at_count: 0,
+                classified_count: 0,
+                total_count: 0
+            });
+        });
+}
+
+function checkObjectsCount() {
+    const totalCountElement = document.querySelector('.total-count');
+    if (totalCountElement) {
+        const countMatch = totalCountElement.textContent.match(/(\d+)/);
+        if (countMatch) {
+            const count = parseInt(countMatch[1]);
+            totalObjects = count;
+            
+            const cardElements = document.querySelectorAll('#cardsView .object-card');
+            if (count > 5000 || cardElements.length === 0) {
+                useApiMode = true;
+                console.log(`Switching to API mode (${count} objects, ${cardElements.length} cards)`);
+            }
+        }
+    }
+}
+
+function loadInitialObjects() {
+    if (useApiMode) {
+        loadObjects();
+        return;
+    }
+    
+    const cardElements = document.querySelectorAll('#cardsView .object-card');
+    currentObjects = [];
+    
+    if (cardElements.length === 0) {
+        useApiMode = true;
+        loadObjects();
+        return;
+    }
+    
+    console.log(`Found ${cardElements.length} cards in DOM`);
+    
+    const objectNames = [];
+    const objectsFromDOM = [];
+    
+    cardElements.forEach(card => {
+        const nameElement = card.querySelector('.object-name a');
+        const classificationElement = card.querySelector('.classification-badge');
+        const raElement = card.querySelector('.coord-item:nth-child(1) .coord-value');
+        const decElement = card.querySelector('.coord-item:nth-child(2) .coord-value');
+        const lastUpdateElement = card.querySelector('.last-update');
+        
+        let discoveryMag = '', redshift = '', discoveryDate = '', source = '';
+        
+        const infoItems = card.querySelectorAll('.info-item span');
+        infoItems.forEach(item => {
+            const text = item.textContent;
+            if (text.includes('Discovery Mag =')) {
+                discoveryMag = text.replace('Discovery Mag =', '').trim();
+            } else if (text.includes('Redshift =') || text.includes('z =')) {
+                redshift = text.replace('Redshift =', '').replace('z =', '').trim();
+            } else if (text.includes('Date:')) {
+                discoveryDate = text.replace('Date:', '').trim();
+            } else if (text.includes('Source:')) {
+                source = text.replace('Source:', '').trim();
+            }
+        });
+        
+        const objectName = nameElement ? nameElement.textContent.trim() : '';
+        
+        if (objectName) {
+            objectNames.push(objectName);
+            
+            const obj = {
+                name: objectName,
+                type: classificationElement ? classificationElement.textContent.trim() : 'AT',
+                classification: classificationElement ? classificationElement.textContent.trim() : 'AT',
+                discovery_date: card.dataset.discovery || discoveryDate || '',
+                tag: 'object',
+                magnitude: card.dataset.magnitude || discoveryMag || '',
+                redshift: card.dataset.redshift || redshift || '',
+                brightest_mag: card.dataset.brightestMag || '',
+                brightest_abs_mag: card.dataset.brightestAbsMag || '',
+                ra: raElement ? raElement.textContent.trim() : '',
+                dec: decElement ? decElement.textContent.trim() : '',
+                source: source || '',
+                last_update: lastUpdateElement ? lastUpdateElement.textContent.trim() : '',
+                lastmodified: card.dataset.lastmodified || '',
+                last_photometry: card.dataset.lastphotometry || ''
+            };
+            
+            objectsFromDOM.push(obj);
+        }
+    });
+    
+    fetchObjectTags(objectsFromDOM)
+        .then(updatedObjects => {
+            console.log('Updated objects with real tags:', updatedObjects);
+            currentObjects = updatedObjects;
+            filteredObjects = [...currentObjects];
+            updateDOMCardsWithTags(updatedObjects);
+            refreshCurrentView();
+        })
+        .catch(error => {
+            console.error('Error fetching tags:', error);
+            currentObjects = objectsFromDOM;
+            filteredObjects = [...currentObjects];
+            refreshCurrentView();
+        });
+}
+
+async function fetchObjectTags(objects) {
+    try {
+        const objectNames = objects.map(obj => obj.name);
+        console.log('Fetching tags for objects:', objectNames);
+        
+        const response = await fetch('/api/object-tags', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ object_names: objectNames })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch tags: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Tag API response:', data);
+        
+        if (data.success && data.tags) {
+            return objects.map(obj => {
+                const dbTag = data.tags[obj.name];
+                const finalTag = dbTag || 'object';
+                console.log(`Object ${obj.name}: tag = ${finalTag}`);
+                return { ...obj, tag: finalTag };
+            });
+        } else {
+            throw new Error('Invalid response format');
+        }
+        
+    } catch (error) {
+        console.error('Error in fetchObjectTags:', error);
+        return objects.map(obj => ({ ...obj, tag: 'object' }));
+    }
+}
+
+function updateDOMCardsWithTags(objects) {
+    const cardElements = document.querySelectorAll('#cardsView .object-card');
+    
+    console.log('Updating DOM cards with tags...');
+    
+    cardElements.forEach(card => {
+        const nameElement = card.querySelector('.object-name a');
+        if (!nameElement) return;
+        
+        const objectName = nameElement.textContent.trim();
+        const objectData = objects.find(obj => obj.name === objectName);
+        
+        if (objectData && objectData.tag) {
+            const oldTag = card.dataset.tag;
+            const newTag = objectData.tag;
+            
+            console.log(`Object ${objectName}: ${oldTag} -> ${newTag}`);
+            card.dataset.tag = newTag;
+            card.classList.remove('tag-object', 'tag-followup', 'tag-finished', 'tag-snoozed');
+            card.classList.add(`tag-${newTag}`);
+            const tagBadge = card.querySelector('.tag-badge');
+            if (tagBadge) {
+                tagBadge.classList.remove('object', 'followup', 'finished', 'snoozed');
+                tagBadge.classList.add(newTag);
+                tagBadge.textContent = getTagDisplayName(newTag);
+            }
+            
+            console.log(`Updated DOM card ${objectName} with tag: ${newTag}`);
+        }
+    });
+}
+
+function loadObjects(resetPage = false) {
+    if (isLoading) return;
+    
+    if (resetPage) currentPage = 1;
+    
+    isLoading = true;
+    showLoading(true);
+    
+    const loadingTimeout = setTimeout(() => {
+        if (isLoading) {
+            isLoading = false;
+            showLoading(false);
+            showNotification('Loading timeout, please try again', 'warning');
+        }
+    }, 15000);
+    
+    const params = new URLSearchParams({
+        page: currentPage,
+        per_page: pageSize,
+        sort_by: mapSortField(sortBy),
+        sort_order: sortOrder,
+        search: currentFilters.search || '',
+        classification: currentFilters.classification || '',
+        tag: currentFilters.tag || '',
+        date_from: currentFilters.date_from || '',
+        date_to: currentFilters.date_to || '',
+        app_mag_min: currentFilters.app_mag_min || '',
+        app_mag_max: currentFilters.app_mag_max || '',
+        redshift_min: currentFilters.redshift_min || '',
+        redshift_max: currentFilters.redshift_max || '',
+        discoverer: currentFilters.discoverer || '',
+        brightest_mag_min: currentFilters.brightest_mag_min || '',
+        brightest_mag_max: currentFilters.brightest_mag_max || '',
+        brightest_abs_mag_min: currentFilters.brightest_abs_mag_min || '',
+        brightest_abs_mag_max: currentFilters.brightest_abs_mag_max || ''
+    });
+    
+    fetch(`/api/objects?${params.toString()}`)
+        .then(response => {
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            return response.json();
+        })
+        .then(data => {
+            clearTimeout(loadingTimeout);
+            
+            const objects = data.objects || [];
+            const mappedObjects = objects.map(obj => ({
+                name: (obj.name_prefix || '') + obj.name,
+                type: obj.type || 'AT',
+                classification: obj.type || 'AT',
+                discovery_date: obj.discoverydate || '',
+                tag: obj.tag || 'object',
+                magnitude: obj.discoverymag || '',
+                redshift: obj.redshift || '',
+                ra: obj.ra || '',
+                dec: obj.declination || '',
+                source: obj.source_group || '',
+                last_update: obj.time_received || obj.lastmodified || '',
+                lastmodified: obj.lastmodified || '',
+                last_photometry: obj.last_photometry_date || '',
+                brightest_mag: obj.brightest_mag || '',
+                brightest_abs_mag: obj.brightest_abs_mag || '',
+                internal_names: obj.internal_names || ''
+            }));
+            
+            currentObjects = mappedObjects;
+            filteredObjects = mappedObjects;
+            totalObjects = data.total || 0;
+            totalPages = data.total_pages || Math.ceil((data.total || 0) / pageSize) || 1;
+            
+            // CRITICAL FIX: Never update counters from filtered API response
+            // Always use a separate stats API call to ensure counters reflect total database state
+            // The 'data.stats' from filtered API calls represents filtered stats, not total stats
+            
+            updatePagination();
+            refreshCurrentView();
+            
+            const classificationFilter = document.getElementById('classificationFilter');
+            if (classificationFilter && classificationFilter.options.length <= 1) {
+                populateClassificationFilterFromObjects();
+            }
+            
+            // Only update the "total objects" count, not the status counters
+            const totalCountElement = document.querySelector('.total-count');
+            if (totalCountElement) {
+                if (!hasActiveFilters()) {
+                    totalCountElement.textContent = `${data.total || 0} objects`;
+                }
+            }
+        })
+        .catch(error => {
+            clearTimeout(loadingTimeout);
+            console.error('API error:', error);
+            
+            showNotification(`Loading error: ${error.message}`, 'error');
+            
+            if (error.message.includes('404')) {
+                useApiMode = false;
+                showNotification('API unavailable, switching to DOM mode', 'warning');
+                loadInitialObjects();
+                populateClassificationFilterFromObjects();
+                loadInitialStats();
+            } else {
+                currentObjects = [];
+                filteredObjects = [];
+                refreshCurrentView();
+                updatePagination();
+            }
+        })
+        .finally(() => {
+            isLoading = false;
+            showLoading(false);
+        });
+}
+
+function hasActiveFilters() {
+    return Object.values(currentFilters).some(val => val !== '') || currentStatusFilter !== '';
+}
+
+function mapSortField(frontendField) {
+    const fieldMap = {
+        'name': 'name',
+        'classification': 'type',
+        'discovery_date': 'discoverydate',
+        'magnitude': 'discoverymag',
+        'redshift': 'redshift',
+        'lastmodified': 'lastmodified',
+        'last_update': 'lastmodified',
+        'last_photometry': 'last_photometry_date',
+        'brightest_mag': 'brightest_mag',
+        'brightest_abs_mag': 'brightest_abs_mag'
+    };
+    
+    return fieldMap[frontendField] || 'discoverydate';
+}
+
+function showLoading(show) {
+    let loadingIndicator = document.getElementById('loadingIndicator');
+    
+    if (!loadingIndicator && show) {
+        loadingIndicator = document.createElement('div');
+        loadingIndicator.id = 'loadingIndicator';
+        loadingIndicator.className = 'loading-overlay';
+        loadingIndicator.innerHTML = '<div class="spinner"></div><p>Loading objects...</p>';
+        
+        const contentArea = document.querySelector('.content-area');
+        if (contentArea) {
+            contentArea.appendChild(loadingIndicator);
+        } else {
+            document.body.appendChild(loadingIndicator);
+        }
+    }
+    
+    if (loadingIndicator) {
+        loadingIndicator.style.display = show ? 'flex' : 'none';
+    }
+}
+
+function switchView(viewType) {
+    document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-view="${viewType}"]`).classList.add('active');
+    
+    document.getElementById('cardsView').style.display = 'none';
+    document.getElementById('tableView').style.display = 'none';
+    document.getElementById('compactView').style.display = 'none';
+    
+    currentView = viewType;
+    
+    switch(viewType) {
+        case 'cards':
+            document.getElementById('cardsView').style.display = 'grid';
+            if (useApiMode) {
+                generateCardsView();
+            } else {
+                filterCardsView();
+            }
+            break;
+        case 'table':
+            document.getElementById('tableView').style.display = 'block';
+            generateTableView();
+            break;
+        case 'compact':
+            document.getElementById('compactView').style.display = 'block';
+            generateCompactView();
+            break;
+    }
+    
+    updatePagination();
+}
+
+function generateTableView() {
+    const tableBody = document.getElementById('tableBody');
+    tableBody.innerHTML = '';
+    
+    const objectsToShow = useApiMode ? filteredObjects : (() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = pageSize === 'all' ? filteredObjects.length : startIndex + parseInt(pageSize);
+        return filteredObjects.slice(startIndex, endIndex);
+    })();
+    
+    objectsToShow.forEach(obj => {
+        const row = document.createElement('tr');
+        row.dataset.classification = obj.classification;
+        row.dataset.discovery = obj.discovery_date;
+        row.dataset.tag = obj.tag;
+        row.classList.add(`tag-${obj.tag}`);
+        
+        const escapedName = obj.name.replace(/'/g, "\\'");
+        
+        // Extract year and letters regardless of prefix (e.g. AT2025abc -> 2025abc)
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
+
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
+        
+        row.innerHTML = `
+            <td class="object-name-cell">
+                <a href="${objectLink}" target="_blank">${obj.name}</a>${getEpAliasBadge(obj.internal_names)}
+            </td>
+            <td class="class-cell">
+                <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
+            </td>
+            <td class="coord-cell">${formattedRA}</td>
+            <td class="coord-cell">${formattedDec}</td>
+            <td class="magnitude-cell">${obj.magnitude || 'N/A'}</td>
+            <td class="magnitude-cell">${obj.brightest_mag || 'N/A'}</td>
+            <td class="magnitude-cell">${obj.brightest_abs_mag || 'N/A'}</td>
+            <td class="redshift-cell">${obj.redshift || 'N/A'}</td>
+            <td class="date-cell">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</td>
+            <td class="discoverer-cell">${obj.source ? obj.source.slice(0, 30) : 'N/A'}</td>
+            <td class="tag-cell">
+                <span class="tag-badge ${obj.tag}">
+                    ${getTagDisplayName(obj.tag)}
+                </span>
+            </td>
+            <td class="actions-cell">
+                <a href="${objectLink}" target="_blank" class="action-btn view" title="View">View</a>
+                ${window.isAdmin ? `<button class="action-btn edit" onclick="editTags('${escapedName}')" title="Edit Tags">Edit</button>` : ''}
+            </td>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+}
+
+function generateCompactView() {
+    const compactContainer = document.getElementById('compactView');
+    compactContainer.innerHTML = '';
+    
+    const objectsToShow = useApiMode ? filteredObjects : (() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        const endIndex = pageSize === 'all' ? filteredObjects.length : startIndex + parseInt(pageSize);
+        return filteredObjects.slice(startIndex, endIndex);
+    })();
+    
+    objectsToShow.forEach(obj => {
+        const item = document.createElement('div');
+        item.className = 'compact-item';
+        item.dataset.tag = obj.tag;
+        item.classList.add(`tag-${obj.tag}`);
+        
+        // Extract year and letters regardless of prefix
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
+
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
+        
+        item.innerHTML = `
+            <div class="compact-main">
+                <a href="${objectLink}" target="_blank" class="compact-name">${obj.name}</a>
+                <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
+                <span class="compact-coords">${formattedRA}, ${formattedDec}</span>
+                ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
+                ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest Mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
+                ${obj.brightest_abs_mag ? `<span class="compact-magnitude" title="Brightest Abs Mag">M=${parseFloat(obj.brightest_abs_mag).toFixed(1)}</span>` : ''}
+                ${obj.redshift ? `<span class="compact-redshift">z=${parseFloat(obj.redshift).toFixed(3)}</span>` : ''}
+            </div>
+            <div class="compact-meta">
+                <span class="compact-date">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</span>
+                <span class="tag-indicator ${obj.tag}">
+                    ${getTagIndicator(obj.tag)}
+                </span>
+            </div>
+        `;
+        
+        compactContainer.appendChild(item);
+    });
+}
+
+function generateCardsView() {
+    const cardsContainer = document.getElementById('cardsView');
+    
+    if (!useApiMode) {
+        filterCardsView();
+        return;
+    }
+    
+    cardsContainer.innerHTML = '';
+    
+    if (filteredObjects.length === 0) {
+        return;
+    }
+    
+    filteredObjects.forEach(obj => {
+        const card = document.createElement('div');
+        card.className = 'object-card';
+        card.dataset.tag = obj.tag;
+        card.dataset.classification = obj.classification;
+        card.classList.add(`tag-${obj.tag}`);
+        
+        const formattedRA = obj.ra ? parseFloat(obj.ra).toFixed(3) : 'N/A';
+        const formattedDec = obj.dec ? parseFloat(obj.dec).toFixed(3) : 'N/A';
+        
+        // Extract year and letters regardless of prefix
+        const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
+        let objectLink = '';
+        if (yearLettersMatch) {
+            objectLink = `/object/${yearLettersMatch[1]}${yearLettersMatch[2]}`;
+        } else {
+            objectLink = `/object/${encodeURIComponent(obj.name)}`;
+        }
+        
+        card.innerHTML = `
+            <div class="card-header">
+                <div class="object-name">
+                    <a href="${objectLink}" target="_blank">
+                        ${obj.name}
+                    </a>${getEpAliasBadge(obj.internal_names)}
+                </div>
+                <div class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">
+                    ${obj.classification}
+                </div>
+            </div>
+            
+            <div class="card-content">
+                <div class="coordinates">
+                    <div class="coord-item">
+                        <span class="coord-label">RA:</span>
+                        <span class="coord-value">${formattedRA}</span>
+                    </div>
+                    <div class="coord-item">
+                        <span class="coord-label">Dec:</span>
+                        <span class="coord-value">${formattedDec}</span>
+                    </div>
+                </div>
+                
+                <div class="object-info">
+                    <div class="info-item">
+                        <span>Discovery Mag = ${obj.magnitude || '---'}</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span>Brightest Mag = ${obj.brightest_mag || '---'}</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span>Redshift = ${obj.redshift || '---'}</span>
+                    </div>
+
+                    <div class="info-item">
+                        <span>Brightest M = ${obj.brightest_abs_mag || '---'}</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span>Date: ${obj.discovery_date ? obj.discovery_date.substring(0, 10) : '---'}</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span>Source: ${obj.source || '---'}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-footer">
+                <div class="tag-badge ${obj.tag}">
+                    ${getTagDisplayName(obj.tag)}
+                </div>
+                <div class="last-update">
+                    ${obj.last_update ? obj.last_update.substring(0, 16) : 'No update'}
+                </div>
+                <div class="card-actions">
+                    <a href="${objectLink}" target="_blank" class="quick-action">
+                        View
+                    </a>
+                </div>
+            </div>
+        `;
+        
+        cardsContainer.appendChild(card);
+    });
+}
+
+function getEpAliasBadge(internalNames) {
+    if (!internalNames) return '';
+    const epNames = internalNames.split(',')
+        .map(s => s.trim())
+        .filter(s => /^EP[A-Z0-9]/.test(s));
+    if (epNames.length === 0) return '';
+    return `<span class="ep-alias">(${epNames.join(', ')})</span>`;
+}
+
+function getTagDisplayName(tag) {
+    const icon = ICONS[tag] || ICONS.inbox;
+    // Add style to the SVG string for spacing with text
+    const styledIcon = icon.replace('<svg', '<svg style="margin-right: 4px; vertical-align: text-bottom;"');
+    
+    const tagNames = {
+        'object': 'Inbox',
+        'followup': 'Follow-up',
+        'finished': 'Finished',
+        'snoozed': 'Snoozed'
+    };
+    return `${styledIcon} ${tagNames[tag] || 'Inbox'}`;
+}
+
+function getTagIndicator(tag) {
+    // For indicator, we just want the icon, maybe with vertical alignment but no margin
+    const icon = ICONS[tag] || ICONS.inbox;
+    const styledIcon = icon.replace('<svg', '<svg style="vertical-align: text-bottom;"');
+    return styledIcon;
+}
+
+function filterByStatus(status) {
+    console.log(`Filtering by status: ${status}`);
+    
+    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
+        card.classList.remove('active');
+    });
+    
+    if (currentStatusFilter === status) {
+        currentStatusFilter = '';
+        clearStatusFilter();
+        showNotification('Status filter cleared', 'info');
+        return;
+    }
+    
+    currentStatusFilter = status;
+    
+    const statusClasses = {
+        'object': 'inbox',
+        'followup': 'followup', 
+        'finished': 'finished',
+        'snoozed': 'snoozed'
+    };
+    
+    const targetCard = document.querySelector(`.small-stat-card.${statusClasses[status]}.clickable`);
+    if (targetCard) {
+        targetCard.classList.add('active');
+    }
+    
+    // Update filter state
+    currentFilters.tag = status;
+    
+    // Update dropdown to match
+    const tagFilter = document.getElementById('tagFilter');
+    if (tagFilter) {
+        tagFilter.value = status;
+    }
+    
+    // Apply the filter
+    currentPage = 1;
+    
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        applyLocalStatusFilter(status);
+    }
+    
+    const statusNames = {
+        'object': 'Inbox',
+        'followup': 'Follow-up',
+        'finished': 'Finished', 
+        'snoozed': 'Snoozed'
+    };
+    
+    showNotification(`Filtering ${statusNames[status]} objects`, 'info');
+}
+
+function applyStatusFilter(status) {
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        applyLocalStatusFilter(status);
+    }
+    // DO NOT update counters here - counters should only be updated from dedicated stats API
+}
+
+function applyLocalStatusFilter(status) {
+    filteredObjects = currentObjects.filter(obj => {
+        return obj.tag === status;
+    });
+    
+    currentPage = 1;
+    refreshCurrentView();
+    updatePagination();
+}
+
+function clearStatusFilter() {
+    currentStatusFilter = '';
+    currentFilters.tag = '';
+    
+    const tagFilter = document.getElementById('tagFilter');
+    if (tagFilter) {
+        tagFilter.value = '';
+    }
+    
+    clearStatusFilterVisual();
+    
+    currentPage = 1;
+    
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        filteredObjects = [...currentObjects];
+        refreshCurrentView();
+        updatePagination();
+    }
+}
+
+function updateStatusFilterVisual(status) {
+    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
+        card.classList.remove('active');
+    });
+    
+    const statusClasses = {
+        'object': 'inbox',
+        'followup': 'followup',
+        'finished': 'finished', 
+        'snoozed': 'snoozed'
+    };
+    
+    const targetCard = document.querySelector(`.small-stat-card.${statusClasses[status]}.clickable`);
+    if (targetCard) {
+        targetCard.classList.add('active');
+    }
+}
+
+function clearStatusFilterVisual() {
+    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
+        card.classList.remove('active');
+    });
+}
+
+function updateCardStyling(card, tag) {
+    card.classList.remove('tag-object', 'tag-followup', 'tag-finished', 'tag-snoozed');
+    card.classList.add(`tag-${tag}`);
+    card.dataset.tag = tag;
+    
+    const tagBadge = card.querySelector('.tag-badge');
+    if (tagBadge) {
+        tagBadge.classList.remove('object', 'followup', 'finished', 'snoozed');
+        tagBadge.classList.add(tag);
+        tagBadge.textContent = getTagDisplayName(tag);
+    }
+    
+    console.log(`Applied styling: tag-${tag} to card:`, card.querySelector('.object-name a')?.textContent);
+}
+
+function updateCounters() {
+    // ALWAYS use the dedicated stats API for accurate counts - never calculate from local data
+    loadInitialStats();
+}
+
+function updateCountersFromStats(stats) {
+    if (!stats) return;
+    
+    console.log('Updating counters with stats:', stats);
+    
+    // Force all counters to match database stats exactly - NEVER calculate from filtered data
+    document.getElementById('inboxCount').textContent = stats.inbox_count || 0;
+    document.getElementById('followupCount').textContent = stats.followup_count || 0;
+    document.getElementById('finishedCount').textContent = stats.finished_count || 0;
+    document.getElementById('snoozedCount').textContent = stats.snoozed_count || 0;
+    const flagCount = document.getElementById('flagCount');
+    if (flagCount) flagCount.textContent = stats.flag_count || 0;
+    
+    const atCountElement = document.querySelector('.big-stat-card.at .stat-number');
+    const classifiedCountElement = document.querySelector('.big-stat-card.classified .stat-number');
+    
+    if (atCountElement) atCountElement.textContent = stats.at_count || 0;
+    if (classifiedCountElement) classifiedCountElement.textContent = stats.classified_count || 0;
+    
+    const totalCountElement = document.querySelector('.total-count');
+    if (totalCountElement) totalCountElement.textContent = `${stats.total_count || 0} objects`;
+    
+    // Clear any active filters and reset view if database is empty
+    if (stats.total_count === 0) {
+        currentStatusFilter = '';
+        currentFilters.tag = '';
+        
+        const tagFilter = document.getElementById('tagFilter');
+        if (tagFilter) tagFilter.value = '';
+        
+        clearStatusFilterVisual();
+        
+        // Clear the view containers
+        const cardsContainer = document.getElementById('cardsView');
+        const tableBody = document.getElementById('tableBody');
+        const compactContainer = document.getElementById('compactView');
+        
+        if (tableBody) tableBody.innerHTML = '';
+        if (compactContainer) compactContainer.innerHTML = '';
+        
+        // Reset global state
+        currentObjects = [];
+        filteredObjects = [];
+        totalObjects = 0;
+        currentPage = 1;
+        
+        updatePagination();
+    }
+}
+
+function updatePagination() {
+    const totalObjectsCount = useApiMode ? totalObjects : filteredObjects.length;
+    const totalPagesCount = pageSize === 'all' ? 1 : Math.ceil(totalObjectsCount / pageSize);
+    
+    if (currentPage > totalPagesCount && totalPagesCount > 0) {
+        currentPage = 1;
+    }
+    
+    const startIndex = pageSize === 'all' ? 1 : (currentPage - 1) * pageSize + 1;
+    const endIndex = pageSize === 'all' ? totalObjectsCount : Math.min(currentPage * pageSize, totalObjectsCount);
+    
+    const paginationInfoText = `Showing ${startIndex}-${endIndex} of ${totalObjectsCount} objects`;
+    const topPaginationInfo = document.getElementById('topPaginationInfo');
+    const bottomPaginationInfo = document.getElementById('paginationInfo');
+    
+    if (topPaginationInfo) topPaginationInfo.textContent = paginationInfoText;
+    if (bottomPaginationInfo) bottomPaginationInfo.textContent = paginationInfoText;
+    
+    updatePaginationControls('topPaginationControls', totalPagesCount);
+    updatePaginationControls('paginationControls', totalPagesCount);
+    syncPageSizeSelectors();
+}
+
+function syncPageSizeSelectors() {
+    const topSelect = document.getElementById('topPageSizeSelect');
+    const bottomSelect = document.getElementById('pageSizeSelect');
+    
+    if (topSelect && bottomSelect) {
+        topSelect.value = pageSize;
+        bottomSelect.value = pageSize;
+    }
+}
+
+function updatePaginationControls(controlsId, totalPagesCount) {
+    const controls = document.getElementById(controlsId);
+    if (!controls) return;
+    
+    controls.innerHTML = '';
+    
+    if (totalPagesCount > 1) {
+        const prevBtn = document.createElement('button');
+        prevBtn.innerHTML = ICONS.chevronLeft + ' Prev';
+        prevBtn.className = `pagination-btn ${currentPage === 1 ? 'disabled' : ''}`;
+        if (currentPage > 1) {
+            prevBtn.onclick = () => changePage(currentPage - 1);
+        } else {
+            prevBtn.disabled = true;
+        }
+        controls.appendChild(prevBtn);
+        
+        const startPage = Math.max(1, currentPage - 3);
+        const endPage = Math.min(totalPagesCount, startPage + 6);
+        
+        if (startPage > 1) {
+            const firstBtn = document.createElement('button');
+            firstBtn.textContent = '1';
+            firstBtn.className = 'pagination-btn';
+            firstBtn.onclick = () => changePage(1);
+            controls.appendChild(firstBtn);
+            
+            if (startPage > 2) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.textContent = '...';
+                controls.appendChild(ellipsis);
+            }
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageBtn = document.createElement('button');
+            pageBtn.textContent = i;
+            pageBtn.className = `pagination-btn ${i === currentPage ? 'active' : ''}`;
+            pageBtn.onclick = () => changePage(i);
+            controls.appendChild(pageBtn);
+        }
+        
+        if (endPage < totalPagesCount) {
+            if (endPage < totalPagesCount - 1) {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.textContent = '...';
+                controls.appendChild(ellipsis);
+            }
+            
+            const lastBtn = document.createElement('button');
+            lastBtn.textContent = totalPagesCount;
+            lastBtn.className = 'pagination-btn';
+            lastBtn.onclick = () => changePage(totalPagesCount);
+            controls.appendChild(lastBtn);
+        }
+        
+        const nextBtn = document.createElement('button');
+        nextBtn.innerHTML = 'Next ' + ICONS.chevronRight;
+        nextBtn.className = `pagination-btn ${currentPage === totalPagesCount ? 'disabled' : ''}`;
+        if (currentPage < totalPagesCount) {
+            nextBtn.onclick = () => changePage(currentPage + 1);
+        } else {
+            nextBtn.disabled = true;
+        }
+        controls.appendChild(nextBtn);
+    }
+}
+
+function changePage(page) {
+    if (isLoading) return;
+    
+    currentPage = page;
+    scrollToContentTop();
+    
+    if (useApiMode) {
+        loadObjects();
+    } else {
+        refreshCurrentView();
+        updatePagination();
+    }
+}
+
+function scrollToContentTop() {
+    const contentArea = document.querySelector('.view-controls');
+    if (contentArea) {
+        contentArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function changePageSize() {
+    const newPageSize = event.target.value;
+    pageSize = newPageSize;
+    currentPage = 1;
+    
+    const topSelect = document.getElementById('topPageSizeSelect');
+    const bottomSelect = document.getElementById('pageSizeSelect');
+    
+    if (topSelect) topSelect.value = newPageSize;
+    if (bottomSelect) bottomSelect.value = newPageSize;
+    
+    scrollToContentTop();
+    
+    if (useApiMode) {
+        loadObjects();
+    } else {
+        refreshCurrentView();
+        updatePagination();
+    }
+}
+
+function applySorting() {
+    const select = document.getElementById('sortBy');
+    sortBy = select.value;
+    
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        sortObjects();
+    }
+}
+
+function toggleSortOrder() {
+    sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    document.getElementById('sortOrderBtn').innerHTML = sortOrder === 'asc' ? ICONS.arrowUp : ICONS.arrowDown;
+    
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        sortObjects();
+    }
+}
+
+function sortObjects() {
+    filteredObjects.sort((a, b) => {
+        let aVal = a[sortBy] || '';
+        let bVal = b[sortBy] || '';
+        
+        if (sortBy === 'discovery_date' || sortBy === 'last_update' || sortBy === 'lastmodified') {
+            aVal = aVal ? new Date(aVal) : new Date('1900-01-01');
+            bVal = bVal ? new Date(bVal) : new Date('1900-01-01');
+        } else if (sortBy === 'last_photometry') {
+            // If last_photometry is missing, fallback to lastmodified
+            let aTime = a.last_photometry || a.lastmodified || '';
+            let bTime = b.last_photometry || b.lastmodified || '';
+            aVal = aTime ? new Date(aTime) : new Date('1900-01-01');
+            bVal = bTime ? new Date(bTime) : new Date('1900-01-01');
+        } else if (sortBy === 'magnitude' || sortBy === 'brightest_mag' || sortBy === 'brightest_abs_mag') {
+            aVal = aVal ? parseFloat(aVal) : 99;
+            bVal = bVal ? parseFloat(bVal) : 99;
+        } else if (sortBy === 'redshift') {
+            // Put N/A values at the very bottom regardless of order
+            let aValid = aVal && !isNaN(parseFloat(aVal));
+            let bValid = bVal && !isNaN(parseFloat(bVal));
+            
+            if (!aValid && !bValid) return 0;
+            if (!aValid) return 1;    // a is N/A -> a goes to bottom
+            if (!bValid) return -1;   // b is N/A -> b goes to bottom
+            
+            aVal = parseFloat(aVal);
+            bVal = parseFloat(bVal);
+        } else {
+            aVal = aVal.toString().toLowerCase();
+            bVal = bVal.toString().toLowerCase();
+        }
+        
+        if (sortOrder === 'asc') {
+            return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
+        } else {
+            return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
+        }
+    });
+    
+    currentPage = 1;
+    refreshCurrentView();
+    updatePagination();
+}
+
+function refreshCurrentView() {
+    if (currentView === 'cards') {
+        generateCardsView();
+    } else if (currentView === 'table') {
+        generateTableView();
+    } else if (currentView === 'compact') {
+        generateCompactView();
+    }
+}
+
+function filterCardsView() {
+    const allCards = document.querySelectorAll('#cardsView .object-card');
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = pageSize === 'all' ? filteredObjects.length : startIndex + parseInt(pageSize);
+    const objectsToShow = filteredObjects.slice(startIndex, endIndex);
+    
+    allCards.forEach(card => card.style.display = 'none');
+    
+    objectsToShow.forEach((obj, index) => {
+        allCards.forEach(card => {
+            const cardName = card.querySelector('.object-name a');
+            if (cardName && cardName.textContent.trim() === obj.name) {
+                card.style.display = 'block';
+                card.style.order = index;
+                updateCardStyling(card, obj.tag);
+            }
+        });
+    });
+}
+
+function performSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput.value.trim();
+    
+    if (!searchTerm) {
+        showNotification('Please enter search criteria', 'warning');
+        searchInput.focus();
+        return;
+    }
+    
+    console.log(`Performing search for: "${searchTerm}"`);
+    
+    useApiMode = true;
+    currentFilters.search = searchTerm;
+    currentStatusFilter = '';
+    currentPage = 1;
+    
+    loadObjects(true);
+    showNotification(`Searching for "${searchTerm}"...`, 'info');
+    const url = new URL(window.location);
+    url.searchParams.set('search', searchTerm);
+    window.history.pushState({}, '', url);
+}
+
+function toggleAdvancedFilters() {
+    const modal = document.getElementById('advancedFilterModal');
+    
+    if (modal.style.display === 'flex') {
+        modal.style.display = 'none';
+        
+        // Remove click outside listener
+        if (window.advancedFilterOutsideClick) {
+            modal.removeEventListener('click', window.advancedFilterOutsideClick);
+            window.advancedFilterOutsideClick = null;
+        }
+    } else {
+        modal.style.display = 'flex';
+        
+        // Add click outside listener
+        window.advancedFilterOutsideClick = function(event) {
+            if (event.target === modal) {
+                toggleAdvancedFilters();
+            }
+        };
+        modal.addEventListener('click', window.advancedFilterOutsideClick);
+    }
+}
+
+function applyAdvancedFilters() {
+    // Clear any existing status filter when applying advanced filters
+    if (currentStatusFilter) {
+        clearStatusFilterVisual();
+        currentStatusFilter = '';
+    }
+    
+    currentFilters.search = document.getElementById('searchInput').value.trim();
+    // Get array of selected values for classification
+    const classSelect = document.getElementById('classificationFilter');
+    const selectedClasses = Array.from(classSelect.selectedOptions)
+        .map(opt => opt.value)
+        .filter(val => val !== '');
+    currentFilters.classification = selectedClasses.join(',');
+    
+    currentFilters.tag = document.getElementById('tagFilter').value;
+    currentFilters.date_from = document.getElementById('dateFrom').value;
+    currentFilters.date_to = document.getElementById('dateTo').value;
+    currentFilters.app_mag_min = document.getElementById('appMagMin').value;
+    currentFilters.app_mag_max = document.getElementById('appMagMax').value;
+    currentFilters.redshift_min = document.getElementById('redshiftMin').value;
+    currentFilters.redshift_max = document.getElementById('redshiftMax').value;
+    currentFilters.discoverer = document.getElementById('discovererFilter').value;
+    currentFilters.brightest_mag_min = document.getElementById('brightestMagMin').value;
+    currentFilters.brightest_mag_max = document.getElementById('brightestMagMax').value;
+    currentFilters.brightest_abs_mag_min = document.getElementById('brightestAbsMagMin').value;
+    currentFilters.brightest_abs_mag_max = document.getElementById('brightestAbsMagMax').value;
+    
+    // If tag filter is set, update status filter and visual state
+    if (currentFilters.tag && currentFilters.tag !== currentStatusFilter) {
+        currentStatusFilter = currentFilters.tag;
+        updateStatusFilterVisual(currentStatusFilter);
+    } else if (!currentFilters.tag && currentStatusFilter) {
+        currentStatusFilter = '';
+        clearStatusFilterVisual();
+    }
+    
+    currentPage = 1;
+    
+    if (Object.values(currentFilters).some(val => val !== '')) {
+        useApiMode = true;
+        loadObjects(true);
+    } else {
+        if (useApiMode) {
+            loadObjects(true);
+        } else {
+            filteredObjects = [...currentObjects];
+            refreshCurrentView();
+            updatePagination();
+        }
+    }
+    
+    showNotification('Applying filters...', 'info');
+}
+
+function populateClassificationFilter() {
+    if (useApiMode) {
+        populateClassificationFilterFromAPI();
+    } else {
+        populateClassificationFilterFromObjects();
+    }
+}
+
+async function populateClassificationFilterFromAPI() {
+    try {
+        const response = await fetch('/api/classifications');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.classifications) {
+                populateClassificationOptions(data.classifications);
+                return;
+            }
+        }
+        
+        populateClassificationFilterFromObjects();
+    } catch (error) {
+        console.error('Error fetching classifications:', error);
+        populateClassificationFilterFromObjects();
+    }
+}
+
+function populateClassificationFilterFromObjects() {
+    const classificationSet = new Set();
+    
+    if (currentObjects.length === 0) {
+        const cardElements = document.querySelectorAll('#cardsView .object-card');
+        cardElements.forEach(card => {
+            const classificationElement = card.querySelector('.classification-badge');
+            if (classificationElement) {
+                const classification = classificationElement.textContent.trim() || 'AT';
+                classificationSet.add(classification);
+            }
+        });
+    } else {
+        currentObjects.forEach(obj => {
+            const classification = obj.type || obj.classification || 'AT';
+            classificationSet.add(classification);
+        });
+    }
+    
+    if (classificationSet.size === 0) {
+        classificationSet.add('AT');
+        classificationSet.add('SN Ia');
+        classificationSet.add('SN II');
+        classificationSet.add('SN Ib/c');
+    }
+    
+    const classifications = Array.from(classificationSet);
+    populateClassificationOptions(classifications);
+}
+
+function populateClassificationOptions(classifications) {
+    const sortedClassifications = classifications.sort((a, b) => {
+        if (a === 'AT') return -1;
+        if (b === 'AT') return 1;
+        return a.localeCompare(b);
+    });
+    
+    const classificationFilter = document.getElementById('classificationFilter');
+    if (!classificationFilter) return;
+    
+    const firstOption = classificationFilter.firstElementChild;
+    classificationFilter.innerHTML = '';
+    if (firstOption && firstOption.value === '') {
+        classificationFilter.appendChild(firstOption);
+    } else {
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'All Classifications';
+        classificationFilter.appendChild(allOption);
+    }
+    
+    sortedClassifications.forEach(classification => {
+        const option = document.createElement('option');
+        option.value = classification;
+        option.textContent = classification;
+        classificationFilter.appendChild(option);
+    });
+    
+
+}
+
+function clearAllFilters() {
+    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
+        card.classList.remove('active');
+    });
+    currentStatusFilter = '';
+    
+    document.getElementById('searchInput').value = '';
+    const classFilter = document.getElementById('classificationFilter');
+    if (classFilter) Array.from(classFilter.options).forEach((opt, i) => opt.selected = (i === 0));
+    document.getElementById('tagFilter').value = '';
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('appMagMin').value = '';
+    document.getElementById('appMagMax').value = '';
+    document.getElementById('redshiftMin').value = '';
+    document.getElementById('redshiftMax').value = '';
+    document.getElementById('discovererFilter').value = '';
+    document.getElementById('brightestMagMin').value = '';
+    document.getElementById('brightestMagMax').value = '';
+    document.getElementById('brightestAbsMagMin').value = '';
+    document.getElementById('brightestAbsMagMax').value = '';
+    
+    currentFilters = {
+        search: '',
+        classification: '',
+        tag: '',
+        date_from: '',
+        date_to: '',
+        app_mag_min: '',
+        app_mag_max: '',
+        redshift_min: '',
+        redshift_max: '',
+        discoverer: '',
+        brightest_mag_min: '',
+        brightest_mag_max: '',
+        brightest_abs_mag_min: '',
+        brightest_abs_mag_max: ''
+    };
+    
+    currentPage = 1;
+    
+    loadInitialStats();
+    
+    if (useApiMode) {
+        loadObjects(true);
+    } else {
+        filteredObjects = [...currentObjects];
+        refreshCurrentView();
+        updatePagination();
+    }
+    
+    showNotification('All filters cleared', 'info');
+}
+
+// Sidebar Widget Functions
+async function fetchDashboardWidgets() {
+    try {
+        // Fetch recent comments
+        const commentsResponse = await fetch('/api/marshal/recent-comments');
+        if (commentsResponse.ok) {
+            const data = await commentsResponse.json();
+            if (data.success && data.comments) {
+                renderRecentComments(data.comments);
+            }
+        }
+
+        // Fetch top viewed initially (without mode argument uses default '30days')
+        loadTopViewed();
+    } catch (err) {
+        console.error('Error fetching dashboard widgets:', err);
+    }
+}
+
+async function loadTopViewed() {
+    try {
+        const modeSelect = document.getElementById('topViewedMode');
+        const mode = modeSelect ? modeSelect.value : '30days';
+        const list = document.getElementById('topViewedList');
+        if (list) {
+            list.innerHTML = '<li class="empty-message"><div class="loading-spinner-small" style="display:inline-block; margin-right:8px;"></div>Loading...</li>';
+        }
+        
+        // 讓出主線程，避免卡UI
+        setTimeout(async () => {
+            try {
+                const viewedResponse = await fetch(`/api/marshal/top-viewed?mode=${mode}`);
+                if (viewedResponse.ok) {
+                    const data = await viewedResponse.json();
+                    if (data.success) {
+                        renderTopViewed(data.targets);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching top viewed:', err);
+                if (list) list.innerHTML = '<li class="empty-message">Error loading data</li>';
+            }
+        }, 10);
+    } catch (err) {
+        console.error('Error in loadTopViewed:', err);
+    }
+}
+
+function renderRecentComments(comments) {
+    const list = document.getElementById('recentCommentsList');
+    if (!list) return;
+    
+    if (!comments || comments.length === 0) {
+        list.innerHTML = '<li class="empty-message">No recent comments</li>';
+        return;
+    }
+    
+    list.innerHTML = '';
+    comments.forEach(c => {
+        const li = document.createElement('li');
+        const d = new Date(c.created_at);
+        
+        // Escape content to prevent HTML injection / unintended animations like <marquee>
+        const contentDiv = document.createElement('div');
+        contentDiv.style.marginTop = '4px';
+        contentDiv.style.fontSize = '0.9em';
+        contentDiv.style.color = 'rgba(255,255,255,0.8)';
+        
+        const safeUserName = c.user_name || 'User';
+        contentDiv.textContent = `${safeUserName}: "${c.content}"`;
+        contentDiv.style.fontStyle = 'italic';
+        
+        li.innerHTML = `
+            <strong><a href="/object/${encodeURIComponent(c.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${c.object_name}</a></strong>
+            <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
+        `;
+        li.appendChild(contentDiv);
+        list.appendChild(li);
+    });
+}
+
+function renderTopViewed(targets) {
+    const list = document.getElementById('topViewedList');
+    if (!list) return;
+    
+    if (!targets || targets.length === 0) {
+        list.innerHTML = '<li class="empty-message">No objects viewed recently</li>';
+        return;
+    }
+    
+    list.innerHTML = '';
+    targets.forEach((t, index) => {
+        const li = document.createElement('li');
+        const typeLabel = t.object_type && t.object_type !== 'Unknown' ? `<span style="font-size:0.8em; color:#888; margin-left: 6px;">(${t.object_type})</span>` : '';
+        li.innerHTML = `
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+                <span style="font-weight:bold; color:var(--text-muted); min-width: 20px;">${index + 1}.</span>
+                <strong style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <a href="/object/${encodeURIComponent(t.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${t.object_name}${typeLabel}</a>
+                </strong>
+                <span style="font-size:0.85em; color:var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    ${t.view_count}
+                </span>
+            </div>
+        `;
+        list.appendChild(li);
+    });
+}
+
+function forceRefreshAll() {
+    console.log('Forcing complete refresh...');
+    
+    // Clear all local state
+    currentObjects = [];
+    filteredObjects = [];
+    currentStatusFilter = '';
+    currentFilters = {
+        search: '',
+        classification: '',
+        tag: '',
+        date_from: '',
+        date_to: '',
+        app_mag_min: '',
+        app_mag_max: '',
+        redshift_min: '',
+        redshift_max: '',
+        discoverer: ''
+    };
+    
+    // Clear all filters in UI
+    document.getElementById('searchInput').value = '';
+    const classFilter = document.getElementById('classificationFilter');
+    if (classFilter) Array.from(classFilter.options).forEach((opt, i) => opt.selected = (i === 0));
+    document.getElementById('tagFilter').value = '';
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('appMagMin').value = '';
+    document.getElementById('appMagMax').value = '';
+    document.getElementById('redshiftMin').value = '';
+    document.getElementById('redshiftMax').value = '';
+    document.getElementById('discovererFilter').value = '';
+    
+    clearStatusFilterVisual();
+    
+    // Force API mode for fresh data
+    useApiMode = true;
+    currentPage = 1;
+    
+    // Reload everything
+    loadInitialStats();
+    loadObjects(true);
+}
+
+
+
+function quickView(objectName) {
+    console.log(`QuickView called with: "${objectName}"`);
+    const pureYearLettersMatch = objectName.match(/^(\d{4})([a-zA-Z]+)$/);
+    
+    if (pureYearLettersMatch) {
+        const year = pureYearLettersMatch[1];
+        const letters = pureYearLettersMatch[2];
+        console.log(`Using TNS format route: /object/${year}${letters}`);
+        window.open(`/object/${year}${letters}`, '_blank');
+    } else {
+        console.log(`Using generic route: /object/${encodeURIComponent(objectName)}`);
+        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank');
+    }
+}
+
+function editTags(objectName) {
+    showNotification(`Edit tags for ${objectName} - Feature coming soon!`, 'info');
+}
+
+function showNotification(message, type = 'info') {
+    const container = document.getElementById('notificationContainer');
+    if (!container) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'notificationContainer';
+        newContainer.className = 'notification-container';
+        document.body.appendChild(newContainer);
+    }
+    
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    const finalContainer = document.getElementById('notificationContainer');
+    finalContainer.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+
+
+
+
+window.isAdmin = document.querySelector('[data-admin="true"]') !== null;
+// Back to Top Button Logic
+const backToTopBtn = document.getElementById("backToTopBtn");
+if (backToTopBtn) {
+    window.onscroll = function() {
+        if (document.body.scrollTop > 300 || document.documentElement.scrollTop > 300) {
+            backToTopBtn.style.display = "block";
+        } else {
+            backToTopBtn.style.display = "none";
+        }
+    };
+
+    backToTopBtn.addEventListener("click", function() {
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+}

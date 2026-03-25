@@ -1,0 +1,1221 @@
+/* Override main-banner from home.css to allow scrolling and change layout */
+body {
+    background-color: #000;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('../photo/background.jpg') no-repeat center center;
+    background-size: cover;
+    will-change: transform;
+}
+
+.main-banner {
+    background: transparent !important; /* Move background to fixed pseudo-element to prevent scroll flickering */
+    height: auto !important;
+    min-height: 100vh !important;
+    padding-top: 100px !important;
+    padding-bottom: 50px !important;
+    align-items: flex-start !important; /* allow content to flow down */
+    position: relative;
+    overflow-y: visible !important;
+}
+
+/* Allow container to be wide enough to hold a 1000px calendar without squeezing */
+.main-banner .container {
+    max-width: 97%; 
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* 
+ * Change banner-content from 2-column grid (home.css default) 
+ * to a 1-column flex layout so the large calendar fits 
+ */
+.banner-content {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2rem !important;
+    align-items: center !important;
+    padding: 0 1rem !important;
+    min-height: auto !important;
+    width: 100%;
+    box-sizing: border-box !important;
+}
+
+/* Make both left (text/log) and right (calendar) take full width */
+.banner-left {
+    width: 100%;
+    align-items: center !important;
+    text-align: center;
+    padding: 0 !important;
+}
+
+.banner-left .title-section h1 {
+    justify-content: center;
+}
+
+.banner-left .banner-info {
+    align-items: center;
+}
+
+.banner-right {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 !important;
+}
+
+/* Standardize the dark glass sections */
+.banner-left .private-section,
+.banner-right .private-section,
+.pa-obs-section,
+.pa-obs-log-section {
+    max-width: 90%; /* Fit page properly */
+    margin: 1rem auto;
+}
+
+.private-section {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 100%;
+    box-sizing: border-box;
+    backdrop-filter: blur(5px);
+}
+
+.private-section h3 {
+    margin-bottom: 1rem;
+    color: #4db8ff;
+    font-size: 1.5rem;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.private-section h4 {
+    margin-bottom: 1rem;
+    color: #c3c3c3;
+    font-size: 0.8rem;
+    font-weight: 300;
+    letter-spacing: 1px;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.placeholder-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    color: #aaa;
+    font-weight: 300;
+}
+
+/* Calendar Specific Styles */
+.calendar-container {
+    flex-grow: 1; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center;
+    width: 100%;
+    overflow-x: auto; /* Handle horizontal scroll safely if viewport gets too narrow */
+    border-radius: 8px;
+    background: rgba(0,0,0,0.3);
+}
+
+.calendar-container iframe {
+    /* Limit the calendar width slightly to fit nicely internally */
+    min-width: 100%;
+    max-width: 1000px; /* Force iframe size to user spec */
+    border-radius: 8px;
+}
+
+/* Mobile adjustments */
+@media screen and (max-width: 1050px) {
+    .calendar-container {
+        justify-content: flex-start;
+    }
+}
+
+/* ===================== Private Area Page Layout ===================== */
+
+.pa-title-section {
+    text-align: center;
+    margin-bottom: 0.5rem;
+    width: 100%;
+}
+
+.pa-title-section h1 {
+    justify-content: center;
+}
+
+.pa-title-section .institution {
+    margin-top: 5px;
+}
+
+.pa-widgets-container {
+    width: 90%;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    align-items: stretch;
+    padding-bottom: 1rem;
+}
+
+.pa-calendar-wrap, .pa-weather-wrap {
+    flex: 1;
+    min-width: 300px;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.pa-calendar-wrap {
+    /* overridden padding from prev style */
+    padding-bottom: 0;
+}
+
+.pa-weather-wrap {
+    border-radius: 8px;
+    background: transparent;
+}
+
+.pa-calendar-wrap iframe, .pa-weather-wrap iframe {
+    border-width: 0;
+    border-radius: 8px;
+    background: transparent;
+    display: block;
+    width: 100% !important;
+    height: 900px !important;
+}
+
+/* On smaller screens, stack them */
+@media (max-width: 1200px) {
+    .pa-calendar-wrap, .pa-weather-wrap {
+        max-width: 100%;
+    }
+}
+
+/* ===================== Observation Log Section ===================== */
+
+.pa-obs-section {
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0 auto;
+}
+
+.pa-obs-section h3 {
+    margin-bottom: 1.5rem;
+}
+
+/* Action buttons row */
+.pa-obs-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.pa-btn-slt {
+    padding: 0.6rem 1.2rem;
+    background: #4db8ff;
+    color: #000;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pa-btn-lot {
+    padding: 0.6rem 1.2rem;
+    background: #68707a;
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Tabs */
+.pa-tabs-header {
+    display: flex;
+    gap: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 1rem;
+}
+
+.pa-tab-btn {
+    padding: 0.8rem 2rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-weight: bold;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #aaa;
+}
+
+.pa-tab-btn.active {
+    color: #4db8ff;
+    border-bottom-color: #4db8ff;
+}
+
+/* Target table */
+.pa-target-table {
+    width: 100%;
+    text-align: left;
+    border-collapse: collapse;
+    table-layout: fixed; /* Added this to enforce column widths */
+}
+
+.pa-target-table thead tr {
+    background: rgba(255,255,255,0.05);
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.pa-target-table th {
+    padding: 0.8rem 0.5rem;
+    word-wrap: break-word; /* Allows text to wrap */
+}
+
+/* Base column width defaults - you can adjust these percentages */
+.pa-col-target { width: 14%; }
+.pa-col-ra-dec { width: 12%; }
+.pa-col-priority { width: 8%; }
+.pa-col-filter { width: 12%; }
+.pa-col-total-exp { width: 10%; }
+.pa-col-actions { width: 16%; }
+
+.pa-target-table th.col-note {
+    width: 14%; /* Reduced from 30% to fit other columns */
+}
+
+.pa-target-table td {
+    padding: 0.8rem 0.5rem;
+    word-wrap: break-word; /* Allows text to wrap */
+    overflow-wrap: break-word;
+}
+
+.pa-target-table tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Table cell helpers */
+.pa-td-name {
+    color: #fff;
+    /* Removed display: flex; as it overrides table-cell's native vertical-align: middle */
+}
+
+/* Add a wrapper class for the contents to handle flex alignment instead */
+.pa-td-name-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Vertical switch for target is_active */
+.pa-v-switch {
+    display: inline-block;
+    position: relative;
+    width: 20px;
+    height: 36px;
+}
+
+.pa-v-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.pa-v-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #555;
+    border-radius: 20px;
+    transition: .4s;
+}
+
+.pa-v-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    transition: .4s;
+}
+
+.pa-v-switch input:checked + .pa-v-slider {
+    background-color: #4db8ff;
+}
+
+.pa-v-switch input:checked + .pa-v-slider:before {
+    transform: translateY(-16px);
+}
+
+.pa-action-switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.pa-action-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.pa-action-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4a4f56;
+    transition: 0.2s;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.pa-action-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    top: 2px;
+    background-color: #fff;
+    transition: 0.2s;
+    border-radius: 50%;
+}
+
+.pa-action-switch input:checked + .pa-action-slider {
+    background-color: #4db8ff;
+}
+
+.pa-action-switch input:checked + .pa-action-slider:before {
+    transform: translateX(16px);
+}
+
+.pa-td-coord {
+    font-family: monospace;
+    color: #aaa;
+}
+
+.pa-td-priority {
+    font-weight: bold;
+}
+
+.pa-td-filter-exp {
+    color: #aaa;
+}
+
+.pa-td-note {
+    color: #ccc;
+    word-break: break-word;
+}
+
+.pa-program-badge {
+    background: #00796b;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-left: 5px;
+}
+
+.pa-mag-display {
+    color: #aaa;
+    font-size: 0.8rem;
+}
+
+.pa-empty-row {
+    padding: 2rem;
+    text-align: center;
+    color: #aaa;
+}
+
+/* Action buttons in table */
+.pa-btn-edit {
+    padding: 0.3rem 0.6rem;
+    background: #4db8ff;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 4px;
+    font-weight: 500;
+}
+
+.pa-btn-remove {
+    padding: 0.3rem 0.6rem;
+    background: #ff4d4d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* ===================== Modal ===================== */
+
+.pa-modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(2px);
+}
+
+.pa-modal-box {
+    background: #2a2c31;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    box-sizing: border-box;
+    margin: 0;
+    overflow-y: auto;
+    padding: 2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.05);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.pa-modal-box h3 {
+    margin-top: 0;
+    font-size: 1.4rem;
+    font-weight: normal;
+    margin-bottom: 1.5rem;
+    color: #fff;
+}
+
+/* Form grid rows */
+.pa-form-row {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.pa-form-row.two-col {
+    grid-template-columns: 1fr 1fr;
+}
+
+.pa-form-row.priority-row {
+    grid-template-columns: 1fr 100px;
+    align-items: end;
+}
+
+/* Text input shared style */
+.pa-input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    background: #202124;
+    border: 1px solid #141517;
+    color: white;
+    border-radius: 6px;
+    box-sizing: border-box;
+}
+
+.pa-input::placeholder {
+    color: #666;
+}
+
+/* Floating-label field group */
+.pa-field {
+    position: relative;
+    border: 1px solid #141517;
+    border-radius: 6px;
+    background: #202124;
+    padding-top: 0.3rem;
+}
+
+.pa-field-label {
+    position: absolute;
+    top: -8px;
+    left: 10px;
+    background: #2a2c31;
+    padding: 0 4px;
+    font-size: 0.75rem;
+    color: #888;
+}
+
+.pa-field select,
+.pa-field input {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: transparent;
+    border: none;
+    color: white;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.pa-field select {
+    appearance: none;
+}
+
+/* Search dropdown */
+.pa-search-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1e1f23;
+    border: 1px solid #333;
+    border-radius: 0 0 6px 6px;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 2000;
+}
+
+.pa-search-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #2a2c31;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.pa-search-item:hover {
+    background: #333;
+}
+
+.pa-search-item-name {
+    color: #4db8ff;
+    font-weight: bold;
+}
+
+.pa-search-item-type {
+    color: #888;
+    font-size: 0.8rem;
+    margin-left: 8px;
+}
+
+.pa-search-item-mag {
+    color: #aaa;
+    font-size: 0.8rem;
+    margin-left: 8px;
+}
+
+.pa-search-item-coord {
+    color: #666;
+    font-size: 0.75rem;
+}
+
+.pa-search-empty {
+    padding: 10px 12px;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* LOT program container */
+.pa-lot-program {
+    display: none;
+    margin-bottom: 1.5rem;
+}
+
+.pa-lot-program .pa-field {
+    width: 50%;
+}
+
+/* Auto exposure container */
+.pa-auto-exp-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 1.5rem;
+}
+
+.pa-btn-auto-exp {
+    padding: 0.5rem 1.2rem;
+    background: linear-gradient(135deg, #4db8ff, #0077cc);
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+}
+
+.pa-auto-exp-hint {
+    color: #ffb74d;
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-left: 10px;
+}
+
+/* Observation configuration */
+.pa-obs-config h4 {
+    font-size: 1rem;
+    font-weight: normal;
+    margin-bottom: 0.8rem;
+    color: #fff;
+}
+
+.pa-filter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+
+.pa-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.pa-filter-row .pa-field {
+    flex: 1;
+}
+
+.pa-filter-row .pa-field.filter-name {
+    max-width: 150px;
+}
+
+.pa-filter-row .pa-field.filter-exp {
+    max-width: 120px;
+}
+
+.pa-filter-row .pa-field.filter-count {
+    max-width: 100px;
+}
+
+.pa-filter-subtotal {
+    color: #aaa;
+    font-size: 0.9rem;
+    width: 60px;
+}
+
+.pa-btn-remove-filter {
+    background: transparent;
+    border: none;
+    color: #ff4d4d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+}
+
+.pa-filter-actions {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.pa-btn-link {
+    background: transparent;
+    color: #4db8ff;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pa-total-exposure {
+    font-size: 0.85rem;
+    color: #4db8ff;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    display: none;
+}
+
+/* Note field */
+.pa-note-field {
+    margin-bottom: 2rem;
+}
+
+/* Modal footer buttons */
+.pa-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.pa-btn-cancel {
+    padding: 0.6rem 1.5rem;
+    background: transparent;
+    color: #aaa;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.95rem;
+}
+
+.pa-btn-save {
+    padding: 0.6rem 1.5rem;
+    background: #1c1f24;
+    color: #4db8ff;
+    border: none;
+    border-radius: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ===================== Observation Log UI ===================== */
+.pa-obs-log-section {
+    width: 100%;
+    max-width: 100% !important;
+    margin: 2rem auto 0;
+}
+
+.pa-log-controls {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+}
+
+.pa-log-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 1rem;
+    color: #d6d6d6;
+    font-size: 0.9rem;
+}
+
+.pa-log-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pa-log-legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: 0 0 12px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 0 8px rgba(255, 255, 255, 0.08);
+}
+
+.pa-log-legend-dot-cyan {
+    background: #2bd9ff;
+}
+
+.pa-log-legend-dot-orange {
+    background: #ff9f43;
+}
+
+.pa-log-legend-dot-grey {
+    background: #9aa0a6;
+}
+
+.pa-log-container {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.pa-log-grid-container {
+    overflow-x: auto;
+    width: 100%;
+    position: relative;
+    /* max-height: 600px; - Removed to show full height */
+}
+
+.pa-log-grid-top-scrollbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+    /* Styling scrollbar height */
+    height: 12px;
+    margin-bottom: 2px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar {
+    height: 10px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+.pa-log-grid-top-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+.pa-log-grid {
+    width: max-content;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #fff;
+    font-size: 0.9rem;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pa-log-grid th, .pa-log-grid td {
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.5rem;
+    text-align: center;
+    vertical-align: middle;
+    min-width: 80px;
+    background-clip: padding-box; /* Prevent sticky column leaking */
+}
+
+/* First Column Fixed */
+.pa-log-grid th:first-child, .pa-log-grid td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #1e1e1e; /* Ensure the fixed column is not transparent */
+    border-right: 2px solid rgba(255,255,255,0.2) !important;
+    text-align: left;
+    min-width: 140px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+    padding-left: 0.25rem; /* Make text a bit more to the left */
+}
+
+.pa-log-grid thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #2a2a2a;
+    color: #aaa;
+    font-weight: 600;
+}
+
+/* Header Top-Left Corner Fixed Above Everything */
+.pa-log-grid thead th:first-child {
+    z-index: 3;
+}
+
+/* Cell content layout */
+.pa-log-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    align-items: flex-start;
+    text-align: left;
+}
+
+.pa-log-cell-user {
+    color: #4db8ff;
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.pa-log-cell-status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* Colors for existing vs new targets: Solid background to avoid overlap transparency */
+.pa-log-target-active {
+    background-color: #233744 !important;
+    color: #2bd9ff !important;
+    background-clip: padding-box !important;
+}
+
+.pa-log-target-slt {
+    background-color: #463726 !important;
+    color: #ff9f43 !important;
+    background-clip: padding-box !important;
+}
+
+.pa-log-target-off {
+    background-color: #3b3b3b !important;
+    color: #c4c4c4 !important;
+    background-clip: padding-box !important;
+    position: relative;
+}
+
+.pa-log-target-off::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 12px 0 0 12px;
+    border-color: transparent transparent transparent var(--corner-color, transparent);
+}
+
+.pa-log-target-missing {
+    background-color: #252628 !important;
+    color: #7b8085 !important;
+    background-clip: padding-box !important;
+    position: relative;
+}
+
+.pa-log-target-missing::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 12px 0 0 12px;
+    border-color: transparent transparent transparent var(--corner-color, transparent);
+}
+
+/* Rounded Today and Refresh buttons */
+.pa-btn-log-action {
+    padding: 0.5rem 1rem;
+    background: #1c1f24;
+    color: #4db8ff;
+    border: 1px solid #4db8ff;
+    border-radius: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 10px;
+}
+
+.pa-btn-log-action:hover {
+    background: #4db8ff;
+    color: #000;
+}
+
+/* Scrollbar styles for Log Grid */
+.pa-log-grid-container::-webkit-scrollbar {
+    width: 8px;
+    height: 10px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.pa-log-grid-container::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+
+#content-SLT, #content-LOT {
+    overflow-x: auto;
+    width: 100%;
+}
+
+.pa-target-table th.pa-sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.pa-target-table th.pa-sortable:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.pa-target-table th.pa-sortable span {
+    font-size: 0.8rem;
+    opacity: 0.5;
+    margin-left: 4px;
+}
+
+/* ========================================================= */
+/* BRAND NEW MOBILE VIEW FOR DAILY TRIGGER (Cards & Grid) */
+/* ========================================================= */
+@media screen and (max-width: 768px) {
+    /* Maximize screen real estate */
+    .private-section {
+        padding: 1rem 0.5rem;
+        max-width: 98%;
+    }
+
+    /* --- Header & Buttons Layout --- */
+    .pa-obs-section > div:first-child {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 15px;
+    }
+    .pa-obs-section h3 {
+        position: static !important;
+        transform: none !important;
+        text-align: center;
+        margin: 10px 0 !important;
+    }
+    .pa-tabs-header {
+        justify-content: center;
+        width: 100%;
+    }
+    .pa-obs-actions {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px !important;
+        width: 100%;
+    }
+    .pa-obs-actions button {
+        width: 100%;
+        justify-content: center;
+        margin: 0 !important;
+    }
+    .pa-obs-actions button[onclick="openVisibilityPlot()"] {
+        grid-column: span 2;
+    }
+
+    /* --- Target Table to Cards Redesign --- */
+    .pa-target-table, .pa-target-table tbody {
+        display: block;
+        width: 100%;
+    }
+    .pa-target-table thead {
+        display: none; /* Hide standard headers */
+    }
+    .pa-target-table tr {
+        display: block;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(77, 184, 255, 0.3);
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        padding: 0.5rem;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    }
+    .pa-target-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.8rem 0.5rem;
+        border-bottom: 1px dotted rgba(255, 255, 255, 0.1);
+        text-align: right;
+        font-size: 0.95rem;
+    }
+    .pa-target-table td:last-child {
+        border-bottom: none;
+    }
+    
+    /* Inject Header Labels dynamically inside Flex */
+    .pa-target-table td::before {
+        font-weight: 600;
+        color: #4db8ff;
+        text-align: left;
+        flex-shrink: 0;
+        margin-right: 15px;
+    }
+    .pa-target-table td:nth-of-type(1)::before { content: "Target"; }
+    .pa-target-table td:nth-of-type(2)::before { content: "RA / DEC"; }
+    .pa-target-table td:nth-of-type(3)::before { content: "Priority"; }
+    .pa-target-table td:nth-of-type(4)::before { content: "Filter / Exp"; }
+    .pa-target-table td:nth-of-type(5)::before { content: "Total Exp(s)"; }
+    .pa-target-table td:nth-of-type(6)::before { content: "Note"; }
+    .pa-target-table td:nth-of-type(7)::before { content: "Note(GL)"; }
+    .pa-target-table td:nth-of-type(8)::before { content: "Actions"; }
+
+    /* Fix inner alignments */
+    .pa-target-table td > * {
+        text-align: right;
+        max-width: 65%;
+        word-break: break-word;
+    }
+    .pa-td-name-content {
+        justify-content: flex-end;
+    }
+
+    /* Edge case: empty row */
+    .pa-target-table .pa-empty-row {
+        display: block;
+        text-align: center;
+        padding: 2rem;
+        color: #aaa;
+    }
+    .pa-target-table .pa-empty-row::before {
+        display: none !important;
+    }
+
+    /* --- Log Grid Area Controls (Thumb friendly) --- */
+    .pa-log-controls {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px !important;
+        margin-bottom: 1rem !important;
+    }
+    .pa-log-controls > * {
+        margin: 0 !important;
+        width: 100% !important;
+    }
+    .pa-log-controls select, .pa-log-controls button {
+        height: 48px; /* Easier to tap */
+        font-size: 0.95rem;
+    }
+    #logShowFilterBtn {
+        grid-column: span 2;
+    }
+    
+    .pa-log-legend {
+        justify-content: center;
+        gap: 15px;
+        margin-top: 15px;
+    }
+}
