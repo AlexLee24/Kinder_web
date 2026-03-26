@@ -13,7 +13,8 @@ from modules.postgres_database import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics, get_filtered_stats, get_distinct_classifications,
     update_object_status, update_object_activity, get_auto_snooze_stats,
-    get_object_flag_status, update_object_flag_by_name
+    get_object_flag_status, update_object_flag_by_name,
+    get_object_pin_status, toggle_object_pin
 )
 from modules.Manual_tns_download_snoozed import download_TNS_api_hr, addin_database, auto_snoozed
 from modules.download_phot import process_single_object_workflow
@@ -475,6 +476,24 @@ def update_flag_status(object_name):
         return jsonify({'success': True, 'is_flagged': flag_status})
     else:
         return jsonify({'error': 'Database error'}), 500
+
+@web_api_bp.route('/api/object/<path:object_name>/pin_status', methods=['GET'])
+def get_pin_status(object_name):
+    """Get pin status for an object"""
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    object_name = urllib.parse.unquote(object_name)
+    is_pinned = get_object_pin_status(object_name)
+    return jsonify({'is_pinned': is_pinned})
+
+@web_api_bp.route('/api/object/<path:object_name>/toggle_pin', methods=['POST'])
+def toggle_pin_status(object_name):
+    """Toggle pin status for an object (admin only)"""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    new_state = toggle_object_pin(object_name)
+    return jsonify({'success': True, 'is_pinned': new_state})
 
 @web_api_bp.route('/api/auto-snooze/manual-run', methods=['POST'])
 def manual_auto_snooze():

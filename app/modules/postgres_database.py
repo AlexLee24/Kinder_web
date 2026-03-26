@@ -154,6 +154,7 @@ def init_tns_database():
         try:
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_mag DOUBLE PRECISION")
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_abs_mag DOUBLE PRECISION")
+            cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS pin INTEGER DEFAULT 0")
         except Exception as e:
             logger.debug('Migration note: %s', e)
         
@@ -646,9 +647,13 @@ class TNSObjectDB:
             cursor = conn.cursor(cursor_factory=extras.DictCursor)
             
             cursor.execute('''
-                SELECT id, object_name, user_email, user_name, user_picture, content, created_at
-                FROM comments 
-                ORDER BY created_at DESC
+                SELECT c.id, c.object_name, c.user_email, c.user_name, c.user_picture,
+                       c.content, c.created_at,
+                       t.name_prefix, t.type, t.internal_names
+                FROM comments c
+                LEFT JOIN tns_objects t ON t.name = c.object_name
+                    OR (COALESCE(t.name_prefix,'') || t.name) = c.object_name
+                ORDER BY c.created_at DESC
                 LIMIT %s
             ''', (limit,))
             
@@ -725,7 +730,10 @@ class TNSObjectDB:
             
             if mode == 'all':
                 cursor.execute('''
-                    SELECT v.object_name, v.view_count as view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    SELECT v.object_name, v.view_count as view_count,
+                           COALESCE(MAX(t.type), 'Unknown') as object_type,
+                           MAX(t.name_prefix) as name_prefix,
+                           MAX(t.internal_names) as internal_names
                     FROM object_view_counts v
                     LEFT JOIN tns_objects t 
                       ON t.name = REPLACE(v.object_name, 'AT', '') 
@@ -746,7 +754,10 @@ class TNSObjectDB:
                         ORDER BY view_count DESC
                         LIMIT %s
                     )
-                    SELECT v.object_name, v.view_count, COALESCE(MAX(t.type), 'Unknown') as object_type
+                    SELECT v.object_name, v.view_count,
+                           COALESCE(MAX(t.type), 'Unknown') as object_type,
+                           MAX(t.name_prefix) as name_prefix,
+                           MAX(t.internal_names) as internal_names
                     FROM recent_views v
                     LEFT JOIN tns_objects t 
                       ON t.name = REPLACE(v.object_name, 'AT', '') 
@@ -2034,14 +2045,68 @@ def update_object_flag_by_name(object_name, flag_value):
             conn.commit()
             rows_updated = cur.rowcount
             cur.close()
-            # If no rows were updated, it might be that there is no cross_match_result for this object yet.
-            # In that case, we might need to insert one? 
-            # But cross_match_results usually come from the detection pipeline.
-            # For now, let's assume we can only flag objects that have been processed.
-            return True # Return true even if 0 rows updated to indicate no DB error
+            return True
     except Exception as e:
         logger.error('Error updating flag by name: %s', e)
         return False
+
+def get_object_pin_status(object_name):
+    """Return True if the object is pinned (pin=1)"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT pin FROM tns_objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                (object_name, object_name)
+            )
+            row = cur.fetchone()
+            cur.close()
+            return bool(row and row[0])
+    except Exception as e:
+        logger.error('Error getting pin status: %s', e)
+        return False
+
+def toggle_object_pin(object_name):
+    """Toggle pin for object; returns new pin state (True=pinned)"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE tns_objects SET pin = CASE WHEN pin = 1 THEN 0 ELSE 1 END "
+                "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s "
+                "RETURNING pin",
+                (object_name, object_name)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            cur.close()
+            return bool(row and row[0])
+    except Exception as e:
+        logger.error('Error toggling pin: %s', e)
+        return False
+
+def get_pinned_objects(limit=20):
+    """Return pinned objects sorted by total view count descending"""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                SELECT t.name, t.name_prefix, t.type, t.internal_names,
+                       COALESCE(v.view_count, 0) AS view_count
+                FROM tns_objects t
+                LEFT JOIN object_view_counts v
+                    ON v.object_name = (COALESCE(t.name_prefix,'') || t.name)
+                    OR v.object_name = t.name
+                WHERE t.pin = 1
+                ORDER BY view_count DESC
+                LIMIT %s
+            """, (limit,))
+            rows = cur.fetchall()
+            cur.close()
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error('Error getting pinned objects: %s', e)
+        return []
 
 if __name__ == "__main__":
     init_tns_database()

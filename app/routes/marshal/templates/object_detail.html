@@ -37,8 +37,13 @@
                     {{ object_data.tag|title or 'Inbox' }}
                 </span>
                 {% if session.user and session.user.is_admin %}
+                {# Flag button disabled
                 <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#ffbe0b;" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round."><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
+                </button>
+                #}
+                <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#a78bfa;" id="pinBtn" onclick="togglePin()" title="Pin this object">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
                 </button>
                 {% endif %}
             </div>
@@ -182,6 +187,7 @@
                         </label>
                         <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="fetchPhotometry()">Fetch Phot</button>
                         <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="uploadPhotometry()">Upload</button>
+                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="openDownloadModal()">Download</button>
                         <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
                         <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="loadPhotometryPlot()">Refresh</button>
                     </div>
@@ -217,6 +223,7 @@
                     <h3>Spectroscopy</h3>
                     <div class="action-row">
                         <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="uploadSpectrum()">Upload</button>
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="downloadCurrentSpectrum()">Download</button>
                         <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
                     </div>
                 </div>
@@ -485,19 +492,66 @@ MJD         magnitude  error   filter  telescope
         </div>
     </div>
 
-    <!-- Add Photometry Point Modal -->
-    <div class="modal" id="addPhotometryModal" style="display: none;">
+    <!-- Download Photometry Modal -->
+    <div class="modal" id="downloadPhotometryModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Add Photometry Point</h3>
-                <span class="close" onclick="closeAddPhotometryModal()">&times;</span>
+                <h3>Download Photometry</h3>
+                <span class="close" onclick="closeDownloadModal()">&times;</span>
             </div>
             <div class="modal-body">
-                <form id="addPhotometryForm">
-                    <div class="form-group">
-                        <label for="addMjd">MJD:</label>
-                        <input type="number" id="addMjd" step="0.001" required>
+                <!-- MJD range -->
+                <div class="form-group" style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+                    <label style="color:rgba(255,255,255,0.7); font-size:0.85rem; min-width:70px;">MJD range</label>
+                    <input type="number" id="dlMjdMin" step="0.001" placeholder="min"
+                        style="flex:1; min-width:100px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:5px 8px; font-size:0.85rem;">
+                    <span style="color:#888;">—</span>
+                    <input type="number" id="dlMjdMax" step="0.001" placeholder="max"
+                        style="flex:1; min-width:100px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:5px 8px; font-size:0.85rem;">
+                </div>
+                <!-- Non-detections -->
+                <div style="margin-bottom:16px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:rgba(255,255,255,0.8); font-size:0.85rem;">
+                        <input type="checkbox" id="dlIncludeNondet" checked style="width:15px; height:15px;">
+                        Include non-detections (upper limits)
+                    </label>
+                </div>
+                <!-- Telescopes -->
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.82rem; color:rgba(255,255,255,0.5); margin-bottom:6px;">
+                        Telescopes
+                        <button type="button" onclick="dlToggleAll('telescope', true)"
+                            style="margin-left:8px; font-size:0.75rem; background:none; border:1px solid rgba(255,255,255,0.25); color:#aaa; border-radius:3px; padding:1px 6px; cursor:pointer;">All</button>
+                        <button type="button" onclick="dlToggleAll('telescope', false)"
+                            style="font-size:0.75rem; background:none; border:1px solid rgba(255,255,255,0.25); color:#aaa; border-radius:3px; padding:1px 6px; cursor:pointer;">None</button>
                     </div>
+                    <div id="dlTelescopeList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                </div>
+                <!-- Filters -->
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.82rem; color:rgba(255,255,255,0.5); margin-bottom:6px;">
+                        Filters
+                        <button type="button" onclick="dlToggleAll('filter', true)"
+                            style="margin-left:8px; font-size:0.75rem; background:none; border:1px solid rgba(255,255,255,0.25); color:#aaa; border-radius:3px; padding:1px 6px; cursor:pointer;">All</button>
+                        <button type="button" onclick="dlToggleAll('filter', false)"
+                            style="font-size:0.75rem; background:none; border:1px solid rgba(255,255,255,0.25); color:#aaa; border-radius:3px; padding:1px 6px; cursor:pointer;">None</button>
+                    </div>
+                    <div id="dlFilterList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                </div>
+                <div id="dlCount" style="font-size:0.82rem; color:rgba(255,255,255,0.45); margin-top:4px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeDownloadModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="doDownloadPhotometry()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download .dat
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Photometry Point Modal -->
+    <div class="modal" id="addPhotometryModal" style="display: none;">
                     <div class="form-group">
                         <label for="addMagnitude">Magnitude:</label>
                         <input type="number" id="addMagnitude" step="0.001" required>

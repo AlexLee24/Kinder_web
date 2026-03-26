@@ -62,7 +62,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (objectName) {
         loadObjectData();
-        checkFlagStatus();
+        // checkFlagStatus(); // Flag disabled
+        checkPinStatus();
     } else {
         showNotification('Object name not found', 'error');
     }
@@ -1517,6 +1518,109 @@ function uploadPhotometry() {
     
     // Setup file input
     setupFileUpload();
+}
+
+// ============================================================
+// DOWNLOAD PHOTOMETRY
+// ============================================================
+function openDownloadModal() {
+    if (!photometryData || photometryData.length === 0) {
+        showNotification('No photometry data loaded yet.', 'warning');
+        return;
+    }
+
+    const modal = document.getElementById('downloadPhotometryModal');
+    if (!modal) return;
+
+    // Unique telescopes & filters
+    const telescopes = [...new Set(photometryData.map(p => p.telescope || 'Unknown').filter(Boolean))].sort();
+    const filters    = [...new Set(photometryData.map(p => p.filter || '').filter(Boolean))].sort();
+    const mjds       = photometryData.map(p => parseFloat(p.mjd)).filter(m => !isNaN(m));
+
+    // Pre-fill MJD range
+    const minEl = document.getElementById('dlMjdMin');
+    const maxEl = document.getElementById('dlMjdMax');
+    if (minEl) minEl.value = '';
+    if (maxEl) maxEl.value = '';
+
+    // Build telescope checkboxes
+    const telList = document.getElementById('dlTelescopeList');
+    if (telList) {
+        telList.innerHTML = '';
+        telescopes.forEach(t => {
+            const lbl = document.createElement('label');
+            lbl.style.cssText = 'display:flex; align-items:center; gap:5px; cursor:pointer; color:rgba(255,255,255,0.8); font-size:0.82rem; background:rgba(255,255,255,0.06); padding:3px 9px; border-radius:4px;';
+            lbl.innerHTML = `<input type="checkbox" checked data-dl="telescope" value="${t}" style="width:13px; height:13px;"> ${t}`;
+            telList.appendChild(lbl);
+        });
+    }
+
+    // Build filter checkboxes
+    const fltList = document.getElementById('dlFilterList');
+    if (fltList) {
+        fltList.innerHTML = '';
+        filters.forEach(f => {
+            const lbl = document.createElement('label');
+            lbl.style.cssText = 'display:flex; align-items:center; gap:5px; cursor:pointer; color:rgba(255,255,255,0.8); font-size:0.82rem; background:rgba(255,255,255,0.06); padding:3px 9px; border-radius:4px;';
+            lbl.innerHTML = `<input type="checkbox" checked data-dl="filter" value="${f}" style="width:13px; height:13px;"> ${f}`;
+            fltList.appendChild(lbl);
+        });
+    }
+
+    const countEl = document.getElementById('dlCount');
+    if (countEl) countEl.textContent = `${photometryData.length} points total`;
+
+    modal.style.display = 'flex';
+}
+
+function closeDownloadModal() {
+    const modal = document.getElementById('downloadPhotometryModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function dlToggleAll(type, checked) {
+    document.querySelectorAll(`[data-dl="${type}"]`).forEach(cb => { cb.checked = checked; });
+}
+
+function doDownloadPhotometry() {
+    if (!cleanObjectName) return;
+
+    const selTelescopes = [...document.querySelectorAll('[data-dl="telescope"]:checked')].map(cb => cb.value);
+    const selFilters    = [...document.querySelectorAll('[data-dl="filter"]:checked')].map(cb => cb.value);
+    const mjdMin        = document.getElementById('dlMjdMin')?.value || '';
+    const mjdMax        = document.getElementById('dlMjdMax')?.value || '';
+    const includeND     = document.getElementById('dlIncludeNondet')?.checked !== false;
+
+    const params = new URLSearchParams();
+    if (selTelescopes.length) params.set('telescopes', selTelescopes.join(','));
+    if (selFilters.length)    params.set('filters', selFilters.join(','));
+    if (mjdMin)               params.set('mjd_min', mjdMin);
+    if (mjdMax)               params.set('mjd_max', mjdMax);
+    if (!includeND)           params.set('include_nondet', 'false');
+
+    const url = `/api/object/${cleanObjectName}/photometry/download?${params.toString()}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${cleanObjectName}_phot.dat`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    closeDownloadModal();
+}
+
+function downloadCurrentSpectrum() {
+    const selector = document.getElementById('spectrumSelector');
+    const spectrumId = selector?.value;
+    if (!spectrumId) {
+        showNotification('No spectrum selected.', 'warning');
+        return;
+    }
+    const a = document.createElement('a');
+    a.href = `/api/spectrum/${encodeURIComponent(spectrumId)}/download`;
+    a.download = `${cleanObjectName}_spec_${spectrumId}.dat`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 function uploadSpectrum() {
@@ -3690,17 +3794,13 @@ function revokePermission() {
     });
 }
 
-// Flag Management
+/* Flag Management — disabled
 function checkFlagStatus() {
     if (!cleanObjectName) return;
-    
-    // If cleanObjectName is not set yet (might happen if this is called too early), try to get it from URL
     if (!cleanObjectName && objectName) {
         cleanObjectName = extractYearAndLetters(objectName);
     } 
-    
     if (!cleanObjectName) return;
-    
     fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/flag_status`)
         .then(response => response.json())
         .then(data => {
@@ -3717,21 +3817,62 @@ function checkFlagStatus() {
         })
         .catch(err => console.error('Error checking flag status:', err));
 }
+*/
 
+// Pin Management
+function checkPinStatus() {
+    if (!cleanObjectName) return;
+    fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/pin_status`)
+        .then(r => r.json())
+        .then(data => _applyPinUI(data.is_pinned))
+        .catch(err => console.error('Error checking pin status:', err));
+}
+
+function _applyPinUI(isPinned) {
+    const btn = document.getElementById('pinBtn');
+    if (!btn) return;
+    if (isPinned) {
+        btn.style.color = '#a78bfa';
+        btn.querySelector('svg').setAttribute('fill', '#a78bfa');
+        btn.title = 'Unpin this object';
+    } else {
+        btn.style.color = '#a78bfa';
+        btn.querySelector('svg').setAttribute('fill', 'none');
+        btn.title = 'Pin this object';
+    }
+}
+
+function togglePin() {
+    if (!cleanObjectName) return;
+    fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/toggle_pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            _applyPinUI(data.is_pinned);
+            showNotification(data.is_pinned ? 'Object pinned' : 'Object unpinned', 'success');
+        } else {
+            showNotification(data.error || 'Failed to toggle pin', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error toggling pin:', err);
+        showNotification('Error toggling pin', 'error');
+    });
+}
+
+/* toggleFlag — disabled
 function toggleFlag() {
     if (!cleanObjectName) {
         if (objectName) cleanObjectName = extractYearAndLetters(objectName);
         else return;
     }
-    
-    // Get current state
     const btn = document.getElementById('flagBtn');
     if (!btn) return;
-    
     const isCurrentlyFlagged = btn.classList.contains('active');
     const newState = !isCurrentlyFlagged;
-    
-    // Optimistic UI update
     if (newState) {
         btn.classList.add('active');
         btn.innerHTML = `${ICONS.flag} Remove Flag`;
@@ -3741,47 +3882,35 @@ function toggleFlag() {
         btn.innerHTML = `${ICONS.flag} Flag`;
         btn.title = "Flag this object as important";
     }
-    
     fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/toggle_flag`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ flag: newState })
     })
     .then(response => response.json())
     .then(data => {
         if (!data.success) {
-            // Revert on error
             showNotification('Failed to toggle flag', 'error');
             if (isCurrentlyFlagged) {
-                btn.classList.add('active');
-                btn.innerHTML = `${ICONS.flag} Remove Flag`;
-                btn.title = "Remove flag from this object";
+                btn.classList.add('active'); btn.innerHTML = `${ICONS.flag} Remove Flag`;
             } else {
-                btn.classList.remove('active');
-                btn.innerHTML = `${ICONS.flag} Flag`;
-                btn.title = "Flag this object as important";
+                btn.classList.remove('active'); btn.innerHTML = `${ICONS.flag} Flag`;
             }
         } else {
-             showNotification(newState ? 'Object flagged' : 'Flag removed', 'success');
+            showNotification(newState ? 'Object flagged' : 'Flag removed', 'success');
         }
     })
     .catch(err => {
         console.error('Error toggling flag:', err);
         showNotification('Error toggling flag', 'error');
-        // Revert UI
         if (isCurrentlyFlagged) {
-            btn.classList.add('active');
-            btn.innerHTML = `${ICONS.flag} Remove Flag`;
-            btn.title = "Remove flag from this object";
+            btn.classList.add('active'); btn.innerHTML = `${ICONS.flag} Remove Flag`;
         } else {
-            btn.classList.remove('active');
-            btn.innerHTML = `${ICONS.flag} Flag`;
-            btn.title = "Flag this object as important";
+            btn.classList.remove('active'); btn.innerHTML = `${ICONS.flag} Flag`;
         }
     });
 }
+*/
 
 // ==========================================
 // Admin Permissions & Access Control

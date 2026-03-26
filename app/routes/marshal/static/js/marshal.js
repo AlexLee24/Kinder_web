@@ -1448,9 +1448,66 @@ async function fetchDashboardWidgets() {
 
         // Fetch top viewed initially (without mode argument uses default '30days')
         loadTopViewed();
+
+        // Fetch pinned objects
+        loadPinnedObjects();
     } catch (err) {
         console.error('Error fetching dashboard widgets:', err);
     }
+}
+
+async function loadPinnedObjects() {
+    const list = document.getElementById('pinnedObjectsList');
+    if (!list) return;
+    list.innerHTML = '<li class="empty-message"><div class="loading-spinner-small" style="display:inline-block; margin-right:8px;"></div>Loading...</li>';
+    try {
+        const resp = await fetch('/api/marshal/pinned-objects');
+        if (!resp.ok) { list.innerHTML = '<li class="empty-message">Unavailable</li>'; return; }
+        const data = await resp.json();
+        if (data.success) renderPinnedObjects(data.objects);
+        else list.innerHTML = '<li class="empty-message">No pinned objects</li>';
+    } catch (err) {
+        console.error('Error loading pinned objects:', err);
+        list.innerHTML = '<li class="empty-message">Error loading data</li>';
+    }
+}
+
+// Build EP tag HTML from internal_names string
+function buildEpTags(internalNames) {
+    if (!internalNames) return '';
+    const eps = internalNames.split(',').map(s => s.trim()).filter(s => s.toUpperCase().startsWith('EP'));
+    if (!eps.length) return '';
+    return eps.map(ep =>
+        `<span style="font-size:0.72em; background:rgba(96,165,250,0.18); color:#60a5fa; border:1px solid rgba(96,165,250,0.35); border-radius:3px; padding:0 4px; margin-left:4px; vertical-align:middle;">${ep}</span>`
+    ).join('');
+}
+
+function renderPinnedObjects(objects) {
+    const list = document.getElementById('pinnedObjectsList');
+    if (!list) return;
+    if (!objects || objects.length === 0) {
+        list.innerHTML = '<li class="empty-message">No pinned objects</li>';
+        return;
+    }
+    list.innerHTML = '';
+    objects.forEach((obj, index) => {
+        const fullName = (obj.name_prefix || '') + (obj.name || '');
+        const typeLabel = obj.type ? ` <span style="font-size:0.8em; color:#888;">(${obj.type})</span>` : '';
+        const epTags = buildEpTags(obj.internal_names);
+        const views = obj.view_count ? `<span style="font-size:0.8em; color:#a78bfa; white-space:nowrap;">${obj.view_count} views</span>` : '';
+        const li = document.createElement('li');
+        li.innerHTML = `
+            <div style="display:flex; align-items:baseline; gap:6px;">
+                <span style="font-size:0.85em; color:#888; min-width:18px;">${index + 1}.</span>
+                <span style="flex-grow:1; overflow:hidden; text-overflow:ellipsis;">
+                    <strong><a href="/object/${encodeURIComponent(fullName)}" target="_blank"
+                        style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
+                </span>
+                ${views}
+            </div>
+        `;
+        list.appendChild(li);
+    });
 }
 
 async function loadTopViewed() {
@@ -1495,19 +1552,17 @@ function renderRecentComments(comments) {
     comments.forEach(c => {
         const li = document.createElement('li');
         const d = new Date(c.created_at);
-        
-        // Escape content to prevent HTML injection / unintended animations like <marquee>
+        const fullName = (c.name_prefix || '') + (c.object_name || '');
+        const typeLabel = c.type ? ` <span style="font-size:0.8em; color:#888;">(${c.type})</span>` : '';
+        const epTags = buildEpTags(c.internal_names);
+
         const contentDiv = document.createElement('div');
-        contentDiv.style.marginTop = '4px';
-        contentDiv.style.fontSize = '0.9em';
-        contentDiv.style.color = 'rgba(255,255,255,0.8)';
-        
-        const safeUserName = c.user_name || 'User';
-        contentDiv.textContent = `${safeUserName}: "${c.content}"`;
-        contentDiv.style.fontStyle = 'italic';
+        contentDiv.style.cssText = 'margin-top:4px; font-size:0.9em; color:rgba(255,255,255,0.8); font-style:italic;';
+        contentDiv.textContent = `${c.user_name || 'User'}: "${c.content}"`;
         
         li.innerHTML = `
-            <strong><a href="/object/${encodeURIComponent(c.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${c.object_name}</a></strong>
+            <strong><a href="/object/${encodeURIComponent(fullName)}" target="_blank"
+                style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
             <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
         `;
         li.appendChild(contentDiv);
@@ -1527,13 +1582,15 @@ function renderTopViewed(targets) {
     list.innerHTML = '';
     targets.forEach((t, index) => {
         const li = document.createElement('li');
-        const typeLabel = t.object_type && t.object_type !== 'Unknown' ? `<span style="font-size:0.8em; color:#888; margin-left: 6px;">(${t.object_type})</span>` : '';
+        const typeLabel = t.object_type && t.object_type !== 'Unknown' ? ` <span style="font-size:0.8em; color:#888;">(${t.object_type})</span>` : '';
+        const epTags = buildEpTags(t.internal_names);
         li.innerHTML = `
             <div style="display: flex; align-items: baseline; gap: 8px;">
                 <span style="font-weight:bold; color:var(--text-muted); min-width: 20px;">${index + 1}.</span>
-                <strong style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <a href="/object/${encodeURIComponent(t.object_name)}" target="_blank" style="color:var(--primary-color, #46ffaf); text-decoration:none;">${t.object_name}${typeLabel}</a>
-                </strong>
+                <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <strong><a href="/object/${encodeURIComponent(t.object_name)}" target="_blank"
+                        style="color:var(--primary-color, #46ffaf); text-decoration:none;">${t.object_name}</a></strong>${typeLabel}${epTags}
+                </span>
                 <span style="font-size:0.85em; color:var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                     ${t.view_count}

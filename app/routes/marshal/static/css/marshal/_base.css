@@ -6,7 +6,7 @@
 
 body {
     font-family: var(--font-family);
-    background-image: url('../../photo/M101.jpg');
+    background-image: url('../../photo/background.png');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;

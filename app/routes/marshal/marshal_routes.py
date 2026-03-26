@@ -152,3 +152,14 @@ def get_marshal_top_viewed():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@marshal_bp.route('/api/marshal/pinned-objects')
+def get_marshal_pinned_objects():
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        from modules.postgres_database import get_pinned_objects
+        objects = get_pinned_objects(limit=20)
+        return jsonify({'success': True, 'objects': objects})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500

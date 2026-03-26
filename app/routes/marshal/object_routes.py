@@ -5,7 +5,7 @@ import re
 import math
 import urllib.parse
 from datetime import datetime
-from flask import render_template, redirect, url_for, session, flash, request, jsonify
+from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
 
 from modules.postgres_database import (
     search_tns_objects, update_object_status, update_object_activity, get_tns_db_connection,
@@ -845,6 +845,117 @@ def delete_spectrum(spectrum_id):
             return jsonify({'error': 'Spectrum not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/download')
+def download_photometry(year, letters):
+    """Download photometry as .dat file with optional filters."""
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+
+    object_name = f"{year}{letters}"
+
+    telescopes_param = request.args.get('telescopes', '')
+    filters_param    = request.args.get('filters', '')
+    mjd_min          = request.args.get('mjd_min', type=float)
+    mjd_max          = request.args.get('mjd_max', type=float)
+    include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
+
+    sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
+    sel_filters    = {f.strip() for f in filters_param.split(',') if f.strip()}
+
+    try:
+        phot = TNSObjectDB.get_photometry(object_name)
+
+        rows = []
+        for p in phot:
+            if sel_telescopes and (p.get('telescope') or '') not in sel_telescopes:
+                continue
+            if sel_filters and (p.get('filter') or '') not in sel_filters:
+                continue
+            if mjd_min is not None and p.get('mjd', 0) < mjd_min:
+                continue
+            if mjd_max is not None and p.get('mjd', 0) > mjd_max:
+                continue
+            is_upper = p.get('magnitude_error') is None
+            if not include_nondet and is_upper:
+                continue
+            rows.append(p)
+
+        lines = [
+            f"# {object_name} photometry",
+            "# MJD magnitude error filter telescope",
+        ]
+        for p in rows:
+            mjd  = p.get('mjd', '')
+            mag  = p.get('magnitude')
+            err  = p.get('magnitude_error')
+            flt  = p.get('filter') or ''
+            tel  = p.get('telescope') or 'Unknown'
+            is_upper = err is None
+            if is_upper:
+                mag_str = f">{mag:.6f}" if mag is not None else ">nan"
+                err_str = "nan"
+            else:
+                mag_str = f"{mag:.6f}" if mag is not None else "nan"
+                err_str = f"{err:.6f}"
+            lines.append(f"{mjd:.6f}  {mag_str}  {err_str}  {flt}  {tel}")
+
+        content = '\n'.join(lines) + '\n'
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{object_name}_phot.dat"'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/spectrum/<path:spectrum_id>/download')
+def download_spectrum_file(spectrum_id):
+    """Download a single spectrum as .dat file."""
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+
+    try:
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT object_name, wavelength, intensity, telescope, phase
+            FROM spectroscopy
+            WHERE spectrum_id = %s
+            ORDER BY wavelength ASC
+        ''', (spectrum_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return jsonify({'error': 'Spectrum not found'}), 404
+
+        obj   = rows[0][0]
+        tel   = rows[0][3] or 'Unknown'
+        phase = rows[0][4]
+
+        lines = [
+            f"# {obj} spectrum  id={spectrum_id}",
+            f"# Telescope: {tel}",
+        ]
+        if phase is not None:
+            lines.append(f"# Phase: {phase}")
+        lines.append("# wavelength intensity")
+        for _, wl, intens, _, _ in rows:
+            lines.append(f"{wl:.4f}  {intens:.8g}")
+
+        content = '\n'.join(lines) + '\n'
+        safe_id = re.sub(r'[^\w\-]', '_', spectrum_id)
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{obj}_spec_{safe_id}.dat"'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/plot')
 def get_object_photometry_plot(year, letters):
