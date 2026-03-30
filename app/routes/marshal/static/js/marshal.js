@@ -231,7 +231,8 @@ function loadInitialObjects() {
                 source: source || '',
                 last_update: lastUpdateElement ? lastUpdateElement.textContent.trim() : '',
                 lastmodified: card.dataset.lastmodified || '',
-                last_photometry: card.dataset.lastphotometry || ''
+                last_photometry: card.dataset.lastphotometry || '',
+                tags: card.dataset.tags || null
             };
             
             objectsFromDOM.push(obj);
@@ -278,8 +279,8 @@ async function fetchObjectTags(objects) {
             return objects.map(obj => {
                 const dbTag = data.tags[obj.name];
                 const finalTag = dbTag || 'object';
-                console.log(`Object ${obj.name}: tag = ${finalTag}`);
-                return { ...obj, tag: finalTag };
+                const objTags = data.object_tags ? data.object_tags[obj.name] : null;
+                return { ...obj, tag: finalTag, tags: objTags };
             });
         } else {
             throw new Error('Invalid response format');
@@ -546,7 +547,7 @@ function generateTableView() {
         
         row.innerHTML = `
             <td class="object-name-cell">
-                <a href="${objectLink}" target="_blank">${obj.name}</a>${getEpAliasBadge(obj.internal_names)}
+                <a href="${objectLink}" target="_blank">${obj.name}</a>${buildObjectTags(obj.tags, true)}
             </td>
             <td class="class-cell">
                 <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
@@ -662,12 +663,13 @@ function generateCardsView() {
                 <div class="object-name">
                     <a href="${objectLink}" target="_blank">
                         ${obj.name}
-                    </a>${getEpAliasBadge(obj.internal_names)}
+                    </a>
                 </div>
                 <div class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">
                     ${obj.classification}
                 </div>
             </div>
+            ${obj.tags ? `<div class="card-tags">${buildObjectTags(obj.tags)}</div>` : ''}
             
             <div class="card-content">
                 <div class="coordinates">
@@ -717,7 +719,7 @@ function generateCardsView() {
                 </div>
                 <div class="card-actions">
                     <a href="${objectLink}" target="_blank" class="quick-action">
-                        View
+                        View${buildObjectTags(obj.tags, true)}
                     </a>
                 </div>
             </div>
@@ -728,12 +730,8 @@ function generateCardsView() {
 }
 
 function getEpAliasBadge(internalNames) {
-    if (!internalNames) return '';
-    const epNames = internalNames.split(',')
-        .map(s => s.trim())
-        .filter(s => /^EP[A-Z0-9]/.test(s));
-    if (epNames.length === 0) return '';
-    return `<span class="ep-alias">(${epNames.join(', ')})</span>`;
+    // Deprecated: kept for any legacy calls. Use buildObjectTags instead.
+    return '';
 }
 
 function getTagDisplayName(tag) {
@@ -1472,14 +1470,21 @@ async function loadPinnedObjects() {
     }
 }
 
-// Build EP tag HTML from internal_names string
+function buildObjectTags(tags, mini = false) {
+    if (!tags) return '';
+    const parts = tags.split(',').map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return '';
+    // EP first
+    const ep = parts.filter(t => t.toUpperCase().startsWith('EP'));
+    const others = parts.filter(t => !t.toUpperCase().startsWith('EP'));
+    const cls = mini ? 'mini-tag' : 'custom-tag';
+    return [...ep.map(t => `<span class="${cls} ep">${t}</span>`),
+            ...others.map(t => `<span class="${cls}">${t}</span>`)].join('');
+}
+
+// Kept for backward compat during transition
 function buildEpTags(internalNames) {
-    if (!internalNames) return '';
-    const eps = internalNames.split(',').map(s => s.trim()).filter(s => s.toUpperCase().startsWith('EP'));
-    if (!eps.length) return '';
-    return eps.map(ep =>
-        `<span style="font-size:0.72em; background:rgba(96,165,250,0.18); color:#60a5fa; border:1px solid rgba(96,165,250,0.35); border-radius:3px; padding:0 4px; margin-left:4px; vertical-align:middle;">${ep}</span>`
-    ).join('');
+    return '';
 }
 
 function renderPinnedObjects(objects) {
@@ -1492,15 +1497,18 @@ function renderPinnedObjects(objects) {
     list.innerHTML = '';
     objects.forEach((obj, index) => {
         const fullName = (obj.name_prefix || '') + (obj.name || '');
+        const bareName = obj.name || '';
+        const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
+        const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
         const typeLabel = obj.type ? ` <span style="font-size:0.8em; color:#888;">(${obj.type})</span>` : '';
-        const epTags = buildEpTags(obj.internal_names);
+        const epTags = buildObjectTags(obj.tags, true);
         const views = obj.view_count ? `<span style="font-size:0.8em; color:#a78bfa; white-space:nowrap;">${obj.view_count} views</span>` : '';
         const li = document.createElement('li');
         li.innerHTML = `
             <div style="display:flex; align-items:baseline; gap:6px;">
                 <span style="font-size:0.85em; color:#888; min-width:18px;">${index + 1}.</span>
                 <span style="flex-grow:1; overflow:hidden; text-overflow:ellipsis;">
-                    <strong><a href="/object/${encodeURIComponent(fullName)}" target="_blank"
+                    <strong><a href="${objectLink}" target="_blank"
                         style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
                 </span>
                 ${views}
@@ -1553,15 +1561,17 @@ function renderRecentComments(comments) {
         const li = document.createElement('li');
         const d = new Date(c.created_at);
         const fullName = (c.name_prefix || '') + (c.object_name || '');
+        const bareName = c.object_name || '';
+        const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
+        const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
         const typeLabel = c.type ? ` <span style="font-size:0.8em; color:#888;">(${c.type})</span>` : '';
-        const epTags = buildEpTags(c.internal_names);
 
         const contentDiv = document.createElement('div');
         contentDiv.style.cssText = 'margin-top:4px; font-size:0.9em; color:rgba(255,255,255,0.8); font-style:italic;';
         contentDiv.textContent = `${c.user_name || 'User'}: "${c.content}"`;
-        
+        const epTags = buildObjectTags(c.tags, true);
         li.innerHTML = `
-            <strong><a href="/object/${encodeURIComponent(fullName)}" target="_blank"
+            <strong><a href="${objectLink}" target="_blank"
                 style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
             <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
         `;
@@ -1583,13 +1593,15 @@ function renderTopViewed(targets) {
     targets.forEach((t, index) => {
         const li = document.createElement('li');
         const typeLabel = t.object_type && t.object_type !== 'Unknown' ? ` <span style="font-size:0.8em; color:#888;">(${t.object_type})</span>` : '';
-        const epTags = buildEpTags(t.internal_names);
+        const fullName = (t.name_prefix || '') + (t.object_name || '');
+        const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
+        const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(t.object_name)}`;
         li.innerHTML = `
             <div style="display: flex; align-items: baseline; gap: 8px;">
                 <span style="font-weight:bold; color:var(--text-muted); min-width: 20px;">${index + 1}.</span>
                 <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <strong><a href="/object/${encodeURIComponent(t.object_name)}" target="_blank"
-                        style="color:var(--primary-color, #46ffaf); text-decoration:none;">${t.object_name}</a></strong>${typeLabel}${epTags}
+                    <strong><a href="${objectLink}" target="_blank"
+                        style="color:var(--primary-color, #46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${buildObjectTags(t.tags, true)}
                 </span>
                 <span style="font-size:0.85em; color:var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
@@ -1663,7 +1675,64 @@ function quickView(objectName) {
 }
 
 function editTags(objectName) {
-    showNotification(`Edit tags for ${objectName} - Feature coming soon!`, 'info');
+    const obj = currentObjects.find(o => o.name === objectName) || {};
+    const currentTags = obj.tags || '';
+
+    const existing = document.getElementById('_inlineTagEditModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = '_inlineTagEditModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    modal.innerHTML = `
+        <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;min-width:340px;max-width:480px;">
+            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${objectName}</h3>
+            <label style="font-size:0.85rem;color:#aaa;display:block;margin-bottom:6px;">Tags (comma-separated, EP will be highlighted)</label>
+            <input id="_tagEditInput" type="text" value="${currentTags}"
+                style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
+            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+                <button onclick="document.getElementById('_inlineTagEditModal').remove()"
+                    style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#aaa;cursor:pointer;">Cancel</button>
+                <button onclick="_submitTagEdit('${objectName}')"
+                    style="padding:6px 16px;background:#46ffaf22;border:1px solid #46ffaf55;border-radius:6px;color:#46ffaf;cursor:pointer;">Save</button>
+            </div>
+            <div id="_tagEditResult" style="margin-top:10px;font-size:0.85rem;"></div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById('_tagEditInput').focus();
+}
+
+async function _submitTagEdit(objectName) {
+    const input = document.getElementById('_tagEditInput');
+    if (!input) return;
+    const tags = input.value.trim();
+    const result = document.getElementById('_tagEditResult');
+
+    try {
+        const resp = await fetch(`/api/object/${encodeURIComponent(objectName)}/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ objid: null, tags: tags || null, _name: objectName })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            // Update in-memory
+            const obj = currentObjects.find(o => o.name === objectName);
+            if (obj) obj.tags = tags || null;
+            const filtered = filteredObjects.find(o => o.name === objectName);
+            if (filtered) filtered.tags = tags || null;
+            // Re-render visible cards/table
+            if (currentView === 'cards') generateCardsView();
+            else if (currentView === 'table') generateTableView();
+            document.getElementById('_inlineTagEditModal').remove();
+            showNotification(`Tags updated for ${objectName}`, 'success');
+        } else {
+            if (result) result.innerHTML = `<span style="color:#ff6b6b;">${data.error || 'Failed'}</span>`;
+        }
+    } catch (e) {
+        if (result) result.innerHTML = `<span style="color:#ff6b6b;">Network error</span>`;
+    }
 }
 
 function showNotification(message, type = 'info') {

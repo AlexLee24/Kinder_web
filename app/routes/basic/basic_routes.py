@@ -49,6 +49,10 @@ def get_slideshow():
 def home():
     return render_template('home.html', current_path='/')
 
+@basic_bp.route('/gallery')
+def gallery():
+    return render_template('gallery.html', current_path='/gallery')
+
 @basic_bp.route('/login')
 def login():
     return render_template('login.html', current_path='/login')

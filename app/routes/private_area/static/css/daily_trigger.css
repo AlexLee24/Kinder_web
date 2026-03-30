@@ -11,9 +11,15 @@ body::before {
     width: 100%;
     height: 100%;
     z-index: -1;
-    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('../photo/background.jpg') no-repeat center center;
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('../photo/background_private.jpg') no-repeat center center;
     background-size: cover;
     will-change: transform;
+}
+
+/* Clear home.css pseudo-element backgrounds so they don't overlap body::before */
+.main-banner::before,
+.main-banner::after {
+    display: none !important;
 }
 
 .main-banner {

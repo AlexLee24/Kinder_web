@@ -1037,7 +1037,11 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     for label, col in PRIORITY:
                         if col in acols:
                             try:
-                                val = float(row[col])
+                                raw = row[col]
+                                # Skip masked / None values before float()
+                                if hasattr(raw, '_fill_value') or raw is None:
+                                    continue
+                                val = float(raw)
                                 if np.isfinite(val) and val < mag_limit:
                                     chosen_mag = round(val, 2)
                                     chosen_label = label

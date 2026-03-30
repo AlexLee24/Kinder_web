@@ -1,3 +1,17 @@
+/* Photo credit overlay */
+.photo-credit {
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 0.03em;
+    z-index: 3;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+}
+
 /* Header styling START */
 header {
     backdrop-filter: blur(20px) saturate(180%);

@@ -374,7 +374,8 @@
                     data-lastmodified="{{ obj.lastmodified or '' }}"
                     data-lastphotometry="{{ obj.last_photometry_date or '' }}"
                     data-brightest-mag="{{ obj.brightest_mag or '' }}"
-                    data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}">
+                    data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}"
+                    data-tags="{{ obj.tags or '' }}">
                 
                 <div class="card-header">
                     <div class="object-name">
@@ -396,23 +397,35 @@
                                 {{ obj.name_prefix or '' }}{{ obj.name }}
                             </a>
                         {% endif %}
-                        {% if obj.internal_names %}
-                            {% set ep_names = [] %}
-                            {% for part in obj.internal_names.split(',') %}
-                                {% set p = part.strip() %}
-                                {% if p.startswith('EP') %}
-                                    {% set _ = ep_names.append(p) %}
-                                {% endif %}
-                            {% endfor %}
-                            {% if ep_names %}
-                                <span class="ep-alias">({{ ep_names|join(', ') }})</span>
-                            {% endif %}
-                        {% endif %}
                     </div>
                     <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
                         {{ obj.type or 'AT' }}
                     </div>
                 </div>
+                
+                {% if obj.tags %}
+                <div class="card-tags">
+                    {% set tag_list = obj.tags.split(',') %}
+                    {% set ep_tags = [] %}
+                    {% set other_tags = [] %}
+                    {% for t in tag_list %}
+                        {% set t = t.strip() %}
+                        {% if t %}
+                            {% if t.upper().startswith('EP') %}
+                                {% set _ = ep_tags.append(t) %}
+                            {% else %}
+                                {% set _ = other_tags.append(t) %}
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                    {% for t in ep_tags %}
+                        <span class="custom-tag ep">{{ t }}</span>
+                    {% endfor %}
+                    {% for t in other_tags %}
+                        <span class="custom-tag">{{ t }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 
                 <div class="card-content">
                     <div class="coordinates">
@@ -475,16 +488,16 @@
                             
                             {% if year_letters and not obj.name_prefix %}
                                 <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank">
-                                    View
+                                    View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% else %}
                                 <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
-                                    View
+                                    View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% endif %}
                         {% else %}
                             <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
-                                View
+                                View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                             </a>
                         {% endif %}
                     </div>

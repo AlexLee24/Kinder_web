@@ -211,6 +211,7 @@ async function updatePageContent() {
     // Update badges
     updateClassificationBadge(objectData.type);
     updateStatusBadge(currentStatus);
+    renderCustomTags(objectData.tags);
 
     // 1. 先觸發本地端組件加載，但不全部阻擋
     loadLocationImage();
@@ -431,6 +432,17 @@ function updateStatusBadge(tag) {
         badge.className = `badge tag-badge ${status}`;
         badge.innerHTML = getStatusDisplayName(status);
     }
+}
+
+function renderCustomTags(tags) {
+    const container = document.getElementById('tagsContainer');
+    if (!container) return;
+    if (!tags) { container.innerHTML = ''; return; }
+    const parts = tags.split(',').map(s => s.trim()).filter(Boolean);
+    container.innerHTML = parts.map(t => {
+        const cls = t.toUpperCase().startsWith('EP') ? 'custom-tag ep' : 'custom-tag';
+        return `<span class="${cls}">${t}</span>`;
+    }).join('');
 }
 
 // Get full object name from database object
@@ -2997,8 +3009,16 @@ function createEditModal() {
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="editInternalNames">Internal Names</label>
-                                <input type="text" id="editInternalNames" placeholder="e.g., EP J123456+654321, AT2024abc">
+                                <input type="text" id="editInternalNames" placeholder="e.g., EP260321a, AT2024abc">
                                 <div class="form-help">Comma-separated alias names (e.g., EP source IDs)</div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="editTags">Tags</label>
+                                <input type="text" id="editTags" placeholder="e.g., EP, peculiar, young">
+                                <div class="form-help">Comma-separated custom labels. EP tag will be highlighted in blue.</div>
                             </div>
                         </div>
                     </form>
@@ -3032,7 +3052,8 @@ function populateEditForm() {
     const fields = {
         'editObjectName': fullName,
         'editRedshift': objectData.redshift != null ? objectData.redshift : '',
-        'editInternalNames': objectData.internal_names || ''
+        'editInternalNames': objectData.internal_names || '',
+        'editTags': objectData.tags || ''
     };
     
     for (const [fieldId, value] of Object.entries(fields)) {
@@ -3068,11 +3089,13 @@ function submitEditObject() {
     
     const redshiftValue = document.getElementById('editRedshift').value;
     const internalNamesValue = document.getElementById('editInternalNames')?.value?.trim() ?? null;
+    const tagsValue = document.getElementById('editTags')?.value?.trim() ?? null;
 
     const cleanData = {
         objid: objectData.objid || null,
         redshift: redshiftValue !== '' ? parseFloat(redshiftValue) : null,
-        internal_names: internalNamesValue || null
+        internal_names: internalNamesValue || null,
+        tags: tagsValue || null
     };
     
     // Disable submit button
@@ -3103,6 +3126,10 @@ function submitEditObject() {
                         ? cleanData.internal_names.split(',').map(s => s.trim()).join(', ')
                         : 'N/A';
                 }
+            }
+            if (cleanData.tags !== undefined) {
+                objectData.tags = cleanData.tags;
+                renderCustomTags(cleanData.tags);
             }
             showEditResult('success', 'Success!', data.message);
             showNotification('Object updated successfully! Page will refresh in 2 seconds...', 'success');

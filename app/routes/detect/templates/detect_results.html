@@ -121,7 +121,7 @@
                     <div class="featured-image-box">
                         <h4>DESI Finder Chart</h4>
                         <div style="text-align: center;">
-                            <img src="{{ url_for('detect_image', target_name=result.target_name) }}" 
+                            <img src="{{ url_for('detect.detect_image', target_name=result.target_name) }}" 
                                  alt="DESI Image for {{ result.target_name }}"
                                  style="max-width: 100%; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);"
                                  onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'padding: 20px; border: 1px dashed #555; color: #888;\'>Image not available</div>';">

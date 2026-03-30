@@ -293,7 +293,12 @@ def trigger_detect_cross_match(object_name):
     from modules.postgres_database import get_db_connection
     
     try:
+        import re as _re
         object_name = urllib.parse.unquote(object_name)
+        # Normalize: strip AT/SN prefix so name matches tns_objects.name
+        _m = _re.match(r'^(?:AT|SN)(\d.+)$', object_name)
+        if _m:
+            object_name = _m.group(1)
         
         force = request.args.get('force', 'false').lower() == 'true'
         
@@ -715,7 +720,7 @@ def api_get_object_tags():
         placeholders = ','.join(['%s' for _ in object_names])
         
         cursor.execute(f'''
-            SELECT name, 
+            SELECT name, tags,
                    CASE 
                         WHEN finish_follow = 1 THEN 'finished'
                         WHEN follow = 1 THEN 'followup'
@@ -730,16 +735,21 @@ def api_get_object_tags():
         conn.close()
         
         tag_mapping = {}
-        for name, tag in results:
+        tags_mapping = {}
+        for name, obj_tags, tag in results:
             tag_mapping[name] = tag
+            tags_mapping[name] = obj_tags
         
         for name in object_names:
             if name not in tag_mapping:
                 tag_mapping[name] = 'object'
+            if name not in tags_mapping:
+                tags_mapping[name] = None
         
         return jsonify({
             'success': True,
-            'tags': tag_mapping
+            'tags': tag_mapping,
+            'object_tags': tags_mapping
         })
         
     except Exception as e:

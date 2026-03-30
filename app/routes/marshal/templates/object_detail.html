@@ -36,6 +36,16 @@
                 <span class="badge tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
                     {{ object_data.tag|title or 'Inbox' }}
                 </span>
+                <span id="tagsContainer">
+                    {% if object_data.tags %}
+                        {% for t in object_data.tags.split(',') %}
+                            {% set t = t.strip() %}
+                            {% if t %}
+                                <span class="custom-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </span>
                 {% if session.user and session.user.is_admin %}
                 {# Flag button disabled
                 <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#ffbe0b;" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">

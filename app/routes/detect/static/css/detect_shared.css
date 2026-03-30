@@ -1,6 +1,6 @@
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)), url('../photo/background.jpg');
+    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)), url('../photo/detect_background.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-position: center;

@@ -66,7 +66,7 @@ def update_user_session_groups(user_email):
 
 @auth_bp.route('/auth/google')
 def google_login():
-    redirect_uri = url_for('google_callback', _external=True)
+    redirect_uri = url_for('auth.google_callback', _external=True)
     return google.authorize_redirect(redirect_uri)
 
 @auth_bp.route('/auth/google/callback')

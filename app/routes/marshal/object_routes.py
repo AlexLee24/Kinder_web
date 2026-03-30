@@ -67,7 +67,7 @@ def object_detail_generic(object_name):
                       reporting_groupid, reporting_group, source_groupid, source_group,
                       discoverydate, discoverymag, discmagfilter, filter, reporters,
                       time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                       {tag_logic}
                FROM tns_objects 
                WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
@@ -76,7 +76,7 @@ def object_detail_generic(object_name):
                       reporting_groupid, reporting_group, source_groupid, source_group,
                       discoverydate, discoverymag, discmagfilter, filter, reporters,
                       time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                       {tag_logic}
                FROM tns_objects 
                WHERE name ILIKE %s"""
@@ -182,7 +182,7 @@ def object_detail_tns_format(year, letters):
                       reporting_groupid, reporting_group, source_groupid, source_group,
                       discoverydate, discoverymag, discmagfilter, filter, reporters,
                       time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                       {tag_logic}
                FROM tns_objects 
                WHERE name ILIKE %s"""
@@ -281,7 +281,7 @@ def api_get_object_tns_format(year, letters):
                    reporting_groupid, reporting_group, source_groupid, source_group,
                    discoverydate, discoverymag, discmagfilter, filter, reporters,
                    time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                    CASE 
                         WHEN finish_follow = 1 THEN 'finished'
                         WHEN follow = 1 THEN 'followup'
@@ -300,7 +300,7 @@ def api_get_object_tns_format(year, letters):
                       'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
                       'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
                       'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tag']
+                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tags', 'tag']
             matching_obj = dict(zip(columns, result))
         
         conn.close()
@@ -407,7 +407,7 @@ def get_object_api(object_name):
                    reporting_groupid, reporting_group, source_groupid, source_group,
                    discoverydate, discoverymag, discmagfilter, filter, reporters,
                    time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                    CASE 
                         WHEN finish_follow = 1 THEN 'finished'
                         WHEN follow = 1 THEN 'followup'
@@ -421,7 +421,7 @@ def get_object_api(object_name):
                    reporting_groupid, reporting_group, source_groupid, source_group,
                    discoverydate, discoverymag, discmagfilter, filter, reporters,
                    time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag,
+                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
                    CASE 
                         WHEN finish_follow = 1 THEN 'finished'
                         WHEN follow = 1 THEN 'followup'
@@ -447,7 +447,7 @@ def get_object_api(object_name):
                       'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
                       'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
                       'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tag']
+                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tags', 'tag']
             obj = dict(zip(columns, exact_result))
         else:
             # Fallback to search function with more results
@@ -497,8 +497,24 @@ def api_edit_object(object_name):
             return jsonify({'error': 'Invalid request body'}), 400
 
         obj_id = data.get('objid')
+
+        from modules.postgres_database import get_tns_db_connection
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+
+        # If no objid, resolve from URL param (object_name)
         if not obj_id:
-            return jsonify({'error': 'Object ID (objid) is required'}), 400
+            cursor.execute(
+                "SELECT objid FROM tns_objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                (urllib.parse.unquote(object_name), urllib.parse.unquote(object_name))
+            )
+            row = cursor.fetchone()
+            if row:
+                obj_id = row[0]
+
+        if not obj_id:
+            conn.close()
+            return jsonify({'error': 'Object ID (objid) is required and could not be resolved'}), 400
 
         updates = {}
 
@@ -509,8 +525,10 @@ def api_edit_object(object_name):
                 try:
                     v = float(v)
                     if v < 0:
+                        conn.close()
                         return jsonify({'error': 'Redshift must be positive'}), 400
                 except (ValueError, TypeError):
+                    conn.close()
                     return jsonify({'error': 'Invalid redshift value'}), 400
             else:
                 v = None
@@ -521,12 +539,22 @@ def api_edit_object(object_name):
             v = data['internal_names']
             updates['internal_names'] = v.strip() if isinstance(v, str) and v.strip() else None
 
-        if not updates:
-            return jsonify({'error': 'No valid fields to update'}), 400
+        # tags (comma-separated custom labels, e.g. "EP,peculiar")
+        if 'tags' in data:
+            v = data['tags']
+            if isinstance(v, str) and v.strip():
+                # Allow only alphanumeric, comma, space, hyphen, underscore
+                import re as _re
+                if not _re.match(r'^[A-Za-z0-9,\s\-_]+$', v.strip()):
+                    conn.close()
+                    return jsonify({'error': 'Tags contain invalid characters'}), 400
+                updates['tags'] = v.strip()
+            else:
+                updates['tags'] = None
 
-        from modules.postgres_database import get_tns_db_connection
-        conn = get_tns_db_connection()
-        cursor = conn.cursor()
+        if not updates:
+            conn.close()
+            return jsonify({'error': 'No valid fields to update'}), 400
 
         set_clauses = [f"{k} = %s" for k in updates.keys()]
         params = list(updates.values()) + [int(obj_id)]

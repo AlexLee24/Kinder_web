@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gallery — Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('basic.static', filename='css/gallery.css') }}">
+    <meta name="description" content="Astronomy image gallery — GREAT Lab, NCU">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    <!-- Floating top bar -->
+    <div class="home-top-bar">
+        <a href="/" class="home-wordmark">Kinder</a>
+        {% if session.user %}
+        <div class="home-nav-group home-user-group">
+            <div class="home-user-chip">
+                <img src="{{ g.current_user.picture if g.current_user and g.current_user.picture else session.user.picture }}" alt="" class="home-user-avatar">
+                <span>{{ session.user.name }}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <div class="home-nav-dropdown home-user-dropdown">
+                <a href="{{ url_for('basic.profile') }}">Profile</a>
+                {% if session.user.is_admin %}
+                <a href="{{ url_for('admin.admin_panel') }}">Admin Panel</a>
+                {% endif %}
+                <a href="{{ url_for('auth.logout') }}">Logout</a>
+            </div>
+        </div>
+        {% else %}
+        <a href="{{ url_for('basic.login') }}" class="home-signin">Sign In</a>
+        {% endif %}
+    </div>
+
+    <main class="gallery-page">
+        <div class="gallery-header">
+            <h1 class="gallery-title">Gallery</h1>
+        </div>
+
+        <div class="gallery-grid" id="galleryGrid">
+            <!-- Cards injected by JS -->
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+            <div class="gallery-skeleton" aria-hidden="true"></div>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <div class="gallery-bottom-bar">
+        <nav class="home-nav">
+            <a href="{{ url_for('marshal.marshal') }}">Marshal</a>
+            <span class="home-nav-sep">·</span>
+            <a href="{{ url_for('basic.gallery') }}">Gallery</a>
+            <span class="home-nav-sep">·</span>
+            <div class="home-nav-group">
+                <span class="home-nav-trigger">Tools
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </span>
+                <div class="home-nav-dropdown">
+                    <a href="{{ url_for('astronomy_tools.astronomy_tools') }}">Astronomy Tools</a>
+                    <a href="{{ url_for('astronomy_tools.telescope_simulator') }}">Telescope Simulator</a>
+                    <a href="{{ url_for('games.games') }}">Games</a>
+                </div>
+            </div>
+            <span class="home-nav-sep">·</span>
+            <div class="home-nav-group">
+                <span class="home-nav-trigger">Planners
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </span>
+                <div class="home-nav-dropdown">
+                    <a href="{{ url_for('astronomy_tools.interactive_planner') }}">Visibility Plot</a>
+                    <a href="{{ url_for('astronomy_tools.finding_chart') }}">Finding Chart</a>
+                </div>
+            </div>
+            <span class="home-nav-sep">·</span>
+            <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About</a>
+            {% if session.user and session.user.get('is_great_lab_member') %}
+            <span class="home-nav-sep">·</span>
+            <div class="home-nav-group">
+                <span class="home-nav-trigger">GREATLab
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </span>
+                <div class="home-nav-dropdown">
+                    <a href="{{ url_for('detect.detect_results') }}">DETECT</a>
+                    <a href="{{ url_for('private_area.daily_trigger') }}">Daily Trigger</a>
+                    <a href="{{ url_for('private_area.documents_list') }}">Documents</a>
+                    <a href="{{ url_for('private_area.greatlab_info') }}">Lab Info</a>
+                </div>
+            </div>
+            {% endif %}
+        </nav>
+    </div>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" hidden>
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+        <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous image">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
+        <div class="lightbox-inner">
+            <div class="lightbox-img-wrap">
+                <img class="lightbox-img" id="lightboxImg" src="" alt="" />
+            </div>
+            <div class="lightbox-info">
+                <h2 class="lightbox-title" id="lightboxTitle"></h2>
+                <p class="lightbox-caption" id="lightboxCaption"></p>
+                <p class="lightbox-author" id="lightboxAuthor"></p>
+            </div>
+        </div>
+        <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next image">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+            </svg>
+        </button>
+    </div>
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+
+    <script src="{{ url_for('basic.static', filename='js/gallery.js') }}"></script>
+</body>
+</html>

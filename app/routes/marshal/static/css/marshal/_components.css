@@ -63,6 +63,57 @@
     background: linear-gradient(45deg, var(--flag-color));
 }
 
+/* Custom object tags (DB tags column) */
+.custom-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    background: rgba(160, 160, 180, 0.18);
+    color: #c8c8d8;
+    border: 1px solid rgba(160, 160, 180, 0.3);
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.custom-tag.ep {
+    background: rgba(96, 165, 250, 0.18);
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.4);
+}
+
+/* Even smaller tags for card actions / pinned list */
+.mini-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: rgba(160, 160, 180, 0.15);
+    color: #aaa;
+    border: 1px solid rgba(160, 160, 180, 0.25);
+    margin-left: 3px;
+    vertical-align: middle;
+}
+
+.mini-tag.ep {
+    background: rgba(96, 165, 250, 0.15);
+    color: #60a5fa;
+    border-color: rgba(96, 165, 250, 0.3);
+}
+
+/* card-tags row */
+.card-tags {
+    padding: 6px 16px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
 /* Loading Indicator */
 .loading-indicator {
     text-align: center;

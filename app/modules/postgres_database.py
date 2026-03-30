@@ -155,6 +155,8 @@ def init_tns_database():
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_mag DOUBLE PRECISION")
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS brightest_abs_mag DOUBLE PRECISION")
             cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS pin INTEGER DEFAULT 0")
+            cursor.execute("ALTER TABLE tns_objects ADD COLUMN IF NOT EXISTS tags TEXT")
+            cursor.execute("ALTER TABLE tns_objects DROP COLUMN IF EXISTS ep_source")
         except Exception as e:
             logger.debug('Migration note: %s', e)
         
@@ -649,7 +651,7 @@ class TNSObjectDB:
             cursor.execute('''
                 SELECT c.id, c.object_name, c.user_email, c.user_name, c.user_picture,
                        c.content, c.created_at,
-                       t.name_prefix, t.type, t.internal_names
+                       t.name_prefix, t.type, t.internal_names, t.tags
                 FROM comments c
                 LEFT JOIN tns_objects t ON t.name = c.object_name
                     OR (COALESCE(t.name_prefix,'') || t.name) = c.object_name
@@ -698,6 +700,10 @@ class TNSObjectDB:
     @staticmethod
     def log_object_view(object_name, user_email=None):
         """Record an object view event (tracks both individual views and total count)"""
+        import re as _re
+        # Normalize: strip known prefixes (AT/SN) so counts always key by bare name
+        m = _re.match(r'^(?:AT|SN)(\d.+)$', object_name)
+        canonical_name = m.group(1) if m else object_name
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -706,7 +712,7 @@ class TNSObjectDB:
                 cursor.execute('''
                     INSERT INTO object_views (object_name, user_email)
                     VALUES (%s, %s)
-                ''', (object_name, user_email))
+                ''', (canonical_name, user_email))
                 
                 # Update total count
                 cursor.execute('''
@@ -714,11 +720,11 @@ class TNSObjectDB:
                     VALUES (%s, 1)
                     ON CONFLICT (object_name) 
                     DO UPDATE SET view_count = object_view_counts.view_count + 1
-                ''', (object_name,))
+                ''', (canonical_name,))
                 conn.commit()
                 cursor.close()
         except Exception as e:
-            logger.error('Error logging view for %s: %s', object_name, e)
+            logger.error('Error logging view for %s: %s', canonical_name, e)
 
     @staticmethod
     def get_top_viewed_objects(days=30, limit=5, mode='30days'):
@@ -731,15 +737,12 @@ class TNSObjectDB:
             if mode == 'all':
                 cursor.execute('''
                     SELECT v.object_name, v.view_count as view_count,
-                           COALESCE(MAX(t.type), 'Unknown') as object_type,
-                           MAX(t.name_prefix) as name_prefix,
-                           MAX(t.internal_names) as internal_names
+                           COALESCE(t.type, 'Unknown') as object_type,
+                           t.name_prefix,
+                           t.internal_names,
+                           t.tags
                     FROM object_view_counts v
-                    LEFT JOIN tns_objects t 
-                      ON t.name = REPLACE(v.object_name, 'AT', '') 
-                      OR t.name = REPLACE(v.object_name, 'SN', '')
-                      OR (COALESCE(t.name_prefix, '') || COALESCE(t.name, '')) = v.object_name
-                    GROUP BY v.object_name, v.view_count
+                    LEFT JOIN tns_objects t ON t.name = v.object_name
                     ORDER BY v.view_count DESC
                     LIMIT %s
                 ''', (limit,))
@@ -755,15 +758,12 @@ class TNSObjectDB:
                         LIMIT %s
                     )
                     SELECT v.object_name, v.view_count,
-                           COALESCE(MAX(t.type), 'Unknown') as object_type,
-                           MAX(t.name_prefix) as name_prefix,
-                           MAX(t.internal_names) as internal_names
+                           COALESCE(t.type, 'Unknown') as object_type,
+                           t.name_prefix,
+                           t.internal_names,
+                           t.tags
                     FROM recent_views v
-                    LEFT JOIN tns_objects t 
-                      ON t.name = REPLACE(v.object_name, 'AT', '') 
-                      OR t.name = REPLACE(v.object_name, 'SN', '')
-                      OR (COALESCE(t.name_prefix, '') || COALESCE(t.name, '')) = v.object_name
-                    GROUP BY v.object_name, v.view_count
+                    LEFT JOIN tns_objects t ON t.name = v.object_name
                     ORDER BY v.view_count DESC
                 ''', (limit,))
             
@@ -1023,6 +1023,7 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
             t.discoverydate, t.discoverymag, t.discmagfilter, t.filter, t.reporters,
             t.time_received, t.internal_names, t.discovery_ads_bibcode, t.class_ads_bibcodes,
             t.creationdate, t.last_photometry_date, t.lastmodified, t.brightest_mag, t.brightest_abs_mag,
+            t.tags,
             CASE 
                 WHEN t.finish_follow = 1 THEN 'finished'
                 WHEN t.follow = 1 THEN 'followup'
@@ -2091,12 +2092,13 @@ def get_pinned_objects(limit=20):
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
             cur.execute("""
-                SELECT t.name, t.name_prefix, t.type, t.internal_names,
-                       COALESCE(v.view_count, 0) AS view_count
+                SELECT t.name, t.name_prefix, t.type, t.internal_names, t.tags,
+                       COALESCE((
+                           SELECT v.view_count
+                           FROM object_view_counts v
+                           WHERE v.object_name = t.name
+                       ), 0) AS view_count
                 FROM tns_objects t
-                LEFT JOIN object_view_counts v
-                    ON v.object_name = (COALESCE(t.name_prefix,'') || t.name)
-                    OR v.object_name = t.name
                 WHERE t.pin = 1
                 ORDER BY view_count DESC
                 LIMIT %s
