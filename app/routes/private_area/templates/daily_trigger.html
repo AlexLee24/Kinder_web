@@ -72,65 +72,39 @@
 <body>
     {% include '_navbar.html' %}
 
-    <div class="main-banner">
-        <div class="container">
-            <div class="banner-content">
-                <div class="pa-title-section">
-                    <h1>
-                        <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="Kinder Logo" class="home-logo">
-                        GREAT Lab Daily Trigger
-                    </h1>
-                    <p class="institution">Schedules, and observation logs.</p>
-                </div>
+    <div class="main-banner dt-page">
+        <div class="dt-layout">
 
-                <div class="pa-widgets-container">
-                    <div class="pa-calendar-wrap">
-                        <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no"></iframe>
-                    </div>
-                    
-                    <div class="pa-weather-wrap">
-                        <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"></iframe>
-                        <div style="text-align: right; margin-top: 5px; font-size: 0.8rem; opacity: 0.7;">
-                            <!-- DO NOT REMOVE THIS LINK -->
-                            <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener" style="color: #fff; text-decoration: none;">meteoblue</a>
-                        </div>
-                    </div>
-                </div>
+            <!-- ── Main content ── -->
+            <div class="dt-main">
 
                 <div class="private-section pa-obs-section">
-                    <!-- Header and Tabs container -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                        <!-- Tabs Header -->
-                        <div class="pa-tabs-header" style="margin-bottom: 0;">
+                    <div class="dt-obs-topbar">
+                        <div class="pa-tabs-header">
                             <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn active">SLT Targets</button>
                             <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn">LOT Targets</button>
                         </div>
-                        
-                        <!-- Header Title -->
-                        <h3 style="margin: 0; position: absolute; left: 50%; transform: translateX(-50%);">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                <polyline points="14 2 14 8 20 8"></polyline>
-                                <line x1="16" y1="13" x2="8" y2="13"></line>
-                                <line x1="16" y1="17" x2="8" y2="17"></line>
-                                <polyline points="10 9 9 9 8 9"></polyline>
-                            </svg>
-                            Observation Targets
-                        </h3>
-                        
-                        <!-- Observation Input Action -->
-                        <div class="pa-obs-actions" style="margin-bottom: 0; display: flex; gap: 10px; align-items: center;">
-                            <button onclick="openVisibilityPlot()" class="pa-btn-log-action" style="background-color: rgba(77, 184, 255, 0.15); border: 1px solid rgba(77, 184, 255, 0.3); color: #4db8ff; border-radius: 8px; padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 14px;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                                Check Visibility
+                        <h3>Observation Targets</h3>
+                        <div class="pa-obs-actions" style="margin-bottom:0;display:flex;gap:8px;align-items:center;">
+                            <button onclick="document.getElementById('weatherModal').style.display='flex'" class="pa-btn-log-action" style="background:rgba(77,184,255,0.06);border:1px solid rgba(77,184,255,0.2);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+                                Weather
+                            </button>
+                            <button onclick="document.getElementById('calendarModal').style.display='flex'" class="pa-btn-log-action" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                Calendar
+                            </button>
+                            <button onclick="openVisibilityPlot()" class="pa-btn-log-action" style="background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.3);color:#4db8ff;border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                                Visibility
                             </button>
                             <button onclick="openTargetModal('SLT')" class="pa-btn-slt" id="btn-add-slt">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                Add SLT Target
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add SLT
                             </button>
                             <button onclick="openTargetModal('LOT')" class="pa-btn-lot" id="btn-add-lot" style="display: none;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                Add LOT Target
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add LOT
                             </button>
                         </div>
                     </div>
@@ -254,9 +228,37 @@
                         </div>
                     </div>
                     <h4>Design by Aiswarya Sankar Kachiprath</h4>
-
                 </div>
 
+            </div>
+
+
+
+        </div>
+    </div>
+
+    <!-- Calendar Modal -->
+    <div id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
+        <div class="pa-modal-box" style="max-width:1100px;width:96vw;">
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;">
+                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">GREAT Lab Calendar</h3>
+                <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
+            </div>
+            <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no" style="width:100%;height:min(780px,75vh);border:none;display:block;"></iframe>
+        </div>
+    </div>
+
+    <!-- Weather Modal -->
+    <div id="weatherModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
+        <div class="pa-modal-box" style="max-width:900px;width:95vw;">
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;">
+                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Weather · Lulin Observatory</h3>
+                <button type="button" onclick="document.getElementById('weatherModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
+            </div>
+            <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:min(820px,72vh);border:none;display:block;"></iframe>
+            <div style="text-align:right;padding-top:6px;font-size:0.75rem;opacity:0.45;">
+                <!-- DO NOT REMOVE THIS LINK -->
+                <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;">meteoblue</a>
             </div>
         </div>
     </div>
@@ -484,7 +486,7 @@
 <!-- Required JS file -->
 
 
-<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+
     <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
     <!-- Global scroll-to-top button -->
     <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">

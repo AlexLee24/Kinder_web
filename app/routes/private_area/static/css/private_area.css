@@ -931,6 +931,12 @@ body::before {
     padding-left: 0.25rem;
 }
 
+/* Color overrides for sticky first column — must beat td:first-child specificity */
+.pa-log-grid td.pa-log-target-active:first-child  { background: #194d62; }
+.pa-log-grid td.pa-log-target-slt:first-child      { background: #5a3d10; }
+.pa-log-grid td.pa-log-target-off:first-child      { background: #2e3234; }
+.pa-log-grid td.pa-log-target-missing:first-child  { background: #212224; }
+
 /* Sticky header row */
 .pa-log-grid thead th {
     position: sticky;
@@ -969,19 +975,19 @@ body::before {
 
 /* Row colour variants */
 .pa-log-target-active {
-    background-color: #233744;
-    color: #2bd9ff;
+    background-color: rgba(43, 217, 255, 0.32);
+    color: #d4f6ff;
     background-clip: padding-box;
 }
 
 .pa-log-target-slt {
-    background-color: #463726;
-    color: #ff9f43;
+    background-color: rgba(255, 159, 67, 0.32);
+    color: #ffe8c0;
     background-clip: padding-box;
 }
 
 .pa-log-target-off {
-    background-color: #3b3b3b;
+    background-color: rgba(154, 160, 166, 0.22);
     color: #c4c4c4;
     background-clip: padding-box;
     position: relative;
@@ -1194,4 +1200,185 @@ body::before {
     .pa-weather-wrap iframe {
         height: 600px;
     }
+}
+
+/* ================================================================
+   Daily Trigger — Two-column layout
+   ================================================================ */
+.dt-page {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.dt-layout {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+    width: 100%;
+    padding: 120px 32px 60px;
+    box-sizing: border-box;
+}
+
+.dt-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Full-width sections inside dt-main (override the 90% max-width) */
+.dt-main .private-section {
+    max-width: 100%;
+    margin: 0;
+}
+
+/* ---- Sidebar ---- */
+.dt-sidebar {
+    width: 420px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: sticky;
+    top: 90px;
+    transition: width 0.28s ease;
+}
+
+/* Collapse toggle button */
+.dt-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 4px 10px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    gap: 6px;
+    transition: color 0.2s;
+    width: 100%;
+}
+.dt-sidebar-toggle:hover { color: rgba(255, 255, 255, 0.75); }
+.dt-sidebar-toggle svg { transition: transform 0.28s ease; }
+
+/* Collapsed state */
+.dt-sidebar.collapsed {
+    width: 36px;
+}
+.dt-sidebar.collapsed .dt-widget-card {
+    display: none;
+}
+.dt-sidebar.collapsed .dt-sidebar-toggle {
+    justify-content: center;
+    padding: 10px 0;
+}
+.dt-sidebar.collapsed .dt-sidebar-toggle .dt-toggle-label { display: none; }
+.dt-sidebar.collapsed .dt-sidebar-toggle svg { transform: rotate(180deg); }
+
+/* When sidebar collapsed, main gets more horizontal room automatically (flex) */
+
+/* Widget cards */
+.dt-widget-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.dt-widget-label {
+    padding: 10px 16px 4px;
+    font-size: 0.68rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.dt-widget-card iframe {
+    display: block;
+    width: 100%;
+    height: 360px;
+    border: none;
+    background: transparent;
+}
+
+.dt-widget-calendar iframe {
+    height: 680px;
+}
+
+/* ---- Obs section topbar ---- */
+.dt-obs-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Override private-section h3 rules inside topbar */
+.dt-obs-topbar h3 {
+    flex: 1;
+    text-align: center;
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 400;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+    display: block;
+    justify-content: unset;
+    gap: unset;
+}
+
+.dt-obs-topbar .pa-tabs-header {
+    border-bottom: none;
+    margin: 0;
+    gap: 4px;
+}
+
+.dt-obs-topbar .pa-tab-btn {
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    font-weight: 400;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.dt-obs-topbar .pa-tab-btn.active {
+    background: rgba(77, 184, 255, 0.12);
+    border-color: rgba(77, 184, 255, 0.35);
+    color: var(--pa-accent);
+    border-bottom-color: rgba(77, 184, 255, 0.35);
+}
+
+.dt-obs-topbar .pa-obs-actions {
+    margin: 0;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1200px) {
+    .dt-sidebar { width: 340px; }
+}
+}
+
+@media (max-width: 900px) {
+    .dt-layout {
+        flex-direction: column;
+        padding: 90px 16px 40px;
+    }
+    .dt-sidebar {
+        width: 100%;
+        position: static;
+        order: -1;   /* Show widgets above content on mobile */
+    }
+    .dt-widget-card iframe { height: 280px; }
+    .dt-widget-calendar iframe { height: 400px; }
 }

@@ -109,7 +109,7 @@ body {
     content: '';
     position: absolute;
     inset: 0;
-    background: url('../photo/background.jpg') center/cover no-repeat;
+    background: linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.5)), url('../photo/background.jpg') center/cover no-repeat;
     z-index: 0;
 }
 
