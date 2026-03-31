@@ -18,26 +18,17 @@ header {
     top: 0;
     left: 0;
     width: 100%;
-    height: 64px;
+    height: 80px;
     z-index: 100;
     box-sizing: border-box;
     padding: 0 48px;
 
-    /* Dark overlay + background image */
-    /* Increase the first rgba alpha (0.62) to darken, decrease to lighten */
-    background-color: rgba(2, 4, 12, 0.62);
-    background-image:
-        linear-gradient(to bottom,
-            rgba(0, 0, 0, 0.58) 0%,
-            rgba(0, 0, 0, 0.36) 100%),
-        var(--navbar-bg-image, none);
-    background-size: cover;
-    /* ── ADJUST THIS to move the Milky Way into frame ────── */
-    /* "center 0%"   → shows top of image (stars/sky above)  */
-    /* "center 50%"  → shows middle of image                 */
-    /* "center 100%" → shows bottom of image                 */
-    background-position: center 49%;
-    background-repeat: no-repeat;
+    /* Subtle dark overlay only, no background image */
+    background-color: rgba(0, 0, 0, 0.18);
+    background-image: none;
+    background-size: unset;
+    background-position: unset;
+    background-repeat: unset;
 
     border-bottom: none;
     box-shadow: none;
@@ -68,7 +59,7 @@ header::after {
 }
 
 header.scrolled {
-    background-color: rgba(0, 0, 0, 0.82);
+    background-color: rgba(0, 0, 0, 0.42);
     box-shadow: none;
 }
 
