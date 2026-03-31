@@ -1,6 +1,7 @@
 .env
 kinder.env
 app/routes/private_area/tutorials/*
+app/routes/planners/ov_plot/*
 .DS_Store
 Thumbs.db
 
