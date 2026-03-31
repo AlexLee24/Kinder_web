@@ -310,7 +310,7 @@
             
             <form id="add-target-form" onsubmit="addObservationTarget(event)">
                 <!-- Row 1: Target Name / Magnitude -->
-                <div class="pa-form-row two-col">
+                <div class="pa-form-row two-col" style="grid-template-columns: 3fr 1fr;">
                     <div style="position: relative;">
                         <input type="text" id="obs-name" required placeholder="Target Name" autocomplete="off" oninput="searchTarget(this.value); checkTargetNameHint(this.value)" class="pa-input">
                         <div id="search-results-dropdown" class="pa-search-dropdown"></div>
@@ -321,7 +321,7 @@
                     </div>
                 </div>
                 <div class="pa-name-reminder">
-                    Use <strong>TNS / IAU name</strong> (AT&nbsp;/&nbsp;SN prefix) or <strong>EP name</strong> — avoid survey IDs like ZTF, ATLAS, PS1, etc.
+                    Use <strong>TNS / IAU name</strong> (AT&nbsp;/&nbsp;SN prefix) or <strong>EP name</strong> — avoid survey IDs like ZTF, ATLAS, PS, etc.
                 </div>
                 
 
