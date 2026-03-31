@@ -90,20 +90,40 @@ def object_detail_generic(object_name):
                 columns = [desc[0] for desc in cursor.description]
                 matching_obj = dict(zip(columns, result))
                 break
-        
+
+        # If still no match, try internal_names (e.g. ZTF ID) and tags (e.g. EP name)
+        if not matching_obj:
+            alias_query = f"""
+                SELECT name_prefix, name
+                FROM tns_objects
+                WHERE internal_names ILIKE %s
+                   OR EXISTS (
+                       SELECT 1 FROM unnest(string_to_array(tags, ',')) t(tag)
+                       WHERE trim(t.tag) ILIKE %s
+                   )
+                ORDER BY discoverydate DESC
+                LIMIT 1
+            """
+            cursor.execute(alias_query, (f'%{object_name}%', object_name))
+            alias_result = cursor.fetchone()
+            if alias_result:
+                canonical = (alias_result[0] or '') + (alias_result[1] or '')
+                conn.close()
+                return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
+
         conn.close()
-        
+
         # If no exact match, fall back to fuzzy search
         if not matching_obj:
             results = search_tns_objects(search_term=object_name, limit=50)
-            
+
             # Find exact match in fuzzy results
             for obj in results:
                 full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
                 name_only = obj.get('name', '').strip()
-                
-                if (full_name.lower() == object_name.lower() or 
-                    name_only.lower() == object_name.lower()):
+
+                if (full_name.lower() == object_name.lower() or
+                        name_only.lower() == object_name.lower()):
                     matching_obj = obj
                     break
                     
