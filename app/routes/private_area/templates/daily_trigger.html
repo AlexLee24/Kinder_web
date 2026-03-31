@@ -67,6 +67,46 @@
         .pa-btn-filter-toggle:hover { background: rgba(0,0,0,0.7); }
         .pa-btn-filter-toggle span { color: inherit; font-size: 14px; }
         .pa-btn-filter-toggle.active { background: rgba(77,184,255,0.12); border: 1px solid rgba(77,184,255,0.18); }
+
+        /* Target name hint/reminder */
+        .pa-name-reminder {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.38);
+            margin: 4px 0 10px;
+            line-height: 1.4;
+        }
+        .pa-name-hint {
+            font-size: 0.72rem;
+            margin-top: 4px;
+            min-height: 16px;
+            transition: color 0.2s;
+        }
+        .pa-name-hint.warn  { color: #ffa94d; }
+        .pa-name-hint.error { color: #ff6b6b; }
+        .pa-name-hint.ok    { color: #69db7c; }
+
+        /* Astro info row inside target name cell */
+        .pa-astro-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 5px;
+            flex-wrap: wrap;
+        }
+        .pa-astro-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.45);
+            white-space: nowrap;
+            font-family: monospace;
+        }
+        .pa-mini-plot {
+            margin-top: 4px;
+            line-height: 0;
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
@@ -272,12 +312,16 @@
                 <!-- Row 1: Target Name / Magnitude -->
                 <div class="pa-form-row two-col">
                     <div style="position: relative;">
-                        <input type="text" id="obs-name" required placeholder="Target Name (search TNS)" autocomplete="off" oninput="searchTarget(this.value)" class="pa-input">
+                        <input type="text" id="obs-name" required placeholder="Target Name" autocomplete="off" oninput="searchTarget(this.value); checkTargetNameHint(this.value)" class="pa-input">
                         <div id="search-results-dropdown" class="pa-search-dropdown"></div>
+                        <div id="obs-name-hint" class="pa-name-hint"></div>
                     </div>
                     <div>
                         <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Newest Magnitude" class="pa-input">
                     </div>
+                </div>
+                <div class="pa-name-reminder">
+                    Use <strong>TNS / IAU name</strong> (AT&nbsp;/&nbsp;SN prefix) or <strong>EP name</strong> — avoid survey IDs like ZTF, ATLAS, PS1, etc.
                 </div>
                 
 

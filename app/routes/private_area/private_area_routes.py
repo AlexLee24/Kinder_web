@@ -573,6 +573,7 @@ def api_search_target():
                     t.redshift, 
                     t.discoverymag, 
                     t.type,
+                    t.internal_names,
                     (
                         SELECT p.magnitude
                         FROM photometry p
@@ -588,7 +589,7 @@ def api_search_target():
             rows = cursor.fetchall()
             results = []
             for r in rows:
-                latest_mag = r[7] if r[7] is not None else r[5]
+                latest_mag = r[8] if r[8] is not None else r[5]
                 results.append({
                     'name': r[0],
                     'prefix': r[1] or '',
@@ -596,7 +597,8 @@ def api_search_target():
                     'dec': r[3],
                     'redshift': r[4],
                     'mag': latest_mag,
-                    'type': r[6] or ''
+                    'type': r[6] or '',
+                    'internal_names': r[7] or '',
                 })
             cursor.close()
         return jsonify({'results': results})

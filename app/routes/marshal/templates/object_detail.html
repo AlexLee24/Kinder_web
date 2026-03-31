@@ -186,20 +186,28 @@
             
             <!-- Photometry Span 1 Column -->
             <div class="panel-card">
-                <div class="panel-header">
-                    <h3>Photometry Analysis <span id="lastPhotometryDate" style="font-size: 0.8em; color: rgba(255,255,255,0.5); font-weight:normal; margin-left:8px;"></span></h3>
-                    <div class="action-row">
-                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc;">
-                            <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()"> Extinction
-                        </label>
-                        <label style="display:flex; align-items:center; gap:4px; font-size:0.85em; cursor:pointer; color:#ccc; margin-right:12px;">
-                            <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()"> K-Correction
-                        </label>
-                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="fetchPhotometry()">Fetch Phot</button>
-                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="uploadPhotometry()">Upload</button>
-                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="openDownloadModal()">Download</button>
-                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
-                        <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="loadPhotometryPlot()">Refresh</button>
+                <div class="panel-header phot-panel-header">
+                    <div class="phot-header-top">
+                        <h3>Photometry
+                            <span id="lastPhotometryDate" class="phot-date-chip"></span>
+                        </h3>
+                        <div class="phot-toggles">
+                            <label class="phot-toggle-label">
+                                <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()">
+                                <span>Ext</span>
+                            </label>
+                            <label class="phot-toggle-label">
+                                <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()">
+                                <span>K-corr</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="phot-actions">
+                        <button class="btn-modern phot-btn" onclick="fetchPhotometry()">Fetch</button>
+                        <button class="btn-modern phot-btn" onclick="uploadPhotometry()">Upload</button>
+                        <button class="btn-modern phot-btn" onclick="openDownloadModal()">Download</button>
+                        <button class="btn-modern phot-btn" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
+                        <button class="btn-modern phot-btn" onclick="loadPhotometryPlot()">Refresh</button>
                     </div>
                 </div>
                 <div class="panel-body">

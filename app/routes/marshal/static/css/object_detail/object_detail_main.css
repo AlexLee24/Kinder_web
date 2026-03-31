@@ -129,6 +129,91 @@
     font-weight: 600;
 }
 
+/* Photometry panel: stacked header (title+toggles top, buttons bottom) */
+.phot-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 20px 10px;
+}
+
+.phot-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.phot-header-top h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 1.1rem;
+    color: #00f5d4;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.phot-date-chip {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.05);
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.02em;
+}
+
+.phot-toggles {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.phot-toggle-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 4px 10px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    user-select: none;
+    letter-spacing: 0.02em;
+}
+.phot-toggle-label input[type="checkbox"] {
+    display: none;
+}
+.phot-toggle-label:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.8);
+    border-color: rgba(255,255,255,0.2);
+}
+.phot-toggle-label:has(input:checked) {
+    background: rgba(0, 245, 212, 0.12);
+    border-color: rgba(0, 245, 212, 0.45);
+    color: #00f5d4;
+}
+
+.phot-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+}
+
+.phot-btn {
+    padding: 4px 11px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 .panel-body {
     padding: 20px;
     flex: 1;

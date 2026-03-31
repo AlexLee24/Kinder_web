@@ -598,6 +598,7 @@ body {
 .db-dd-item {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 8px 12px;
     cursor: pointer;
@@ -626,6 +627,16 @@ body {
     color: var(--accent-color);
     opacity: 0.7;
     flex-shrink: 0;
+}
+.db-dd-internal {
+    flex-basis: 100%;
+    font-size: 0.7rem;
+    color: rgba(255, 165, 77, 0.7);
+    font-style: italic;
+    margin-top: -4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .db-dropdown-msg {
     padding: 10px 14px;

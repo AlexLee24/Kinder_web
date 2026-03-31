@@ -841,9 +841,9 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
     
     # Search term filter
     if search_term:
-        query += ' AND (name ILIKE %s OR name_prefix || name ILIKE %s)'
+        query += ' AND (name ILIKE %s OR name_prefix || name ILIKE %s OR internal_names ILIKE %s)'
         search_pattern = f'%{search_term}%'
-        params.extend([search_pattern, search_pattern])
+        params.extend([search_pattern, search_pattern, search_pattern])
     
     # Object type filter
     if object_type:
@@ -852,7 +852,7 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
             type_conditions = []
             for t in types:
                 if t == 'AT':
-                    type_conditions.append("name_prefix = 'AT'")
+                    type_conditions.append("name_prefix = 'AT'"
                 elif t == 'Classified':
                     type_conditions.append("name_prefix != 'AT'")
                 else:
@@ -1043,9 +1043,9 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
     
     # Search term filter
     if search_term:
-        query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s)'
+        query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s OR t.internal_names ILIKE %s)'
         search_pattern = f'%{search_term}%'
-        params.extend([search_pattern, search_pattern])
+        params.extend([search_pattern, search_pattern, search_pattern])
     
     # Object type filter
     if object_type:
@@ -1054,7 +1054,7 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
             type_conditions = []
             for t in types:
                 if t == 'AT':
-                    type_conditions.append("t.name_prefix = 'AT'")
+                    type_conditions.append("t.name_prefix = 'AT'"
                 elif t == 'Classified':
                     type_conditions.append("t.name_prefix != 'AT'")
                 else:
@@ -1171,9 +1171,9 @@ def get_filtered_stats(search_term='', object_type='', tag=None, date_from=None,
 
     # Apply same filters as search_tns_objects
     if search_term:
-        base_query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s)'
+        base_query += ' AND (t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s OR t.internal_names ILIKE %s)'
         search_pattern = f'%{search_term}%'
-        base_params.extend([search_pattern, search_pattern])
+        base_params.extend([search_pattern, search_pattern, search_pattern])
     
     if object_type:
         types = [t.strip() for t in object_type.split(',') if t.strip()]

@@ -827,11 +827,13 @@
                         return;
                     }
                     const html = lastResults.map((r, i) => {
-                        const meta = [r.type, r.mag ? `mag ${r.mag}` : ''].filter(Boolean).join(' · ');
+                        const meta = [r.type, r.mag ? `mag ${r.mag}` : ''].filter(Boolean).join(' \u00b7 ');
+                        const internal = r.internal_names ? `<span class="db-dd-internal">${r.internal_names}</span>` : '';
                         return `<div class="db-dd-item" data-idx="${i}">
                             <span class="db-dd-name">${r.name}</span>
                             ${meta ? `<span class="db-dd-meta">${meta}</span>` : ''}
                             <span class="db-dd-add">+ Add</span>
+                            ${internal}
                         </div>`;
                     }).join('');
                     openDropdown(html);

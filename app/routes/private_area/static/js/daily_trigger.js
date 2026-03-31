@@ -115,12 +115,14 @@ function searchTarget(query) {
                     const magStr = obj.mag != null ? parseFloat(obj.mag).toFixed(1) : '';
                     const typeStr = obj.type ? obj.type : 'AT';
 
+                    const internalStr = obj.internal_names ? obj.internal_names : '';
                     item.innerHTML = '<div>' +
                         '<span class="pa-search-item-name">' + obj.prefix + obj.name + '</span>' +
                         '<span class="pa-search-item-type">' + typeStr + '</span>' +
                         (magStr ? '<span class="pa-search-item-mag">mag ' + magStr + '</span>' : '') +
                         '</div>' +
-                        '<div class="pa-search-item-coord">' + raDeg + ', ' + decDeg + '</div>';
+                        '<div class="pa-search-item-coord">' + raDeg + ', ' + decDeg + '</div>' +
+                        (internalStr ? '<div class="pa-search-item-internal">' + internalStr + '</div>' : '');
 
                     item.onclick = () => selectSearchResult(obj);
                     dropdown.appendChild(item);
@@ -252,6 +254,36 @@ function openTargetModal(telescope) {
     obsFilters = [];
     toggleTelescopeUI(telescope);
     renderFilterRows();
+    // Clear name hint on open
+    var hint = document.getElementById('obs-name-hint');
+    if (hint) { hint.textContent = ''; hint.className = 'pa-name-hint'; }
+}
+
+// Real-time name hint as user types
+// Hard-block survey IDs (exclude ZTF — it becomes orange warn + confirm)
+var SURVEY_PREFIXES_CHECK = ['ATLAS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
+function checkTargetNameHint(value) {
+    var hint = document.getElementById('obs-name-hint');
+    if (!hint) return;
+    var v = value.trim();
+    if (!v) { hint.textContent = ''; hint.className = 'pa-name-hint'; return; }
+    var upper = v.toUpperCase();
+    if (upper.startsWith('ZTF')) {
+        hint.textContent = '\u26a0\ufe0f ZTF ID \u2014 prefer TNS/IAU or EP name. Confirmation required.';
+        hint.className = 'pa-name-hint warn';
+    } else {
+        var badPrefix = SURVEY_PREFIXES_CHECK.find(function(p) { return upper.startsWith(p); });
+        if (badPrefix) {
+            hint.textContent = '\u26d4 Survey ID (' + badPrefix + ') \u2014 please use TNS/IAU or EP name.';
+            hint.className = 'pa-name-hint error';
+        } else if (/^(AT|SN|EP)\s/i.test(v) || /^(AT|SN|EP)\d/i.test(v)) {
+            hint.textContent = '\u2713 Good \u2014 TNS/IAU or EP name detected.';
+            hint.className = 'pa-name-hint ok';
+        } else {
+            hint.textContent = '\u26a0\ufe0f Prefix not AT/SN/EP \u2014 confirmation required on submit.';
+            hint.className = 'pa-name-hint warn';
+        }
+    }
 }
 
 function closeTargetModal() {
@@ -415,7 +447,29 @@ async function addObservationTarget(event) {
     event.preventDefault();
 
     const telescope = document.getElementById('obs-telescope').value;
-    const name = document.getElementById('obs-name').value;
+    const name = document.getElementById('obs-name').value.trim();
+
+    // Validate target name prefix
+    const nameTrimmed = name.trim();
+    const upperName = nameTrimmed.toUpperCase();
+// Hard-block (ATLAS, PS1, etc.) but ZTF only needs confirm
+    const SURVEY_BLOCK = ['ATLAS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
+    const hasBlockPrefix = SURVEY_BLOCK.some(function(p) { return upperName.startsWith(p); });
+    const hasGoodPrefix = /^(AT|SN|EP)\s/i.test(nameTrimmed) || /^(AT|SN|EP)\d/i.test(nameTrimmed);
+    const isZTF = upperName.startsWith('ZTF');
+
+    if (hasBlockPrefix) {
+        alert('Please use the TNS/IAU name (AT/SN prefix) or EP name instead of a survey ID (' + SURVEY_BLOCK.find(function(p){ return upperName.startsWith(p); }) + ').');
+        return;
+    }
+    if (isZTF || !hasGoodPrefix) {
+        const msg = isZTF
+            ? 'The name "' + nameTrimmed + '" looks like a ZTF ID.\n\nPlease use the TNS/IAU (AT/SN) or EP name whenever possible.\n\nContinue with ZTF name?'
+            : 'The target name "' + nameTrimmed + '" does not start with AT, SN, or EP.\n\nPlease use the TNS/IAU name (AT/SN) or EP name whenever possible.\n\nAre you sure you want to continue with this name?';
+        const confirmed = window.confirm(msg);
+        if (!confirmed) return;
+    }
+
     const mag = document.getElementById('obs-mag') ? document.getElementById('obs-mag').value : '';
     const ra = document.getElementById('obs-ra').value;
     const dec = document.getElementById('obs-dec').value;
@@ -560,10 +614,135 @@ async function loadTargets() {
             
             sortTargets('SLT', 'priority');
             sortTargets('LOT', 'priority');
+
+            // Populate astro info (moon sep, transit, mini plot) in background
+            setTimeout(loadAstroInfoForTargets, 400);
         }
     } catch (e) {
         console.error('Error loading targets:', e);
     }
+}
+
+// ===================== Astro Info (moon sep / transit / mini plot) =====================
+
+async function loadAstroInfoForTargets() {
+    const targets = allTargetsCache.filter(function(t) { return t.ra && t.dec; });
+    if (!targets.length) return;
+
+    // Build name → [ids] map to handle same target in both SLT + LOT
+    var nameToIds = {};
+    targets.forEach(function(t) {
+        if (!nameToIds[t.name]) nameToIds[t.name] = [];
+        nameToIds[t.name].push(t.id);
+    });
+
+    // Deduplicate by name before sending to API
+    var seen = {};
+    var uniqueTargets = targets.filter(function(t) {
+        if (seen[t.name]) return false;
+        seen[t.name] = true;
+        return true;
+    });
+
+    const now = new Date();
+    if (now.getHours() < 12) now.setDate(now.getDate() - 1);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = yyyy + '-' + mm + '-' + dd;
+
+    try {
+        const resp = await fetch('/api/visibility_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: dateStr,
+                location: '120:52:21 23:28:10 2862',
+                timezone: '8',
+                telescope: 'ALL',
+                targets: uniqueTargets.map(function(t) { return { name: t.name, ra: t.ra, dec: t.dec }; }),
+                n_steps: 80
+            })
+        });
+        const data = await resp.json();
+        if (!data.success) return;
+
+        // Fill ALL targets that share the same name (handles SLT + LOT duplicates)
+        data.targets.forEach(function(td) {
+            var ids = nameToIds[td.name] || [];
+            ids.forEach(function(id) {
+                fillAstroInfo(id, td, data.twilight_local);
+            });
+        });
+    } catch (e) {
+        console.error('Astro info fetch error:', e);
+    }
+}
+
+function fillAstroInfo(targetId, td, twilightLocal) {
+    var astroRow = document.getElementById('astro-row-' + targetId);
+    var miniPlot = document.getElementById('mini-vp-' + targetId);
+    if (!astroRow && !miniPlot) return;
+
+    var moonSep = td.moon_separation != null ? td.moon_separation + '°' : '—';
+    var transitLocal = td.transit_time_local ? td.transit_time_local.slice(11, 16) : '—';
+    var peakAlt = td.altitudes && td.altitudes.length ? Math.round(Math.max.apply(null, td.altitudes)) : null;
+    var peakAltStr = peakAlt != null ? peakAlt + '°' : '—';
+
+    if (astroRow) {
+        var spans = astroRow.querySelectorAll('span > span');
+        if (spans[0]) spans[0].textContent = moonSep;
+        if (spans[1]) spans[1].textContent = transitLocal;
+        if (spans[2]) spans[2].textContent = peakAltStr;
+        // Color moon sep
+        var moonEl = astroRow.querySelector('.pa-astro-moon');
+        if (moonEl) moonEl.style.color = moonSepColor(td.moon_separation);
+        // Color peak alt
+        var peakEl = astroRow.querySelector('.pa-astro-peak');
+        if (peakEl) peakEl.style.color = peakAlt != null && peakAlt >= 30 ? 'rgba(100,220,130,0.85)' : 'rgba(255,120,100,0.85)';
+    }
+
+    if (miniPlot && td.altitudes && td.altitudes.length) {
+        miniPlot.innerHTML = drawMiniVisibilitySVG(td.altitudes, twilightLocal);
+    }
+}
+
+function moonSepColor(sep) {
+    if (sep == null) return 'rgba(255,255,255,0.35)';
+    if (sep < 30) return '#ff7675';
+    if (sep < 60) return '#ffa94d';
+    return '#69db7c';
+}
+
+function drawMiniVisibilitySVG(altitudes, twilightLocal) {
+    var W = 120, H = 34;
+    var N = altitudes.length;
+    if (!N) return '';
+
+    // Y coordinate for given altitude
+    function yFor(a) { return H - Math.max(0, Math.min(a, 90)) / 90 * H; }
+
+    // Build a two-color polyline: above 30° vs below
+    var above = [], below = [];
+    var prevAbove = null;
+    for (var i = 0; i < N; i++) {
+        var x = (i / (N - 1)) * W;
+        var y = yFor(altitudes[i]);
+        var isAbove = altitudes[i] >= 30;
+        if (isAbove) { above.push(x + ',' + y); if (prevAbove === false) above.push(x + ',' + y); }
+        else { below.push(x + ',' + y); if (prevAbove === true) below.push(x + ',' + y); }
+        prevAbove = isAbove;
+    }
+
+    var h30 = yFor(30);
+    var h0 = yFor(0);
+
+    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block; overflow:visible;">' +
+        '<line x1="0" y1="' + h0 + '" x2="' + W + '" y2="' + h0 + '" stroke="rgba(255,255,255,0.08)" stroke-width="0.8"/>' +
+        '<line x1="0" y1="' + h30 + '" x2="' + W + '" y2="' + h30 + '" stroke="rgba(255,255,255,0.15)" stroke-width="0.8" stroke-dasharray="2,2"/>' +
+        (below.length > 1 ? '<polyline points="' + below.join(' ') + '" fill="none" stroke="rgba(255,100,100,0.5)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
+        (above.length > 1 ? '<polyline points="' + above.join(' ') + '" fill="none" stroke="rgba(77,184,255,0.85)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
+        '</svg>';
 }
 
 function getObjectRouteName(name) {
@@ -677,6 +856,12 @@ function renderTable(telescope, targets) {
             '<div class="pa-td-name-content" style="display:flex; flex-direction:column; align-items:flex-start; justify-content:center;">' +
                 '<div style="display:flex; align-items:center; gap:8px;">' + targetNameHtml + ' ' + programBadge + '</div>' +
                 '<div style="margin-top: 4px;">' + magDisplay + '</div>' +
+                '<div class="pa-astro-row" id="astro-row-' + t.id + '">' +
+                    '<span class="pa-astro-item pa-astro-moon" title="Moon separation">☽ <span>—</span></span>' +
+                    '<span class="pa-astro-item pa-astro-transit" title="Transit time (local)">⟳ <span>—</span></span>' +
+                    '<span class="pa-astro-item pa-astro-peak" title="Peak altitude">↑ <span>—</span></span>' +
+                '</div>' +
+                '<div class="pa-mini-plot" id="mini-vp-' + t.id + '"></div>' +
             '</div>' +
             '</td>' +
             '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + coordDisplay.ra + ' <br> ' + coordDisplay.dec + '</td>' +

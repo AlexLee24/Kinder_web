@@ -483,12 +483,38 @@ def visibility_data():
                 continue
 
             try:
-                ra_clean = re.sub(r"[hH]", ":", str(ra))
-                ra_clean = re.sub(r"[mM]", ":", ra_clean)
-                ra_clean = re.sub(r"[sS]", "", ra_clean).strip()
-                dec_clean = re.sub(r"[dD°]", ":", str(dec))
-                dec_clean = re.sub(r"[mM′']", ":", dec_clean)
-                dec_clean = re.sub(r"[sS″\"]", "", dec_clean).strip()
+                # Parse RA — support decimal degrees (e.g. 186.234) or H:M:S / HhMmSs formats
+                ra_str = str(ra).strip()
+                if not any(c in ra_str for c in [':', 'h', 'H']):
+                    try:
+                        ra_deg = float(ra_str)
+                        ra_h = ra_deg / 15.0
+                        _h = int(ra_h); _m = int((ra_h - _h) * 60); _s = ((ra_h - _h) * 60 - _m) * 60
+                        ra_clean = f"{_h}:{_m:02d}:{_s:05.2f}"
+                    except ValueError:
+                        ra_clean = ra_str
+                else:
+                    ra_clean = re.sub(r"[hH]", ":", ra_str)
+                    ra_clean = re.sub(r"[mM]", ":", ra_clean)
+                    ra_clean = re.sub(r"[sS]", "", ra_clean).strip()
+
+                # Parse Dec — support decimal degrees (e.g. -12.345) or D:M:S / DdMmSs formats
+                dec_str = str(dec).strip()
+                dec_core = dec_str.lstrip('+-')
+                if not any(c in dec_core for c in [':', 'd', 'D', '\u00b0']):
+                    try:
+                        dec_deg = float(dec_str)
+                        sign = '-' if dec_deg < 0 else ''
+                        dec_abs = abs(dec_deg)
+                        _d = int(dec_abs); _m = int((dec_abs - _d) * 60); _s = ((dec_abs - _d) * 60 - _m) * 60
+                        dec_clean = f"{sign}{_d}:{_m:02d}:{_s:05.2f}"
+                    except ValueError:
+                        dec_clean = dec_str
+                else:
+                    dec_clean = re.sub(r"[dD\u00b0]", ":", dec_str)
+                    dec_clean = re.sub(r"[mM\u2032']", ":", dec_clean)
+                    dec_clean = re.sub(r"[sS\u2033\"]", "", dec_clean).strip()
+
                 ephem_target = obs.create_ephem_target(name, ra_clean, dec_clean)
             except Exception:
                 continue
@@ -599,6 +625,7 @@ def target_autocomplete():
                 'dec':  str(dec),
                 'type': str(r.get('type', '') or prefix or ''),
                 'mag':  str(r.get('discoverymag', '') or ''),
+                'internal_names': str(r.get('internal_names', '') or ''),
             })
         return jsonify(out)
     except Exception as e:

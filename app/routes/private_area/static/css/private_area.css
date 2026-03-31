@@ -600,6 +600,16 @@ body::before {
     font-size: 0.75rem;
 }
 
+.pa-search-item-internal {
+    font-size: 0.72rem;
+    color: rgba(255, 165, 77, 0.75);
+    margin-top: 1px;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .pa-search-empty {
     padding: 10px 12px;
     color: #666;
