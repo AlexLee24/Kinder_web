@@ -1003,6 +1003,15 @@ function initObservationLog() {
         .then(data => {
             availableLogMonths = (data && data.success && Array.isArray(data.months)) ? data.months : [];
 
+            // Always include current month so the grid renders on day 1 of a new month
+            // even before any log entries exist for that month.
+            const _now = new Date();
+            const _curY = _now.getFullYear();
+            const _curM = _now.getMonth() + 1;
+            if (!availableLogMonths.some(x => parseInt(x.year) === _curY && parseInt(x.month) === _curM)) {
+                availableLogMonths.unshift({ year: _curY, month: _curM });
+            }
+
             yearSelect.innerHTML = '';
             monthSelect.innerHTML = '';
 
