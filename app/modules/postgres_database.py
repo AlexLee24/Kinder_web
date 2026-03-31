@@ -852,7 +852,7 @@ def get_objects_count(object_type=None, search_term='', tag=None, date_from=None
             type_conditions = []
             for t in types:
                 if t == 'AT':
-                    type_conditions.append("name_prefix = 'AT'"
+                    type_conditions.append("name_prefix = 'AT'")
                 elif t == 'Classified':
                     type_conditions.append("name_prefix != 'AT'")
                 else:
@@ -1054,7 +1054,7 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0, sort
             type_conditions = []
             for t in types:
                 if t == 'AT':
-                    type_conditions.append("t.name_prefix = 'AT'"
+                    type_conditions.append("t.name_prefix = 'AT'")
                 elif t == 'Classified':
                     type_conditions.append("t.name_prefix != 'AT'")
                 else:
