@@ -213,29 +213,19 @@ async function updatePageContent() {
     updateStatusBadge(currentStatus);
     renderCustomTags(objectData.tags);
 
-    // 1. 先觸發本地端組件加載，但不全部阻擋
+    // Load all panels in parallel; detect starts immediately
     loadLocationImage();
     loadSpectrumPlot();
     loadComments();
     initializeAladinWhenReady();
-    
-    // 2. 「等待」本地資料庫的測光 (Photometry) 讀取完成與渲染
-    // 這樣才能確保原本就有的圖表先畫出來，或者顯示出「No data」
-    if (typeof loadPhotometryPlot === 'function') {
-        await loadPhotometryPlot();
-    }
-    
-    // 3. 讓出主頻寬 100 毫秒給瀏覽器更新畫面，然後再去跑較重的 DETECT 跟 Fetch
-    setTimeout(() => {
-        // Only load DETECT if no cached data exists (handled inside loadDetectData)
+    loadDetectData();
+
+    // Photometry: after it resolves, auto-fetch only if no local data
+    loadPhotometryPlot().then(() => {
         if (!photometryData || photometryData.length === 0) {
-            loadDetectData();
-            // Auto-fetch from TNS only when there's no local photometry data
             fetchPhotometry(true);
-        } else {
-            loadDetectData();
         }
-    }, 100);
+    });
 
     console.log('Page content updated');
 }
@@ -974,30 +964,18 @@ function togglePhotometryEditMode() {
 }
 
 function enterPhotometryEditMode() {
-    // Allow entering edit mode even if no data, so user can add points
-    // if (photometryData.length === 0) {
-    //     showNotification('No photometry data to edit', 'warning');
-    //     return;
-    // }
-    
     isEditingPhotometry = true;
     
-    // Update button states
     const editBtn = document.getElementById('photometryEditBtn');
-    const plotContainer = document.getElementById('photometryPlot');
-    const tableContainer = document.getElementById('photometryTableContainer');
-    
     if (editBtn) {
-        editBtn.innerHTML = `<span class="btn-icon">${ICONS.view}</span> View Plot`;
-        editBtn.title = 'Switch back to plot view';
+        editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Editing...`;
+        editBtn.title = 'Currently editing — click to close';
     }
-    if (plotContainer) plotContainer.style.display = 'none';
-    if (tableContainer) tableContainer.style.display = 'block';
     
-    // Populate table
+    const modal = document.getElementById('editPhotometryModal');
+    if (modal) modal.style.display = 'flex';
+    
     populatePhotometryTable();
-    
-    // Reset changes
     photometryChanges = { toDelete: [], toAdd: [] };
 }
 
@@ -1100,17 +1078,14 @@ function closeAddPhotometryModal() {
 function exitPhotometryEditMode() {
     isEditingPhotometry = false;
     
-    // Update button states
     const editBtn = document.getElementById('photometryEditBtn');
-    const plotContainer = document.getElementById('photometryPlot');
-    const tableContainer = document.getElementById('photometryTableContainer');
-    
     if (editBtn) {
         editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Edit`;
         editBtn.title = 'Edit photometry data';
     }
-    if (plotContainer) plotContainer.style.display = 'block';
-    if (tableContainer) tableContainer.style.display = 'none';
+    
+    const modal = document.getElementById('editPhotometryModal');
+    if (modal) modal.style.display = 'none';
 }
 
 async function addPhotometryPoint() {
@@ -1183,10 +1158,10 @@ async function addPhotometryPoint() {
             showNotification('Photometry point added successfully', 'success');
             closeAddPhotometryModal();
             
-            // Reload photometry data to show the new point
-            setTimeout(() => {
-                loadPhotometryPlot();
-            }, 500);
+            // Reload photometry data and re-populate edit table
+            loadPhotometryPlot().then(() => {
+                if (isEditingPhotometry) populatePhotometryTable();
+            });
         } else {
             if (errorDiv && errorText) {
                 errorText.innerHTML = result.error || 'Failed to add photometry point';
@@ -1221,7 +1196,7 @@ async function savePhotometryChanges() {
         return;
     }
     
-    const saveBtn = document.querySelector('#photometryTableContainer .btn-primary');
+    const saveBtn = document.getElementById('photometrySaveBtn');
     if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';

@@ -154,7 +154,7 @@
                         <div class="image-loading" id="imageLoading" style="position:absolute;">
                             <div class="loading-spinner-small"></div>
                         </div>
-                        <img id="locationImageSrc" style="display:none; width:100%; height:100%; object-fit:cover; cursor:pointer;" alt="Location" onclick="openDESI()">
+                        <img id="locationImageSrc" loading="lazy" style="display:none; width:100%; height:100%; object-fit:cover; cursor:pointer;" alt="Location" onclick="openDESI()">
                         <div class="location-marker" id="locationMarker" style="display:none;" onclick="openDESI()"></div>
                     </div>
                 </div>
@@ -216,29 +216,6 @@
                             <div class="loading-spinner-small"></div> Loading data...
                         </div>
                         <div id="photometryPlot" style="flex:1; width:100%;"></div>
-                    </div>
-                    <!-- Edit-mode table (hidden by default) -->
-                    <div id="photometryTableContainer" style="display:none; flex-direction:column; width:100%;">
-                        <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
-                            <button class="btn btn-secondary btn-sm" onclick="cancelPhotometryEdit()">Cancel</button>
-                            <button class="btn btn-primary btn-sm" onclick="savePhotometryChanges()">Save Changes</button>
-                            <button class="btn btn-secondary btn-sm" onclick="showAddPhotometryForm()">+ Add Point</button>
-                        </div>
-                        <div style="overflow-x:auto; max-height:400px; overflow-y:auto;">
-                            <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#ddd;">
-                                <thead>
-                                    <tr style="border-bottom:1px solid rgba(255,255,255,0.15);">
-                                        <th style="padding:6px 10px; text-align:left;">MJD</th>
-                                        <th style="padding:6px 10px; text-align:left;">Mag</th>
-                                        <th style="padding:6px 10px; text-align:left;">Error</th>
-                                        <th style="padding:6px 10px; text-align:left;">Filter</th>
-                                        <th style="padding:6px 10px; text-align:left;">Telescope</th>
-                                        <th style="padding:6px 10px; text-align:left;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="photometryTableBody"></tbody>
-                            </table>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -375,6 +352,40 @@
         <div class="loading-spinner">
             <div class="spinner"></div>
             <div class="loading-text">Loading object details...</div>
+        </div>
+    </div>
+
+    <!-- Edit Photometry Modal -->
+    <div class="modal" id="editPhotometryModal" style="display: none;">
+        <div class="modal-content" style="max-width:820px; width:95%;">
+            <div class="modal-header">
+                <h3>Edit Photometry Data</h3>
+                <span class="close" onclick="cancelPhotometryEdit()">&times;</span>
+            </div>
+            <div class="modal-body" style="padding:16px;">
+                <div id="photometryTableContainer" style="display:flex; flex-direction:column; width:100%;">
+                    <div style="overflow-x:auto; max-height:480px; overflow-y:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#ddd;">
+                            <thead>
+                                <tr style="border-bottom:1px solid rgba(255,255,255,0.15); position:sticky; top:0; background:#1a1a2e;">
+                                    <th style="padding:8px 10px; text-align:left;">MJD</th>
+                                    <th style="padding:8px 10px; text-align:left;">Mag</th>
+                                    <th style="padding:8px 10px; text-align:left;">Error</th>
+                                    <th style="padding:8px 10px; text-align:left;">Filter</th>
+                                    <th style="padding:8px 10px; text-align:left;">Telescope</th>
+                                    <th style="padding:8px 10px; text-align:left;">Delete</th>
+                                </tr>
+                            </thead>
+                            <tbody id="photometryTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cancelPhotometryEdit()">Cancel</button>
+                <button class="btn btn-secondary" onclick="showAddPhotometryForm()">+ Add Point</button>
+                <button class="btn btn-primary" id="photometrySaveBtn" onclick="savePhotometryChanges()">Save Changes</button>
+            </div>
         </div>
     </div>
 
@@ -642,7 +653,7 @@ MJD         magnitude  error   filter  telescope
 
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous" async></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
 </body>
 </html>
