@@ -1050,18 +1050,19 @@ def get_object_photometry_plot(year, letters):
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
 
-        plot_html = DataVisualization.create_photometry_plot_from_db(
+        plot_json = DataVisualization.create_photometry_plot_from_db(
             photometry_data, 
             redshift=redshift, 
             ra=ra, 
             dec=dec,
             apply_extinction=apply_extinction,
-            apply_k_corr=apply_k_corr
+            apply_k_corr=apply_k_corr,
+            as_json=True
         )
         
         return jsonify({
             'success': True,
-            'plot_html': plot_html,
+            'plot_json': plot_json,
             'data_count': len(photometry_data)
         })
     except Exception as e:
@@ -1256,18 +1257,19 @@ def get_object_photometry_plot_generic(object_name):
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
 
-        plot_html = DataVisualization.create_photometry_plot_from_db(
+        plot_json = DataVisualization.create_photometry_plot_from_db(
             photometry_data, 
             redshift=redshift,
             ra=ra,
             dec=dec,
             apply_extinction=apply_extinction,
-            apply_k_corr=apply_k_corr
+            apply_k_corr=apply_k_corr,
+            as_json=True
         )
         
         return jsonify({
             'success': True,
-            'plot_html': plot_html,
+            'plot_json': plot_json,
             'data_count': len(photometry_data)
         })
     except Exception as e:

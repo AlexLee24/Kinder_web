@@ -897,41 +897,29 @@ function loadPhotometryPlot() {
         // Display plot
         if (plotData.success) {
             if (photometryContainer) {
-                if (plotData.plot_html) {
-                    console.log('Inserting plot HTML into container...');
-                    
-                    photometryContainer.innerHTML = plotData.plot_html;
-                    
-                    setTimeout(() => {
-                        try {
-                            const scripts = photometryContainer.querySelectorAll('script');
-                            console.log(`Found ${scripts.length} scripts in plot HTML`);
-                            
-                            scripts.forEach((script, index) => {
-                                console.log(`Executing script ${index + 1}...`);
-                                const newScript = document.createElement('script');
-                                newScript.innerHTML = script.innerHTML;
-                                document.head.appendChild(newScript);
-                                document.head.removeChild(newScript);
-                            });
-                            
-                            console.log('Photometry plot rendered successfully');
-                            
-                            // Match star-map height after photometry plot is loaded
-                            setTimeout(() => {
-                                matchStarMapHeight();
-                            }, 200);
-                        } catch (error) {
-                            console.error('Error executing plot scripts:', error);
-                            photometryContainer.innerHTML = `
-                                <div class="no-data">
-                                    <span class="no-data-icon">${ICONS.error}</span>
-                                    <span class="no-data-text">Error rendering plot</span>
-                                </div>
-                            `;
+                if (plotData.plot_json) {
+                    photometryContainer.innerHTML = '<div id="phot-plotly-div" style="width:100%; height:450px;"></div>';
+                    try {
+                        const figData = JSON.parse(plotData.plot_json);
+                        // Override template to match page dark theme
+                        if (figData.layout) {
+                            figData.layout.paper_bgcolor = 'rgba(0,0,0,0)';
+                            figData.layout.plot_bgcolor  = 'rgba(0,0,0,0)';
+                            figData.layout.font = figData.layout.font || {};
+                            figData.layout.font.color = '#ccc';
                         }
-                    }, 100);
-                    
+                        Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
+                        console.log('Photometry plot rendered successfully');
+                        setTimeout(() => { matchStarMapHeight(); }, 200);
+                    } catch (error) {
+                        console.error('Error rendering photometry plot:', error);
+                        photometryContainer.innerHTML = `
+                            <div class="no-data">
+                                <span class="no-data-icon">${ICONS.error}</span>
+                                <span class="no-data-text">Error rendering plot</span>
+                            </div>
+                        `;
+                    }
                 } else {
                     // Check if it's currently fetching in background
                     const isFetching = photometryContainer.innerHTML.includes('Fetching latest');
@@ -943,11 +931,7 @@ function loadPhotometryPlot() {
                             </div>
                         `;
                     }
-                    
-                    // Match star-map height even when no data
-                    setTimeout(() => {
-                        matchStarMapHeight();
-                    }, 100);
+                    setTimeout(() => { matchStarMapHeight(); }, 100);
                 }
             }
         } else {
@@ -959,11 +943,7 @@ function loadPhotometryPlot() {
                         <span class="no-data-text">Error loading photometry data</span>
                     </div>
                 `;
-                
-                // Match star-map height even on error
-                setTimeout(() => {
-                    matchStarMapHeight();
-                }, 100);
+                setTimeout(() => { matchStarMapHeight(); }, 100);
             }
         }
     }).catch(error => {
@@ -1041,7 +1021,7 @@ function populatePhotometryTable() {
             <td>${point.mjd}</td>
             <td>${isUpperLimit ? '>' : ''}${point.magnitude}</td>
             <td>${point.magnitude_error || 'N/A'}</td>
-            <td>${point.filter_name}</td>
+            <td>${point.filter || 'N/A'}</td>
             <td>${point.telescope || 'Unknown'}</td>
             <td>
                 <button class="btn-small btn-danger" onclick="markForDeletion(${index}, ${point.id})" title="Delete this point">
