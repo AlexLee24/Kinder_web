@@ -757,7 +757,7 @@ function getObjectRouteName(name) {
     if (!routeName) return null;
 
     const upperName = routeName.toUpperCase();
-    if (upperName.startsWith('EP') || upperName === 'AUTOFLAT' || upperName === 'BIAS' || upperName === 'DARK') {
+    if (upperName === 'AUTOFLAT' || upperName === 'BIAS' || upperName === 'DARK') {
         return null;
     }
 
