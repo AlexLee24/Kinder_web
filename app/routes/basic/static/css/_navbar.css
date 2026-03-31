@@ -18,13 +18,13 @@ header {
     top: 0;
     left: 0;
     width: 100%;
-    height: 80px;
+    height: 60px;
     z-index: 100;
     box-sizing: border-box;
     padding: 0 48px;
 
     /* Subtle dark overlay only, no background image */
-    background-color: rgba(0, 0, 0, 0.18);
+    background-color: rgba(0, 0, 0, 0.2);
     background-image: none;
     background-size: unset;
     background-position: unset;
@@ -39,27 +39,10 @@ header {
 }
 
 header::before { display: none; }
-
-/* Soft gradient fade below the navbar */
-header::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    height: 60px;
-    background: linear-gradient(
-        to bottom,
-        rgba(0, 0, 0, 0.52) 0%,
-        rgba(0, 0, 0, 0.18) 45%,
-        transparent 100%
-    );
-    pointer-events: none;
-    z-index: 0;   /* below dropdown menus (z-index:200) but above page */
-}
+header::after  { display: none; }
 
 header.scrolled {
-    background-color: rgba(0, 0, 0, 0.42);
+    background-color: rgba(0, 0, 0, 0.7);
     box-shadow: none;
 }
 
