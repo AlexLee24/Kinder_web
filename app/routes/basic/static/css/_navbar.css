@@ -42,8 +42,8 @@ header {
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     box-shadow: 0 2px 48px rgba(0, 0, 0, 0.55);
 
-    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-    letter-spacing: 0.05em;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    letter-spacing: 0.03em;
     transition: background-color 0.4s ease, box-shadow 0.4s ease;
 }
 
@@ -69,7 +69,8 @@ header .container {
 }
 
 .header-content {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
     width: 100%;
     height: 100%;
@@ -94,10 +95,10 @@ header .container {
 
 .header-content .logo span {
     margin: 0;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: 0.26em;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
     color: #fff;
     line-height: 1;
@@ -105,10 +106,12 @@ header .container {
 
 /* ── Main nav ────────────────────────────────────────────── */
 .main-nav {
+    /* occupies the middle column of the header-content grid */
     display: flex;
     align-items: center;
-    width: 100%;
+    justify-content: center;
     height: 100%;
+    /* do NOT set width:100% — let grid control sizing */
 }
 
 .nav-left {
@@ -117,6 +120,7 @@ header .container {
     padding: 0;
     display: flex;
     align-items: center;
+    justify-content: center;
     height: 100%;
     gap: 2px;
 }
@@ -129,7 +133,7 @@ header .container {
 
 .nav-right {
     list-style: none;
-    margin: 0 0 0 auto;
+    margin: 0;
     padding: 0;
     display: flex;
     align-items: center;
@@ -148,10 +152,10 @@ header .container {
     position: relative;
     color: rgba(255, 255, 255, 0.82);
     text-decoration: none;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 15px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 0 14px;
     height: 100%;
@@ -267,12 +271,11 @@ header .container {
 .header-content .main-nav ul li.dropdown .dropdown-content li a {
     display: flex;
     align-items: center;
-    padding: 8px 14px;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 14px;
+    padding: 7px 12px;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 12.5px;
     font-weight: 400;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: rgba(255, 255, 255, 0.72);
     border-radius: 8px;
     height: auto;
@@ -295,19 +298,19 @@ header .container {
 
 /* ── Login button ────────────────────────────────────────── */
 .nav a.login-button {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 14px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.88);
-    padding: 5px 22px;
+    padding: 5px 18px;
     border: 1px solid rgba(255,255,255,0.24);
     border-radius: 20px;
     text-decoration: none;
     display: flex;
     align-items: center;
-    height: 34px;
+    height: 32px;
     box-sizing: border-box;
     transition: border-color 0.2s, color 0.2s, background 0.2s;
     background: transparent;
@@ -334,10 +337,10 @@ header .container {
     border: none;
     transition: color 0.2s ease;
     white-space: nowrap;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 15px;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-size: 13px;
     font-weight: 400;
-    letter-spacing: 0.10em;
+    letter-spacing: 0.04em;
 }
 
 .user-menu:hover {
@@ -433,6 +436,12 @@ header .container {
     body { padding-top: 56px; }
 
     .hamburger-menu { display: flex; }
+
+    /* Switch back to flex on mobile so logo + hamburger sit side by side */
+    .header-content {
+        display: flex;
+        align-items: center;
+    }
 
     .header-content .logo { margin-right: 0; }
 
