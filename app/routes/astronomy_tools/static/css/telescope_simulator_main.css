@@ -587,7 +587,34 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    justify-content: center;
+}
+
+.survey-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.survey-group:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.survey-group:first-child {
+    padding-top: 0;
+}
+
+.survey-group-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: rgba(197, 160, 89, 0.7);
+    min-width: 52px;
+    flex-shrink: 0;
 }
 
 .survey-selection-embedded .survey-btn {
