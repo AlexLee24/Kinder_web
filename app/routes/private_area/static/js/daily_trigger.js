@@ -110,19 +110,23 @@ function searchTarget(query) {
                     const item = document.createElement('div');
                     item.className = 'pa-search-item';
 
-                    const raDeg = obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '';
+                    const raDeg  = obj.ra  != null ? parseFloat(obj.ra).toFixed(5)  : '';
                     const decDeg = obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '';
-                    const magStr = obj.mag != null ? parseFloat(obj.mag).toFixed(1) : '';
+                    const magStr = obj.mag != null ? parseFloat(obj.mag).toFixed(1)  : '';
                     const typeStr = obj.type ? obj.type : 'AT';
-
                     const internalStr = obj.internal_names ? obj.internal_names : '';
-                    item.innerHTML = '<div>' +
-                        '<span class="pa-search-item-name">' + obj.prefix + obj.name + '</span>' +
-                        '<span class="pa-search-item-type">' + typeStr + '</span>' +
-                        (magStr ? '<span class="pa-search-item-mag">mag ' + magStr + '</span>' : '') +
+
+                    // Row 1: [Name type mag]  [RA]
+                    // Row 2: [InternalName]   [DEC]
+                    item.innerHTML =
+                        '<div class="pa-search-item-main">' +
+                            '<span class="pa-search-item-name">' + obj.prefix + obj.name + '</span>' +
+                            '<span class="pa-search-item-type">' + typeStr + '</span>' +
+                            (magStr ? '<span class="pa-search-item-mag">mag&nbsp;' + magStr + '</span>' : '') +
                         '</div>' +
-                        '<div class="pa-search-item-coord">' + raDeg + ', ' + decDeg + '</div>' +
-                        (internalStr ? '<div class="pa-search-item-internal">' + internalStr + '</div>' : '');
+                        '<span class="pa-search-item-ra">' + raDeg + '</span>' +
+                        '<span class="pa-search-item-internal">' + internalStr + '</span>' +
+                        '<span class="pa-search-item-dec">' + decDeg + '</span>';
 
                     item.onclick = () => selectSearchResult(obj);
                     dropdown.appendChild(item);
@@ -261,7 +265,7 @@ function openTargetModal(telescope) {
 
 // Real-time name hint as user types
 // Hard-block survey IDs (exclude ZTF — it becomes orange warn + confirm)
-var SURVEY_PREFIXES_CHECK = ['ATLAS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
+var SURVEY_PREFIXES_CHECK = ['ATLAS', 'PS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
 function checkTargetNameHint(value) {
     var hint = document.getElementById('obs-name-hint');
     if (!hint) return;
@@ -453,7 +457,7 @@ async function addObservationTarget(event) {
     const nameTrimmed = name.trim();
     const upperName = nameTrimmed.toUpperCase();
 // Hard-block (ATLAS, PS1, etc.) but ZTF only needs confirm
-    const SURVEY_BLOCK = ['ATLAS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
+    const SURVEY_BLOCK = ['ATLAS', 'PS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
     const hasBlockPrefix = SURVEY_BLOCK.some(function(p) { return upperName.startsWith(p); });
     const hasGoodPrefix = /^(AT|SN|EP)\s/i.test(nameTrimmed) || /^(AT|SN|EP)\d/i.test(nameTrimmed);
     const isZTF = upperName.startsWith('ZTF');
