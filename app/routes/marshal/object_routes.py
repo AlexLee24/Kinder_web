@@ -91,9 +91,18 @@ def object_detail_generic(object_name):
                 matching_obj = dict(zip(columns, result))
                 break
 
+        # If exact match found but URL includes prefix, redirect to name-only canonical URL
+        # e.g. /object/AT2025abc → /object/2025abc
+        if matching_obj:
+            prefix    = (matching_obj.get('name_prefix') or '').strip()
+            name_only = (matching_obj.get('name') or '').strip()
+            if prefix and object_name.lower() != name_only.lower():
+                conn.close()
+                return redirect(url_for('marshal_bp.object_detail_generic', object_name=name_only))
+
         # If still no match, try internal_names (e.g. ZTF ID) and tags (e.g. EP name)
         if not matching_obj:
-            alias_query = f"""
+            alias_query = """
                 SELECT name_prefix, name
                 FROM tns_objects
                 WHERE internal_names ILIKE %s
@@ -107,7 +116,8 @@ def object_detail_generic(object_name):
             cursor.execute(alias_query, (f'%{object_name}%', object_name))
             alias_result = cursor.fetchone()
             if alias_result:
-                canonical = (alias_result[0] or '') + (alias_result[1] or '')
+                # Redirect to name-only (no prefix) canonical URL
+                canonical = (alias_result[1] or '').strip()
                 conn.close()
                 return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
 
