@@ -355,6 +355,9 @@ body {
     margin: 0 0 2px;
     line-height: 1.5;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .bg-caption photo-credit-line{
@@ -515,15 +518,28 @@ body {
         padding: 4px 8px;
     }
 
-    .bottom-bar { padding: 0 22px 28px; }
+    .bottom-bar {
+        padding: 0 22px 28px;
+        overflow-x: hidden;
+    }
     .bottom-info {
         grid-template-columns: 1fr;
         text-align: center;
         gap: 8px;
     }
     .bottom-bar-left { align-items: center; }
+    .bottom-bar-center { width: 100%; }
     .bottom-bar-right { align-items: center; }
     .hero-title h1 { letter-spacing: 6px; }
+    .bg-caption {
+        white-space: normal;
+        overflow-wrap: break-word;
+        font-size: 0.78rem;
+    }
+    .institution {
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
 }
 
 @media screen and (max-width: 480px) {
