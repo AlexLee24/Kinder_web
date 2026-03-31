@@ -542,3 +542,13 @@
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(207, 102, 121, 0.2);
 }
+
+/* Touch-action fix: allow Plotly and Aladin to handle touch events natively */
+#photometryPlot,
+#photometryPlotContainer {
+    touch-action: none;
+}
+
+#aladin-lite-div {
+    touch-action: none;
+}
