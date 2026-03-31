@@ -26,7 +26,7 @@
                         <!-- Survey Selection Embedded -->
                         <div class="survey-selection-embedded">
                             <div class="survey-group">
-                                <span class="survey-group-label">Optical</span>
+                                <span class="survey-group-label">Main</span>
                                 <div class="survey-buttons">
                                     <button class="survey-btn active" data-survey="CDS/P/DSS2/color" onclick="changeSurvey('CDS/P/DSS2/color')">DSS2</button>
                                     <button class="survey-btn" data-survey="P/2MASS/color" onclick="changeSurvey('P/2MASS/color')">2MASS</button>
@@ -63,76 +63,139 @@
                             </div>
                         </div>
 
-                        <!-- Compact Control Panel Embedded -->
+                        <!-- Control Panel -->
                         <div class="control-panel-embedded">
-                            <div class="control-row">
-                                <!-- Telescope Configuration -->
-                                <div class="control-group">
-                                    <label class="control-label">Telescope:</label>
-                                    <select id="telescopePreset" class="compact-select" onchange="loadTelescopePreset()">
-                                        <option value="">Custom</option>
-                                        <option value="Lulin LOT">Lulin LOT</option>
-                                        <option value="Lulin SLT">Lulin SLT</option>
-                                        <option value="Lulin LATTE">Lulin LATTE</option>
-                                    </select>
-                                    <p>Focal Length</p>
-                                    <input type="number" id="focalLength" class="compact-input" placeholder="FL(mm)" value="530" min="100" max="50000" onchange="calculateFOV()" title="Focal Length (mm)">
-                                    <p>Aperture</p>
-                                    <input type="number" id="aperture" class="compact-input" placeholder="Aperture" value="106" min="50" max="10000" onchange="calculateFOV()" title="Aperture (mm)">
-                                    <p>Focal Reducer</p>
-                                    <input type="number" id="focalReducer" class="compact-input" placeholder="1.0" value="1.0" step="0.01" onchange="calculateFOV()" title="Focal Reducer (e.g. 1.0, 0.67, 0.5)">
+                            <div class="cp-grid">
+
+                                <!-- Telescope -->
+                                <div class="cp-card">
+                                    <div class="cp-card-header">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h6"/><path d="M8 12A10 10 0 0 1 18 4"/><path d="M18 4l2-2"/><circle cx="14" cy="16" r="4"/></svg>
+                                        Telescope
+                                    </div>
+                                    <div class="cp-fields">
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Preset</label>
+                                            <select id="telescopePreset" class="compact-select cp-ctrl" onchange="loadTelescopePreset()">
+                                                <option value="">Custom</option>
+                                                <option value="Lulin LOT">Lulin LOT</option>
+                                                <option value="Lulin SLT">Lulin SLT</option>
+                                                <option value="Lulin LATTE">Lulin LATTE</option>
+                                            </select>
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">Focal Length (mm)</label>
+                                            <input type="number" id="focalLength" class="compact-input cp-ctrl" value="530" min="100" max="50000" onchange="calculateFOV()" placeholder="530">
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">Aperture (mm)</label>
+                                            <input type="number" id="aperture" class="compact-input cp-ctrl" value="106" min="50" max="10000" onchange="calculateFOV()" placeholder="106">
+                                        </div>
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Focal Reducer</label>
+                                            <input type="number" id="focalReducer" class="compact-input cp-ctrl" value="1.0" step="0.01" onchange="calculateFOV()" placeholder="1.0">
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <!-- Camera Configuration -->
-                                <div class="control-group">
-                                    <label class="control-label">Camera:</label>
-                                    <select id="cameraPreset" class="compact-select" onchange="loadCameraPreset()">
-                                        <option value="">Custom</option>
-                                        <option value="LOT Sophia">LOT Sophia</option>
-                                        <option value="LOT SBIG ST-9XEI">LOT SBIG ST-9XEI</option>
-                                        <option value="SLT Andor iKon-M 934">SLT Andor iKon-M 934</option>
-                                        <option value="Moravian C5-100M">Moravian C5-100M</option>
-                                        <option value="PlayerOne ZEUS(IMX455)">PlayerOne ZEUS(IMX455)</option>
-                                        <option value="PlayerOne Poseidon(IMX571)">PlayerOne Poseidon(IMX571)</option>
-                                        <option value="PlayerOne Artemis(IMX492)">PlayerOne Artemis(IMX492)</option>
-                                        <option value="PlayerOne Ares(IMX533)">PlayerOne Ares(IMX533)</option>
-                                        <option value="PlayerOne Uranus(IMX585)">PlayerOne Uranus(IMX585)</option>
-                                    </select>
-                                    <p>Sensor Size(mm)</p>
-                                    <input type="number" id="sensorWidth" class="compact-input" placeholder="W(mm)" value="23.6" min="1" max="100" step="0.1" onchange="calculateFOV()" title="Sensor Width (mm)">
-                                    <p>x</p>
-                                    <input type="number" id="sensorHeight" class="compact-input" placeholder="H(mm)" value="15.6" min="1" max="100" step="0.1" onchange="calculateFOV()" title="Sensor Height (mm)">
-                                    <p>Resolution(px)</p>
-                                    <input type="number" id="resolutionX" class="compact-input" placeholder="X(px)" value="6224" min="100" max="20000" onchange="calculateFOV()" title="Resolution X (pixels)">
-                                    <p>x</p>
-                                    <input type="number" id="resolutionY" class="compact-input" placeholder="Y(px)" value="4168" min="100" max="20000" onchange="calculateFOV()" title="Resolution Y (pixels)">
+                                <!-- Camera -->
+                                <div class="cp-card">
+                                    <div class="cp-card-header">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                                        Camera
+                                    </div>
+                                    <div class="cp-fields">
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Preset</label>
+                                            <select id="cameraPreset" class="compact-select cp-ctrl" onchange="loadCameraPreset()">
+                                                <option value="">Custom</option>
+                                                <option value="LOT Sophia">LOT Sophia</option>
+                                                <option value="LOT SBIG ST-9XEI">LOT SBIG ST-9XEI</option>
+                                                <option value="SLT Andor iKon-M 934">SLT Andor iKon-M 934</option>
+                                                <option value="Moravian C5-100M">Moravian C5-100M</option>
+                                                <option value="PlayerOne ZEUS(IMX455)">PlayerOne ZEUS(IMX455)</option>
+                                                <option value="PlayerOne Poseidon(IMX571)">PlayerOne Poseidon(IMX571)</option>
+                                                <option value="PlayerOne Artemis(IMX492)">PlayerOne Artemis(IMX492)</option>
+                                                <option value="PlayerOne Ares(IMX533)">PlayerOne Ares(IMX533)</option>
+                                                <option value="PlayerOne Uranus(IMX585)">PlayerOne Uranus(IMX585)</option>
+                                            </select>
+                                        </div>
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Sensor Size (mm)</label>
+                                            <div class="cp-inline">
+                                                <input type="number" id="sensorWidth" class="compact-input cp-ctrl" value="23.6" min="1" max="100" step="0.1" onchange="calculateFOV()" placeholder="W">
+                                                <span class="cp-sep">×</span>
+                                                <input type="number" id="sensorHeight" class="compact-input cp-ctrl" value="15.6" min="1" max="100" step="0.1" onchange="calculateFOV()" placeholder="H">
+                                            </div>
+                                        </div>
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Resolution (px)</label>
+                                            <div class="cp-inline">
+                                                <input type="number" id="resolutionX" class="compact-input cp-ctrl" value="6224" min="100" max="20000" onchange="calculateFOV()" placeholder="X">
+                                                <span class="cp-sep">×</span>
+                                                <input type="number" id="resolutionY" class="compact-input cp-ctrl" value="4168" min="100" max="20000" onchange="calculateFOV()" placeholder="Y">
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <!-- Mosaic Configuration -->
-                                <div class="control-group">
-                                    <label class="control-label">Mosaic:</label>
-                                    <p>Tiles</p>
-                                    <input type="number" id="mosaicX" class="compact-input" placeholder="X" value="1" min="1" max="10" onchange="calculateMosaic()" title="Tiles X">
-                                    <p>x</p>
-                                    <input type="number" id="mosaicY" class="compact-input" placeholder="Y" value="1" min="1" max="10" onchange="calculateMosaic()" title="Tiles Y">
-                                    <p>Overlap</p>
-                                    <input type="number" id="overlap" class="compact-input" placeholder="Overlap%" value="10" min="0" max="50" onchange="calculateMosaic()" title="Overlap (%)">
-                                    <p>Rotation</p>
-                                    <input type="number" id="rotation" class="compact-input" placeholder="Rot°" value="0" min="-180" max="180" step="0.1" onchange="calculateMosaic()" title="Rotation (degrees)">
+                                <!-- Mosaic -->
+                                <div class="cp-card">
+                                    <div class="cp-card-header">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                                        Mosaic
+                                    </div>
+                                    <div class="cp-fields">
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Tiles</label>
+                                            <div class="cp-inline">
+                                                <input type="number" id="mosaicX" class="compact-input cp-ctrl" value="1" min="1" max="10" onchange="calculateMosaic()" placeholder="X">
+                                                <span class="cp-sep">×</span>
+                                                <input type="number" id="mosaicY" class="compact-input cp-ctrl" value="1" min="1" max="10" onchange="calculateMosaic()" placeholder="Y">
+                                            </div>
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">Overlap (%)</label>
+                                            <input type="number" id="overlap" class="compact-input cp-ctrl" value="10" min="0" max="50" onchange="calculateMosaic()" placeholder="10">
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">Rotation (°)</label>
+                                            <input type="number" id="rotation" class="compact-input cp-ctrl" value="0" min="-180" max="180" step="0.1" onchange="calculateMosaic()" placeholder="0">
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <!-- Target Search -->
-                                <div class="control-group">
-                                    <label class="control-label">Target:</label>
-                                    <input type="text" id="targetName" class="compact-input" placeholder="Target name" title="Target Name">
-                                    <button class="compact-btn" onclick="searchByName()">Search</button>
-                                    <input type="number" id="targetRA" class="compact-input" placeholder="RA°" step="0.000001" title="RA (degrees)">
-                                    <input type="number" id="targetDEC" class="compact-input" placeholder="DEC°" step="0.000001" title="DEC (degrees)">
-                                    <button class="compact-btn" onclick="gotoCoordinates()">Goto</button>
+                                <!-- Target -->
+                                <div class="cp-card">
+                                    <div class="cp-card-header">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                                        Target
+                                    </div>
+                                    <div class="cp-fields">
+                                        <div class="cp-field cp-field-full">
+                                            <label class="cp-label">Name Search</label>
+                                            <div class="cp-inline">
+                                                <input type="text" id="targetName" class="compact-input cp-ctrl" placeholder="e.g. M31, NGC 224" style="flex:1; max-width:unset;">
+                                                <button class="compact-btn" onclick="searchByName()">Search</button>
+                                            </div>
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">RA (°)</label>
+                                            <input type="number" id="targetRA" class="compact-input cp-ctrl" step="0.000001" placeholder="0.000000">
+                                        </div>
+                                        <div class="cp-field">
+                                            <label class="cp-label">Dec (°)</label>
+                                            <input type="number" id="targetDEC" class="compact-input cp-ctrl" step="0.000001" placeholder="0.000000">
+                                        </div>
+                                        <div class="cp-field cp-field-full">
+                                            <button class="compact-btn" style="width:100%;" onclick="gotoCoordinates()">Go to Coordinates</button>
+                                        </div>
+                                    </div>
                                 </div>
+
                             </div>
 
-                            <!-- Info Display Row -->
+                            <!-- Computed Info Bar -->
                             <div class="info-row">
                                 <div class="info-group">
                                     <span class="info-label">Focal Length:</span>
@@ -156,7 +219,7 @@
                                 </div>
                             </div>
 
-                            <!-- Mosaic Tile Centers Row -->
+                            <!-- Tile Centers -->
                             <div class="mosaic-centers-row">
                                 <div class="tile-centers-container">
                                     <div class="tile-centers-header" onclick="toggleTileCenters()">
