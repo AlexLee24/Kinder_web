@@ -12,66 +12,50 @@
     align-items: center;
 }
 
-/* ── Header — Liquid Glass ───────────────────────────────── */
+/* ── Header — Full-width luxury bar ─────────────────────── */
 header {
     position: fixed;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: clamp(300px, 92vw, 1400px);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 64px;
     z-index: 100;
-
-    /* liquid glass: near-transparent + heavy blur + brightness */
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(40px) saturate(200%) brightness(112%);
-    -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(112%);
-
-    /* border: subtle sides, bright top edge (specular highlight) */
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-top-color: rgba(255, 255, 255, 0.32);
-    border-radius: 40px;
-
-    /* shadow: outer depth + inset top glow + inset bottom shadow */
-    box-shadow:
-        0 2px 28px rgba(0, 0, 0, 0.22),
-        inset 0 1.5px 0 rgba(255, 255, 255, 0.28),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
-
-    padding: 0 20px;
-    height: 46px;
     box-sizing: border-box;
-    /* NOTE: no overflow:hidden — would clip absolute dropdown/mobile menu */
-    transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    padding: 0 48px;
+
+    /* Dark overlay + background image */
+    /* Increase the first rgba alpha (0.62) to darken, decrease to lighten */
+    background-color: rgba(2, 4, 12, 0.62);
+    background-image:
+        linear-gradient(to bottom,
+            rgba(0, 0, 0, 0.58) 0%,
+            rgba(0, 0, 0, 0.36) 100%),
+        var(--navbar-bg-image, none);
+    background-size: cover;
+    /* ── ADJUST THIS to move the Milky Way into frame ────── */
+    /* "center 0%"   → shows top of image (stars/sky above)  */
+    /* "center 50%"  → shows middle of image                 */
+    /* "center 100%" → shows bottom of image                 */
+    background-position: center 30%;
+    background-repeat: no-repeat;
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 2px 48px rgba(0, 0, 0, 0.55);
+
+    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+    letter-spacing: 0.05em;
+    transition: background-color 0.4s ease, box-shadow 0.4s ease;
 }
 
-/* diagonal specular shine — clip it via border-radius + pointer-events */
-header::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(
-        130deg,
-        rgba(255, 255, 255, 0.16) 0%,
-        rgba(255, 255, 255, 0.04) 45%,
-        transparent 68%
-    );
-    pointer-events: none;
-    z-index: 0;
-    /* mask keeps shine inside the pill shape without overflow:hidden */
-    -webkit-mask: radial-gradient(ellipse at top left, #000 60%, transparent 100%);
-    mask: radial-gradient(ellipse at top left, #000 60%, transparent 100%);
-}
+header::before { display: none; }
 
 header.scrolled {
-    background: rgba(255, 255, 255, 0.10);
-    border-top-color: rgba(255, 255, 255, 0.38);
-    box-shadow:
-        0 4px 36px rgba(0, 0, 0, 0.28),
-        inset 0 1.5px 0 rgba(255, 255, 255, 0.32),
-        inset 0 -1px 0 rgba(0, 0, 0, 0.10);
+    background-color: rgba(0, 0, 0, 0.82);
+    box-shadow: 0 2px 56px rgba(0, 0, 0, 0.72);
 }
+
+/* Offset page content below the fixed full-width navbar */
+body { padding-top: 64px; }
 
 header .container {
     position: relative; /* above ::before */
@@ -103,16 +87,18 @@ header .container {
 }
 
 .header-content .logo img {
-    height: 22px;
+    height: 28px;
     width: auto;
-    opacity: 0.92;
+    opacity: 0.90;
 }
 
 .header-content .logo span {
     margin: 0;
-    font-size: 14px;
-    font-weight: 400;
-    letter-spacing: 0.12em;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
     color: #fff;
     line-height: 1;
 }
@@ -160,12 +146,14 @@ header .container {
 /* ── Nav links (shared) ─────────────────────────────────── */
 .main-nav li a {
     position: relative;
-    color: rgba(255, 255, 255, 0.78);
+    color: rgba(255, 255, 255, 0.82);
     text-decoration: none;
-    font-size: 13px;
-    font-weight: 400;
-    letter-spacing: 0.04em;
-    padding: 0 11px;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 0 14px;
     height: 100%;
     display: flex;
     align-items: center;
@@ -279,10 +267,12 @@ header .container {
 .header-content .main-nav ul li.dropdown .dropdown-content li a {
     display: flex;
     align-items: center;
-    padding: 7px 12px;
-    font-size: 12.5px;
+    padding: 8px 14px;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 14px;
     font-weight: 400;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: rgba(255, 255, 255, 0.72);
     border-radius: 8px;
     height: auto;
@@ -305,17 +295,19 @@ header .container {
 
 /* ── Login button ────────────────────────────────────────── */
 .nav a.login-button {
-    font-size: 12.5px;
-    font-weight: 400;
-    letter-spacing: 0.06em;
-    color: rgba(255,255,255,0.85);
-    padding: 5px 16px;
-    border: 1px solid rgba(255,255,255,0.18);
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.88);
+    padding: 5px 22px;
+    border: 1px solid rgba(255,255,255,0.24);
     border-radius: 20px;
     text-decoration: none;
     display: flex;
     align-items: center;
-    height: 30px;
+    height: 34px;
     box-sizing: border-box;
     transition: border-color 0.2s, color 0.2s, background 0.2s;
     background: transparent;
@@ -335,16 +327,17 @@ header .container {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 11px;
+    padding: 0 14px;
     height: 100%;
-    color: rgba(255, 255, 255, 0.78);
+    color: rgba(255, 255, 255, 0.82);
     background: transparent;
     border: none;
     transition: color 0.2s ease;
     white-space: nowrap;
-    font-size: 13px;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 15px;
     font-weight: 400;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.10em;
 }
 
 .user-menu:hover {
@@ -433,11 +426,11 @@ header .container {
 /* ── Mobile (≤780px) ─────────────────────────────────────── */
 @media (max-width: 780px) {
     header {
-        top: 8px;
-        width: 94vw;
-        height: 44px;
-        padding: 0 16px;
+        height: 56px;
+        padding: 0 20px;
     }
+
+    body { padding-top: 56px; }
 
     .hamburger-menu { display: flex; }
 
@@ -446,8 +439,8 @@ header .container {
     /* ── Mobile nav panel: position:fixed so it's never clipped by header ── */
     .main-nav {
         position: fixed;
-        /* 8px (header top) + 44px (header height) + 10px (gap) */
-        top: 62px;
+        /* header height (56px) + 4px gap */
+        top: 60px;
         left: 50%;
         width: clamp(280px, 92vw, 520px);
 
