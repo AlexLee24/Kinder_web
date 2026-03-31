@@ -12,7 +12,7 @@
     align-items: center;
 }
 
-/* ── Header ─────────────────────────────────────────────── */
+/* ── Header — Liquid Glass ───────────────────────────────── */
 header {
     position: fixed;
     top: 10px;
@@ -21,27 +21,58 @@ header {
     width: clamp(300px, 92vw, 1400px);
     z-index: 100;
 
-    background: rgba(8, 8, 12, 0.72);
-    backdrop-filter: blur(24px) saturate(200%);
-    -webkit-backdrop-filter: blur(24px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+    /* liquid glass: near-transparent + heavy blur + brightness */
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(40px) saturate(200%) brightness(112%);
+    -webkit-backdrop-filter: blur(40px) saturate(200%) brightness(112%);
+
+    /* border: subtle sides, bright top edge (specular highlight) */
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-top-color: rgba(255, 255, 255, 0.32);
     border-radius: 40px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,0.04) inset;
+
+    /* shadow: outer depth + inset top glow + inset bottom shadow */
+    box-shadow:
+        0 2px 28px rgba(0, 0, 0, 0.22),
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.28),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 
     padding: 0 20px;
     height: 46px;
     box-sizing: border-box;
-    transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    overflow: hidden; /* clip ::before shine to border-radius */
+    transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
     font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* diagonal specular shine — glass refraction layer */
+header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+        130deg,
+        rgba(255, 255, 255, 0.16) 0%,
+        rgba(255, 255, 255, 0.04) 45%,
+        transparent 68%
+    );
+    pointer-events: none;
+    z-index: 0;
+}
+
 header.scrolled {
-    background: rgba(8, 8, 12, 0.88);
-    border-color: rgba(255, 255, 255, 0.11);
-    box-shadow: 0 6px 32px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255,255,255,0.05) inset;
+    background: rgba(255, 255, 255, 0.10);
+    border-top-color: rgba(255, 255, 255, 0.38);
+    box-shadow:
+        0 4px 36px rgba(0, 0, 0, 0.28),
+        inset 0 1.5px 0 rgba(255, 255, 255, 0.32),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.10);
 }
 
 header .container {
+    position: relative; /* above ::before */
+    z-index: 1;
     width: 100%;
     max-width: 100%;
     height: 100%;
@@ -201,27 +232,33 @@ header .container {
     z-index: 199;
 }
 
-/* ── Dropdown menu ───────────────────────────────────────── */
+/* ── Dropdown menu — Liquid Glass ───────────────────────── */
 .header-content .main-nav ul li.dropdown .dropdown-content {
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 10px);
     left: 0;
     min-width: 180px;
-    background: rgba(10, 10, 16, 0.94);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.09);
+    /* liquid glass on dropdown too */
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(40px) saturate(180%) brightness(110%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(110%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-top-color: rgba(255, 255, 255, 0.28);
     border-radius: 14px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.06);
     padding: 6px;
     z-index: 200;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-6px) scale(0.98);
+    transform: translateY(-8px) scale(0.97);
     transform-origin: top left;
-    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+    transition: opacity 0.22s ease, transform 0.22s ease, visibility 0.22s ease;
     list-style: none;
     margin: 0;
+    overflow: hidden;
 }
 
 .header-content .main-nav ul li.dropdown:hover .dropdown-content {
@@ -290,35 +327,42 @@ header .container {
 
 .nav a.login-button::after { display: none !important; }
 
-/* ── User menu ────────────────────────────────────────────── */
+/* ── User menu — no pill, plain nav item ─────────────────── */
 .user-menu {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 4px 10px 4px 5px;
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.09);
-    height: 32px;
-    box-sizing: border-box;
-    transition: background 0.2s, border-color 0.2s;
+    gap: 8px;
+    padding: 0 11px;
+    height: 100%;
+    color: rgba(255, 255, 255, 0.78);
+    background: transparent;
+    border: none;
+    transition: color 0.2s ease;
     white-space: nowrap;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
 }
 
 .user-menu:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.18);
+    color: #fff;
+    background: transparent;
 }
 
 .user-menu::after { display: none !important; }
 
 .user-avatar {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1.5px solid rgba(255, 255, 255, 0.28);
     flex-shrink: 0;
     object-fit: cover;
+    transition: border-color 0.2s ease;
+}
+
+.user-menu:hover .user-avatar {
+    border-color: rgba(255, 255, 255, 0.6);
 }
 
 /* ── Flash messages ──────────────────────────────────────── */
@@ -402,17 +446,20 @@ header .container {
         top: calc(100% + 8px);
         left: 0;
         width: 100%;
-        background: rgba(10, 10, 16, 0.96);
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
-        border: 1px solid rgba(255,255,255,0.09);
+        /* liquid glass on mobile panel too */
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(40px) saturate(180%) brightness(110%);
+        -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(110%);
+        border: 1px solid rgba(255,255,255,0.14);
+        border-top-color: rgba(255,255,255,0.28);
         border-radius: 16px;
         padding: 16px;
         box-sizing: border-box;
         flex-direction: column;
         align-items: stretch;
         display: none;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+        overflow: hidden;
     }
 
     .main-nav.active { display: flex; }
@@ -454,9 +501,9 @@ header .container {
     .user-menu {
         height: auto;
         width: 100%;
-        padding: 8px 12px;
-        justify-content: center;
-        border-radius: 10px;
+        padding: 9px 10px;
+        justify-content: flex-start;
+        color: rgba(255,255,255,0.78);
     }
 
     .user-avatar { width: 22px; height: 22px; }
