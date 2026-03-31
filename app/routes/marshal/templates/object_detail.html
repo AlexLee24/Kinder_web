@@ -166,11 +166,27 @@
                 <div class="panel-header">
                     <h3>Aladin</h3>
                     <select id="surveySelect" class="btn-modern" style="padding:2px 8px; border:none; outline:none;" onchange="changeSurvey()">
-                        <option value="CDS/P/DSS2/color" selected>DSS2</option>
-                        <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-LS-DR10</option>
-                        <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS-DR1-Color</option>
-                        <option value="CDS/P/HST/color">HST-Color</option>
-                        <option value="CDS/P/Rubin/FirstLook">Rubin-LSST-First-Look</option>
+                        <optgroup label="Optical">
+                            <option value="CDS/P/DSS2/color" selected>DSS2</option>
+                            <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-LS-DR10</option>
+                            <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS-DR1</option>
+                            <option value="CDS/P/Rubin/FirstLook">Rubin-LSST</option>
+                        </optgroup>
+                        <optgroup label="HSC">
+                            <option value="CDS/P/HSC/DR2/deep/color-i-r-g">HSC-DR2-Deep</option>
+                            <option value="CDS/P/HSC/DR2/wide/color-i-r-g">HSC-DR2-Wide</option>
+                        </optgroup>
+                        <optgroup label="Space">
+                            <option value="CDS/P/HST/color">HST-Color</option>
+                            <option value="ESAVO/P/JWST/P/MIRI_Imaging">JWST-MIRI</option>
+                            <option value="ESAVO/P/JWST/NIRCam_Imaging">JWST-NIRCam</option>
+                            <option value="CDS/P/Euclid/ERO/color">Euclid-ERO</option>
+                        </optgroup>
+                        <optgroup label="NSNS">
+                            <option value="simg.de/P/NSNS/DR0_2/hbr8">NSNS-DR0.2-hbr</option>
+                            <option value="simg.de/P/NSNS/DR0_2/rgb8">NSNS-DR0.2-rgb</option>
+                            <option value="simg.de/P/NSNS/DR0_2/ohs8">NSNS-DR0.2-ohs</option>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="panel-body" style="padding:10px;">
