@@ -24,7 +24,7 @@ header {
     padding: 0 48px;
 
     /* Subtle dark overlay only, no background image */
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0);
     background-image: none;
     background-size: unset;
     background-position: unset;
@@ -572,7 +572,10 @@ header .container {
         list-style: none;
     }
 
-    .dropdown.mobile-active > .dropdown-content { display: block; }
+    .dropdown.mobile-active > .dropdown-content { display: none; }
+
+    /* Higher specificity to beat the desktop hidden rule */
+    .header-content .main-nav ul li.dropdown.mobile-active > .dropdown-content { display: block; }
 
     .header-content .main-nav ul li.dropdown .dropdown-content li {
         height: auto;
