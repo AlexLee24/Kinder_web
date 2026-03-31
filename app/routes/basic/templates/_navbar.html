@@ -136,11 +136,26 @@
     document.addEventListener('DOMContentLoaded', function() {
         const hamburger = document.querySelector('.hamburger-menu');
         const mainNav = document.querySelector('.main-nav');
+
+        function closeMenu() {
+            hamburger.classList.remove('active');
+            mainNav.classList.remove('active');
+        }
         
         if (hamburger && mainNav) {
-            hamburger.addEventListener('click', function() {
+            hamburger.addEventListener('click', function(e) {
+                e.stopPropagation();
                 hamburger.classList.toggle('active');
                 mainNav.classList.toggle('active');
+            });
+
+            // Close when clicking outside
+            document.addEventListener('click', function(e) {
+                if (mainNav.classList.contains('active') &&
+                    !mainNav.contains(e.target) &&
+                    !hamburger.contains(e.target)) {
+                    closeMenu();
+                }
             });
         }
 
@@ -148,25 +163,22 @@
         const dropdowns = document.querySelectorAll('.dropdown');
         
         dropdowns.forEach(dropdown => {
-            // Find the anchor that wraps the dropdown header (usually the first a or a.dropdown-toggle)
             const toggle = dropdown.querySelector('a.dropdown-toggle') || dropdown.querySelector('a');
             const dropdownContent = dropdown.querySelector('.dropdown-content');
             
             if (toggle && dropdownContent) {
                 toggle.addEventListener('click', function(e) {
-                    if (window.innerWidth <= 992) {
-                        e.preventDefault(); // 阻止原本的 A 標籤跳轉行為
+                    if (window.innerWidth <= 780) {
+                        e.preventDefault();
                         
                         const isActive = dropdown.classList.contains('mobile-active');
                         
-                        // 先將所有其他選單關閉，但不要動到自己
                         dropdowns.forEach(d => {
                             if (d !== dropdown) {
                                 d.classList.remove('mobile-active');
                             }
                         });
                         
-                        // Toggle 自己的狀態
                         if (isActive) {
                             dropdown.classList.remove('mobile-active');
                         } else {
@@ -175,11 +187,10 @@
                     }
                 });
 
-                // Let the links INSIDE the dropdown content behave normally
                 const subLinks = dropdownContent.querySelectorAll('a');
                 subLinks.forEach(subLink => {
                     subLink.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Stop the click from bubbling up to the toggle
+                        e.stopPropagation();
                     });
                 });
             }
