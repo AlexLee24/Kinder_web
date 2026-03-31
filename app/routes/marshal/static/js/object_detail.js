@@ -968,7 +968,7 @@ function enterPhotometryEditMode() {
     
     const editBtn = document.getElementById('photometryEditBtn');
     if (editBtn) {
-        editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Editing...`;
+        editBtn.innerHTML = 'Editing...';
         editBtn.title = 'Currently editing — click to close';
     }
     
@@ -1080,7 +1080,7 @@ function exitPhotometryEditMode() {
     
     const editBtn = document.getElementById('photometryEditBtn');
     if (editBtn) {
-        editBtn.innerHTML = `<span class="btn-icon">${ICONS.edit}</span> Edit`;
+        editBtn.innerHTML = 'Edit';
         editBtn.title = 'Edit photometry data';
     }
     
