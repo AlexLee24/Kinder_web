@@ -411,6 +411,87 @@ body {
 ::selection { background: rgba(197, 160, 89, 0.3); }
 
 /* ============================================================
+   Page Load Animations
+   ============================================================ */
+@keyframes _fadeDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes _fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Top bar slides in from above */
+.home-top-bar {
+    animation: _fadeDown 0.7s ease both;
+    animation-delay: 0.05s;
+}
+
+/* Hero logo image */
+.home-logo {
+    opacity: 0;
+    animation: _fadeUp 0.7s ease both;
+    animation-delay: 0.3s;
+}
+
+/* "Kinder" — each letter individually */
+.kl {
+    display: inline-block;
+    opacity: 0;
+    animation: _fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.kl:nth-child(1) { animation-delay: 0.38s; }
+.kl:nth-child(2) { animation-delay: 0.50s; }
+.kl:nth-child(3) { animation-delay: 0.62s; }
+.kl:nth-child(4) { animation-delay: 0.74s; }
+.kl:nth-child(5) { animation-delay: 0.86s; }
+.kl:nth-child(6) { animation-delay: 0.98s; }
+
+/* "Kilonova Finder" subtitle */
+.hero-title h2 {
+    opacity: 0;
+    animation: _fadeUp 0.65s ease both;
+    animation-delay: 1.12s;
+}
+
+/* Bottom nav items — staggered left to right */
+.home-nav > * {
+    opacity: 0;
+    animation: _fadeUp 0.45s ease both;
+}
+.home-nav > *:nth-child(1)  { animation-delay: 1.28s; }
+.home-nav > *:nth-child(2)  { animation-delay: 1.35s; }
+.home-nav > *:nth-child(3)  { animation-delay: 1.42s; }
+.home-nav > *:nth-child(4)  { animation-delay: 1.49s; }
+.home-nav > *:nth-child(5)  { animation-delay: 1.56s; }
+.home-nav > *:nth-child(6)  { animation-delay: 1.63s; }
+.home-nav > *:nth-child(7)  { animation-delay: 1.70s; }
+.home-nav > *:nth-child(8)  { animation-delay: 1.77s; }
+.home-nav > *:nth-child(9)  { animation-delay: 1.84s; }
+.home-nav > *:nth-child(10) { animation-delay: 1.91s; }
+.home-nav > *:nth-child(11) { animation-delay: 1.98s; }
+.home-nav > *:nth-child(12) { animation-delay: 2.05s; }
+
+/* Bottom info row */
+.bottom-info {
+    opacity: 0;
+    animation: _fadeUp 0.6s ease both;
+    animation-delay: 1.9s;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    .home-top-bar, .home-logo, .kl, .hero-title h2,
+    .home-nav > *, .bottom-info {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+    }
+}
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media screen and (max-width: 1024px) {
