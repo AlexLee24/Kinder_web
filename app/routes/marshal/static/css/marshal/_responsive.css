@@ -212,27 +212,6 @@
         gap: var(--spacing-md);
     }
     
-    /* Search Box Shrink on Mobile */
-    .search-input-group {
-        flex-direction: column;
-        width: 100%;
-        gap: 6px;
-    }
-    
-    .search-input-group input {
-        width: 100%;
-        padding: 6px 10px !important;
-        font-size: 13px !important;
-        min-height: 32px;
-    }
-    
-    .search-input-group button {
-        width: 100%;
-        padding: 6px 10px !important;
-        font-size: 13px !important;
-        min-height: 32px;
-    }
-
     /* Hide Top Viewed Containers on Mobile */
     .dashboard-side-panel {
         display: none !important;
@@ -487,17 +466,24 @@
 @media (max-width: 768px) {
     /* Search Tools Optimization */
     .search-input-group {
-        flex-direction: column;
-        gap: 10px;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
     .search-input-group input {
-        width: 100%;
+        flex: 1 1 100%;
+        padding: 8px 12px !important;
+        font-size: 0.875rem !important;
         border-radius: var(--radius-md);
     }
 
     .search-input-group button {
-        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0 !important;
+        padding: 8px 10px !important;
+        font-size: 0.8rem !important;
+        min-height: 36px;
         border-radius: var(--radius-md);
         justify-content: center;
     }
