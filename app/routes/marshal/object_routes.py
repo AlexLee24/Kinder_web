@@ -1109,6 +1109,112 @@ def get_object_spectrum_plot(year, letters):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@objects_bp.route('/api/object/<object_name>/photometry')
+def get_object_photometry_generic(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    try:
+        TNSObjectDB.sync_last_photometry_date(object_name)
+        photometry = TNSObjectDB.get_photometry(object_name)
+        photometry = sanitize_for_json(photometry)
+        return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<object_name>/photometry', methods=['POST'])
+def upload_photometry_generic(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    data = request.get_json()
+    try:
+        point_id = TNSObjectDB.add_photometry_point(
+            object_name=object_name,
+            mjd=float(data.get('mjd')),
+            magnitude=float(data.get('magnitude')) if data.get('magnitude') else None,
+            magnitude_error=float(data.get('magnitude_error')) if data.get('magnitude_error') else None,
+            filter_name=data.get('filter'),
+            telescope=data.get('telescope')
+        )
+        return jsonify({'success': True, 'message': 'Photometry point added successfully', 'id': point_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<object_name>/photometry/batch', methods=['POST'])
+def upload_photometry_batch_generic(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    data = request.get_json()
+    points = data.get('points', [])
+    if not points:
+        return jsonify({'error': 'No points provided'}), 400
+    try:
+        inserted = TNSObjectDB.add_photometry_batch(object_name, points)
+        return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<object_name>/photometry/download')
+def download_photometry_generic(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+
+    telescopes_param = request.args.get('telescopes', '')
+    filters_param    = request.args.get('filters', '')
+    mjd_min          = request.args.get('mjd_min', type=float)
+    mjd_max          = request.args.get('mjd_max', type=float)
+    include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
+
+    sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
+    sel_filters    = {f.strip() for f in filters_param.split(',') if f.strip()}
+
+    try:
+        phot = TNSObjectDB.get_photometry(object_name)
+        rows = []
+        for p in phot:
+            if sel_telescopes and (p.get('telescope') or '') not in sel_telescopes:
+                continue
+            if sel_filters and (p.get('filter') or '') not in sel_filters:
+                continue
+            if mjd_min is not None and p.get('mjd', 0) < mjd_min:
+                continue
+            if mjd_max is not None and p.get('mjd', 0) > mjd_max:
+                continue
+            if not include_nondet and p.get('magnitude_error') is None:
+                continue
+            rows.append(p)
+
+        lines = [f"# {object_name} photometry", "# MJD magnitude error filter telescope"]
+        for p in rows:
+            mjd = p.get('mjd', '')
+            mag = p.get('magnitude')
+            err = p.get('magnitude_error')
+            flt = p.get('filter') or ''
+            tel = p.get('telescope') or 'Unknown'
+            if err is None:
+                mag_str = f">{mag:.6f}" if mag is not None else ">nan"
+                err_str = "nan"
+            else:
+                mag_str = f"{mag:.6f}" if mag is not None else "nan"
+                err_str = f"{err:.6f}"
+            lines.append(f"{mjd:.6f}  {mag_str}  {err_str}  {flt}  {tel}")
+
+        content = '\n'.join(lines) + '\n'
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{object_name}_phot.dat"'}
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @objects_bp.route('/api/object/<object_name>/photometry/plot')
 def get_object_photometry_plot_generic(object_name):
     if 'user' not in session:

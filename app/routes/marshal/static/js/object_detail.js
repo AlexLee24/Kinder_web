@@ -820,31 +820,13 @@ function loadPhotometryPlot() {
     if (loadingDiv && !isFetching) loadingDiv.style.display = 'flex';
     if (photometryContainer && !isFetching) photometryContainer.innerHTML = '';
     
-    const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-    if (!match) {
-        console.error('Cannot parse year and letters from:', cleanObjectName);
-        if (loadingDiv) loadingDiv.style.display = 'none';
-        if (photometryContainer) {
-            photometryContainer.innerHTML = `
-                <div class="no-data">
-                    <span class="no-data-icon">${ICONS.error}</span>
-                    <span class="no-data-text">Invalid object name format</span>
-                </div>
-            `;
-        }
-        return Promise.resolve();
-    }
-    
-    const year = match[1];
-    const letters = match[2];
-    
     const applyExtinction = document.getElementById('applyExtinction')?.checked ?? false;
     const applyKCorr = document.getElementById('applyKCorr')?.checked ?? false;
 
     // Load both plot and raw data
     return Promise.all([
-        fetch(`/api/object/${year}${letters}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
-        fetch(`/api/object/${year}${letters}/photometry`)
+        fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
+        fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry`)
     ]).then(responses => {
         return Promise.all(responses.map(r => r.json()));
     }).then(([plotData, rawData]) => {
@@ -1205,22 +1187,9 @@ async function addPhotometryPoint() {
         telescope: telescope
     };
     
-    // Parse object name to get year and letters
-    const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-    if (!match) {
-        if (errorDiv && errorText) {
-            errorText.innerHTML = 'Invalid object name format';
-            errorDiv.style.display = 'flex';
-        }
-        return;
-    }
-    
-    const year = match[1];
-    const letters = match[2];
-    
     // Directly save to database via API
     try {
-        const response = await fetch(`/api/object/${year}${letters}/photometry`, {
+        const response = await fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1306,32 +1275,26 @@ async function savePhotometryChanges() {
         }
         
         // Add new points
-        const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-        if (match) {
-            const year = match[1];
-            const letters = match[2];
-            
-            for (const newPoint of photometryChanges.toAdd) {
-                try {
-                    const response = await fetch(`/api/object/${year}${letters}/photometry`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(newPoint)
-                    });
-                    
-                    const result = await response.json();
-                    if (result.success) {
-                        successCount++;
-                    } else {
-                        errorCount++;
-                        console.error('Failed to add point:', newPoint, result.error);
-                    }
-                } catch (error) {
+        for (const newPoint of photometryChanges.toAdd) {
+            try {
+                const response = await fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(newPoint)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    successCount++;
+                } else {
                     errorCount++;
-                    console.error('Error adding point:', newPoint, error);
+                    console.error('Failed to add point:', newPoint, result.error);
                 }
+            } catch (error) {
+                errorCount++;
+                console.error('Error adding point:', newPoint, error);
             }
         }
         
@@ -2343,12 +2306,6 @@ function showPreview(data, errors) {
 async function uploadPhotometryData() {
     if (!cleanObjectName) { showNotification('Object name not found', 'error'); return; }
 
-    const match = cleanObjectName.match(/(\d{4})([a-zA-Z]+)/);
-    if (!match) { showNotification('Invalid object name format', 'error'); return; }
-
-    const year = match[1];
-    const letters = match[2];
-
     const allData = window.parsedPhotometryData || [];
     const validRows = allData.filter(p => p.status !== 'error');
     if (validRows.length === 0) { showNotification('No valid rows to upload', 'error'); return; }
@@ -2374,7 +2331,7 @@ async function uploadPhotometryData() {
     try {
         if (progressBar) progressBar.style.width = '60%';
 
-        const response = await fetch(`/api/object/${year}${letters}/photometry/batch`, {
+        const response = await fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry/batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ points })

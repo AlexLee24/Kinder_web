@@ -194,11 +194,11 @@
                         <div class="phot-toggles">
                             <label class="phot-toggle-label">
                                 <input type="checkbox" id="applyExtinction" onchange="loadPhotometryPlot()">
-                                <span>Ext</span>
+                                <span>Extinction</span>
                             </label>
                             <label class="phot-toggle-label">
                                 <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()">
-                                <span>K-corr</span>
+                                <span>K-correction</span>
                             </label>
                         </div>
                     </div>
@@ -216,6 +216,29 @@
                             <div class="loading-spinner-small"></div> Loading data...
                         </div>
                         <div id="photometryPlot" style="flex:1; width:100%;"></div>
+                    </div>
+                    <!-- Edit-mode table (hidden by default) -->
+                    <div id="photometryTableContainer" style="display:none; flex-direction:column; width:100%;">
+                        <div style="display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" onclick="cancelPhotometryEdit()">Cancel</button>
+                            <button class="btn btn-primary btn-sm" onclick="savePhotometryChanges()">Save Changes</button>
+                            <button class="btn btn-secondary btn-sm" onclick="showAddPhotometryForm()">+ Add Point</button>
+                        </div>
+                        <div style="overflow-x:auto; max-height:400px; overflow-y:auto;">
+                            <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:#ddd;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid rgba(255,255,255,0.15);">
+                                        <th style="padding:6px 10px; text-align:left;">MJD</th>
+                                        <th style="padding:6px 10px; text-align:left;">Mag</th>
+                                        <th style="padding:6px 10px; text-align:left;">Error</th>
+                                        <th style="padding:6px 10px; text-align:left;">Filter</th>
+                                        <th style="padding:6px 10px; text-align:left;">Telescope</th>
+                                        <th style="padding:6px 10px; text-align:left;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="photometryTableBody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -570,6 +593,17 @@ MJD         magnitude  error   filter  telescope
 
     <!-- Add Photometry Point Modal -->
     <div class="modal" id="addPhotometryModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Photometry Point</h3>
+                <span class="close" onclick="closeAddPhotometryModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addPhotometryForm">
+                    <div class="form-group">
+                        <label for="addMjd">MJD:</label>
+                        <input type="number" id="addMjd" step="0.001" required placeholder="e.g., 60000.123">
+                    </div>
                     <div class="form-group">
                         <label for="addMagnitude">Magnitude:</label>
                         <input type="number" id="addMagnitude" step="0.001" required>
