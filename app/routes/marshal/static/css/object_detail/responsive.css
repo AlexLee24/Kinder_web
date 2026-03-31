@@ -432,3 +432,158 @@
 .mobile-toggle-label {
     display: none;
 }
+
+/* ============================================================
+   NEW Layout — mid-panels-grid / bottom-grid / top-nav-bar
+   ============================================================ */
+
+/* --- Tablet (≤ 1024px) --- */
+@media (max-width: 1024px) {
+    .object-detail-container {
+        margin: 100px auto 30px;
+        width: 100%;
+        padding: 0 16px;
+    }
+
+    /* 2-col: Metadata full width, DESI + Aladin side-by-side */
+    .mid-panels-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    .mid-panels-grid > .panel-card:first-child {
+        grid-column: 1 / -1;
+    }
+
+    .bottom-grid {
+        gap: 16px;
+    }
+}
+
+/* --- Phone (≤ 768px) --- */
+@media (max-width: 768px) {
+    .object-detail-container {
+        margin: 80px auto 20px;
+        width: 100%;
+        padding: 0 10px;
+    }
+
+    /* Top nav bar: stack into two rows */
+    .top-nav-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px 14px;
+    }
+    .top-left-group {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+    }
+    .object-main-title {
+        font-size: 1.5rem !important;
+    }
+    .top-right-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        width: 100%;
+        gap: 8px;
+    }
+    .coord-box {
+        font-size: 0.8rem !important;
+        flex: 1 1 100%;
+        padding: 5px 10px;
+    }
+    .top-right-group > .btn,
+    .top-right-group > a {
+        flex: 1 1 auto;
+        font-size: 0.8rem;
+        padding: 5px 10px;
+        text-align: center;
+    }
+
+    /* Mid panels: Metadata full width, DESI + Aladin side-by-side */
+    .mid-panels-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .mid-panels-grid > .panel-card:first-child {
+        grid-column: 1 / -1;
+    }
+    /* Shrink image panels */
+    .mid-panels-grid > .panel-card:nth-child(2),
+    .mid-panels-grid > .panel-card:nth-child(3) {
+        min-height: 200px !important;
+    }
+
+    /* Bottom grid: single column */
+    .bottom-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    /* General panel adjustments */
+    .panel-card {
+        min-height: unset !important;
+    }
+    .panel-card:hover {
+        transform: none !important; /* no hover effect on touch */
+    }
+    .panel-header {
+        padding: 10px 14px;
+    }
+    .panel-body {
+        padding: 12px;
+    }
+
+    /* Photometry action buttons: horizontal scroll instead of wrap */
+    .phot-actions {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+    }
+    .phot-btn {
+        flex-shrink: 0;
+    }
+    .phot-header-top {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    /* Detail list: compact font */
+    .detail-item {
+        font-size: 0.85rem;
+        padding-bottom: 6px;
+    }
+    .detail-label {
+        font-size: 0.82rem;
+    }
+    .detail-value {
+        font-size: 0.85rem;
+        text-align: right;
+    }
+    .quick-links {
+        gap: 6px;
+    }
+}
+
+/* --- Small phones (≤ 480px) --- */
+@media (max-width: 480px) {
+    .object-main-title {
+        font-size: 1.2rem !important;
+    }
+    .coord-box {
+        font-size: 0.72rem !important;
+    }
+
+    /* Stack all mid panels to single column */
+    .mid-panels-grid {
+        grid-template-columns: 1fr;
+    }
+    .mid-panels-grid > .panel-card:nth-child(2),
+    .mid-panels-grid > .panel-card:nth-child(3) {
+        min-height: 180px !important;
+    }
+}
