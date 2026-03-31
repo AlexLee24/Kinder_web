@@ -40,12 +40,12 @@ header {
     padding: 0 20px;
     height: 46px;
     box-sizing: border-box;
-    overflow: hidden; /* clip ::before shine to border-radius */
+    /* NOTE: no overflow:hidden — would clip absolute dropdown/mobile menu */
     transition: background 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
     font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* diagonal specular shine — glass refraction layer */
+/* diagonal specular shine — clip it via border-radius + pointer-events */
 header::before {
     content: "";
     position: absolute;
@@ -59,6 +59,9 @@ header::before {
     );
     pointer-events: none;
     z-index: 0;
+    /* mask keeps shine inside the pill shape without overflow:hidden */
+    -webkit-mask: radial-gradient(ellipse at top left, #000 60%, transparent 100%);
+    mask: radial-gradient(ellipse at top left, #000 60%, transparent 100%);
 }
 
 header.scrolled {
@@ -411,6 +414,7 @@ header .container {
     padding: 0;
     z-index: 101;
     flex-shrink: 0;
+    margin-left: auto; /* push to right edge */
 }
 
 .hamburger-menu span {
@@ -427,114 +431,144 @@ header .container {
 .hamburger-menu.active span:nth-child(3) { transform: translateY(-7.25px) rotate(-45deg); }
 
 /* ── Mobile (≤780px) ─────────────────────────────────────── */
+@keyframes mobileNavIn {
+    from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
 @media (max-width: 780px) {
     header {
         top: 8px;
-        width: 94%;
+        width: 94vw;
         height: 44px;
         padding: 0 16px;
     }
 
     .hamburger-menu { display: flex; }
 
-    .header-content .logo {
-        margin-right: 0;
-    }
+    .header-content .logo { margin-right: 0; }
 
+    /* Full-width floating panel — fixed, spans viewport width */
     .main-nav {
-        position: absolute;
-        top: calc(100% + 8px);
-        left: 0;
-        width: 100%;
-        /* liquid glass on mobile panel too */
-        background: rgba(255, 255, 255, 0.08);
-        backdrop-filter: blur(40px) saturate(180%) brightness(110%);
-        -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(110%);
-        border: 1px solid rgba(255,255,255,0.14);
-        border-top-color: rgba(255,255,255,0.28);
-        border-radius: 16px;
-        padding: 16px;
+        position: fixed;
+        top: 62px; /* 8px top + 44px height + 10px gap */
+        left: 12px;
+        right: 12px;
+        width: auto;
+        background: rgba(10, 10, 20, 0.94);
+        backdrop-filter: blur(48px) saturate(180%) brightness(86%);
+        -webkit-backdrop-filter: blur(48px) saturate(180%) brightness(86%);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 20px;
+        padding: 8px 8px 12px;
         box-sizing: border-box;
         flex-direction: column;
         align-items: stretch;
         display: none;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
-        overflow: hidden;
+        box-shadow: 0 20px 56px rgba(0, 0, 0, 0.50),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        z-index: 99;
+        max-height: calc(100vh - 82px);
+        overflow-y: auto;
     }
 
-    .main-nav.active { display: flex; }
+    .main-nav.active {
+        display: flex;
+        animation: mobileNavIn 0.22s ease forwards;
+    }
 
     .nav-left,
     .nav-right {
         flex-direction: column;
         align-items: stretch;
-        gap: 0;
+        gap: 2px;
         height: auto;
         width: 100%;
         margin-left: 0;
         padding: 0;
     }
 
-    .nav-right { margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 8px; }
+    .nav-right {
+        margin-top: 4px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+    }
 
     .nav-left li,
     .nav-right li { height: auto; width: 100%; }
 
     .main-nav li a {
-        font-size: 14px;
-        padding: 9px 10px;
+        font-size: 14.5px;
+        font-weight: 400;
+        letter-spacing: 0.02em;
+        padding: 10px 14px;
         height: auto;
         width: 100%;
-        color: rgba(255,255,255,0.75);
+        color: rgba(255, 255, 255, 0.80);
+        border-radius: 12px;
+        transition: background 0.15s ease, color 0.15s ease;
     }
 
     .main-nav li a::after { display: none; }
+
+    .main-nav li a:hover,
+    .main-nav li a.active {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.06);
+    }
 
     .nav a.login-button {
         height: auto;
         padding: 10px 16px;
         width: 100%;
         justify-content: center;
-        font-size: 14px;
+        font-size: 14.5px;
+        border-radius: 12px;
+        border-color: rgba(255, 255, 255, 0.14);
+        box-sizing: border-box;
     }
 
     .user-menu {
         height: auto;
         width: 100%;
-        padding: 9px 10px;
+        padding: 10px 14px;
         justify-content: flex-start;
-        color: rgba(255,255,255,0.78);
+        color: rgba(255, 255, 255, 0.80);
+        font-size: 14.5px;
+        border-radius: 12px;
     }
 
-    .user-avatar { width: 22px; height: 22px; }
+    .user-avatar { width: 26px; height: 26px; }
 
-    /* Mobile dropdowns */
+    /* Mobile dropdowns — indented sub-list */
     .header-content .main-nav ul li.dropdown .dropdown-content {
         position: static;
-        background: transparent;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         box-shadow: none;
         border: none;
-        padding: 0 0 0 12px;
+        border-left: 1.5px solid rgba(255, 255, 255, 0.09);
+        padding: 4px 0;
+        margin: 0 14px 4px 20px;
         opacity: 1;
         visibility: visible;
         transform: none;
         display: none;
         border-radius: 0;
-        border-left: 1px solid rgba(255,255,255,0.1);
-        margin-top: 4px;
     }
 
     .dropdown.mobile-active .dropdown-content { display: block; }
 
     .header-content .main-nav ul li.dropdown .dropdown-content li a {
         font-size: 13px;
-        color: rgba(255,255,255,0.6);
-        border-radius: 6px;
-        padding: 7px 10px;
+        color: rgba(255, 255, 255, 0.52);
+        border-radius: 8px;
+        padding: 8px 12px;
     }
 
     .header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
-        background: rgba(197,160,89,0.1);
+        background: rgba(197, 160, 89, 0.10);
         color: #c5a059;
     }
 }
