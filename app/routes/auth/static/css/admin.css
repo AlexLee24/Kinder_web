@@ -856,3 +856,47 @@ body {
     .data-table th:nth-child(4),
     .data-table td:nth-child(4) { display: none; }
 }
+
+/* ================================================================
+   Default Source Permissions
+   ================================================================ */
+.settings-panel-full {
+    grid-column: 1 / -1;
+}
+
+.settings-input {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    color: inherit;
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.settings-input:focus {
+    border-color: rgba(70, 255, 175, 0.5);
+}
+
+.source-search-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #1e2535;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.source-search-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+}
+.source-search-item:hover {
+    background: rgba(70, 255, 175, 0.12);
+}

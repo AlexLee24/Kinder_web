@@ -18,14 +18,15 @@ marshal_bp = Blueprint('marshal', __name__, template_folder='templates', static_
 # ===============================================================================
 @marshal_bp.route('/marshal')
 def marshal():
-    if 'user' not in session:
-        session['next_url'] = request.url
-        flash('Please log in to access Marshal.', 'warning')
-        return redirect(url_for('basic.login'))
-    elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
-        flash('Access denied. This page is not available for Guest users.', 'error')
-        return redirect(url_for('basic.home'))
-    
+    from flask import session
+    user = session.get('user', {})
+    role = user.get('role', 'guest') if user else 'guest'
+    is_admin = user.get('is_admin', False) if user else False
+    can_see_restricted = is_admin or role in ('user', 'admin')
+    visibility = {
+        'tags': can_see_restricted,
+        'comments_sidebar': can_see_restricted,
+    }
     try:
         # Get initial counts for statistics
         total_count = get_objects_count()
@@ -105,7 +106,8 @@ def marshal():
                              last_sync=last_sync_data,
                              total_count=total_count,
                              use_api_mode=use_api_mode,
-                             initial_limit=initial_limit)
+                             initial_limit=initial_limit,
+                             visibility=visibility)
         
     except Exception as e:
         import traceback
@@ -125,7 +127,8 @@ def marshal():
                              last_sync=None,
                              total_count=0,
                              use_api_mode=True,
-                             initial_limit=0)
+                             initial_limit=0,
+                             visibility=visibility)
 
 @marshal_bp.route('/api/marshal/recent-comments')
 def get_marshal_recent_comments():
@@ -156,7 +159,7 @@ def get_marshal_top_viewed():
 @marshal_bp.route('/api/marshal/pinned-objects')
 def get_marshal_pinned_objects():
     if 'user' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'success': True, 'objects': []})
     try:
         from modules.postgres_database import get_pinned_objects
         objects = get_pinned_objects(limit=20)

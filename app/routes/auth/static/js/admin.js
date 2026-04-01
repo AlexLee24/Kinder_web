@@ -26,6 +26,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load GREATLab permissions for settings tab
     loadGreatLabPermissions();
+
+    // Load default source permissions
+    loadDefaultSourcePermissions();
 });
 
 // Load users data for search functionality
@@ -1234,4 +1237,204 @@ async function changeUserRole(userEmail, newRole) {
         showNotification('An error occurred: ' + error.message, 'error');
         setTimeout(() => location.reload(), 1500);
     }
+}
+
+// ============================================================
+// DEFAULT SOURCE PERMISSIONS
+// ============================================================
+
+// State: array of {source_name, allowed_groups (array|null), is_public}
+let _defaultPerms = [];
+
+function loadDefaultSourcePermissions() {
+    fetch('/admin/default-source-permissions')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                _defaultPerms = data.permissions || [];
+                renderDefaultPermsTable();
+            }
+        })
+        .catch(e => console.error('loadDefaultSourcePermissions:', e));
+}
+
+function renderDefaultPermsTable() {
+    const tbody = document.getElementById('defaultPermsTbody');
+    const empty = document.getElementById('defaultPermsEmpty');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    if (_defaultPerms.length === 0) {
+        if (empty) empty.style.display = '';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    _defaultPerms.forEach((p, idx) => {
+        const tr = document.createElement('tr');
+        tr.dataset.idx = idx;
+        tr.innerHTML = buildDefaultPermRow(p, idx);
+        tbody.appendChild(tr);
+    });
+}
+
+function buildDefaultPermRow(p, idx) {
+    // Use _vis override when set (e.g. user just switched to 'groups' but no group added yet)
+    const visValue = p._vis || (p.is_public ? 'public'
+        : (p.allowed_groups === null ? 'logged_in'
+        : (p.allowed_groups.length === 0 ? 'blocked' : 'groups')));
+
+    const groupChips = (p.allowed_groups || []).map(g =>
+        `<span class="perm-tag" style="cursor:default">${g}
+            <span style="cursor:pointer;margin-left:4px;" onclick="removeDefaultPermGroup(${idx},'${g}')">&times;</span>
+         </span>`
+    ).join('');
+
+    const groupAddSelect = (typeof ADMIN_GROUPS !== 'undefined' && ADMIN_GROUPS.length > 0)
+        ? `<select style="font-size:11px;margin-left:4px;background:rgba(255,255,255,0.08);color:inherit;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 4px;"
+                  onchange="addDefaultPermGroup(${idx}, this); this.value=''">
+               <option value="">+ group</option>
+               ${ADMIN_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('')}
+           </select>`
+        : '';
+
+    return `
+        <td><span class="group-badge">${p.source_name}</span></td>
+        <td>
+            <select class="role-select" data-idx="${idx}" onchange="onDefaultPermVisChange(${idx}, this.value)">
+                <option value="public"    ${visValue==='public'    ? 'selected':''}>Public</option>
+                <option value="logged_in" ${visValue==='logged_in' ? 'selected':''}>All logged-in</option>
+                <option value="groups"    ${visValue==='groups'    ? 'selected':''}>Specific groups</option>
+                <option value="blocked"   ${visValue==='blocked'   ? 'selected':''}>Blocked</option>
+            </select>
+        </td>
+        <td>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                ${groupChips}
+                ${visValue === 'groups' ? groupAddSelect : ''}
+            </div>
+        </td>
+        <td>
+            <button class="icon-btn icon-btn-danger" onclick="removeDefaultPermRow(${idx})" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </td>`;
+}
+
+function onDefaultPermVisChange(idx, value) {
+    const p = _defaultPerms[idx];
+    p._vis = value; // track intended mode to avoid groups→blocked confusion
+    if (value === 'public') {
+        p.is_public = true;
+        p.allowed_groups = null;
+    } else if (value === 'logged_in') {
+        p.is_public = false;
+        p.allowed_groups = null;
+        delete p._vis; // no ambiguity needed
+    } else if (value === 'blocked') {
+        p.is_public = false;
+        p.allowed_groups = [];
+        delete p._vis;
+    } else { // groups
+        p.is_public = false;
+        if (!Array.isArray(p.allowed_groups)) p.allowed_groups = [];
+    }
+    renderDefaultPermsTable();
+}
+
+function addDefaultPermGroup(idx, selectEl) {
+    const group = selectEl.value;
+    if (!group) return;
+    const p = _defaultPerms[idx];
+    if (!Array.isArray(p.allowed_groups)) p.allowed_groups = [];
+    if (!p.allowed_groups.includes(group)) {
+        p.allowed_groups.push(group);
+    }
+    delete p._vis; // no longer ambiguous once a group is selected
+    renderDefaultPermsTable();
+}
+
+function removeDefaultPermGroup(idx, group) {
+    const p = _defaultPerms[idx];
+    if (Array.isArray(p.allowed_groups)) {
+        p.allowed_groups = p.allowed_groups.filter(g => g !== group);
+    }
+    renderDefaultPermsTable();
+}
+
+function removeDefaultPermRow(idx) {
+    _defaultPerms.splice(idx, 1);
+    renderDefaultPermsTable();
+}
+
+// Source search dropdown
+let _sourceSearchTimer = null;
+
+function onSourceSearch(query) {
+    clearTimeout(_sourceSearchTimer);
+    const dd = document.getElementById('sourceSearchDropdown');
+    if (!query || query.length < 1) { dd.style.display = 'none'; return; }
+    _sourceSearchTimer = setTimeout(() => {
+        fetch(`/admin/sources/search?q=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(data => {
+                const sources = (data.sources || []).filter(
+                    s => !_defaultPerms.find(p => p.source_name === s)
+                );
+                if (sources.length === 0) { dd.style.display = 'none'; return; }
+                dd.innerHTML = sources.map(s =>
+                    `<div class="source-search-item" onclick="addDefaultPermFromSearch('${s.replace(/'/g,"\\'")}')">
+                        ${s}
+                     </div>`
+                ).join('');
+                dd.style.display = 'block';
+            })
+            .catch(() => { dd.style.display = 'none'; });
+    }, 250);
+}
+
+function addDefaultPermFromSearch(sourceName) {
+    const dd = document.getElementById('sourceSearchDropdown');
+    dd.style.display = 'none';
+    document.getElementById('sourceSearchInput').value = '';
+    if (_defaultPerms.find(p => p.source_name === sourceName)) return;
+    _defaultPerms.push({ source_name: sourceName, allowed_groups: null, is_public: false });
+    renderDefaultPermsTable();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const wrap = document.getElementById('sourceSearchInput');
+    const dd = document.getElementById('sourceSearchDropdown');
+    if (!wrap || !dd) return;
+    if (!wrap.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
+});
+
+function saveDefaultSourcePermissions() {
+    const btn = document.getElementById('saveDefaultPermsBtn');
+    const statusEl = document.getElementById('defaultPermsSaveStatus');
+    btn.disabled = true;
+    statusEl.innerHTML = 'Saving…';
+
+    fetch('/admin/default-source-permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions: _defaultPerms })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        if (data.success) {
+            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.arrowRight} Saved</span>`;
+            showNotification('Default source permissions saved', 'success');
+        } else {
+            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.warning} Error</span>`;
+            showNotification('Save failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(e => {
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.warning} Error</span>`;
+        showNotification('Save failed', 'error');
+    });
 }

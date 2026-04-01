@@ -318,7 +318,35 @@ def init_database():
                 ''')
                 cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_observation_logs_target_name_obs_date ON observation_logs(target_name, obs_date)")
             except Exception as e:
-                pass
+                conn.rollback()
+
+            # Object Source Permissions
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS object_source_permissions (
+                    id SERIAL PRIMARY KEY,
+                    object_name TEXT NOT NULL,
+                    data_type TEXT NOT NULL CHECK (data_type IN ('phot', 'spec')),
+                    source_name TEXT NOT NULL,
+                    allowed_groups TEXT[],
+                    is_public BOOLEAN DEFAULT FALSE,
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(object_name, data_type, source_name)
+                )
+            ''')
+
+            # Default Source Permissions (global fallback)
+            try:
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS default_source_permissions (
+                        id SERIAL PRIMARY KEY,
+                        source_name TEXT NOT NULL UNIQUE,
+                        allowed_groups TEXT[],
+                        is_public BOOLEAN DEFAULT FALSE,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )
+                ''')
+            except Exception as e:
+                conn.rollback()
 
             conn.commit()
 
@@ -803,6 +831,165 @@ def check_object_access(object_name, user_email):
             ''', (object_name, user_email))
             
             return cursor.fetchone() is not None
+
+# --- Source Permissions ---
+
+def get_source_permissions(object_name):
+    """Get all source permissions for an object."""
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cursor:
+            cursor.execute('''
+                SELECT data_type, source_name, allowed_groups, is_public
+                FROM object_source_permissions
+                WHERE object_name = %s
+                ORDER BY data_type, source_name
+            ''', (object_name,))
+            rows = cursor.fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                # allowed_groups comes back as a list or None from psycopg2
+                result.append(d)
+            return result
+
+def set_source_permissions_batch(object_name, perms_list):
+    """Upsert a list of source permission records for an object.
+    perms_list: [{'data_type': 'phot'|'spec', 'source_name': str,
+                  'allowed_groups': list|None, 'is_public': bool}, ...]
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            for p in perms_list:
+                data_type = p.get('data_type')
+                source_name = p.get('source_name')
+                allowed_groups = p.get('allowed_groups')  # None or list
+                is_public = bool(p.get('is_public', False))
+
+                if data_type not in ('phot', 'spec') or not source_name:
+                    continue
+
+                cursor.execute('''
+                    INSERT INTO object_source_permissions
+                        (object_name, data_type, source_name, allowed_groups, is_public, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (object_name, data_type, source_name) DO UPDATE SET
+                        allowed_groups = EXCLUDED.allowed_groups,
+                        is_public = EXCLUDED.is_public,
+                        updated_at = NOW()
+                ''', (object_name, data_type, source_name, allowed_groups, is_public))
+            conn.commit()
+    return True
+
+def get_default_source_permissions():
+    """Return all default source permission rules."""
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cursor:
+            cursor.execute('''
+                SELECT source_name, allowed_groups, is_public
+                FROM default_source_permissions
+                ORDER BY source_name
+            ''')
+            return [dict(r) for r in cursor.fetchall()]
+
+def set_default_source_permissions_batch(perms_list):
+    """Upsert a list of default source permission records.
+    perms_list: [{'source_name': str, 'allowed_groups': list|None, 'is_public': bool}, ...]
+    Missing source_names are deleted (full replace).
+    """
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # Delete entries not in the new list
+            new_names = [p['source_name'] for p in perms_list if p.get('source_name')]
+            if new_names:
+                cursor.execute(
+                    'DELETE FROM default_source_permissions WHERE source_name != ALL(%s)',
+                    (new_names,)
+                )
+            else:
+                cursor.execute('DELETE FROM default_source_permissions')
+
+            for p in perms_list:
+                source_name = p.get('source_name', '').strip()
+                if not source_name:
+                    continue
+                allowed_groups = p.get('allowed_groups')
+                is_public = bool(p.get('is_public', False))
+                cursor.execute('''
+                    INSERT INTO default_source_permissions
+                        (source_name, allowed_groups, is_public, updated_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (source_name) DO UPDATE SET
+                        allowed_groups = EXCLUDED.allowed_groups,
+                        is_public = EXCLUDED.is_public,
+                        updated_at = NOW()
+                ''', (source_name, allowed_groups, is_public))
+            conn.commit()
+    return True
+
+def filter_by_source_permissions(object_name, data_type, items, telescope_field='telescope',
+                                  user_email=None, is_admin=False):
+    """Filter a list of dicts by source permissions.
+
+    Rules (no permission record = check defaults, then fallback):
+      - is_public=True:       visible to everyone (including unlogged)
+      - allowed_groups=None:  visible to all logged-in users
+      - allowed_groups=[]:    blocked (admin only)
+      - allowed_groups=[...]: only users in those groups
+    Admin always sees everything.
+    """
+    if is_admin:
+        return items
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=extras.RealDictCursor) as cursor:
+            cursor.execute('''
+                SELECT source_name, allowed_groups, is_public
+                FROM object_source_permissions
+                WHERE object_name = %s AND data_type = %s
+            ''', (object_name, data_type))
+            perms = {r['source_name']: dict(r) for r in cursor.fetchall()}
+
+            cursor.execute('''
+                SELECT source_name, allowed_groups, is_public
+                FROM default_source_permissions
+            ''')
+            default_perms = {r['source_name']: dict(r) for r in cursor.fetchall()}
+
+            user_groups = set()
+            if user_email:
+                cursor.execute(
+                    'SELECT group_name FROM user_groups WHERE user_email = %s',
+                    (user_email,)
+                )
+                user_groups = {r['group_name'] for r in cursor.fetchall()}
+
+    def _check_rule(p):
+        if p['is_public']:
+            return True
+        if not user_email:
+            return False
+        if p['allowed_groups'] is None:
+            return True
+        if len(p['allowed_groups']) == 0:
+            return False
+        return bool(user_groups & set(p['allowed_groups']))
+
+    def can_see(telescope):
+        src = telescope or 'Unknown'
+        # TNS sources are always fully public
+        if 'TNS' in src.upper():
+            return True
+        p = perms.get(src)
+        if p is not None:
+            return _check_rule(p)
+        # Fall back to global default rule if exists
+        d = default_perms.get(src)
+        if d is not None:
+            return _check_rule(d)
+        # No rule at all → logged-in users only
+        return user_email is not None
+
+    return [item for item in items if can_see(item.get(telescope_field))]
 
 # --- Settings ---
 

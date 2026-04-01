@@ -318,6 +318,49 @@
                 </div>
 
             </div>
+
+            <!-- Default Source Permissions (full-width panel) -->
+            <div class="settings-panel settings-panel-full" style="margin-top: 20px;">
+                <div class="settings-panel-header">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    Default Source Permissions
+                </div>
+                <p class="settings-desc">Set global default visibility rules for each photometry/spectra source (telescope). These apply to all objects unless overridden per-object.</p>
+
+                <!-- Search + add -->
+                <div class="settings-row" style="align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                    <div style="position: relative; flex: 1; min-width: 200px;">
+                        <input type="text" id="sourceSearchInput"
+                               placeholder="Search telescope / source name…"
+                               oninput="onSourceSearch(this.value)"
+                               autocomplete="off"
+                               class="settings-input"
+                               style="width: 100%;">
+                        <div id="sourceSearchDropdown" class="source-search-dropdown" style="display:none;"></div>
+                    </div>
+                    <button class="btn btn-primary" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save All</button>
+                </div>
+
+                <!-- Table -->
+                <div id="defaultPermsTableWrap">
+                    <table class="data-table" id="defaultPermsTable">
+                        <thead>
+                            <tr>
+                                <th>Source Name</th>
+                                <th>Visibility</th>
+                                <th>Allowed Groups</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="defaultPermsTbody">
+                            <!-- rows injected by JS -->
+                        </tbody>
+                    </table>
+                    <p id="defaultPermsEmpty" class="cell-muted" style="padding: 12px 0; display:none;">No default rules yet. Search and add sources above.</p>
+                </div>
+                <span id="defaultPermsSaveStatus" class="settings-status"></span>
+            </div>
+
         </div>
 
     </div>
@@ -412,6 +455,9 @@
         </div>
     </div>
 
+    <script>
+        const ADMIN_GROUPS = {{ groups.keys() | list | tojson }};
+    </script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

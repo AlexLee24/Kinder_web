@@ -13,7 +13,8 @@ from modules.postgres_database import (
 )
 from modules.web_postgres_database import (
     get_all_groups, get_object_permissions, grant_object_permission, 
-    revoke_object_permission, check_object_access
+    revoke_object_permission, check_object_access,
+    get_source_permissions, set_source_permissions_batch, filter_by_source_permissions
 )
 from modules.data_processing import DataVisualization
 from modules import ext_M_calculator
@@ -29,17 +30,27 @@ objects_bp = Blueprint('marshal_bp', __name__)
 @objects_bp.route('/object/<path:object_name>')
 def object_detail_generic(object_name):
     """Generic object detail route for all object names"""
-    if 'user' not in session:
-        session['next_url'] = request.url
-        flash('Please log in to access object data.', 'warning')
-        return redirect(url_for('basic.login'))
-    
     try:
         object_name = urllib.parse.unquote(object_name)
 
+        # Build visibility context
+        user = session.get('user', {})
+        role = user.get('role', 'guest') if user else 'guest'
+        is_admin = user.get('is_admin', False) if user else False
+        is_logged_in = bool(user)
+        can_see_restricted = is_admin or role in ('user', 'admin')
+        visibility = {
+            'detect': can_see_restricted,
+            'spectroscopy': can_see_restricted,
+            'comments': can_see_restricted,
+            'tags': can_see_restricted,
+            'peak_abs_mag': can_see_restricted,
+            'phot_controls': is_logged_in,
+        }
+
         # Log view
         from modules.postgres_database import TNSObjectDB
-        user_email = session['user'].get('email')
+        user_email = user.get('email') if user else None
         TNSObjectDB.log_object_view(object_name, user_email)
         
         # Update absolute magnitude and brightest mag
@@ -165,7 +176,8 @@ def object_detail_generic(object_name):
         return render_template('object_detail.html', 
                              current_path='/object',
                              object_data=matching_obj,
-                             object_name=object_name)
+                             object_name=object_name,
+                             visibility=visibility)
         
     except Exception as e:
         import traceback
@@ -175,18 +187,28 @@ def object_detail_generic(object_name):
 
 @objects_bp.route('/object/<int:year><string:letters>')
 def object_detail_tns_format(year, letters):
-    if 'user' not in session:
-        session['next_url'] = request.url
-        flash('Please log in to access object data.', 'warning')
-        return redirect(url_for('basic.login'))
-    
     try:
         # Construct TNS-style name from year and letters
         object_name = f"{year}{letters}"
 
+        # Build visibility context
+        user = session.get('user', {})
+        role = user.get('role', 'guest') if user else 'guest'
+        is_admin = user.get('is_admin', False) if user else False
+        is_logged_in = bool(user)
+        can_see_restricted = is_admin or role in ('user', 'admin')
+        visibility = {
+            'detect': can_see_restricted,
+            'spectroscopy': can_see_restricted,
+            'comments': can_see_restricted,
+            'tags': can_see_restricted,
+            'peak_abs_mag': can_see_restricted,
+            'phot_controls': is_logged_in,
+        }
+
         # Log view
         from modules.postgres_database import TNSObjectDB
-        user_email = session['user'].get('email')
+        user_email = user.get('email') if user else None
         TNSObjectDB.log_object_view(object_name, user_email)
         
         # Update absolute magnitude and brightest mag
@@ -281,7 +303,8 @@ def object_detail_tns_format(year, letters):
         return render_template('object_detail.html', 
                              current_path='/object',
                              object_data=matching_obj,
-                             object_name=object_name)
+                             object_name=object_name,
+                             visibility=visibility)
         
     except Exception as e:
         import traceback
@@ -294,8 +317,6 @@ def object_detail_tns_format(year, letters):
 # ===============================================================================
 @objects_bp.route('/api/object/<int:year><alpha:letters>')
 def api_get_object_tns_format(year, letters):
-    if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
     
     try:
         object_name = f"{year}{letters}"
@@ -732,23 +753,20 @@ def sanitize_for_json(data):
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry')
 def get_object_photometry(year, letters):
-    if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
-    
     object_name = f"{year}{letters}"
-    
+    user = session.get('user', {})
+    user_email = user.get('email') if user else None
+    is_admin = user.get('is_admin', False) if user else False
+
     try:
-        # Sync last photometry date to ensure consistency
         TNSObjectDB.sync_last_photometry_date(object_name)
-        
         photometry = TNSObjectDB.get_photometry(object_name)
-        # Sanitize NaN values before JSON serialization
         photometry = sanitize_for_json(photometry)
-        return jsonify({
-            'success': True,
-            'photometry': photometry,
-            'count': len(photometry)
-        })
+        photometry = filter_by_source_permissions(
+            object_name, 'phot', photometry,
+            user_email=user_email, is_admin=is_admin
+        )
+        return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1017,19 +1035,15 @@ def download_spectrum_file(spectrum_id):
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/plot')
 def get_object_photometry_plot(year, letters):
-    if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
-    
     object_name = f"{year}{letters}"
-    
-    # Check permissions
-    if not check_object_access(object_name, session['user']['email']):
-         return jsonify({
-            'success': True,
-            'plot_html': None,
-            'message': 'Access denied: You do not have permission to view this data.'
-        })
-    
+
+    user = session.get('user')
+    user_email = user.get('email', '') if user else None
+    is_admin = user.get('is_admin', False) if user else False
+
+    if user and not check_object_access(object_name, user_email):
+        return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
+
     try:
         # Get object data for redshift, ra, and dec
         results = search_tns_objects(search_term=object_name, limit=1)
@@ -1037,29 +1051,35 @@ def get_object_photometry_plot(year, letters):
         redshift = obj_data.get('redshift')
         ra = obj_data.get('ra')
         dec = obj_data.get('declination')
-        
+
         photometry_data = TNSObjectDB.get_photometry(object_name)
-        
+
         if not photometry_data:
-            return jsonify({
-                'success': True,
-                'plot_html': None,
-                'message': 'No photometry data available'
-            })
-        
+            return jsonify({'success': True, 'plot_html': None, 'message': 'No photometry data available'})
+
+        # Filter by source permissions — public points visible to everyone
+        photometry_data = filter_by_source_permissions(
+            object_name, 'phot', photometry_data,
+            user_email=user_email, is_admin=is_admin
+        )
+
+        if not photometry_data:
+            return jsonify({'success': True, 'plot_json': None,
+                            'message': 'Login to view photometry', 'data_count': 0})
+
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
 
         plot_json = DataVisualization.create_photometry_plot_from_db(
-            photometry_data, 
-            redshift=redshift, 
-            ra=ra, 
+            photometry_data,
+            redshift=redshift,
+            ra=ra,
             dec=dec,
             apply_extinction=apply_extinction,
             apply_k_corr=apply_k_corr,
             as_json=True
         )
-        
+
         return jsonify({
             'success': True,
             'plot_json': plot_json,
@@ -1076,12 +1096,9 @@ def get_object_spectrum_plot(year, letters):
     object_name = f"{year}{letters}"
     
     # Check permissions
-    if not check_object_access(object_name, session['user']['email']):
-         return jsonify({
-            'success': True,
-            'plot_html': None,
-            'message': 'Access denied: You do not have permission to view this data.'
-        })
+    user_email = session['user'].get('email', '')
+    if not check_object_access(object_name, user_email):
+        return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
     
@@ -1112,13 +1129,18 @@ def get_object_spectrum_plot(year, letters):
 
 @objects_bp.route('/api/object/<object_name>/photometry')
 def get_object_photometry_generic(object_name):
-    if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
     object_name = urllib.parse.unquote(object_name)
+    user = session.get('user', {})
+    user_email = user.get('email') if user else None
+    is_admin = user.get('is_admin', False) if user else False
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
         photometry = TNSObjectDB.get_photometry(object_name)
         photometry = sanitize_for_json(photometry)
+        photometry = filter_by_source_permissions(
+            object_name, 'phot', photometry,
+            user_email=user_email, is_admin=is_admin
+        )
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1218,47 +1240,47 @@ def download_photometry_generic(object_name):
 
 @objects_bp.route('/api/object/<object_name>/photometry/plot')
 def get_object_photometry_plot_generic(object_name):
-    if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
-    
+    object_name = urllib.parse.unquote(object_name)
+
+    user = session.get('user')
+    user_email = user.get('email', '') if user else None
+    is_admin = user.get('is_admin', False) if user else False
+
     try:
-        object_name = urllib.parse.unquote(object_name)
-        
-        # Check permissions
-        if not check_object_access(object_name, session['user']['email']):
-             return jsonify({
-                'success': True,
-                'plot_html': None,
-                'message': 'Access denied: You do not have permission to view this data.'
-            })
-        
+        if user and not check_object_access(object_name, user_email):
+            return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
+
         results = search_tns_objects(search_term=object_name, limit=1)
-        
+
         if not results:
-            return jsonify({
-                'success': False,
-                'error': f'Object {object_name} not found'
-            }), 404
-        
+            return jsonify({'success': False, 'error': f'Object {object_name} not found'}), 404
+
         photometry_data = TNSObjectDB.get_photometry(object_name)
-        
+
         if not photometry_data:
-            return jsonify({
-                'success': True,
-                'plot_html': None,
-                'message': 'No photometry data available for this object'
-            })
-        
+            return jsonify({'success': True, 'plot_html': None,
+                            'message': 'No photometry data available for this object'})
+
+        # Filter by source permissions — public points visible to everyone
+        photometry_data = filter_by_source_permissions(
+            object_name, 'phot', photometry_data,
+            user_email=user_email, is_admin=is_admin
+        )
+
+        if not photometry_data:
+            return jsonify({'success': True, 'plot_json': None,
+                            'message': 'Login to view photometry', 'data_count': 0})
+
         # Get redshift, ra, dec from object data
         redshift = results[0].get('redshift')
         ra = results[0].get('ra')
         dec = results[0].get('declination')
-        
+
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
 
         plot_json = DataVisualization.create_photometry_plot_from_db(
-            photometry_data, 
+            photometry_data,
             redshift=redshift,
             ra=ra,
             dec=dec,
@@ -1266,7 +1288,7 @@ def get_object_photometry_plot_generic(object_name):
             apply_k_corr=apply_k_corr,
             as_json=True
         )
-        
+
         return jsonify({
             'success': True,
             'plot_json': plot_json,
@@ -1275,10 +1297,7 @@ def get_object_photometry_plot_generic(object_name):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @objects_bp.route('/api/object/<object_name>/spectrum/plot')
 def get_object_spectrum_plot_generic(object_name):
@@ -1288,12 +1307,9 @@ def get_object_spectrum_plot_generic(object_name):
     object_name = urllib.parse.unquote(object_name)
     
     # Check permissions
-    if not check_object_access(object_name, session['user']['email']):
-         return jsonify({
-            'success': True,
-            'plot_html': None,
-            'message': 'Access denied: You do not have permission to view this data.'
-        })
+    user_email = session['user'].get('email', '')
+    if not check_object_access(object_name, user_email):
+        return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
     
@@ -1339,14 +1355,15 @@ def get_object_spectrum_plot_generic(object_name):
 @objects_bp.route('/api/object/<object_name>/comments')
 def get_object_comments(object_name):
     if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
+        return jsonify({'success': True, 'comments': [], 'count': 0})
     
     try:
         object_name = urllib.parse.unquote(object_name)
         
         # Check permissions
-        if not check_object_access(object_name, session['user']['email']):
-             return jsonify({
+        user_email = session['user'].get('email', '')
+        if not check_object_access(object_name, user_email):
+            return jsonify({
                 'success': True,
                 'comments': [],
                 'count': 0,
@@ -1457,6 +1474,60 @@ def update_comment(comment_id):
     except Exception as e:
         marshal_bp.logger.error(f"Error updating comment {comment_id}: {str(e)}")
         return jsonify({'error': 'Failed to update comment'}), 500
+
+# ===============================================================================
+# SOURCE PERMISSIONS (per telescope/instrument access control)
+# ===============================================================================
+@objects_bp.route('/api/object/<object_name>/sources')
+def get_object_sources(object_name):
+    """Return unique phot/spec sources (telescopes) for an object."""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    try:
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT COALESCE(telescope, 'Unknown') as src FROM photometry WHERE object_name = %s ORDER BY src",
+            (object_name,)
+        )
+        phot_sources = [r[0] for r in cursor.fetchall()]
+        cursor.execute(
+            "SELECT DISTINCT COALESCE(telescope, 'Unknown') as src FROM spectroscopy WHERE object_name = %s ORDER BY src",
+            (object_name,)
+        )
+        spec_sources = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        return jsonify({'success': True, 'phot_sources': phot_sources, 'spec_sources': spec_sources})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<object_name>/source-permissions')
+def get_source_permissions_api(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    try:
+        perms = get_source_permissions(object_name)
+        return jsonify({'success': True, 'permissions': perms})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@objects_bp.route('/api/object/<object_name>/source-permissions/batch', methods=['POST'])
+def set_source_permissions_batch_api(object_name):
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    object_name = urllib.parse.unquote(object_name)
+    data = request.get_json()
+    if not data or 'permissions' not in data:
+        return jsonify({'error': 'Missing permissions list'}), 400
+    try:
+        set_source_permissions_batch(object_name, data['permissions'])
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ===============================================================================
 # PERMISSIONS

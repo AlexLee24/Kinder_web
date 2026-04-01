@@ -3852,185 +3852,181 @@ function toggleFlag() {
 */
 
 // ==========================================
-// Admin Permissions & Access Control
+// Data Source Permissions (admin)
 // ==========================================
 
-let telescopeRules = [];
-let availableGroups = [];
-let photGroupsList = [];
-let specGroupsList = [];
+let _permCurrentTab = 'phot';
+let _permData = { phot: {}, spec: {} };   // { sourceName: { allowed_groups: [...] | null, is_public: bool } }
+let _permSources = { phot: [], spec: [] };
+let _permAllGroups = [];
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Only fetch groups if admin panel exists
-    if (document.querySelector('.admin-settings-panel')) {
-        fetch('/api/groups')
-        .then(res => res.json())
-        .then(data => {
-            if (data.success && data.groups) {
-                availableGroups = data.groups;
-                populateGroupSelects();
-            }
-        })
-        .catch(err => console.error("Error fetching groups:", err));
+    if (document.querySelector('.perm-panel')) {
+        loadPermissionsPanel();
     }
 });
 
-function populateGroupSelects() {
-    const selects = ['photGroupSelect', 'specGroupSelect', 'newTelescopeGroup'];
-    selects.forEach(id => {
-        const el = document.getElementById(id);
-        if(!el) return;
-        el.innerHTML = '<option value="">-- Select Group --</option>';
-        availableGroups.forEach(g => {
-            const opt = document.createElement('option');
-            opt.value = g.name;  // or g.id depending on DB
-            opt.textContent = g.name;
-            el.appendChild(opt);
-        });
-    });
-}
+async function loadPermissionsPanel() {
+    try {
+        const [srcRes, permRes, grpRes] = await Promise.all([
+            fetch(`/api/object/${cleanObjectName}/sources`),
+            fetch(`/api/object/${cleanObjectName}/source-permissions`),
+            fetch('/api/groups')
+        ]);
+        const srcData = await srcRes.json();
+        const permDataResp = await permRes.json();
+        const grpData = await grpRes.json();
 
-function togglePermVisibility(type) {
-    const isPublic = document.getElementById(`${type}PublicToggle`);
-    if (!isPublic) return;
-    
-    const groupDiv = document.getElementById(`${type}RestrictedGroups`);
-    if (isPublic.checked) {
-        groupDiv.style.display = 'none';
-    } else {
-        groupDiv.style.display = 'block';
-    }
-}
+        _permSources.phot = srcData.phot_sources || [];
+        _permSources.spec = srcData.spec_sources || [];
+        _permAllGroups = (grpData.groups || []).map(g => typeof g === 'object' ? (g.name || g.id) : g);
 
-function addGroup(type) {
-    const select = document.getElementById(`${type}GroupSelect`);
-    if (!select) return;
-    const val = select.value;
-    if(!val) return;
-    
-    const list = type === 'phot' ? photGroupsList : specGroupsList;
-    if(!list.includes(val)) {
-        list.push(val);
-        renderGroupBadges(type);
-    }
-    // reset select
-    select.value = '';
-}
-
-function removeGroup(type, index) {
-    const list = type === 'phot' ? photGroupsList : specGroupsList;
-    list.splice(index, 1);
-    renderGroupBadges(type);
-}
-
-function renderGroupBadges(type) {
-    const container = document.getElementById(`${type}GroupBadges`);
-    if(!container) return;
-    const list = type === 'phot' ? photGroupsList : specGroupsList;
-    container.innerHTML = '';
-    
-    list.forEach((grp, idx) => {
-        const badge = document.createElement('span');
-        badge.className = 'badge tag-badge';
-        badge.style.display = 'inline-flex';
-        badge.style.alignItems = 'center';
-        badge.style.gap = '6px';
-        badge.style.background = 'rgba(255,255,255,0.1)';
-        badge.style.border = '1px solid rgba(255,255,255,0.2)';
-        
-        badge.innerHTML = `${escapeHtml(grp)} <span style="cursor:pointer; color:#ff6b6b; font-weight:bold; padding:0 2px;" onclick="removeGroup('${type}', ${idx})" title="Remove">&times;</span>`;
-        container.appendChild(badge);
-    });
-}
-
-function addTelescopeRule() {
-    const telInput = document.getElementById('newTelescopeName');
-    const grpInput = document.getElementById('newTelescopeGroup');
-    const tel = telInput.value.trim();
-    const grp = grpInput.value;
-    
-    if (!tel || !grp) {
-        showNotification('Please enter both telescope name and select a group', 'warning');
-        return;
-    }
-    
-    // Check if telescope rule already exists for this group
-    const exists = telescopeRules.some(r => r.telescope.toLowerCase() === tel.toLowerCase() && r.groups === grp);
-    if (!exists) {
-        telescopeRules.push({ telescope: tel, groups: grp });
-        telInput.value = '';
-        grpInput.value = '';
-        renderTelescopeRules();
-    } else {
-        showNotification('This rule already exists', 'info');
-    }
-}
-
-function removeTelescopeRule(index) {
-    telescopeRules.splice(index, 1);
-    renderTelescopeRules();
-}
-
-function renderTelescopeRules() {
-    const list = document.getElementById('telescopePermsList');
-    if (!list) return;
-    
-    list.innerHTML = '';
-    if (telescopeRules.length === 0) {
-        list.innerHTML = '<div style="font-size:0.8rem; color:#666; font-style:italic;" id="noTelescopeRulesHint">No custom rules</div>';
-        return;
-    }
-    
-    telescopeRules.forEach((rule, idx) => {
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.justifyContent = 'space-between';
-        row.style.alignItems = 'center';
-        row.style.background = 'rgba(0,0,0,0.3)';
-        row.style.padding = '4px 8px';
-        row.style.borderRadius = '4px';
-        row.style.border = '1px solid rgba(255,255,255,0.1)';
-        row.innerHTML = `
-            <div style="font-size:0.85rem;"><span style="color:#ffbe0b; font-weight:bold;">${escapeHtml(rule.telescope)}</span> &rarr; <span style="color:#ccc;">${escapeHtml(rule.groups)}</span></div>
-            <button class="btn-modern" style="padding:2px 6px; font-size:0.75rem; border-color:#ff6b6b; color:#ff6b6b;" onclick="removeTelescopeRule(${idx})">X</button>
-        `;
-        list.appendChild(row);
-    });
-}
-
-function saveAdminPermissions() {
-    const photPublic = document.getElementById('photPublicToggle').checked;
-    const specPublic = document.getElementById('specPublicToggle').checked;
-    
-    const settings = {
-        photometry_public: photPublic,
-        photometry_groups: photPublic ? '' : photGroupsList.join(','),
-        spectroscopy_public: specPublic,
-        spectroscopy_groups: specPublic ? '' : specGroupsList.join(','),
-        telescope_rules: telescopeRules
-    };
-    
-    console.log('Sending settings:', settings);
-    showNotification('Permissions UI created! Data logged to console.', 'info');
-    
-    // Future backend API call
-    /*
-    fetch(`/api/object/${cleanObjectName}/permissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-    })
-    .then(r => r.json())
-    .then(data => {
-        if(data.success) {
-            showNotification('Permissions saved successfully', 'success');
-        } else {
-            showNotification(data.error || 'Error saving settings', 'error');
+        _permData = { phot: {}, spec: {} };
+        for (const p of (permDataResp.permissions || [])) {
+            _permData[p.data_type][p.source_name] = {
+                allowed_groups: p.allowed_groups,
+                is_public: !!p.is_public
+            };
         }
-    })
-    .catch(err => {
-        console.error(err);
-        showNotification('Failed to connect to API', 'error');
-    });
-    */
+        renderPermTable();
+    } catch(e) {
+        console.error('Error loading permissions:', e);
+        const c = document.getElementById('permTableContainer');
+        if (c) c.innerHTML = '<div class="perm-empty">Error loading sources.</div>';
+    }
+}
+
+function switchPermTab(tab) {
+    _permCurrentTab = tab;
+    document.getElementById('permTabPhot').classList.toggle('active', tab === 'phot');
+    document.getElementById('permTabSpec').classList.toggle('active', tab === 'spec');
+    renderPermTable();
+}
+
+function renderPermTable() {
+    const container = document.getElementById('permTableContainer');
+    if (!container) return;
+    const sources = _permSources[_permCurrentTab];
+
+    if (!sources || sources.length === 0) {
+        container.innerHTML = '<div class="perm-empty">No data sources found. Upload data first, then click "Refresh Sources".</div>';
+        return;
+    }
+
+    const rows = sources.map(src => {
+        const isTNS = src.toUpperCase().includes('TNS');
+        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: false };
+        const vis = perm.allowed_groups === null ? 'all' :
+                    (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0 ? 'blocked' : 'groups');
+        const chipsHtml = (perm.allowed_groups || []).map(g =>
+            `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${_permCurrentTab}','${escapeHtml(src)}','${escapeHtml(g)}')">&times;</span></span>`
+        ).join('');
+
+        if (isTNS) {
+            return `<tr class="perm-row perm-row-locked">
+                <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
+                <td class="perm-vis-cell" colspan="2" style="color:rgba(255,255,255,0.35); font-size:0.8rem; font-style:italic;">
+                    Always public (TNS source)
+                </td>
+            </tr>`;
+        }
+
+        return `<tr class="perm-row">
+            <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
+            <td class="perm-vis-cell">
+                <select class="perm-vis-select" onchange="onPermVisChange('${_permCurrentTab}','${escapeHtml(src)}',this.value)">
+                    <option value="all" ${vis === 'all' ? 'selected' : ''}>All logged-in users</option>
+                    <option value="groups" ${vis === 'groups' ? 'selected' : ''}>Selected groups only</option>
+                    <option value="blocked" ${vis === 'blocked' ? 'selected' : ''}>Blocked (admin only)</option>
+                </select>
+                <div class="perm-groups-area" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${vis === 'groups' ? 'flex' : 'none'};">
+                    <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${chipsHtml}</div>
+                    <select class="perm-add-group-select" onchange="addPermGroup('${_permCurrentTab}','${escapeHtml(src)}',this)">
+                        <option value="">+ Add group</option>
+                        ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
+                    </select>
+                </div>
+            </td>
+            <td class="perm-public-cell">
+                <label class="perm-public-label" title="Visible to unlogged visitors">
+                    <input type="checkbox" class="perm-public-check" ${perm.is_public ? 'checked' : ''}
+                        onchange="onPermPublicChange('${_permCurrentTab}','${escapeHtml(src)}',this.checked)">
+                    <span>Public</span>
+                </label>
+            </td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `<table class="perm-source-table">
+        <thead><tr><th>Source</th><th>Visibility</th><th>Public</th></tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function onPermVisChange(type, source, value) {
+    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: null, is_public: false };
+    if (value === 'all') _permData[type][source].allowed_groups = null;
+    else if (value === 'blocked') _permData[type][source].allowed_groups = [];
+    else _permData[type][source].allowed_groups = _permData[type][source].allowed_groups?.length ? _permData[type][source].allowed_groups : [];
+    const area = document.getElementById(`perm-groups-${type}-${source}`);
+    if (area) area.style.display = value === 'groups' ? 'flex' : 'none';
+}
+
+function onPermPublicChange(type, source, checked) {
+    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: null, is_public: false };
+    _permData[type][source].is_public = checked;
+}
+
+function addPermGroup(type, source, select) {
+    const grp = select.value;
+    if (!grp) return;
+    select.value = '';
+    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: [], is_public: false };
+    const groups = _permData[type][source].allowed_groups || [];
+    if (!groups.includes(grp)) {
+        groups.push(grp);
+        _permData[type][source].allowed_groups = groups;
+        const chips = document.getElementById(`perm-chips-${type}-${source}`);
+        if (chips) chips.innerHTML = groups.map(g =>
+            `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(source)}','${escapeHtml(g)}')">&times;</span></span>`
+        ).join('');
+    }
+}
+
+function removePermGroup(type, source, grp) {
+    if (!_permData[type]?.[source]?.allowed_groups) return;
+    _permData[type][source].allowed_groups = _permData[type][source].allowed_groups.filter(g => g !== grp);
+    const chips = document.getElementById(`perm-chips-${type}-${source}`);
+    if (chips) chips.innerHTML = _permData[type][source].allowed_groups.map(g =>
+        `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(source)}','${escapeHtml(g)}')">&times;</span></span>`
+    ).join('');
+}
+
+async function savePermissions() {
+    const batch = [];
+    for (const type of ['phot', 'spec']) {
+        for (const [source, perm] of Object.entries(_permData[type])) {
+            batch.push({ data_type: type, source_name: source,
+                allowed_groups: perm.allowed_groups, is_public: perm.is_public });
+        }
+    }
+    try {
+        const res = await fetch(`/api/object/${cleanObjectName}/source-permissions/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permissions: batch })
+        });
+        const data = await res.json();
+        if (data.success) showNotification('Permissions saved', 'success');
+        else showNotification(data.error || 'Error saving', 'error');
+    } catch(e) {
+        showNotification('Failed to save permissions', 'error');
+    }
+}
+
+async function refreshPermSources() {
+    const c = document.getElementById('permTableContainer');
+    if (c) c.innerHTML = '<div class="perm-loading">Refreshing\u2026</div>';
+    await loadPermissionsPanel();
+    showNotification('Sources refreshed', 'success');
 }

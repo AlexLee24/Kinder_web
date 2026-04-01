@@ -9,7 +9,7 @@
 /* Page-specific overrides and customizations */
 .object-detail-container {
     width: 95%;
-    margin: 150px auto 40px;
+    margin: 50px auto 40px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     color: #e0e0e0;
 }
@@ -551,4 +551,230 @@
 
 #aladin-lite-div {
     touch-action: none;
+}
+
+/* ==========================================
+   Data Source Permissions Panel
+   ========================================== */
+
+.perm-panel .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.perm-header-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.perm-header-right {
+    display: flex;
+    gap: 8px;
+}
+
+.perm-tab-group {
+    display: flex;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.perm-tab {
+    padding: 4px 16px;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.45);
+    cursor: pointer;
+    font-size: 0.83rem;
+    transition: background 0.18s, color 0.18s;
+}
+
+.perm-tab:hover {
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.75);
+}
+
+.perm-tab.active {
+    background: rgba(197,160,89,0.18);
+    color: var(--gold, #C5A059);
+    font-weight: 600;
+}
+
+.perm-hint {
+    font-size: 0.79rem;
+    color: rgba(255,255,255,0.4);
+    background: rgba(0,0,0,0.18);
+    border-left: 2px solid rgba(197,160,89,0.3);
+    padding: 7px 12px;
+    border-radius: 0 4px 4px 0;
+    margin-bottom: 14px;
+    line-height: 1.6;
+}
+
+.perm-source-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.perm-source-table thead th {
+    padding: 7px 12px;
+    text-align: left;
+    color: rgba(255,255,255,0.35);
+    font-weight: 500;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.perm-row {
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.15s;
+}
+
+.perm-row:hover {
+    background: rgba(255,255,255,0.025);
+}
+
+.perm-source-cell {
+    padding: 10px 12px;
+    width: 160px;
+    vertical-align: middle;
+}
+
+.perm-source-name {
+    font-family: 'Courier New', monospace;
+    color: #ffbe0b;
+    font-weight: 600;
+    font-size: 0.88rem;
+}
+
+.perm-vis-cell {
+    padding: 8px 12px;
+    vertical-align: middle;
+}
+
+.perm-vis-select {
+    background: rgba(0,0,0,0.3);
+    color: #ddd;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 0.82rem;
+    outline: none;
+    cursor: pointer;
+    min-width: 170px;
+    transition: border-color 0.15s;
+}
+
+.perm-vis-select:focus {
+    border-color: rgba(197,160,89,0.5);
+}
+
+.perm-groups-area {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 7px;
+}
+
+.perm-chips-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    min-height: 22px;
+}
+
+.perm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    background: rgba(197,160,89,0.14);
+    border: 1px solid rgba(197,160,89,0.3);
+    border-radius: 4px;
+    color: var(--gold, #C5A059);
+    font-size: 0.76rem;
+}
+
+.perm-chip-remove {
+    cursor: pointer;
+    color: rgba(255,100,100,0.65);
+    font-weight: bold;
+    padding: 0 1px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.perm-chip-remove:hover {
+    color: #ff6b6b;
+}
+
+.perm-add-group-select {
+    background: rgba(0,0,0,0.28);
+    color: rgba(255,255,255,0.5);
+    border: 1px dashed rgba(255,255,255,0.14);
+    border-radius: 4px;
+    padding: 3px 7px;
+    font-size: 0.78rem;
+    outline: none;
+    cursor: pointer;
+    max-width: 170px;
+    transition: border-color 0.15s;
+}
+
+.perm-add-group-select:focus {
+    border-color: rgba(197,160,89,0.4);
+    border-style: solid;
+}
+
+.perm-public-cell {
+    padding: 8px 12px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.perm-public-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.55);
+    font-size: 0.82rem;
+    user-select: none;
+}
+
+.perm-public-check {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: var(--gold, #C5A059);
+}
+
+.perm-empty,
+.perm-loading {
+    color: rgba(255,255,255,0.3);
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 24px 0;
+    text-align: center;
+}
+
+.perm-row-locked {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.perm-row-locked .perm-source-name {
+    color: rgba(255,255,255,0.5);
+}
+    border-color: var(--gold, #C5A059) !important;
+    color: var(--gold, #C5A059) !important;
+    font-weight: 600;
 }

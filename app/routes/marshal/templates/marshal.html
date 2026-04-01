@@ -65,7 +65,8 @@
                 </div>
             </div>
 
-            <!-- Main Statistics -->
+            <!-- Main Statistics (logged-in only) -->
+            {% if session.user %}
             <div class="main-stats">
                 <div class="big-stat-card at">
                     <div class="stat-info">
@@ -116,6 +117,7 @@
                 </div>
                 #}
             </div>
+            {% endif %}
 
             <!-- Search and Filter Tools -->
             <div class="search-tools">
@@ -310,6 +312,7 @@
                 </div>
 
                 <!-- Recent Comments -->
+                {% if visibility.comments_sidebar %}
                 <div class="side-widget">
                     <h3>Recent Comments</h3>
                     <ul class="widget-list" id="recentCommentsList">
@@ -317,6 +320,7 @@
                         <li class="empty-message">Loading...</li>
                     </ul>
                 </div>
+                {% endif %}
 
                 <!-- Pinned Objects -->
                 <div class="side-widget">
@@ -403,7 +407,7 @@
                     </div>
                 </div>
                 
-                {% if obj.tags %}
+                {% if visibility.tags and obj.tags %}
                 <div class="card-tags">
                     {% set tag_list = obj.tags.split(',') %}
                     {% set ep_tags = [] %}
@@ -488,16 +492,16 @@
                             
                             {% if year_letters and not obj.name_prefix %}
                                 <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank">
-                                    View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
+                                    View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% else %}
                                 <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
-                                    View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
+                                    View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% endif %}
                         {% else %}
                             <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
-                                View{% if obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
+                                View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                             </a>
                         {% endif %}
                     </div>

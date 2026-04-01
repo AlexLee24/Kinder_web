@@ -18,7 +18,8 @@ from modules.web_postgres_database import (
     delete_invitation, clean_accepted_invitations,
     check_data_consistency, clean_data_consistency,
     get_setting, set_setting,
-    get_group_requests, update_group_request_status, get_group_request, delete_group_request
+    get_group_requests, update_group_request_status, get_group_request, delete_group_request,
+    get_default_source_permissions, set_default_source_permissions_batch
 )
 from modules.email_utils import send_invitation_email
 
@@ -556,3 +557,51 @@ def photometry_fetch_status():
     from modules.phot_scheduler import is_running, get_progress
     progress = get_progress()
     return jsonify({'running': is_running(), **progress})
+
+
+# ===============================================================================
+# DEFAULT SOURCE PERMISSIONS
+# ===============================================================================
+
+@admin_bp.route('/admin/default-source-permissions')
+def get_default_source_perms():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    perms = get_default_source_permissions()
+    return jsonify({'success': True, 'permissions': perms})
+
+
+@admin_bp.route('/admin/default-source-permissions', methods=['POST'])
+def save_default_source_perms():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json(silent=True) or {}
+    perms_list = data.get('permissions', [])
+    if not isinstance(perms_list, list):
+        return jsonify({'error': 'Invalid payload'}), 400
+    set_default_source_permissions_batch(perms_list)
+    return jsonify({'success': True})
+
+
+@admin_bp.route('/admin/sources/search')
+def search_sources():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    q = request.args.get('q', '').strip()
+    if len(q) < 1:
+        return jsonify({'success': True, 'sources': []})
+    try:
+        from modules.postgres_database import get_db_connection as tns_conn
+        with tns_conn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    '''SELECT DISTINCT telescope FROM photometry
+                       WHERE telescope ILIKE %s AND telescope IS NOT NULL
+                       ORDER BY telescope LIMIT 20''',
+                    (f'%{q}%',)
+                )
+                sources = [row[0] for row in cursor.fetchall()]
+        return jsonify({'success': True, 'sources': sources})
+    except Exception as e:
+        logger.error(f'sources/search error: {e}')
+        return jsonify({'success': True, 'sources': []})

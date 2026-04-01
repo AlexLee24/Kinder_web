@@ -19,6 +19,12 @@
     <div data-admin="true" style="display: none;"></div>
     {% endif %}
     {% endif %}
+    <div id="visibilityConfig"
+         data-detect="{{ 'true' if visibility.detect else 'false' }}"
+         data-spectroscopy="{{ 'true' if visibility.spectroscopy else 'false' }}"
+         data-comments="{{ 'true' if visibility.comments else 'false' }}"
+         data-phot-controls="{{ 'true' if visibility.phot_controls else 'false' }}"
+         style="display:none;"></div>
 
 
 
@@ -38,7 +44,7 @@
                     {{ object_data.tag|title or 'Inbox' }}
                 </span>
                 <span id="tagsContainer">
-                    {% if object_data.tags %}
+                    {% if visibility.tags and object_data.tags %}
                         {% for t in object_data.tags.split(',') %}
                             {% set t = t.strip() %}
                             {% if t %}
@@ -117,6 +123,7 @@
                             </span>
                         </li>
                         <li class="detail-item" style="border:none;">
+                            {% if visibility.peak_abs_mag %}
                             <span class="detail-label">Peak Abs Mag (ext and K corr)</span>
                             <span class="detail-value">
                                 {% if object_data.brightest_abs_mag %}
@@ -125,6 +132,7 @@
                                     --
                                 {% endif %}
                             </span>
+                            {% endif %}
                         </li>
                     </ul>
                     
@@ -220,10 +228,14 @@
                         </div>
                     </div>
                     <div class="phot-actions">
+                        {% if visibility.phot_controls %}
                         <button class="btn-modern phot-btn" onclick="fetchPhotometry()">Fetch</button>
                         <button class="btn-modern phot-btn" onclick="uploadPhotometry()">Upload</button>
+                        {% endif %}
                         <button class="btn-modern phot-btn" onclick="openDownloadModal()">Download</button>
+                        {% if visibility.phot_controls %}
                         <button class="btn-modern phot-btn" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
+                        {% endif %}
                         <button class="btn-modern phot-btn" onclick="loadPhotometryPlot()">Refresh</button>
                     </div>
                 </div>
@@ -238,6 +250,7 @@
             </div>
 
             <!-- DETECT -->
+            {% if visibility.detect %}
             <div class="panel-card">
                 <div class="panel-header">
                     <h3>DETECT</h3>
@@ -251,8 +264,10 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Spectroscopy -->
+            {% if visibility.spectroscopy %}
             <div class="panel-card">
                 <div class="panel-header">
                     <h3>Spectroscopy</h3>
@@ -272,8 +287,10 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
 
             <!-- Comments -->
+            {% if visibility.comments %}
             <div class="panel-card">
                 <div class="panel-header">
                     <h3>Comments</h3>
@@ -298,67 +315,34 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
             
         </div>
         
-        <!-- Admin Settings Container -->
+        <!-- Data Source Permissions -->
         {% if session.user and session.user.is_admin %}
-        <div class="panel-card admin-settings-panel" style="grid-column: 1 / -1; margin-top: 20px;">
+        <div class="panel-card perm-panel" style="grid-column: 1 / -1; margin-top: 20px;">
             <div class="panel-header">
-                <h3>Data Permissions & Access Control</h3>
-                <button class="btn-modern" style="padding:4px 12px; font-weight:bold;" onclick="saveAdminPermissions()">Save Settings</button>
+                <div class="perm-header-left">
+                    <h3>Data Source Permissions</h3>
+                    <div class="perm-tab-group">
+                        <button class="perm-tab active" id="permTabPhot" onclick="switchPermTab('phot')">Photometry</button>
+                        <button class="perm-tab" id="permTabSpec" onclick="switchPermTab('spec')">Spectroscopy</button>
+                    </div>
+                </div>
+                <div class="perm-header-right">
+                    <button class="btn-modern perm-refresh-btn" onclick="refreshPermSources()">Refresh Sources</button>
+                    <button class="btn-modern perm-save-btn" onclick="savePermissions()">Save</button>
+                </div>
             </div>
-            <div class="panel-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                <!-- Photometry Perms -->
-                <div class="perm-section">
-                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Photometry Access</h4>
-                    
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
-                        <input type="checkbox" id="photPublicToggle" checked onchange="togglePermVisibility('phot')"> 
-                        <strong>Public (All users)</strong>
-                    </label>
-                    
-                    <div id="photRestrictedGroups" style="display:none; margin-bottom: 15px; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
-                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
-                        <div style="display:flex; gap:8px;">
-                            <select id="photGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
-                            <button class="btn-modern" onclick="addGroup('phot')" style="padding:4px 10px;">Add</button>
-                        </div>
-                        <div id="photGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
-                    </div>
-
-                    <div class="advanced-telescope-perms" style="margin-top: 20px; background: rgba(0,0,0,0.1); padding: 12px; border-radius: 6px;">
-                        <h5 style="margin:0 0 10px 0; font-size: 0.9rem; color: #ccc;">Advanced: Telescope Restrictions</h5>
-                        <p style="font-size:0.8rem; color:#888; margin-bottom:10px;">Enforce specific groups per telescope.</p>
-                        <div id="telescopePermsList" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 10px;">
-                            <div style="font-size:0.8rem; color:#666; font-style:italic;" id="noTelescopeRulesHint">No custom rules</div>
-                        </div>
-                        <div style="display:flex; gap:8px; align-items: stretch; flex-wrap:wrap;">
-                            <input type="text" id="newTelescopeName" placeholder="Tel (e.g. SLT)" style="flex:1; min-width:80px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; font-size:0.85rem;">
-                            <select id="newTelescopeGroup" style="flex:1; min-width:100px; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:4px 8px; outline:none; font-size:0.85rem;"></select>
-                            <button class="btn-modern" style="padding:4px 10px; font-size:0.85rem;" onclick="addTelescopeRule()">Add</button>
-                        </div>
-                    </div>
+            <div class="panel-body">
+                <div class="perm-hint">
+                    <strong>Visibility</strong>: <em>All logged-in</em> (default) — any authenticated member.&nbsp;
+                    <em>Selected groups</em> — restricted to chosen groups.&nbsp;
+                    <em>Blocked</em> — hidden from everyone except admins.&nbsp;&nbsp;
+                    <strong>Public</strong> — also visible to unlogged visitors.
                 </div>
-
-                <!-- Spectroscopy Perms -->
-                <div class="perm-section">
-                    <h4 style="margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">Spectroscopy Access</h4>
-                    
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom: 12px;">
-                        <input type="checkbox" id="specPublicToggle" checked onchange="togglePermVisibility('spec')"> 
-                        <strong>Public (All users)</strong>
-                    </label>
-                    
-                    <div id="specRestrictedGroups" style="display:none; padding-left: 24px; border-left: 2px solid rgba(255,255,255,0.1);">
-                        <label style="display:block; font-size: 0.85rem; color: #aaa; margin-bottom: 4px;">Allowed Groups:</label>
-                        <div style="display:flex; gap:8px;">
-                            <select id="specGroupSelect" style="flex:1; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:6px; outline:none;"></select>
-                            <button class="btn-modern" onclick="addGroup('spec')" style="padding:4px 10px;">Add</button>
-                        </div>
-                        <div id="specGroupBadges" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;"></div>
-                    </div>
-                </div>
+                <div id="permTableContainer"><div class="perm-loading">Loading sources…</div></div>
             </div>
         </div>
         {% endif %}

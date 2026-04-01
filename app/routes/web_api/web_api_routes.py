@@ -486,7 +486,7 @@ def update_flag_status(object_name):
 def get_pin_status(object_name):
     """Get pin status for an object"""
     if 'user' not in session:
-        return jsonify({'error': 'Unauthorized'}), 401
+        return jsonify({'is_pinned': False})
     object_name = urllib.parse.unquote(object_name)
     is_pinned = get_object_pin_status(object_name)
     return jsonify({'is_pinned': is_pinned})
@@ -533,7 +533,11 @@ def manual_auto_snooze():
 @web_api_bp.route('/api/stats')
 def api_get_stats():
     if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
+        return jsonify({'success': True, 'stats': {
+            'inbox_count': 0, 'followup_count': 0, 'finished_count': 0,
+            'snoozed_count': 0, 'flag_count': 0, 'at_count': 0,
+            'classified_count': 0, 'total_count': 0
+        }})
     
     try:
         total_count = get_objects_count()
@@ -762,7 +766,7 @@ def api_get_object_tags():
 @web_api_bp.route('/api/classifications')
 def api_get_classifications():
     if 'user' not in session:
-        return jsonify({'error': 'Access denied'}), 403
+        return jsonify({'success': True, 'classifications': []})
     
     try:
         classifications = get_distinct_classifications()
