@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Admin Panel - Kinder</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
     <meta name="description" content="Kinder Admin Panel">
     {% include '_favicon.html' %}
@@ -10,67 +12,99 @@
     {% include '_navbar.html' %}
 
     <div class="admin-container">
+
+        <!-- ── Header ── -->
         <div class="admin-header">
-            <h1>Admin Panel</h1>
-            <p>Manage users, groups, and invitations</p>
-            
-            <!-- Data Consistency Check -->
-            <div class="consistency-check">
-                <button class="btn btn-info" onclick="checkDataConsistency()">
-                    Check database connection
+            <div class="admin-title">
+                <h1>Admin Panel</h1>
+                <p>Kinder system management</p>
+            </div>
+            <div class="admin-header-btns">
+                <button class="hdr-btn hdr-btn-info" onclick="checkDataConsistency()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    DB Check
                 </button>
-                <button class="btn btn-warning" onclick="triggerManualBackup()" style="margin-left: 10px;">
-                    Backup Now
+                <button class="hdr-btn hdr-btn-warn" onclick="triggerManualBackup()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Backup
                 </button>
-                <span id="consistencyStatus" class="consistency-status"></span>
-                <span id="backupStatus" class="consistency-status" style="margin-left: 10px;"></span>
+                <span id="consistencyStatus" class="hdr-status"></span>
+                <span id="backupStatus" class="hdr-status"></span>
             </div>
         </div>
 
-        <div class="tabs">
-            <button class="tab-button active" onclick="showTab('users')">Users</button>
-            <button class="tab-button" onclick="showTab('groups')">Groups</button>
-            <button class="tab-button" onclick="showTab('settings')">Settings</button>
+        <!-- ── Stats ── -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value">{{ users|length }}</div>
+                <div class="stat-label">Users</div>
+            </div>
+            <div class="stat-card">
+                {% set admin_count = users.values() | selectattr('is_admin') | list | length %}
+                <div class="stat-value">{{ admin_count }}</div>
+                <div class="stat-label">Admins</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ groups|length }}</div>
+                <div class="stat-label">Groups</div>
+            </div>
+            <div class="stat-card stat-card-alert">
+                <div class="stat-value">{{ group_requests|length }}</div>
+                <div class="stat-label">Pending Requests</div>
+            </div>
         </div>
 
+        <!-- ── Tabs ── -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('users')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                Users
+                <span class="tab-count">{{ users|length }}</span>
+            </button>
+            <button class="tab-button" onclick="showTab('groups')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                Groups
+                {% if group_requests %}<span class="tab-badge">{{ group_requests|length }}</span>{% endif %}
+            </button>
+            <button class="tab-button" onclick="showTab('settings')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Settings
+            </button>
+        </div>
+
+        <!-- ── Users Tab ── -->
         <div id="users-tab" class="tab-content active">
-            <div class="section-header">
-                <h2>Users Management</h2>
-                <div class="header-actions">
-                    <div class="search-section">
-                        <div class="search-row">
-                            <div class="search-input-group">
-                                <input type="text" id="userSearch" placeholder="Search by name or email..." onkeyup="searchUsers()">
-                                <button class="btn btn-secondary" onclick="clearSearch()">Clear</button>
-                            </div>
-                            <div class="filter-group">
-                                <label>
-                                    <input type="checkbox" id="adminFilter" onchange="searchUsers()">
-                                    Admins only
-                                </label>
-                                <select id="groupFilter" onchange="searchUsers()">
-                                    <option value="">All groups</option>
-                                    {% for group_name in groups.keys() %}
-                                    <option value="{{ group_name.lower() }}">{{ group_name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
-                        <div class="search-results">
-                            <span id="searchResults">{{ users|length }} users found</span>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="showAddUserModal()">Add New User</button>
+            <div class="tab-toolbar">
+                <div class="toolbar-search">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="userSearch" placeholder="Search by name or email…" onkeyup="searchUsers()">
+                </div>
+                <div class="toolbar-filters">
+                    <label class="filter-pill">
+                        <input type="checkbox" id="adminFilter" onchange="searchUsers()"> Admins only
+                    </label>
+                    <select id="groupFilter" class="filter-select" onchange="searchUsers()">
+                        <option value="">All groups</option>
+                        {% for group_name in groups.keys() %}
+                        <option value="{{ group_name.lower() }}">{{ group_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn-ghost" onclick="clearSearch()">Clear</button>
+                </div>
+                <div class="toolbar-right">
+                    <span id="searchResults" class="result-count">{{ users|length }} users</span>
+                    <button class="btn btn-primary" onclick="showAddUserModal()">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add User
+                    </button>
                 </div>
             </div>
-            
-            <div class="users-table">
-                <table>
+
+            <div class="data-table-wrap">
+                <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Avatar</th>
-                            <th>Name</th>
-                            <th>Email</th>
+                            <th>User</th>
                             <th>Role</th>
                             <th>Groups</th>
                             <th>Joined</th>
@@ -81,47 +115,48 @@
                         {% for email, user in users.items() %}
                         <tr>
                             <td>
-                                <img src="{{ user.picture }}" alt="Avatar" class="user-avatar">
+                                <div class="user-cell">
+                                    <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                    <div>
+                                        <div class="user-cell-name">{{ user.name }}</div>
+                                        <div class="user-cell-email">{{ email }}</div>
+                                    </div>
+                                </div>
                             </td>
-                            <td>{{ user.name }}</td>
-                            <td>{{ email }}</td>
                             <td>
-                                <span class="status-badge status-{{ user.get('role', 'guest') }}" style="text-transform: capitalize;">
-                                    {{ user.get('role', 'guest') }}
-                                </span>
+                                <span class="role-pill role-{{ user.get('role', 'guest') }}">{{ user.get('role', 'guest') }}</span>
                             </td>
                             <td>
+                                <div class="groups-cell">
                                 {% if user.get('groups') %}
                                     {% for group in user.groups %}
-                                        <span class="group-badge">{{ group }}</span>
+                                    <span class="group-badge">{{ group }}</span>
                                     {% endfor %}
                                 {% else %}
-                                    <span class="no-groups">No groups</span>
+                                    <span class="cell-muted">—</span>
                                 {% endif %}
+                                </div>
                             </td>
-                            <td>
+                            <td class="cell-muted cell-date">
                                 {% set active_date = user.invited_at or user.last_login %}
-                                {% if active_date %}
-                                    {{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
-                                {% else %}
-                                    Unknown
-                                {% endif %}
+                                {% if active_date %}{{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
+                                {% else %}—{% endif %}
                             </td>
                             <td>
-                                <div class="action-buttons">
-                                    {% if email != session.user.email %}
-                                    <select style="padding: 2px 4px; border-radius: 4px; background: #333; color: white; margin-right: 5px;" onchange="changeUserRole('{{ email }}', this.value)">
+                                {% if email != session.user.email %}
+                                <div class="row-actions">
+                                    <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange="changeUserRole('{{ email }}', this.value); this.className='role-select role-select-'+this.value;">
                                         <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
-                                        <option value="user" {% if user.get('role') == 'user' %}selected{% endif %}>User</option>
+                                        <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
                                         <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
                                     </select>
-                                    <button class="btn-small btn-danger" onclick="deleteUser('{{ email }}')">
-                                        Delete
+                                    <button class="icon-btn icon-btn-danger" title="Delete user" onclick="deleteUser('{{ email }}')">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                     </button>
-                                    {% else %}
-                                    <span class="btn-small btn-info" style="opacity: 0.6;">You</span>
-                                    {% endif %}
                                 </div>
+                                {% else %}
+                                <span class="you-badge">You</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -130,168 +165,164 @@
             </div>
         </div>
 
+        <!-- ── Groups Tab ── -->
         <div id="groups-tab" class="tab-content">
-            <div class="section-header">
-                <h2>Groups Management</h2>
-                <button class="btn btn-primary" onclick="showCreateGroupModal()">Create New Group</button>
-            </div>
-            
+
             {% if group_requests %}
-            <div class="group-requests-section" style="margin-bottom: 30px;">
-                <h3 style="color: #C5A059; margin-top: 0; margin-bottom: 15px;">Pending Join Requests</h3>
-                <div class="users-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Group</th>
-                                <th>Requested At</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for req in group_requests %}
-                            <tr>
-                                <td>{{ req.user_email }}</td>
-                                <td><span class="group-badge">{{ req.group_name }}</span></td>
-                                <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</td>
-                                <td>
-                                    <div class="action-buttons">
-                                        <button class="btn-small btn-primary" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'approve')">Approve</button>
-                                        <button class="btn-small btn-danger" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'reject')">Reject</button>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <div class="requests-banner">
+                <div class="requests-banner-header">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    {{ group_requests|length }} Pending Join Request{{ 's' if group_requests|length != 1 else '' }}
                 </div>
+                {% for req in group_requests %}
+                <div class="request-row">
+                    <div class="request-info">
+                        <span class="request-email">{{ req.user_email }}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                        <span class="group-badge">{{ req.group_name }}</span>
+                        <span class="request-time">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</span>
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn-approve" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'approve')">Approve</button>
+                        <button class="btn-reject"  data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'reject')">Reject</button>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
             {% endif %}
 
+            <div class="tab-toolbar">
+                <h3 class="section-title">Groups <span class="title-count">{{ groups|length }}</span></h3>
+                <button class="btn btn-primary" onclick="showCreateGroupModal()">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    New Group
+                </button>
+            </div>
+
             <div class="groups-grid">
                 {% for group_name, group in groups.items() %}
-                <div class="group-card" id="group-{{ loop.index0 }}">
-                    <div class="group-header">
-                        <h3 class="group-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
-                            {{ group_name }}
-                            <span class="expand-icon" id="icon-{{ loop.index0 }}"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
-                        </h3>
-                        <div class="group-actions">
-                            <button class="btn-small btn-danger" onclick="deleteGroup('{{ group_name }}')">
-                                Delete
-                            </button>
+                <div class="group-card">
+                    <div class="group-card-header">
+                        <div class="group-card-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
+                            <div class="group-icon">{{ group_name[0].upper() }}</div>
+                            <div class="group-title-info">
+                                <div class="group-name-text">{{ group_name }}</div>
+                                <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
+                            </div>
+                            <span class="expand-icon" id="icon-{{ loop.index0 }}">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </span>
                         </div>
+                        <button class="icon-btn icon-btn-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
                     </div>
-                    <p class="group-description">{{ group.description or 'No description' }}</p>
-                    <div class="group-info">
-                        <p><strong>Members:</strong> {{ group.members|length }}</p>
-                        <p><strong>Created:</strong> {{ group.created_at.strftime('%Y-%m-%d') if group.created_at and group.created_at.strftime is defined else (group.created_at[:10] if group.created_at else 'Unknown') }}</p>
-                    </div>
-                    
-                    <div class="group-details" id="details-{{ loop.index0 }}" style="display: none;">
-                        <div class="group-members-section">
-                            <div class="members-header">
-                                <h4>Members ({{ group.members|length }})</h4>
-                                <button class="btn-small btn-primary" onclick="showAddMembersModal('{{ group_name }}')">
-                                    Add Members
+                    {% if group.description %}
+                    <p class="group-desc">{{ group.description }}</p>
+                    {% endif %}
+
+                    <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
+                        <div class="details-header">
+                            <span class="details-label">Members ({{ group.members|length }})</span>
+                            <button class="btn-ghost-sm" onclick="showAddMembersModal('{{ group_name }}')">+ Add</button>
+                        </div>
+                        {% if group.members %}
+                        <div class="members-list">
+                            {% for member in group.members %}
+                            <div class="member-row">
+                                <div class="member-info">
+                                    <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                    <div>
+                                        <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
+                                        <div class="member-email">{{ member }}</div>
+                                    </div>
+                                </div>
+                                <button class="icon-btn icon-btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
-                            
-                            {% if group.members %}
-                            <div class="members-list">
-                                {% for member in group.members %}
-                                <div class="member-item">
-                                    <div class="member-info">
-                                        <img src="{{ users[member].picture if member in users else '/static/img/default-avatar.png' }}" 
-                                            alt="Avatar" class="member-avatar">
-                                        <div class="member-details">
-                                            <span class="member-name">{{ users[member].name if member in users else 'Unknown User' }}</span>
-                                            <span class="member-email">{{ member }}</span>
-                                        </div>
-                                    </div>
-                                    <button class="btn-small btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')">
-                                        Remove
-                                    </button>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% else %}
-                            <div class="no-members">
-                                <p>No members in this group yet.</p>
-                            </div>
-                            {% endif %}
+                            {% endfor %}
                         </div>
+                        {% else %}
+                        <p class="cell-muted no-members-msg">No members yet.</p>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
 
+        <!-- ── Settings Tab ── -->
         <div id="settings-tab" class="tab-content">
-            <div class="section-header">
-                <h2>System Settings</h2>
-            </div>
-            
-            <div class="settings-card" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                <h3 style="color: #C5A059; margin-bottom: 15px;">GREATLab Routes Access Control</h3>
-                <p style="color: #aaa; margin-bottom: 15px;">Configure which groups have access to GREATLab dropdown routes (DETECT, Daily Trigger, Documents). The 'GREAT_Lab' group has access by default.</p>
-                
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
-                    <select id="new-permission-group" class="pa-input" style="width: 250px; padding: 8px; background: #2a2a2a; color: white; border: 1px solid #444; border-radius: 4px;">
-                        <option value="">-- Select Group --</option>
-                        {% for group_name in groups.keys() %}
-                            {% if group_name != 'GREAT_Lab' %}
-                                <option value="{{ group_name }}">{{ group_name }}</option>
-                            {% endif %}
-                        {% endfor %}
-                    </select>
-                    <button onclick="addGreatLabPermission()" class="btn btn-primary" style="padding: 8px 15px;">
-                        Add Access
-                    </button>
-                </div>
-                
-                <div id="active-permissions" style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    <!-- Locked GREATLab group -->
-                    <div style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #aaa; display: flex; align-items: center; gap: 5px;">
-                        <span>GREAT_Lab</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    </div>
-                    <!-- Dynamic permissions will be loaded here via JS -->
-                </div>
-            </div>
-            
-            <div class="settings-card" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                <h3 style="color: #C5A059; margin-bottom: 15px;">Inbox Photometry Fetch</h3>
-                <p style="color: #aaa; margin-bottom: 15px;">Fetch photometry for all Inbox objects. Runs automatically every day at 09:00 UTC+8. Click to trigger immediately.</p>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary" style="padding: 8px 15px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: text-bottom; margin-right: 5px;">
-                            <circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>
-                        </svg>
-                        Run Now
-                    </button>
-                    <span id="photFetchStatus" style="font-size: 0.9rem; color: #a8b3cf;"></span>
-                </div>
-            </div>
+            <div class="settings-grid">
 
-            <div class="settings-card" style="background: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                <h3 style="color: #C5A059; margin-bottom: 15px;">Document Images Management</h3>
-                <p style="color: #aaa; margin-bottom: 15px;">Clean up unused uploaded images that are no longer referenced by any markdown document to save disk space.</p>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button onclick="cleanDocumentImages()" class="btn btn-warning" style="padding: 8px 15px;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: text-bottom; margin-right: 5px;">
-                            <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        Clean Unused Images
-                    </button>
-                    <span id="cleanImagesStatus" style="font-size: 0.9rem; color: #a8b3cf;"></span>
+                <div class="settings-panel">
+                    <div class="settings-panel-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        GREATLab Access Control
+                    </div>
+                    <p class="settings-desc">Configure which groups access GREATLab routes. <em>GREAT_Lab</em> always has access.</p>
+                    <div class="settings-row">
+                        <select id="new-permission-group" class="settings-select">
+                            <option value="">— Select Group —</option>
+                            {% for group_name in groups.keys() %}
+                                {% if group_name != 'GREAT_Lab' %}
+                                <option value="{{ group_name }}">{{ group_name }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        <button onclick="addGreatLabPermission()" class="btn btn-primary">Add</button>
+                    </div>
+                    <div id="active-permissions" class="permissions-list">
+                        <div class="perm-tag perm-locked">
+                            <span>GREAT_Lab</span>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                        </div>
+                    </div>
                 </div>
+
+                <div class="settings-panel">
+                    <div class="settings-panel-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        Inbox Photometry Fetch
+                    </div>
+                    <p class="settings-desc">Fetch photometry for all Inbox objects. Auto-runs daily at 09:00 UTC+8.</p>
+                    <div class="settings-row">
+                        <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary">Run Now</button>
+                        <span id="photFetchStatus" class="settings-status"></span>
+                    </div>
+                </div>
+
+                <div class="settings-panel">
+                    <div class="settings-panel-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Document Images
+                    </div>
+                    <p class="settings-desc">Remove uploaded images no longer referenced in any markdown document.</p>
+                    <div class="settings-row">
+                        <button onclick="cleanDocumentImages()" class="btn btn-warning">Clean Unused Images</button>
+                        <span id="cleanImagesStatus" class="settings-status"></span>
+                    </div>
+                </div>
+
+                <div class="settings-panel">
+                    <div class="settings-panel-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        Database
+                    </div>
+                    <p class="settings-desc">Check data consistency and trigger manual backups.</p>
+                    <div class="settings-row" style="flex-wrap: wrap; gap: 8px;">
+                        <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
+                        <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
+                    </div>
+                </div>
+
             </div>
         </div>
+
     </div>
 
-    <!-- Data Consistency Modal -->
+    <!-- ── Modals ── -->
     <div id="consistencyModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -299,9 +330,7 @@
                 <span class="close" onclick="closeModal('consistencyModal')">&times;</span>
             </div>
             <div class="consistency-content">
-                <div id="consistencyResults">
-                    <!-- Results will be loaded here -->
-                </div>
+                <div id="consistencyResults"></div>
                 <div class="modal-actions" id="consistencyActions" style="display: none;">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('consistencyModal')">Cancel</button>
                     <button type="button" class="btn btn-warning" onclick="cleanDataConsistency()">Clean Issues</button>
@@ -322,12 +351,12 @@
                     <input type="email" id="userEmail" required>
                 </div>
                 <div class="form-group">
-                    <label for="userName">Name (Optional)</label>
-                    <input type="text" id="userName" placeholder="If left blank, email prefix will be used">
+                    <label for="userName">Name (optional)</label>
+                    <input type="text" id="userName" placeholder="If blank, email prefix will be used">
                 </div>
                 <div class="form-group">
-                    <label for="userRole">User Role</label>
-                    <select id="userRole" style="width: 100%; padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    <label for="userRole">Role</label>
+                    <select id="userRole">
                         <option value="guest">Guest</option>
                         <option value="user" selected>User</option>
                         <option value="admin">Admin</option>
@@ -341,26 +370,40 @@
         </div>
     </div>
 
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create New Group</h3>
+                <span class="close" onclick="closeModal('createGroupModal')">&times;</span>
+            </div>
+            <form onsubmit="createGroup(event)">
+                <div class="form-group">
+                    <label for="groupName">Group Name *</label>
+                    <input type="text" id="groupName" required>
+                </div>
+                <div class="form-group">
+                    <label for="groupDescription">Description</label>
+                    <textarea id="groupDescription" placeholder="Optional description…"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('createGroupModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Group</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="addMembersModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Add Members to Group</h3>
+                <h3>Add Members — <span id="selectedGroupName" style="color:#C5A059;"></span></h3>
                 <span class="close" onclick="closeModal('addMembersModal')">&times;</span>
             </div>
             <div class="add-members-content">
-                <div class="group-info">
-                    <p><strong>Group:</strong> <span id="selectedGroupName"></span></p>
-                    <p class="help-text">Select users to add to this group:</p>
-                </div>
-                
                 <div class="search-users-section">
-                    <input type="text" id="memberSearch" placeholder="Search users..." onkeyup="filterAvailableUsers()">
+                    <input type="text" id="memberSearch" placeholder="Search users…" onkeyup="filterAvailableUsers()">
                 </div>
-                
-                <div class="available-users-container" id="availableUsersContainer">
-                    <!-- Available users will be loaded here -->
-                </div>
-                
+                <div class="available-users-container" id="availableUsersContainer"></div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('addMembersModal')">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="addSelectedMembers()">Add Selected</button>
