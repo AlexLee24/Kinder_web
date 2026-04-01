@@ -1,5 +1,6 @@
 /* ==================== GLOBAL STYLES ==================== */
 :root {
+    --astronomy-bg-image: url('../photo/background_telescope.jpg');
     --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
     --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
     --tertiary-gradient: linear-gradient(45deg, #ff4757, #ff3742);
@@ -24,7 +25,7 @@
 
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/background_telescope.jpg');
+    background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), var(--astronomy-bg-image);
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;
@@ -39,7 +40,7 @@ body {
 /* ==================== MAIN CONTAINER ==================== */
 .container-main {
     max-width: 1400px;
-    margin: 120px auto 40px;
+    margin: 50px auto 40px;
     padding: 20px;
     position: relative;
     z-index: 2;

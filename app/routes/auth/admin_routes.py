@@ -115,7 +115,8 @@ def handle_group_request(request_id, action):
         return jsonify({'error': 'Request not found'}), 404
         
     if action == 'approve':
-        if add_user_to_group(req['user_email'], req['group_name']):
+        already_member = user_in_group(req['user_email'], req['group_name'])
+        if already_member or add_user_to_group(req['user_email'], req['group_name']):
             update_group_request_status(request_id, 'approved')
             return jsonify({'success': True, 'message': 'Request approved'})
         return jsonify({'error': 'Failed to add user to group'}), 500
@@ -146,6 +147,25 @@ def save_settings():
 # ===============================================================================
 # USER MANAGEMENT
 # ===============================================================================
+@admin_bp.route('/admin/update-role', methods=['POST'])
+def update_user_role():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    data = request.get_json()
+    user_email = data.get('user_email')
+    new_role = data.get('role')
+    if not user_email or new_role not in ('guest', 'user', 'admin'):
+        return jsonify({'error': 'Invalid parameters'}), 400
+    if user_email == session['user']['email']:
+        return jsonify({'error': 'Cannot change your own role'}), 400
+    if not user_exists(user_email):
+        return jsonify({'error': 'User does not exist'}), 404
+    is_admin = (new_role == 'admin')
+    if update_user(user_email, role=new_role, is_admin=is_admin):
+        return jsonify({'success': True, 'message': f'Role updated to {new_role}'})
+    return jsonify({'error': 'Failed to update role'}), 500
+
+
 @admin_bp.route('/admin/toggle-admin', methods=['POST'])
 def toggle_admin_status():
     if 'user' not in session or not session['user'].get('is_admin'):

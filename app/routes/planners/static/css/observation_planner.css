@@ -1,7 +1,7 @@
 /* Base Styles - Inherited from astronomy_tools.css */
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    background-image: url('../photo/background_observation.png');
+    background-image: url('../photo/background_planner.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;

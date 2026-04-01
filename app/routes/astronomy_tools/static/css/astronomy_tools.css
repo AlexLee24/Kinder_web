@@ -1,6 +1,6 @@
 /* Astronomy Tools Styles */
 :root {
-    --astronomy-bg-image: url('../photo/background.jpg');
+    --astronomy-bg-image: url('../photo/background_telescope.jpg');
     --primary-color: #C5A059;
     --primary-hover: #d4b06a;
     --bg-overlay: rgba(255, 255, 255, 0.05);
@@ -23,7 +23,7 @@ body {
 
 .page-header {
     text-align: center;
-    margin: 100px auto 40px;
+    margin: 50px auto 40px;
     margin-top: 150px;
     padding: 0 20px;
 }

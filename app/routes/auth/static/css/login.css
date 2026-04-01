@@ -149,6 +149,76 @@ body {
     }
 }
 
+/* ── Admin Login ── */
+.admin-login-section {
+    margin-top: 20px;
+}
+
+.admin-login-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    color: rgba(255, 255, 255, 0.25);
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.admin-login-divider::before,
+.admin-login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.admin-input {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 9px 14px;
+    color: #fff;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.admin-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.admin-input:focus {
+    border-color: rgba(197, 160, 89, 0.5);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.admin-login-btn {
+    margin-top: 4px;
+    padding: 10px;
+    background: rgba(197, 160, 89, 0.12);
+    border: 1px solid rgba(197, 160, 89, 0.35);
+    border-radius: 8px;
+    color: #C5A059;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    width: 100%;
+}
+
+.admin-login-btn:hover {
+    background: rgba(197, 160, 89, 0.22);
+    border-color: rgba(197, 160, 89, 0.7);
+}
+
 ::selection {
     background: rgba(197, 160, 89, 0.3);
 }

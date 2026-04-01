@@ -150,9 +150,9 @@
                                         <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
                                         <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
                                     </select>
-                                    <button class="icon-btn icon-btn-danger" title="Delete user" onclick="deleteUser('{{ email }}')">
+                                    <!-- <button class="icon-btn icon-btn-danger" title="Delete user" onclick="deleteUser('{{ email }}')">
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                    </button>
+                                    </button> -->
                                 </div>
                                 {% else %}
                                 <span class="you-badge">You</span>

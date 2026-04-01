@@ -1212,3 +1212,26 @@ async function handleGroupRequest(requestId, action) {
         showNotification('An error occurred: ' + error.message, 'error');
     }
 }
+
+// Change user role (guest / user / admin)
+async function changeUserRole(userEmail, newRole) {
+    try {
+        const response = await fetch('/admin/update-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_email: userEmail, role: newRole })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + result.error, 'error');
+            // Reload to reset the select back to original value
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+        setTimeout(() => location.reload(), 1500);
+    }
+}

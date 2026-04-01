@@ -26,5 +26,8 @@ class Config:
     
     # Admin settings
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+    ADMIN_LOCAL_EMAIL = os.getenv('ADMIN_LOCAL_EMAIL')
+    ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 
 config = Config()

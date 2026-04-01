@@ -18,7 +18,7 @@
 
 body {
     font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../photo/background.jpg');
+    background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../photo/background_planner.jpg');
     background-attachment: fixed;
     background-size: cover;
     background-repeat: no-repeat;

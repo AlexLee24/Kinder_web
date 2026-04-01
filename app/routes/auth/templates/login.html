@@ -33,6 +33,17 @@
                             Sign in with Google
                         </a>
                     </div>
+
+                    <div class="admin-login-section">
+                        <div class="admin-login-divider">
+                            <span>Direct Access</span>
+                        </div>
+                        <form action="{{ url_for('auth.admin_login') }}" method="POST" class="admin-login-form" autocomplete="off">
+                            <input type="text" name="username" placeholder="Username" class="admin-input" required autocomplete="off" spellcheck="false">
+                            <input type="password" name="password" placeholder="Password" class="admin-input" required autocomplete="new-password">
+                            <button type="submit" class="admin-login-btn">Sign in</button>
+                        </form>
+                    </div>
                     
                     <div class="login-info">
                         <p class="info-text">
