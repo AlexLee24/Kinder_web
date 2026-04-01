@@ -100,8 +100,12 @@ def regex_search(s, pattern):
 # ===============================================================================
 # OAUTH CONFIGURATION
 # ===============================================================================
-from routes.auth.auth_routes import oauth
+from routes.auth.auth_routes import oauth, refresh_user_session
 oauth.init_app(app)
+
+# Register session refresh globally so g.current_user (including DB picture) is
+# available on every request regardless of which blueprint handles it.
+app.before_request(refresh_user_session)
 
 # ===============================================================================
 # REGISTER ALL ROUTES
