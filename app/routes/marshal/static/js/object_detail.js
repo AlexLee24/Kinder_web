@@ -219,13 +219,7 @@ async function updatePageContent() {
     loadComments();
     initializeAladinWhenReady();
     loadDetectData();
-
-    // Photometry: after it resolves, auto-fetch only if no local data
-    loadPhotometryPlot().then(() => {
-        if (!photometryData || photometryData.length === 0) {
-            fetchPhotometry(true);
-        }
-    });
+    loadPhotometryPlot();
 
     console.log('Page content updated');
 }

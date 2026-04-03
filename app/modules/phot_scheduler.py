@@ -165,3 +165,149 @@ def fetch_missing_photometry():
 
 def get_progress():
     return dict(_progress)
+
+
+def update_target_mags():
+    """Daily job at 05:00: for each active observation target, find the latest
+    non-upper-limit magnitude from the TNS photometry table and update mag field.
+    Also syncs prefix (AT→SN) in observation_targets and observation_logs.
+    EP-prefixed names are resolved via tns_objects internal_names/tags."""
+    try:
+        from modules.web_postgres_database import get_db_connection, get_observation_targets
+        from modules.postgres_database import get_tns_db_connection
+
+        targets = get_observation_targets()
+        active = [t for t in targets if t.get('is_active') and t.get('name', '').strip()]
+        if not active:
+            logger.info("update_target_mags: no active targets, skipping.")
+            return
+
+        logger.info(f"update_target_mags: updating mag for {len(active)} active targets")
+
+        tns_conn = get_tns_db_connection()
+        tns_cursor = tns_conn.cursor()
+
+        updated = 0
+        log_synced = 0
+        for t in active:
+            full_name = t['name'].strip()
+            bare_name = None
+            current_prefix = ''
+
+            is_ep = full_name.upper().startswith('EP')
+
+            # --- EP name: look up via internal_names / tags, keep EP name as-is ---
+            if is_ep:
+                tns_cursor.execute(
+                    """SELECT name FROM tns_objects
+                       WHERE internal_names ILIKE %s OR tags ILIKE %s
+                       LIMIT 1""",
+                    (f'%{full_name}%', f'%{full_name}%')
+                )
+                ep_row = tns_cursor.fetchone()
+                if ep_row is None:
+                    logger.debug(f"update_target_mags: EP name {full_name} not found in tns_objects, skipping")
+                    continue
+                bare_name = ep_row[0].strip()
+                # EP names are never renamed — keep full_name as new_full_name
+                new_full_name = full_name
+                name_changed = False
+                logger.debug(f"update_target_mags: EP name {full_name} resolved bare_name={bare_name}")
+
+            # --- Normal resolution: match full name or bare name ---
+            else:
+                tns_cursor.execute(
+                    """SELECT name_prefix, name FROM tns_objects
+                       WHERE (COALESCE(name_prefix,'') || name) = %s
+                          OR name = %s
+                       LIMIT 1""",
+                    (full_name, full_name)
+                )
+                row = tns_cursor.fetchone()
+                if row is None:
+                    logger.debug(f"update_target_mags: {full_name} not found in tns_objects, skipping")
+                    continue
+                current_prefix = (row[0] or '').strip()
+                bare_name = row[1].strip()
+                new_full_name = current_prefix + bare_name
+                name_changed = (new_full_name != full_name)
+
+            # Latest non-upper-limit magnitude from photometry
+            tns_cursor.execute(
+                """SELECT magnitude FROM photometry
+                   WHERE object_name = %s
+                     AND magnitude IS NOT NULL
+                     AND CAST(magnitude AS TEXT) NOT LIKE '>%%'
+                   ORDER BY mjd DESC
+                   LIMIT 1""",
+                (bare_name,)
+            )
+            phot_row = tns_cursor.fetchone()
+            new_mag = None
+            if phot_row is not None:
+                try:
+                    new_mag = round(float(phot_row[0]), 2)
+                except (TypeError, ValueError):
+                    pass
+
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+
+                # Update observation_targets
+                if new_mag is not None and name_changed:
+                    cursor.execute(
+                        "UPDATE observation_targets SET mag = %s, name = %s WHERE id = %s",
+                        (new_mag, new_full_name, t['id'])
+                    )
+                    updated += 1
+                elif new_mag is not None:
+                    cursor.execute(
+                        "UPDATE observation_targets SET mag = %s WHERE id = %s",
+                        (new_mag, t['id'])
+                    )
+                    updated += 1
+                elif name_changed:
+                    cursor.execute(
+                        "UPDATE observation_targets SET name = %s WHERE id = %s",
+                        (new_full_name, t['id'])
+                    )
+                    updated += 1
+
+                if name_changed:
+                    logger.info(f"update_target_mags: renamed {full_name} → {new_full_name} in targets")
+
+                # Sync observation_logs for non-EP targets only
+                # (EP names stay unchanged; sync AT<bare>/SN<bare>/bare → correct full_name)
+                if not is_ep:
+                    cursor.execute(
+                        """UPDATE observation_logs
+                           SET target_name = %s
+                           WHERE target_name != %s
+                             AND (
+                                 target_name = ('AT' || %s)
+                                 OR target_name = ('SN' || %s)
+                                 OR target_name = %s
+                                 OR target_name = %s
+                             )""",
+                        (new_full_name, new_full_name,
+                         bare_name, bare_name, bare_name, full_name)
+                    )
+                    n = cursor.rowcount
+                    if n > 0:
+                        log_synced += n
+                        logger.info(f"update_target_mags: synced {n} log rows → {new_full_name}")
+
+                conn.commit()
+                cursor.close()
+
+        tns_cursor.close()
+        tns_conn.close()
+        logger.info(
+            f"update_target_mags done: {updated}/{len(active)} targets updated, "
+            f"{log_synced} log rows synced"
+        )
+        return {"updated": updated, "total": len(active), "log_synced": log_synced}
+
+    except Exception as e:
+        logger.error(f"update_target_mags error: {e}")
+        return {"error": str(e)}

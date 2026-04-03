@@ -578,6 +578,22 @@ def run_missing_phot_fetch():
     return jsonify({'success': True, 'message': 'Missing photometry check started in background'})
 
 
+@admin_bp.route('/admin/run-update-target-mags', methods=['POST'])
+def run_update_target_mags():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+
+    from modules.phot_scheduler import update_target_mags
+    import threading
+
+    def _run():
+        update_target_mags()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({'success': True, 'message': 'Target magnitude update started in background'})
+
+
 # ===============================================================================
 # DEFAULT SOURCE PERMISSIONS
 # ===============================================================================

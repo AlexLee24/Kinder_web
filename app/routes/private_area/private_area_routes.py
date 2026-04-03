@@ -549,6 +549,27 @@ def api_observation_target_update(target_id):
     else:
         return jsonify({'error': 'Database error'}), 500
 
+
+@private_area_bp.route('/api/targets/update-mags', methods=['POST'])
+def api_update_target_mags():
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    is_great_lab = session['user'].get('is_great_lab_member', False)
+    is_admin = session['user'].get('is_admin', False)
+    if not (is_great_lab or is_admin):
+        return jsonify({'error': 'Forbidden'}), 403
+
+    import threading
+    from modules.phot_scheduler import update_target_mags
+
+    def _run():
+        update_target_mags()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({'success': True, 'message': 'Magnitude update started'})
+
 @private_area_bp.route('/api/search_target')
 def api_search_target():
     """Search TNS objects by name for autocomplete"""

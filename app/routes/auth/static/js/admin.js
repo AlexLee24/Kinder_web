@@ -1158,6 +1158,36 @@ function runPhotometryFetch() {
     });
 }
 
+function runUpdateTargetMags() {
+    const btn = document.getElementById('runTargetMagBtn');
+    const statusEl = document.getElementById('targetMagStatus');
+
+    btn.disabled = true;
+    statusEl.innerHTML = 'Starting...';
+
+    fetch('/admin/run-update-target-mags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        if (data.success) {
+            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${data.message}</span>`;
+            showNotification(data.message, 'success');
+        } else {
+            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            showNotification(data.message || data.error, 'error');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} An error occurred</span>`;
+        showNotification('Error starting target mag update', 'error');
+    });
+}
+
 function runMissingPhotFetch() {
     const btn = document.getElementById('runMissingPhotBtn');
     const statusEl = document.getElementById('missingPhotStatus');

@@ -605,6 +605,29 @@ function sortTargets(telescope, column) {
     }
 }
 
+async function updateTargetMags() {
+    const btn = document.getElementById('updateMagBtn');
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> Updating...`;
+    try {
+        const res = await fetch('/api/targets/update-mags', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Updated`;
+            setTimeout(() => { loadTargets(); }, 2500);
+        } else {
+            btn.innerHTML = origText;
+            alert(data.error || 'Update failed');
+        }
+    } catch(e) {
+        btn.innerHTML = origText;
+        console.error(e);
+    } finally {
+        setTimeout(() => { btn.disabled = false; btn.innerHTML = origText; }, 4000);
+    }
+}
+
 async function loadTargets() {
     try {
         const response = await fetch('/api/targets');
