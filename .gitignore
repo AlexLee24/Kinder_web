@@ -77,3 +77,4 @@ app/log
 app/log/
 app/log/*
 test_photo/
+test_database.md

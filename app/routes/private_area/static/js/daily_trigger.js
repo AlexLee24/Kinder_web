@@ -1347,8 +1347,8 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
 
     tbody.innerHTML = '';
     
-    const checkSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-    const crossSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f44336" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+    const checkSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const crossSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f44336" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
 
     const filterBadgeHTML = (filterName) => {
         if (!filterName) return '';
@@ -1453,8 +1453,11 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
                         let color = '#aaa';
                         if (priorityKey.toLowerCase() === 'urgent') color = '#ef5350';
                         else if (priorityKey.toLowerCase() === 'high') color = '#ff9f43';
-                        return `<span style="color:${color};font-weight:600;font-size:11px;">${p}</span>`;
+                        return `<span style="color:${color};font-weight:600;font-size:12px;">${p}</span>`;
                     })();
+                    const repeatBadge = (log.repeat_count > 0)
+                        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(77,184,255,0.15);border:1px solid rgba(77,184,255,0.35);border-radius:4px;padding:3px 8px;color:#4db8ff;font-weight:600;margin-left:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4db8ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span style="font-size:14px;">x ${log.repeat_count}</span></span>`
+                        : '';
                     
                     const userDisplay = (() => {
                         let mb = membersMap[normalizedUser] || membersMap[user] || null;
@@ -1470,11 +1473,11 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
                             displayName = fullName.split(' ')[0]; // Extract just the first word
 
                             if (mb.picture) {
-                                return `<img src="${mb.picture}" style="width:14px;height:14px;border-radius:50%;object-fit:cover;" title="${fullName}"> ${displayName}`;
+                                return `<img src="${mb.picture}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;" title="${fullName}"><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${displayName}</span>`;
                             } else {
                                 // Fallback to an initial-based avatar or simple text if picture is null
                                 const intl = (displayName || '?').charAt(0).toUpperCase();
-                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:#4db8ff;color:#fff;font-size:9px;font-weight:bold;" title="${fullName}">${intl}</span> ${displayName}`;
+                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#4db8ff;color:#fff;font-size:12px;font-weight:bold;flex-shrink:0;" title="${fullName}">${intl}</span><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${displayName}</span>`;
                             }
                         }
                         return displayName;
@@ -1483,26 +1486,31 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
 
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
-                            <div class="pa-log-cell" style="width:100%;">
-                                <div class="pa-log-cell-top" style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;">
-                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">${userDisplay}</div>
-                                    <div style="flex:0 0 auto;margin:0 8px;text-align:center;">${priorityBadge}</div>
-                                    <div style="flex:0 0 auto;">${editBtn}</div>
+                            <div class="pa-log-cell" style="width:100%;display:flex;flex-direction:column;gap:5px;">
+
+                                <!-- Row 1: Avatar + Name + Edit -->
+                                <div style="display:flex;align-items:center;justify-content:center;width:100%;gap:6px;position:relative;">
+                                    <div style="display:flex;align-items:center;gap:6px;justify-content:center;">${userDisplay}</div>
+                                    <div style="position:absolute;right:0;">${editBtn}</div>
                                 </div>
 
-                                <div class="pa-log-cell-status-row" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px;width:100%;align-items:center;">
-                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Trigger</span><span style="margin-left:6px;">${trigIcon}</span></div>
-                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Observed</span><span style="margin-left:6px;">${obsIcon}</span></div>
+                                <!-- Row 2: Priority + Repeat -->
+                                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                    ${priorityBadge}${repeatBadge}
                                 </div>
 
-                                <div class="pa-log-cell-filters" style="margin-top:8px;width:100%;display:flex;justify-content:space-between;gap:12px;">
-                                    <div class="pa-log-trigger-filters" style="width:48%;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+                                <!-- Row 3: Trigger | Observed -->
+                                <div style="display:flex;gap:6px;width:100%;">
+                                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+                                        <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:#aaa;">Trigger</span>${trigIcon}</div>
                                         ${trigDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;">--</div>' : '')}
                                     </div>
-                                    <div class="pa-log-observed-filters" style="width:48%;display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+                                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;">
+                                        <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:#aaa;">Observed</span>${obsIcon}</div>
                                         ${obsDetail || (isFilterVisible ? '<div style="font-size:11px;color:#555;">--</div>' : '')}
                                     </div>
                                 </div>
+
                             </div>
                         </td>
                     `;
@@ -1510,17 +1518,29 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
                     const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
-                            <div class="pa-log-cell" style="width:100%;">
-                                <div class="pa-log-cell-top" style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:#666;">
-                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;">- ${editBtnEmpty}</div>
-                                    <div style="flex:0 0 auto;margin:0 8px;text-align:center;color:#666;"><span style="color:#777;">—</span></div>
-                                    <div style="flex:0 0 auto;"></div>
+                            <div class="pa-log-cell" style="width:100%;display:flex;flex-direction:column;gap:5px;">
+
+                                <!-- Row 1: — + Edit -->
+                                <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:4px;">
+                                    <span style="font-size:12px;color:#555;">—</span>
+                                    ${editBtnEmpty}
                                 </div>
 
-                                <div class="pa-log-cell-status-row" style="display:flex;justify-content:space-between;gap:12px;margin-top:8px;width:100%;align-items:center;color:#666;">
-                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Trigger</span><span style="margin-left:6px;color:#fff;">-</span></div>
-                                    <div style="width:48%;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><span style="font-size:12px;color:#fff;">Observed</span><span style="margin-left:6px;color:#fff;">-</span></div>
+                                <!-- Row 2: spacer to align with filled cell -->
+                                <div style="height:20px;"></div>
+
+                                <!-- Row 3: Trigger | Observed -->
+                                <div style="display:flex;gap:6px;width:100%;">
+                                    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                        <span style="font-size:12px;color:#444;">Trigger</span>
+                                        <span style="font-size:12px;color:#444;">—</span>
+                                    </div>
+                                    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                        <span style="font-size:12px;color:#444;">Observed</span>
+                                        <span style="font-size:12px;color:#444;">—</span>
+                                    </div>
                                 </div>
+
                             </div>
                         </td>
                     `;
@@ -1656,7 +1676,7 @@ function renderLogFilterRows(type) {
     const container = document.getElementById(`log-${type}-filter-rows`);
     if (!container) return;
     // If editing a calibration target (DARK/BIAS), don't render filters
-    const editTarget = (document.getElementById('log-edit-target-id') || {}).value || '';
+    const editTarget = (document.getElementById('log-edit-target-name') || {}).value || '';
     const editTargetUpper = (editTarget || '').toString().trim().toUpperCase();
     if (editTargetUpper === 'DARK' || editTargetUpper === 'BIAS') {
         container.innerHTML = '';
@@ -1711,9 +1731,11 @@ function openLogModal() {
 
     // Reset hidden date/target (filled in openLogModalEdit)
     document.getElementById('log-edit-date').value = '';
-    document.getElementById('log-edit-target-id').value = '';
+    document.getElementById('log-edit-target-name').value = '';
     const targetDisplay = document.getElementById('log-edit-target-display');
     if (targetDisplay) targetDisplay.textContent = '-';
+    const rcInput = document.getElementById('log-edit-repeat-count');
+    if (rcInput) rcInput.value = 0;
 
     // Reset all fields
     document.getElementById('log-edit-user').value = '';
@@ -1745,7 +1767,7 @@ function openLogModalEdit(uniqueTargetId, dateStr) {
     let isLot = telescope === 'LOT';
     let isSlt = telescope === 'SLT';
 
-    document.getElementById('log-edit-target-id').value = rawTargetId;
+    document.getElementById('log-edit-target-name').value = rawTargetId;
     document.getElementById('log-edit-date').value = dateStr || '';
     document.getElementById('log-edit-telescope').value = telescope || '';
     
@@ -1795,6 +1817,17 @@ function openLogModalEdit(uniqueTargetId, dateStr) {
         if (programInput) programInput.value = programText;
     }
 
+    // Pre-fill repeat_count from target info (for new log) or from existing log
+    const repeatInput = document.getElementById('log-edit-repeat-count');
+    if (repeatInput) {
+        const baseTargetNameForRepeat = rawTargetId;
+        const targetInfoForRepeat = (allTargetsCache || []).find(t => {
+            return (t.name || '').trim() === baseTargetNameForRepeat && (t.telescope || '').toUpperCase() === telescope;
+        }) || (allTargetsCache || []).find(t => (t.name || '').trim() === baseTargetNameForRepeat);
+        repeatInput.value = (log && log.repeat_count != null) ? log.repeat_count
+            : ((targetInfoForRepeat && targetInfoForRepeat.repeat_count) || 0);
+    }
+
     if (!log) return;
 
     // User
@@ -1817,6 +1850,8 @@ function clearLogEditFields() {
     document.getElementById('log-edit-user').value = '';
     document.getElementById('log-edit-priority').value = 'Normal';
     document.getElementById('log-edit-program').value = '';
+    const rcInput = document.getElementById('log-edit-repeat-count');
+    if (rcInput) rcInput.value = 0;
     document.getElementById('log-edit-trigger-status').checked = false;
     document.getElementById('log-edit-obs-status').checked = false;
     logTriggerFilters = [];
@@ -1827,7 +1862,7 @@ function clearLogEditFields() {
 }
 
 function deleteObservationLog() {
-    const target_name = document.getElementById('log-edit-target-id').value;
+    const target_name = document.getElementById('log-edit-target-name').value;
     const obs_date = document.getElementById('log-edit-date').value;
     const telescope_use = document.getElementById('log-edit-telescope').value || null;
 
@@ -1877,7 +1912,7 @@ function toggleLogFields() {
 function saveObservationLog(event) {
     if (event) event.preventDefault();
 
-    let target_name = document.getElementById('log-edit-target-id').value;
+    let target_name = document.getElementById('log-edit-target-name').value;
     const obs_date = document.getElementById('log-edit-date').value;
     const telescope_use = document.getElementById('log-edit-telescope').value || null;
     const user_id = document.getElementById('log-edit-user').value;
@@ -1909,7 +1944,8 @@ function saveObservationLog(event) {
         observed_exp:    observedPacked.exp,
         observed_count:  observedPacked.count,
         priority:        priority,
-        telescope_use:   telescope_use
+        telescope_use:   telescope_use,
+        repeat_count:    parseInt((document.getElementById('log-edit-repeat-count') || {}).value) || 0
     };
 
     fetch('/api/observation_logs', {

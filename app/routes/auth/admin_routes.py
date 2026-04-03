@@ -559,6 +559,25 @@ def photometry_fetch_status():
     return jsonify({'running': is_running(), **progress})
 
 
+@admin_bp.route('/admin/run-missing-phot-fetch', methods=['POST'])
+def run_missing_phot_fetch():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+
+    from modules.phot_scheduler import fetch_missing_photometry, is_missing_running
+    import threading
+
+    if is_missing_running():
+        return jsonify({'success': False, 'message': 'Missing phot check is already running'}), 409
+
+    def _run():
+        fetch_missing_photometry()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({'success': True, 'message': 'Missing photometry check started in background'})
+
+
 # ===============================================================================
 # DEFAULT SOURCE PERMISSIONS
 # ===============================================================================

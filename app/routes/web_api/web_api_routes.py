@@ -72,25 +72,35 @@ def api_test():
         }
     })
 
-@web_api_bp.route('/api/v1/observation_targets', methods=['GET'])
+@web_api_bp.route('/api/v1/observation_targets', methods=['GET', 'POST'])
 def api_v1_observation_targets():
     """
-    Public API: Get observation target list (SLT and/or LOT).
-    Auth:  X-API-Key header  OR  ?api_key= query param
-    Filter: ?telescope=SLT|LOT  (optional, returns both if omitted)
-    
-    Response example:
-    {
-      "success": true,
-      "generated_at": "2026-03-09T12:00:00",
-      "requested_by": "user@example.com",
-      "SLT": [ {...}, ... ],
-      "LOT": [ {...}, ... ]
-    }
-    """
-    # Accept key via header or query param
-    api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
+    API: Get or add observation targets.
+    Auth: X-API-Key header OR ?api_key= query param
 
+    GET /api/v1/observation_targets?telescope=SLT|LOT
+        Returns active targets. telescope param is optional.
+
+    POST /api/v1/observation_targets
+        Add a new observation target. Requires is_great_lab_member or is_admin role.
+        Body (JSON):
+          {
+            "telescope":    "SLT",              -- required, SLT or LOT
+            "name":         "SN2025abc",        -- required
+            "ra":           "12:34:56.7",       -- required
+            "dec":          "+12:34:56",        -- required
+            "mag":          18.5,               -- optional
+            "priority":     "Normal",           -- optional, Normal/High/Urgent
+            "repeat_count": 0,                  -- optional
+            "filters": [                        -- optional
+              {"filter": "rp", "exp": 300, "count": 3}
+            ],
+            "plan":         "Note text",        -- optional
+            "program":      "R01",              -- optional (LOT only)
+            "note_gl":      "GL note"           -- optional
+          }
+    """
+    api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
     if not api_key:
         return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
 
@@ -99,36 +109,96 @@ def api_v1_observation_targets():
     if not user:
         return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
 
-    # Optional telescope filter
-    telescope_filter = request.args.get('telescope', '').strip().upper()
-    if telescope_filter and telescope_filter not in ('SLT', 'LOT'):
-        return jsonify({'success': False, 'error': 'telescope must be SLT or LOT'}), 400
+    # ── GET ──────────────────────────────────────────────────────────────────
+    if request.method == 'GET':
+        telescope_filter = request.args.get('telescope', '').strip().upper()
+        if telescope_filter and telescope_filter not in ('SLT', 'LOT'):
+            return jsonify({'success': False, 'error': 'telescope must be SLT or LOT'}), 400
+
+        try:
+            all_targets = get_observation_targets()
+            all_targets = [t for t in all_targets if t.get('is_active', True)]
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
+
+        slt = [t for t in all_targets if t['telescope'] == 'SLT']
+        lot = [t for t in all_targets if t['telescope'] == 'LOT']
+
+        resp = {
+            'success': True,
+            'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'requested_by': user.get('email'),
+        }
+        if telescope_filter == 'SLT':
+            resp['SLT'] = slt
+        elif telescope_filter == 'LOT':
+            resp['LOT'] = lot
+        else:
+            resp['SLT'] = slt
+            resp['LOT'] = lot
+        return jsonify(resp)
+
+    # ── POST ─────────────────────────────────────────────────────────────────
+    is_member = user.get('is_great_lab_member', False)
+    is_admin  = user.get('is_admin', False)
+    if not (is_member or is_admin):
+        return jsonify({'success': False, 'error': 'Forbidden: requires GREAT Lab member or admin role'}), 403
+
+    data = request.get_json(silent=True) or {}
+
+    telescope = (data.get('telescope') or '').strip().upper()
+    name      = (data.get('name') or '').strip()
+    ra        = (data.get('ra') or '').strip()
+    dec       = (data.get('dec') or '').strip()
+
+    if not telescope or telescope not in ('SLT', 'LOT'):
+        return jsonify({'success': False, 'error': 'telescope is required and must be SLT or LOT'}), 400
+    if not name:
+        return jsonify({'success': False, 'error': 'name is required'}), 400
+    if not ra or not dec:
+        return jsonify({'success': False, 'error': 'ra and dec are required'}), 400
+
+    priority = (data.get('priority') or 'Normal').strip()
+    if priority not in ('Normal', 'High', 'Urgent'):
+        return jsonify({'success': False, 'error': 'priority must be Normal, High, or Urgent'}), 400
 
     try:
-        all_targets = get_observation_targets()
-        # Filter out inactive targets
-        all_targets = [t for t in all_targets if t.get('is_active', True)]
+        from modules.web_postgres_database import save_observation_target
+        new_id = save_observation_target(
+            telescope=telescope,
+            name=name,
+            mag=data.get('mag'),
+            ra=ra,
+            dec=dec,
+            priority=priority,
+            repeat_count=int(data.get('repeat_count') or 0),
+            auto_exposure=bool(data.get('auto_exposure', True)),
+            filters=data.get('filters', []),
+            plan=data.get('plan'),
+            program=data.get('program'),
+            note_gl=data.get('note_gl', ''),
+            user_email=user.get('email')
+        )
+        if new_id:
+            return jsonify({
+                'success': True,
+                'message': f'Target {name} added to {telescope}',
+                'id': new_id,
+                'target': {
+                    'id': new_id,
+                    'telescope': telescope,
+                    'name': name,
+                    'ra': ra,
+                    'dec': dec,
+                    'priority': priority,
+                    'repeat_count': int(data.get('repeat_count') or 0),
+                }
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save target'}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
-
-    slt = [t for t in all_targets if t['telescope'] == 'SLT']
-    lot = [t for t in all_targets if t['telescope'] == 'LOT']
-
-    resp = {
-        'success': True,
-        'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        'requested_by': user.get('email'),
-    }
-
-    if telescope_filter == 'SLT':
-        resp['SLT'] = slt
-    elif telescope_filter == 'LOT':
-        resp['LOT'] = lot
-    else:
-        resp['SLT'] = slt
-        resp['LOT'] = lot
-
-    return jsonify(resp)
+        logger.error(f'api_v1_observation_targets POST error: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @web_api_bp.route('/api/v1/observation_logs', methods=['GET', 'POST'])
 def api_v1_observation_logs():

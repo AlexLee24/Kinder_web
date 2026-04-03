@@ -816,20 +816,20 @@ def check_object_access(object_name, user_email):
                 return False
             if user['is_admin']:
                 return True
-                
-            # 2. Check if permissions set
+
+            # 2. Check if permissions set — if no record, allow all logged-in users
             cursor.execute('SELECT COUNT(*) as count FROM object_permissions WHERE object_name = %s', (object_name,))
             row = cursor.fetchone()
             if row['count'] == 0:
-                return False
-                
+                return True  # No restrictions → open to all logged-in users
+
             # 3. Check group
             cursor.execute('''
                 SELECT 1 FROM object_permissions op
                 JOIN user_groups ug ON op.group_name = ug.group_name
                 WHERE op.object_name = %s AND ug.user_email = %s
             ''', (object_name, user_email))
-            
+
             return cursor.fetchone() is not None
 
 # --- Source Permissions ---
@@ -1153,13 +1153,17 @@ def get_observation_logs(year, month):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            # Ensure columns added in later migrations exist before SELECT
+            cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS repeat_count INTEGER DEFAULT 0')
+            conn.commit()
             try:
                 cursor.execute('''
                     SELECT l.id,
                            l.target_name,
                            l.obs_date, l.user_name, l.is_triggered, l.is_observed,
                            trigger_filter, trigger_exp, trigger_count,
-                           observed_filter, observed_exp, observed_count, priority, telescope_use
+                           observed_filter, observed_exp, observed_count, priority, telescope_use,
+                           COALESCE(l.repeat_count, 0) AS repeat_count
                     FROM observation_logs l
                     WHERE EXTRACT(YEAR FROM l.obs_date) = %s AND EXTRACT(MONTH FROM l.obs_date) = %s
                 ''', (year, month))
@@ -1193,7 +1197,7 @@ def get_observation_logs(year, month):
 def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_observed,
                             trigger_filter=None, trigger_exp=None, trigger_count=None,
                             observed_filter=None, observed_exp=None, observed_count=None,
-                            priority=None, telescope_use=None):
+                            priority=None, telescope_use=None, repeat_count=0):
     try:
         trigger_filter, trigger_exp, trigger_count = _normalize_log_filter_columns(
             trigger_filter, trigger_exp, trigger_count
@@ -1208,6 +1212,7 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS target_name TEXT')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS priority VARCHAR(20)')
                 cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS telescope_use VARCHAR(10)')
+                cursor.execute('ALTER TABLE observation_logs ADD COLUMN IF NOT EXISTS repeat_count INTEGER DEFAULT 0')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_exp TYPE TEXT USING trigger_exp::TEXT')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN trigger_count TYPE TEXT USING trigger_count::TEXT')
                 cursor.execute('ALTER TABLE observation_logs ALTER COLUMN observed_exp TYPE TEXT USING observed_exp::TEXT')
@@ -1232,13 +1237,14 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                         observed_count = %s,
                         priority = %s,
                         telescope_use = %s,
+                        repeat_count = %s,
                         created_at = CURRENT_TIMESTAMP
                     WHERE target_name = %s AND obs_date = %s AND telescope_use = %s
                 ''', (
                     user_name, is_triggered, is_observed,
                     trigger_filter, trigger_exp, trigger_count,
                     observed_filter, observed_exp, observed_count,
-                    priority, telescope_use,
+                    priority, telescope_use, repeat_count,
                     target_name, obs_date, telescope_use
                 ))
 
@@ -1247,12 +1253,12 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                         INSERT INTO observation_logs
                             (target_name, obs_date, user_name, is_triggered, is_observed,
                              trigger_filter, trigger_exp, trigger_count,
-                             observed_filter, observed_exp, observed_count, priority, telescope_use)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                             observed_filter, observed_exp, observed_count, priority, telescope_use, repeat_count)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
                         target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
-                        observed_filter, observed_exp, observed_count, priority, telescope_use
+                        observed_filter, observed_exp, observed_count, priority, telescope_use, repeat_count
                     ))
             except Exception as write_err:
                 conn.rollback()
@@ -1261,12 +1267,12 @@ def upsert_observation_log(target_name, obs_date, user_name, is_triggered, is_ob
                     INSERT INTO observation_logs
                         (target_name, obs_date, user_name, is_triggered, is_observed,
                          trigger_filter, trigger_exp, trigger_count,
-                         observed_filter, observed_exp, observed_count, priority, telescope_use)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                         observed_filter, observed_exp, observed_count, priority, telescope_use, repeat_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
                         target_name, obs_date, user_name, is_triggered, is_observed,
                         trigger_filter, trigger_exp, trigger_count,
-                        observed_filter, observed_exp, observed_count, priority, telescope_use
+                        observed_filter, observed_exp, observed_count, priority, telescope_use, repeat_count
                     ))
             conn.commit()
             cursor.close()

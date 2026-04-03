@@ -1158,6 +1158,37 @@ function runPhotometryFetch() {
     });
 }
 
+function runMissingPhotFetch() {
+    const btn = document.getElementById('runMissingPhotBtn');
+    const statusEl = document.getElementById('missingPhotStatus');
+
+    btn.disabled = true;
+    statusEl.innerHTML = 'Starting...';
+
+    fetch('/admin/run-missing-phot-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${data.message}</span>`;
+            showNotification(data.message, 'success');
+            btn.disabled = false;
+        } else {
+            btn.disabled = false;
+            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            showNotification(data.message || data.error, 'error');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        btn.disabled = false;
+        statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} An error occurred</span>`;
+        showNotification('Error starting missing phot check', 'error');
+    });
+}
+
 function cleanDocumentImages() {
     if (!confirm('Are you sure you want to clean up unused uploaded images? This will permanently delete images not referenced in any markdown documents.')) {
         return;

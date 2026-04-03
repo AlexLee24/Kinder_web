@@ -118,12 +118,13 @@ register_routes(app)
 # ===============================================================================
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
-from modules.phot_scheduler import fetch_inbox_photometry
+from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry
 
 _scheduler = BackgroundScheduler(daemon=True)
 if not config.DEBUG:
     _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
 _scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
+_scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
 _scheduler.start()
 if not config.DEBUG:
     run_daily_backup()  # run once immediately on startup

@@ -290,13 +290,13 @@
 
     <!-- Weather Modal -->
     <div id="weatherModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
-        <div class="pa-modal-box" style="max-width:900px;width:95vw;">
-            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;">
+        <div class="pa-modal-box" style="max-width:900px;width:95vw;height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;flex-shrink:0;">
                 <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Weather · Lulin Observatory</h3>
                 <button type="button" onclick="document.getElementById('weatherModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
             </div>
-            <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;height:min(820px,72vh);border:none;display:block;"></iframe>
-            <div style="text-align:right;padding-top:6px;font-size:0.75rem;opacity:0.45;">
+            <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;flex:1;border:none;display:block;min-height:0;"></iframe>
+            <div style="text-align:right;padding-top:6px;font-size:0.75rem;opacity:0.45;flex-shrink:0;">
                 <!-- DO NOT REMOVE THIS LINK -->
                 <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener" style="color:#fff;text-decoration:none;">meteoblue</a>
             </div>
@@ -438,7 +438,7 @@
                 </div>
 
                 <input type="hidden" id="log-edit-date" required>
-                <input type="hidden" id="log-edit-target-id" required>
+                <input type="hidden" id="log-edit-target-name" required>
                 <input type="hidden" id="log-edit-telescope" required>
 
                 <div class="pa-form-row" style="margin-top: 15px;">
@@ -449,6 +449,10 @@
                             <option value="High">High</option>
                             <option value="Urgent">Urgent</option>
                         </select>
+                    </div>
+                    <div class="pa-field" style="width: 80px;">
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Repeat</span>
+                        <input type="number" id="log-edit-repeat-count" class="pa-input" min="0" step="1" value="0" style="width:100%;">
                     </div>
                     <div class="pa-field" style="width: 100%; margin-top: 12px;">
                         <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Program</span>

@@ -853,7 +853,8 @@ def api_get_observation_logs():
                 data.get('observed_exp') if data.get('observed_exp') is not None else None,
                 data.get('observed_count') if data.get('observed_count') is not None else None,
                 priority=priority,
-                telescope_use=telescope_use
+                telescope_use=telescope_use,
+                repeat_count=int(data.get('repeat_count') or 0)
             )
             
             if success:
