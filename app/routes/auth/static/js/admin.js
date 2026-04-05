@@ -1499,3 +1499,74 @@ function saveDefaultSourcePermissions() {
         showNotification('Save failed', 'error');
     });
 }
+
+// ============ TNS Manual Operations ============
+const _TNS_BTNS = ['tnsDlHrBtn', 'tnsDlDailyBtn', 'tnsSnoozeBtn'];
+
+function _tnsSetBtns(disabled) {
+    _TNS_BTNS.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+}
+
+function _tnsPoll() {
+    const statusEl = document.getElementById('tnsTaskStatus');
+    const poll = setInterval(() => {
+        fetch('/admin/tns-task-status')
+            .then(r => r.json())
+            .then(s => {
+                if (!s.running) {
+                    clearInterval(poll);
+                    _tnsSetBtns(false);
+                    statusEl.innerHTML = '<span style="color:#98c379;">' + ICONS.check + ' ' + s.message + '</span>';
+                } else {
+                    statusEl.textContent = 'Running...';
+                }
+            })
+            .catch(() => { clearInterval(poll); _tnsSetBtns(false); });
+    }, 3000);
+}
+
+function runTnsHourly() {
+    const statusEl = document.getElementById('tnsTaskStatus');
+    _tnsSetBtns(true);
+    statusEl.textContent = 'Starting...';
+    fetch('/admin/tns-download-hourly', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+        })
+        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
+}
+
+function runTnsDaily() {
+    const statusEl = document.getElementById('tnsTaskStatus');
+    const dateVal = document.getElementById('tnsDailyDate').value;
+    _tnsSetBtns(true);
+    statusEl.textContent = 'Starting...';
+    fetch('/admin/tns-download-daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dateVal ? { date: dateVal } : {})
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+        })
+        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
+}
+
+function runTnsSnooze() {
+    const statusEl = document.getElementById('tnsTaskStatus');
+    _tnsSetBtns(true);
+    statusEl.textContent = 'Starting...';
+    fetch('/admin/tns-auto-snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+        })
+        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
+}
+
+

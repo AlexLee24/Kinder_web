@@ -66,11 +66,7 @@
             </div>
             
             <div class="top-right-group">
-                <div class="coord-box" title="RA / Dec">
-                    RA: {{ "%.5f"|format(object_data.ra) if object_data.ra else '--' }}&deg; &nbsp;|&nbsp;
-                    Dec: {{ "%.5f"|format(object_data.declination) if object_data.declination else '--' }}&deg;
-                </div>
-                <button class="btn-modern" onclick="copyCoordinates()">Copy Coords</button>
+                <button class="btn-modern" onclick="openFindingChart()">Finding Chart</button>
                 <button class="btn-modern" onclick="openVisibilityPlot()">Visibility Chart</button>
             </div>
         </div>
@@ -93,12 +89,12 @@
                             <span class="detail-value" id="internalName" style="font-size: 0.85rem; line-height: 1.3;">{{ object_data.internal_names.split(',')|map('trim')|join(', ') if object_data.internal_names else 'N/A' }}</span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label">RA (HMS)</span>
-                            <span class="detail-value" id="raHMS"></span>
+                            <span class="detail-label" id="raLabel">RA (HMS)</span>
+                            <span class="detail-value" id="raCoord" style="cursor:pointer;" onclick="toggleCoordMode()" title="Click to toggle degrees"></span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label">Dec (DMS)</span>
-                            <span class="detail-value" id="decDMS"></span>
+                            <span class="detail-label" id="decLabel">Dec (DMS)</span>
+                            <span class="detail-value" id="decCoord" style="cursor:pointer;" onclick="toggleCoordMode()" title="Click to toggle HMS"></span>
                         </li>
                         <li class="detail-item">
                             <span class="detail-label">Discovery Date</span>
@@ -141,6 +137,7 @@
                         <a href="javascript:void(0)" class="link-btn" onclick="openNED()">NED</a>
                         <a href="javascript:void(0)" class="link-btn" onclick="openDESI()">DESI LS</a>
                         <a href="javascript:void(0)" class="link-btn" onclick="openExtinction()">Extinction</a>
+                        <a href="javascript:void(0)" class="link-btn" id="copyCoordBtn" onclick="copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
                     </div>
                     
                     {% if session.user and session.user.is_admin %}
@@ -223,7 +220,7 @@
                             </label>
                             <label class="phot-toggle-label">
                                 <input type="checkbox" id="applyKCorr" onchange="loadPhotometryPlot()">
-                                <span>K-correction</span>
+                                <span class="phot-tip" data-tip="K = 2.5 × log₁₀(1 + z) , applied: mᶜᵒʳʳ = m − K">K-correction</span>
                             </label>
                         </div>
                     </div>
@@ -240,6 +237,7 @@
                     </div>
                 </div>
                 <div class="panel-body">
+                    <div id="telescopeToggles" style="display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;"></div>
                     <div style="min-height:400px; display:flex; position:relative;" id="photometryPlotContainer">
                         <div id="photometryLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Loading data...
@@ -249,18 +247,29 @@
                 </div>
             </div>
 
-            <!-- DETECT -->
-            {% if visibility.detect %}
+            <!-- Comments -->
+            {% if visibility.comments %}
             <div class="panel-card">
                 <div class="panel-header">
-                    <h3>DETECT</h3>
-                    <div class="action-row">
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Run/Refresh</button>
-                    </div>
+                    <h3>Comments</h3>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
                 </div>
-                <div class="panel-body" id="detectBody" style="display:flex; flex-direction:column; gap:10px; color:#888; overflow-y:auto; max-height:400px; padding-right:8px;">
-                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
-                        <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
+                <div class="panel-body">
+                    <div id="addCommentForm" style="display:none; margin-bottom:16px;">
+                        <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                            <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
+                                <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
+                        <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
+                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
+                        <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
                     </div>
                 </div>
             </div>
@@ -289,29 +298,18 @@
             </div>
             {% endif %}
 
-            <!-- Comments -->
-            {% if visibility.comments %}
+            <!-- DETECT -->
+            {% if visibility.detect %}
             <div class="panel-card">
                 <div class="panel-header">
-                    <h3>Comments</h3>
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
-                </div>
-                <div class="panel-body">
-                    <div id="addCommentForm" style="display:none; margin-bottom:16px;">
-                        <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-                            <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
-                            <div style="display:flex; gap:8px;">
-                                <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
-                                <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
-                            </div>
-                        </div>
+                    <h3>DETECT</h3>
+                    <div class="action-row">
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="forceDetectRun()">Run/Refresh</button>
                     </div>
-                    
-                    <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
-                        <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
-                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
-                        <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
+                </div>
+                <div class="panel-body" id="detectBody" style="display:flex; flex-direction:column; gap:10px; color:#888; overflow-y:auto; max-height:400px; padding-right:8px;">
+                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                        <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
                     </div>
                 </div>
             </div>
@@ -656,5 +654,28 @@ MJD         magnitude  error   filter  telescope
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous" async></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
+    <script>
+    (function () {
+        const tip = document.createElement('div');
+        tip.id = 'kinder-tooltip';
+        document.body.appendChild(tip);
+        document.querySelectorAll('[data-tip]').forEach(el => {
+            el.addEventListener('mouseenter', function (e) {
+                tip.textContent = this.dataset.tip;
+                tip.style.opacity = '1';
+                _positionTip(e);
+            });
+            el.addEventListener('mousemove', _positionTip);
+            el.addEventListener('mouseleave', function () {
+                tip.style.opacity = '0';
+            });
+        });
+        function _positionTip(e) {
+            const GAP = 10;
+            tip.style.left = e.clientX + 'px';
+            tip.style.top  = (e.clientY - tip.offsetHeight - GAP) + 'px';
+        }
+    })();
+    </script>
 </body>
 </html>

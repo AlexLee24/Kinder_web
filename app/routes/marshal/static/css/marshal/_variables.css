@@ -53,3 +53,8 @@
     --transition-fast: 0.3s ease;
     --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Fluid base font-size: scales from 13px (≤714px) → 16px (≥1430px) */
+html {
+    font-size: clamp(13px, calc(10px + 0.42vw), 16px);
+}

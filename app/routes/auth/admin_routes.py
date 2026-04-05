@@ -640,3 +640,118 @@ def search_sources():
     except Exception as e:
         logger.error(f'sources/search error: {e}')
         return jsonify({'success': True, 'sources': []})
+
+
+# ===============================================================================
+# TNS MANUAL OPERATIONS
+# ===============================================================================
+_tns_task_status = {'running': False, 'message': ''}
+
+@admin_bp.route('/admin/tns-download-hourly', methods=['POST'])
+def tns_download_hourly():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    if _tns_task_status['running']:
+        return jsonify({'success': False, 'message': 'A TNS task is already running'}), 409
+
+    import threading
+    from datetime import datetime, timezone
+
+    def _run():
+        _tns_task_status['running'] = True
+        _tns_task_status['message'] = 'Running...'
+        try:
+            from modules.TNS_object_fetch import download_TNS_api_hr, addin_database, auto_snoozed, SAVE_DIR
+            hr = f"{datetime.now(timezone.utc).hour:02d}"
+            if download_TNS_api_hr(hr):
+                work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
+                addin_database(str(work_csv))
+                auto_snoozed(datetime.now(timezone.utc))
+                _tns_task_status['message'] = f'Hourly download (hr={hr}) + import + snooze done.'
+            else:
+                _tns_task_status['message'] = f'Download failed for hr={hr}.'
+        except Exception as e:
+            logger.exception('TNS hourly task error: %s', e)
+            _tns_task_status['message'] = f'Error: {e}'
+        finally:
+            _tns_task_status['running'] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True, 'message': 'TNS hourly download started in background'})
+
+
+@admin_bp.route('/admin/tns-download-daily', methods=['POST'])
+def tns_download_daily():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    if _tns_task_status['running']:
+        return jsonify({'success': False, 'message': 'A TNS task is already running'}), 409
+
+    import threading
+    from datetime import datetime, timezone, timedelta
+
+    data = request.get_json(silent=True) or {}
+    date_str = data.get('date', '')  # optional YYYY-MM-DD override
+
+    def _run():
+        _tns_task_status['running'] = True
+        _tns_task_status['message'] = 'Running...'
+        try:
+            from modules.TNS_object_fetch import download_TNS_api, addin_database, auto_snoozed, SAVE_DIR
+            if date_str:
+                try:
+                    dt = datetime.strptime(date_str, '%Y-%m-%d')
+                except ValueError:
+                    _tns_task_status['message'] = 'Invalid date format'
+                    return
+            else:
+                dt = datetime.now(timezone.utc) - timedelta(days=1)
+            if download_TNS_api(dt.year, dt.month, dt.day):
+                work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
+                addin_database(str(work_csv))
+                auto_snoozed(datetime.now(timezone.utc))
+                _tns_task_status['message'] = f'Daily download ({dt.date()}) + import + snooze done.'
+            else:
+                _tns_task_status['message'] = f'Download failed for {dt.date()}.'
+        except Exception as e:
+            logger.exception('TNS daily task error: %s', e)
+            _tns_task_status['message'] = f'Error: {e}'
+        finally:
+            _tns_task_status['running'] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True, 'message': 'TNS daily download started in background'})
+
+
+@admin_bp.route('/admin/tns-auto-snooze', methods=['POST'])
+def tns_auto_snooze():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    if _tns_task_status['running']:
+        return jsonify({'success': False, 'message': 'A TNS task is already running'}), 409
+
+    import threading
+    from datetime import datetime, timezone
+
+    def _run():
+        _tns_task_status['running'] = True
+        _tns_task_status['message'] = 'Running...'
+        try:
+            from modules.TNS_object_fetch import auto_snoozed
+            auto_snoozed(datetime.now(timezone.utc))
+            _tns_task_status['message'] = 'Auto-snooze completed.'
+        except Exception as e:
+            logger.exception('TNS auto-snooze error: %s', e)
+            _tns_task_status['message'] = f'Error: {e}'
+        finally:
+            _tns_task_status['running'] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True, 'message': 'Auto-snooze started in background'})
+
+
+@admin_bp.route('/admin/tns-task-status')
+def tns_task_status():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    return jsonify(_tns_task_status)

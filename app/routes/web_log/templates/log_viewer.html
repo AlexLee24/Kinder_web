@@ -221,6 +221,28 @@
         .l-debug   { color: rgba(255,255,255,0.38); }
         .l-sep     { color: rgba(255,255,255,0.22); }
         .l-ts      { color: rgba(255,255,255,0.30); }
+
+        /* Source tabs */
+        .source-tabs { display: flex; gap: 4px; }
+        .src-tab {
+            background: rgba(0,0,0,0.25);
+            color: var(--text-muted);
+            border: 1px solid var(--glass-border);
+            border-radius: 7px;
+            padding: 5px 11px;
+            font-size: 0.8rem;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background .2s, color .2s;
+        }
+        .src-tab:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+        .src-tab.active {
+            background: rgba(197,160,89,0.2);
+            color: var(--accent);
+            border-color: rgba(197,160,89,0.4);
+        }
+        .ctrl-date-group { display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
 <body>
@@ -234,9 +256,17 @@
     <div class="log-wrapper">
         <!-- Controls -->
         <div class="log-controls-bar">
+            <div class="source-tabs">
+                <button class="src-tab active" data-mode="web" onclick="switchMode('web')">Web</button>
+                <button class="src-tab" data-mode="gcn_alert" onclick="switchMode('gcn_alert')">GCN Alert</button>
+                <button class="src-tab" data-mode="detect" onclick="switchMode('detect')">DETECT</button>
+                <button class="src-tab" data-mode="tns_fetch" onclick="switchMode('tns_fetch')">TNS Fetch</button>
+            </div>
             <span id="liveDot" class="live-dot off"></span>
-            <span class="ctrl-label-text">Date:</span>
-            <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
+            <div class="ctrl-date-group" id="dateControls">
+                <span class="ctrl-label-text">Date:</span>
+                <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
+            </div>
             <label class="ctrl-follow">
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
@@ -272,6 +302,13 @@
         let logOffset = 0;
         let lineCount = 0;
         let pollTimer = null;
+        let currentMode = 'web'; // 'web' | 'gcn_alert' | 'detect' | 'tns_fetch'
+
+        const DAEMON_SOURCES = {
+            gcn_alert: { label: 'GCN Alert',  file: 'gcn_alert.log' },
+            detect:    { label: 'DETECT',     file: 'detect.log'    },
+            tns_fetch: { label: 'TNS Fetch',  file: 'tns_fetch.log' },
+        };
 
         function esc(s) {
             return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -290,22 +327,35 @@
             return SRC_COLORS[h % SRC_COLORS.length];
         }
 
-        const LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)\] (.*)/;
+        // Web log: "YYYY-MM-DD HH:MM:SS [source] message"
+        const WEB_LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)\] (.*)/;
+        // Daemon log: "YYYY-MM-DD HH:MM:SS,mmm LEVEL message"
+        const DAEMON_LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+)?) (\w+) (.*)/;
 
         function colorize(text) {
             return text.split('\n').map(line => {
                 if (line === '') return '<span style="display:block;height:0"></span>';
-                const m = LOG_RE.exec(line);
+                let m = WEB_LOG_RE.exec(line);
                 if (m) {
                     const [, ts, src, msg] = m;
                     let msgCls = 'l-info';
-                    if (/\bERROR\b/i.test(msg))         msgCls = 'l-error';
+                    if (/\bERROR\b/i.test(msg))          msgCls = 'l-error';
                     else if (/\bWARN(ING)?\b/i.test(msg)) msgCls = 'l-warning';
-                    else if (/\bDEBUG\b/i.test(msg))      msgCls = 'l-debug';
+                    else if (/\bDEBUG\b/i.test(msg))       msgCls = 'l-debug';
                     const sc = sourceColor(src);
                     return `<span class="l-ts">${esc(ts)}</span> <span style="color:${sc}">[${esc(src)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
                 }
-                // fallback for non-standard lines (separators, etc.)
+                m = DAEMON_LOG_RE.exec(line);
+                if (m) {
+                    const [, ts, level, msg] = m;
+                    const lvlUp = level.toUpperCase();
+                    let msgCls = 'l-info';
+                    if (lvlUp === 'ERROR' || lvlUp === 'CRITICAL') msgCls = 'l-error';
+                    else if (lvlUp === 'WARNING')                   msgCls = 'l-warning';
+                    else if (lvlUp === 'DEBUG')                     msgCls = 'l-debug';
+                    const lvlColor = {ERROR:'#ff7b72',CRITICAL:'#ff7b72',WARNING:'#e3b341',INFO:'rgba(255,255,255,0.55)',DEBUG:'rgba(255,255,255,0.3)'}[lvlUp] || 'rgba(255,255,255,0.55)';
+                    return `<span class="l-ts">${esc(ts)}</span> <span style="color:${lvlColor}">[${esc(level)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
+                }
                 let cls = 'l-info';
                 if (/^[-=]{3}/.test(line)) cls = 'l-sep';
                 return `<span class="${cls}">${esc(line)}</span>`;
@@ -343,8 +393,13 @@
             }
         }
 
-        async function fetchContent(date, offset) {
+        async function fetchWebContent(date, offset) {
             const res = await fetch(`/api/log/content?date=${encodeURIComponent(date)}&offset=${offset}`);
+            return await res.json();
+        }
+
+        async function fetchDaemonContent(source, offset) {
+            const res = await fetch(`/api/log/daemon/content?source=${encodeURIComponent(source)}&offset=${offset}`);
             return await res.json();
         }
 
@@ -370,7 +425,7 @@
             document.getElementById('statBytes').textContent = '0 B';
 
             try {
-                const data = await fetchContent(date, 0);
+                const data = await fetchWebContent(date, 0);
                 if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
                 
                 const content = data.content || '(No entries yet)';
@@ -412,9 +467,54 @@
             }
         }
 
+        async function loadDaemon(source) {
+            showLoading(true);
+            logOffset = 0;
+            lineCount = 0;
+            document.getElementById('logPre').innerHTML = '';
+            await new Promise(r => setTimeout(r, 10));
+
+            const info = DAEMON_SOURCES[source];
+            document.getElementById('statDate').textContent = info.label;
+            document.getElementById('logFileName').textContent = info.file;
+            document.getElementById('statLines').textContent = 'Lines: 0';
+            document.getElementById('statBytes').textContent = '0 B';
+
+            try {
+                const data = await fetchDaemonContent(source, 0);
+                if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
+                const content = data.content || '(No entries yet)';
+                const allLines = content.split('\n');
+                lineCount = allLines.filter(l => l.trim()).length;
+                const MAX_RENDER_LINES = 300;
+                let renderLines = allLines;
+                let truncated = false;
+                if (renderLines.length > MAX_RENDER_LINES) {
+                    renderLines = renderLines.slice(-MAX_RENDER_LINES);
+                    truncated = true;
+                }
+                const pre = document.getElementById('logPre');
+                pre.innerHTML = colorize(renderLines.join('\n'));
+                if (truncated) {
+                    const truncMsg = document.createElement('div');
+                    truncMsg.style.cssText = 'text-align:center;padding:8px;color:#e3b341;font-size:0.85rem;border-bottom:1px dashed rgba(255,255,255,0.1);margin-bottom:10px';
+                    truncMsg.innerHTML = `<i>--- Only show ${MAX_RENDER_LINES} lines ---</i>`;
+                    pre.insertBefore(truncMsg, pre.firstChild);
+                }
+                document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
+                document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
+                logOffset = data.offset || 0;
+                scrollToBottom();
+            } finally {
+                showLoading(false);
+            }
+        }
+
         async function pollNew() {
             try {
-                const data = await fetchContent(currentDate, logOffset);
+                const data = currentMode === 'web'
+                    ? await fetchWebContent(currentDate, logOffset)
+                    : await fetchDaemonContent(currentMode, logOffset);
                 if (data.content) {
                     appendHtml(data.content);
                     logOffset = data.offset;
@@ -446,7 +546,29 @@
             });
         }
 
-        function manualRefresh() { loadFull(currentDate); }
+        function switchMode(mode) {
+            if (currentMode === mode) return;
+            currentMode = mode;
+            stopPoll();
+            document.querySelectorAll('.src-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === mode);
+            });
+            const dc = document.getElementById('dateControls');
+            if (mode === 'web') {
+                dc.style.display = 'flex';
+                loadFull(currentDate).then(() => {
+                    if (currentDate === todayStr) startPoll();
+                });
+            } else {
+                dc.style.display = 'none';
+                loadDaemon(mode).then(() => startPoll());
+            }
+        }
+
+        function manualRefresh() {
+            if (currentMode === 'web') loadFull(currentDate);
+            else loadDaemon(currentMode);
+        }
 
         function clearDisplay() {
             document.getElementById('logPre').innerHTML = '';
@@ -464,20 +586,21 @@
 
             if (!dates.length) {
                 sel.innerHTML = '<option value="">No logs available</option>';
-                return;
+            } else {
+                dates.forEach(d => {
+                    const o = document.createElement('option');
+                    o.value = d;
+                    o.textContent = d === todayStr ? `${d}  (Today)` : d;
+                    if (d === todayStr) o.selected = true;
+                    sel.appendChild(o);
+                });
+                currentDate = dates.includes(todayStr) ? todayStr : dates[0];
+                sel.value = currentDate;
             }
 
-            dates.forEach(d => {
-                const o = document.createElement('option');
-                o.value = d;
-                o.textContent = d === todayStr ? `${d}  (Today)` : d;
-                if (d === todayStr) o.selected = true;
-                sel.appendChild(o);
+            loadFull(currentDate).then(() => {
+                if (currentDate === todayStr) startPoll();
             });
-
-            currentDate = dates.includes(todayStr) ? todayStr : dates[0];
-            sel.value = currentDate;
-            switchDate(currentDate);
         }
 
         window.addEventListener('scroll', function() {

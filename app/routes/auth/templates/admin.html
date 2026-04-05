@@ -331,13 +331,31 @@
 
                 <div class="settings-panel">
                     <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         Database
                     </div>
                     <p class="settings-desc">Check data consistency and trigger manual backups.</p>
                     <div class="settings-row" style="flex-wrap: wrap; gap: 8px;">
                         <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
                         <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
+                    </div>
+                </div>
+
+                <!-- TNS Manual Operations -->
+                <div class="settings-panel">
+                    <div class="settings-panel-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        TNS Manual Operations
+                    </div>
+                    <p class="settings-desc">Manually trigger TNS data download or auto-snooze. Auto-runs via daemon at :15/:45 (hourly) and 01:00 UTC (daily).</p>
+                    <div class="settings-row" style="flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <button id="tnsDlHrBtn" class="btn btn-primary" onclick="runTnsHourly()">Download Hourly</button>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <button id="tnsDlDailyBtn" class="btn btn-primary" onclick="runTnsDaily()">Download Daily</button>
+                            <input type="date" id="tnsDailyDate" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem;" title="Leave empty for yesterday">
+                        </div>
+                        <button id="tnsSnoozeBtn" class="btn btn-warning" onclick="runTnsSnooze()">Auto-Snooze</button>
+                        <span id="tnsTaskStatus" class="settings-status"></span>
                     </div>
                 </div>
 

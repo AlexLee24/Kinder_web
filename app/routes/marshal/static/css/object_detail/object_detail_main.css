@@ -213,6 +213,66 @@
     flex-shrink: 0;
 }
 
+/* Telescope quick-toggle buttons above photometry plot */
+.phot-tel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.35);
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    user-select: none;
+    white-space: nowrap;
+}
+.phot-tel-btn::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+    transition: opacity 0.12s;
+}
+.phot-tel-btn.active {
+    color: rgba(255,255,255,0.82);
+    border-color: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.08);
+}
+.phot-tel-btn.active::before {
+    opacity: 1;
+}
+.phot-tel-btn:hover {
+    border-color: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+}
+
+/* Tooltip for toggle labels — rendered via JS into body to bypass overflow:hidden */
+#kinder-tooltip {
+    position: fixed;
+    background: rgba(18, 18, 32, 0.97);
+    color: #c8d0e0;
+    font-size: 0.73rem;
+    padding: 6px 12px;
+    border-radius: 6px;
+    white-space: nowrap;
+    border: 1px solid rgba(255,255,255,0.18);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 9999;
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    letter-spacing: 0.04em;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    transform: translateX(-50%);
+}
+
 .panel-body {
     padding: 20px;
     flex: 1;

@@ -79,3 +79,4 @@ app/log/*
 test_photo/
 test*
 DETECT_tools/
+temp_work/

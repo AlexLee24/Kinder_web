@@ -449,34 +449,51 @@ function updateElementText(id, text) {
     }
 }
 
+// Coordinate display mode: 'hms' or 'deg'
+let _coordMode = 'hms';
+let _raHMSStr = '', _decDMSStr = '';
+
 // Convert coordinates to HMS/DMS format
 function convertCoordinates() {
     if (!objectData || !objectData.ra || !objectData.declination) {
         return;
     }
-    
     try {
         const ra = parseFloat(objectData.ra);
         const dec = parseFloat(objectData.declination);
-        
-        // Convert RA to HMS
-        const raHMS = convertRAToHMS(ra);
-        const raHMSElement = document.getElementById('raHMS');
-        if (raHMSElement) {
-            raHMSElement.textContent = raHMS;
-        }
-        
-        // Convert Dec to DMS
-        const decDMS = convertDecToDMS(dec);
-        const decDMSElement = document.getElementById('decDMS');
-        if (decDMSElement) {
-            decDMSElement.textContent = decDMS;
-        }
-        
-        console.log('Coordinates converted:', raHMS, decDMS);
+        _raHMSStr = convertRAToHMS(ra);
+        _decDMSStr = convertDecToDMS(dec);
+        _renderCoords();
+        console.log('Coordinates converted:', _raHMSStr, _decDMSStr);
     } catch (error) {
         console.error('Error converting coordinates:', error);
     }
+}
+
+function _renderCoords() {
+    const raEl  = document.getElementById('raCoord');
+    const decEl = document.getElementById('decCoord');
+    const raLbl = document.getElementById('raLabel');
+    const decLbl = document.getElementById('decLabel');
+    if (!raEl || !decEl) return;
+    if (_coordMode === 'hms') {
+        raEl.textContent  = _raHMSStr;
+        decEl.textContent = _decDMSStr;
+        if (raLbl)  raLbl.textContent  = 'RA (HMS)';
+        if (decLbl) decLbl.textContent = 'Dec (DMS)';
+    } else {
+        const ra  = parseFloat(objectData.ra).toFixed(6);
+        const dec = parseFloat(objectData.declination).toFixed(6);
+        raEl.textContent  = ra + '°';
+        decEl.textContent = (parseFloat(dec) >= 0 ? '+' : '') + dec + '°';
+        if (raLbl)  raLbl.textContent  = 'RA (deg)';
+        if (decLbl) decLbl.textContent = 'Dec (deg)';
+    }
+}
+
+function toggleCoordMode() {
+    _coordMode = (_coordMode === 'hms') ? 'deg' : 'hms';
+    _renderCoords();
 }
 
 // Convert RA decimal degrees to HMS
@@ -504,24 +521,39 @@ function convertDecToDMS(dec) {
     return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}' ${s.padStart(4, '0')}"`;
 }
 
-// Copy coordinates to clipboard
+// Copy coordinates to clipboard — respects current display mode
 function copyCoordinates() {
     if (!objectData || !objectData.ra || !objectData.declination) {
         showNotification('No coordinates available to copy', 'warning');
         return;
     }
-    
-    const fullName = getFullObjectName(objectData) || objectName;
-    const ra = parseFloat(objectData.ra).toFixed(6);
-    const dec = parseFloat(objectData.declination).toFixed(6);
-    const coordText = `${ra} ${dec}`;
-    
+    let coordText;
+    if (_coordMode === 'hms') {
+        coordText = `${_raHMSStr}  ${_decDMSStr}`;
+    } else {
+        const ra  = parseFloat(objectData.ra).toFixed(6);
+        const dec = parseFloat(objectData.declination).toFixed(6);
+        coordText = `${ra} ${dec}`;
+    }
     navigator.clipboard.writeText(coordText).then(() => {
-        showNotification('Coordinates copied to clipboard', 'success');
+        showNotification(`Copied (${_coordMode === 'hms' ? 'HMS' : 'Degrees'})`, 'success');
     }).catch(error => {
         console.error('Error copying coordinates:', error);
         showNotification('Failed to copy coordinates', 'error');
     });
+}
+
+// Open finding chart page with current object pre-filled
+function openFindingChart() {
+    if (!objectData || !objectData.ra || !objectData.declination) {
+        showNotification('No coordinates available', 'warning');
+        return;
+    }
+    const name = encodeURIComponent(objectName || '');
+    const ra   = encodeURIComponent(parseFloat(objectData.ra).toFixed(6));
+    const dec  = encodeURIComponent(parseFloat(objectData.declination).toFixed(6));
+    const url  = `/finding_chart?object_name=${name}&ra=${ra}&dec=${dec}&survey=DSS2+Red&fov=13&show_stars=0&auto=1`;
+    window.open(url, '_blank');
 }
 
 // External link functions - 使用完整名稱
@@ -893,6 +925,7 @@ function loadPhotometryPlot() {
                             figData.layout.font.color = '#ccc';
                         }
                         Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
+                        _buildTelescopeToggles(figData.data);
                         console.log('Photometry plot rendered successfully');
                         setTimeout(() => { matchStarMapHeight(); }, 200);
                     } catch (error) {
@@ -946,6 +979,47 @@ function loadPhotometryPlot() {
                 matchStarMapHeight();
             }, 100);
         }
+    });
+}
+
+// Build telescope quick-toggle buttons above photometry plot
+function _buildTelescopeToggles(traces) {
+    const container = document.getElementById('telescopeToggles');
+    if (!container) return;
+
+    // Extract unique telescopes from trace names: "{filter} ({telescope})" / "{filter} ({telescope}) - Up"
+    const telescopes = [];
+    const seen = new Set();
+    traces.forEach(t => {
+        const m = t.name && t.name.match(/\((.+?)\)(?:\s*-\s*Up)?$/);
+        if (m && !seen.has(m[1])) { seen.add(m[1]); telescopes.push(m[1]); }
+    });
+
+    if (telescopes.length <= 1) { container.style.display = 'none'; return; }
+
+    container.innerHTML = '';
+    container.style.display = 'flex';
+
+    const activeSet = new Set(telescopes);
+
+    telescopes.forEach(tel => {
+        const btn = document.createElement('button');
+        btn.className = 'phot-tel-btn active';
+        btn.textContent = tel;
+        btn.dataset.telescope = tel;
+        btn.addEventListener('click', function () {
+            if (activeSet.has(tel)) { activeSet.delete(tel); btn.classList.remove('active'); }
+            else                    { activeSet.add(tel);    btn.classList.add('active');    }
+            const plotDiv = document.getElementById('phot-plotly-div');
+            if (!plotDiv || !plotDiv.data) return;
+            const visArr = plotDiv.data.map(tr => {
+                const m2 = tr.name && tr.name.match(/\((.+?)\)(?:\s*-\s*Up)?$/);
+                const trTel = m2 ? m2[1] : null;
+                return trTel ? (activeSet.has(trTel) ? true : 'legendonly') : true;
+            });
+            Plotly.restyle('phot-plotly-div', 'visible', visArr);
+        });
+        container.appendChild(btn);
     });
 }
 

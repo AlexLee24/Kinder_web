@@ -45,8 +45,31 @@ def marshal():
             recent_download = tns_stats['recent_downloads'][0]
             if recent_download.get('download_time'):
                 try:
+                    raw_time = recent_download['download_time']
+                    # Format: "Apr05 20:45:06+08"
+                    from datetime import datetime, timezone, timedelta
+                    if hasattr(raw_time, 'strftime'):
+                        dt = raw_time
+                    else:
+                        dt_str = str(raw_time)
+                        for fmt in ('%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%d %H:%M:%S%z',
+                                    '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+                            try:
+                                dt = datetime.strptime(dt_str[:26], fmt)
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            dt = None
+                    if dt:
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        tz8 = dt.astimezone(timezone(timedelta(hours=8)))
+                        formatted_time = tz8.strftime('%b%d %H:%M:%S+08')
+                    else:
+                        formatted_time = str(raw_time)[:19]
                     last_sync_data = {
-                        'time': recent_download['download_time'],
+                        'time': formatted_time,
                         'status': 'completed',
                         'imported': recent_download.get('imported_count', 0),
                         'updated': recent_download.get('updated_count', 0)

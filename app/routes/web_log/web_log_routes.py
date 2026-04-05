@@ -74,3 +74,46 @@ def api_log_content():
         return jsonify({'content': content, 'offset': new_offset})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+_DAEMON_LOG_FILES = {
+    'gcn_alert': 'gcn_alert.log',
+    'detect':    'detect.log',
+    'tns_fetch': 'tns_fetch.log',
+}
+
+@web_log_bp.route('/api/log/daemon/content')
+def api_daemon_log_content():
+    if not _can_view():
+        return jsonify({'error': 'Access denied'}), 403
+
+    source = request.args.get('source', '')
+    if source not in _DAEMON_LOG_FILES:
+        return jsonify({'error': 'Invalid source'}), 400
+
+    offset = request.args.get('offset', 0, type=int)
+    if offset < 0:
+        offset = 0
+
+    from modules.log_setup import get_log_dir
+    log_dir = get_log_dir()
+    if not log_dir:
+        return jsonify({'content': '', 'offset': 0})
+
+    log_file = os.path.realpath(os.path.join(log_dir, _DAEMON_LOG_FILES[source]))
+    log_dir_real = os.path.realpath(log_dir)
+
+    if not log_file.startswith(log_dir_real + os.sep):
+        return jsonify({'error': 'Access denied'}), 403
+
+    if not os.path.isfile(log_file):
+        return jsonify({'content': '', 'offset': 0})
+
+    try:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            f.seek(offset)
+            content = f.read()
+            new_offset = f.tell()
+        return jsonify({'content': content, 'offset': new_offset})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -289,8 +289,28 @@
     document.addEventListener('DOMContentLoaded', function() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('object_name')) document.getElementById('target-name').value = params.get('object_name');
-        if (params.get('ra')) document.getElementById('target-ra').value = params.get('ra');
+        if (params.get('ra'))  document.getElementById('target-ra').value  = params.get('ra');
         if (params.get('dec')) document.getElementById('target-dec').value = params.get('dec');
+        if (params.get('fov')) {
+            document.getElementById('fov-arcmin').value = parseFloat(params.get('fov'));
+        }
+        if (params.get('survey')) {
+            const sel = document.getElementById('survey-select');
+            const target = params.get('survey');
+            for (const opt of sel.options) {
+                if (opt.value === target) { sel.value = target; break; }
+            }
+        }
+        if (params.get('show_stars') === '0') {
+            const showMagEl = document.getElementById('show-mag');
+            const showNamesEl = document.getElementById('show-names');
+            if (showMagEl) showMagEl.checked = false;
+            if (showNamesEl) showNamesEl.checked = false;
+            updateMagControls && updateMagControls();
+        }
+        if (params.get('auto') === '1' && (params.get('ra') || params.get('object_name'))) {
+            document.getElementById('btn-generate').click();
+        }
     });
 
     // =========================================================================

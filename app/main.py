@@ -120,6 +120,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
 from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry, update_target_mags
 from modules.GCN_alert import start_gcn_listener
+from modules.TNS_object_fetch import start_tns_fetcher
 
 def _start_detect(log_dir):
     """Lazy-import DETECT runner to avoid Pylance path resolution errors."""
@@ -151,6 +152,9 @@ start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
 
 # Start DETECT runner (daemon thread, log independent from web)
 _start_detect(log_dir=os.path.join(current_dir, 'log'))
+
+# Start TNS fetcher (daemon thread, log independent from web)
+start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
 
 # ===============================================================================
 # APPLICATION STARTUP
