@@ -119,6 +119,20 @@ register_routes(app)
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
 from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry, update_target_mags
+from modules.GCN_alert import start_gcn_listener
+
+def _start_detect(log_dir):
+    """Lazy-import DETECT runner to avoid Pylance path resolution errors."""
+    import importlib.util
+    _detect_tools_dir = os.path.normpath(os.path.join(current_dir, '..', 'DETECT_tools'))
+    spec = importlib.util.spec_from_file_location(
+        'DETECT', os.path.join(_detect_tools_dir, 'DETECT.py')
+    )
+    mod = importlib.util.module_from_spec(spec)
+    if _detect_tools_dir not in sys.path:
+        sys.path.insert(0, _detect_tools_dir)
+    spec.loader.exec_module(mod)
+    mod.start_detect_runner(log_dir=log_dir)
 
 _scheduler = BackgroundScheduler(daemon=True)
 if not config.DEBUG:
@@ -131,6 +145,12 @@ if not config.DEBUG:
     run_daily_backup()  # run once immediately on startup
 else:
     print("Daily backup job will NOT run in DEBUG mode.")
+
+# Start GCN alert listener (daemon thread, log independent from web)
+start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+
+# Start DETECT runner (daemon thread, log independent from web)
+_start_detect(log_dir=os.path.join(current_dir, 'log'))
 
 # ===============================================================================
 # APPLICATION STARTUP
