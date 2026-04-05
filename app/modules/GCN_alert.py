@@ -259,7 +259,10 @@ def _listener_loop():
 
     slack_client = WebClient(token=slack_token)
     consumer = Consumer(
-        config={'auto.offset.reset': 'latest'},
+        config={
+            'auto.offset.reset': 'latest',
+            'broker.address.family': 'v4',  # force IPv4 to avoid IPv6 routing issues
+        },
         client_id=client_id,
         client_secret=client_secret,
         domain='gcn.nasa.gov',
