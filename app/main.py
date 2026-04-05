@@ -116,6 +116,7 @@ register_routes(app)
 # ===============================================================================
 # DAILY BACKUP SCHEDULER
 # ===============================================================================
+import fcntl
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
 from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry, update_target_mags
@@ -135,26 +136,39 @@ def _start_detect(log_dir):
     spec.loader.exec_module(mod)
     mod.start_detect_runner(log_dir=log_dir)
 
-_scheduler = BackgroundScheduler(daemon=True)
-if not config.DEBUG:
-    _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
-_scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
-_scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
-_scheduler.add_job(update_target_mags, 'cron', hour=5, minute=0, id='daily_target_mag_update')
-_scheduler.start()
-if not config.DEBUG:
-    run_daily_backup()  # run once immediately on startup
+# Use a file lock to prevent duplicate background jobs when multiple processes
+# import this module (e.g. gunicorn multi-worker, process manager restart race).
+_bg_lock_path = os.path.join(current_dir, 'log', '.background_jobs.lock')
+_bg_lock_fd = open(_bg_lock_path, 'w')
+try:
+    fcntl.flock(_bg_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    _acquired_bg_lock = True
+except OSError:
+    _acquired_bg_lock = False
+
+if _acquired_bg_lock:
+    _scheduler = BackgroundScheduler(daemon=True)
+    if not config.DEBUG:
+        _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
+    _scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
+    _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
+    _scheduler.add_job(update_target_mags, 'cron', hour=5, minute=0, id='daily_target_mag_update')
+    _scheduler.start()
+    if not config.DEBUG:
+        run_daily_backup()  # run once immediately on startup
+    else:
+        print("Daily backup job will NOT run in DEBUG mode.")
+
+    # Start GCN alert listener (daemon thread, log independent from web)
+    start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+
+    # Start DETECT runner (daemon thread, log independent from web)
+    _start_detect(log_dir=os.path.join(current_dir, 'log'))
+
+    # Start TNS fetcher (daemon thread, log independent from web)
+    start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
 else:
-    print("Daily backup job will NOT run in DEBUG mode.")
-
-# Start GCN alert listener (daemon thread, log independent from web)
-start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
-
-# Start DETECT runner (daemon thread, log independent from web)
-_start_detect(log_dir=os.path.join(current_dir, 'log'))
-
-# Start TNS fetcher (daemon thread, log independent from web)
-start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
+    print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
 
 # ===============================================================================
 # APPLICATION STARTUP
