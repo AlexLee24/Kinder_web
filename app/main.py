@@ -151,7 +151,7 @@ if _acquired_bg_lock:
     if not config.DEBUG:
         _scheduler.add_job(run_daily_backup, 'cron', hour=3, minute=0, id='daily_backup')
     _scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
-    _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
+    # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
     _scheduler.add_job(update_target_mags, 'cron', hour=5, minute=0, id='daily_target_mag_update')
     _scheduler.start()
     if not config.DEBUG:
@@ -160,13 +160,13 @@ if _acquired_bg_lock:
         print("Daily backup job will NOT run in DEBUG mode.")
 
     # Start GCN alert listener (daemon thread, log independent from web)
-    start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+    # start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
 
     # Start DETECT runner (daemon thread, log independent from web)
-    _start_detect(log_dir=os.path.join(current_dir, 'log'))
+    # _start_detect(log_dir=os.path.join(current_dir, 'log'))
 
     # Start TNS fetcher (daemon thread, log independent from web)
-    start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
+    # start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
 else:
     print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
 
