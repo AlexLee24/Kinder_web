@@ -44,6 +44,29 @@ _GCN_TOPICS = [
 ]
 
 # ---------------------------------------------------------------------------
+# Deduplication — pre-populated from existing JSON on startup
+# ---------------------------------------------------------------------------
+_seen_circular_ids: set = set()
+_seen_ep_triggers:  set = set()
+_dedup_ready = False
+
+def _init_dedup():
+    global _dedup_ready
+    if _dedup_ready:
+        return
+    for entry in _load_json(GCN_JSON):
+        cid = entry.get('circularId')
+        if cid:
+            _seen_circular_ids.add(str(cid))
+    for entry in _load_json(EP_JSON):
+        tt = entry.get('trigger_time')
+        if tt:
+            _seen_ep_triggers.add(tt)
+    _dedup_ready = True
+    logger.info('Dedup sets initialised: %d circulars, %d EP triggers.',
+                len(_seen_circular_ids), len(_seen_ep_triggers))
+
+# ---------------------------------------------------------------------------
 # JSON store helpers
 # ---------------------------------------------------------------------------
 def _load_json(path):
@@ -132,8 +155,20 @@ def _format_circular(raw_value):
         return raw_value
 
 def _handle_circular(raw_value, slack_client, channel_gcn):
+    _init_dedup()
+    try:
+        _meta = json.loads(raw_value)
+        cid = str(_meta.get('circularId', ''))
+    except Exception:
+        cid = ''
+
+    if cid and cid in _seen_circular_ids:
+        logger.info('GCN circular %s already processed, skipping.', cid)
+        return
+
     text = _format_circular(raw_value)
     _send_slack(slack_client, channel_gcn, text)
+
     entry = {'received_at': datetime.now(timezone.utc).isoformat(), 'text': text[:2000]}
     try:
         data = json.loads(raw_value)
@@ -142,7 +177,10 @@ def _handle_circular(raw_value, slack_client, channel_gcn):
     except Exception:
         pass
     _append_entry(GCN_JSON, entry)
-    logger.info(f"GCN circular stored: {entry.get('subject', '(no subject)')}")
+
+    if cid:
+        _seen_circular_ids.add(cid)
+    logger.info("GCN circular stored: %s", entry.get('subject', '(no subject)'))
 
 # ---------------------------------------------------------------------------
 # EP WXT alert handler
@@ -191,7 +229,14 @@ def _generate_slt_script(object_name, ra, dec):
 def _handle_ep_alert(raw_value, slack_client, channel_too, channel_gcn,
                      smtp_server, smtp_port, sender_email, sender_password,
                      email_receivers, suffix_state):
+    _init_dedup()
     Y_m_d, Ymd, ra, dec, raw_data = _extract_ep_fields(raw_value)
+    trigger_time = raw_data.get('trigger_time', '')
+
+    if trigger_time and trigger_time in _seen_ep_triggers:
+        logger.info('EP alert %s already processed, skipping.', trigger_time)
+        return
+
     utc_now  = datetime.now(timezone.utc)
     is_night = not (10 <= utc_now.hour < 22)
 
@@ -236,7 +281,9 @@ def _handle_ep_alert(raw_value, slack_client, channel_too, channel_gcn,
         'script':       script,
     }
     _append_entry(EP_JSON, entry)
-    logger.info(f"EP alert stored: {object_name} RA={ra} DEC={dec}")
+    if trigger_time:
+        _seen_ep_triggers.add(trigger_time)
+    logger.info('EP alert stored: %s RA=%s DEC=%s', object_name, ra, dec)
 
 # ---------------------------------------------------------------------------
 # Main listener loop (runs in background thread)
