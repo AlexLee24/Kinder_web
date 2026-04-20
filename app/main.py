@@ -160,7 +160,7 @@ if _acquired_bg_lock:
         print("Daily backup job will NOT run in DEBUG mode.")
 
     # Start GCN alert listener (daemon thread, log independent from web)
-    # start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+    start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
 
     # Start DETECT runner (daemon thread, log independent from web)
     # _start_detect(log_dir=os.path.join(current_dir, 'log'))
