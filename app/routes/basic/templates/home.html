@@ -46,6 +46,57 @@
             <h2>Kilonova Finder</h2>
         </div>
 
+        <!-- Hamburger button (mobile only) -->
+        <button class="home-hamburger" id="home-hamburger" aria-label="Open navigation" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+
+        <!-- Mobile nav overlay -->
+        <div class="home-mobile-nav" id="home-mobile-nav" aria-hidden="true">
+            <button class="home-mobile-nav-close" id="home-mobile-nav-close" aria-label="Close navigation">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <nav class="home-mobile-nav-links">
+                <a href="{{ url_for('marshal.marshal') }}">Marshal</a>
+                <a href="{{ url_for('basic.gallery') }}">Gallery</a>
+                <div class="home-mobile-group">
+                    <button class="home-mobile-group-btn">Tools
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="home-mobile-group-items">
+                        <a href="{{ url_for('astronomy_tools.astronomy_tools') }}">Astronomy Tools</a>
+                        <a href="{{ url_for('astronomy_tools.telescope_simulator') }}">Telescope Simulator</a>
+                        <a href="{{ url_for('games.games') }}">Games</a>
+                    </div>
+                </div>
+                <div class="home-mobile-group">
+                    <button class="home-mobile-group-btn">Planners
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="home-mobile-group-items">
+                        <a href="{{ url_for('astronomy_tools.interactive_planner') }}">Visibility Plot</a>
+                        <a href="{{ url_for('astronomy_tools.finding_chart') }}">Finding Chart</a>
+                    </div>
+                </div>
+                <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About</a>
+                {% if session.user and session.user.get('is_great_lab_member') %}
+                <div class="home-mobile-group">
+                    <button class="home-mobile-group-btn">GREATLab
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="home-mobile-group-items">
+                        <a href="{{ url_for('detect.detect_results') }}">DETECT</a>
+                        <a href="{{ url_for('private_area.daily_trigger') }}">Daily Trigger</a>
+                        <a href="{{ url_for('private_area.documents_list') }}">Documents</a>
+                        <a href="{{ url_for('private_area.greatlab_info') }}">Lab Info</a>
+                    </div>
+                </div>
+                {% endif %}
+            </nav>
+        </div>
+        <!-- Mobile nav backdrop -->
+        <div class="home-mobile-backdrop" id="home-mobile-backdrop"></div>
+
         <!-- Bottom Bar: quick nav + info -->
         <div class="bottom-bar">
             <!-- Quick Navigation Strip -->

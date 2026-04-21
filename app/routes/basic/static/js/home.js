@@ -7,6 +7,44 @@ document.addEventListener('DOMContentLoaded', function () {
         emailElement.textContent = user + '@' + domain;
     }
 
+    // ---- Hamburger mobile nav ----
+    const hamburger  = document.getElementById('home-hamburger');
+    const mobileNav  = document.getElementById('home-mobile-nav');
+    const mobileClose = document.getElementById('home-mobile-nav-close');
+    const backdrop   = document.getElementById('home-mobile-backdrop');
+
+    function openMobileNav() {
+        mobileNav.classList.add('is-open');
+        backdrop.classList.add('is-open');
+        hamburger.classList.add('is-open');
+        hamburger.setAttribute('aria-expanded', 'true');
+        mobileNav.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeMobileNav() {
+        mobileNav.classList.remove('is-open');
+        backdrop.classList.remove('is-open');
+        hamburger.classList.remove('is-open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        mobileNav.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    }
+
+    if (hamburger) hamburger.addEventListener('click', openMobileNav);
+    if (mobileClose) mobileClose.addEventListener('click', closeMobileNav);
+    if (backdrop) backdrop.addEventListener('click', closeMobileNav);
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeMobileNav();
+    });
+
+    // Sub-group accordion inside mobile nav
+    document.querySelectorAll('.home-mobile-group-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const group = btn.closest('.home-mobile-group');
+            group.classList.toggle('is-open');
+        });
+    });
+
     // Slideshow
     const imgEl = document.querySelector('.slideshow-img');
     const titleEl = document.querySelector('.slide-title');
