@@ -5,8 +5,12 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astroquery.vizier import Vizier
 from psycopg2.extras import RealDictCursor
-# from modules.postgres_database import get_db_connection
-from postgres_database import get_db_connection
+try:
+    from modules.database import get_db_connection
+    from modules.database.catalog import cone_search_desi, cone_search_lens
+except ImportError:
+    from database import get_db_connection
+    from database.catalog import cone_search_desi, cone_search_lens
 
 
 class _NumpyEncoder(json.JSONEncoder):
@@ -34,73 +38,37 @@ LENS_CATALOGS = {
 }
 
 def desi_cross_match_single(ra, dec, search_radius=30):
-    search_radius_deg = search_radius / 3600.0
+    """Cross-match against cat.desi."""
     matched_data = []
-    
     try:
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                ra_min = ra - search_radius_deg
-                ra_max = ra + search_radius_deg
-                dec_min = dec - search_radius_deg
-                dec_max = dec + search_radius_deg
-            
-                query = """
-                    SELECT * FROM desi_data 
-                    WHERE ra BETWEEN %s AND %s 
-                    AND dec BETWEEN %s AND %s
-                """
-                cur.execute(query, (ra_min, ra_max, dec_min, dec_max))
-                candidates = cur.fetchall()
-                
-                target_coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-                
-                for row in candidates:
-                    source_coord = SkyCoord(ra=row['ra']*u.degree, dec=row['dec']*u.degree, frame='icrs')
-                    separation = target_coord.separation(source_coord).arcsec
-                    
-                    if separation <= search_radius:
-                        row_dict = dict(row)
-                        row_dict['separation_arcsec'] = float(separation)
-                        matched_data.append(row_dict)
+        rows = cone_search_desi(ra, dec, radius_arcsec=search_radius)
+        target_coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+        for row in rows:
+            source_coord = SkyCoord(ra=row['ra']*u.degree, dec=row['dec']*u.degree, frame='icrs')
+            separation = target_coord.separation(source_coord).arcsec
+            if separation <= search_radius:
+                row_dict = dict(row)
+                row_dict['separation_arcsec'] = float(separation)
+                matched_data.append(row_dict)
     except Exception as e:
         print(f"Error in DESI cross match: {e}")
-        
     return matched_data
 
 def lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='lens_catalogue', catalog_label='Lens_Catalogue'):
-    search_radius_deg = search_radius / 3600.0
+    """Cross-match against cat.lens (unified table, table_name ignored)."""
     matched_data = []
-    
     try:
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                ra_min = ra - search_radius_deg
-                ra_max = ra + search_radius_deg
-                dec_min = dec - search_radius_deg
-                dec_max = dec + search_radius_deg
-                
-                query = f"""
-                    SELECT * FROM {table_name} 
-                    WHERE ra BETWEEN %s AND %s 
-                    AND dec BETWEEN %s AND %s
-                """
-                cur.execute(query, (ra_min, ra_max, dec_min, dec_max))
-                candidates = cur.fetchall()
-                
-                target_coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-                
-                for row in candidates:
-                    source_coord = SkyCoord(ra=row['ra']*u.degree, dec=row['dec']*u.degree, frame='icrs')
-                    separation = target_coord.separation(source_coord).arcsec
-                    
-                    if separation <= search_radius:
-                        row_dict = dict(row)
-                        row_dict['separation_arcsec'] = float(separation)
-                        matched_data.append(row_dict)
+        rows = cone_search_lens(ra, dec, radius_arcsec=search_radius)
+        target_coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+        for row in rows:
+            source_coord = SkyCoord(ra=row['ra']*u.degree, dec=row['dec']*u.degree, frame='icrs')
+            separation = target_coord.separation(source_coord).arcsec
+            if separation <= search_radius:
+                row_dict = dict(row)
+                row_dict['separation_arcsec'] = float(separation)
+                matched_data.append(row_dict)
     except Exception as e:
         print(f"Error in Lens cross match ({catalog_label}): {e}")
-        
     return matched_data
 
 def comprehensive_lens_match_single(ra, dec, search_radius=10):
@@ -211,56 +179,81 @@ def run_all_detect(target_name, ra, dec):
     return results
 
 def has_detect_run(target_name):
+    """Check if DETECT has been run for this target via transient.cross_matches."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                # Check for the special status row which indicates a run occurred
-                cur.execute("SELECT 1 FROM detect_cross_match_results WHERE target_name = %s AND catalog_name = 'DETECT_STATUS_RUN' LIMIT 1", (target_name,))
+                cur.execute(
+                    "SELECT 1 FROM transient.cross_matches c "
+                    "JOIN transient.objects o ON c.obj_id = o.obj_id "
+                    "WHERE o.name = %s AND c.catalog = 'DETECT_STATUS_RUN' LIMIT 1",
+                    (target_name,)
+                )
                 return cur.fetchone() is not None
     except Exception as e:
         print(f"Error checking detect run status: {e}")
         return False
 
 def save_detect_results(target_name, results):
+    """Save DETECT results into transient.cross_matches."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
+                # Resolve obj_id
+                cur.execute(
+                    "SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1",
+                    (target_name,)
+                )
+                row = cur.fetchone()
+                if row is None:
+                    print(f"save_detect_results: object '{target_name}' not found")
+                    return
+                obj_id = row[0]
+
                 # Insert actual matches
-                if results:
-                    for r in results:
-                        cur.execute("""
-                            INSERT INTO detect_cross_match_results 
-                            (target_name, catalog_name, match_data, separation_arcsec)
-                            VALUES (%s, %s, %s, %s)
-                        """, (
-                            r['target_name'],
+                for r in results:
+                    md = r.get('match_data') or '{}'
+                    md_dict = json.loads(md) if isinstance(md, str) else (md or {})
+                    z = md_dict.get('z') or md_dict.get('redshift')
+                    cur.execute(
+                        "INSERT INTO transient.cross_matches "
+                        "(obj_id, name, catalog, separation, redshift, is_host, updated_date) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,now())",
+                        (
+                            obj_id,
+                            target_name,
                             r['catalog_name'],
-                            r['match_data'],
-                            float(r['separation_arcsec']) if r['separation_arcsec'] is not None else None
-                        ))
-                
-                # Insert the special status row indicating we've run it
-                cur.execute("""
-                    INSERT INTO detect_cross_match_results 
-                    (target_name, catalog_name, match_data, separation_arcsec)
-                    VALUES (%s, %s, %s, %s)
-                """, (target_name, 'DETECT_STATUS_RUN', '{}', 0.0))
-                
+                            float(r['separation_arcsec']) if r['separation_arcsec'] is not None else None,
+                            z,
+                            bool(r.get('is_host', False)),
+                        )
+                    )
+
+                # Sentinel row to mark this target as having been run
+                cur.execute(
+                    "INSERT INTO transient.cross_matches "
+                    "(obj_id, name, catalog, separation, updated_date) "
+                    "VALUES (%s,%s,'DETECT_STATUS_RUN',0,now())",
+                    (obj_id, target_name)
+                )
                 conn.commit()
     except Exception as e:
         print(f"Error saving detect results: {e}")
 
 def get_detect_results_for_target(target_name):
+    """Retrieve DETECT cross-match results from transient.cross_matches."""
     try:
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
-                    SELECT catalog_name, match_data, separation_arcsec, created_at, is_host, flag 
-                    FROM detect_cross_match_results 
-                    WHERE target_name = %s AND catalog_name != 'DETECT_STATUS_RUN'
-                    ORDER BY separation_arcsec ASC
-                """, (target_name,))
-                
+                cur.execute(
+                    "SELECT c.catalog AS catalog_name, c.separation AS separation_arcsec, "
+                    "c.updated_date AS created_at, c.is_host, c.flag "
+                    "FROM transient.cross_matches c "
+                    "JOIN transient.objects o ON c.obj_id = o.obj_id "
+                    "WHERE o.name = %s AND c.catalog != 'DETECT_STATUS_RUN' "
+                    "ORDER BY c.separation ASC",
+                    (target_name,)
+                )
                 rows = cur.fetchall()
                 results = []
                 for row in rows:

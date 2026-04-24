@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta
 import ephem
 import os
-from modules.postgres_database import get_tns_db_connection
+from modules.database import get_tns_db_connection
 
 # ========================= Function ========================================
 
@@ -168,9 +168,9 @@ def get_followup_targets_json():
     try:
         # Query for follow-up targets
         cursor.execute("""
-            SELECT name, ra, declination, discoverymag 
-            FROM tns_objects 
-            WHERE follow = 1 AND finish_follow = 0
+            SELECT o.name, o.ra, o.dec AS declination, o.discovery_mag AS discoverymag
+            FROM transient.objects o
+            WHERE o.status = 'Follow-up'
         """)
         rows = cursor.fetchall()
         

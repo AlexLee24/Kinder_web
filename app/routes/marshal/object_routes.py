@@ -7,12 +7,13 @@ import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
 
-from modules.postgres_database import (
-    search_tns_objects, update_object_status, update_object_activity, get_tns_db_connection,
-    TNSObjectDB
+from modules.database.transient import (
+    search_tns_objects, update_object_status, update_object_activity,
+    TNSObjectDB, update_object_abs_mag
 )
-from modules.web_postgres_database import (
-    get_all_groups, get_object_permissions, grant_object_permission, 
+from modules.database import get_db_connection, get_tns_db_connection, OBJECT_COMPAT_COLS
+from modules.database.auth import (
+    get_all_groups, get_object_permissions, grant_object_permission,
     revoke_object_permission, check_object_access,
     get_source_permissions, set_source_permissions_batch, filter_by_source_permissions
 )
@@ -49,48 +50,61 @@ def object_detail_generic(object_name):
         }
 
         # Log view
-        from modules.postgres_database import TNSObjectDB
         user_email = user.get('email') if user else None
         TNSObjectDB.log_object_view(object_name, user_email)
         
         # Update absolute magnitude and brightest mag
-        from modules.postgres_database import update_object_abs_mag
         update_object_abs_mag(object_name)
         
         # Try exact match first using direct SQL query
-        from modules.postgres_database import get_tns_db_connection
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         
         # Exact match queries (try multiple variants)
         tag_logic = """
-        CASE 
-            WHEN finish_follow = 1 THEN 'finished'
-            WHEN follow = 1 THEN 'followup'
-            WHEN snoozed = 1 THEN 'snoozed'
+        CASE o.status
+            WHEN 'Finish'    THEN 'finished'
+            WHEN 'Follow-up' THEN 'followup'
+            WHEN 'Snoozed'   THEN 'snoozed'
             ELSE 'object'
         END as tag
         """
         
         exact_queries = [
             # Full name match (case insensitive)
-            f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                      reporting_groupid, reporting_group, source_groupid, source_group,
-                      discoverydate, discoverymag, discmagfilter, filter, reporters,
-                      time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
+            f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                      o.redshift, NULL::int AS typeid, o.type,
+                      NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                      NULL::int AS source_groupid, o.source_group,
+                      to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                      o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                      o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                      to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                      COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                      o.class_ADS AS class_ads_bibcodes,
+                      to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                      to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                      o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
                       {tag_logic}
-               FROM tns_objects 
-               WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
+               FROM transient.objects o
+               WHERE (COALESCE(o.name_prefix, '') || COALESCE(o.name, '')) ILIKE %s""",
             # Name only match (case insensitive)
-            f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                      reporting_groupid, reporting_group, source_groupid, source_group,
-                      discoverydate, discoverymag, discmagfilter, filter, reporters,
-                      time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
+            f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                      o.redshift, NULL::int AS typeid, o.type,
+                      NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                      NULL::int AS source_groupid, o.source_group,
+                      to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                      o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                      o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                      to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                      COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                      o.class_ADS AS class_ads_bibcodes,
+                      to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                      to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                      o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
                       {tag_logic}
-               FROM tns_objects 
-               WHERE name ILIKE %s"""
+               FROM transient.objects o
+               WHERE o.name ILIKE %s"""
         ]
         
         matching_obj = None
@@ -115,13 +129,13 @@ def object_detail_generic(object_name):
         if not matching_obj:
             alias_query = """
                 SELECT name_prefix, name
-                FROM tns_objects
-                WHERE internal_names ILIKE %s
+                FROM transient.objects
+                WHERE internal_name ILIKE %s
                    OR EXISTS (
-                       SELECT 1 FROM unnest(string_to_array(tags, ',')) t(tag)
-                       WHERE trim(t.tag) ILIKE %s
+                       SELECT 1 FROM unnest(tag) t(v)
+                       WHERE trim(t.v) ILIKE %s
                    )
-                ORDER BY discoverydate DESC
+                ORDER BY discovery_date DESC NULLS LAST
                 LIMIT 1
             """
             cursor.execute(alias_query, (f'%{object_name}%', object_name))
@@ -207,37 +221,29 @@ def object_detail_tns_format(year, letters):
         }
 
         # Log view
-        from modules.postgres_database import TNSObjectDB
         user_email = user.get('email') if user else None
         TNSObjectDB.log_object_view(object_name, user_email)
         
         # Update absolute magnitude and brightest mag
-        from modules.postgres_database import update_object_abs_mag
         update_object_abs_mag(object_name)
         
         # Try exact match first using direct SQL query
-        from modules.postgres_database import get_tns_db_connection
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         
         tag_logic = """
-        CASE 
-            WHEN finish_follow = 1 THEN 'finished'
-            WHEN follow = 1 THEN 'followup'
-            WHEN snoozed = 1 THEN 'snoozed'
+        CASE o.status
+            WHEN 'Finish'    THEN 'finished'
+            WHEN 'Follow-up' THEN 'followup'
+            WHEN 'Snoozed'   THEN 'snoozed'
             ELSE 'object'
         END as tag
         """
         
         # Exact match query - match name exactly (case insensitive)
-        exact_query = f"""SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                      reporting_groupid, reporting_group, source_groupid, source_group,
-                      discoverydate, discoverymag, discmagfilter, filter, reporters,
-                      time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                      creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
-                      {tag_logic}
-               FROM tns_objects 
-               WHERE name ILIKE %s"""
+        exact_query = f"""SELECT {OBJECT_COMPAT_COLS}
+               FROM transient.objects o
+               WHERE o.name ILIKE %s"""
         
         cursor.execute(exact_query, (object_name,))
         result = cursor.fetchone()
@@ -322,36 +328,21 @@ def api_get_object_tns_format(year, letters):
         object_name = f"{year}{letters}"
         
         # Try exact match first using direct SQL query
-        from modules.postgres_database import get_tns_db_connection
         conn = get_tns_db_connection()  
         cursor = conn.cursor()
         
         # Exact match query - match name exactly (case insensitive)
-        cursor.execute("""
-            SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                   reporting_groupid, reporting_group, source_groupid, source_group,
-                   discoverydate, discoverymag, discmagfilter, filter, reporters,
-                   time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
-                   CASE 
-                        WHEN finish_follow = 1 THEN 'finished'
-                        WHEN follow = 1 THEN 'followup'
-                        WHEN snoozed = 1 THEN 'snoozed'
-                        ELSE 'object'
-                   END as tag
-            FROM tns_objects 
-            WHERE name ILIKE %s
+        cursor.execute(f"""
+            SELECT {OBJECT_COMPAT_COLS}
+            FROM transient.objects o
+            WHERE o.name ILIKE %s
         """, (object_name,))
         
         result = cursor.fetchone()
         matching_obj = None
         
         if result:
-            columns = ['objid', 'name_prefix', 'name', 'ra', 'declination', 'redshift', 'typeid', 'type',
-                      'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
-                      'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
-                      'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tags', 'tag']
+            columns = [desc[0] for desc in cursor.description]
             matching_obj = dict(zip(columns, result))
         
         conn.close()
@@ -443,44 +434,22 @@ def get_object_api(object_name):
         object_name = urllib.parse.unquote(object_name)
         
         # Update absolute magnitude and brightest mag before fetching
-        from modules.postgres_database import update_object_abs_mag
         update_object_abs_mag(object_name)
         
         # First try exact match
-        from modules.postgres_database import get_tns_db_connection
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         
         # Get exact match using SQL - try multiple queries
         exact_queries = [
             # Full name match (prefix + name)
-            """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                   reporting_groupid, reporting_group, source_groupid, source_group,
-                   discoverydate, discoverymag, discmagfilter, filter, reporters,
-                   time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
-                   CASE 
-                        WHEN finish_follow = 1 THEN 'finished'
-                        WHEN follow = 1 THEN 'followup'
-                        WHEN snoozed = 1 THEN 'snoozed'
-                        ELSE 'object'
-                   END as tag
-            FROM tns_objects 
-            WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) ILIKE %s""",
+            f"""SELECT {OBJECT_COMPAT_COLS}
+            FROM transient.objects o
+            WHERE (COALESCE(o.name_prefix, '') || COALESCE(o.name, '')) ILIKE %s""",
             # Name only match (exact)
-            """SELECT objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                   reporting_groupid, reporting_group, source_groupid, source_group,
-                   discoverydate, discoverymag, discmagfilter, filter, reporters,
-                   time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                   creationdate, lastmodified, brightest_mag, brightest_abs_mag, tags,
-                   CASE 
-                        WHEN finish_follow = 1 THEN 'finished'
-                        WHEN follow = 1 THEN 'followup'
-                        WHEN snoozed = 1 THEN 'snoozed'
-                        ELSE 'object'
-                   END as tag
-            FROM tns_objects 
-            WHERE name ILIKE %s"""
+            f"""SELECT {OBJECT_COMPAT_COLS}
+            FROM transient.objects o
+            WHERE o.name ILIKE %s"""
         ]
         
         exact_result = None
@@ -493,12 +462,7 @@ def get_object_api(object_name):
         conn.close()
         
         if exact_result:
-            # Convert to dictionary
-            columns = ['objid', 'name_prefix', 'name', 'ra', 'declination', 'redshift', 'typeid', 'type',
-                      'reporting_groupid', 'reporting_group', 'source_groupid', 'source_group',
-                      'discoverydate', 'discoverymag', 'discmagfilter', 'filter', 'reporters',
-                      'time_received', 'internal_names', 'discovery_ads_bibcode', 'class_ads_bibcodes',
-                      'creationdate', 'lastmodified', 'brightest_mag', 'brightest_abs_mag', 'tags', 'tag']
+            columns = [desc[0] for desc in cursor.description]
             obj = dict(zip(columns, exact_result))
         else:
             # Fallback to search function with more results
@@ -549,14 +513,13 @@ def api_edit_object(object_name):
 
         obj_id = data.get('objid')
 
-        from modules.postgres_database import get_tns_db_connection
         conn = get_tns_db_connection()
         cursor = conn.cursor()
 
         # If no objid, resolve from URL param (object_name)
         if not obj_id:
             cursor.execute(
-                "SELECT objid FROM tns_objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                "SELECT obj_id FROM transient.objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
                 (urllib.parse.unquote(object_name), urllib.parse.unquote(object_name))
             )
             row = cursor.fetchone()
@@ -585,12 +548,12 @@ def api_edit_object(object_name):
                 v = None
             updates['redshift'] = v
 
-        # internal_names
+        # internal_name (new schema column name)
         if 'internal_names' in data:
             v = data['internal_names']
-            updates['internal_names'] = v.strip() if isinstance(v, str) and v.strip() else None
+            updates['internal_name'] = v.strip() if isinstance(v, str) and v.strip() else None
 
-        # tags (comma-separated custom labels, e.g. "EP,peculiar")
+        # tag (array in new schema — convert from comma-separated string)
         if 'tags' in data:
             v = data['tags']
             if isinstance(v, str) and v.strip():
@@ -599,9 +562,9 @@ def api_edit_object(object_name):
                 if not _re.match(r'^[A-Za-z0-9,\s\-_]+$', v.strip()):
                     conn.close()
                     return jsonify({'error': 'Tags contain invalid characters'}), 400
-                updates['tags'] = v.strip()
+                updates['tag'] = [t.strip() for t in v.split(',') if t.strip()]
             else:
-                updates['tags'] = None
+                updates['tag'] = None
 
         if not updates:
             conn.close()
@@ -611,7 +574,7 @@ def api_edit_object(object_name):
         params = list(updates.values()) + [int(obj_id)]
 
         cursor.execute(
-            f"UPDATE tns_objects SET {', '.join(set_clauses)} WHERE objid = %s",
+            f"UPDATE transient.objects SET {', '.join(set_clauses)} WHERE obj_id = %s",
             params
         )
         rows_affected = cursor.rowcount
@@ -644,28 +607,28 @@ def api_delete_object(object_name):
     try:
         object_name = urllib.parse.unquote(object_name)
         
-        from modules.postgres_database import get_tns_db_connection
-        
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         
         # First check if object exists
         cursor.execute("""
-            SELECT name_prefix, name, type, discoverydate 
-            FROM tns_objects 
+            SELECT name_prefix, name, type
+            FROM transient.objects
             WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
-        """, (object_name,))
+               OR name = %s
+        """, (object_name, object_name))
         
         existing_object = cursor.fetchone()
         if not existing_object:
             conn.close()
             return jsonify({'error': 'Object not found'}), 404
         
-        # Delete from tns_objects table
+        # Delete from transient.objects (CASCADE will handle related rows if FK set up)
         cursor.execute("""
-            DELETE FROM tns_objects 
+            DELETE FROM transient.objects
             WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
-        """, (object_name,))
+               OR name = %s
+        """, (object_name, object_name))
         
         rows_affected = cursor.rowcount
         
@@ -673,23 +636,27 @@ def api_delete_object(object_name):
             conn.close()
             return jsonify({'error': 'Failed to delete object'}), 500
         
-        # Also delete related data from PostgreSQL database
+        # Clean up related data explicitly
         try:
-            # Delete photometry data
-            cursor.execute("DELETE FROM photometry WHERE object_name = %s", (object_name,))
-            deleted_photometry = cursor.rowcount
-            
-            cursor.execute("DELETE FROM spectroscopy WHERE object_name = %s", (object_name,))
-            deleted_spectroscopy = cursor.rowcount
-            
-            cursor.execute("DELETE FROM comments WHERE object_name = %s", (object_name,))
-            deleted_comments = cursor.rowcount
-            
+            obj_name = existing_object[1] or object_name
+            cursor.execute(
+                "DELETE FROM transient.photometry WHERE obj_id IN "
+                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
+                (obj_name,)
+            )
+            cursor.execute(
+                "DELETE FROM transient.spectroscopy WHERE obj_id IN "
+                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
+                (obj_name,)
+            )
+            cursor.execute(
+                "DELETE FROM transient.comments WHERE obj_id IN "
+                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
+                (obj_name,)
+            )
             conn.commit()
             conn.close()
-            
         except Exception:
-            # Continue with main deletion even if related data deletion fails
             pass
         
         conn.commit()
@@ -799,9 +766,11 @@ def get_spectrum_data(year, letters, spectrum_id):
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT wavelength, intensity FROM spectroscopy 
-            WHERE object_name = %s AND spectrum_id = %s
-            ORDER BY wavelength ASC
+            SELECT s.wavelength, s.intensity
+            FROM transient.spectroscopy s
+            JOIN transient.objects o ON s.obj_id = o.obj_id
+            WHERE o.name ILIKE %s AND s.source = %s
+            ORDER BY s.wavelength ASC
         ''', (object_name, spectrum_id))
         
         results = cursor.fetchall()
@@ -997,10 +966,11 @@ def download_spectrum_file(spectrum_id):
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT object_name, wavelength, intensity, telescope, phase
-            FROM spectroscopy
-            WHERE spectrum_id = %s
-            ORDER BY wavelength ASC
+            SELECT o.name AS object_name, s.wavelength, s.intensity, s.source AS telescope, s."MJD" AS phase
+            FROM transient.spectroscopy s
+            JOIN transient.objects o ON s.obj_id = o.obj_id
+            WHERE s.source = %s
+            ORDER BY s.wavelength ASC
         ''', (spectrum_id,))
         rows = cursor.fetchall()
         conn.close()
@@ -1488,12 +1458,18 @@ def get_object_sources(object_name):
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT DISTINCT COALESCE(telescope, 'Unknown') as src FROM photometry WHERE object_name = %s ORDER BY src",
+            "SELECT DISTINCT COALESCE(p.telescope, 'Unknown') as src "
+            "FROM transient.photometry p "
+            "JOIN transient.objects o ON p.obj_id = o.obj_id "
+            "WHERE o.name ILIKE %s ORDER BY src",
             (object_name,)
         )
         phot_sources = [r[0] for r in cursor.fetchall()]
         cursor.execute(
-            "SELECT DISTINCT COALESCE(telescope, 'Unknown') as src FROM spectroscopy WHERE object_name = %s ORDER BY src",
+            "SELECT DISTINCT COALESCE(s.source, 'Unknown') as src "
+            "FROM transient.spectroscopy s "
+            "JOIN transient.objects o ON s.obj_id = o.obj_id "
+            "WHERE o.name ILIKE %s ORDER BY src",
             (object_name,)
         )
         spec_sources = [r[0] for r in cursor.fetchall()]

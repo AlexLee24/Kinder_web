@@ -18,7 +18,7 @@ PG_PASSWORD = os.getenv('PG_PASSWORD', '')
 BACKUP_DIR = os.path.join(basedir, '..', 'data', 'backups')
 KEEP_DAYS = 15  # number of daily backups to keep per database
 
-DATABASES = ['kinder_web', 'tns_data']
+DATABASES = ['Kinder']
 
 _PG_DUMP_SEARCH_PATHS = [
     '/usr/bin/pg_dump',

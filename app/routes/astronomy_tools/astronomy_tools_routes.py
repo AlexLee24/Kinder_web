@@ -609,7 +609,7 @@ def target_autocomplete():
     if len(q) < 2:
         return jsonify([])
     try:
-        from modules.postgres_database import search_tns_objects
+        from modules.database.transient import search_tns_objects
         rows = search_tns_objects(search_term=q, limit=10)
         out = []
         for r in rows:

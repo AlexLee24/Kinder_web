@@ -1,5 +1,5 @@
 from flask import jsonify, request, session, Blueprint
-from modules.web_postgres_database import generate_api_key_for_user, user_exists
+from modules.database.auth import generate_api_key_for_user, user_exists
 
 api_blueprint = Blueprint('api', __name__, url_prefix='/api')
 

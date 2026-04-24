@@ -67,20 +67,20 @@ def profile():
     user_groups = []
     user_data = None
     
-    from modules.web_postgres_database import user_exists, get_users, get_groups, get_user_group_requests
+    from modules.database.auth import user_exists, get_user, get_groups, get_user_group_requests
     all_groups = []
     user_requests = {}
     if user_exists(user_email):
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
+        user_data = get_user(user_email)  # already includes groups
+        user_groups = user_data.get('groups', []) if user_data else []
         user_requests = get_user_group_requests(user_email)
+        # Convert list → dict keyed by group_name for easy lookup
+        user_requests = {r['group_name']: r.get('status') for r in user_requests}
         
         session['user']['name'] = user_data.get('name', session['user']['name'])
         session['user']['picture'] = user_data.get('picture', session['user']['picture'])
         session['user']['is_admin'] = user_data.get('is_admin', False)
-        from modules.web_postgres_database import check_object_access
-        session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', session['user']['email'])
+        session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or session['user'].get('is_admin', False)
         
         # Fetch all available groups to display
         groups_dict = get_groups()
@@ -100,7 +100,7 @@ def profile():
                          all_groups=all_groups)
 
 from flask import request, jsonify
-from modules.web_postgres_database import create_group_request, remove_user_from_group, group_exists
+from modules.database.auth import create_group_request, remove_user_from_group, group_exists
 
 @basic_bp.route('/api/profile/join_group', methods=['POST'])
 def api_join_group():

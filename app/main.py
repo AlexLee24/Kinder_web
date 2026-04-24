@@ -23,8 +23,7 @@ setup_logging(os.path.join(current_dir, 'log'))
 
 # Import modules
 from modules.config import config
-from modules.web_postgres_database import init_database
-from modules.postgres_database import init_tns_database, check_db_connection
+from modules.database import init_connection_pool, check_db_connection
 
 # Create Flask app
 app = Flask(__name__, template_folder='html', static_folder=None)
@@ -43,9 +42,8 @@ class AlphaConverter(BaseConverter):
 
 app.url_map.converters['alpha'] = AlphaConverter
 
-# Initialize databases
-init_database()
-init_tns_database()
+# Initialize Kinder DB connection pool
+init_connection_pool()
 
 # ===============================================================================
 # STATIC FILE SERVING
@@ -122,19 +120,8 @@ from modules.backup import run_daily_backup
 from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry, update_target_mags
 from modules.GCN_alert import start_gcn_listener
 from modules.TNS_object_fetch import start_tns_fetcher
-
-def _start_detect(log_dir):
-    """Lazy-import DETECT runner to avoid Pylance path resolution errors."""
-    import importlib.util
-    _detect_tools_dir = os.path.normpath(os.path.join(current_dir, '..', 'DETECT_tools'))
-    spec = importlib.util.spec_from_file_location(
-        'DETECT', os.path.join(_detect_tools_dir, 'DETECT.py')
-    )
-    mod = importlib.util.module_from_spec(spec)
-    if _detect_tools_dir not in sys.path:
-        sys.path.insert(0, _detect_tools_dir)
-    spec.loader.exec_module(mod)
-    mod.start_detect_runner(log_dir=log_dir)
+from modules.auto_tns_download import start_auto_tns_downloader
+from modules.tns_gap_filler import start_gap_filler
 
 # Use a file lock to prevent duplicate background jobs when multiple processes
 # import this module (e.g. gunicorn multi-worker, process manager restart race).
@@ -159,14 +146,10 @@ if _acquired_bg_lock:
     else:
         print("Daily backup job will NOT run in DEBUG mode.")
 
-    # Start GCN alert listener (daemon thread, log independent from web)
-    start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
-
-    # Start DETECT runner (daemon thread, log independent from web)
-    # _start_detect(log_dir=os.path.join(current_dir, 'log'))
-
-    # Start TNS fetcher (daemon thread, log independent from web)
-    # start_tns_fetcher(log_dir=os.path.join(current_dir, 'log'))
+    if not config.DEBUG:
+        start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+        start_auto_tns_downloader(log_dir=os.path.join(current_dir, 'log'))
+        start_gap_filler(log_dir=os.path.join(current_dir, 'log'))
 else:
     print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
 

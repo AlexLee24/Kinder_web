@@ -2,7 +2,7 @@ import logging
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
 
 logger = logging.getLogger(__name__)
-from modules.postgres_database import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
+from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json

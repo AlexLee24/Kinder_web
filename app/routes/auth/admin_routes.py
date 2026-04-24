@@ -10,7 +10,7 @@ from datetime import datetime
 import os
 import re
 
-from modules.web_postgres_database import (
+from modules.database.auth import (
     get_users, update_user, delete_user, user_exists,
     get_groups, create_group, delete_group, group_exists,
     add_user_to_group, remove_user_from_group, user_in_group,
@@ -54,12 +54,12 @@ def add_user():
         
     if user_exists(email):
         # If user already exists, maybe just update their role
-        from modules.web_postgres_database import update_user
+        from modules.database.auth import update_user
         update_user(email, is_admin=(role == 'admin'), role=role)
         return jsonify({'success': True, 'message': 'User already existed, role updated.'})
         
     # Create new user directly in database
-    from modules.web_postgres_database import save_user
+    from modules.database.auth import save_user
     
     is_admin = (role == 'admin')
     if not name:
@@ -443,11 +443,11 @@ def check_consistency():
         return jsonify({'error': 'Access denied'}), 403
     
     issues = check_data_consistency()
-    
+
     return jsonify({
         'success': True,
         'issues': issues,
-        'has_issues': issues['total_issues'] > 0
+        'has_issues': issues.get('total_issues', len(issues.get('issues', []))) > 0
     })
 
 @admin_bp.route('/admin/clean-consistency', methods=['POST'])
@@ -626,11 +626,11 @@ def search_sources():
     if len(q) < 1:
         return jsonify({'success': True, 'sources': []})
     try:
-        from modules.postgres_database import get_db_connection as tns_conn
+        from modules.database import get_db_connection as tns_conn
         with tns_conn() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    '''SELECT DISTINCT telescope FROM photometry
+                    '''SELECT DISTINCT telescope FROM transient.photometry
                        WHERE telescope ILIKE %s AND telescope IS NOT NULL
                        ORDER BY telescope LIMIT 20''',
                     (f'%{q}%',)

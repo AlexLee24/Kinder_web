@@ -8,15 +8,39 @@ import threading
 import time
 import traceback
 import zipfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as _date
+
+_MJD_EPOCH = _date(1858, 11, 17)
+
+
+def _to_mjd(s):
+    """Convert date string 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DD' to MJD float."""
+    if s is None:
+        return None
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+        try:
+            dt = datetime.strptime(str(s).strip(), fmt)
+            return (_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
+        except ValueError:
+            continue
+    return None
+
+
+def _reporters_arr(s):
+    """Convert comma-separated reporters string to TEXT[]."""
+    if not s:
+        return None
+    return [x.strip() for x in str(s).split(',') if x.strip()]
 
 from dotenv import load_dotenv
 from psycopg2 import extras
 
 try:
-    from modules.postgres_database import get_db_connection, log_download_attempt, update_download_log
+    from modules.database import get_db_connection
+    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids
 except ImportError:
-    from postgres_database import get_db_connection, log_download_attempt, update_download_log
+    from database import get_db_connection
+    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids
 
 # ---- Paths ----
 _module_dir = os.path.dirname(os.path.abspath(__file__))
@@ -226,16 +250,16 @@ def addin_database(filepath, debug=False):
                         continue
                     
                     # Check if object exists
-                    cursor.execute('SELECT lastmodified FROM tns_objects WHERE objid = %s', (cleaned_row.get('objid'),))
+                    cursor.execute('SELECT last_modified_date FROM transient.objects WHERE obj_id = %s', (cleaned_row.get('objid'),))
                     existing = cursor.fetchone()
-                    
+
                     if existing:
-                        existing_lastmodified = existing[0]
-                        new_lastmodified = cleaned_row.get('lastmodified')
-                        
-                        # Compare lastmodified, keep newer data
-                        if new_lastmodified and existing_lastmodified:
-                            if new_lastmodified <= existing_lastmodified:
+                        existing_lastmodified = existing[0]  # MJD float or None
+                        new_lastmodified_mjd = _to_mjd(cleaned_row.get('lastmodified'))
+
+                        # Compare last_modified_date (MJD), keep newer data
+                        if new_lastmodified_mjd is not None and existing_lastmodified is not None:
+                            if new_lastmodified_mjd <= existing_lastmodified:
                                 if debug:
                                     logger.debug(f"Skipping {cleaned_row.get('name')}: existing data is newer")
                                 skipped_count += 1
@@ -248,24 +272,20 @@ def addin_database(filepath, debug=False):
                             cleaned_row.get('ra'),
                             cleaned_row.get('declination'),
                             cleaned_row.get('redshift'),
-                            cleaned_row.get('typeid'),
                             cleaned_row.get('type'),
-                            cleaned_row.get('reporting_groupid'),
                             cleaned_row.get('reporting_group'),
-                            cleaned_row.get('source_groupid'),
                             cleaned_row.get('source_group'),
-                            cleaned_row.get('discoverydate'),
+                            _to_mjd(cleaned_row.get('discoverydate')),
                             cleaned_row.get('discoverymag'),
                             cleaned_row.get('discmagfilter'),
-                            cleaned_row.get('filter'),
-                            cleaned_row.get('reporters'),
-                            cleaned_row.get('time_received'),
+                            _reporters_arr(cleaned_row.get('reporters')),
+                            _to_mjd(cleaned_row.get('time_received')),
                             cleaned_row.get('internal_names'),
                             cleaned_row.get('discovery_ads_bibcode'),
                             cleaned_row.get('class_ads_bibcodes'),
-                            cleaned_row.get('creationdate'),
-                            cleaned_row.get('last_photometry_date'),
-                            cleaned_row.get('lastmodified'),
+                            _to_mjd(cleaned_row.get('creationdate')),
+                            _to_mjd(cleaned_row.get('last_photometry_date')),
+                            _to_mjd(cleaned_row.get('lastmodified')),
                             cleaned_row.get('objid')
                         ))
                         updated_count += 1
@@ -273,15 +293,15 @@ def addin_database(filepath, debug=False):
                         # Execute batch update
                         if len(update_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
-                                UPDATE tns_objects SET
-                                    name_prefix = %s, name = %s, ra = %s, declination = %s, redshift = %s,
-                                    typeid = %s, type = %s, reporting_groupid = %s, reporting_group = %s,
-                                    source_groupid = %s, source_group = %s, discoverydate = %s,
-                                    discoverymag = %s, discmagfilter = %s, filter = %s, reporters = %s,
-                                    time_received = %s, internal_names = %s, discovery_ads_bibcode = %s,
-                                    class_ads_bibcodes = %s, creationdate = %s, last_photometry_date = %s, lastmodified = %s,
-                                    inbox = 1, snoozed = 0
-                                WHERE objid = %s
+                                UPDATE transient.objects SET
+                                    name_prefix = %s, name = %s, ra = %s, dec = %s, redshift = %s,
+                                    type = %s, report_group = %s, source_group = %s,
+                                    discovery_date = %s, discovery_mag = %s, discovery_filter = %s,
+                                    reporters = %s, received_date = %s, internal_name = %s,
+                                    discovery_ADS = %s, class_ADS = %s,
+                                    creation_date = %s, last_phot_date = %s, last_modified_date = %s,
+                                    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
+                                WHERE obj_id = %s
                             ''', update_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
@@ -296,37 +316,34 @@ def addin_database(filepath, debug=False):
                             cleaned_row.get('ra'),
                             cleaned_row.get('declination'),
                             cleaned_row.get('redshift'),
-                            cleaned_row.get('typeid'),
                             cleaned_row.get('type'),
-                            cleaned_row.get('reporting_groupid'),
                             cleaned_row.get('reporting_group'),
-                            cleaned_row.get('source_groupid'),
                             cleaned_row.get('source_group'),
-                            cleaned_row.get('discoverydate'),
+                            _to_mjd(cleaned_row.get('discoverydate')),
                             cleaned_row.get('discoverymag'),
                             cleaned_row.get('discmagfilter'),
-                            cleaned_row.get('filter'),
-                            cleaned_row.get('reporters'),
-                            cleaned_row.get('time_received'),
+                            _reporters_arr(cleaned_row.get('reporters')),
+                            _to_mjd(cleaned_row.get('time_received')),
                             cleaned_row.get('internal_names'),
                             cleaned_row.get('discovery_ads_bibcode'),
                             cleaned_row.get('class_ads_bibcodes'),
-                            cleaned_row.get('creationdate'),
-                            cleaned_row.get('last_photometry_date'),
-                            cleaned_row.get('lastmodified')
+                            _to_mjd(cleaned_row.get('creationdate')),
+                            _to_mjd(cleaned_row.get('last_photometry_date')),
+                            _to_mjd(cleaned_row.get('lastmodified'))
                         ))
                         imported_count += 1
                         
                         # Execute batch insert
                         if len(insert_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
-                                INSERT INTO tns_objects (
-                                    objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                                    reporting_groupid, reporting_group, source_groupid, source_group,
-                                    discoverydate, discoverymag, discmagfilter, filter, reporters,
-                                    time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                                    creationdate, last_photometry_date, lastmodified, inbox, snoozed, follow, finish_follow
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0, 0, 0)
+                                INSERT INTO transient.objects (
+                                    obj_id, name_prefix, name, ra, dec, redshift, type,
+                                    report_group, source_group, discovery_date, discovery_mag,
+                                    discovery_filter, reporters, received_date, internal_name,
+                                    discovery_ADS, class_ADS, creation_date, last_phot_date,
+                                    last_modified_date, status
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox')
+                                ON CONFLICT DO NOTHING
                             ''', insert_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
@@ -336,28 +353,29 @@ def addin_database(filepath, debug=False):
             # Execute remaining batches
             if update_batch:
                 extras.execute_batch(cursor, '''
-                    UPDATE tns_objects SET
-                        name_prefix = %s, name = %s, ra = %s, declination = %s, redshift = %s,
-                        typeid = %s, type = %s, reporting_groupid = %s, reporting_group = %s,
-                        source_groupid = %s, source_group = %s, discoverydate = %s,
-                        discoverymag = %s, discmagfilter = %s, filter = %s, reporters = %s,
-                        time_received = %s, internal_names = %s, discovery_ads_bibcode = %s,
-                        class_ads_bibcodes = %s, creationdate = %s, last_photometry_date = %s, lastmodified = %s,
-                        inbox = 1, snoozed = 0
-                    WHERE objid = %s
+                    UPDATE transient.objects SET
+                        name_prefix = %s, name = %s, ra = %s, dec = %s, redshift = %s,
+                        type = %s, report_group = %s, source_group = %s,
+                        discovery_date = %s, discovery_mag = %s, discovery_filter = %s,
+                        reporters = %s, received_date = %s, internal_name = %s,
+                        discovery_ADS = %s, class_ADS = %s,
+                        creation_date = %s, last_phot_date = %s, last_modified_date = %s,
+                        status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
+                    WHERE obj_id = %s
                 ''', update_batch, page_size=BATCH_SIZE)
                 if debug:
                     logger.debug(f"Committed final {len(update_batch)} updates")
             
             if insert_batch:
                 extras.execute_batch(cursor, '''
-                    INSERT INTO tns_objects (
-                        objid, name_prefix, name, ra, declination, redshift, typeid, type,
-                        reporting_groupid, reporting_group, source_groupid, source_group,
-                        discoverydate, discoverymag, discmagfilter, filter, reporters,
-                        time_received, internal_names, discovery_ads_bibcode, class_ads_bibcodes,
-                        creationdate, last_photometry_date, lastmodified, inbox, snoozed, follow, finish_follow
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0, 0, 0)
+                    INSERT INTO transient.objects (
+                        obj_id, name_prefix, name, ra, dec, redshift, type,
+                        report_group, source_group, discovery_date, discovery_mag,
+                        discovery_filter, reporters, received_date, internal_name,
+                        discovery_ADS, class_ADS, creation_date, last_phot_date,
+                        last_modified_date, status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox')
+                    ON CONFLICT DO NOTHING
                 ''', insert_batch, page_size=BATCH_SIZE)
                 if debug:
                     logger.debug(f"Committed final {len(insert_batch)} inserts")
@@ -369,6 +387,9 @@ def addin_database(filepath, debug=False):
         
         # Update download log with success
         update_download_log(log_id, 'completed', records_imported=imported_count, records_updated=updated_count)
+        n = sync_kinder_ids()
+        if n:
+            logger.info("sync_kinder_ids: assigned %d new kinder_ids", n)
         return True
         
     except Exception as e:
@@ -383,54 +404,54 @@ def auto_snoozed(time_now_utc, debug=False):
     """Auto-snooze objects with no photometry for 15+ days"""
     snoozed_count = 0
     finished_follow_count = 0
-    
+
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
-            # Calculate cutoff date (15 days ago)
-            cutoff_date = (time_now_utc - timedelta(days=15)).strftime('%Y-%m-%d')
-            
+
+            # Calculate cutoff as MJD (15 days ago)
+            cutoff_mjd = (time_now_utc.date() - _MJD_EPOCH).days - 15
+
             if debug:
-                logger.debug(f"Processing tns_objects table with cutoff date: {cutoff_date}")
-            
-            # Find objects in inbox with old photometry or old lastmodified
+                logger.debug(f"Processing transient.objects with cutoff MJD: {cutoff_mjd}")
+
+            # Find non-snoozed objects with old photometry or old last_modified_date
             cursor.execute('''
-                SELECT objid, name, last_photometry_date, follow
-                FROM tns_objects
-                WHERE inbox = 1 
+                SELECT obj_id, name, last_phot_date, status
+                FROM transient.objects
+                WHERE status != 'Snoozed'
                 AND (
-                    (last_photometry_date IS NOT NULL AND last_photometry_date < %s)
-                    OR 
-                    (last_photometry_date IS NULL AND lastmodified < %s)
+                    (last_phot_date IS NOT NULL AND last_phot_date < %s)
+                    OR
+                    (last_phot_date IS NULL AND last_modified_date < %s)
                 )
-            ''', (cutoff_date, cutoff_date))
-            
+            ''', (cutoff_mjd, cutoff_mjd))
+
             objects_to_snooze = cursor.fetchall()
-            
+
             for obj in objects_to_snooze:
-                objid, name, last_phot_date, follow = obj
-                
-                if follow == 1:
-                    # Update: inbox=0, snoozed=1, follow=0, finish_follow=1
+                obj_id, name, last_phot_date, cur_status = obj
+
+                if cur_status == 'Follow-up':
+                    # Was being followed — mark as Finish (auto-completed)
                     cursor.execute('''
-                        UPDATE tns_objects
-                        SET inbox = 0, snoozed = 1, follow = 0, finish_follow = 1
-                        WHERE objid = %s
-                    ''', (objid,))
+                        UPDATE transient.objects
+                        SET status = 'Finish'
+                        WHERE obj_id = %s
+                    ''', (obj_id,))
                     finished_follow_count += 1
                     if debug:
                         logger.debug(f"Snoozed & finished follow: {name} (last_phot: {last_phot_date})")
                 else:
-                    # Update: inbox=0, snoozed=1 (no change to follow/finish_follow)
+                    # Snooze it
                     cursor.execute('''
-                        UPDATE tns_objects
-                        SET inbox = 0, snoozed = 1
-                        WHERE objid = %s
-                    ''', (objid,))
+                        UPDATE transient.objects
+                        SET status = 'Snoozed'
+                        WHERE obj_id = %s
+                    ''', (obj_id,))
                     if debug:
                         logger.debug(f"Snoozed: {name} (last_phot: {last_phot_date})")
-                
+
                 snoozed_count += 1
             
             conn.commit()

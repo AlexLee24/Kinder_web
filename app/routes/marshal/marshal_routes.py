@@ -3,7 +3,7 @@ Marshal routes for the Kinder web application.
 """
 from flask import render_template, redirect, url_for, session, flash, request, jsonify
 
-from modules.postgres_database import (
+from modules.database.transient import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics
 )
@@ -156,7 +156,7 @@ def marshal():
 @marshal_bp.route('/api/marshal/recent-comments')
 def get_marshal_recent_comments():
     try:
-        from modules.postgres_database import TNSObjectDB
+        from modules.database.transient import TNSObjectDB
         comments = TNSObjectDB.get_recent_comments(limit=5)
         # Add formatted date snippet and trim content
         for c in comments:
@@ -169,7 +169,7 @@ def get_marshal_recent_comments():
 @marshal_bp.route('/api/marshal/top-viewed')
 def get_marshal_top_viewed():
     try:
-        from modules.postgres_database import TNSObjectDB
+        from modules.database.transient import TNSObjectDB
         mode = request.args.get('mode', '30days')
         targets = TNSObjectDB.get_top_viewed_objects(days=30, limit=5, mode=mode)
         return jsonify({
@@ -184,7 +184,7 @@ def get_marshal_pinned_objects():
     if 'user' not in session:
         return jsonify({'success': True, 'objects': []})
     try:
-        from modules.postgres_database import get_pinned_objects
+        from modules.database.transient import get_pinned_objects
         objects = get_pinned_objects(limit=20)
         return jsonify({'success': True, 'objects': objects})
     except Exception as e:

@@ -11,7 +11,7 @@ from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response, abort
 from werkzeug.utils import secure_filename
 
-from modules.web_postgres_database import get_users, user_exists, check_object_access, get_groups
+from modules.database.auth import get_users, user_exists, check_object_access, get_groups
 
 
 
@@ -366,14 +366,14 @@ def serve_tutorial_image(filename):
     return send_from_directory(images_dir, filename)
 
 
-from modules.web_postgres_database import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target
+from modules.database.obs import save_observation_target, get_observation_targets, delete_observation_target, update_observation_target
 
 @private_area_bp.route('/api/members', methods=['GET'])
 def api_members():
     if 'user' not in session:
         return jsonify({'error': 'Unauthorized'}), 401
     
-    from modules.web_postgres_database import get_users
+    from modules.database.auth import get_users
     users = get_users()
     members = []
     for email, u in users.items():
@@ -513,7 +513,7 @@ def api_observation_target_toggle(target_id):
     if is_active is None:
         return jsonify({'error': 'is_active field required'}), 400
         
-    from modules.web_postgres_database import update_observation_target_status
+    from modules.database.obs import update_observation_target_status
     if update_observation_target_status(target_id, bool(is_active)):
         return jsonify({'success': True})
     else:
@@ -581,47 +581,20 @@ def api_search_target():
         return jsonify({'results': []})
     
     try:
-        from modules.postgres_database import get_db_connection
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            search_pattern = f'%{q}%'
-            cursor.execute('''
-                SELECT 
-                    t.name, 
-                    t.name_prefix, 
-                    t.ra, 
-                    t.declination, 
-                    t.redshift, 
-                    t.discoverymag, 
-                    t.type,
-                    t.internal_names,
-                    (
-                        SELECT p.magnitude
-                        FROM photometry p
-                        WHERE p.object_name = t.name
-                        ORDER BY p.mjd DESC
-                        LIMIT 1
-                    ) as latest_mag
-                FROM tns_objects t
-                WHERE t.name ILIKE %s OR t.name_prefix || t.name ILIKE %s OR t.internal_names ILIKE %s
-                ORDER BY t.discoverydate DESC
-                LIMIT 15
-            ''', (search_pattern, search_pattern, search_pattern))
-            rows = cursor.fetchall()
-            results = []
-            for r in rows:
-                latest_mag = r[8] if r[8] is not None else r[5]
-                results.append({
-                    'name': r[0],
-                    'prefix': r[1] or '',
-                    'ra': r[2],
-                    'dec': r[3],
-                    'redshift': r[4],
-                    'mag': latest_mag,
-                    'type': r[6] or '',
-                    'internal_names': r[7] or '',
-                })
-            cursor.close()
+        from modules.database.transient import search_tns_objects
+        rows = search_tns_objects(search_term=q, limit=15, sort_by='discoverydate', sort_order='desc')
+        results = []
+        for r in rows:
+            results.append({
+                'name': r['name'],
+                'prefix': r.get('name_prefix') or '',
+                'ra': r.get('ra'),
+                'dec': r.get('declination'),
+                'redshift': r.get('redshift'),
+                'mag': r.get('brightest_mag') or r.get('discoverymag'),
+                'type': r.get('type') or '',
+                'internal_names': r.get('internal_names') or '',
+            })
         return jsonify({'results': results})
     except Exception as e:
         logger.error('Search error: %s', e)
@@ -746,26 +719,17 @@ def debug_database():
         return jsonify({'error': 'Access denied'}), 403
     
     try:
-        from modules.postgres_database import get_tns_db_connection
-        
-        conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) FROM tns_objects")
-        total_count = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT name_prefix, name, objid FROM tns_objects LIMIT 10")
-        sample_objects = cursor.fetchall()
-        
-        cursor.execute("PRAGMA table_info(tns_objects)")
-        columns = cursor.fetchall()
-        
-        conn.close()
-        
+        from modules.database import get_db_connection
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM transient.objects")
+            total_count = cursor.fetchone()[0]
+            cursor.execute("SELECT name_prefix, name, obj_id FROM transient.objects LIMIT 10")
+            sample_objects = cursor.fetchall()
+            cursor.close()
         return jsonify({
             'total_objects': total_count,
-            'sample_objects': sample_objects,
-            'columns': [col[1] for col in columns]
+            'sample_objects': [list(r) for r in sample_objects],
         })
         
     except Exception as e:
@@ -794,7 +758,7 @@ def api_get_observation_log_months():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     try:
-        from modules.web_postgres_database import get_observation_log_months
+        from modules.database.obs import get_observation_log_months
         months = get_observation_log_months()
         return jsonify({'success': True, 'months': months})
     except Exception as e:
@@ -812,7 +776,7 @@ def api_get_observation_logs():
             if not year or not month:
                 return jsonify({'success': False, 'error': 'Year and month are required'}), 400
                 
-            from modules.web_postgres_database import get_observation_logs
+            from modules.database.obs import get_observation_logs
             logs = get_observation_logs(year, month)
             
             # Format dates to string
@@ -831,7 +795,7 @@ def api_get_observation_logs():
             if action == 'delete':
                 if not target_name or not obs_date:
                     return jsonify({'success': False, 'error': 'Target Name and Date required'}), 400
-                from modules.web_postgres_database import delete_observation_log
+                from modules.database.obs import delete_observation_log
                 deleted = delete_observation_log(target_name, obs_date, telescope_use)
                 if deleted:
                     return jsonify({'success': True})
@@ -855,7 +819,7 @@ def api_get_observation_logs():
 
             # Backward compatibility: older clients may still send target_id
             if not target_name and data.get('target_id'):
-                from modules.web_postgres_database import get_observation_targets
+                from modules.database.obs import get_observation_targets
                 tid = int(data.get('target_id'))
                 t = next((x for x in get_observation_targets() if x.get('id') == tid), None)
                 if t:
@@ -864,7 +828,7 @@ def api_get_observation_logs():
             if not target_name or not obs_date:
                 return jsonify({'success': False, 'error': 'Target Name and Date required'}), 400
                 
-            from modules.web_postgres_database import upsert_observation_log
+            from modules.database.obs import upsert_observation_log
             success = upsert_observation_log(
                 target_name, obs_date, user_name, is_triggered, is_observed,
                 trigger_filter,

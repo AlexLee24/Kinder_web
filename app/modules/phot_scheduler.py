@@ -29,7 +29,7 @@ def fetch_inbox_photometry():
     failed_objects = []
 
     try:
-        from modules.postgres_database import search_tns_objects
+        from modules.database.transient import search_tns_objects
         from modules.download_phot import process_single_object_workflow
 
         objects = search_tns_objects(tag='object', limit=9999, sort_by='name', sort_order='asc')
@@ -107,7 +107,8 @@ def fetch_missing_photometry():
     triggered = 0
 
     try:
-        from modules.postgres_database import search_tns_objects, get_tns_db_connection
+        from modules.database.transient import search_tns_objects
+        from modules.database import get_tns_db_connection
         from modules.download_phot import process_single_object_workflow
 
         objects = search_tns_objects(tag='object', limit=9999, sort_by='name', sort_order='asc')
@@ -124,7 +125,9 @@ def fetch_missing_photometry():
                 continue
             checked += 1
             cursor.execute(
-                "SELECT COUNT(*) FROM photometry WHERE object_name = %s", (name,)
+                "SELECT COUNT(*) FROM transient.photometry p "
+                "JOIN transient.objects o ON p.obj_id=o.obj_id "
+                "WHERE o.name = %s", (name,)
             )
             count = cursor.fetchone()[0]
             if count > 0:
@@ -173,8 +176,8 @@ def update_target_mags():
     Also syncs prefix (AT→SN) in observation_targets and observation_logs.
     EP-prefixed names are resolved via tns_objects internal_names/tags."""
     try:
-        from modules.web_postgres_database import get_db_connection, get_observation_targets
-        from modules.postgres_database import get_tns_db_connection
+        from modules.database import get_db_connection, get_tns_db_connection
+        from modules.database.obs import get_observation_targets
 
         targets = get_observation_targets()
         active = [t for t in targets if t.get('is_active') and t.get('name', '').strip()]
@@ -199,8 +202,9 @@ def update_target_mags():
             # --- EP name: look up via internal_names / tags, keep EP name as-is ---
             if is_ep:
                 tns_cursor.execute(
-                    """SELECT name FROM tns_objects
-                       WHERE internal_names ILIKE %s OR tags ILIKE %s
+                    """SELECT name FROM transient.objects
+                       WHERE internal_name ILIKE %s
+                          OR EXISTS (SELECT 1 FROM unnest(tag) t(v) WHERE t.v ILIKE %s)
                        LIMIT 1""",
                     (f'%{full_name}%', f'%{full_name}%')
                 )
@@ -217,7 +221,7 @@ def update_target_mags():
             # --- Normal resolution: match full name or bare name ---
             else:
                 tns_cursor.execute(
-                    """SELECT name_prefix, name FROM tns_objects
+                    """SELECT name_prefix, name FROM transient.objects
                        WHERE (COALESCE(name_prefix,'') || name) = %s
                           OR name = %s
                        LIMIT 1""",
@@ -234,11 +238,12 @@ def update_target_mags():
 
             # Latest non-upper-limit magnitude from photometry
             tns_cursor.execute(
-                """SELECT magnitude FROM photometry
-                   WHERE object_name = %s
-                     AND magnitude IS NOT NULL
-                     AND CAST(magnitude AS TEXT) NOT LIKE '>%%'
-                   ORDER BY mjd DESC
+                """SELECT p.magnitude FROM transient.photometry p
+                   JOIN transient.objects o ON p.obj_id=o.obj_id
+                   WHERE o.name = %s
+                     AND p.magnitude IS NOT NULL
+                     AND CAST(p.magnitude AS TEXT) NOT LIKE '>%%'
+                   ORDER BY p."MJD" DESC
                    LIMIT 1""",
                 (bare_name,)
             )
@@ -256,19 +261,19 @@ def update_target_mags():
                 # Update observation_targets
                 if new_mag is not None and name_changed:
                     cursor.execute(
-                        "UPDATE observation_targets SET mag = %s, name = %s WHERE id = %s",
+                        "UPDATE obs.observation_targets SET mag = %s, name = %s WHERE id = %s",
                         (new_mag, new_full_name, t['id'])
                     )
                     updated += 1
                 elif new_mag is not None:
                     cursor.execute(
-                        "UPDATE observation_targets SET mag = %s WHERE id = %s",
+                        "UPDATE obs.observation_targets SET mag = %s WHERE id = %s",
                         (new_mag, t['id'])
                     )
                     updated += 1
                 elif name_changed:
                     cursor.execute(
-                        "UPDATE observation_targets SET name = %s WHERE id = %s",
+                        "UPDATE obs.observation_targets SET name = %s WHERE id = %s",
                         (new_full_name, t['id'])
                     )
                     updated += 1
@@ -280,7 +285,7 @@ def update_target_mags():
                 # (EP names stay unchanged; sync AT<bare>/SN<bare>/bare → correct full_name)
                 if not is_ep:
                     cursor.execute(
-                        """UPDATE observation_logs
+                        """UPDATE obs.observation_logs
                            SET target_name = %s
                            WHERE target_name != %s
                              AND (

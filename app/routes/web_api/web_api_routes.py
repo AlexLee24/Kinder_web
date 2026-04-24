@@ -9,12 +9,20 @@ import urllib.parse
 from datetime import datetime, timezone
 from flask import request, jsonify, session
 
-from modules.postgres_database import (
+from modules.database.transient import (
     get_tns_statistics, get_objects_count, search_tns_objects,
     get_tag_statistics, get_filtered_stats, get_distinct_classifications,
     update_object_status, update_object_activity, get_auto_snooze_stats,
     get_object_flag_status, update_object_flag_by_name,
     get_object_pin_status, toggle_object_pin
+)
+from modules.database import get_db_connection, get_tns_db_connection, OBJECT_COMPAT_COLS
+from modules.database.auth import (
+    generate_api_key_for_user, get_user_by_api_key
+)
+from modules.database.obs import (
+    get_observation_targets, save_observation_target,
+    get_observation_logs, upsert_observation_log, delete_observation_log
 )
 from modules.Manual_tns_download_snoozed import download_TNS_api_hr, addin_database, auto_snoozed
 from modules.download_phot import process_single_object_workflow
@@ -35,7 +43,6 @@ def generate_key():
         return jsonify({'success': False, 'error': 'API keys are only available for authorized users.'}), 403
 
     email = session['user']['email']
-    from modules.web_postgres_database import generate_api_key_for_user
     new_key = generate_api_key_for_user(email)
     
     if new_key:
@@ -53,7 +60,6 @@ def api_test():
     if not api_key:
         return jsonify({'success': False, 'error': 'Missing API Key in headers (X-API-Key)'}), 401
         
-    from modules.web_postgres_database import get_user_by_api_key
     user = get_user_by_api_key(api_key)
     
     if not user:
@@ -104,7 +110,6 @@ def api_v1_observation_targets():
     if not api_key:
         return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
 
-    from modules.web_postgres_database import get_user_by_api_key, get_observation_targets
     user = get_user_by_api_key(api_key)
     if not user:
         return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
@@ -163,7 +168,6 @@ def api_v1_observation_targets():
         return jsonify({'success': False, 'error': 'priority must be Normal, High, or Urgent'}), 400
 
     try:
-        from modules.web_postgres_database import save_observation_target
         new_id = save_observation_target(
             telescope=telescope,
             name=name,
@@ -237,10 +241,6 @@ def api_v1_observation_logs():
     if not api_key:
         return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
 
-    from modules.web_postgres_database import (
-        get_user_by_api_key, get_observation_logs,
-        upsert_observation_log
-    )
     user = get_user_by_api_key(api_key)
     if not user:
         return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
@@ -297,7 +297,6 @@ def api_v1_observation_logs():
                 return jsonify({'success': False, 'error': 'obs_date must be YYYY-MM-DD format'}), 400
 
             if action == 'delete':
-                from modules.web_postgres_database import delete_observation_log
                 ok = delete_observation_log(target_name, obs_date)
                 if ok:
                     return jsonify({'success': True, 'message': f'Log deleted for {target_name} on {obs_date}'})
@@ -360,7 +359,6 @@ def api_v1_observation_logs():
 @web_api_bp.route('/api/object/<object_name>/detect_cross_match', methods=['GET'])
 def trigger_detect_cross_match(object_name):
     from modules.detect_cross_match import has_detect_run, get_detect_results_for_target, run_all_detect, save_detect_results
-    from modules.postgres_database import get_db_connection
     
     try:
         import re as _re
@@ -373,10 +371,9 @@ def trigger_detect_cross_match(object_name):
         force = request.args.get('force', 'false').lower() == 'true'
         
         if force:
-            from modules.postgres_database import get_db_connection
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("DELETE FROM detect_cross_match_results WHERE target_name = %s", (object_name,))
+                    cur.execute("DELETE FROM transient.cross_matches WHERE name = %s", (object_name,))
                     conn.commit()
         
         # Check if we already ran it
@@ -391,7 +388,7 @@ def trigger_detect_cross_match(object_name):
         # Need to run it, first get RA and Dec
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT ra, declination FROM tns_objects WHERE name = %s", (object_name,))
+                cur.execute("SELECT ra, dec FROM transient.objects WHERE name = %s", (object_name,))
                 row = cur.fetchone()
                 
         if not row:
@@ -457,54 +454,36 @@ def add_object():
         if existing_objects:
             return jsonify({'error': f'Object {object_name} already exists in database'}), 400
         
-        from modules.postgres_database import get_tns_db_connection
-        import uuid
-        
-        conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        objid = str(uuid.uuid4()) # Note: objid in postgres is INTEGER, this might fail if uuid is string. 
-        # Actually postgres_database.py defines objid as INTEGER PRIMARY KEY.
-        # So we should generate an integer ID or let it auto-increment if it was SERIAL.
-        # But it is INTEGER PRIMARY KEY, not SERIAL.
-        # We need to find the max objid and increment it, or use a random integer.
-        # Let's check how postgres_database.py handles inserts. It doesn't have insert function for objects.
-        # We should probably use a large random integer or max+1.
-        
-        # Let's use max+1
-        cursor.execute("SELECT COALESCE(MAX(objid), 0) + 1 FROM tns_objects")
-        objid = cursor.fetchone()[0]
-        
         if discovery_date:
             try:
-                datetime.strptime(discovery_date, '%Y-%m-%d')
+                disc_dt = datetime.strptime(discovery_date, '%Y-%m-%d')
             except ValueError:
                 return jsonify({'error': 'Invalid discovery date format. Use YYYY-MM-DD'}), 400
         else:
-            discovery_date = datetime.now().strftime('%Y-%m-%d')
+            disc_dt = datetime.now()
+            discovery_date = disc_dt.strftime('%Y-%m-%d')
         
-        insert_query = '''
-        INSERT INTO tns_objects (
-            objid, name, name_prefix, type, ra, declination, 
-            discoverymag, discoverydate, source_group, 
-            time_received, lastmodified, inbox, snoozed, follow, finish_follow
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0, 0, 0)
-        '''
+        # Convert to MJD: days since 1858-11-17
+        from datetime import date as _date
+        _epoch = _date(1858, 11, 17)
+        disc_mjd = (disc_dt.date() - _epoch).days
+        now_mjd  = (datetime.now().date() - _epoch).days
         
-        current_time = datetime.now().isoformat()
+        conn = get_tns_db_connection()
+        cursor = conn.cursor()
         
-        cursor.execute(insert_query, (
-            objid,
-            object_name,
-            '',
-            object_type,
-            ra,
-            dec,
-            magnitude,
-            discovery_date,
-            source or 'Manual Entry',
-            current_time,
-            current_time
-        ))
+        cursor.execute(
+            """INSERT INTO transient.objects
+               (name, name_prefix, type, ra, dec, discovery_mag, discovery_date,
+                source_group, received_date, last_modified_date, status)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Object')
+               RETURNING obj_id""",
+            (object_name, '', object_type, ra, dec,
+             magnitude, disc_mjd,
+             source or 'Manual Entry',
+             now_mjd, now_mjd)
+        )
+        new_obj_id = cursor.fetchone()[0]
         
         conn.commit()
         conn.close()
@@ -513,7 +492,7 @@ def add_object():
             'success': True,
             'message': f'Object {object_name} added successfully',
             'object_name': object_name,
-            'objid': objid
+            'objid': new_obj_id
         })
         
     except ValueError as e:
@@ -786,23 +765,22 @@ def api_get_object_tags():
         if not object_names:
             return jsonify({'success': True, 'tags': {}})
         
-        from modules.postgres_database import get_tns_db_connection
-        
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         
         placeholders = ','.join(['%s' for _ in object_names])
         
         cursor.execute(f'''
-            SELECT name, tags,
-                   CASE 
-                        WHEN finish_follow = 1 THEN 'finished'
-                        WHEN follow = 1 THEN 'followup'
-                        WHEN snoozed = 1 THEN 'snoozed'
+            SELECT o.name,
+                   array_to_string(o.tag, ', ') AS tags,
+                   CASE o.status
+                        WHEN 'Finish'    THEN 'finished'
+                        WHEN 'Follow-up' THEN 'followup'
+                        WHEN 'Snoozed'   THEN 'snoozed'
                         ELSE 'object'
-                   END as tag
-            FROM tns_objects 
-            WHERE name IN ({placeholders})
+                   END AS tag
+            FROM transient.objects o
+            WHERE o.name IN ({placeholders})
         ''', tuple(object_names))
         
         results = cursor.fetchall()

@@ -6,7 +6,7 @@ from flask import session, flash, redirect, url_for, request, jsonify, g
 
 logger = logging.getLogger(__name__)
 from datetime import datetime
-from modules.web_postgres_database import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests
+from modules.database.auth import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests
 from modules.config import config
 
 from flask import Blueprint
@@ -36,7 +36,7 @@ def refresh_user_session():
         return
 
     user_email = session['user']['email']
-    user_data = get_user(user_email)
+    user_data = get_user(user_email)  # includes groups via single extra query
 
     if not user_data:
         return
@@ -51,7 +51,7 @@ def refresh_user_session():
 
     # Sync groups / GREATLab membership
     user_groups = user_data.get('groups', [])
-    is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
+    is_great_lab_member = 'GREAT_Lab' in user_groups or current_is_admin
     if session['user'].get('is_great_lab_member') != is_great_lab_member:
         session['user']['is_great_lab_member'] = is_great_lab_member
         session.modified = True
@@ -70,11 +70,10 @@ def refresh_user_session():
 
 def update_user_session_groups(user_email):
     if 'user' in session and session['user']['email'] == user_email:
-        users = get_users()
-        user_data = users.get(user_email, {})
-        user_groups = user_data.get('groups', [])
-        
-        session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
+        user_data = get_user(user_email)
+        user_groups = user_data.get('groups', []) if user_data else []
+
+        session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or session['user'].get('is_admin', False)
         session.modified = True
 
 @auth_bp.route('/auth/google')
@@ -102,7 +101,7 @@ def google_callback():
                 is_admin = existing_user_data.get('is_admin', False)
                 role = existing_user_data.get('role', 'guest')
                 user_groups = existing_user_data.get('groups', [])
-                is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', user_email)
+                is_great_lab_member = 'GREAT_Lab' in user_groups or is_admin
             else:
                 if user_email == config.ADMIN_EMAIL:
                     is_admin = True
