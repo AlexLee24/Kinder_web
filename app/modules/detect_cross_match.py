@@ -246,6 +246,10 @@ def get_detect_results_for_target(target_name):
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
+                )
+                cur.execute(
                     "SELECT c.catalog AS catalog_name, c.separation AS separation_arcsec, "
                     "c.updated_date AS created_at, c.is_host, c.flag "
                     "FROM transient.cross_matches c "
