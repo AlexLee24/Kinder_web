@@ -486,7 +486,7 @@ def clean_unused_images():
         return jsonify({'error': 'Access denied'}), 403
         
     try:
-        tutorials_dir = os.path.join(current_admin_bp.root_path, 'static', 'tutorials')
+        tutorials_dir = os.path.join(admin_bp.root_path, 'static', 'tutorials')
         images_dir = os.path.join(tutorials_dir, 'images')
         
         if not os.path.exists(images_dir):

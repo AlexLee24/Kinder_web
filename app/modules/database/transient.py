@@ -8,6 +8,7 @@ Return values use backward-compatible column aliases matching legacy tns_objects
 import json
 import logging
 import re as _re
+import time as _time
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
@@ -17,6 +18,8 @@ from psycopg2 import extras
 from . import get_db_connection, OBJECT_COMPAT_COLS
 
 logger = logging.getLogger(__name__)
+
+_marshal_stats_cache = {'expires_at': 0.0, 'value': None}
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -727,6 +730,59 @@ def get_tns_statistics() -> dict:
         cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Snoozed'")
         stats['snoozed'] = cur.fetchone()[0]
     return stats
+
+
+def get_marshal_overview_stats(cache_ttl: int = 30) -> dict:
+    now = _time.monotonic()
+    cached = _marshal_stats_cache.get('value')
+    if cached is not None and now < _marshal_stats_cache['expires_at']:
+        return dict(cached)
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.DictCursor)
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS total_count,
+                COUNT(*) FILTER (WHERE name_prefix = 'AT') AS at_count,
+                COUNT(*) FILTER (WHERE type IS NOT NULL AND type != '') AS typed_count,
+                COUNT(*) FILTER (WHERE redshift IS NOT NULL) AS with_redshift,
+                COUNT(*) FILTER (WHERE status = 'Inbox') AS inbox_count,
+                COUNT(*) FILTER (WHERE status = 'Follow-up') AS followup_count,
+                COUNT(*) FILTER (WHERE status = 'Finish') AS finished_count,
+                COUNT(*) FILTER (WHERE status = 'Snoozed') AS snoozed_count,
+                COUNT(*) FILTER (WHERE tag @> ARRAY['flag']) AS flag_count
+            FROM transient.objects
+            """
+        )
+        object_stats = dict(cur.fetchone())
+
+        cur.execute("SELECT COUNT(DISTINCT obj_id) AS with_photometry FROM transient.photometry")
+        with_photometry = cur.fetchone()[0]
+
+        stats = {
+            'total_count': object_stats['total_count'] or 0,
+            'at_count': object_stats['at_count'] or 0,
+            'classified_count': (object_stats['total_count'] or 0) - (object_stats['at_count'] or 0),
+            'inbox_count': object_stats['inbox_count'] or 0,
+            'followup_count': object_stats['followup_count'] or 0,
+            'finished_count': object_stats['finished_count'] or 0,
+            'snoozed_count': object_stats['snoozed_count'] or 0,
+            'flag_count': object_stats['flag_count'] or 0,
+            'tns_stats': {
+                'total': object_stats['total_count'] or 0,
+                'with_photometry': with_photometry or 0,
+                'classified': object_stats['typed_count'] or 0,
+                'with_redshift': object_stats['with_redshift'] or 0,
+                'follow': object_stats['followup_count'] or 0,
+                'finished': object_stats['finished_count'] or 0,
+                'snoozed': object_stats['snoozed_count'] or 0,
+            },
+        }
+
+    _marshal_stats_cache['value'] = dict(stats)
+    _marshal_stats_cache['expires_at'] = now + max(cache_ttl, 0)
+    return dict(stats)
 
 
 def search_tns_objects(search_term='', object_type='', limit=100, offset=0,

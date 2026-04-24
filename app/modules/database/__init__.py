@@ -181,6 +181,23 @@ def _ensure_extra_tables():
                 ON transient.objects(kinder_id)
                 WHERE kinder_id IS NOT NULL
         """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS objects_discovery_date_idx
+                ON transient.objects(discovery_date DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS objects_name_prefix_idx
+                ON transient.objects(name_prefix)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS objects_type_idx
+                ON transient.objects(type)
+                WHERE type IS NOT NULL AND type != ''
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS objects_last_phot_date_idx
+                ON transient.objects(last_phot_date DESC)
+        """)
 
         conn.commit()
         cur.close()

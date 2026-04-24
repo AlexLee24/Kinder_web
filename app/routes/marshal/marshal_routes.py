@@ -4,8 +4,7 @@ Marshal routes for the Kinder web application.
 from flask import render_template, redirect, url_for, session, flash, request, jsonify
 
 from modules.database.transient import (
-    get_tns_statistics, get_objects_count, search_tns_objects,
-    get_tag_statistics
+    get_marshal_overview_stats, search_tns_objects
 )
 
 
@@ -28,16 +27,11 @@ def marshal():
         'comments_sidebar': can_see_restricted,
     }
     try:
-        # Get initial counts for statistics
-        total_count = get_objects_count()
-        at_count = get_objects_count(object_type='AT')
-        classified_count = total_count - at_count
-        
-        # Get tag-based statistics
-        tag_stats = get_tag_statistics()
-        
-        # Get TNS statistics
-        tns_stats = get_tns_statistics()
+        stats = get_marshal_overview_stats()
+        total_count = stats['total_count']
+        at_count = stats['at_count']
+        classified_count = stats['classified_count']
+        tns_stats = stats['tns_stats']
         
         # Format last sync data properly
         last_sync_data = None
@@ -121,11 +115,11 @@ def marshal():
                              tns_stats=tns_stats,
                              at_count=at_count,
                              classified_count=classified_count,
-                             inbox_count=tag_stats.get('object', 0),
-                             followup_count=tag_stats.get('followup', 0),
-                             finished_count=tag_stats.get('finished', 0),
-                             snoozed_count=tag_stats.get('snoozed', 0),
-                             flag_count=tag_stats.get('flag', 0),
+                             inbox_count=stats['inbox_count'],
+                             followup_count=stats['followup_count'],
+                             finished_count=stats['finished_count'],
+                             snoozed_count=stats['snoozed_count'],
+                             flag_count=stats['flag_count'],
                              last_sync=last_sync_data,
                              total_count=total_count,
                              use_api_mode=use_api_mode,
