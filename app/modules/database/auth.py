@@ -829,12 +829,26 @@ def set_default_source_permissions_batch(permissions: list[dict]) -> bool:
 
 
 def filter_by_source_permissions(object_name: str, data_type: str,
-                                  source_list: list[str],
+                                  source_list: list,
                                   user_email: str | None = None,
-                                  user_groups: list[int] | None = None) -> list[str]:
-    """Return subset of source_list the user is allowed to see."""
+                                  user_groups: list[int] | None = None,
+                                  is_admin: bool = False):
+    """Return subset of sources or source-backed records the user is allowed to see."""
     if not source_list:
         return []
+    if is_admin:
+        return source_list
+
+    is_record_list = isinstance(source_list[0], dict)
+    source_names = []
+    if is_record_list:
+        for item in source_list:
+            source_names.append(
+                item.get('telescope') or item.get('source') or item.get('source_name') or 'Unknown'
+            )
+    else:
+        source_names = list(source_list)
+
     try:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -842,26 +856,32 @@ def filter_by_source_permissions(object_name: str, data_type: str,
                 "SELECT source_name, is_public, allowed_groups "
                 "FROM transient.object_source_permissions "
                 "WHERE object_name = %s AND data_type = %s AND source_name = ANY(%s)",
-                (object_name, data_type, source_list)
+                (object_name, data_type, source_names)
             )
             rows = {r['source_name']: r for r in cur.fetchall()}
 
-        allowed = []
-        for src in source_list:
+        allowed_sources = set()
+        for src in source_names:
             if src not in rows:
                 # No override → default public
-                allowed.append(src)
+                allowed_sources.add(src)
                 continue
             r = rows[src]
             if r['is_public']:
-                allowed.append(src)
+                allowed_sources.add(src)
                 continue
             if user_email is None:
                 continue
             ag = r.get('allowed_groups') or []
             if not ag or (user_groups and any(g in ag for g in user_groups)):
-                allowed.append(src)
-        return allowed
+                allowed_sources.add(src)
+
+        if is_record_list:
+            return [
+                item for item in source_list
+                if (item.get('telescope') or item.get('source') or item.get('source_name') or 'Unknown') in allowed_sources
+            ]
+        return [src for src in source_list if src in allowed_sources]
     except Exception as e:
         logger.error("filter_by_source_permissions: %s", e)
         return source_list

@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 
 _marshal_stats_cache = {'expires_at': 0.0, 'value': None}
 
+
+def _ensure_cross_matches_flag_column(cur, conn=None):
+    try:
+        cur.execute(
+            "ALTER TABLE transient.cross_matches "
+            "ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
+        )
+        if conn is not None:
+            conn.commit()
+    except Exception as e:
+        if conn is not None:
+            conn.rollback()
+        logger.error("_ensure_cross_matches_flag_column: %s", e)
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -992,13 +1006,7 @@ def get_cross_match_results(limit: int = 1000, date: str | None = None) -> list:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
-            # Add flag column if needed (backward compat)
-            try:
-                cur.execute("SELECT flag FROM transient.cross_matches LIMIT 1")
-            except psycopg2.Error:
-                conn.rollback()
-                cur.execute("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE")
-                conn.commit()
+            _ensure_cross_matches_flag_column(cur, conn)
             # Map new column names back to old names expected by routes
             query = (
                 "SELECT match_id AS id, name AS target_name, catalog AS catalog_name, "
@@ -1025,9 +1033,7 @@ def update_cross_match_flag(result_id: int, flag_value: bool) -> bool:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
-            )
+            _ensure_cross_matches_flag_column(cur, conn)
             cur.execute(
                 "UPDATE transient.cross_matches SET flag = %s WHERE match_id = %s",
                 (flag_value, result_id)
@@ -1043,6 +1049,7 @@ def get_flagged_objects() -> list[list]:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
             cur.execute(
                 "SELECT DISTINCT o.name_prefix, o.name, o.ra, o.dec, "
                 "CASE WHEN o.discovery_date IS NOT NULL THEN "
@@ -1063,9 +1070,7 @@ def save_flag_objects(flag_list: list):
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
-            )
+            _ensure_cross_matches_flag_column(cur, conn)
             count = 0
             for item in flag_list:
                 if len(item) < 2:
@@ -1146,6 +1151,7 @@ def get_object_flag_status(object_name: str) -> bool:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
             cur.execute(
                 "SELECT EXISTS("
                 "  SELECT 1 FROM transient.cross_matches c "
@@ -1164,6 +1170,7 @@ def update_object_flag_by_name(object_name: str, flag_value: bool) -> bool:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
             cur.execute(
                 "UPDATE transient.cross_matches SET flag = %s "
                 "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
