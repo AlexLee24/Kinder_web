@@ -125,7 +125,8 @@ def google_callback():
                 'picture': session_picture,
                 'is_admin': is_admin,
                 'role': role,
-                'is_great_lab_member': is_great_lab_member
+                'is_great_lab_member': is_great_lab_member,
+                'api_key': existing_user_data.get('api_key') if existing_user_data else None
             }
             
             flash_message = 'Welcome Administrator!' if is_admin else f'Welcome {display_name}!'
@@ -197,7 +198,8 @@ def admin_login():
                 'picture': session_picture,
                 'is_admin': admin_data.get('is_admin', True),
                 'role': admin_data.get('role', 'admin'),
-                'is_great_lab_member': is_great_lab_member
+                'is_great_lab_member': is_great_lab_member,
+                'api_key': admin_data.get('api_key')
             }
             update_user(admin_email, last_login=datetime.now().isoformat())
         else:

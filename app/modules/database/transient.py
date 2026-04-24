@@ -50,25 +50,21 @@ def _resolve_obj_id(cur, name: str) -> int | None:
 
 
 def _resolve_obj_id_with_prefix(cur, name: str) -> int | None:
-    """Try bare name first, then strip common prefixes."""
-    cur.execute(
-        "SELECT obj_id FROM transient.objects WHERE name = %s OR name ILIKE %s LIMIT 1",
-        (name, name)
-    )
-    row = cur.fetchone()
-    if row:
-        return row[0]
-    # Strip prefix (AT/SN/FRB/TDE …)
+    """Return obj_id for name, handling optional AT/SN/… prefix in a single query."""
     m = _re.match(r'^(?:AT|SN|FRB|TDE|EP)(.+)$', name)
-    if m:
-        bare = m.group(1)
+    bare = m.group(1) if m else None
+    if bare:
+        cur.execute(
+            "SELECT obj_id FROM transient.objects WHERE name = %s OR name = %s LIMIT 1",
+            (name, bare)
+        )
+    else:
         cur.execute(
             "SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1",
-            (bare,)
+            (name,)
         )
-        row = cur.fetchone()
-        return row[0] if row else None
-    return None
+    row = cur.fetchone()
+    return row[0] if row else None
 
 
 def _mjd_update(cur, obj_id: int, mjd: float):
@@ -728,22 +724,29 @@ def get_tag_statistics() -> dict:
 def get_tns_statistics() -> dict:
     with get_db_connection() as conn:
         cur = conn.cursor()
-        stats = {}
-        cur.execute("SELECT COUNT(*) FROM transient.objects")
-        stats['total'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(DISTINCT obj_id) FROM transient.photometry")
-        stats['with_photometry'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE type IS NOT NULL AND type != ''")
-        stats['classified'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE redshift IS NOT NULL")
-        stats['with_redshift'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Follow-up'")
-        stats['follow'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Finish'")
-        stats['finished'] = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Snoozed'")
-        stats['snoozed'] = cur.fetchone()[0]
-    return stats
+        cur.execute(
+            """
+            SELECT
+                COUNT(*)                                                          AS total,
+                (SELECT COUNT(DISTINCT obj_id) FROM transient.photometry)         AS with_photometry,
+                COUNT(*) FILTER (WHERE type IS NOT NULL AND type != '')           AS classified,
+                COUNT(*) FILTER (WHERE redshift IS NOT NULL)                      AS with_redshift,
+                COUNT(*) FILTER (WHERE status = 'Follow-up')                      AS follow,
+                COUNT(*) FILTER (WHERE status = 'Finish')                         AS finished,
+                COUNT(*) FILTER (WHERE status = 'Snoozed')                        AS snoozed
+            FROM transient.objects
+            """
+        )
+        row = cur.fetchone()
+    return {
+        'total':            row[0] or 0,
+        'with_photometry':  row[1] or 0,
+        'classified':       row[2] or 0,
+        'with_redshift':    row[3] or 0,
+        'follow':           row[4] or 0,
+        'finished':         row[5] or 0,
+        'snoozed':          row[6] or 0,
+    }
 
 
 def get_marshal_overview_stats(cache_ttl: int = 30) -> dict:
@@ -872,21 +875,28 @@ def get_filtered_stats(search_term='', object_type='', tag=None,
         redshift_min=redshift_min, redshift_max=redshift_max,
         discoverer=discoverer,
     )
-    stats = {}
     with get_db_connection() as conn:
         cur = conn.cursor()
-        for label, extra in [
-            ('total',    ''),
-            ('object',   "AND o.status = 'Inbox'"),
-            ('followup', "AND o.status = 'Follow-up'"),
-            ('finished', "AND o.status = 'Finish'"),
-            ('snoozed',  "AND o.status = 'Snoozed'"),
-        ]:
-            q = (f"SELECT COUNT(*) FROM transient.objects o "
-                 f"WHERE {where} {extra}")
-            cur.execute(q, base_params)
-            stats[label] = cur.fetchone()[0]
-    return stats
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*)                                              AS total,
+                COUNT(*) FILTER (WHERE o.status = 'Inbox')           AS object,
+                COUNT(*) FILTER (WHERE o.status = 'Follow-up')       AS followup,
+                COUNT(*) FILTER (WHERE o.status = 'Finish')          AS finished,
+                COUNT(*) FILTER (WHERE o.status = 'Snoozed')         AS snoozed
+            FROM transient.objects o WHERE {where}
+            """,
+            base_params
+        )
+        row = cur.fetchone()
+    return {
+        'total':    row[0] or 0,
+        'object':   row[1] or 0,
+        'followup': row[2] or 0,
+        'finished': row[3] or 0,
+        'snoozed':  row[4] or 0,
+    }
 
 
 def get_distinct_classifications() -> list[str]:

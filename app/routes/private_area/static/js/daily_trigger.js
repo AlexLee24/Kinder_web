@@ -5,9 +5,20 @@ let logDict = {};
 let cachedLogData = [];
 let cachedLogYear = null;
 let cachedLogMonth = null;
+let logDataCacheByMonth = {};
+let latestLogRenderRequestId = 0;
 let availableLogMonths = [];
 let searchTimeout = null;
 let targetCoordDisplayMode = 'sexagesimal';
+
+// Read api key injected by server
+const _API_KEY = (document.querySelector('meta[name="x-api-key"]') || {}).content || '';
+
+function _apiFetch(url, options) {
+    options = options || {};
+    options.headers = Object.assign({ 'X-API-Key': _API_KEY }, options.headers || {});
+    return fetch(url, options);
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Private Area loaded.");
@@ -102,7 +113,7 @@ function searchTarget(query) {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(async () => {
         try {
-            const resp = await fetch('/api/search_target?q=' + encodeURIComponent(query));
+            const resp = await _apiFetch('/api/search_target?q=' + encodeURIComponent(query));
             const data = await resp.json();
             if (data.results && data.results.length > 0) {
                 dropdown.innerHTML = '';
@@ -333,7 +344,7 @@ async function applyAutoExposure() {
     if (hintEl) hintEl.innerText = 'Loading...';
 
     try {
-        const resp = await fetch('/api/auto_exposure?mag=' + encodeURIComponent(magInput) + '&telescope=' + encodeURIComponent(telescope));
+        const resp = await _apiFetch('/api/auto_exposure?mag=' + encodeURIComponent(magInput) + '&telescope=' + encodeURIComponent(telescope));
         const data = await resp.json();
 
         if (data.error) {
@@ -520,7 +531,7 @@ async function addObservationTarget(event) {
             url = '/api/targets/' + editingTargetId;
             method = 'PUT';
         }
-        const response = await fetch(url, {
+        const response = await _apiFetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(targetData)
@@ -611,7 +622,7 @@ async function updateTargetMags() {
     btn.disabled = true;
     btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg> Updating...`;
     try {
-        const res = await fetch('/api/targets/update-mags', { method: 'POST' });
+        const res = await _apiFetch('/api/targets/update-mags', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
             btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Updated`;
@@ -630,7 +641,7 @@ async function updateTargetMags() {
 
 async function loadTargets() {
     try {
-        const response = await fetch('/api/targets');
+        const response = await _apiFetch('/api/targets');
         const data = await response.json();
         if (data.success) {
             allTargetsCache = data.targets;
@@ -679,7 +690,7 @@ async function loadAstroInfoForTargets() {
     const dateStr = yyyy + '-' + mm + '-' + dd;
 
     try {
-        const resp = await fetch('/api/visibility_data', {
+        const resp = await _apiFetch('/api/visibility_data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -914,7 +925,7 @@ async function editTarget(id) {
     // Find target from cache or re-fetch
     if (allTargetsCache.length === 0) {
         try {
-            const resp = await fetch('/api/targets');
+            const resp = await _apiFetch('/api/targets');
             const data = await resp.json();
             if (data.success) allTargetsCache = data.targets;
         } catch (e) { console.error(e); return; }
@@ -954,7 +965,7 @@ async function editTarget(id) {
 async function deleteTarget(id) {
     if (!confirm('Are you sure you want to delete this target?')) return;
     try {
-        const response = await fetch('/api/targets/' + id, { method: 'DELETE' });
+        const response = await _apiFetch('/api/targets/' + id, { method: 'DELETE' });
         const data = await response.json();
         if (data.success) {
             loadTargets();
@@ -969,7 +980,7 @@ async function deleteTarget(id) {
 
 async function toggleTargetActive(id, isActive) {
     try {
-        const response = await fetch('/api/targets/' + id + '/toggle', {
+        const response = await _apiFetch('/api/targets/' + id + '/toggle', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ is_active: isActive })
@@ -1021,7 +1032,7 @@ function initObservationLog() {
         return true;
     };
 
-    fetch('/api/observation_log_months')
+    _apiFetch('/api/observation_log_months')
         .then(res => res.json())
         .then(data => {
             availableLogMonths = (data && data.success && Array.isArray(data.months)) ? data.months : [];
@@ -1146,7 +1157,25 @@ function packLogFilterColumns(filters) {
     };
 }
 
-async function renderLogGrid(initialLoad = false, skipFetch = false) {
+function setLogLoading(isLoading, message = 'Loading logs...') {
+    const overlay = document.getElementById('log-loading-overlay');
+    const text = document.getElementById('log-loading-text');
+    const container = document.getElementById('log-grid-container');
+    if (!overlay) return;
+
+    if (text) {
+        text.textContent = message;
+    }
+
+    overlay.classList.toggle('show', !!isLoading);
+    overlay.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+    if (container) {
+        container.classList.toggle('is-loading', !!isLoading);
+    }
+}
+
+async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch = false) {
+    const requestId = ++latestLogRenderRequestId;
     const yearSelect = document.getElementById('log-year');
     const monthSelect = document.getElementById('log-month');
     const thead = document.getElementById('log-grid-head');
@@ -1156,6 +1185,14 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
 
     const year = parseInt(yearSelect.value);
     const month = parseInt(monthSelect.value);
+
+    const shouldShowLoading = !skipFetch || forceFetch;
+    if (shouldShowLoading) {
+        setLogLoading(true, forceFetch ? 'Refreshing logs...' : 'Loading logs...');
+        await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+
+    try {
     if (!year || !month) {
         thead.innerHTML = '';
         tbody.innerHTML = '';
@@ -1180,33 +1217,55 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
     // Fetch targets and corresponding logs
     let logTargets = [];
     let logData = [];
-    const isCacheValid = skipFetch && allTargetsCache.length > 0 && cachedLogYear === year && cachedLogMonth === month;
-    if (isCacheValid) {
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const hasTargetsCache = allTargetsCache.length > 0;
+    const hasLogsCache = Array.isArray(logDataCacheByMonth[monthKey]);
+    const isFastCachePath = skipFetch && hasTargetsCache && hasLogsCache;
+
+    if (isFastCachePath) {
         logTargets = allTargetsCache;
-        logData = cachedLogData;
+        logData = logDataCacheByMonth[monthKey];
     } else {
         try {
-            const [respTargets, respLogs] = await Promise.all([
-                fetch('/api/targets'),
-                fetch(`/api/observation_logs?year=${year}&month=${month}`)
-            ]);
-            
-            const dataTargets = await respTargets.json();
-            const dataLogs = await respLogs.json();
-            
-            if (dataTargets.success) {
+            const targetsPromise = (!hasTargetsCache || forceFetch)
+                ? _apiFetch('/api/targets').then(resp => resp.json())
+                : Promise.resolve({ success: true, targets: allTargetsCache });
+
+            const logsPromise = (!hasLogsCache || forceFetch)
+                ? _apiFetch(`/api/observation_logs?year=${year}&month=${month}`).then(resp => resp.json())
+                : Promise.resolve({ success: true, logs: logDataCacheByMonth[monthKey] });
+
+            const [dataTargets, dataLogs] = await Promise.all([targetsPromise, logsPromise]);
+
+            if (requestId !== latestLogRenderRequestId) {
+                return;
+            }
+
+            if (dataTargets && dataTargets.success && Array.isArray(dataTargets.targets)) {
                 allTargetsCache = dataTargets.targets;
                 logTargets = dataTargets.targets;
+            } else {
+                logTargets = allTargetsCache;
             }
-            if (dataLogs.success) {
+
+            if (dataLogs && dataLogs.success && Array.isArray(dataLogs.logs)) {
                 logData = dataLogs.logs;
+                logDataCacheByMonth[monthKey] = dataLogs.logs;
                 cachedLogData = dataLogs.logs;
                 cachedLogYear = year;
                 cachedLogMonth = month;
+            } else {
+                logData = logDataCacheByMonth[monthKey] || [];
             }
         } catch (e) {
             console.error("Log Grid Fetch error", e);
+            logTargets = allTargetsCache;
+            logData = logDataCacheByMonth[monthKey] || [];
         }
+    }
+
+    if (requestId !== latestLogRenderRequestId) {
+        return;
     }
     
     // Quick lookup dict for logs by target_name + date
@@ -1283,8 +1342,8 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
     const calibrationNames = ['AUTOFLAT', 'BIAS', 'DARK'];
 
     // Separate active vs inactive DB targets (SLT/LOT), and discontinued (not in DB)
-    let activeLotTargets = monthlyTargets.filter(t => t.telescope === 'LOT' && t.is_active !== false);
-    let activeSltTargets = monthlyTargets.filter(t => t.telescope === 'SLT' && t.is_active !== false);
+    let activeLotTargets = monthlyTargets.filter(t => t.telescope === 'LOT' && t.is_active !== false && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
+    let activeSltTargets = monthlyTargets.filter(t => t.telescope === 'SLT' && t.is_active !== false && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
     let inactiveDbTargets = monthlyTargets.filter(t =>
         (t.telescope === 'LOT' || t.telescope === 'SLT') &&
         t.is_active === false &&
@@ -1588,6 +1647,11 @@ async function renderLogGrid(initialLoad = false, skipFetch = false) {
     if (initialLoad) {
         setTimeout(scrollToToday, 500); // Give DOM time to render
     }
+    } finally {
+        if (shouldShowLoading && requestId === latestLogRenderRequestId) {
+            setLogLoading(false);
+        }
+    }
 }
 
 function scrollToToday() {
@@ -1625,10 +1689,7 @@ function scrollToToday() {
 // ==========================================
 
 function toggleLogFilterDisplay() {
-    // Re-render the grid without fetching data from network again
-    // For simplicity we just call renderLogGrid but without changing data.
-    // It will fetch again right now, which is safe but you can optimize to cache if needed.
-    renderLogGrid(false);
+    renderLogGrid(false, true);
 }
 
 let membersCache = [];
@@ -1654,7 +1715,7 @@ function normalizeLogUserName(rawName) {
 }
 
 function fetchMembers() {
-    return fetch('/api/members')
+    return _apiFetch('/api/members')
         .then(res => res.json())
         .then(data => {
             if (data.success || data.status === 'success') {
@@ -1896,7 +1957,7 @@ function deleteObservationLog() {
 
     if (!confirm('Delete this observation log?')) return;
 
-    fetch('/api/observation_logs', {
+    _apiFetch('/api/observation_logs', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -1912,7 +1973,7 @@ function deleteObservationLog() {
     .then(data => {
         if (data.success) {
             closeLogModal();
-            renderLogGrid(false);
+            renderLogGrid(false, false, true);
         } else {
             alert('Failed to delete log: ' + (data.error || 'Unknown error'));
         }
@@ -1971,7 +2032,7 @@ function saveObservationLog(event) {
         repeat_count:    parseInt((document.getElementById('log-edit-repeat-count') || {}).value) || 0
     };
 
-    fetch('/api/observation_logs', {
+    _apiFetch('/api/observation_logs', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -1982,7 +2043,7 @@ function saveObservationLog(event) {
     .then(data => {
         if (data.success) {
             closeLogModal();
-            renderLogGrid(false);
+            renderLogGrid(false, false, true);
         } else {
             alert('Failed to save log: ' + (data.error || 'Unknown error'));
         }
@@ -2051,7 +2112,7 @@ async function openVisibilityPlot() {
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
     try {
-        const resp = await fetch('/api/visibility_data', {
+        const resp = await _apiFetch('/api/visibility_data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2131,7 +2192,7 @@ async function toggleVPTraceAndDB(targetIndex, isChecked, targetId) {
     // Update DB with the new toggle state (wait for it to sync so normal list triggers updates)
     if (targetId) {
         try {
-            await fetch('/api/targets/' + targetId + '/toggle', {
+            await _apiFetch('/api/targets/' + targetId + '/toggle', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_active: isChecked })

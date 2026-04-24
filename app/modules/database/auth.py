@@ -142,11 +142,13 @@ def update_user(email: str, **kwargs) -> bool:
     name, picture_url, roles, is_admin (bool → roles 50/1).
     """
     mapping = {
-        'name':        'name',
-        'picture_url': 'picture_url',
-        'roles':       'roles',
+        'name':            'name',
+        'picture_url':     'picture_url',
+        'picture':         'picture_url',
+        'roles':           'roles',
         'profile_picture': 'picture_url',
         'display_name':    'name',
+        'last_login':      'last_login',
     }
     sets = []
     params = []

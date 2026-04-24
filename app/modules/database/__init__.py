@@ -199,6 +199,28 @@ def _ensure_extra_tables():
                 ON transient.objects(last_phot_date DESC)
         """)
 
+        # obs.logs indexes — date index enables the sargable date-range filter
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS obs_logs_date_idx
+                ON obs.logs(date)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS obs_logs_name_idx
+                ON obs.logs(name)
+        """)
+
+        # obs.targets index — speeds up active-only filtering
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS obs_targets_active_idx
+                ON obs.targets(active, name)
+        """)
+
+        # transient.objects — name lookup used by _resolve_obj_id_with_prefix
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS objects_name_idx
+                ON transient.objects(name)
+        """)
+
         conn.commit()
         cur.close()
         conn.close()

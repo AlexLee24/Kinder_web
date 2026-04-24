@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     {% include '_favicon.html' %}
+    <meta name="x-api-key" content="{{ api_key }}">
     <style>
         /* Center log section content */
         .pa-obs-log-section { text-align: center; }
@@ -20,6 +21,45 @@
         .pa-log-legend { justify-content: center; display:flex; gap:12px; }
         .pa-log-legend-item { display:inline-flex; align-items:center; gap:6px; }
         .pa-log-controls { justify-content: center; display:flex; gap:10px; align-items:center; }
+        .pa-log-container { position: relative; }
+        .pa-log-grid-container.is-loading { opacity: 0.55; transition: opacity 0.2s ease; }
+        .pa-log-loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(1.5px);
+            z-index: 5;
+            pointer-events: none;
+        }
+        .pa-log-loading-overlay.show { display: flex; }
+        .pa-log-loading-card {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(77,184,255,0.28);
+            background: rgba(10, 18, 26, 0.86);
+            color: rgba(235,245,255,0.9);
+            font-size: 13px;
+            letter-spacing: 0.2px;
+        }
+        .pa-log-loading-spinner {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid rgba(77,184,255,0.3);
+            border-top-color: rgba(77,184,255,0.95);
+            animation: pa-log-spin 0.85s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes pa-log-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
 
         /* Scroll-to-top button styles */
         .scroll-to-top {
@@ -219,7 +259,7 @@
                             </svg>
                             Today
                         </button>
-                        <button onclick="renderLogGrid(false)" class="pa-btn-log-action">
+                        <button onclick="renderLogGrid(false, false, true)" class="pa-btn-log-action">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="23 4 23 10 17 10"></polyline>
                                 <polyline points="1 20 1 14 7 14"></polyline>
@@ -259,6 +299,12 @@
                     </div>
 
                     <div class="pa-log-container">
+                        <div id="log-loading-overlay" class="pa-log-loading-overlay" aria-live="polite" aria-busy="false">
+                            <div class="pa-log-loading-card">
+                                <span class="pa-log-loading-spinner" aria-hidden="true"></span>
+                                <span id="log-loading-text">Loading logs...</span>
+                            </div>
+                        </div>
                         <!-- Top Dual Scrollbar -->
                         <div class="pa-log-grid-top-scrollbar" id="log-grid-top-scrollbar">
                             <div id="log-grid-top-scrollbar-dummy" style="height: 1px;"></div>
@@ -604,7 +650,7 @@
                 cb.checked = !cb.checked;
                 updateVisual();
                 // trigger re-render (uses checkbox state inside render)
-                try { renderLogGrid(false); } catch (e) { console.error(e); }
+                    try { renderLogGrid(false, true); } catch (e) { console.error(e); }
             });
         })();
     </script>

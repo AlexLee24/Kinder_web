@@ -111,7 +111,7 @@ def daily_trigger():
         groups_dict = get_groups()
         all_groups = list(groups_dict.keys())
     
-    return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups)
+    return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups, api_key=session['user'].get('api_key') or '')
 
 @private_area_bp.route('/greatlab_info')
 def greatlab_info():
@@ -454,7 +454,7 @@ def api_observation_targets():
     is_admin = session['user'].get('is_admin', False)
     
     if request.method == 'GET':
-        targets = get_observation_targets()
+        targets = get_observation_targets(active_only=False)
         return jsonify({'success': True, 'targets': targets})
         
     elif request.method == 'POST':
@@ -779,9 +779,9 @@ def api_get_observation_logs():
             from modules.database.obs import get_observation_logs
             logs = get_observation_logs(year, month)
             
-            # Format dates to string
+            # Keep compatibility with both date objects and already-normalized strings.
             for log in logs:
-                if log['obs_date']:
+                if getattr(log.get('obs_date'), 'strftime', None):
                     log['obs_date'] = log['obs_date'].strftime('%Y-%m-%d')
                     
             return jsonify({'success': True, 'logs': logs})
