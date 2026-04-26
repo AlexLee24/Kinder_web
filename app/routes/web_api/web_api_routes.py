@@ -322,7 +322,10 @@ def api_v1_observation_logs():
                 observed_count  = data.get('observed_count') if data.get('observed_count') is not None else None
                 # Auto-fill user_name from API key owner if not provided
                 user_name = data.get('user_name') or user.get('name') or user.get('email')
-                priority = data.get('priority', '').strip() or None
+                # Normalize priority to title case: 'high' -> 'High', 'urgent' -> 'Urgent'
+                _VALID_PRIORITIES = {'urgent': 'Urgent', 'high': 'High', 'normal': 'Normal', 'filler': 'Filler'}
+                _raw_pri = (data.get('priority') or '').strip()
+                priority = _VALID_PRIORITIES.get(_raw_pri.lower(), _raw_pri.title()) if _raw_pri else None
 
                 ok = upsert_observation_log(
                     target_name, obs_date, user_name, is_triggered, is_observed,

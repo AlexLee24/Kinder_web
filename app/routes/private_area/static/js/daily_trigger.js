@@ -1344,13 +1344,21 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
     // Separate active vs inactive DB targets (SLT/LOT), and discontinued (not in DB)
     let activeLotTargets = monthlyTargets.filter(t => t.telescope === 'LOT' && t.is_active !== false && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
     let activeSltTargets = monthlyTargets.filter(t => t.telescope === 'SLT' && t.is_active !== false && !calibrationNames.includes((t.name || '').trim().toUpperCase()));
+    // inactiveDbTargets: in obs.targets but set inactive (is_discontinued=false)
     let inactiveDbTargets = monthlyTargets.filter(t =>
         (t.telescope === 'LOT' || t.telescope === 'SLT') &&
         t.is_active === false &&
+        !t.is_discontinued &&
+        !calibrationNames.includes((t.name || '').trim().toUpperCase())
+    );
+    // orphanTargets: have logs but NOT in obs.targets at all (is_discontinued=true)
+    let orphanTargets = monthlyTargets.filter(t =>
+        t.is_discontinued === true &&
         !calibrationNames.includes((t.name || '').trim().toUpperCase())
     );
     let discontinuedTargets = monthlyTargets.filter(t =>
         t.telescope !== 'SLT' && t.telescope !== 'LOT' &&
+        !t.is_discontinued &&
         !calibrationNames.includes((t.name || '').trim().toUpperCase())
     );
     let calibrationTargets = monthlyTargets.filter(t => calibrationNames.includes((t.name || '').trim().toUpperCase()));
@@ -1381,6 +1389,20 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
     sortByPriority(discontinuedTargets);
     sortByPriority(calibrationTargets);
 
+    // Sort orphan targets by most recent trigger date (desc)
+    orphanTargets.sort((a, b) => {
+        const getLatestTrigger = (t) => {
+            let latest = '';
+            for (const key in logDict) {
+                if (!key.startsWith(t._unique_key + '_')) continue;
+                const log = logDict[key];
+                if (log && log.is_triggered && log.obs_date > latest) latest = log.obs_date;
+            }
+            return latest;
+        };
+        return getLatestTrigger(b).localeCompare(getLatestTrigger(a));
+    });
+
     // Extract urgent targets: active only (is_active !== false, not discontinued)
     const urgentTargets = monthlyTargets.filter(t => {
         const p = ((t.priority || '') + '').toString().trim().toLowerCase();
@@ -1402,6 +1424,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
     sltTargets = sltTargets.filter(t => !urgentKeys.has(t._unique_key));
     lotTargets = lotTargets.filter(t => !urgentKeys.has(t._unique_key));
     inactiveDbTargets = inactiveDbTargets.filter(t => !urgentKeys.has(t._unique_key));
+    orphanTargets = orphanTargets.filter(t => !urgentKeys.has(t._unique_key));
     discontinuedTargets = discontinuedTargets.filter(t => !urgentKeys.has(t._unique_key));
     calibrationTargets = calibrationTargets.filter(t => !urgentKeys.has(t._unique_key));
 
@@ -1413,6 +1436,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
     const filteredLOT = lotTargets.filter(nameMatchFn);
     const filteredSLT = sltTargets.filter(nameMatchFn);
     const filteredInactive = inactiveDbTargets.filter(nameMatchFn);
+    const filteredOrphan = orphanTargets.filter(nameMatchFn);
     const filteredDisc = discontinuedTargets.filter(nameMatchFn);
     const filteredCal = calibrationTargets.filter(nameMatchFn);
 
@@ -1633,7 +1657,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
         });
     };
 
-    // Render order: Urgent -> LOT -> SLT -> Inactive DB targets -> Discontinued -> Calibration
+    // Render order: Urgent -> LOT -> SLT -> Inactive DB targets -> Orphan logs (by latest trigger) -> Discontinued -> Calibration
     if (filteredUrgent && filteredUrgent.length) {
         renderRows(filteredUrgent, 'URGENT');
     }
@@ -1641,6 +1665,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
     renderRows(filteredLOT, 'LOT');
     renderRows(filteredSLT, 'SLT');
     renderRows(filteredInactive, 'INACTIVE');
+    renderRows(filteredOrphan, 'ORPHAN');
     renderRows(filteredDisc, 'DISCONTINUED');
     renderRows(filteredCal, 'CALIBRATION');
 

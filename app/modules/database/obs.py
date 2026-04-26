@@ -209,9 +209,11 @@ _LOG_SELECT = (
     "l.trigger, l.observed, "
     "l.trigger_filter, l.trigger_count, l.trigger_time, "
     "l.observed_filter, l.observed_count, l.observed_time, "
-    "u.email AS trigger_by_email "
+    "u.email AS trigger_by_email, "
+    "t_obj.name AS target_name "
     "FROM obs.logs l "
-    "LEFT JOIN auth.users u ON l.trigger_by = u.usr_id"
+    "LEFT JOIN auth.users u ON l.trigger_by = u.usr_id "
+    "LEFT JOIN obs.targets t_obj ON l.target_id = t_obj.target_id"
 )
 
 
@@ -234,7 +236,8 @@ def _log_to_dict(row) -> dict:
     if d.get('date') and hasattr(d['date'], 'strftime'):
         d['date'] = d['date'].strftime('%Y-%m-%d')
     d['obs_date'] = d.get('date')
-    d['target_name'] = d.get('name')
+    # target_name: prefer JOIN result from obs.targets; fall back to denormalized l.name
+    d['target_name'] = d.pop('target_name', None) or d.get('name')
     d['telescope_use'] = d.get('telescope')
     d['repeat_count'] = d.get('repeat', 0)
     d['is_triggered'] = d.get('trigger', False)
@@ -280,7 +283,7 @@ def get_observation_logs(year_or_month: int | str | None = None,
             clauses.append("to_char(l.date, 'YYYY-MM') = %s")
             params.append(month_key)
     if target_name:
-        clauses.append("l.name ILIKE %s"); params.append(f'%{target_name}%')
+        clauses.append("t_obj.name ILIKE %s"); params.append(f'%{target_name}%')
     if telescope:
         clauses.append("l.telescope = %s"); params.append(telescope)
     where = ' AND '.join(clauses)
@@ -320,7 +323,7 @@ def _coerce_log_filters(filter_value, exp_value=None, count_value=None) -> list[
             import json as _json
             parsed = _json.loads(filter_value) if isinstance(filter_value, str) else None
             if isinstance(parsed, list):
-                return _coerce_log_filters(parsed)
+                return _coerce_log_filters(parsed, exp_value, count_value)
         except Exception:
             pass
         filters = _split_csv(filter_value)
@@ -384,7 +387,8 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
         triggered_by_value = kwargs.get('triggered_by_email')
     else:
         _target_name_for_lookup = str(target_id_or_name).strip()
-        name = str(name_or_user).strip() if name_or_user else ''  # observer/user name for log
+        # obs.logs.name is denormalized target name (per schema); observer goes into trigger_by FK
+        name = _target_name_for_lookup
         target_id = None
         telescope = kwargs.get('telescope', kwargs.get('telescope_use', '')) or ''
         program = kwargs.get('program', '') or ''
@@ -408,6 +412,13 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
     t_filter, t_count, t_time = _unpack(trigger_filters)
     o_filter, o_count, o_time = _unpack(observed_filters)
 
+    # Normalize priority to title case to avoid DB CHECK constraint violation
+    _VALID_PRI = {'urgent': 'Urgent', 'high': 'High', 'normal': 'Normal', 'filler': 'Filler'}
+    if priority:
+        priority = _VALID_PRI.get(str(priority).strip().lower(), str(priority).strip().title())
+    if not priority:
+        priority = 'Normal'
+
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
@@ -422,34 +433,70 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
 
             if target_id is None:
                 target_id = _resolve_target_id(cur, _target_name_for_lookup, telescope)
-                if target_id is None:
-                    logger.error("upsert_observation_log: target not found for %s (%s)", _target_name_for_lookup, telescope)
-                    return None
 
-            cur.execute(
-                "INSERT INTO obs.logs "
-                "(target_id, date, name, telescope, program, priority, repeat, "
-                " trigger_by, trigger, observed, "
-                " trigger_filter, trigger_count, trigger_time, "
-                " observed_filter, observed_count, observed_time) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                "ON CONFLICT ON CONSTRAINT obs_logs_target_date_uniq DO UPDATE SET "
-                "  name=EXCLUDED.name, telescope=EXCLUDED.telescope, "
-                "  program=EXCLUDED.program, priority=EXCLUDED.priority, "
-                "  repeat=EXCLUDED.repeat, trigger_by=EXCLUDED.trigger_by, "
-                "  trigger=EXCLUDED.trigger, observed=EXCLUDED.observed, "
-                "  trigger_filter=EXCLUDED.trigger_filter, "
-                "  trigger_count=EXCLUDED.trigger_count, "
-                "  trigger_time=EXCLUDED.trigger_time, "
-                "  observed_filter=EXCLUDED.observed_filter, "
-                "  observed_count=EXCLUDED.observed_count, "
-                "  observed_time=EXCLUDED.observed_time "
-                "RETURNING log_id",
-                (target_id, date, name, telescope, program, priority, repeat,
-                 tby, trigger, observed,
-                 t_filter, t_count, t_time,
-                 o_filter, o_count, o_time)
-            )
+            if target_id is not None:
+                # Target exists — use ON CONFLICT upsert via the unique constraint
+                cur.execute(
+                    "INSERT INTO obs.logs "
+                    "(target_id, date, name, telescope, program, priority, repeat, "
+                    " trigger_by, trigger, observed, "
+                    " trigger_filter, trigger_count, trigger_time, "
+                    " observed_filter, observed_count, observed_time) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT ON CONSTRAINT obs_logs_target_date_uniq DO UPDATE SET "
+                    "  name=EXCLUDED.name, telescope=EXCLUDED.telescope, "
+                    "  program=EXCLUDED.program, priority=EXCLUDED.priority, "
+                    "  repeat=EXCLUDED.repeat, trigger_by=EXCLUDED.trigger_by, "
+                    "  trigger=EXCLUDED.trigger, observed=EXCLUDED.observed, "
+                    "  trigger_filter=EXCLUDED.trigger_filter, "
+                    "  trigger_count=EXCLUDED.trigger_count, "
+                    "  trigger_time=EXCLUDED.trigger_time, "
+                    "  observed_filter=EXCLUDED.observed_filter, "
+                    "  observed_count=EXCLUDED.observed_count, "
+                    "  observed_time=EXCLUDED.observed_time "
+                    "RETURNING log_id",
+                    (target_id, date, name, telescope, program, priority, repeat,
+                     tby, trigger, observed,
+                     t_filter, t_count, t_time,
+                     o_filter, o_count, o_time)
+                )
+            else:
+                # Target not in obs.targets — save orphan log (target_id=NULL).
+                # NULL doesn't trigger the unique constraint, so do manual upsert by (name, date).
+                logger.warning("upsert_observation_log: target '%s' not in obs.targets, saving orphan log", name)
+                cur.execute(
+                    "SELECT log_id FROM obs.logs WHERE name = %s AND date = %s",
+                    (name, date)
+                )
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute(
+                        "UPDATE obs.logs SET "
+                        "  telescope=%s, program=%s, priority=%s, repeat=%s, "
+                        "  trigger_by=%s, trigger=%s, observed=%s, "
+                        "  trigger_filter=%s, trigger_count=%s, trigger_time=%s, "
+                        "  observed_filter=%s, observed_count=%s, observed_time=%s "
+                        "WHERE log_id=%s RETURNING log_id",
+                        (telescope, program, priority, repeat,
+                         tby, trigger, observed,
+                         t_filter, t_count, t_time,
+                         o_filter, o_count, o_time,
+                         existing[0])
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO obs.logs "
+                        "(target_id, date, name, telescope, program, priority, repeat, "
+                        " trigger_by, trigger, observed, "
+                        " trigger_filter, trigger_count, trigger_time, "
+                        " observed_filter, observed_count, observed_time) "
+                        "VALUES (NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "RETURNING log_id",
+                        (date, name, telescope, program, priority, repeat,
+                         tby, trigger, observed,
+                         t_filter, t_count, t_time,
+                         o_filter, o_count, o_time)
+                    )
             log_id = cur.fetchone()[0]
             conn.commit()
         return log_id
@@ -468,12 +515,14 @@ def delete_observation_log(log_id_or_name, obs_date: str | None = None,
             else:
                 if not obs_date:
                     return False
-                params = [str(log_id_or_name), obs_date]
-                query = "DELETE FROM obs.logs WHERE name = %s AND date = %s"
-                if telescope:
-                    query += " AND telescope = %s"
-                    params.append(telescope)
-                cur.execute(query, params)
+                # log_id_or_name is target_name; resolve to target_id first
+                target_id = _resolve_target_id(cur, str(log_id_or_name), telescope or '')
+                if target_id is None:
+                    return False
+                cur.execute(
+                    "DELETE FROM obs.logs WHERE target_id = %s AND date = %s",
+                    (target_id, obs_date)
+                )
             deleted = cur.rowcount > 0
             conn.commit()
         return deleted
