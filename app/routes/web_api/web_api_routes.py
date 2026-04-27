@@ -322,16 +322,24 @@ def api_v1_observation_logs():
                 observed_count  = data.get('observed_count') if data.get('observed_count') is not None else None
                 # Auto-fill user_name from API key owner if not provided
                 user_name = data.get('user_name') or user.get('name') or user.get('email')
-                # Normalize priority to title case: 'high' -> 'High', 'urgent' -> 'Urgent'
+                # Normalize priority; split compound "Normal - R01" -> priority + program
                 _VALID_PRIORITIES = {'urgent': 'Urgent', 'high': 'High', 'normal': 'Normal', 'filler': 'Filler'}
                 _raw_pri = (data.get('priority') or '').strip()
-                priority = _VALID_PRIORITIES.get(_raw_pri.lower(), _raw_pri.title()) if _raw_pri else None
+                if ' - ' in _raw_pri:
+                    _pri_part, _prog_part = _raw_pri.split(' - ', 1)
+                    _pri_part = _pri_part.strip()
+                    _prog_part = _prog_part.strip()
+                else:
+                    _pri_part = _raw_pri
+                    _prog_part = data.get('program', '') or ''
+                priority = _VALID_PRIORITIES.get(_pri_part.lower(), _pri_part.title()) if _pri_part else None
+                program = _prog_part
 
                 ok = upsert_observation_log(
                     target_name, obs_date, user_name, is_triggered, is_observed,
                     trigger_filter, trigger_exp, trigger_count,
                     observed_filter, observed_exp, observed_count,
-                    priority=priority, telescope_use=telescope_hint
+                    priority=priority, telescope_use=telescope_hint, program=program
                 )
                 if ok:
                     return jsonify({
