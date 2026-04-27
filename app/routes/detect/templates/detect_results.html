@@ -154,19 +154,23 @@
                     </thead>
                     <tbody>
                         {% for match in result.matches %}
+                        {% set md = match.get('match_data') or {} %}
                         <tr>
                             <td>{{ match.catalog_name }}</td>
                             <td>
-                                {% if match.match_data.get('id') %}
-                                    {{ "%d"|format(match.match_data.get('id')|int) }}
+                                {% set match_id = md.get('id', match.get('id')) %}
+                                {% if match_id %}
+                                    {{ "%d"|format(match_id|int) }}
                                 {% else %}
                                     -
                                 {% endif %}
                             </td>
                             <td>
-                                {% if match.match_data.get('ra') %}
-                                    {{ "%.3f"|format(match.match_data.get('ra')|float) }}, 
-                                    {{ "%.3f"|format(match.match_data.get('dec')|float) }}
+                                {% set match_ra  = match.get('match_ra')  or md.get('ra')  or md.get('_RAJ2000') %}
+                                {% set match_dec = match.get('match_dec') or md.get('dec') or md.get('_DEJ2000') %}
+                                {% if match_ra is not none and match_dec is not none and match_ra != '' and match_dec != '' %}
+                                    {{ "%.4f"|format(match_ra|float) }},
+                                    {{ "%.4f"|format(match_dec|float) }}
                                 {% else %}
                                     -
                                 {% endif %}
@@ -197,10 +201,12 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if 'Hsu' in match.catalog_name or 'Hsu' in match.match_data.get('match_source', '') %}
-                                    Grade: {{ match.match_data.get('Grade', '-') }}
-                                {% elif 'Karp' in match.catalog_name or 'Karp' in match.match_data.get('match_source', '') %}
-                                    Prob: {{ "%.3f"|format(match.match_data.get('LENS_PROBABILITY')|float) if match.match_data.get('LENS_PROBABILITY') else '-' }}
+                                {% set match_source = md.get('match_source', match.get('match_source', '')) %}
+                                {% if 'Hsu' in match.catalog_name or 'Hsu' in match_source %}
+                                    Grade: {{ md.get('Grade', match.get('Grade', '-')) }}
+                                {% elif 'Karp' in match.catalog_name or 'Karp' in match_source %}
+                                    {% set lens_prob = md.get('LENS_PROBABILITY', match.get('LENS_PROBABILITY')) %}
+                                    Prob: {{ "%.3f"|format(lens_prob|float) if lens_prob else '-' }}
                                 {% else %}
                                     -
                                 {% endif %}

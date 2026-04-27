@@ -1021,7 +1021,8 @@ def get_cross_match_results(limit: int = 1000, date: str | None = None) -> list:
             query = (
                 "SELECT match_id AS id, name AS target_name, catalog AS catalog_name, "
                 "separation AS separation_arcsec, is_host, updated_date AS created_at, "
-                "status, flag, redshift AS z "
+                "status, flag, redshift AS z, "
+                "match_data, match_ra, match_dec "
                 "FROM transient.cross_matches"
             )
             params = []
@@ -1277,6 +1278,78 @@ def get_target_image(target_name: str) -> bytes | None:
             return row[0] if row else None
     except Exception as e:
         logger.error("get_target_image %s: %s", target_name, e)
+        return None
+
+
+def save_detect_image(target_name: str, source_label: str, image_data: bytes) -> int | None:
+    """Save a DETECT finder-chart image. One row per (obj_id, source_label); updates if exists.
+    Returns the image_id on success, None on failure.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, target_name)
+            if obj_id is None:
+                return None
+            cur.execute(
+                "SELECT image_id FROM transient.target_images "
+                "WHERE obj_id = %s AND source = %s LIMIT 1",
+                (obj_id, source_label)
+            )
+            existing = cur.fetchone()
+            if existing:
+                cur.execute(
+                    "UPDATE transient.target_images SET image_data = %s "
+                    "WHERE image_id = %s RETURNING image_id",
+                    (image_data, existing[0])
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO transient.target_images (obj_id, name, image_data, source) "
+                    "VALUES (%s, %s, %s, %s) RETURNING image_id",
+                    (obj_id, target_name, image_data, source_label)
+                )
+            row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("save_detect_image %s/%s: %s", target_name, source_label, e)
+        return None
+
+
+def get_detect_images(target_name: str) -> list:
+    """Return list of {image_id, source} for the target's DETECT images (source='detect_combined' only)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT ti.image_id, ti.source "
+                "FROM transient.target_images ti "
+                "JOIN transient.objects o ON ti.obj_id = o.obj_id "
+                "WHERE o.name = %s AND ti.source = 'detect_combined' "
+                "ORDER BY ti.image_id DESC LIMIT 1",
+                (target_name,)
+            )
+            rows = cur.fetchall()
+            return [{'image_id': r[0], 'source': r[1]} for r in rows]
+    except Exception as e:
+        logger.error("get_detect_images %s: %s", target_name, e)
+        return []
+
+
+def get_detect_image_by_id(image_id: int) -> bytes | None:
+    """Return raw image bytes by image_id."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT image_data FROM transient.target_images WHERE image_id = %s",
+                (image_id,)
+            )
+            row = cur.fetchone()
+            return bytes(row[0]) if row else None
+    except Exception as e:
+        logger.error("get_detect_image_by_id %s: %s", image_id, e)
         return None
 
 

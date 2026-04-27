@@ -31,11 +31,16 @@ LENS_CATALOGS = {
     "HOLISMOKES_VIII": "J/A+A/662/A4",
     "SLACS_IV": "J/ApJ/682/964",
     "SLACS_XI": "J/ApJ/777/101",
+    "SuGOHI_I": "J/PASJ/70/S29",
+    "SuGOHI_II": "J/ApJ/867/107",
     "BELLS": "J/ApJ/744/41",
     "Gaia_GraL_I": "J/A+A/622/A165",
     "DES_SV": "J/ApJ/817/60",
     "CASTLES": "VII/229"
 }
+
+LENS_SEARCH_RADIUS_ARCSEC = 45
+VIZIER_TIMEOUT_SEC = float(os.getenv('VIZIER_TIMEOUT_SEC', '8'))
 
 def desi_cross_match_single(ra, dec, search_radius=30):
     """Cross-match against cat.desi."""
@@ -54,7 +59,7 @@ def desi_cross_match_single(ra, dec, search_radius=30):
         print(f"Error in DESI cross match: {e}")
     return matched_data
 
-def lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='lens_catalogue', catalog_label='Lens_Catalogue'):
+def lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC, table_name='lens_catalogue', catalog_label='Lens_Catalogue'):
     """Cross-match against cat.lens (unified table, table_name ignored)."""
     matched_data = []
     try:
@@ -71,67 +76,114 @@ def lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='len
         print(f"Error in Lens cross match ({catalog_label}): {e}")
     return matched_data
 
-def comprehensive_lens_match_single(ra, dec, search_radius=10):
+def comprehensive_lens_match_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC):
     matched_data = []
-    v = Vizier(columns=["**", "_r"])
+    v = Vizier(columns=["**", "_r", "_RAJ2000", "_DEJ2000"])
     v.ROW_LIMIT = -1
+    try:
+        v.TIMEOUT = VIZIER_TIMEOUT_SEC
+    except Exception:
+        pass
     
     target_coord = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
     
     for cat_name, cat_id in LENS_CATALOGS.items():
         try:
-            result = v.query_region(target_coord, radius=search_radius*u.arcsec, catalog=cat_id)
+            result = v.query_region(
+                target_coord,
+                radius=search_radius*u.arcsec,
+                catalog=cat_id,
+                cache=False
+            )
             if len(result) > 0:
-                table = result[0]
-                for row in table:
-                    sep = None
-                    if '_r' in table.colnames and row['_r'] is not None:
-                        try:
-                            _r_unit = table['_r'].unit
-                            _r_val = float(row['_r'])
-                            if _r_unit is not None:
-                                sep = float((_r_val * _r_unit).to(u.arcsec).value)
-                            else:
-                                # Vizier default is arcminutes
-                                sep = _r_val * 60.0
-                        except Exception:
-                            # Fallback: assume arcminutes (Vizier default)
-                            sep = float(row['_r']) * 60.0
-                    
-                    if sep is not None and sep > search_radius:
-                        continue
-                        
-                    row_dict = {
-                        'origin_catalog_name': cat_name,
-                        'origin_catalog_id': cat_id
-                    }
-                    
-                    for col in table.colnames:
-                        if col == '_r':
-                            continue
-                        val = row[col]
-                        if hasattr(val, 'mask') and val.mask:
-                            row_dict[col] = None
-                        elif isinstance(val, np.integer):
-                            row_dict[col] = int(val)
-                        elif isinstance(val, np.floating):
-                            row_dict[col] = float(val)
-                        elif isinstance(val, np.bool_):
-                            row_dict[col] = bool(val)
-                        elif isinstance(val, (int, float, str, bool, type(None))):
-                            row_dict[col] = val
-                        else:
-                            row_dict[col] = str(val)
-                    
-                    if sep is not None:
-                        row_dict['separation_arcsec'] = sep
-                        if sep < 3.0:
-                            row_dict['priority_tag'] = "HIGH_PRIORITY_GLSN_CANDIDATE"
-                        else:
-                            row_dict['priority_tag'] = "POTENTIAL_LENS_ENVIRONMENT"
+                for table in result:
+                    table_name = table.meta.get('name', 'unknown')
+                    for row in table:
+                        sep = None
+                        src_coord = None
 
-                    matched_data.append(row_dict)
+                        # Prefer coordinate-based separation when RA/Dec columns exist.
+                        if '_RAJ2000' in table.colnames and '_DEJ2000' in table.colnames:
+                            try:
+                                src_coord = SkyCoord(
+                                    ra=float(row['_RAJ2000'])*u.deg,
+                                    dec=float(row['_DEJ2000'])*u.deg,
+                                    frame='icrs'
+                                )
+                                sep = target_coord.separation(src_coord).arcsec
+                            except Exception:
+                                src_coord = None
+
+                        # Fallback to Vizier-reported _r.
+                        if sep is None and '_r' in table.colnames and row['_r'] is not None:
+                            try:
+                                _r_unit = table['_r'].unit
+                                _r_val = float(row['_r'])
+                                if _r_unit is not None:
+                                    sep = float((_r_val * _r_unit).to(u.arcsec).value)
+                                else:
+                                    sep = _r_val * 60.0
+                            except Exception:
+                                try:
+                                    sep = float(row['_r']) * 60.0
+                                except Exception:
+                                    sep = None
+
+                        # Keep only rows with valid separation inside search radius.
+                        if sep is None or sep > search_radius:
+                            continue
+
+                        # Gaia_GraL_I: skip low-probability rows.
+                        if cat_name == 'Gaia_GraL_I' and 'P' in table.colnames:
+                            try:
+                                p_val = row['P']
+                                if p_val is not None and float(p_val) < 0.3:
+                                    continue
+                            except Exception:
+                                pass
+
+                        row_dict = {
+                            'origin_catalog_name': cat_name,
+                            'origin_catalog_id': cat_id,
+                            'sub_table_name': table_name,
+                        }
+
+                        for col in table.colnames:
+                            val = row[col]
+                            if hasattr(val, 'mask') and val.mask:
+                                row_dict[col] = None
+                            elif isinstance(val, np.integer):
+                                row_dict[col] = int(val)
+                            elif isinstance(val, np.floating):
+                                row_dict[col] = float(val)
+                            elif isinstance(val, np.bool_):
+                                row_dict[col] = bool(val)
+                            elif isinstance(val, (int, float, str, bool, type(None))):
+                                row_dict[col] = val
+                            else:
+                                row_dict[col] = str(val)
+
+                        # Normalize ra/dec to float degree for downstream processing.
+                        if src_coord is not None:
+                            row_dict['ra'] = float(src_coord.ra.deg)
+                            row_dict['dec'] = float(src_coord.dec.deg)
+                        elif row_dict.get('_RAJ2000') is not None and row_dict.get('_DEJ2000') is not None:
+                            # src_coord construction failed but raw columns exist — use them directly
+                            try:
+                                row_dict['ra'] = float(row_dict['_RAJ2000'])
+                                row_dict['dec'] = float(row_dict['_DEJ2000'])
+                            except (TypeError, ValueError):
+                                pass
+
+                        row_dict['separation_arcsec'] = float(sep)
+                        if sep < 3.0:
+                            row_dict['priority_tag'] = 'HIGH_PRIORITY_GLSN_CANDIDATE'
+                        else:
+                            row_dict['priority_tag'] = 'POTENTIAL_LENS_ENVIRONMENT'
+
+                        matched_data.append(row_dict)
         except Exception as e:
+            print(f"Warning: Vizier query failed for {cat_name} ({cat_id}): {e}")
             continue
             
     return matched_data
@@ -142,11 +194,11 @@ def run_all_detect(target_name, ra, dec):
     desi = desi_cross_match_single(ra, dec, search_radius=30)
     
     # Try all LENS
-    lens_hsu = lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='lens_hsu', catalog_label='Lens_Hsu')
-    lens_karp = lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='lens_karp', catalog_label='Lens_Karp')
-    lens_cat = lens_cross_match_catalogue_single(ra, dec, search_radius=10, table_name='lens_catalogue', catalog_label='Lens_Catalogue')
+    lens_hsu = lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC, table_name='lens_hsu', catalog_label='Lens_Hsu')
+    lens_karp = lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC, table_name='lens_karp', catalog_label='Lens_Karp')
+    lens_cat = lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC, table_name='lens_catalogue', catalog_label='Lens_Catalogue')
     
-    lens_online = comprehensive_lens_match_single(ra, dec, search_radius=10)
+    lens_online = comprehensive_lens_match_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC)
     
     results = []
     
@@ -179,14 +231,16 @@ def run_all_detect(target_name, ra, dec):
     return results
 
 def has_detect_run(target_name):
-    """Check if DETECT has been run for this target via transient.cross_matches."""
+    """Check if DETECT has real cross-match rows for this target."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT 1 FROM transient.cross_matches c "
                     "JOIN transient.objects o ON c.obj_id = o.obj_id "
-                    "WHERE o.name = %s AND c.catalog = 'DETECT_STATUS_RUN' LIMIT 1",
+                    "WHERE o.name = %s "
+                    "AND COALESCE(c.catalog, '') <> 'DETECT_STATUS_RUN' "
+                    "LIMIT 1",
                     (target_name,)
                 )
                 return cur.fetchone() is not None
@@ -210,15 +264,52 @@ def save_detect_results(target_name, results):
                     return
                 obj_id = row[0]
 
-                # Insert actual matches
+                # Cleanup legacy sentinel rows from old implementation.
+                cur.execute(
+                    "DELETE FROM transient.cross_matches "
+                    "WHERE obj_id = %s AND catalog = 'DETECT_STATUS_RUN'",
+                    (obj_id,)
+                )
+
+                # Ensure extra columns exist
+                cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_data JSONB"
+                )
+                cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION"
+                )
+                cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION"
+                )
+
+                # Deduplicate: same catalog + separation within 0.5 arcsec
+                seen_keys = set()
+                deduped = []
                 for r in results:
+                    key = (
+                        r.get('catalog_name', ''),
+                        round(float(r['separation_arcsec']) if r['separation_arcsec'] is not None else 0, 1)
+                    )
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        deduped.append(r)
+
+                # Insert actual matches
+                for r in deduped:
                     md = r.get('match_data') or '{}'
                     md_dict = json.loads(md) if isinstance(md, str) else (md or {})
                     z = md_dict.get('z') or md_dict.get('redshift')
+                    # Extract ra/dec explicitly for fast image generation
+                    m_ra  = md_dict.get('ra')  or md_dict.get('_RAJ2000')
+                    m_dec = md_dict.get('dec') or md_dict.get('_DEJ2000')
                     cur.execute(
                         "INSERT INTO transient.cross_matches "
-                        "(obj_id, name, catalog, separation, redshift, is_host, updated_date) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,now())",
+                        "(obj_id, name, catalog, separation, redshift, is_host,"
+                        " match_data, match_ra, match_dec, updated_date) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,now())",
                         (
                             obj_id,
                             target_name,
@@ -226,16 +317,12 @@ def save_detect_results(target_name, results):
                             float(r['separation_arcsec']) if r['separation_arcsec'] is not None else None,
                             z,
                             bool(r.get('is_host', False)),
+                            json.dumps(md_dict) if md_dict else None,
+                            float(m_ra)  if m_ra  is not None else None,
+                            float(m_dec) if m_dec is not None else None,
                         )
                     )
 
-                # Sentinel row to mark this target as having been run
-                cur.execute(
-                    "INSERT INTO transient.cross_matches "
-                    "(obj_id, name, catalog, separation, updated_date) "
-                    "VALUES (%s,%s,'DETECT_STATUS_RUN',0,now())",
-                    (obj_id, target_name)
-                )
                 conn.commit()
     except Exception as e:
         print(f"Error saving detect results: {e}")
@@ -250,8 +337,22 @@ def get_detect_results_for_target(target_name):
                     "ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
                 )
                 cur.execute(
-                    "SELECT c.catalog AS catalog_name, c.separation AS separation_arcsec, "
-                    "c.updated_date AS created_at, c.is_host, c.flag "
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_data JSONB"
+                )
+                cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION"
+                )
+                cur.execute(
+                    "ALTER TABLE transient.cross_matches "
+                    "ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION"
+                )
+                cur.execute(
+                    "SELECT c.match_id AS id, c.catalog AS catalog_name, "
+                    "c.separation AS separation_arcsec, c.updated_date AS created_at, "
+                    "c.is_host, c.flag, c.match_data, "
+                    "c.redshift AS z, c.match_ra, c.match_dec "
                     "FROM transient.cross_matches c "
                     "JOIN transient.objects o ON c.obj_id = o.obj_id "
                     "WHERE o.name = %s AND c.catalog != 'DETECT_STATUS_RUN' "

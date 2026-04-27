@@ -417,44 +417,50 @@ def api_v1_observation_logs():
 
 @web_api_bp.route('/api/object/<object_name>/detect_cross_match', methods=['GET'])
 def trigger_detect_cross_match(object_name):
-    from modules.detect_cross_match import has_detect_run, get_detect_results_for_target, run_all_detect, save_detect_results
-    
     try:
+        from modules.detect_cross_match import has_detect_run, get_detect_results_for_target, run_all_detect, save_detect_results
         import re as _re
-        object_name = urllib.parse.unquote(object_name)
-        # Normalize: strip AT/SN prefix so name matches tns_objects.name
-        _m = _re.match(r'^(?:AT|SN)(\d.+)$', object_name)
+        object_name = urllib.parse.unquote(object_name).strip()
+        # Normalize: strip AT/SN prefix (allow optional spaces, case-insensitive)
+        _m = _re.match(r'^(?:AT|SN)\s*(\d.+)$', object_name, flags=_re.IGNORECASE)
         if _m:
             object_name = _m.group(1)
+
+        # Resolve canonical object name from DB (case-insensitive) for stable downstream queries.
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT obj_id, name, ra, dec FROM transient.objects "
+                    "WHERE lower(name) = lower(%s) LIMIT 1",
+                    (object_name,)
+                )
+                row = cur.fetchone()
+
+        if not row:
+            return jsonify({'success': False, 'error': 'Object not found in database'}), 404
+
+        obj_id, canonical_name, ra, dec = row
+        object_name = canonical_name
         
-        force = request.args.get('force', 'false').lower() == 'true'
-        
+        force_param = (request.args.get('force') or '').strip().lower()
+        # Default: DB-first. Only re-run when force=true (Run/Refresh button).
+        force = (force_param == 'true')
+
+        # ── DB-first path ──────────────────────────────────────────────────
+        if not force and has_detect_run(object_name):
+            results = get_detect_results_for_target(object_name)
+            from modules.database.transient import get_detect_images as _get_imgs
+            imgs = _get_imgs(canonical_name)
+            return jsonify({'success': True, 'ran_now': False, 'results': results,
+                            'detect_image_id': imgs[0]['image_id'] if imgs else None})
+
+        # ── Run path (force=true, or first time) ───────────────────────────
         if force:
             with get_db_connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("DELETE FROM transient.cross_matches WHERE name = %s", (object_name,))
+                    cur.execute("DELETE FROM transient.cross_matches WHERE obj_id = %s", (obj_id,))
                     conn.commit()
-        
-        # Check if we already ran it
-        if not force and has_detect_run(object_name):
-            # Just get the existing results
-            results = get_detect_results_for_target(object_name)
-            return jsonify({'success': True, 'ran_now': False, 'results': results})
-        
-        if not force:
-            return jsonify({'success': True, 'ran_now': False, 'results': [], 'not_run_yet': True})
 
-        # Need to run it, first get RA and Dec
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT ra, dec FROM transient.objects WHERE name = %s", (object_name,))
-                row = cur.fetchone()
-                
-        if not row:
-            return jsonify({'success': False, 'error': 'Object not found in database'}), 404
-            
-        ra, dec = row
-        
         # Execute cross match
         new_results = run_all_detect(object_name, float(ra), float(dec))
         
@@ -464,11 +470,223 @@ def trigger_detect_cross_match(object_name):
         # Fetch formatted results
         final_results = get_detect_results_for_target(object_name)
         
-        return jsonify({'success': True, 'ran_now': True, 'results': final_results})
+        # Auto-generate finder chart from in-memory results (have ra/dec)
+        detect_image_id = None
+        try:
+            import json as _json2
+            from modules.detect_image import create_marked_image
+            from modules.database.transient import save_detect_image as _save_img
+            _LENS_PFX = ('LENS', 'SLACS', 'BELLS', 'HOLISMOKES',
+                         'GAIA_GRAL', 'DES_SV', 'CASTLES', 'ONLINE_LENS', 'SUGOHGI')
+            coord_list = []
+            for r in new_results:
+                md = {}
+                try:
+                    raw = r.get('match_data') or {}
+                    md = _json2.loads(raw) if isinstance(raw, str) else raw
+                except Exception:
+                    pass
+                ra_m  = md.get('ra')  or md.get('_RAJ2000')
+                dec_m = md.get('dec') or md.get('_DEJ2000')
+                if ra_m is None or dec_m is None:
+                    continue
+                cat = (r.get('catalog_name') or '').upper()
+                src_type = ('DESI' if cat == 'DESI'
+                            else 'Lens' if any(cat.startswith(p) for p in _LENS_PFX)
+                            else 'VizieR')
+                z = md.get('z') or md.get('z_lens') or md.get('z_spec')
+                coord_list.append({
+                    'ra':       float(ra_m),
+                    'dec':      float(dec_m),
+                    'redshift': float(z) if z is not None else 'N/A',
+                    'name':     r.get('catalog_name', '?'),
+                    'type':     src_type,
+                })
+            img_bytes = create_marked_image(
+                obj_name=object_name,
+                target_ra=float(ra),
+                target_dec=float(dec),
+                coord_list=coord_list,
+                fov_arcsec=90,
+            )
+            detect_image_id = _save_img(object_name, 'detect_combined', img_bytes)
+        except Exception as img_e:
+            logger.warning('Auto-generate detect image failed for %s: %s', object_name, img_e)
+        
+        return jsonify({'success': True, 'ran_now': True, 'results': final_results,
+                        'detect_image_id': detect_image_id})
         
     except Exception as e:
         logger.error(f'Error running detect for {object_name}: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@web_api_bp.route('/api/object/<object_name>/detect_images', methods=['GET'])
+def list_detect_images(object_name):
+    """Return list of DETECT finder-chart image metadata for the object."""
+    try:
+        from modules.database.transient import get_detect_images
+        name = urllib.parse.unquote(object_name).strip()
+        images = get_detect_images(name)
+        return jsonify({'success': True, 'images': images})
+    except Exception as e:
+        logger.error('list_detect_images %s: %s', object_name, e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@web_api_bp.route('/api/object/<object_name>/detect_images/generate', methods=['POST'])
+def generate_detect_images(object_name):
+    """Generate a finder-chart image from stored DETECT results and save to DB."""
+    try:
+        from modules.detect_cross_match import run_all_detect
+        from modules.detect_image import create_marked_image
+        from modules.database.transient import save_detect_image, get_detect_images
+        from psycopg2.extras import RealDictCursor
+
+        name = urllib.parse.unquote(object_name).strip()
+
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT obj_id, name, ra, dec FROM transient.objects "
+                    "WHERE lower(name) = lower(%s) LIMIT 1",
+                    (name,)
+                )
+                row = cur.fetchone()
+        if not row:
+            return jsonify({'success': False, 'error': 'Object not found'}), 404
+        obj_id, canonical_name, target_ra, target_dec = row
+
+        _LENS_PFX = ('LENS', 'SLACS', 'BELLS', 'HOLISMOKES', 'SUGOHGI',
+                     'GAIA_GRAL', 'DES_SV', 'CASTLES', 'ONLINE_LENS')
+
+        # Read match_ra / match_dec directly — these are explicit columns set when saving
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Ensure columns exist (in case of old schema)
+                cur.execute("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_ra  DOUBLE PRECISION")
+                cur.execute("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION")
+                cur.execute(
+                    "SELECT catalog AS catalog_name, separation, redshift, match_ra, match_dec "
+                    "FROM transient.cross_matches "
+                    "WHERE obj_id = %s AND catalog != 'DETECT_STATUS_RUN' "
+                    "ORDER BY separation ASC",
+                    (obj_id,)
+                )
+                matches = cur.fetchall()
+
+        def _row_to_coord(r):
+            ra_m, dec_m = r.get('match_ra'), r.get('match_dec')
+            if ra_m is None or dec_m is None:
+                return None
+            cat = (r.get('catalog_name') or '').upper()
+            src_type = ('DESI' if cat == 'DESI'
+                        else 'Lens' if any(cat.startswith(p) for p in _LENS_PFX)
+                        else 'VizieR')
+            z = r.get('redshift')
+            return {
+                'ra':       float(ra_m),
+                'dec':      float(dec_m),
+                'redshift': float(z) if z is not None else 'N/A',
+                'name':     r.get('catalog_name', '?'),
+                'type':     src_type,
+            }
+
+        coord_list = [c for c in (_row_to_coord(r) for r in matches) if c is not None]
+
+        # Fallback 1: parse match_data JSON for records that have it but match_ra/dec is NULL
+        if not coord_list:
+            import json as _json
+            logger.info('generate_detect_images: match_ra/dec all NULL, trying match_data JSON: %s', canonical_name)
+            with get_db_connection() as conn2:
+                with conn2.cursor(cursor_factory=RealDictCursor) as cur2:
+                    cur2.execute(
+                        "ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_data JSONB"
+                    )
+                    cur2.execute(
+                        "SELECT catalog AS catalog_name, separation, redshift, match_data "
+                        "FROM transient.cross_matches "
+                        "WHERE obj_id = %s AND catalog != 'DETECT_STATUS_RUN' "
+                        "ORDER BY separation ASC",
+                        (obj_id,)
+                    )
+                    md_rows = cur2.fetchall()
+            for r in md_rows:
+                md = {}
+                try:
+                    raw = r.get('match_data') or {}
+                    md = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                except Exception:
+                    pass
+                ra_m  = md.get('ra')  or md.get('_RAJ2000')
+                dec_m = md.get('dec') or md.get('_DEJ2000')
+                if ra_m is None or dec_m is None:
+                    continue
+                try:
+                    ra_m, dec_m = float(ra_m), float(dec_m)
+                except (TypeError, ValueError):
+                    continue
+                cat = (r.get('catalog_name') or '').upper()
+                src_type = ('DESI' if cat == 'DESI'
+                            else 'Lens' if any(cat.startswith(p) for p in _LENS_PFX)
+                            else 'VizieR')
+                z = r.get('redshift') or md.get('z') or md.get('z_lens') or md.get('z_spec')
+                coord_list.append({
+                    'ra':       ra_m,
+                    'dec':      dec_m,
+                    'redshift': float(z) if z is not None else 'N/A',
+                    'name':     r.get('catalog_name', '?'),
+                    'type':     src_type,
+                })
+
+        # Fallback 2: re-run CM in-memory (old records with no match_data either)
+        if not coord_list:
+            import json as _json
+            logger.info('generate_detect_images: no coords in DB at all, re-running CM: %s', canonical_name)
+            fresh = run_all_detect(canonical_name, float(target_ra), float(target_dec))
+            for r in fresh:
+                md = {}
+                try:
+                    raw = r.get('match_data') or {}
+                    md = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                except Exception:
+                    pass
+                ra_m  = md.get('ra')  or md.get('_RAJ2000')
+                dec_m = md.get('dec') or md.get('_DEJ2000')
+                if ra_m is None or dec_m is None:
+                    continue
+                try:
+                    ra_m, dec_m = float(ra_m), float(dec_m)
+                except (TypeError, ValueError):
+                    continue
+                cat = (r.get('catalog_name') or '').upper()
+                src_type = ('DESI' if cat == 'DESI'
+                            else 'Lens' if any(cat.startswith(p) for p in _LENS_PFX)
+                            else 'VizieR')
+                z = md.get('z') or md.get('z_lens') or md.get('z_spec')
+                coord_list.append({
+                    'ra':       ra_m,
+                    'dec':      dec_m,
+                    'redshift': float(z) if z is not None else 'N/A',
+                    'name':     r.get('catalog_name', '?'),
+                    'type':     src_type,
+                })
+
+        image_bytes = create_marked_image(
+            obj_name=canonical_name,
+            target_ra=float(target_ra),
+            target_dec=float(target_dec),
+            coord_list=coord_list,
+            fov_arcsec=90,
+        )
+        image_id = save_detect_image(canonical_name, 'detect_combined', image_bytes)
+        images = get_detect_images(canonical_name)
+        return jsonify({'success': True, 'images': images, 'detect_image_id': image_id})
+
+    except Exception as e:
+        logger.error('generate_detect_images %s: %s', object_name, e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @web_api_bp.route('/api/objects', methods=['POST'])
 def add_object():

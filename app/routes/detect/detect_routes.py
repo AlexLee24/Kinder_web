@@ -2,7 +2,7 @@ import logging
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
 
 logger = logging.getLogger(__name__)
-from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, set_cross_match_host, update_tns_redshift, unset_cross_match_host
+from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -29,6 +29,20 @@ def detect_image(target_name):
         )
     else:
         return "Image not found", 404
+
+
+@detect_bp.route('/detect_image_by_id/<int:image_id>')
+def detect_image_by_id(image_id):
+    if 'user' not in session:
+        return "Unauthorized", 401
+    image_data = get_detect_image_by_id(image_id)
+    if image_data:
+        return send_file(
+            io.BytesIO(image_data),
+            mimetype='image/png',
+            as_attachment=False,
+        )
+    return "Image not found", 404
 
 @detect_bp.route('/api/set_host', methods=['POST'])
 def set_host():
@@ -160,7 +174,12 @@ def detect_results():
         
         processed_matches = []
         for row in matches:
-            match_data = row.get('match_data', {})
+            match_data = row.get('match_data') or {}
+            if isinstance(match_data, str):
+                try:
+                    match_data = json.loads(match_data)
+                except Exception:
+                    match_data = {}
             
             # Normalize TNS Info
             if tns_details:
@@ -178,17 +197,23 @@ def detect_results():
                     'dec': match_data.get('tns_dec', 'N/A')
                 }
             
-            # Redshift from THIS match
+            # Redshift: DB column first, then match_data JSON fallback
             redshift = None
-            for z_key in ['Z', 'z', 'redshift', 'z(s)', 'z_spec', 'z_phot']:
-                if z_key in match_data and match_data[z_key] is not None and match_data[z_key] != '':
-                    redshift = match_data[z_key]
-                    break
-                    
-            try:
-                redshift = float(redshift) if redshift is not None else None
-            except (ValueError, TypeError):
-                redshift = None
+            db_z = row.get('z')
+            if db_z is not None:
+                try:
+                    redshift = float(db_z)
+                except (ValueError, TypeError):
+                    pass
+            if redshift is None:
+                for z_key in ['Z', 'z', 'redshift', 'z(s)', 'z_spec', 'z_phot', 'z_lens']:
+                    if z_key in match_data and match_data[z_key] is not None and match_data[z_key] != '':
+                        try:
+                            redshift = float(match_data[z_key])
+                        except (ValueError, TypeError):
+                            pass
+                        if redshift is not None:
+                            break
             row['z'] = redshift
             
             # RA/Dec for plot (TNS coords preferred)

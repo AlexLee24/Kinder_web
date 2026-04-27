@@ -219,6 +219,7 @@ async function updatePageContent() {
     loadComments();
     initializeAladinWhenReady();
     loadDetectData();
+    loadDetectImages();  // Pre-fetch image_id so Chart tab works immediately
     loadPhotometryPlot();
 
     console.log('Page content updated');
@@ -227,6 +228,7 @@ async function updatePageContent() {
 function forceDetectRun() {
     const detectBody = document.getElementById('detectBody');
     if (!detectBody) return Promise.resolve();
+    const detectName = encodeURIComponent(cleanObjectName || objectName);
     
     detectBody.innerHTML = `
         <div style="display:flex; justify-content:center; align-items:center; height:100%;">
@@ -234,22 +236,58 @@ function forceDetectRun() {
         </div>
     `;
 
-    return fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match?force=true`)
-        .then(response => response.json())
+    return fetch(`/api/object/${detectName}/detect_cross_match?force=true&_ts=${Date.now()}`, { cache: 'no-store' })
+        .then(async response => {
+            const ct = response.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                const txt = await response.text();
+                throw new Error(txt || `HTTP ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 renderDetectData(data.results);
+                // Auto-update chart image if generated server-side
+                if (data.detect_image_id) {
+                    _detectImageId = data.detect_image_id;
+                    // If user is on chart tab, refresh the view with new image
+                    if (_detectTabMode === 'chart') _renderDetectChartView();
+                }
             } else {
                 detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${data.error || 'Failed to run cross-match'}</div>`;
             }
         })
         .catch(err => {
             console.error('Error forcefully running detect:', err);
-            detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Network error running cross-match</div>`;
+            // Fallback: if force-run fails but DB already has results, show those instead of generic network error.
+            fetch(`/api/object/${detectName}/detect_cross_match?_ts=${Date.now()}`, { cache: 'no-store' })
+                .then(async r => {
+                    const ct = r.headers.get('content-type') || '';
+                    if (!ct.includes('application/json')) {
+                        const txt = await r.text();
+                        throw new Error(txt || `HTTP ${r.status}`);
+                    }
+                    return r.json();
+                })
+                .then(d => {
+                    if (d && d.success && Array.isArray(d.results) && d.results.length > 0) {
+                        renderDetectData(d.results);
+                    } else {
+                        const msg = (err && err.message) ? err.message : 'Network error running cross-match';
+                        detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${msg}</div>`;
+                    }
+                })
+                .catch(() => {
+                    const msg = (err && err.message) ? err.message : 'Network error running cross-match';
+                    detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${msg}</div>`;
+                });
         });
 }
 
 function renderDetectData(results) {
+    _detectResultsCache = results;
+    if (_detectTabMode === 'chart') return; // Don't overwrite chart view
     const detectBody = document.getElementById('detectBody');
     if (!detectBody) return;
     
@@ -264,23 +302,39 @@ function renderDetectData(results) {
         let catalog = res.catalog_name;
         let mdata = {};
         try {
-            mdata = typeof res.match_data === 'string' ? JSON.parse(res.match_data) : res.match_data;
+            mdata = typeof res.match_data === 'string' ? JSON.parse(res.match_data) : (res.match_data || {});
         } catch(e) {
             mdata = {};
         }
         
         let extraInfo = '';
-        const has = (obj, key) => key in obj && obj[key] !== null && obj[key] !== '';
+        const has = (obj, key) => !!obj && typeof obj === 'object' && key in obj && obj[key] !== null && obj[key] !== '';
 
-        if (has(mdata, 'z_lens')) extraInfo += ` | z_lens=${parseFloat(mdata.z_lens).toFixed(3)}`;
-        else if (has(mdata, 'z')) extraInfo += ` | z=${parseFloat(mdata.z).toFixed(3)}`;
-        else if (has(mdata, 'z_spec')) extraInfo += ` | z_spec=${parseFloat(mdata.z_spec).toFixed(3)}`;
-        else if (has(mdata, 'Z_SPEC')) extraInfo += ` | z_spec=${parseFloat(mdata.Z_SPEC).toFixed(3)}`;
+        // Redshift: DB z column first, then match_data fallback
+        const dbZ = (res.z !== null && res.z !== undefined) ? res.z : null;
+        if (dbZ !== null) {
+            extraInfo += ` | z=${parseFloat(dbZ).toFixed(4)}`;
+        } else if (has(mdata, 'z_lens')) {
+            extraInfo += ` | z_lens=${parseFloat(mdata.z_lens).toFixed(3)}`;
+        } else if (has(mdata, 'z')) {
+            extraInfo += ` | z=${parseFloat(mdata.z).toFixed(3)}`;
+        } else if (has(mdata, 'z_spec')) {
+            extraInfo += ` | z_spec=${parseFloat(mdata.z_spec).toFixed(3)}`;
+        } else if (has(mdata, 'Z_SPEC')) {
+            extraInfo += ` | z_spec=${parseFloat(mdata.Z_SPEC).toFixed(3)}`;
+        }
 
-        if (has(mdata, 'z_source')) extraInfo += ` | z_source=${parseFloat(mdata.z_source).toFixed(3)}`;
+        if (has(mdata, 'z_source')) extraInfo += ` | z_src=${parseFloat(mdata.z_source).toFixed(3)}`;
         if (has(mdata, 'grade')) extraInfo += ` | grade=${mdata.grade}`;
         if (has(mdata, 'lens_probability')) extraInfo += ` | prob=${parseFloat(mdata.lens_probability).toFixed(3)}`;
         if (has(mdata, 'rein')) extraInfo += ` | rein_E=${parseFloat(mdata.rein).toFixed(2)}"`;
+
+        // Coords (match_ra/match_dec explicit columns, fallback to match_data)
+        const mRa  = res.match_ra  !== null && res.match_ra  !== undefined ? res.match_ra  : (mdata.ra  || mdata._RAJ2000 || null);
+        const mDec = res.match_dec !== null && res.match_dec !== undefined ? res.match_dec : (mdata.dec || mdata._DEJ2000 || null);
+        if (mRa !== null && mDec !== null) {
+            extraInfo += ` | coords=(${parseFloat(mRa).toFixed(4)}, ${parseFloat(mDec).toFixed(4)})`;
+        }
         
         if (has(mdata, 'priority_tag')) {
             extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${mdata.priority_tag.replace(/_/g, ' ')}</span>`;
@@ -305,16 +359,23 @@ function renderDetectData(results) {
 function loadDetectData() {
     const detectBody = document.getElementById('detectBody');
     if (!detectBody) return Promise.resolve();
+    const detectName = encodeURIComponent(cleanObjectName || objectName);
 
-    return fetch(`/api/object/${encodeURIComponent(objectName)}/detect_cross_match`)
-        .then(response => response.json())
+    return fetch(`/api/object/${detectName}/detect_cross_match?_ts=${Date.now()}`, { cache: 'no-store' })
+        .then(async response => {
+            const ct = response.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                const txt = await response.text();
+                throw new Error(txt || `HTTP ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
-                if (data.not_run_yet) {
-                    // 自動執行 DETECT，不再顯示 Not running yet
-                    return forceDetectRun();
-                } else {
-                    renderDetectData(data.results);
+                renderDetectData(data.results);
+                if (data.detect_image_id) {
+                    _detectImageId = data.detect_image_id;
+                    if (_detectTabMode === 'chart') _renderDetectChartView();
                 }
             } else {
                 detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${data.error || 'Failed to analyze'}</div>`;
@@ -322,7 +383,94 @@ function loadDetectData() {
         })
         .catch(err => {
             console.error('DETECT Error:', err);
-            detectBody.innerHTML = '<div style="color:var(--danger-color); padding:10px;">Error running DETECT</div>';
+            const msg = (err && err.message) ? err.message : 'Error running DETECT';
+            detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${msg}</div>`;
+        });
+}
+
+// ---------------------------------------------------------------------------
+// DETECT tab toggle + finder chart (single image, overwrites on generate)
+// ---------------------------------------------------------------------------
+
+let _detectTabMode = 'data';   // 'data' | 'chart'
+let _detectResultsCache = [];
+let _detectImageId = null;
+
+function switchDetectTab(mode) {
+    _detectTabMode = mode;
+    const tabData  = document.getElementById('detectTabData');
+    const tabChart = document.getElementById('detectTabChart');
+    if (tabData && tabChart) {
+        const onStyle  = 'background:rgba(0,245,212,0.15); color:#00f5d4; font-weight:600;';
+        const offStyle = 'background:transparent; color:#666; font-weight:400;';
+        tabData.style.cssText  += mode === 'data'  ? onStyle : offStyle;
+        tabChart.style.cssText += mode === 'chart' ? onStyle : offStyle;
+    }
+    if (mode === 'data') {
+        renderDetectData(_detectResultsCache);
+    } else {
+        _renderDetectChartView();
+    }
+}
+
+function _renderDetectChartView() {
+    const detectBody = document.getElementById('detectBody');
+    if (!detectBody) return;
+    if (_detectImageId) {
+        detectBody.innerHTML = `<img src="/detect_image_by_id/${_detectImageId}"
+            alt="Finder chart"
+            style="max-width:100%; border-radius:6px; display:block; margin:0 auto;" />`;
+    } else {
+        detectBody.innerHTML = '<div style="color:#555; padding:20px; text-align:center; font-size:0.85rem;">No finder chart yet — click Generate Chart</div>';
+    }
+}
+
+function loadDetectImages() {
+    const name = encodeURIComponent(cleanObjectName || objectName);
+    fetch(`/api/object/${name}/detect_images`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success && Array.isArray(data.images) && data.images.length > 0) {
+                _detectImageId = data.images[0].image_id;
+                if (_detectTabMode === 'chart') _renderDetectChartView();
+            }
+        })
+        .catch(() => {});
+}
+
+function generateDetectImages() {
+    const btn  = document.getElementById('detectImgGenBtn');
+    const name = encodeURIComponent(cleanObjectName || objectName);
+    if (btn) btn.disabled = true;
+
+    // Switch to chart tab and show loading
+    _detectTabMode = 'chart';
+    const tabData  = document.getElementById('detectTabData');
+    const tabChart = document.getElementById('detectTabChart');
+    if (tabData)  { tabData.style.background  = 'transparent'; tabData.style.color  = '#666'; }
+    if (tabChart) { tabChart.style.background = 'rgba(0,245,212,0.15)'; tabChart.style.color = '#00f5d4'; }
+
+    const detectBody = document.getElementById('detectBody');
+    if (detectBody) {
+        detectBody.innerHTML = `<div style="display:flex; justify-content:center; align-items:center;
+            height:100%; gap:8px; color:#888;"><div class="loading-spinner-small"></div> Generating finder chart…</div>`;
+    }
+
+    fetch(`/api/object/${name}/detect_images/generate`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (btn) btn.disabled = false;
+            if (data.success && Array.isArray(data.images) && data.images.length > 0) {
+                _detectImageId = data.images[0].image_id;
+                _renderDetectChartView();
+            } else {
+                if (detectBody) detectBody.innerHTML = `<div style="color:#ff6b6b; padding:20px; text-align:center;">${data.error || 'Generation failed'}</div>`;
+            }
+        })
+        .catch(err => {
+            if (btn) btn.disabled = false;
+            if (detectBody) detectBody.innerHTML = '<div style="color:#ff6b6b; padding:20px; text-align:center;">Generation failed — check console</div>';
+            console.error('generateDetectImages:', err);
         });
 }
 
