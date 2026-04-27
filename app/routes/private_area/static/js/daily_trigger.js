@@ -20,6 +20,42 @@ function _apiFetch(url, options) {
     return fetch(url, options);
 }
 
+function _limitApiPrecisionValue(value) {
+    if (value === null || value === undefined) return value;
+
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) return value;
+        return Number(value.toFixed(4));
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (/^-?\d+(\.\d+)?$/.test(trimmed) && trimmed.includes('.')) {
+            const n = Number(trimmed);
+            if (Number.isFinite(n)) return Number(n.toFixed(4)).toString();
+        }
+        return value;
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(_limitApiPrecisionValue);
+    }
+
+    if (typeof value === 'object') {
+        const out = {};
+        Object.keys(value).forEach(function(k) {
+            out[k] = _limitApiPrecisionValue(value[k]);
+        });
+        return out;
+    }
+
+    return value;
+}
+
+function _apiStringify(payload) {
+    return JSON.stringify(_limitApiPrecisionValue(payload));
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Private Area loaded.");
     loadTargets();
@@ -534,7 +570,7 @@ async function addObservationTarget(event) {
         const response = await _apiFetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(targetData)
+            body: _apiStringify(targetData)
         });
         const resData = await response.json();
         if (resData.success) {
@@ -693,7 +729,7 @@ async function loadAstroInfoForTargets() {
         const resp = await _apiFetch('/api/visibility_data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: _apiStringify({
                 date: dateStr,
                 location: '120:52:21 23:28:10 2862',
                 timezone: '8',
@@ -983,7 +1019,7 @@ async function toggleTargetActive(id, isActive) {
         const response = await _apiFetch('/api/targets/' + id + '/toggle', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_active: isActive })
+            body: _apiStringify({ is_active: isActive })
         });
         const data = await response.json();
         if (data.success) {
@@ -1544,7 +1580,14 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                     sortLogFilters(obsFiltersLog, isCalibLocal);
                     
                     const isFilterVisible = document.getElementById('log-show-filter-checkbox') ? document.getElementById('log-show-filter-checkbox').checked : true;
-                    const trigDetail = isFilterVisible ? renderFilterList(trigFilters) : '';
+                    const isTriggerAutoExposure = !!log.is_triggered
+                        && trigFilters.length === 0
+                        && (log.trigger_exp === null || log.trigger_exp === undefined || String(log.trigger_exp).trim() === '');
+                    const trigDetail = isFilterVisible
+                        ? (isTriggerAutoExposure
+                            ? '<div style="font-size:11px;color:#7cc7ff;font-weight:600;margin-top:3px;">Auto Exposure</div>'
+                            : renderFilterList(trigFilters))
+                        : '';
                     const obsDetail  = isFilterVisible ? renderFilterList(obsFiltersLog) : '';
 
                     const priorityBadge = (() => {
@@ -1985,7 +2028,7 @@ function deleteObservationLog() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
+        body: _apiStringify({
             action: 'delete',
             target_name: target_name,
             obs_date: obs_date,
@@ -2060,7 +2103,7 @@ function saveObservationLog(event) {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: _apiStringify(payload)
     })
     .then(response => response.json())
     .then(data => {
@@ -2138,7 +2181,7 @@ async function openVisibilityPlot() {
         const resp = await _apiFetch('/api/visibility_data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+            body: _apiStringify({
                 date: dateStr,
                 location: "120:52:21 23:28:10 2862",
                 timezone: "8",
@@ -2218,7 +2261,7 @@ async function toggleVPTraceAndDB(targetIndex, isChecked, targetId) {
             await _apiFetch('/api/targets/' + targetId + '/toggle', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ is_active: isChecked })
+                body: _apiStringify({ is_active: isChecked })
             });
             // Also need to refresh the normal target list in the background
             loadTargets();

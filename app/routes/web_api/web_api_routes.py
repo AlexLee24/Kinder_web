@@ -3,6 +3,7 @@ API routes for the Kinder web application.
 """
 import logging
 import math
+import re
 
 logger = logging.getLogger(__name__)
 import urllib.parse
@@ -33,6 +34,50 @@ import pathlib
 from flask import Blueprint
 web_api_bp = Blueprint('web_api', __name__, template_folder='templates', static_folder='static')
 """Register API routes with the Flask app"""
+
+
+def _limit_decimal_4(value):
+    """Limit decimal precision to at most 4 digits after decimal point."""
+    if isinstance(value, bool) or value is None:
+        return value
+
+    if isinstance(value, (int, float)):
+        if not math.isfinite(float(value)):
+            return value
+        return round(float(value), 4)
+
+    if isinstance(value, str):
+        s = value.strip()
+        # Keep sexagesimal or non-numeric strings unchanged.
+        if ':' in s:
+            return value
+        if re.fullmatch(r'[-+]?\d+(\.\d+)?', s):
+            n = float(s)
+            if math.isfinite(n):
+                return f"{n:.4f}".rstrip('0').rstrip('.')
+        return value
+
+    return value
+
+
+def _normalize_target_precision(target: dict) -> dict:
+    out = dict(target or {})
+    out['ra'] = _limit_decimal_4(out.get('ra'))
+    out['dec'] = _limit_decimal_4(out.get('dec'))
+    out['mag'] = _limit_decimal_4(out.get('mag'))
+
+    filters = out.get('filters') or []
+    if isinstance(filters, list):
+        normalized_filters = []
+        for f in filters:
+            if isinstance(f, dict):
+                ff = dict(f)
+                ff['exp'] = _limit_decimal_4(ff.get('exp'))
+                normalized_filters.append(ff)
+            else:
+                normalized_filters.append(f)
+        out['filters'] = normalized_filters
+    return out
 
 # ===============================================================================
 # OBJECT MANAGEMENT API
@@ -123,6 +168,7 @@ def api_v1_observation_targets():
         try:
             all_targets = get_observation_targets()
             all_targets = [t for t in all_targets if t.get('is_active', True)]
+            all_targets = [_normalize_target_precision(t) for t in all_targets]
         except Exception as e:
             return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
 
@@ -153,8 +199,9 @@ def api_v1_observation_targets():
 
     telescope = (data.get('telescope') or '').strip().upper()
     name      = (data.get('name') or '').strip()
-    ra        = (data.get('ra') or '').strip()
-    dec       = (data.get('dec') or '').strip()
+    ra        = _limit_decimal_4((data.get('ra') or '').strip())
+    dec       = _limit_decimal_4((data.get('dec') or '').strip())
+    mag       = _limit_decimal_4(data.get('mag'))
 
     if not telescope or telescope not in ('SLT', 'LOT'):
         return jsonify({'success': False, 'error': 'telescope is required and must be SLT or LOT'}), 400
@@ -171,7 +218,7 @@ def api_v1_observation_targets():
         new_id = save_observation_target(
             telescope=telescope,
             name=name,
-            mag=data.get('mag'),
+            mag=mag,
             ra=ra,
             dec=dec,
             priority=priority,
@@ -194,6 +241,7 @@ def api_v1_observation_targets():
                     'name': name,
                     'ra': ra,
                     'dec': dec,
+                    'mag': mag,
                     'priority': priority,
                     'repeat_count': int(data.get('repeat_count') or 0),
                 }
