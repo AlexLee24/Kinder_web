@@ -40,6 +40,11 @@ def _target_to_dict(row) -> dict:
     d['is_active'] = d.get('active', True)
     d['repeat_count'] = d.get('repeat', 0)
     d['note_gl'] = d.get('note')
+    # Return ra/dec as strings to preserve precision and ensure consistent typing
+    if d.get('ra') is not None:
+        d['ra'] = str(d['ra'])
+    if d.get('dec') is not None:
+        d['dec'] = str(d['dec'])
     return d
 
 
