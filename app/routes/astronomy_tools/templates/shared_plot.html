@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Plot — Kinder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    {% include '_favicon.html' %}
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0d0d1a;
+            color: #dde0ee;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sp-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            height: 44px;
+            flex-shrink: 0;
+            background: rgba(14,14,26,0.97);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .sp-back {
+            font-size: 0.8rem;
+            color: rgba(197,160,89,0.85);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .sp-back:hover { color: #C5A059; }
+        .sp-badge {
+            font-size: 0.7rem;
+            color: rgba(210,215,240,0.35);
+            letter-spacing: 0.5px;
+        }
+        .sp-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .sp-btn {
+            padding: 4px 11px;
+            font-size: 0.74rem;
+            font-family: inherit;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 5px;
+            color: #ccccdd;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .sp-btn:hover { background: rgba(255,255,255,0.12); }
+        #plot {
+            flex: 1;
+            min-height: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="sp-topbar">
+        <a class="sp-back" href="/lc_plotter">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            LC Plotter
+        </a>
+        <span class="sp-badge">{{ 'Static image' if is_static else 'Interactive chart' }} · shared/{{ share_id[:8] }}</span>
+        <div class="sp-actions">
+            <button class="sp-btn" id="copyBtn" onclick="copyLink()">Copy link</button>
+            {% if is_static %}
+            <button class="sp-btn" onclick="downloadPNG()">Download PNG</button>
+            {% endif %}
+        </div>
+    </div>
+    <div id="plot"></div>
+    <script>
+        const traces   = {{ traces | tojson }};
+        const layout   = {{ layout | tojson }};
+        const isStatic = {{ is_static | tojson }};
+
+        // Force the plot to fill the container properly
+        layout.autosize = true;
+
+        Plotly.newPlot('plot', traces, layout, {
+            staticPlot: isStatic,
+            responsive: true,
+            displayModeBar: !isStatic,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+        });
+
+        function copyLink() {
+            navigator.clipboard.writeText(location.href).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1800);
+            });
+        }
+
+        function downloadPNG() {
+            const title = (layout.title && layout.title.text) ? layout.title.text : 'shared_plot';
+            Plotly.downloadImage('plot', {
+                format: 'png', width: 1600, height: 900,
+                filename: title.replace(/\s+/g, '_'),
+            });
+        }
+    </script>
+</body>
+</html>

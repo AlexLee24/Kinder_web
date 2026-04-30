@@ -440,38 +440,47 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
                 target_id = _resolve_target_id(cur, _target_name_for_lookup, telescope)
 
             if target_id is not None:
-                # Target exists — use ON CONFLICT upsert via the unique constraint
+                # Update existing row by (name, date, telescope) first to avoid unique-key conflicts.
                 cur.execute(
-                    "INSERT INTO obs.logs "
-                    "(target_id, date, name, telescope, program, priority, repeat, "
-                    " trigger_by, trigger, observed, "
-                    " trigger_filter, trigger_count, trigger_time, "
-                    " observed_filter, observed_count, observed_time) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-                    "ON CONFLICT ON CONSTRAINT obs_logs_target_date_uniq DO UPDATE SET "
-                    "  name=EXCLUDED.name, telescope=EXCLUDED.telescope, "
-                    "  program=EXCLUDED.program, priority=EXCLUDED.priority, "
-                    "  repeat=EXCLUDED.repeat, trigger_by=EXCLUDED.trigger_by, "
-                    "  trigger=EXCLUDED.trigger, observed=EXCLUDED.observed, "
-                    "  trigger_filter=EXCLUDED.trigger_filter, "
-                    "  trigger_count=EXCLUDED.trigger_count, "
-                    "  trigger_time=EXCLUDED.trigger_time, "
-                    "  observed_filter=EXCLUDED.observed_filter, "
-                    "  observed_count=EXCLUDED.observed_count, "
-                    "  observed_time=EXCLUDED.observed_time "
-                    "RETURNING log_id",
-                    (target_id, date, name, telescope, program, priority, repeat,
-                     tby, trigger, observed,
-                     t_filter, t_count, t_time,
-                     o_filter, o_count, o_time)
+                    "SELECT log_id FROM obs.logs WHERE name = %s AND date = %s AND telescope = %s LIMIT 1",
+                    (name, date, telescope)
                 )
+                existing = cur.fetchone()
+                if existing:
+                    cur.execute(
+                        "UPDATE obs.logs SET "
+                        "  target_id=%s, program=%s, priority=%s, repeat=%s, "
+                        "  trigger_by=%s, trigger=%s, observed=%s, "
+                        "  trigger_filter=%s, trigger_count=%s, trigger_time=%s, "
+                        "  observed_filter=%s, observed_count=%s, observed_time=%s "
+                        "WHERE log_id=%s RETURNING log_id",
+                        (target_id, program, priority, repeat,
+                         tby, trigger, observed,
+                         t_filter, t_count, t_time,
+                         o_filter, o_count, o_time,
+                         existing[0])
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO obs.logs "
+                        "(target_id, date, name, telescope, program, priority, repeat, "
+                        " trigger_by, trigger, observed, "
+                        " trigger_filter, trigger_count, trigger_time, "
+                        " observed_filter, observed_count, observed_time) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                        "RETURNING log_id",
+                        (target_id, date, name, telescope, program, priority, repeat,
+                         tby, trigger, observed,
+                         t_filter, t_count, t_time,
+                         o_filter, o_count, o_time)
+                    )
             else:
                 # Target not in obs.targets — save orphan log (target_id=NULL).
-                # NULL doesn't trigger the unique constraint, so do manual upsert by (name, date).
+                # Do manual upsert by (name, date, telescope) to align with current unique constraint.
                 logger.warning("upsert_observation_log: target '%s' not in obs.targets, saving orphan log", name)
                 cur.execute(
-                    "SELECT log_id FROM obs.logs WHERE name = %s AND date = %s",
-                    (name, date)
+                    "SELECT log_id FROM obs.logs WHERE name = %s AND date = %s AND telescope = %s",
+                    (name, date, telescope)
                 )
                 existing = cur.fetchone()
                 if existing:

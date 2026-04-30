@@ -22,45 +22,12 @@ class DataVisualization:
     
     @staticmethod
     def get_filter_color(filter_name, alpha=1):
-        """Get color for different filters"""
-        filter_colors = {
-            # Swift UVOT 濾鏡
-            'uvw2': f'rgba(106,90,205,{alpha})',
-            'uvm2': f'rgba(132,112,255,{alpha})',
-            'uvw1': f'rgba(123,104,238,{alpha})',
-            
-            # 光學濾鏡
-            'u': f'rgba(128,0,128,{alpha})',       # U 濾鏡：紫色
-            'U': f'rgba(128,0,128,{alpha})',       # U 濾鏡：紫色
-            'B': f'rgba(0,0,255,{alpha})',         # B 濾鏡：藍色
-            'b': f'rgba(0,0,255,{alpha})',         # b 濾鏡：藍色
-            'g': f'rgba(44,164,112,{alpha})',      # g 濾鏡：偏綠
-            'V': f'rgba(34,139,34,{alpha})',       # V 濾鏡：綠色
-            'v': f'rgba(34,139,34,{alpha})',       # v 濾鏡：綠色
-            'r': f'rgba(255,100,100,{alpha})',     # r 濾鏡：偏紅
-            'R': f'rgba(255,0,0,{alpha})',         # R 濾鏡：紅色
-            'o': f'rgba(255,165,0,{alpha})',       # o 濾鏡：橙色
-            'i': f'rgba(139,0,0,{alpha})',         # i 濾鏡：深紅色
-            'I': f'rgba(139,0,0,{alpha})',         # I 濾鏡：深紅色
-            'z': f'rgba(100,0,0,{alpha})',         # z 濾鏡：更深紅
-            'Z': f'rgba(139,0,0,{alpha})',         # Z 濾鏡：深紅
-            'y': f'rgba(210,105,30,{alpha})',      # y 濾鏡：棕橘色
-            'Y': f'rgba(210,105,30,{alpha})',      # Y 濾鏡：棕橘色
-            'w': f'rgba(46,139,87,{alpha})',       # w 濾鏡：綠意較重
-            'W': f'rgba(46,139,87,{alpha})',       # W 濾鏡：綠意較重
-            'c': f'rgba(138,43,226,{alpha})',      # c 濾鏡：藍紫
-            'C': f'rgba(138,43,226,{alpha})',      # C 濾鏡：藍紫
-            
-            # 紅外線濾鏡
-            'J': f'rgba(139,69,19,{alpha})',       # J 濾鏡：棕色
-            'H': f'rgba(160,82,45,{alpha})',       # H 濾鏡：土紅
-            'K': f'rgba(205,133,63,{alpha})',      # K 濾鏡：黃土色
-            'Ks': f'rgba(205,133,63,{alpha})',     # Ks 濾鏡：黃土色
-            
-            # 其他濾鏡
-            'L': f'rgba(0,255,255,{alpha})',       # L 濾鏡：淺色
-        }
-        return filter_colors.get(filter_name, f'rgba(128,128,128,{alpha})')  # 預設灰色
+        """Get color for a filter. Loads from app/data/filter_colors.json; alpha applied dynamically."""
+        try:
+            from modules import filter_colors as _fc
+        except ImportError:
+            from . import filter_colors as _fc
+        return _fc.get_rgba(filter_name, alpha)
     
     @staticmethod
     def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False, apply_extinction=True, apply_k_corr=True):

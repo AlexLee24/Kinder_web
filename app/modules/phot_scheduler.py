@@ -238,11 +238,11 @@ def update_target_mags():
 
             # Latest non-upper-limit magnitude from photometry
             tns_cursor.execute(
-                """SELECT p.magnitude FROM transient.photometry p
+                                """SELECT p.mag FROM transient.photometry p
                    JOIN transient.objects o ON p.obj_id=o.obj_id
                    WHERE o.name = %s
-                     AND p.magnitude IS NOT NULL
-                     AND CAST(p.magnitude AS TEXT) NOT LIKE '>%%'
+                                         AND p.mag IS NOT NULL
+                                         AND CAST(p.mag AS TEXT) NOT LIKE '>%%'
                    ORDER BY p."MJD" DESC
                    LIMIT 1""",
                 (bare_name,)

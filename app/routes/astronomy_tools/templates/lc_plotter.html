@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LC Plotter - Kinder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+    <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/lc_plotter.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="lcp-layout">
+
+        <!-- ══ SIDEBAR ══ -->
+        <aside class="lcp-sidebar">
+
+            <!-- ── 1. DATA ── -->
+            <section class="lcp-section">
+                <div class="lcp-section-hd">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    Data
+                </div>
+                <div class="lcp-dropzone" id="dropZone">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                    <span>Drop file or <u>browse</u></span>
+                    <small>.csv · .txt · .dat — auto delimiter</small>
+                    <input type="file" id="fileInput" accept=".csv,.txt,.dat" style="display:none">
+                </div>
+                <div class="lcp-file-badge" id="fileInfo" style="display:none"></div>
+                <div id="previewWrap" style="display:none">
+                    <div class="lcp-preview-label">Preview (first 5 rows)</div>
+                    <div class="lcp-preview-wrap"><table id="previewTable"></table></div>
+                </div>
+            </section>
+
+            <!-- ── 2. AXES ── -->
+            <section class="lcp-section">
+                <div class="lcp-section-hd">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="3" x2="3" y2="21"/><line x1="3" y1="21" x2="21" y2="21"/><line x1="7" y1="14" x2="7" y2="21"/><line x1="12" y1="8" x2="12" y2="21"/><line x1="17" y1="11" x2="17" y2="21"/></svg>
+                    Axes
+                </div>
+
+                <!-- X bottom -->
+                <div class="axis-row">
+                    <div class="axis-badge">X ↓</div>
+                    <div class="axis-fields">
+                        <select id="xCol" class="axis-sel-primary" onchange="onColumnChange()">
+                            <option value="">— select column —</option>
+                        </select>
+                        <div class="axis-err-row">
+                            <span class="axis-err-label">± X err</span>
+                            <select id="xErrCol" class="axis-sel-secondary">
+                                <option value="">none</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top X (secondary) -->
+                <div class="axis-row axis-row-secondary">
+                    <div class="axis-badge axis-badge-sec">X ↑</div>
+                    <div class="axis-fields">
+                        <select id="topXMode" class="axis-sel-primary" onchange="onTopXChange()">
+                            <option value="none">— none —</option>
+                            <optgroup label="Computed">
+                                <option value="phase">Phase (days from explosion)</option>
+                                <option value="date">Date (from MJD col)</option>
+                            </optgroup>
+                            <!-- data columns added dynamically -->
+                        </select>
+                        <div id="phaseOpts" class="axis-subopts" style="display:none">
+                            <div class="axis-inline-row">
+                                <label>Explosion t₀</label>
+                                <input type="number" step="any" id="lcExpMJD" class="axis-input" placeholder="MJD, e.g. 60000">
+                            </div>
+                            <div class="axis-inline-row">
+                                <label>or Date</label>
+                                <input type="date" id="lcExpDate" class="axis-input">
+                            </div>
+                        </div>
+                        <div id="dateOpts" class="axis-subopts" style="display:none">
+                            <div class="axis-inline-row">
+                                <label>MJD col</label>
+                                <select id="dateXMJDCol" class="axis-input">
+                                    <option value="">(same as X)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lcp-axis-divider"></div>
+
+                <!-- Y left -->
+                <div class="axis-row">
+                    <div class="axis-badge">Y ←</div>
+                    <div class="axis-fields">
+                        <select id="yCol" class="axis-sel-primary" onchange="onColumnChange()">
+                            <option value="">— select column —</option>
+                        </select>
+                        <div class="axis-err-row">
+                            <span class="axis-err-label">± Y err</span>
+                            <select id="yErrCol" class="axis-sel-secondary">
+                                <option value="">none</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Y (secondary) -->
+                <div class="axis-row axis-row-secondary">
+                    <div class="axis-badge axis-badge-sec">Y →</div>
+                    <div class="axis-fields">
+                        <select id="rightYMode" class="axis-sel-primary" onchange="onRightYChange()">
+                            <option value="none">— none —</option>
+                            <optgroup label="Computed">
+                                <option value="absmag">Absolute Magnitude</option>
+                            </optgroup>
+                            <!-- data columns added dynamically -->
+                        </select>
+                        <div id="absMagOpts" class="axis-subopts" style="display:none">
+                            <div class="axis-inline-row">
+                                <label>Redshift z</label>
+                                <input type="number" step="any" id="lcRedshift" class="axis-input" placeholder="e.g. 0.039">
+                            </div>
+                            <div class="axis-inline-row">
+                                <label>Extinction A</label>
+                                <input type="number" step="any" id="lcExtinction" class="axis-input" value="0">
+                            </div>
+                            <div class="axis-formula">M = m − μ(z) − K(z) − A &nbsp;[K=2.5log(1+z), H₀=67.7]</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lcp-axis-divider"></div>
+
+                <!-- Group by -->
+                <div class="axis-row">
+                    <div class="axis-badge axis-badge-grp">GRP</div>
+                    <div class="axis-fields">
+                        <select id="groupCol" class="axis-sel-primary" onchange="onGroupChange()">
+                            <option value="">— none (single series) —</option>
+                        </select>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ── 3. LC SETTINGS ── -->
+            <section class="lcp-section">
+                <div class="lcp-section-hd">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    LC Settings
+                </div>
+
+                <!-- Filter colors (collapsible) -->
+                <div class="lcp-collapsible-hd" onclick="toggleFilterSection()" id="filterCollapseHd">
+                    <span>Filter Color Map</span>
+                    <svg id="filterCollapseIcon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform 0.2s"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div id="filterCollapseBody">
+                    <div class="lcp-inline-ctrl">
+                        <label class="lcp-ctrl-label">Filter col</label>
+                        <select id="lcFilterCol" class="lcp-ctrl-sel">
+                            <option value="">— none —</option>
+                        </select>
+                        <button class="lcp-btn-pill" onclick="autoMapFilterColors()">Auto Colors</button>
+                    </div>
+                </div>
+
+                <!-- Upper limits -->
+                <div class="lcp-toggle-row">
+                    <label class="lcp-check-label">
+                        <input type="checkbox" id="lcUpperLimit">
+                        <span>Upper Limits (▽)</span>
+                    </label>
+                </div>
+                <div id="lcULOpts" style="display:none" class="lcp-indent">
+                    <div class="lcp-inline-ctrl">
+                        <label class="lcp-ctrl-label">Mode</label>
+                        <select id="lcULMode" class="lcp-ctrl-sel" onchange="onULModeChange()">
+                            <option value="flag">Flag col (bool)</option>
+                            <option value="direct">Limit col (mag)</option>
+                        </select>
+                    </div>
+                    <!-- Flag mode -->
+                    <div id="lcULFlagOpts">
+                        <div class="lcp-inline-ctrl">
+                            <label class="lcp-ctrl-label">Flag col</label>
+                            <select id="lcULFlagCol" class="lcp-ctrl-sel"><option value="">— none —</option></select>
+                        </div>
+                        <div class="lcp-inline-ctrl">
+                            <label class="lcp-ctrl-label">Flag value</label>
+                            <input type="text" id="lcULFlagVal" class="lcp-ctrl-input" placeholder="e.g. 1 or True">
+                        </div>
+                        <div class="lcp-inline-ctrl">
+                            <label class="lcp-ctrl-label">Mag col</label>
+                            <select id="lcULMagCol" class="lcp-ctrl-sel"><option value="">(same as Y)</option></select>
+                        </div>
+                    </div>
+                    <!-- Direct mode -->
+                    <div id="lcULDirectOpts" style="display:none">
+                        <div class="lcp-inline-ctrl">
+                            <label class="lcp-ctrl-label">Limit col</label>
+                            <select id="lcULLimCol" class="lcp-ctrl-sel"><option value="">— none —</option></select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── 4. PLOT STYLE ── -->
+            <section class="lcp-section">
+                <div class="lcp-section-hd">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    Plot Style
+                </div>
+
+                <div class="lcp-style-stack">
+                    <input type="text" id="plotTitle" class="lcp-style-input" placeholder="Plot title">
+                    <div class="lcp-2col-grid">
+                        <input type="text" id="xLabel" class="lcp-style-input" placeholder="X axis label">
+                        <input type="text" id="yLabel" class="lcp-style-input" placeholder="Y axis label">
+                    </div>
+                </div>
+                <div class="lcp-flag-row">
+                    <label><input type="checkbox" id="invertY" checked> Invert Y</label>
+                    <label><input type="checkbox" id="invertX"> Invert X</label>
+                    <label><input type="checkbox" id="logX"> Log X</label>
+                    <label><input type="checkbox" id="logY"> Log Y</label>
+                    <label><input type="checkbox" id="showGrid" checked> Grid</label>
+                </div>
+                <!-- Font & export settings -->
+                <div class="lcp-static-opts">
+                    <div class="lcp-static-opts-hd">Font & Export Settings</div>
+                    <div class="lcp-static-opts-row">
+                        <label>Title</label><input type="number" id="staticTitleSize" value="16" min="8" max="48" step="1">
+                        <label>Axis</label><input type="number" id="staticAxisSize" value="13" min="6" max="32" step="1">
+                        <label>Tick</label><input type="number" id="staticTickSize" value="11" min="6" max="24" step="1">
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>X Tick</label><input type="number" id="xTickInterval" value="1000" min="1" step="any" style="width:52px">
+                        <label style="margin-left:4px">Export BG</label>
+                        <select id="plotBgColor" class="lcp-static-opts-sel">
+                            <option value="dark">Dark</option>
+                            <option value="white" selected>White</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── 5. SERIES ── -->
+            <section class="lcp-section" id="seriesCard" style="display:none">
+                <div class="lcp-section-hd" style="justify-content:space-between">
+                    <span style="display:flex;align-items:center;gap:6px">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        Series
+                    </span>
+                    <div style="display:flex;gap:5px">
+                        <button class="lcp-btn-ghost" id="allLinesBtn" onclick="toggleAllLines()" title="Toggle all series lines on/off">─ All Lines</button>
+                        <button class="lcp-btn-ghost" onclick="resetSeries()">Reset</button>
+                    </div>
+                </div>
+                <p class="lcp-hint">Click any plotted point to toggle it as a ★ marker.</p>
+                <div id="legendPreview" class="lcp-legend-preview" style="display:none"></div>
+                <div id="seriesManager"></div>
+            </section>
+
+            <!-- ── 6. ACTIONS ── -->
+            <div class="lcp-actions">
+                <button class="lcp-btn-render" onclick="renderPlot()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Render
+                </button>
+                <div class="lcp-export-row">
+                    <button class="lcp-btn-export" onclick="exportPNG()">PNG</button>
+                    <button class="lcp-btn-export" onclick="exportSVG()">SVG</button>
+                    <button class="lcp-btn-export" onclick="exportCSV()">CSV</button>
+                </div>
+                <div class="lcp-export-row">
+                    <button class="lcp-btn-export lcp-btn-share" onclick="shareChart(true)" title="Share static image link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        Image link
+                    </button>
+                    <button class="lcp-btn-export lcp-btn-share" onclick="shareChart(false)" title="Share interactive chart link">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        Interactive link
+                    </button>
+                </div>
+            </div>
+
+            <div class="lcp-back-link">
+                <a href="{{ url_for('astronomy_tools.astronomy_tools') }}">← Astronomy Tools</a>
+            </div>
+
+        </aside>
+
+        <!-- ══ PLOT AREA ══ -->
+        <main class="lcp-plot-area">
+            <div class="lcp-plot-section lcp-panel-active" id="interactiveSection">
+                <div class="lcp-placeholder" id="plotPlaceholder">
+                    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <p>Upload a file and click <strong>Render</strong></p>
+                </div>
+                <div id="plotlyDiv" style="display:none;width:100%;height:100%"></div>
+            </div>
+        </main>
+
+    </div>
+
+    <div class="lcp-toast" id="lcpToast"></div>
+
+    <script type="application/json" id="filterColorsData">{{ filter_colors | tojson }}</script>
+    <script src="{{ url_for('astronomy_tools.static', filename='js/lc_plotter.js') }}"></script>
+</body>
+</html>

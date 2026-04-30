@@ -158,6 +158,27 @@
 
     </div>
 
+    <!-- LC Plotter promo card (full-width) -->
+    <div style="width:90%;max-width:90%;margin:0 auto 60px;display:grid;grid-template-columns:1fr;gap:0">
+        <div class="settings-section" style="cursor:pointer" onclick="location.href='{{ url_for('astronomy_tools.lc_plotter') }}'">
+            <h3>
+                <svg class="section-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                LC Plotter — Interactive Data Plotter
+            </h3>
+            <p class="at-desc">
+                Upload CSV / TXT / DAT files and build fully customisable plots.
+                Light-curve mode: absolute magnitude (z), phase axis (explosion time),
+                filter auto-color, upper limits ▽, click-to-star ★ markers, per-series shapes &amp; lines.
+            </p>
+            <div style="margin-top:auto">
+                <a href="{{ url_for('astronomy_tools.lc_plotter') }}" class="at-btn" style="text-decoration:none;display:inline-flex;align-items:center;gap:7px;padding:9px 20px">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Open LC Plotter
+                </a>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/astronomy_tools.js') }}"></script>
 </body>
 </html>

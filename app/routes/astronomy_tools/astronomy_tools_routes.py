@@ -4,6 +4,7 @@ Astronomy tools routes for the Kinder web application.
 import os
 import re
 import io
+import json
 import traceback
 import base64
 import ephem
@@ -16,7 +17,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Ellipse, Polygon
 from PIL import Image
-from flask import render_template, request, jsonify, session
+from flask import render_template, request, jsonify, session, abort
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astroquery.vizier import Vizier
@@ -53,6 +54,44 @@ def mount_torque():
 @astronomy_tools_bp.route('/mount_3d')
 def mount_3d():
     return render_template('mount_3d.html', current_path='/mount_3d')
+
+@astronomy_tools_bp.route('/lc_plotter')
+def lc_plotter():
+    from modules.filter_colors import all_colors
+    return render_template('lc_plotter.html', current_path='/lc_plotter', filter_colors=all_colors())
+
+_SHARE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'shared_plots')
+_SHARE_ID_RE = re.compile(r'^[a-f0-9]{24}$')
+
+@astronomy_tools_bp.route('/lc_plotter/share', methods=['POST'])
+def lc_plotter_share():
+    if request.content_length and request.content_length > 8 * 1024 * 1024:
+        return jsonify({'error': 'Payload too large'}), 413
+    payload = request.get_json(silent=True)
+    if not payload or 'traces' not in payload or 'layout' not in payload:
+        return jsonify({'error': 'Invalid payload'}), 400
+    os.makedirs(_SHARE_DIR, exist_ok=True)
+    share_id = uuid.uuid4().hex[:24]
+    path = os.path.join(_SHARE_DIR, f'{share_id}.json')
+    with open(path, 'w') as f:
+        json.dump({'traces': payload['traces'], 'layout': payload['layout'],
+                   'isStatic': bool(payload.get('isStatic', False))}, f)
+    return jsonify({'id': share_id})
+
+@astronomy_tools_bp.route('/lc_plotter/shared/<share_id>')
+def lc_plotter_shared(share_id):
+    if not _SHARE_ID_RE.match(share_id):
+        abort(404)
+    path = os.path.join(_SHARE_DIR, f'{share_id}.json')
+    if not os.path.isfile(path):
+        abort(404)
+    with open(path) as f:
+        data = json.load(f)
+    return render_template('shared_plot.html',
+                           traces=data['traces'],
+                           layout=data['layout'],
+                           is_static=data.get('isStatic', False),
+                           share_id=share_id)
 
 @astronomy_tools_bp.route('/calculate_redshift', methods=['POST'])
 def calculate_redshift():
