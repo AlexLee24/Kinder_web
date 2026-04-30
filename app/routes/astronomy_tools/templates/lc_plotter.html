@@ -21,7 +21,73 @@
         <!-- ══ SIDEBAR ══ -->
         <aside class="lcp-sidebar">
 
-            <!-- ── 1. DATA ── -->
+            <!-- ── 1. PLOT STYLE ── -->
+            <section class="lcp-section">
+                <div class="lcp-section-hd">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    Plot Style
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:0.72rem;color:var(--lcp-muted)">
+                    <span style="white-space:nowrap">Preview</span>
+                    <label style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--lcp-text)">
+                        <input type="radio" name="previewMode" value="interactive" checked onchange="onPreviewModeChange()"> Interactive
+                    </label>
+                    <label style="display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--lcp-text)">
+                        <input type="radio" name="previewMode" value="static" onchange="onPreviewModeChange()"> Static (White BG)
+                    </label>
+                </div>
+                <div class="lcp-style-stack">
+                    <input type="text" id="plotTitle" class="lcp-style-input" placeholder="Plot title">
+                    <div class="lcp-2col-grid">
+                        <input type="text" id="xLabel" class="lcp-style-input" placeholder="X axis label">
+                        <input type="text" id="yLabel" class="lcp-style-input" placeholder="Y axis label">
+                    </div>
+                </div>
+                <div class="lcp-flag-row">
+                    <label><input type="checkbox" id="invertY" checked> Invert Y</label>
+                    <label><input type="checkbox" id="invertX"> Invert X</label>
+                    <label><input type="checkbox" id="logX"> Log X</label>
+                    <label><input type="checkbox" id="logY"> Log Y</label>
+                    <label><input type="checkbox" id="showGrid" checked> Grid</label>
+                </div>
+                <div class="lcp-static-opts">
+                    <div class="lcp-static-opts-hd">Font & Export Settings</div>
+                    <div class="lcp-static-opts-row">
+                        <label>Title</label><input type="number" id="staticTitleSize" value="30" min="8" max="48" step="1">
+                        <label>Axis</label><input type="number" id="staticAxisSize" value="24" min="6" max="32" step="1">
+                        <label>Tick</label><input type="number" id="staticTickSize" value="20" min="6" max="24" step="1">
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>X Tick</label><input type="number" id="xTickInterval" value="1000" min="1" step="any" style="width:58px">
+                        <label style="margin-left:4px">Y Tick</label><input type="number" id="yTickInterval" placeholder="auto" min="0.1" step="any" style="width:58px">
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>Live BG</label>
+                        <select id="liveBgColor" onchange="if(window.plotRendered) renderPlot()" class="lcp-static-opts-sel">
+                            <option value="dark" selected>Dark</option>
+                            <option value="white">White</option>
+                        </select>
+                        <label style="margin-left:4px">Export BG</label>
+                        <select id="plotBgColor" class="lcp-static-opts-sel">
+                            <option value="dark">Dark</option>
+                            <option value="white" selected>White</option>
+                        </select>
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>Legend</label>
+                        <select id="legendPos" class="lcp-static-opts-sel" style="flex:1">
+                            <option value="in-tr" selected>Inside — Top Right</option>
+                            <option value="in-tl">Inside — Top Left</option>
+                            <option value="in-br">Inside — Bottom Right</option>
+                            <option value="in-bl">Inside — Bottom Left</option>
+                            <option value="out-r">Outside — Right</option>
+                            <option value="out-b">Outside — Bottom</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── 2. DATA ── -->
             <section class="lcp-section">
                 <div class="lcp-section-hd">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -34,14 +100,6 @@
                     <input type="file" id="fileInput" accept=".csv,.txt,.dat" style="display:none">
                 </div>
                 <div class="lcp-file-badge" id="fileInfo" style="display:none"></div>
-                <div style="display:flex;align-items:center;gap:6px;margin-top:5px;font-size:0.72rem;color:var(--lcp-muted)">
-                    <span style="white-space:nowrap">Preview Plot BG</span>
-                    <select id="liveBgColor" onchange="if(window.plotRendered) renderPlot()"
-                        style="flex:1;background:var(--lcp-input-bg);border:1px solid var(--lcp-input-bd);border-radius:4px;color:var(--lcp-text);font-size:0.74rem;padding:3px 6px;font-family:inherit">
-                        <option value="dark" selected>Dark</option>
-                        <option value="white">White</option>
-                    </select>
-                </div>
                 <div id="previewWrap" style="display:none">
                     <div class="lcp-preview-label" style="display:flex;justify-content:space-between;align-items:center">
                         <span>Preview (first 5 rows)</span>
@@ -242,57 +300,6 @@
                 </div>
             </section>
 
-            <!-- ── 4. PLOT STYLE ── -->
-            <section class="lcp-section">
-                <div class="lcp-section-hd">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-                    Plot Style
-                </div>
-
-                <div class="lcp-style-stack">
-                    <input type="text" id="plotTitle" class="lcp-style-input" placeholder="Plot title">
-                    <div class="lcp-2col-grid">
-                        <input type="text" id="xLabel" class="lcp-style-input" placeholder="X axis label">
-                        <input type="text" id="yLabel" class="lcp-style-input" placeholder="Y axis label">
-                    </div>
-                </div>
-                <div class="lcp-flag-row">
-                    <label><input type="checkbox" id="invertY" checked> Invert Y</label>
-                    <label><input type="checkbox" id="invertX"> Invert X</label>
-                    <label><input type="checkbox" id="logX"> Log X</label>
-                    <label><input type="checkbox" id="logY"> Log Y</label>
-                    <label><input type="checkbox" id="showGrid" checked> Grid</label>
-                </div>
-                <!-- Font & export settings -->
-                <div class="lcp-static-opts">
-                    <div class="lcp-static-opts-hd">Font & Export Settings</div>
-                    <div class="lcp-static-opts-row">
-                        <label>Title</label><input type="number" id="staticTitleSize" value="30" min="8" max="48" step="1">
-                        <label>Axis</label><input type="number" id="staticAxisSize" value="24" min="6" max="32" step="1">
-                        <label>Tick</label><input type="number" id="staticTickSize" value="20" min="6" max="24" step="1">
-                    </div>
-                    <div class="lcp-static-opts-row">
-                        <label>X Tick</label><input type="number" id="xTickInterval" value="1000" min="1" step="any" style="width:72px">
-                        <label style="margin-left:4px">Export BG</label>
-                        <select id="plotBgColor" class="lcp-static-opts-sel">
-                            <option value="dark">Dark</option>
-                            <option value="white" selected>White</option>
-                        </select>
-                    </div>
-                    <div class="lcp-static-opts-row">
-                        <label>Legend</label>
-                        <select id="legendPos" class="lcp-static-opts-sel" style="flex:1">
-                            <option value="in-tr" selected>Inside — Top Right</option>
-                            <option value="in-tl">Inside — Top Left</option>
-                            <option value="in-br">Inside — Bottom Right</option>
-                            <option value="in-bl">Inside — Bottom Left</option>
-                            <option value="out-r">Outside — Right</option>
-                            <option value="out-b">Outside — Bottom</option>
-                        </select>
-                    </div>
-                </div>
-            </section>
-
             <!-- ── 5. SERIES ── -->
             <section class="lcp-section" id="seriesCard" style="display:none">
                 <div class="lcp-section-hd" style="justify-content:space-between">
@@ -348,6 +355,7 @@
                     <p>Upload a file and click <strong>Render</strong></p>
                 </div>
                 <div id="plotlyDiv" style="display:none;width:100%;height:100%"></div>
+                <img id="staticPreviewImg" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:contain">
                 <div id="previewNote" style="display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:0.68rem;color:rgba(80,80,100,0.55);pointer-events:none;white-space:nowrap;letter-spacing:0.02em">
                     Interactive preview only — export PNG / SVG below for full quality
                 </div>

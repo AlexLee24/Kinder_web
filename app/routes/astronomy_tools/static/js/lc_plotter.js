@@ -814,6 +814,7 @@ function buildLayout() {
     const axisSize  = parseInt(document.getElementById('staticAxisSize').value)  || 13;
     const tickSize  = parseInt(document.getElementById('staticTickSize').value)  || 11;
     const xTickInt  = parseFloat(document.getElementById('xTickInterval').value) || null;
+    const yTickInt  = parseFloat(document.getElementById('yTickInterval')?.value) || null;
 
     const xColName = document.getElementById('xCol').value;
     const yColName = document.getElementById('yCol').value;
@@ -860,6 +861,7 @@ function buildLayout() {
             title: { text: yLabel, standoff: 10 },
             autorange: invertY ? 'reversed' : true,
             type: logY ? 'log' : 'linear',
+            ...(yTickInt && !logY ? { dtick: yTickInt, tickmode: 'linear' } : {}),
             ...axisStyle,
         },
         legend: _getLegendPos(tickSize),
@@ -1028,7 +1030,6 @@ function renderPlot() {
     document.getElementById('plotPlaceholder').style.display = 'none';
     const plotDiv = document.getElementById('plotlyDiv');
     plotDiv.style.display = '';
-    document.getElementById('previewNote').style.display = '';
 
     Plotly.react('plotlyDiv', traces, layout, config).then(() => {
         plotRendered = true;
@@ -1038,7 +1039,45 @@ function renderPlot() {
             plotDiv.on('plotly_click', onPlotClick);
             _eventsAttached = true;
         }
+        const staticMode = document.querySelector('input[name="previewMode"]:checked')?.value === 'static';
+        const staticImg  = document.getElementById('staticPreviewImg');
+        const noteEl     = document.getElementById('previewNote');
+        if (staticMode && staticImg) {
+            _renderStaticPreview(staticImg, plotDiv, noteEl);
+        } else {
+            if (staticImg) staticImg.style.display = 'none';
+            if (noteEl) noteEl.style.display = '';
+        }
     });
+}
+
+function onPreviewModeChange() {
+    if (!plotRendered) return;
+    renderPlot();
+}
+
+// Build a static preview using the same pipeline as doExport
+async function _renderStaticPreview(imgEl, livePlotDiv, noteEl) {
+    const bg     = document.getElementById('plotBgColor').value;
+    const traces = buildTraces();
+    const layout = buildLayout();
+    _syncRangesFromLive(layout);
+    _applyExportTheme(layout, bg);
+
+    const tmpDiv = document.createElement('div');
+    tmpDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1600px;height:900px;';
+    document.body.appendChild(tmpDiv);
+    try {
+        await Plotly.newPlot(tmpDiv, traces, layout, { staticPlot: true, responsive: false });
+        const url = await Plotly.toImage(tmpDiv, { format: 'png', width: 1600, height: 900, scale: 2 });
+        imgEl.src = url;
+        imgEl.style.display = '';
+        livePlotDiv.style.display = 'none';
+        if (noteEl) noteEl.style.display = 'none';
+    } finally {
+        Plotly.purge(tmpDiv);
+        document.body.removeChild(tmpDiv);
+    }
 }
 
 // ─── Click to Toggle Star ─────────────────────────────────────────
@@ -1283,7 +1322,7 @@ function collectSettings() {
         'lcMWExt','mwExtRA','mwExtDec',
         'topXMode','lcExpMJD','dateXMJDCol',
         'rightYMode','lcRedshift',
-        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval',
+        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
         'plotBgColor','liveBgColor','legendPos',
     ].forEach(id => { const v = _elVal(id); if (v != null) s[id] = v; });
     s._series = JSON.stringify(seriesList.map(ss => ({
@@ -1311,7 +1350,7 @@ function _applySettingsUI(s) {
         'mwExtRA','mwExtDec',
         'topXMode','lcExpMJD','dateXMJDCol',
         'rightYMode','lcRedshift',
-        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval',
+        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
         'plotBgColor','liveBgColor','legendPos',
     ].forEach(id => set(id, s[id]));
     // toggles that show/hide sub-panels
