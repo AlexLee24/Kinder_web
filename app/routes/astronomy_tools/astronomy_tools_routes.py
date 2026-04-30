@@ -60,6 +60,32 @@ def lc_plotter():
     from modules.filter_colors import all_colors
     return render_template('lc_plotter.html', current_path='/lc_plotter', filter_colors=all_colors())
 
+@astronomy_tools_bp.route('/lc_plotter/mw_extinction', methods=['POST'])
+def lc_plotter_mw_extinction():
+    """Return per-filter Milky Way extinction A using SFD E(B-V) + SF11 ratios."""
+    data = request.get_json(silent=True) or {}
+    ra  = data.get('ra')
+    dec = data.get('dec')
+    filters = data.get('filters', [])
+    if ra is None or dec is None:
+        return jsonify({'error': 'ra and dec required'}), 400
+    try:
+        ra = float(ra); dec = float(dec)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid ra/dec'}), 400
+    if not (0 <= ra <= 360) or not (-90 <= dec <= 90):
+        return jsonify({'error': 'ra/dec out of range'}), 400
+    from modules.ext_M_calculator import get_extinction
+    result = {}
+    for f in filters[:60]:
+        if not isinstance(f, str) or len(f) > 20:
+            continue
+        try:
+            result[f] = round(float(get_extinction(ra, dec, f)), 4)
+        except Exception:
+            result[f] = None
+    return jsonify(result)
+
 _SHARE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'shared_plots')
 _SHARE_ID_RE = re.compile(r'^[a-f0-9]{24}$')
 

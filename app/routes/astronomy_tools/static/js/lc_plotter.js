@@ -356,6 +356,7 @@ function updateSeries() {
             lineWidth: 1.5, markerSize: 8,
             starIndices: new Set(), visible: true,
             ulLabel: 'Upper Limit',
+            mwExt: 0,
         };
     });
     renderSeriesManager();
@@ -365,15 +366,16 @@ function updateSeries() {
 function renderSeriesManager() {
     const container = document.getElementById('seriesManager');
     container.innerHTML = '';
-    const useUL = document.getElementById('lcUpperLimit').checked;
+    const useUL    = document.getElementById('lcUpperLimit').checked;
+    const useMWExt = document.getElementById('lcMWExt').checked;
     seriesList.forEach((cfg, idx) => {
         const item       = document.createElement('div');
         item.className   = 'lcp-series-item';
         const color      = cfg.color || '#aaaaaa';
         const colorSolid = hexToRgba(color, 1.0);
-        const colorFill  = hexToRgba(color, 0.85);
+        const colorFill  = hexToRgba(color, 1.0);
         const lineEl     = cfg.showLine
-            ? `<line x1="0" y1="7" x2="26" y2="7" stroke="${hexToRgba(color, 0.7)}" stroke-width="1.5"/>`
+            ? `<line x1="0" y1="7" x2="26" y2="7" stroke="${colorSolid}" stroke-width="1.5"/>`
             : '';
         const shapeOpts = MARKER_SHAPES.map(s =>
             `<option value="${s.value}" ${cfg.shape === s.value ? 'selected' : ''}>${s.label}</option>`
@@ -394,7 +396,7 @@ function renderSeriesManager() {
                 <div class="lcp-series-row">
                     <span>Shape</span>
                     <select class="s-shape" style="flex:1">${shapeOpts}</select>
-                    <span>sz</span>
+                    <span>size</span>
                     <input type="number" class="lcp-input-small s-size" min="2" max="30" step="1" value="${cfg.markerSize}">
                 </div>
                 <div class="lcp-series-row">
@@ -415,6 +417,12 @@ function renderSeriesManager() {
                         placeholder="Upper Limit"
                         value="${escHtml(cfg.ulLabel || 'Upper Limit')}">
                 </div>
+                <div class="lcp-series-row s-mwext-row" style="${useMWExt ? '' : 'display:none'}">
+                    <span title="Milky Way extinction A (mag)">A_MW</span>
+                    <input type="number" class="lcp-input-full s-mwext" step="0.001" min="0" max="10"
+                        placeholder="0.000" value="${cfg.mwExt != null ? cfg.mwExt : 0}">
+                    <span style="font-size:0.68rem;color:var(--lcp-muted);white-space:nowrap">mag</span>
+                </div>
             </div>
         `;
         item.querySelector('.s-vis').addEventListener('change',    e => { seriesList[idx].visible    = e.target.checked;  updateLegendPreview(); });
@@ -426,6 +434,7 @@ function renderSeriesManager() {
         item.querySelector('.s-lstyle').addEventListener('change', e => { seriesList[idx].lineStyle  = e.target.value; });
         item.querySelector('.s-lwidth').addEventListener('change', e => { seriesList[idx].lineWidth  = +e.target.value; });
         item.querySelector('.s-ullabel').addEventListener('input', e => { seriesList[idx].ulLabel    = e.target.value;    updateLegendPreview(); });
+        item.querySelector('.s-mwext').addEventListener('change',  e => { seriesList[idx].mwExt     = parseFloat(e.target.value) || 0; });
         item.querySelector('.s-stars').addEventListener('change',  e => {
             const vals = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
             const xValues = getSeriesXValues(seriesList[idx]);
@@ -460,9 +469,9 @@ function updateLegendPreview() {
         if (!cfg.visible) return;
         const color  = cfg.color || '#aaaaaa';
         const cSolid = hexToRgba(color, 1.0);
-        const cFill  = hexToRgba(color, 0.85);
+        const cFill  = hexToRgba(color, 1.0);
         const lineEl = cfg.showLine
-            ? `<line x1="0" y1="7" x2="26" y2="7" stroke="${hexToRgba(color, 0.7)}" stroke-width="1.5"/>`
+            ? `<line x1="0" y1="7" x2="26" y2="7" stroke="${cSolid}" stroke-width="1.5"/>`
             : '';
 
         // Main row: editable label
@@ -589,6 +598,8 @@ function buildTraces() {
     const ulLimColName = document.getElementById('lcULLimCol').value;
     const ulFlagIdx    = ulFlagColName ? headers.indexOf(ulFlagColName) : -1;
     const ulMagIdx     = ulMagColName  ? headers.indexOf(ulMagColName)  : -1;
+    const useMWExt     = document.getElementById('lcMWExt').checked;
+    const cfgMap       = Object.fromEntries(seriesList.map(s => [s.groupVal, s]));
     const ulLimIdx     = ulLimColName  ? headers.indexOf(ulLimColName)  : -1;
 
     // Bucket rows by group value
@@ -601,6 +612,7 @@ function buildTraces() {
 
         let isUL = false;
         let yVal = parseFloat(row[yIdx]);
+        const mwExt = (useMWExt && cfgMap[gVal]) ? (cfgMap[gVal].mwExt || 0) : 0;
 
         if (useUL) {
             if (ulMode === 'flag') {
@@ -627,7 +639,7 @@ function buildTraces() {
         if (isNaN(yVal)) return;
         const yErr = yErrIdx >= 0 ? parseFloat(row[yErrIdx]) : NaN;
         const xErr = xErrIdx >= 0 ? parseFloat(row[xErrIdx]) : NaN;
-        buckets[gVal].push({ x: xRaw, y: yVal, yErr, xErr, isUL, rowIdx });
+        buckets[gVal].push({ x: xRaw, y: yVal - mwExt, yErr, xErr, isUL, rowIdx });
     });
 
     const traces = [];
@@ -639,7 +651,7 @@ function buildTraces() {
 
         const color     = cfg.color || '#aaaaaa';
         const colorSolid = hexToRgba(color, 1.0);
-        const colorFill  = hexToRgba(color, 0.85);
+        const colorFill  = hexToRgba(color, 1.0);
 
         const regular = [], ulPts = [], starPts = [];
         items.forEach(pt => {
@@ -667,18 +679,18 @@ function buildTraces() {
                     line: { color: colorSolid, width: 1 },
                 },
                 line: cfg.showLine ? {
-                    color: hexToRgba(color, 0.7), dash: cfg.lineStyle, width: cfg.lineWidth,
+                    color: colorSolid, dash: cfg.lineStyle, width: cfg.lineWidth,
                 } : undefined,
             };
             const hasYErr = nonUL.some(p => !isNaN(p.yErr));
             const hasXErr = nonUL.some(p => !isNaN(p.xErr));
             if (hasYErr) t.error_y = {
                 type: 'data', array: nonUL.map(p => isNaN(p.yErr) ? 0 : p.yErr),
-                visible: true, color: hexToRgba(color, 0.6), thickness: 1.5, width: 4,
+                visible: true, color: colorSolid, thickness: 1.5, width: 4,
             };
             if (hasXErr) t.error_x = {
                 type: 'data', array: nonUL.map(p => isNaN(p.xErr) ? 0 : p.xErr),
-                visible: true, color: hexToRgba(color, 0.6), thickness: 1.5, width: 4,
+                visible: true, color: colorSolid, thickness: 1.5, width: 4,
             };
             traces.push(t);
         }
@@ -775,11 +787,13 @@ function buildLayout() {
             type: logY ? 'log' : 'linear',
             ...axisStyle,
         },
-        legend: {
-            bgcolor: 'rgba(0,0,0,0.45)', bordercolor: 'rgba(255,255,255,0.12)',
-            borderwidth: 1, font: { color: '#ccccdd', size: tickSize }, itemsizing: 'constant',
+        legend: _getLegendPos(tickSize),
+        margin: {
+            l: 70,
+            r: document.getElementById('legendPos').value === 'out-r' ? Math.max(marginRight, 160) : marginRight,
+            t: marginTop,
+            b: document.getElementById('legendPos').value === 'out-b' ? 130 : 60,
         },
-        margin: { l: 70, r: marginRight, t: marginTop, b: 60 },
         hovermode: 'closest',
         hoverlabel: {
             bgcolor: 'rgba(20,20,35,0.9)', bordercolor: 'rgba(197,160,89,0.5)',
@@ -990,6 +1004,44 @@ function toggleUpperLimit() {
     renderSeriesManager();
 }
 
+function toggleMWExt() {
+    document.getElementById('lcMWExtOpts').style.display =
+        document.getElementById('lcMWExt').checked ? '' : 'none';
+    renderSeriesManager();
+}
+
+async function autoFillMWExt() {
+    const ra  = parseFloat(document.getElementById('mwExtRA').value);
+    const dec = parseFloat(document.getElementById('mwExtDec').value);
+    if (isNaN(ra) || isNaN(dec)) { showToast('Enter RA and Dec first', 'warn'); return; }
+    const filters = [...new Set(seriesList.map(s => s.groupVal).filter(g => g !== '__all__'))];
+    if (!filters.length) { showToast('No filter names to query (need group-by filter col)', 'warn'); return; }
+    const btn = document.getElementById('mwExtAutoBtn');
+    btn.disabled = true; btn.textContent = 'Querying…';
+    try {
+        const resp = await fetch('/lc_plotter/mw_extinction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ra, dec, filters }),
+        });
+        const result = await resp.json();
+        if (result.error) { showToast('Server: ' + result.error, 'error'); return; }
+        let filled = 0;
+        seriesList.forEach(s => {
+            if (s.groupVal in result && result[s.groupVal] !== null) {
+                s.mwExt = result[s.groupVal];
+                filled++;
+            }
+        });
+        renderSeriesManager();
+        showToast(`Filled ${filled} filter(s) with MW extinction`, 'ok');
+    } catch (err) {
+        showToast('MW extinction request failed', 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Auto-fill by coord';
+    }
+}
+
 function onULModeChange() {
     const mode = document.getElementById('lcULMode').value;
     document.getElementById('lcULFlagOpts').style.display   = mode === 'flag'   ? '' : 'none';
@@ -1019,6 +1071,24 @@ function toggleAllLines() {
     if (btn) btn.textContent = anyOff ? '─ All Lines' : '◯ All Lines';
 }
 
+// ─── Legend position helper ─────────────────────────────────────
+function _getLegendPos(tickSize) {
+    const pos = document.getElementById('legendPos').value;
+    const base = {
+        borderwidth: 1,
+        font: { color: '#ccccdd', size: tickSize },
+        itemsizing: 'constant',
+    };
+    switch (pos) {
+        case 'in-tl': return { ...base, x: 0.01, y: 0.99, xanchor: 'left',   yanchor: 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'in-br': return { ...base, x: 0.99, y: 0.01, xanchor: 'right',  yanchor: 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'in-bl': return { ...base, x: 0.01, y: 0.01, xanchor: 'left',   yanchor: 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'out-r': return { ...base, x: 1.02, y: 0.5,  xanchor: 'left',   yanchor: 'middle', bgcolor: 'rgba(0,0,0,0)',    bordercolor: 'rgba(0,0,0,0)' };
+        case 'out-b': return { ...base, x: 0.5,  y: -0.18, xanchor: 'center', yanchor: 'top',   bgcolor: 'rgba(0,0,0,0)',    bordercolor: 'rgba(0,0,0,0)', orientation: 'h' };
+        default:      return { ...base, x: 0.99, y: 0.99, xanchor: 'right',  yanchor: 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+    }
+}
+
 // ─── Export theme helper ──────────────────────────────────────────
 function _applyExportTheme(layout, bg) {
     const tickSz = layout.xaxis.tickfont.size;
@@ -1037,7 +1107,7 @@ function _applyExportTheme(layout, bg) {
             exponentformat: 'none',
         };
         ['xaxis','yaxis','xaxis2','yaxis2'].forEach(ax => { if (layout[ax]) Object.assign(layout[ax], lightAxis); });
-        layout.margin = { l: 80, r: (layout.margin.r || 30) + 20, t: (layout.margin.t || 28) + 10, b: 72 };
+        layout.margin = { l: 80, r: (layout.margin.r || 30) + 20, t: (layout.margin.t || 28) + 10, b: Math.max(72, layout.margin.b || 0) };
     } else {
         layout.paper_bgcolor = '#0d0d1a';
         layout.plot_bgcolor  = '#12121e';

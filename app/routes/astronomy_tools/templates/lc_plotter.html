@@ -128,11 +128,11 @@
                                 <label>Redshift z</label>
                                 <input type="number" step="any" id="lcRedshift" class="axis-input" placeholder="e.g. 0.039">
                             </div>
-                            <div class="axis-inline-row">
+                            <!-- <div class="axis-inline-row">
                                 <label>Extinction A</label>
                                 <input type="number" step="any" id="lcExtinction" class="axis-input" value="0">
                             </div>
-                            <div class="axis-formula">M = m − μ(z) − K(z) − A &nbsp;[K=2.5log(1+z), H₀=67.7]</div>
+                            <div class="axis-formula">M = m − μ(z) − K(z) − A &nbsp;[K=2.5log(1+z), H₀=67.7]</div> -->
                         </div>
                     </div>
                 </div>
@@ -179,6 +179,26 @@
                         <input type="checkbox" id="lcUpperLimit">
                         <span>Upper Limits (▽)</span>
                     </label>
+                </div>
+
+                <!-- MW Extinction -->
+                <div class="lcp-toggle-row">
+                    <label class="lcp-check-label">
+                        <input type="checkbox" id="lcMWExt" onchange="toggleMWExt()">
+                        <span>MW Extinction (per filter)</span>
+                    </label>
+                </div>
+                <div id="lcMWExtOpts" style="display:none" class="lcp-indent">
+                    <div class="lcp-inline-ctrl">
+                        <label class="lcp-ctrl-label">RA (°)</label>
+                        <input type="number" step="any" id="mwExtRA" class="lcp-ctrl-input" placeholder="e.g. 68.50">
+                    </div>
+                    <div class="lcp-inline-ctrl">
+                        <label class="lcp-ctrl-label">Dec (°)</label>
+                        <input type="number" step="any" id="mwExtDec" class="lcp-ctrl-input" placeholder="e.g. -8.58">
+                    </div>
+                    <button class="lcp-btn-pill" onclick="autoFillMWExt()" id="mwExtAutoBtn">Auto-fill by coord</button>
+                    <p class="lcp-hint" style="margin-top:4px">SFD E(B-V) × SF11 ratio. Per-filter A editable in Series ↓</p>
                 </div>
                 <div id="lcULOpts" style="display:none" class="lcp-indent">
                     <div class="lcp-inline-ctrl">
@@ -238,9 +258,9 @@
                 <div class="lcp-static-opts">
                     <div class="lcp-static-opts-hd">Font & Export Settings</div>
                     <div class="lcp-static-opts-row">
-                        <label>Title</label><input type="number" id="staticTitleSize" value="16" min="8" max="48" step="1">
-                        <label>Axis</label><input type="number" id="staticAxisSize" value="13" min="6" max="32" step="1">
-                        <label>Tick</label><input type="number" id="staticTickSize" value="11" min="6" max="24" step="1">
+                        <label>Title</label><input type="number" id="staticTitleSize" value="30" min="8" max="48" step="1">
+                        <label>Axis</label><input type="number" id="staticAxisSize" value="24" min="6" max="32" step="1">
+                        <label>Tick</label><input type="number" id="staticTickSize" value="20" min="6" max="24" step="1">
                     </div>
                     <div class="lcp-static-opts-row">
                         <label>X Tick</label><input type="number" id="xTickInterval" value="1000" min="1" step="any" style="width:52px">
@@ -248,6 +268,17 @@
                         <select id="plotBgColor" class="lcp-static-opts-sel">
                             <option value="dark">Dark</option>
                             <option value="white" selected>White</option>
+                        </select>
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>Legend</label>
+                        <select id="legendPos" class="lcp-static-opts-sel" style="flex:1">
+                            <option value="in-tr" selected>Inside — Top Right</option>
+                            <option value="in-tl">Inside — Top Left</option>
+                            <option value="in-br">Inside — Bottom Right</option>
+                            <option value="in-bl">Inside — Bottom Left</option>
+                            <option value="out-r">Outside — Right</option>
+                            <option value="out-b">Outside — Bottom</option>
                         </select>
                     </div>
                 </div>
