@@ -95,18 +95,15 @@ function buildColInterp(bottomColName, targetColName) {
 }
 
 function getExplosionMJD() {
-    const mjdVal  = document.getElementById('lcExpMJD').value;
-    const dateVal = document.getElementById('lcExpDate').value;
-    if (mjdVal) return parseFloat(mjdVal);
-    if (dateVal) return dateToMJD(dateVal);
-    return null;
+    const mjdVal = document.getElementById('lcExpMJD').value;
+    return mjdVal ? parseFloat(mjdVal) : null;
 }
 
 function getDistanceModulus() {
-    const z   = parseFloat(document.getElementById('lcRedshift').value);
-    const ext = parseFloat(document.getElementById('lcExtinction').value) || 0;
+    const z = parseFloat(document.getElementById('lcRedshift').value);
     if (!z || isNaN(z) || z <= 0) return 0;
-    return computeDistanceModulus(z, ext);
+    // MW extinction is applied per-series at data level in buildTraces
+    return computeDistanceModulus(z, 0);
 }
 
 // ─── File Parsing ─────────────────────────────────────────────────
