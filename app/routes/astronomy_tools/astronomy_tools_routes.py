@@ -58,7 +58,10 @@ def mount_3d():
 @astronomy_tools_bp.route('/lc_plotter')
 def lc_plotter():
     from modules.filter_colors import all_colors
-    return render_template('lc_plotter.html', current_path='/lc_plotter', filter_colors=all_colors())
+    from flask import session as flask_session
+    user_email = flask_session.get('user', {}).get('email', '')
+    return render_template('lc_plotter.html', current_path='/lc_plotter',
+                           filter_colors=all_colors(), user_email=user_email)
 
 @astronomy_tools_bp.route('/lc_plotter/mw_extinction', methods=['POST'])
 def lc_plotter_mw_extinction():

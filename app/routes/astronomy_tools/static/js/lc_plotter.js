@@ -5,6 +5,17 @@
 // Load filter color map from server-injected JSON (see app/data/filter_colors.json)
 const FILTER_COLORS = JSON.parse(document.getElementById('filterColorsData').textContent);
 
+// Per-user filter color overrides stored in localStorage
+const _LCP_USER_EMAIL = JSON.parse(document.getElementById('lcpUserEmail').textContent) || '';
+const _LCP_LS_KEY = _LCP_USER_EMAIL ? `lcp_filter_colors_${_LCP_USER_EMAIL}` : 'lcp_filter_colors_guest';
+let colorOverrides = {};
+try { colorOverrides = JSON.parse(localStorage.getItem(_LCP_LS_KEY) || '{}'); } catch (_) {}
+
+function _saveColorOverrides() {
+    seriesList.forEach(s => { if (s.groupVal !== '__all__') colorOverrides[s.groupVal] = s.color; });
+    try { localStorage.setItem(_LCP_LS_KEY, JSON.stringify(colorOverrides)); } catch (_) {}
+}
+
 const AUTO_COLORS = [
     '#4fc3f7', '#ef5350', '#66bb6a', '#ffa726', '#ab47bc',
     '#26c6da', '#d4e157', '#ff7043', '#42a5f5', '#ec407a',
@@ -125,9 +136,14 @@ function parseFile(file) {
 
 function parseText(text, filename) {
     const ext = (filename.split('.').pop() || '').toLowerCase();
-    const rawLines = text.split('\n')
-        .map(l => l.replace(/\r$/, ''))
-        .filter(l => l.trim() && !l.trim().startsWith('#'));
+    const allLines = text.split('\n').map(l => l.replace(/\r$/, ''));
+    // Extract #setting_key:value lines (embedded settings from exportDAT)
+    const settings = {};
+    allLines.forEach(l => {
+        const m = l.trim().match(/^#setting_([^:]+):(.*)$/);
+        if (m) settings[m[1]] = m[2];
+    });
+    const rawLines = allLines.filter(l => l.trim() && !l.trim().startsWith('#'));
     if (rawLines.length < 2) return null;
 
     const sample = rawLines[0];
@@ -161,7 +177,7 @@ function parseText(text, filename) {
         .map(l => splitLine(l))
         .filter(r => r.length > 0 && r.some(v => v !== ''));
 
-    return { headers: finalHeaders, rows, filename };
+    return { headers: finalHeaders, rows, filename, settings };
 }
 
 // ─── On Data Loaded ───────────────────────────────────────────────
@@ -175,10 +191,13 @@ function onDataLoaded(filename, filesize) {
         &nbsp;·&nbsp; ${(filesize / 1024).toFixed(1)} KB
     `;
     populateSelects();
-    autoDetectColumns();
+    const hasSaved = parsedData.settings && Object.keys(parsedData.settings).length > 0;
+    if (hasSaved) _applySettingsUI(parsedData.settings);
+    else autoDetectColumns();
     showPreview();
     updateSeries();
-    showToast(`Loaded ${parsedData.rows.length} rows`, 'ok');
+    if (hasSaved) _applySettingsSeries(parsedData.settings);
+    showToast(hasSaved ? `Settings restored (${parsedData.rows.length} rows)` : `Loaded ${parsedData.rows.length} rows`, 'ok');
 }
 
 // ─── Populate All Column Selectors ────────────────────────────────
@@ -318,6 +337,56 @@ function showPreview() {
     wrap.style.display = '';
 }
 
+function showAllRows() {
+    if (!parsedData) return;
+    // Build modal overlay
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1a2e;border:1px solid rgba(255,255,255,0.15);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-width:90vw;max-height:85vh;min-width:400px';
+    const hd = document.createElement('div');
+    hd.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0';
+    hd.innerHTML = `<span style="color:#e8e8f0;font-size:0.85rem;font-weight:600">${escHtml(parsedData.headers.join(' · '))} &nbsp;·&nbsp; ${parsedData.rows.length} rows</span>`;
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'background:none;border:none;color:#aaa;font-size:1rem;cursor:pointer;padding:2px 6px';
+    closeBtn.onclick = () => document.body.removeChild(overlay);
+    hd.appendChild(closeBtn);
+    box.appendChild(hd);
+    const scrollWrap = document.createElement('div');
+    scrollWrap.style.cssText = 'overflow:auto;flex:1';
+    const tbl = document.createElement('table');
+    tbl.style.cssText = 'border-collapse:collapse;width:100%;font-size:0.78rem;white-space:nowrap';
+    const thead = document.createElement('thead');
+    const hrow = document.createElement('tr');
+    parsedData.headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        th.style.cssText = 'padding:6px 10px;background:#12121e;color:#ccccdd;border-bottom:1px solid rgba(255,255,255,0.1);position:sticky;top:0;text-align:left';
+        hrow.appendChild(th);
+    });
+    thead.appendChild(hrow);
+    tbl.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    parsedData.rows.forEach((row, ri) => {
+        const tr = document.createElement('tr');
+        tr.style.background = ri % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.03)';
+        parsedData.headers.forEach((_, i) => {
+            const td = document.createElement('td');
+            td.textContent = row[i] !== undefined ? row[i] : '';
+            td.style.cssText = 'padding:4px 10px;color:#ccccdd;border-bottom:1px solid rgba(255,255,255,0.04)';
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    scrollWrap.appendChild(tbl);
+    box.appendChild(scrollWrap);
+    overlay.appendChild(box);
+    overlay.addEventListener('click', e => { if (e.target === overlay) document.body.removeChild(overlay); });
+    document.body.appendChild(overlay);
+}
+
 // ─── Series Management ────────────────────────────────────────────
 function getGroupValues() {
     if (!parsedData) return ['__all__'];
@@ -331,29 +400,26 @@ function getGroupValues() {
 
 function updateSeries() {
     let groups = getGroupValues();
-    // Sort by standard filter order when grouping by a filter column
-    const filterColName = document.getElementById('lcFilterCol').value;
-    const groupColName  = document.getElementById('groupCol').value;
-    if (filterColName && filterColName === groupColName) {
-        groups = [...groups].sort((a, b) => {
-            const ia = FILTER_ORDER.indexOf(a), ib = FILTER_ORDER.indexOf(b);
-            const ka = ia >= 0 ? ia : FILTER_ORDER.length;
-            const kb = ib >= 0 ? ib : FILTER_ORDER.length;
-            return ka !== kb ? ka - kb : a.localeCompare(b);
-        });
-    }
+    // Always sort by standard filter order; unknowns go last alphabetically
+    groups = [...groups].sort((a, b) => {
+        const ia = FILTER_ORDER.indexOf(a), ib = FILTER_ORDER.indexOf(b);
+        const ka = ia >= 0 ? ia : FILTER_ORDER.length;
+        const kb = ib >= 0 ? ib : FILTER_ORDER.length;
+        return ka !== kb ? ka - kb : a.localeCompare(b);
+    });
     const prevMap = Object.fromEntries(seriesList.map(s => [s.groupVal, s]));
     seriesList = groups.map((gv, i) => {
         if (prevMap[gv]) return prevMap[gv];
         return {
             id: i, groupVal: gv,
             label: gv === '__all__' ? 'Series 1' : gv,
-            color: FILTER_COLORS[gv] || AUTO_COLORS[i % AUTO_COLORS.length],
+            color: colorOverrides[gv] || FILTER_COLORS[gv] || AUTO_COLORS[i % AUTO_COLORS.length],
             shape: 'circle', showLine: false, lineStyle: 'solid',
             lineWidth: 1.5, markerSize: 8,
             starIndices: new Set(), visible: true,
-            ulLabel: 'Upper Limit',
+            ulLabel: 'upper limit', ulInLegend: true,
             mwExt: 0,
+            starSize: 14,
         };
     });
     renderSeriesManager();
@@ -407,12 +473,8 @@ function renderSeriesManager() {
                     <input type="text" class="lcp-input-full s-stars"
                         placeholder="x-values or row indices, comma separated"
                         value="${[...cfg.starIndices].join(', ')}">
-                </div>
-                <div class="lcp-series-row s-ullabel-row" style="${useUL ? '' : 'display:none'}">
-                    <span title="Upper limit legend text suffix">UL label</span>
-                    <input type="text" class="lcp-input-full s-ullabel"
-                        placeholder="Upper Limit"
-                        value="${escHtml(cfg.ulLabel || 'Upper Limit')}">
+                    <span title="Star marker size">★ sz</span>
+                    <input type="number" class="lcp-input-small s-starsize" min="4" max="40" step="1" value="${cfg.starSize != null ? cfg.starSize : 14}">
                 </div>
                 <div class="lcp-series-row s-mwext-row" style="${useMWExt ? '' : 'display:none'}">
                     <span title="Milky Way extinction A (mag)">A_MW</span>
@@ -424,13 +486,13 @@ function renderSeriesManager() {
         `;
         item.querySelector('.s-vis').addEventListener('change',    e => { seriesList[idx].visible    = e.target.checked;  updateLegendPreview(); });
         item.querySelector('.s-label').addEventListener('input',   e => { seriesList[idx].label      = e.target.value;    updateLegendPreview(); });
-        item.querySelector('.s-color').addEventListener('input',   e => { seriesList[idx].color      = e.target.value;    updateLegendPreview(); });
+        item.querySelector('.s-color').addEventListener('input',   e => { seriesList[idx].color      = e.target.value;    updateLegendPreview(); _saveColorOverrides(); });
         item.querySelector('.s-shape').addEventListener('change',  e => { seriesList[idx].shape      = e.target.value; });
         item.querySelector('.s-size').addEventListener('change',   e => { seriesList[idx].markerSize = +e.target.value; });
+        item.querySelector('.s-starsize').addEventListener('change', e => { seriesList[idx].starSize  = +e.target.value; });
         item.querySelector('.s-line').addEventListener('change',   e => { seriesList[idx].showLine   = e.target.checked;  updateLegendPreview(); });
         item.querySelector('.s-lstyle').addEventListener('change', e => { seriesList[idx].lineStyle  = e.target.value; });
         item.querySelector('.s-lwidth').addEventListener('change', e => { seriesList[idx].lineWidth  = +e.target.value; });
-        item.querySelector('.s-ullabel').addEventListener('input', e => { seriesList[idx].ulLabel    = e.target.value;    updateLegendPreview(); });
         item.querySelector('.s-mwext').addEventListener('change',  e => { seriesList[idx].mwExt     = parseFloat(e.target.value) || 0; });
         item.querySelector('.s-stars').addEventListener('change',  e => {
             const vals = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -490,29 +552,33 @@ function updateLegendPreview() {
         mainRow.appendChild(labelInput);
         el.appendChild(mainRow);
 
-        // UL row: label prefix (read-only) + editable suffix
+        // UL row: checkbox (show in legend) + label prefix (read-only) + editable suffix
         if (useUL) {
             const ulRow = document.createElement('div');
             ulRow.className = 'lcp-legend-item';
             ulRow.innerHTML = `<svg class="lcp-legend-swatch" width="26" height="14" viewBox="0 0 26 14">
                 <polygon points="3,1 23,1 13,13" fill="${hexToRgba(color, 0.25)}" stroke="${cSolid}" stroke-width="1.5"/>
             </svg>`;
+            // UL-in-legend checkbox
+            const ulChk = document.createElement('input');
+            ulChk.type    = 'checkbox';
+            ulChk.checked = cfg.ulInLegend !== false;
+            ulChk.title   = 'Show UL in legend';
+            ulChk.style.cssText = 'flex-shrink:0;accent-color:var(--lcp-gold,#f0c040);cursor:pointer';
+            ulChk.addEventListener('change', e => { seriesList[idx].ulInLegend = e.target.checked; });
             const ulPrefix = document.createElement('span');
             ulPrefix.className = 'lcp-legend-ul-prefix';
             ulPrefix.textContent = cfg.label + ' ';
             const ulInput = document.createElement('input');
             ulInput.type      = 'text';
             ulInput.className = 'lcp-legend-label-edit lcp-legend-ul-edit';
-            ulInput.value     = cfg.ulLabel || 'Upper Limit';
+            ulInput.value     = cfg.ulLabel || 'upper limit';
             ulInput.title     = 'UL legend suffix';
             ulInput.addEventListener('input', e => {
                 seriesList[idx].ulLabel = e.target.value;
-                // sync s-ullabel in series body
-                const sUL = document.querySelector(`#seriesManager .lcp-series-item:nth-child(${idx + 1}) .s-ullabel`);
-                if (sUL) sUL.value = e.target.value;
-                // update prefix text
                 ulPrefix.textContent = seriesList[idx].label + ' ';
             });
+            ulRow.appendChild(ulChk);
             ulRow.appendChild(ulPrefix);
             ulRow.appendChild(ulInput);
             el.appendChild(ulRow);
@@ -543,6 +609,7 @@ function autoMapFilterColors() {
     });
     renderSeriesManager();
     showToast(`Mapped ${mapped} filter colors`, 'ok');
+    _saveColorOverrides();
 }
 
 // ─── LC Math ──────────────────────────────────────────────────────
@@ -671,7 +738,7 @@ function buildTraces() {
                 hovertemplate: `<b>${escHtml(cfg.label)}</b><br>x: %{x:.4f}<br>y: %{y:.4f}<extra></extra>`,
                 marker: {
                     symbol: nonUL.map(p => _isStar(p) ? 'star' : (cfg.shape || 'circle')),
-                    size:   nonUL.map(p => _isStar(p) ? Math.round(cfg.markerSize * 1.9) : cfg.markerSize),
+                    size:   nonUL.map(p => _isStar(p) ? (cfg.starSize || 14) : cfg.markerSize),
                     color:  colorFill,
                     line: { color: colorSolid, width: 1 },
                 },
@@ -695,7 +762,8 @@ function buildTraces() {
         // Upper limit trace
         if (ulPts.length) {
             traces.push({
-                name: cfg.label + ' ' + (cfg.ulLabel || 'Upper Limit'), showlegend: true,
+                name: cfg.label + ' ' + (cfg.ulLabel || 'upper limit'),
+                showlegend: cfg.ulInLegend !== false,
                 type: 'scatter', mode: 'markers',
                 x: ulPts.map(p => p.x), y: ulPts.map(p => p.y),
                 hovertemplate: `<b>UL</b><br>x: %{x:.4f}<br>y ≤ %{y:.4f}<extra></extra>`,
@@ -752,13 +820,23 @@ function buildLayout() {
     const xLabel   = document.getElementById('xLabel').value || xColName;
     const yLabel   = document.getElementById('yLabel').value || yColName;
 
-    const axisStyle = {
-        gridcolor:    showGrid ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0)',
+    const isWhiteBg = (document.getElementById('liveBgColor')?.value || 'dark') === 'white';
+    const axisStyle = isWhiteBg ? {
+        gridcolor:     showGrid ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0)',
+        zerolinecolor: 'rgba(0,0,0,0.25)',
+        linecolor:     'rgba(0,0,0,0.25)',
+        tickcolor:     'rgba(0,0,0,0.35)',
+        tickfont:      { color: '#333333', size: tickSize },
+        titlefont:     { color: '#111111', size: axisSize },
+        showgrid: showGrid,
+        exponentformat: 'none',
+    } : {
+        gridcolor:     showGrid ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0)',
         zerolinecolor: 'rgba(255,255,255,0.15)',
-        linecolor:    'rgba(255,255,255,0.2)',
-        tickcolor:    'rgba(255,255,255,0.25)',
-        tickfont:     { color: '#ccccdd', size: tickSize },
-        titlefont:    { color: '#ddddee', size: axisSize },
+        linecolor:     'rgba(255,255,255,0.2)',
+        tickcolor:     'rgba(255,255,255,0.25)',
+        tickfont:      { color: '#ccccdd', size: tickSize },
+        titlefont:     { color: '#ddddee', size: axisSize },
         showgrid: showGrid,
         exponentformat: 'none',
     };
@@ -767,10 +845,10 @@ function buildLayout() {
     const marginRight  = (rightY !== 'none') ? 80 : 30;
 
     const layout = {
-        title: title ? { text: title, font: { color: '#e8e8f0', size: titleSize, family: 'Inter, sans-serif' }, pad: { t: 8 } } : undefined,
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor:  'rgba(18,18,32,0.5)',
-        font: { color: '#ccccdd', family: 'Inter, sans-serif', size: tickSize },
+        title: title ? { text: title, font: { color: isWhiteBg ? '#111111' : '#e8e8f0', size: titleSize, family: 'Inter, sans-serif' }, pad: { t: 8 } } : undefined,
+        paper_bgcolor: isWhiteBg ? '#ffffff' : 'rgba(0,0,0,0)',
+        plot_bgcolor:  isWhiteBg ? '#ffffff' : 'rgba(18,18,32,0.5)',
+        font: { color: isWhiteBg ? '#333333' : '#ccccdd', family: 'Inter, sans-serif', size: tickSize },
         xaxis: {
             title: { text: xLabel, standoff: 10 },
             type: logX ? 'log' : 'linear',
@@ -798,25 +876,27 @@ function buildLayout() {
         },
     };
 
+    const secAxisStyle = {
+        showgrid: false, zeroline: false,
+        linecolor: isWhiteBg ? 'rgba(0,0,0,0.25)'   : 'rgba(197,160,89,0.4)',
+        tickcolor: isWhiteBg ? 'rgba(0,0,0,0.3)'    : 'rgba(197,160,89,0.4)',
+        tickfont:  { color: isWhiteBg ? '#333333' : 'rgba(197,160,89,0.8)', size: tickSize },
+        titlefont: { color: isWhiteBg ? '#111111' : 'rgba(197,160,89,0.8)', size: axisSize },
+    };
+
     if (topX === 'phase') {
         layout.xaxis2 = {
             overlaying: 'x', side: 'top',
             title: { text: 'Phase (days from explosion)', standoff: 8 },
             autorange: false, range: [0, 1],
-            showgrid: false, zeroline: false,
-            linecolor: 'rgba(197,160,89,0.4)', tickcolor: 'rgba(197,160,89,0.4)',
-            tickfont: { color: 'rgba(197,160,89,0.8)', size: tickSize },
-            titlefont: { color: 'rgba(197,160,89,0.8)', size: axisSize },
+            ...secAxisStyle,
         };
     } else if (topX === 'date') {
         layout.xaxis2 = {
             overlaying: 'x', side: 'top', type: 'date',
             title: { text: 'Date', standoff: 8 },
             autorange: false, range: ['2000-01-01', '2000-01-02'],
-            showgrid: false, zeroline: false,
-            linecolor: 'rgba(197,160,89,0.4)', tickcolor: 'rgba(197,160,89,0.4)',
-            tickfont: { color: 'rgba(197,160,89,0.8)', size: tickSize },
-            titlefont: { color: 'rgba(197,160,89,0.8)', size: axisSize },
+            ...secAxisStyle,
         };
     } else if (topX.startsWith('col:')) {
         const colName = topX.slice(4);
@@ -824,10 +904,7 @@ function buildLayout() {
             overlaying: 'x', side: 'top',
             title: { text: colName, standoff: 8 },
             autorange: false, range: [0, 1],
-            showgrid: false, zeroline: false,
-            linecolor: 'rgba(197,160,89,0.4)', tickcolor: 'rgba(197,160,89,0.4)',
-            tickfont: { color: 'rgba(197,160,89,0.8)', size: tickSize },
-            titlefont: { color: 'rgba(197,160,89,0.8)', size: axisSize },
+            ...secAxisStyle,
         };
     }
 
@@ -837,9 +914,10 @@ function buildLayout() {
             title: { text: 'Absolute Magnitude', standoff: 8 },
             autorange: false, range: [0, 1],
             showgrid: false, zeroline: false,
-            linecolor: 'rgba(79,195,247,0.4)', tickcolor: 'rgba(79,195,247,0.4)',
-            tickfont: { color: 'rgba(79,195,247,0.8)', size: tickSize },
-            titlefont: { color: 'rgba(79,195,247,0.8)', size: axisSize },
+            linecolor: isWhiteBg ? 'rgba(0,0,0,0.25)'  : 'rgba(79,195,247,0.4)',
+            tickcolor: isWhiteBg ? 'rgba(0,0,0,0.3)'   : 'rgba(79,195,247,0.4)',
+            tickfont:  { color: isWhiteBg ? '#333333' : 'rgba(79,195,247,0.8)', size: tickSize },
+            titlefont: { color: isWhiteBg ? '#111111' : 'rgba(79,195,247,0.8)', size: axisSize },
         };
     } else if (rightY.startsWith('col:')) {
         const colName = rightY.slice(4);
@@ -848,9 +926,10 @@ function buildLayout() {
             title: { text: colName, standoff: 8 },
             autorange: false, range: [0, 1],
             showgrid: false, zeroline: false,
-            linecolor: 'rgba(79,195,247,0.4)', tickcolor: 'rgba(79,195,247,0.4)',
-            tickfont: { color: 'rgba(79,195,247,0.8)', size: tickSize },
-            titlefont: { color: 'rgba(79,195,247,0.8)', size: axisSize },
+            linecolor: isWhiteBg ? 'rgba(0,0,0,0.25)'  : 'rgba(79,195,247,0.4)',
+            tickcolor: isWhiteBg ? 'rgba(0,0,0,0.3)'   : 'rgba(79,195,247,0.4)',
+            tickfont:  { color: isWhiteBg ? '#333333' : 'rgba(79,195,247,0.8)', size: tickSize },
+            titlefont: { color: isWhiteBg ? '#111111' : 'rgba(79,195,247,0.8)', size: axisSize },
         };
     }
 
@@ -949,6 +1028,7 @@ function renderPlot() {
     document.getElementById('plotPlaceholder').style.display = 'none';
     const plotDiv = document.getElementById('plotlyDiv');
     plotDiv.style.display = '';
+    document.getElementById('previewNote').style.display = '';
 
     Plotly.react('plotlyDiv', traces, layout, config).then(() => {
         plotRendered = true;
@@ -1092,7 +1172,7 @@ function _applyExportTheme(layout, bg) {
     const axisSz = layout.xaxis.titlefont.size;
     if (bg === 'white') {
         layout.paper_bgcolor = '#ffffff';
-        layout.plot_bgcolor  = '#f8f8fa';
+        layout.plot_bgcolor  = '#ffffff';
         layout.font          = { ...layout.font, color: '#1a1a2e' };
         if (layout.title) layout.title.font.color = '#111';
         layout.legend = { ...layout.legend, bgcolor: 'rgba(255,255,255,0.9)',
@@ -1184,6 +1264,93 @@ function exportCSV() {
     a.download = (parsedData.filename || 'data') + '_export.csv';
     a.click();
     URL.revokeObjectURL(a.href);
+}
+
+// ─── DAT Export / Settings Save ──────────────────────────────────
+function _getEl(id) { return document.getElementById(id); }
+function _elVal(id) {
+    const el = _getEl(id);
+    if (!el) return undefined;
+    return el.type === 'checkbox' ? String(el.checked) : el.value;
+}
+function collectSettings() {
+    const s = {};
+    [
+        'plotTitle','xLabel','yLabel',
+        'invertY','invertX','logX','logY','showGrid',
+        'xCol','xErrCol','yCol','yErrCol','magErrCol','groupCol','lcFilterCol',
+        'lcUpperLimit','lcULMode','lcULFlagCol','lcULFlagVal','lcULMagCol','lcULLimCol',
+        'lcMWExt','mwExtRA','mwExtDec',
+        'topXMode','lcExpMJD','dateXMJDCol',
+        'rightYMode','lcRedshift',
+        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval',
+        'plotBgColor','liveBgColor','legendPos',
+    ].forEach(id => { const v = _elVal(id); if (v != null) s[id] = v; });
+    s._series = JSON.stringify(seriesList.map(ss => ({
+        groupVal: ss.groupVal, label: ss.label, color: ss.color,
+        shape: ss.shape, showLine: ss.showLine, lineStyle: ss.lineStyle,
+        lineWidth: ss.lineWidth, markerSize: ss.markerSize, starSize: ss.starSize,
+        starIndices: [...ss.starIndices], ulLabel: ss.ulLabel, ulInLegend: ss.ulInLegend,
+        mwExt: ss.mwExt, visible: ss.visible,
+    })));
+    return s;
+}
+function _applySettingsUI(s) {
+    const set = (id, val) => {
+        if (val === undefined || val === null) return;
+        const el = _getEl(id);
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = (val === 'true' || val === true);
+        else el.value = val;
+    };
+    [
+        'plotTitle','xLabel','yLabel',
+        'invertY','invertX','logX','logY','showGrid',
+        'xCol','xErrCol','yCol','yErrCol','magErrCol','groupCol','lcFilterCol',
+        'lcULMode','lcULFlagCol','lcULFlagVal','lcULMagCol','lcULLimCol',
+        'mwExtRA','mwExtDec',
+        'topXMode','lcExpMJD','dateXMJDCol',
+        'rightYMode','lcRedshift',
+        'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval',
+        'plotBgColor','liveBgColor','legendPos',
+    ].forEach(id => set(id, s[id]));
+    // toggles that show/hide sub-panels
+    set('lcUpperLimit', s.lcUpperLimit);
+    if (s.lcUpperLimit === 'true') toggleUpperLimit();
+    set('lcMWExt', s.lcMWExt);
+    if (s.lcMWExt === 'true') toggleMWExt();
+    if (s.topXMode && s.topXMode !== 'none')    { set('topXMode', s.topXMode);   onTopXChange(); }
+    if (s.rightYMode && s.rightYMode !== 'none') { set('rightYMode', s.rightYMode); onRightYChange(); }
+    if (s.lcULMode) onULModeChange();
+}
+function _applySettingsSeries(s) {
+    if (!s._series) return;
+    try {
+        const saved = JSON.parse(s._series);
+        saved.forEach(ss => {
+            const found = seriesList.find(x => x.groupVal === ss.groupVal);
+            if (!found) return;
+            Object.assign(found, ss);
+            found.starIndices = new Set(ss.starIndices || []);
+        });
+        renderSeriesManager();
+    } catch (_) {}
+}
+function exportDAT() {
+    if (!parsedData) { showToast('Load data first', 'warn'); return; }
+    const s = collectSettings();
+    const settingLines = Object.entries(s).map(([k, v]) => `#setting_${k}:${v}`);
+    const dataLines = [parsedData.headers.join('\t')];
+    parsedData.rows.forEach(r => dataLines.push(r.join('\t')));
+    const content = settingLines.join('\n') + '\n' + dataLines.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    const base = (parsedData.filename || 'data').replace(/\.[^.]+$/, '');
+    a.download = base + '.dat';
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Saved ' + a.download, 'ok');
 }
 // ─── Utilities ────────────────────────────────────────────────────
 function hexToRgba(hex, alpha) {
