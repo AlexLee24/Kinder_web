@@ -842,8 +842,11 @@ function buildLayout() {
         exponentformat: 'none',
     };
 
-    const marginTop    = (topX !== 'none') ? (title ? 92 : 62) : (title ? 50 : 28);
-    const marginRight  = (rightY !== 'none') ? 80 : 30;
+    // Margins scale with font size to prevent label/tick overlap
+    const marginL = Math.round(40 + axisSize * 1.8 + tickSize * 1.2);
+    const marginB = Math.round(30 + axisSize * 1.4 + tickSize * 1.0);
+    const marginTop    = (topX !== 'none') ? (title ? Math.round(titleSize * 2.6 + 30) : Math.round(axisSize * 2.2 + 16)) : (title ? Math.round(titleSize * 1.6 + 10) : 28);
+    const marginRight  = (rightY !== 'none') ? Math.round(axisSize * 2.5 + 20) : 30;
 
     const layout = {
         title: title ? { text: title, font: { color: isWhiteBg ? '#111111' : '#e8e8f0', size: titleSize, family: 'Inter, sans-serif' }, pad: { t: 8 } } : undefined,
@@ -866,10 +869,10 @@ function buildLayout() {
         },
         legend: _getLegendPos(tickSize),
         margin: {
-            l: 70,
+            l: marginL,
             r: document.getElementById('legendPos').value === 'out-r' ? Math.max(marginRight, 160) : marginRight,
             t: marginTop,
-            b: document.getElementById('legendPos').value === 'out-b' ? 130 : 60,
+            b: document.getElementById('legendPos').value === 'out-b' ? Math.max(marginB + 60, 130) : marginB,
         },
         hovermode: 'closest',
         hoverlabel: {
@@ -1226,7 +1229,9 @@ function _applyExportTheme(layout, bg) {
             exponentformat: 'none',
         };
         ['xaxis','yaxis','xaxis2','yaxis2'].forEach(ax => { if (layout[ax]) Object.assign(layout[ax], lightAxis); });
-        layout.margin = { l: 80, r: (layout.margin.r || 30) + 20, t: (layout.margin.t || 28) + 10, b: Math.max(72, layout.margin.b || 0) };
+        const expMarginL = Math.round(40 + axisSz * 1.8 + tickSz * 1.2);
+        const expMarginB = Math.round(30 + axisSz * 1.4 + tickSz * 1.0);
+        layout.margin = { l: expMarginL, r: (layout.margin.r || 30) + 20, t: (layout.margin.t || 28) + 10, b: Math.max(expMarginB, layout.margin.b || 0) };
     } else {
         layout.paper_bgcolor = '#0d0d1a';
         layout.plot_bgcolor  = '#12121e';
