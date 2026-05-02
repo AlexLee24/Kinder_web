@@ -1195,19 +1195,24 @@ function toggleAllLines() {
 
 // ─── Legend position helper ─────────────────────────────────────
 function _getLegendPos(tickSize) {
-    const pos = document.getElementById('legendPos').value;
+    const pos    = document.getElementById('legendPos').value;
+    const lgSz   = parseInt(document.getElementById('legendSize')?.value) || tickSize;
+    const orient = document.getElementById('legendOrient')?.value || 'v';
     const base = {
         borderwidth: 1,
-        font: { color: '#ccccdd', size: tickSize },
+        font: { color: '#ccccdd', size: lgSz },
         itemsizing: 'constant',
+        orientation: orient,
     };
+    // For horizontal inside, anchor bottom of legend block to the y position
+    const hInAnchorY = orient === 'h' ? 'top' : undefined;
     switch (pos) {
-        case 'in-tl': return { ...base, x: 0.01, y: 0.99, xanchor: 'left',   yanchor: 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
-        case 'in-br': return { ...base, x: 0.99, y: 0.01, xanchor: 'right',  yanchor: 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
-        case 'in-bl': return { ...base, x: 0.01, y: 0.01, xanchor: 'left',   yanchor: 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
-        case 'out-r': return { ...base, x: 1.02, y: 0.5,  xanchor: 'left',   yanchor: 'middle', bgcolor: 'rgba(0,0,0,0)',    bordercolor: 'rgba(0,0,0,0)' };
+        case 'in-tl': return { ...base, x: 0.01, y: 0.99, xanchor: 'left',   yanchor: orient === 'h' ? 'top'    : 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'in-br': return { ...base, x: 0.99, y: 0.01, xanchor: 'right',  yanchor: orient === 'h' ? 'bottom' : 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'in-bl': return { ...base, x: 0.01, y: 0.01, xanchor: 'left',   yanchor: orient === 'h' ? 'bottom' : 'bottom', bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        case 'out-r': return { ...base, x: 1.02, y: 0.5,  xanchor: 'left',   yanchor: 'middle', bgcolor: 'rgba(0,0,0,0)',    bordercolor: 'rgba(0,0,0,0)', orientation: orient };
         case 'out-b': return { ...base, x: 0.5,  y: -0.18, xanchor: 'center', yanchor: 'top',   bgcolor: 'rgba(0,0,0,0)',    bordercolor: 'rgba(0,0,0,0)', orientation: 'h' };
-        default:      return { ...base, x: 0.99, y: 0.99, xanchor: 'right',  yanchor: 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
+        default:      return { ...base, x: 0.99, y: 0.99, xanchor: 'right',  yanchor: orient === 'h' ? 'top'    : 'top',    bgcolor: 'rgba(0,0,0,0.5)',  bordercolor: 'rgba(255,255,255,0.15)' };
     }
 }
 
@@ -1331,7 +1336,7 @@ function collectSettings() {
         'topXMode','lcExpMJD','phaseUnit','dateXMJDCol',
         'rightYMode','lcRedshift',
         'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
-        'plotBgColor','liveBgColor','legendPos',
+        'plotBgColor','liveBgColor','legendPos','legendSize','legendOrient',
     ].forEach(id => { const v = _elVal(id); if (v != null) s[id] = v; });
     s._series = JSON.stringify(seriesList.map(ss => ({
         groupVal: ss.groupVal, label: ss.label, color: ss.color,
@@ -1359,7 +1364,7 @@ function _applySettingsUI(s) {
         'topXMode','lcExpMJD','phaseUnit','dateXMJDCol',
         'rightYMode','lcRedshift',
         'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
-        'plotBgColor','liveBgColor','legendPos',
+        'plotBgColor','liveBgColor','legendPos','legendSize','legendOrient',
     ].forEach(id => set(id, s[id]));
     // toggles that show/hide sub-panels
     set('lcUpperLimit', s.lcUpperLimit);

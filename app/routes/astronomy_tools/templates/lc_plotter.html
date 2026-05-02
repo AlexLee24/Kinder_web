@@ -75,13 +75,21 @@
                     </div>
                     <div class="lcp-static-opts-row">
                         <label>Legend</label>
-                        <select id="legendPos" class="lcp-static-opts-sel" style="flex:1">
+                        <select id="legendPos" class="lcp-static-opts-sel">
                             <option value="in-tr" selected>Inside — Top Right</option>
                             <option value="in-tl">Inside — Top Left</option>
                             <option value="in-br">Inside — Bottom Right</option>
                             <option value="in-bl">Inside — Bottom Left</option>
                             <option value="out-r">Outside — Right</option>
                             <option value="out-b">Outside — Bottom</option>
+                        </select>
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>Legend sz</label><input type="number" id="legendSize" value="14" min="6" max="32" step="1" style="width:46px">
+                        <label style="margin-left:4px">Orient</label>
+                        <select id="legendOrient" class="lcp-static-opts-sel">
+                            <option value="v" selected>Vertical</option>
+                            <option value="h">Horizontal</option>
                         </select>
                     </div>
                 </div>
