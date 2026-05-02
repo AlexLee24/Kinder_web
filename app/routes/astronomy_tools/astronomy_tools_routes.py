@@ -9,6 +9,7 @@ import traceback
 import base64
 import ephem
 import uuid
+import time
 import pytz
 import numpy as np
 import requests
@@ -17,7 +18,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Ellipse, Polygon
 from PIL import Image
-from flask import render_template, request, jsonify, session, abort
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import render_template, request, jsonify, session, abort, redirect, url_for
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astroquery.vizier import Vizier
@@ -91,6 +93,7 @@ def lc_plotter_mw_extinction():
 
 _SHARE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'shared_plots')
 _SHARE_ID_RE = re.compile(r'^[a-f0-9]{24}$')
+_SHARE_TTL_SECS = 60 * 86400  # 60 days
 
 @astronomy_tools_bp.route('/lc_plotter/share', methods=['POST'])
 def lc_plotter_share():
@@ -102,12 +105,19 @@ def lc_plotter_share():
     os.makedirs(_SHARE_DIR, exist_ok=True)
     share_id = uuid.uuid4().hex[:24]
     path = os.path.join(_SHARE_DIR, f'{share_id}.json')
+    raw_pw = (payload.get('password') or '').strip()
+    pw_hash = generate_password_hash(raw_pw) if raw_pw else None
     with open(path, 'w') as f:
-        json.dump({'traces': payload['traces'], 'layout': payload['layout'],
-                   'isStatic': bool(payload.get('isStatic', False))}, f)
+        json.dump({
+            'traces': payload['traces'],
+            'layout': payload['layout'],
+            'isStatic': bool(payload.get('isStatic', False)),
+            'created_at': time.time(),
+            'password_hash': pw_hash,
+        }, f)
     return jsonify({'id': share_id})
 
-@astronomy_tools_bp.route('/lc_plotter/shared/<share_id>')
+@astronomy_tools_bp.route('/lc_plotter/shared/<share_id>', methods=['GET', 'POST'])
 def lc_plotter_shared(share_id):
     if not _SHARE_ID_RE.match(share_id):
         abort(404)
@@ -116,11 +126,36 @@ def lc_plotter_shared(share_id):
         abort(404)
     with open(path) as f:
         data = json.load(f)
+    # Check 60-day expiry
+    if time.time() - data.get('created_at', 0) > _SHARE_TTL_SECS:
+        abort(410)
+    has_password = bool(data.get('password_hash'))
+    session_key = f'lcp_unlock_{share_id}'
+    if request.method == 'POST':
+        if not has_password:
+            abort(400)
+        entered = request.form.get('password', '')
+        if check_password_hash(data['password_hash'], entered):
+            session[session_key] = True
+            return redirect(url_for('astronomy_tools.lc_plotter_shared', share_id=share_id))
+        return render_template('shared_plot.html',
+                               traces=None, layout=None,
+                               is_static=data.get('isStatic', False),
+                               share_id=share_id,
+                               has_password=True, password_error=True, unlocked=False)
+    # GET
+    if has_password and not session.get(session_key):
+        return render_template('shared_plot.html',
+                               traces=None, layout=None,
+                               is_static=data.get('isStatic', False),
+                               share_id=share_id,
+                               has_password=True, password_error=False, unlocked=False)
     return render_template('shared_plot.html',
                            traces=data['traces'],
                            layout=data['layout'],
                            is_static=data.get('isStatic', False),
-                           share_id=share_id)
+                           share_id=share_id,
+                           has_password=has_password, password_error=False, unlocked=True)
 
 @astronomy_tools_bp.route('/calculate_redshift', methods=['POST'])
 def calculate_redshift():

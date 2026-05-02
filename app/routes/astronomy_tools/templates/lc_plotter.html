@@ -381,6 +381,28 @@
 
     <div class="lcp-toast" id="lcpToast"></div>
 
+    <!-- Share Modal -->
+    <div id="shareModal" onclick="if(event.target===this)closeShareModal()"
+        style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.55);align-items:center;justify-content:center">
+        <div style="background:var(--lcp-card,#1a1a2e);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:20px 24px;width:300px;font-size:0.8rem;color:var(--lcp-text,#dde0ee)">
+            <div style="font-size:0.86rem;font-weight:600;margin-bottom:14px">Share Chart</div>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px">
+                <input type="checkbox" id="shareUsePw" checked
+                    onchange="document.getElementById('sharePwRow').style.display=this.checked?'flex':'none'">
+                Protect with password <span style="font-size:0.68rem;opacity:0.5">(recommended)</span>
+            </label>
+            <div id="sharePwRow" style="display:flex;flex-direction:column;gap:0;margin-bottom:14px">
+                <input type="password" id="sharePwInput" placeholder="Enter password"
+                    style="padding:7px 10px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:inherit;font-family:inherit;font-size:0.8rem;outline:none">
+            </div>
+            <div style="font-size:0.68rem;color:rgba(210,215,240,0.35);margin-bottom:14px">Link expires in 60 days.</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="lcp-btn-ghost" onclick="closeShareModal()">Cancel</button>
+                <button class="lcp-btn-render" style="padding:5px 14px;font-size:0.78rem" onclick="_doShare()">Create Link</button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('astronomy_tools.static', filename='js/lc_plotter.js') }}"></script>
 </body>
 </html>

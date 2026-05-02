@@ -1273,8 +1273,31 @@ async function doExport(format) {
 }
 
 // ─── Share ────────────────────────────────────────────────────────
-async function shareChart(isStatic) {
+let _shareIsStatic = false;
+
+function shareChart(isStatic) {
     if (!plotRendered) { showToast('Render a plot first', 'warn'); return; }
+    _shareIsStatic = isStatic;
+    document.getElementById('sharePwInput').value = '';
+    const usePwEl = document.getElementById('shareUsePw');
+    usePwEl.checked = true;
+    document.getElementById('sharePwRow').style.display = 'flex';
+    const modal = document.getElementById('shareModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('sharePwInput').focus(), 50);
+}
+
+function closeShareModal() {
+    document.getElementById('shareModal').style.display = 'none';
+}
+
+async function _doShare() {
+    const usePw = document.getElementById('shareUsePw').checked;
+    const password = usePw ? document.getElementById('sharePwInput').value.trim() : null;
+    if (usePw && !password) { showToast('Enter a password or uncheck the option', 'warn'); return; }
+    closeShareModal();
+
+    const isStatic = _shareIsStatic;
     const bg     = document.getElementById('plotBgColor').value;
     const traces = buildTraces();
     const layout = buildLayout();
@@ -1286,7 +1309,7 @@ async function shareChart(isStatic) {
         const resp = await fetch('/lc_plotter/share', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ traces, layout, isStatic }),
+            body: JSON.stringify({ traces, layout, isStatic, password }),
         });
         if (!resp.ok) throw new Error(`Server error ${resp.status}`);
         const { id } = await resp.json();
