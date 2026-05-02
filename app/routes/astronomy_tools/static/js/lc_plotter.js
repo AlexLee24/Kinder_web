@@ -887,9 +887,11 @@ function buildLayout() {
     };
 
     if (topX === 'phase') {
+        const phUnit = document.getElementById('phaseUnit')?.value || 'days';
+        const phLabel = phUnit === 'years' ? 'Phase (years from explosion)' : 'Phase (days from explosion)';
         layout.xaxis2 = {
             overlaying: 'x', side: 'top',
-            title: { text: 'Phase (days from explosion)', standoff: 8 },
+            title: { text: phLabel, standoff: 8 },
             autorange: false, range: [0, 1],
             ...secAxisStyle,
         };
@@ -951,8 +953,9 @@ function syncSecondaryAxes() {
     if (topX === 'phase') {
         const t0 = getExplosionMJD();
         if (t0 !== null) {
-            const xr = gd._fullLayout.xaxis.range;
-            updates['xaxis2.range']     = [xr[0] - t0, xr[1] - t0];
+            const xr    = gd._fullLayout.xaxis.range;
+            const scale = (document.getElementById('phaseUnit')?.value || 'days') === 'years' ? 1 / 365.25 : 1;
+            updates['xaxis2.range']     = [(xr[0] - t0) * scale, (xr[1] - t0) * scale];
             updates['xaxis2.autorange'] = false;
         }
     } else if (topX === 'date') {
@@ -1320,7 +1323,7 @@ function collectSettings() {
         'xCol','xErrCol','yCol','yErrCol','magErrCol','groupCol','lcFilterCol',
         'lcUpperLimit','lcULMode','lcULFlagCol','lcULFlagVal','lcULMagCol','lcULLimCol',
         'lcMWExt','mwExtRA','mwExtDec',
-        'topXMode','lcExpMJD','dateXMJDCol',
+        'topXMode','lcExpMJD','phaseUnit','dateXMJDCol',
         'rightYMode','lcRedshift',
         'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
         'plotBgColor','liveBgColor','legendPos',
@@ -1348,7 +1351,7 @@ function _applySettingsUI(s) {
         'xCol','xErrCol','yCol','yErrCol','magErrCol','groupCol','lcFilterCol',
         'lcULMode','lcULFlagCol','lcULFlagVal','lcULMagCol','lcULLimCol',
         'mwExtRA','mwExtDec',
-        'topXMode','lcExpMJD','dateXMJDCol',
+        'topXMode','lcExpMJD','phaseUnit','dateXMJDCol',
         'rightYMode','lcRedshift',
         'staticTitleSize','staticAxisSize','staticTickSize','xTickInterval','yTickInterval',
         'plotBgColor','liveBgColor','legendPos',

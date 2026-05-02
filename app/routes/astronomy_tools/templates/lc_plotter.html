@@ -149,6 +149,13 @@
                                 <label>Explosion t₀ (MJD)</label>
                                 <input type="number" step="any" id="lcExpMJD" class="axis-input" placeholder="e.g. 60000">
                             </div>
+                            <div class="axis-inline-row">
+                                <label>Unit</label>
+                                <select id="phaseUnit" class="axis-input" onchange="if(window.plotRendered) renderPlot()">
+                                    <option value="days" selected>Days</option>
+                                    <option value="years">Years</option>
+                                </select>
+                            </div>
                         </div>
                         <div id="dateOpts" class="axis-subopts" style="display:none">
                             <div class="axis-inline-row">
