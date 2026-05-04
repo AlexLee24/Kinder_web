@@ -2,7 +2,7 @@ import logging
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
 
 logger = logging.getLogger(__name__)
-from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host
+from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host, sync_host_redshifts
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -127,6 +127,9 @@ def detect_results():
                                latest_date=latest_date,
                                daily_counts=daily_counts,
                                current_path='/detect')
+
+    # Sync is_host redshifts back to objects table on every page load
+    sync_host_redshifts()
 
     results = get_cross_match_results(date=selected_date)
     
@@ -326,6 +329,7 @@ def detect_results():
         except Exception as e:
             logger.error('Error generating plot for %s: %s', target_name, e)
         
+        target_has_host = any(m.get('is_host') for m in processed_matches)
         target_obj = {
             'target_name': target_name,
             'id': best_match.get('id'),
@@ -334,15 +338,20 @@ def detect_results():
             'matches': processed_matches,
             'best_match': best_match,
             'is_flagged': best_match.get('is_flagged'),
-            'flag_id': best_match.get('flag_id')
+            'flag_id': best_match.get('flag_id'),
+            'is_host': target_has_host,
         }
         final_target_list.append(target_obj)
     
-    # Sort by target name
-    final_target_list.sort(key=lambda x: x['target_name'])
+    # Sort: confirmed host targets first, then alphabetically
+    final_target_list.sort(key=lambda x: (not x.get('is_host', False), x['target_name']))
     
-    # Summary results (best match from each target)
-    summary_results = [t['best_match'] for t in final_target_list]
+    # Summary results (best match from each target, enriched with target-level is_host)
+    summary_results = []
+    for t in final_target_list:
+        row = dict(t['best_match'])
+        row['target_is_host'] = t.get('is_host', False)
+        summary_results.append(row)
     
     daily_counts = get_daily_match_counts()
         

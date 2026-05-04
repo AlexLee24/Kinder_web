@@ -39,6 +39,7 @@
                     <tr>
                         <th style="width: 50px;">Flag</th>
                         <th>Object</th>
+                        <th>Host</th>
                         <th>TNS Coords</th>
                         <th>Match (Catalog)</th>
                         <th>Sep (")</th>
@@ -61,6 +62,13 @@
                         {% endif %}
                         <td>
                             <a href="/object/{{ result.target_name }}" style="color:#fff; font-size:1.1em; text-decoration: underline;"><strong>{{ result.target_name }}</strong></a>
+                        </td>
+                        <td style="text-align:center;">
+                            {% if result.target_is_host %}
+                                <span class="badge-host" title="Host confirmed">✓ HOST</span>
+                            {% else %}
+                                <span style="color:#555;">—</span>
+                            {% endif %}
                         </td>
                         <td>
                             {{ "%.2f"|format(result.tns_info.ra|float) if result.tns_info.ra != 'N/A' else '-' }}, 
@@ -211,20 +219,22 @@
                                     -
                                 {% endif %}
                             </td>
-                            {% if session.user and session.user.is_admin %}
                             <td>
                                 {% if match.is_host %}
-                                    <span class="badge-host">HOST</span>
+                                    <span class="badge-host">✓ HOST</span>
+                                    {% if session.user and session.user.is_admin %}
                                     <button class="btn-action btn-clear" onclick="unsetHost('{{ result.target_name }}')">
-                                        Clear
+                                        Remove
                                     </button>
+                                    {% endif %}
                                 {% else %}
+                                    {% if session.user and session.user.is_admin %}
                                     <button class="btn-action" onclick="setHost('{{ match.id }}', '{{ result.target_name }}', '{{ match.z }}', '{{ match.catalog_name }}')">
                                         Set Host
                                     </button>
+                                    {% endif %}
                                 {% endif %}
                             </td>
-                            {% endif %}
                         </tr>
                         {% endfor %}
                     </tbody>

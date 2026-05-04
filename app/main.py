@@ -140,6 +140,8 @@ if _acquired_bg_lock:
     _scheduler.add_job(fetch_inbox_photometry, 'cron', hour=3, minute=30, id='daily_phot_fetch')
     # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0, id='hourly_missing_phot')
     _scheduler.add_job(update_target_mags, 'cron', hour=5, minute=0, id='daily_target_mag_update')
+    from modules.database.transient import sync_host_redshifts
+    _scheduler.add_job(sync_host_redshifts, 'cron', hour=6, minute=0, id='daily_host_redshift_sync')
     _scheduler.start()
     if not config.DEBUG:
         run_daily_backup()  # run once immediately on startup

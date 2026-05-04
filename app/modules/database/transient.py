@@ -1230,6 +1230,32 @@ def unset_cross_match_host(target_name: str) -> bool:
         return False
 
 
+def sync_host_redshifts() -> int:
+    """For every cross_match row where is_host=TRUE, write its redshift back
+    into transient.objects.redshift (only when a valid numeric redshift exists).
+    Returns the number of objects updated."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects o "
+                "SET redshift = c.redshift::numeric "
+                "FROM transient.cross_matches c "
+                "WHERE c.obj_id = o.obj_id "
+                "  AND c.is_host = TRUE "
+                "  AND c.redshift IS NOT NULL "
+                "  AND c.redshift != '' "
+                "  AND c.redshift ~ '^[0-9]+(\\.[0-9]+)?$'"
+            )
+            updated = cur.rowcount
+            conn.commit()
+        logger.info("sync_host_redshifts: updated %d objects", updated)
+        return updated
+    except Exception as e:
+        logger.error("sync_host_redshifts: %s", e)
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # Target images
 # ---------------------------------------------------------------------------
