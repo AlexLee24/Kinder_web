@@ -149,7 +149,7 @@ if _acquired_bg_lock:
         print("Daily backup job will NOT run in DEBUG mode.")
 
     if not config.DEBUG:
-        start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
+        # start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
         start_auto_tns_downloader(log_dir=os.path.join(current_dir, 'log'))
         start_gap_filler(log_dir=os.path.join(current_dir, 'log'))
 else:
