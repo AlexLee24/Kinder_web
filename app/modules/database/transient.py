@@ -1239,13 +1239,12 @@ def sync_host_redshifts() -> int:
             cur = conn.cursor()
             cur.execute(
                 "UPDATE transient.objects o "
-                "SET redshift = c.redshift::numeric "
+                "SET redshift = NULLIF(BTRIM(c.redshift::text), '')::numeric "
                 "FROM transient.cross_matches c "
                 "WHERE c.obj_id = o.obj_id "
                 "  AND c.is_host = TRUE "
-                "  AND c.redshift IS NOT NULL "
-                "  AND c.redshift != '' "
-                "  AND c.redshift ~ '^[0-9]+(\\.[0-9]+)?$'"
+                "  AND NULLIF(BTRIM(c.redshift::text), '') IS NOT NULL "
+                "  AND NULLIF(BTRIM(c.redshift::text), '') ~ '^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)$'"
             )
             updated = cur.rowcount
             conn.commit()
