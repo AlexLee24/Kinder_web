@@ -73,13 +73,30 @@ def get_tns_db_connection() -> '_PooledConn':
 
 @contextmanager
 def get_db_connection():
-    """Yield a pooled psycopg2 connection; returns it to the pool on exit."""
+    """Yield a pooled psycopg2 connection; returns it to the pool on exit.
+
+    Stale connections (closed by the server while idle in the pool) are
+    discarded and replaced with a fresh one before the caller sees them.
+    If an OperationalError occurs during use the broken connection is
+    discarded so the pool never hands it out again.
+    """
     p = init_connection_pool()
     conn = p.getconn()
+    # Discard a connection that the server closed while it sat in the pool.
+    if conn.closed:
+        p.putconn(conn, close=True)
+        conn = p.getconn()
+    _returned = False
     try:
         yield conn
+    except psycopg2.OperationalError:
+        # Connection broke mid-query; remove it from the pool entirely.
+        p.putconn(conn, close=True)
+        _returned = True
+        raise
     finally:
-        p.putconn(conn)
+        if not _returned:
+            p.putconn(conn)
 
 
 def check_db_connection() -> bool:
@@ -219,6 +236,17 @@ def _ensure_extra_tables():
         cur.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_name_idx
                 ON transient.objects(name)
+        """)
+
+        # Ensure tag always has a safe default even if an INSERT omits it.
+        cur.execute("""
+            ALTER TABLE transient.objects
+                ALTER COLUMN tag SET DEFAULT '{}'::text[]
+        """)
+        cur.execute("""
+            UPDATE transient.objects
+               SET tag = '{}'::text[]
+             WHERE tag IS NULL
         """)
 
         conn.commit()

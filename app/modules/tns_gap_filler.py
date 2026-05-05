@@ -320,11 +320,11 @@ def _insert_tns_object(reply: dict) -> bool:
                     reporters, received_date, internal_name,
                     discovery_ADS, class_ADS, creation_date,
                     last_phot_date, last_modified_date,
-                    kinder_id, status
+                    kinder_id, status, tag
                 ) VALUES (
                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                     %s,%s,%s,%s,%s,%s,%s,%s,
-                    %s,'Inbox'
+                    %s,'Inbox','{}'::text[]
                 )
                 ON CONFLICT DO NOTHING
                 """,

@@ -261,10 +261,10 @@ def addin_database(filepath, debug=False):
                                     discovery_date, discovery_mag, discovery_filter,
                                     reporters, received_date, internal_name,
                                     discovery_ADS, class_ADS, creation_date,
-                                    last_phot_date, last_modified_date, status
+                                    last_phot_date, last_modified_date, status, tag
                                 ) VALUES (
                                     %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                                    %s,%s,%s,%s,%s,%s,%s,%s,'Inbox'
+                                    %s,%s,%s,%s,%s,%s,%s,%s,'Inbox','{}'::text[]
                                 ) ON CONFLICT DO NOTHING
                             ''', insert_batch, page_size=BATCH_SIZE)
                             conn.commit()
@@ -311,10 +311,10 @@ def addin_database(filepath, debug=False):
                         discovery_date, discovery_mag, discovery_filter,
                         reporters, received_date, internal_name,
                         discovery_ADS, class_ADS, creation_date,
-                        last_phot_date, last_modified_date, status
+                        last_phot_date, last_modified_date, status, tag
                     ) VALUES (
                         %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,%s,%s,%s,%s,'Inbox'
+                        %s,%s,%s,%s,%s,%s,%s,%s,'Inbox','{}'::text[]
                     ) ON CONFLICT DO NOTHING
                 ''', insert_batch, page_size=BATCH_SIZE)
 

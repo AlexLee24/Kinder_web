@@ -4,11 +4,73 @@ Return dicts use backward-compatible key names matching the legacy kinder_web DB
 """
 
 import logging
+import math
 from datetime import date as _date
 from psycopg2 import extras
 from . import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_ra_deg(value) -> float:
+    """Parse RA in decimal degrees or HMS string into decimal degrees."""
+    if value is None:
+        raise ValueError('RA is required')
+    if isinstance(value, (int, float)):
+        ra = float(value)
+        if not math.isfinite(ra):
+            raise ValueError('RA must be finite')
+        return ra % 360.0
+
+    s = str(value).strip()
+    if not s:
+        raise ValueError('RA is required')
+
+    if ':' in s or (' ' in s and len(s.split()) == 3):
+        parts = s.replace(':', ' ').split()
+        if len(parts) != 3:
+            raise ValueError('Invalid RA format')
+        h, m, sec = float(parts[0]), float(parts[1]), float(parts[2])
+        if not (0 <= h < 24 and 0 <= m < 60 and 0 <= sec < 60):
+            raise ValueError('Invalid RA HMS value')
+        return (h + (m / 60.0) + (sec / 3600.0)) * 15.0
+
+    ra = float(s)
+    if not math.isfinite(ra):
+        raise ValueError('RA must be finite')
+    return ra % 360.0
+
+
+def _parse_dec_deg(value) -> float:
+    """Parse Dec in decimal degrees or DMS string into decimal degrees."""
+    if value is None:
+        raise ValueError('Dec is required')
+    if isinstance(value, (int, float)):
+        dec = float(value)
+        if not math.isfinite(dec) or not (-90.0 <= dec <= 90.0):
+            raise ValueError('Dec out of range')
+        return dec
+
+    s = str(value).strip()
+    if not s:
+        raise ValueError('Dec is required')
+
+    if ':' in s or (' ' in s and len(s.replace('+', '').replace('-', '').split()) == 3):
+        is_neg = s.startswith('-')
+        clean = s.replace('+', '').replace('-', '').replace(':', ' ')
+        parts = clean.split()
+        if len(parts) != 3:
+            raise ValueError('Invalid Dec format')
+        d, m, sec = float(parts[0]), float(parts[1]), float(parts[2])
+        if not (0 <= d <= 90 and 0 <= m < 60 and 0 <= sec < 60):
+            raise ValueError('Invalid Dec DMS value')
+        dec = d + (m / 60.0) + (sec / 3600.0)
+        return -dec if is_neg else dec
+
+    dec = float(s)
+    if not math.isfinite(dec) or not (-90.0 <= dec <= 90.0):
+        raise ValueError('Dec out of range')
+    return dec
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +153,8 @@ def save_observation_target(name: str, ra: float, dec: float,
             plan_time.append(1)
 
     try:
+        ra = _parse_ra_deg(ra)
+        dec = _parse_dec_deg(dec)
         with get_db_connection() as conn:
             cur = conn.cursor()
             create_by = None
@@ -151,6 +215,15 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
     if 'note_gl' in kwargs and 'note' not in kwargs:
         kwargs['note'] = kwargs.pop('note_gl')
     kwargs.pop('auto_exposure', None)
+
+    try:
+        if 'ra' in kwargs:
+            kwargs['ra'] = _parse_ra_deg(kwargs.get('ra'))
+        if 'dec' in kwargs:
+            kwargs['dec'] = _parse_dec_deg(kwargs.get('dec'))
+    except (TypeError, ValueError) as e:
+        logger.error("update_observation_target %d: %s", target_id, e)
+        return False
 
     for k, v in kwargs.items():
         if k in mapping:

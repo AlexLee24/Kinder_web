@@ -752,8 +752,8 @@ def add_object():
         cursor.execute(
             """INSERT INTO transient.objects
                (name, name_prefix, type, ra, dec, discovery_mag, discovery_date,
-                source_group, received_date, last_modified_date, status)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Object')
+                     source_group, received_date, last_modified_date, status, tag)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Object', '{}'::text[])
                RETURNING obj_id""",
             (object_name, '', object_type, ra, dec,
              magnitude, disc_mjd,
