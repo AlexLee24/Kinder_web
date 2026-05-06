@@ -564,7 +564,8 @@ def api_edit_object(object_name):
                     return jsonify({'error': 'Tags contain invalid characters'}), 400
                 updates['tag'] = [t.strip() for t in v.split(',') if t.strip()]
             else:
-                updates['tag'] = None
+                # Keep NOT NULL contract on transient.objects.tag when clearing tags.
+                updates['tag'] = []
 
         if not updates:
             conn.close()

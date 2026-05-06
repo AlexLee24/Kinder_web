@@ -3,12 +3,13 @@ Calendar routes for the Kinder web application.
 """
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 import urllib.parse
 import uuid
 from datetime import datetime
-from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response, abort
+from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response, abort, send_file
 from werkzeug.utils import secure_filename
 
 from modules.database.auth import get_users, user_exists, check_object_access, get_groups
@@ -88,6 +89,258 @@ def sanitize_document_filename(filename):
         safe = f"{safe}.md"
     return safe
 
+
+def can_view_private_area():
+    if 'user' not in session:
+        return False
+    return session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)
+
+
+_EPESSTO_DATE_RE = re.compile(r'^20\d{6}$')
+
+
+def _get_epessto_upload_dir():
+    d = os.path.join(private_area_bp.root_path, 'data', 'epessto_uploads')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _get_epessto_image_dir():
+    d = os.path.join(_get_epessto_upload_dir(), 'images')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _get_epessto_sessions_path():
+    return os.path.join(private_area_bp.root_path, 'data', 'epessto_sessions.json')
+
+
+def _load_epessto_sessions():
+    path = _get_epessto_sessions_path()
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    return {'batches': [], 'target_state': {}}
+                if 'batches' not in data or not isinstance(data.get('batches'), list):
+                    data['batches'] = []
+                if 'target_state' not in data or not isinstance(data.get('target_state'), dict):
+                    data['target_state'] = {}
+                return data
+        except Exception:
+            pass
+    return {'batches': [], 'target_state': {}}
+
+
+def _save_epessto_sessions(data):
+    path = _get_epessto_sessions_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = data or {}
+    if 'batches' not in data or not isinstance(data.get('batches'), list):
+        data['batches'] = []
+    if 'target_state' not in data or not isinstance(data.get('target_state'), dict):
+        data['target_state'] = {}
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _collect_epessto_all_files(sessions):
+    seen = set()
+    all_files = []
+    for batch in sessions.get('batches', []):
+        for fn in batch.get('files', []):
+            if fn not in seen:
+                seen.add(fn)
+                all_files.append(fn)
+    return all_files
+
+
+def _normalize_epessto_target_state(raw):
+    raw = raw or {}
+    images = raw.get('images', [])
+    if not isinstance(images, list):
+        images = []
+    normalized_images = []
+    for item in images:
+        if isinstance(item, dict):
+            fn = str(item.get('filename', '') or '').strip()
+            if fn:
+                normalized_images.append({'filename': fn})
+
+    app_text = str(raw.get('app', '') or '').strip()
+    if not app_text:
+        app_custom = str(raw.get('app_custom', '') or '').strip()
+        app_selected = raw.get('app_selected', [])
+        if isinstance(app_selected, list):
+            app_text = ', '.join([str(v).strip() for v in app_selected if str(v).strip()])
+        if app_custom:
+            app_text = (app_text + ', ' + app_custom).strip(', ').strip()
+
+    return {
+        'host': str(raw.get('host', '') or ''),
+        'z_from_host': str(raw.get('z_from_host', '') or ''),
+        'z_estimate': str(raw.get('z_estimate', '') or ''),
+        'type': str(raw.get('type', '') or ''),
+        'phase': str(raw.get('phase', '') or ''),
+        'app': app_text,
+        'images': normalized_images,
+        'completed': bool(raw.get('completed', False)),
+        'discuss': bool(raw.get('discuss', False)),
+    }
+
+
+def _parse_epessto_filename(filename):
+    """
+    Parse ePessto++ pipeline filename:
+        t{TransientName}_{YYYYMMDD}_{grism}_{...}.asci
+    Example:
+        tAT2026law_20260504_Gr13_Free_slit1.0_1_f.asci
+        -> target_name='AT2026law', observed_date=date(2026,5,4), grism='Gr13'
+    """
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    # Strip leading 't'/'T' prefix used by ePessto pipeline
+    raw = stem[1:] if stem and stem[0].lower() == 't' else stem
+    parts = raw.split('_')
+
+    # Find first YYYYMMDD token
+    date_idx = None
+    observed_date = None
+    for i, part in enumerate(parts):
+        if _EPESSTO_DATE_RE.match(part):
+            try:
+                observed_date = datetime.strptime(part, '%Y%m%d').date()
+                date_idx = i
+                break
+            except ValueError:
+                continue
+
+    if date_idx is not None and date_idx >= 1:
+        target_name = parts[0]
+        after = parts[date_idx + 1:]
+        grism = after[0] if after else None
+        obs_meta = '_'.join(after[1:]) if len(after) > 1 else ''
+    else:
+        # Fallback for non-standard names
+        target_name = parts[0] if parts else stem
+        grism = None
+        obs_meta = ''
+
+    return {
+        'target_name': target_name,
+        'observed_date': observed_date,
+        'grism': grism or '',
+        'obs_meta': obs_meta,
+    }
+
+
+def _serialize_from_filenames(filenames, sessions_data=None):
+    """Build targets/summary dict from a list of plain filenames (no FileStorage)."""
+    today = datetime.now().date()
+    targets = {}
+    sessions_data = sessions_data or _load_epessto_sessions()
+    target_state = sessions_data.get('target_state', {})
+
+    for filename in filenames:
+        if not filename.lower().endswith('.asci'):
+            continue
+        parsed = _parse_epessto_filename(filename)
+        target_name = parsed['target_name']
+        observed_date = parsed['observed_date']
+        grism = parsed['grism']
+        obs_meta = parsed['obs_meta']
+        target_key = target_name.lower().strip()
+        is_today = observed_date == today
+
+        if target_key not in targets:
+            stored_state = _normalize_epessto_target_state(target_state.get(target_key, {}))
+            targets[target_key] = {
+                'target_name': target_name,
+                'target_key': target_key,
+                'is_done_today': bool(stored_state.get('completed', False)),
+                'is_discuss': bool(stored_state.get('discuss', False)),
+                'dates': set(),
+                'grisms': set(),
+                'files': [],
+                'user_fields': stored_state,
+            }
+
+        if observed_date:
+            targets[target_key]['dates'].add(observed_date.isoformat())
+        if grism:
+            targets[target_key]['grisms'].add(grism)
+        targets[target_key]['files'].append({
+            'filename': filename,
+            'observed_on': observed_date.isoformat() if observed_date else None,
+            'is_today': is_today,
+            'grism': grism,
+            'obs_meta': obs_meta,
+        })
+
+    target_items = []
+    for item in targets.values():
+        item['dates'] = sorted(item['dates'])
+        item['grisms'] = sorted(item['grisms'])
+        item['files'].sort(key=lambda x: x['filename'].lower())
+        item['file_count'] = len(item['files'])
+        target_items.append(item)
+
+    target_items.sort(key=lambda x: x['target_name'].lower())
+
+    done_count = sum(1 for t in target_items if t['is_done_today'])
+    total_count = len(target_items)
+    total_files = sum(t['file_count'] for t in target_items)
+
+    # Prune stale target states that are no longer present in session files.
+    active_keys = {t['target_key'] for t in target_items}
+    stale_keys = [k for k in list(target_state.keys()) if k not in active_keys]
+    if stale_keys:
+        for key in stale_keys:
+            target_state.pop(key, None)
+        sessions_data['target_state'] = target_state
+        _save_epessto_sessions(sessions_data)
+
+    return {
+        'summary': {
+            'today_date': today.isoformat(),
+            'total_files': total_files,
+            'done_targets': done_count,
+            'total_targets': total_count,
+            'remaining_targets': max(total_count - done_count, 0)
+        },
+        'targets': target_items
+    }
+
+
+def _serialize_epessto_upload(files):
+    """Save uploaded FileStorage objects to disk, record batch in sessions.json."""
+    upload_dir = _get_epessto_upload_dir()
+    sessions = _load_epessto_sessions()
+    batch_id = uuid.uuid4().hex
+    batch_files = []
+
+    for file_storage in files:
+        filename = (file_storage.filename or '').strip()
+        if not filename or not filename.lower().endswith('.asci'):
+            continue
+        safe_name = secure_filename(filename)
+        if not safe_name:
+            continue
+        file_storage.save(os.path.join(upload_dir, safe_name))
+        batch_files.append(safe_name)
+
+    if batch_files:
+        sessions['batches'].append({
+            'batch_id': batch_id,
+            'uploaded_at': datetime.utcnow().isoformat(),
+            'files': batch_files
+        })
+        _save_epessto_sessions(sessions)
+
+    all_files = _collect_epessto_all_files(sessions)
+
+    return _serialize_from_filenames(all_files, sessions)
+
 # ===============================================================================
 # PRIVATE AREA
 # ===============================================================================
@@ -127,6 +380,223 @@ def greatlab_info():
         return redirect(url_for('basic.home'))
 
     return render_template('greatlab_info.html', current_path='/greatlab_info')
+
+
+@private_area_bp.route('/epessto_support')
+def epessto_support_page():
+    if 'user' not in session:
+        flash('Please log in to access this page.', 'warning')
+        return redirect(url_for('basic.login'))
+
+    if not can_view_private_area():
+        flash('Access denied. GREAT Lab members only.', 'error')
+        return redirect(url_for('basic.home'))
+
+    return render_template('epessto_support.html', current_path='/epessto_support')
+
+
+@private_area_bp.route('/api/epessto_support/upload', methods=['POST'])
+def api_epessto_support_upload():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files uploaded'}), 400
+
+    payload = _serialize_epessto_upload(files)
+    sessions = _load_epessto_sessions()
+    payload['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, **payload})
+
+
+@private_area_bp.route('/api/epessto_support/session', methods=['GET'])
+def api_epessto_support_session():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    sessions = _load_epessto_sessions()
+    all_files = _collect_epessto_all_files(sessions)
+
+    if not all_files:
+        return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
+
+    payload = _serialize_from_filenames(all_files, sessions)
+    payload['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, **payload})
+
+
+@private_area_bp.route('/api/epessto_support/target_state', methods=['POST'])
+def api_epessto_support_target_state():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    target_key = str(payload.get('target_key', '')).strip().lower()
+    if not target_key:
+        return jsonify({'error': 'target_key is required'}), 400
+
+    sessions = _load_epessto_sessions()
+    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+
+    updates = payload.get('updates') or {}
+    if not isinstance(updates, dict):
+        return jsonify({'error': 'updates must be an object'}), 400
+
+    if 'host' in updates:
+        current['host'] = str(updates.get('host') or '')
+    if 'z_from_host' in updates:
+        current['z_from_host'] = str(updates.get('z_from_host') or '')
+    if 'z_estimate' in updates:
+        current['z_estimate'] = str(updates.get('z_estimate') or '')
+    if 'type' in updates:
+        current['type'] = str(updates.get('type') or '')
+    if 'phase' in updates:
+        current['phase'] = str(updates.get('phase') or '')
+    if 'app' in updates:
+        current['app'] = str(updates.get('app') or '')
+    if 'completed' in updates:
+        current['completed'] = bool(updates.get('completed'))
+    if 'discuss' in updates:
+        current['discuss'] = bool(updates.get('discuss'))
+
+    # Done/Discuss are mutually exclusive.
+    if current.get('completed'):
+        current['discuss'] = False
+    elif current.get('discuss'):
+        current['completed'] = False
+
+    sessions.setdefault('target_state', {})
+    sessions['target_state'][target_key] = current
+    _save_epessto_sessions(sessions)
+
+    all_files = _collect_epessto_all_files(sessions)
+    if not all_files:
+        return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
+
+    data = _serialize_from_filenames(all_files, sessions)
+    data['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, **data})
+
+
+@private_area_bp.route('/api/epessto_support/target_image', methods=['POST'])
+def api_epessto_support_target_image_upload():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    target_key = str(request.form.get('target_key', '')).strip().lower()
+    image_file = request.files.get('image')
+    if not target_key:
+        return jsonify({'error': 'target_key is required'}), 400
+    if image_file is None or not image_file.filename:
+        return jsonify({'error': 'image is required'}), 400
+
+    ext = os.path.splitext(image_file.filename)[1].lower()
+    if ext not in {'.png', '.jpg', '.jpeg', '.webp', '.gif'}:
+        return jsonify({'error': 'unsupported image type'}), 400
+
+    sessions = _load_epessto_sessions()
+    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+    images = current.get('images', [])
+    if len(images) >= 4:
+        return jsonify({'error': 'max 4 images per target'}), 400
+
+    image_dir = _get_epessto_image_dir()
+    filename = secure_filename(f"{target_key}_{uuid.uuid4().hex}{ext}")
+    save_path = os.path.join(image_dir, filename)
+    image_file.save(save_path)
+
+    images.append({'filename': filename})
+    current['images'] = images
+    sessions.setdefault('target_state', {})
+    sessions['target_state'][target_key] = current
+    _save_epessto_sessions(sessions)
+
+    all_files = _collect_epessto_all_files(sessions)
+    if not all_files:
+        return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
+
+    data = _serialize_from_filenames(all_files, sessions)
+    data['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, **data})
+
+
+@private_area_bp.route('/api/epessto_support/target_image', methods=['DELETE'])
+def api_epessto_support_target_image_delete():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    target_key = str(payload.get('target_key', '')).strip().lower()
+    filename = str(payload.get('filename', '')).strip()
+    if not target_key or not filename:
+        return jsonify({'error': 'target_key and filename are required'}), 400
+
+    sessions = _load_epessto_sessions()
+    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+    images = current.get('images', [])
+    current['images'] = [img for img in images if img.get('filename') != filename]
+
+    sessions.setdefault('target_state', {})
+    sessions['target_state'][target_key] = current
+    _save_epessto_sessions(sessions)
+
+    safe_name = os.path.basename(filename)
+    image_path = os.path.join(_get_epessto_image_dir(), safe_name)
+    if os.path.isfile(image_path):
+        os.remove(image_path)
+
+    all_files = _collect_epessto_all_files(sessions)
+    if not all_files:
+        return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
+
+    data = _serialize_from_filenames(all_files, sessions)
+    data['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, **data})
+
+
+@private_area_bp.route('/api/epessto_support/image/<path:filename>', methods=['GET'])
+def api_epessto_support_image_file(filename):
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    safe_name = os.path.basename(filename)
+    image_path = os.path.join(_get_epessto_image_dir(), safe_name)
+    if not os.path.isfile(image_path):
+        return jsonify({'error': 'Not found'}), 404
+    return send_file(image_path)
+
+
+@private_area_bp.route('/api/epessto_support/clear', methods=['DELETE'])
+def api_epessto_support_clear():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    sessions = _load_epessto_sessions()
+    upload_dir = _get_epessto_upload_dir()
+    removed = 0
+    for batch in sessions.get('batches', []):
+        for fn in batch.get('files', []):
+            # Prevent path traversal
+            safe = os.path.basename(fn)
+            fp = os.path.join(upload_dir, safe)
+            if os.path.isfile(fp):
+                os.remove(fp)
+                removed += 1
+
+    for _, state in sessions.get('target_state', {}).items():
+        images = state.get('images', []) if isinstance(state, dict) else []
+        for image in images:
+            filename = str(image.get('filename', '')).strip()
+            if not filename:
+                continue
+            fp = os.path.join(_get_epessto_image_dir(), os.path.basename(filename))
+            if os.path.isfile(fp):
+                os.remove(fp)
+                removed += 1
+
+    _save_epessto_sessions({'batches': [], 'target_state': {}})
+    return jsonify({'success': True, 'removed': removed})
 
 @private_area_bp.route('/documents')
 def documents_list():
@@ -588,6 +1058,8 @@ def api_search_target():
             results.append({
                 'name': r['name'],
                 'prefix': r.get('name_prefix') or '',
+                'reporting_group': r.get('reporting_group') or '',
+                'source_group': r.get('source_group') or '',
                 'ra': r.get('ra'),
                 'dec': r.get('declination'),
                 'redshift': r.get('redshift'),

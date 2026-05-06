@@ -77,13 +77,14 @@
 
                     {% if session.user and session.user.get('is_great_lab_member') %}
                     <li class="dropdown">
-                        <a href="#" class="dropdown-toggle" {% if current_path in ['/detect_results', '/private', '/documents'] %}class="active"{% endif %}>
+                        <a href="#" class="dropdown-toggle" {% if current_path in ['/detect_results', '/private', '/documents', '/epessto_support'] %}class="active"{% endif %}>
                             GREATLab
                             <span class="dropdown-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                         </a>
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('detect.detect_results') }}">DETECT</a></li>
                             <li><a href="{{ url_for('private_area.daily_trigger') }}">Daily Trigger</a></li>
+                            <li><a href="{{ url_for('private_area.epessto_support_page') }}">ePessto++ Support Team</a></li>
                             <li><a href="{{ url_for('private_area.documents_list') }}">Documents</a></li>
                             <li><a href="{{ url_for('private_area.greatlab_info') }}">Lab Info</a></li>
                             {% if session.user.is_admin %}

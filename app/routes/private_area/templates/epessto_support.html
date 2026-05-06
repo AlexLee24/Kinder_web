@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ePessto++ Support Team - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/epessto_support.css') }}">
+    <meta name="description" content="ePessto++ support workspace">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="main-banner ep-page">
+        <div class="container">
+            <div class="banner-content">
+                <div class="private-section ep-shell">
+                    <div class="ep-topbar">
+                        <div class="ep-top-left">
+                            <span class="ep-page-title">ePessto++ Support Team</span>
+                            <button id="epUploadBtn" type="button" class="ep-btn">upload .asci</button>
+                            <input id="epFileInput" type="file" accept=".asci" multiple hidden>
+                            <button id="epPreviewBtn" type="button" class="ep-btn" disabled>preview</button>
+                            <button id="epDownloadReportBtn" type="button" class="ep-btn" disabled>download report .pdf</button>
+                            <button id="epRefreshBtn" type="button" class="ep-btn">refresh</button>
+                            <button id="epClearBtn" type="button" class="ep-btn ep-btn-clear" disabled>clear all</button>
+                        </div>
+                        <div class="ep-top-right">
+                            <div id="epCounter" class="ep-counter">0 / 0</div>
+                            <div id="epTypeSummary" class="ep-type-summary">Type: -</div>
+                        </div>
+                    </div>
+
+                    <div id="epStatus" class="ep-status">Please upload .asci files.</div>
+
+                    <div class="ep-main-grid">
+                        <aside class="ep-target-list-panel">
+                            <h3>Target List</h3>
+                            <div id="epTargetList" class="ep-target-list">
+                                <div class="ep-empty">No targets</div>
+                            </div>
+                        </aside>
+
+                        <section class="ep-detail-panel">
+                            <div id="epTargetWidget" class="ep-target-widget">
+                                <div class="ep-empty">target widget</div>
+                            </div>
+                            <div class="ep-nav-buttons">
+                                <button id="epPrevBtn" type="button" class="ep-btn" disabled>prev</button>
+                                <button id="epNextBtn" type="button" class="ep-btn" disabled>next</button>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='js/epessto_support.js') }}"></script>
+</body>
+</html>

@@ -133,6 +133,27 @@ def download_TNS_api(year, month, day, debug=False):
     )
 
 
+def download_TNS_api_with_fallback(year, month, day, debug=False):
+    """Try date-based file first, then fall back to recent hourly snapshots."""
+    if download_TNS_api(year, month, day, debug=debug):
+        return True
+
+    now_utc = datetime.now(timezone.utc)
+    # Try current hour and two previous hours to avoid full import skip on missing daily file.
+    fallback_hours = [
+        f"{(now_utc.hour - i) % 24:02d}" for i in range(3)
+    ]
+    logger.warning(
+        "Date-based TNS file %04d-%02d-%02d not available; trying hourly fallbacks: %s",
+        year, month, day, ', '.join(fallback_hours)
+    )
+    for hr in fallback_hours:
+        if download_TNS_api_hr(hr, debug=debug):
+            logger.info("Fallback hourly download succeeded with hour=%s", hr)
+            return True
+    return False
+
+
 def addin_database(filepath, debug=False):
     """Import CSV into transient.objects + seed transient.photometry with discovery point."""
 
@@ -171,15 +192,30 @@ def addin_database(filepath, debug=False):
 
                     new_lm_mjd = _to_mjd(r.get('lastmodified'))
 
+                    csv_reporting_group = r.get('reporting_group')
+                    csv_source_group = r.get('source_group')
+                    csv_reporters = _reporters_arr(r.get('reporters'))
+                    csv_internal_names = r.get('internal_names')
+                    csv_discovery_ads = r.get('discovery_ads_bibcode') or r.get('Discovery_ADS_bibcode')
+                    csv_class_ads = r.get('class_ads_bibcodes') or r.get('Class_ADS_bibcodes')
+
                     cursor.execute(
-                        "SELECT last_modified_date FROM transient.objects WHERE obj_id = %s",
+                        "SELECT last_modified_date, report_group, source_group, reporters, internal_name "
+                        "FROM transient.objects WHERE obj_id = %s",
                         (r.get('objid'),)
                     )
                     existing = cursor.fetchone()
 
                     if existing:
-                        existing_lm = existing[0]
-                        if new_lm_mjd and existing_lm and new_lm_mjd <= existing_lm:
+                        existing_lm, old_report_group, old_source_group, old_reporters, old_internal_name = existing
+                        needs_backfill = (
+                            (not old_report_group and csv_reporting_group) or
+                            (not old_source_group and csv_source_group) or
+                            ((not old_reporters or len(old_reporters) == 0) and csv_reporters) or
+                            (not old_internal_name and csv_internal_names)
+                        )
+
+                        if new_lm_mjd and existing_lm and new_lm_mjd <= existing_lm and not needs_backfill:
                             if debug:
                                 logger.debug("Skipping %s: existing data is newer", r.get('name'))
                             skipped_count += 1
@@ -192,16 +228,16 @@ def addin_database(filepath, debug=False):
                             r.get('declination'),    # CSV column name unchanged
                             r.get('redshift'),
                             r.get('type'),
-                            r.get('reporting_group'),
-                            r.get('source_group'),
+                            csv_reporting_group,
+                            csv_source_group,
                             _to_mjd(r.get('discoverydate')),
                             r.get('discoverymag'),
                             r.get('discmagfilter'),
-                            _reporters_arr(r.get('reporters')),
+                            csv_reporters,
                             _to_mjd(r.get('time_received')),
-                            r.get('internal_names'),
-                            r.get('discovery_ads_bibcode'),
-                            r.get('class_ads_bibcodes'),
+                            csv_internal_names,
+                            csv_discovery_ads,
+                            csv_class_ads,
                             _to_mjd(r.get('creationdate')),
                             _to_mjd(r.get('last_photometry_date')),
                             new_lm_mjd,
@@ -212,14 +248,25 @@ def addin_database(filepath, debug=False):
                         if len(update_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
                                 UPDATE transient.objects SET
-                                    name_prefix = %s, name = %s, ra = %s, dec = %s,
-                                    redshift = %s, type = %s, report_group = %s,
-                                    source_group = %s, discovery_date = %s,
-                                    discovery_mag = %s, discovery_filter = %s,
-                                    reporters = %s, received_date = %s,
-                                    internal_name = %s, discovery_ADS = %s,
-                                    class_ADS = %s, creation_date = %s,
-                                    last_phot_date = %s, last_modified_date = %s,
+                                    name_prefix = COALESCE(%s, name_prefix),
+                                    name = COALESCE(%s, name),
+                                    ra = COALESCE(%s, ra),
+                                    dec = COALESCE(%s, dec),
+                                    redshift = COALESCE(%s, redshift),
+                                    type = COALESCE(%s, type),
+                                    report_group = COALESCE(%s, report_group),
+                                    source_group = COALESCE(%s, source_group),
+                                    discovery_date = COALESCE(%s, discovery_date),
+                                    discovery_mag = COALESCE(%s, discovery_mag),
+                                    discovery_filter = COALESCE(%s, discovery_filter),
+                                    reporters = COALESCE(%s, reporters),
+                                    received_date = COALESCE(%s, received_date),
+                                    internal_name = COALESCE(%s, internal_name),
+                                    discovery_ADS = COALESCE(%s, discovery_ADS),
+                                    class_ADS = COALESCE(%s, class_ADS),
+                                    creation_date = COALESCE(%s, creation_date),
+                                    last_phot_date = COALESCE(%s, last_phot_date),
+                                    last_modified_date = COALESCE(%s, last_modified_date),
                                     status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
                                 WHERE obj_id = %s
                             ''', update_batch, page_size=BATCH_SIZE)
@@ -237,16 +284,16 @@ def addin_database(filepath, debug=False):
                             r.get('declination'),
                             r.get('redshift'),
                             r.get('type'),
-                            r.get('reporting_group'),
-                            r.get('source_group'),
+                            csv_reporting_group,
+                            csv_source_group,
                             _to_mjd(r.get('discoverydate')),
                             r.get('discoverymag'),
                             r.get('discmagfilter'),
-                            _reporters_arr(r.get('reporters')),
+                            csv_reporters,
                             _to_mjd(r.get('time_received')),
-                            r.get('internal_names'),
-                            r.get('discovery_ads_bibcode'),
-                            r.get('class_ads_bibcodes'),
+                            csv_internal_names,
+                            csv_discovery_ads,
+                            csv_class_ads,
                             _to_mjd(r.get('creationdate')),
                             _to_mjd(r.get('last_photometry_date')),
                             new_lm_mjd,
@@ -291,14 +338,25 @@ def addin_database(filepath, debug=False):
             if update_batch:
                 extras.execute_batch(cursor, '''
                     UPDATE transient.objects SET
-                        name_prefix = %s, name = %s, ra = %s, dec = %s,
-                        redshift = %s, type = %s, report_group = %s,
-                        source_group = %s, discovery_date = %s,
-                        discovery_mag = %s, discovery_filter = %s,
-                        reporters = %s, received_date = %s,
-                        internal_name = %s, discovery_ADS = %s,
-                        class_ADS = %s, creation_date = %s,
-                        last_phot_date = %s, last_modified_date = %s,
+                        name_prefix = COALESCE(%s, name_prefix),
+                        name = COALESCE(%s, name),
+                        ra = COALESCE(%s, ra),
+                        dec = COALESCE(%s, dec),
+                        redshift = COALESCE(%s, redshift),
+                        type = COALESCE(%s, type),
+                        report_group = COALESCE(%s, report_group),
+                        source_group = COALESCE(%s, source_group),
+                        discovery_date = COALESCE(%s, discovery_date),
+                        discovery_mag = COALESCE(%s, discovery_mag),
+                        discovery_filter = COALESCE(%s, discovery_filter),
+                        reporters = COALESCE(%s, reporters),
+                        received_date = COALESCE(%s, received_date),
+                        internal_name = COALESCE(%s, internal_name),
+                        discovery_ADS = COALESCE(%s, discovery_ADS),
+                        class_ADS = COALESCE(%s, class_ADS),
+                        creation_date = COALESCE(%s, creation_date),
+                        last_phot_date = COALESCE(%s, last_phot_date),
+                        last_modified_date = COALESCE(%s, last_modified_date),
                         status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
                     WHERE obj_id = %s
                 ''', update_batch, page_size=BATCH_SIZE)
@@ -442,7 +500,7 @@ def main():
             elif now.hour == 1 and now.minute == 0:
                 logger.info("Daily task at %s", now)
                 yesterday = now - timedelta(days=1)
-                if download_TNS_api(yesterday.year, yesterday.month, yesterday.day, debug=True):
+                if download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True):
                     addin_database(work_csv, debug=True)
                     auto_snoozed(now, debug=True)
                 time.sleep(60)
@@ -484,7 +542,7 @@ if __name__ == "__main__":
 
     logger.info("Step 1: Download yesterday (%s-%02d-%02d)",
                 yesterday.year, yesterday.month, yesterday.day)
-    ok = download_TNS_api(yesterday.year, yesterday.month, yesterday.day, debug=True)
+    ok = download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True)
 
     if ok:
         logger.info("Step 2: Import into DB")
