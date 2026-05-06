@@ -202,8 +202,9 @@ function drawSummaryPages(doc) {
             drawHeader();
         }
         const f = normalizeUserFields(t.user_fields);
+        const nameDisplay = t.is_discuss ? `${t.target_name} (D)` : t.target_name;
         const values = {
-            name: t.target_name,
+            name: nameDisplay,
             host: f.host,
             type: f.type,
             phase: f.phase,
