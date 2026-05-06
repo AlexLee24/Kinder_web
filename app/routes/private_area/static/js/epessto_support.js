@@ -33,11 +33,20 @@ const epPreviewBtn = document.getElementById('epPreviewBtn');
 const epRefreshBtn = document.getElementById('epRefreshBtn');
 const epAutoRefreshToggle = document.getElementById('epAutoRefreshToggle');
 const epAutoRefreshLabel = document.getElementById('epAutoRefreshLabel');
+const epRefreshDot = document.getElementById('epRefreshDot');
 let autoRefreshTimer = null;
+
+function pulseRefreshDot() {
+    if (!epRefreshDot) return;
+    epRefreshDot.classList.remove('pulse');
+    void epRefreshDot.offsetWidth; // reflow to restart animation
+    epRefreshDot.classList.add('pulse');
+}
 
 function startAutoRefresh() {
     if (autoRefreshTimer) return;
     autoRefreshTimer = setInterval(async () => {
+        pulseRefreshDot();
         await loadSession({ refreshWidget: false });
     }, 10000);
 }
