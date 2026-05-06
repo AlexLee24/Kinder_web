@@ -212,6 +212,8 @@ function drawSummaryPages(doc) {
             z_est: f.z_estimate,
             z_host: f.z_from_host
         };
+        const isDiscussRow = Boolean(t.is_discuss);
+        if (isDiscussRow) doc.setTextColor(180, 60, 60);
         let x = left;
         cols.forEach((c) => {
             doc.rect(x, y, c.w, rowH);
@@ -219,6 +221,7 @@ function drawSummaryPages(doc) {
             drawCellText(txt, x, y, c.w, 7.5, 5.2);
             x += c.w;
         });
+        if (isDiscussRow) doc.setTextColor(0, 0, 0);
         y += rowH;
     });
 }
