@@ -1,4 +1,14 @@
 .ep-page {
+    --ep-text: #f3f7ff;
+    --ep-muted: rgba(233, 241, 255, 0.72);
+    --ep-soft: rgba(233, 241, 255, 0.5);
+    --ep-border: rgba(255, 255, 255, 0.15);
+    --ep-panel: rgba(20, 24, 33, 0.72);
+    --ep-panel-deep: rgba(10, 14, 22, 0.35);
+    --ep-accent: #4db8ff;
+}
+
+.ep-page {
     padding-top: 92px;
 }
 
@@ -17,10 +27,12 @@
     width: 100%;
     max-width: 100%;
     margin: 0 auto;
-    padding: 0.9rem;
-    background: rgba(16, 18, 24, 0.78);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.3);
+    padding: 1rem;
+    background: linear-gradient(160deg, rgba(19, 23, 33, 0.88), rgba(14, 18, 27, 0.78));
+    border: 1px solid var(--ep-border);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(2px);
 }
 
 .ep-title h1 {
@@ -31,10 +43,10 @@
     font-size: 0.9rem;
     font-weight: 600;
     letter-spacing: 0.5px;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--ep-muted);
     white-space: nowrap;
     padding-right: 4px;
-    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    border-right: 1px solid var(--ep-border);
     margin-right: 4px;
 }
 
@@ -42,7 +54,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: wrap;
 }
 
@@ -60,21 +72,21 @@
 }
 
 .ep-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: #f8f8f8;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: var(--ep-text);
     border-radius: 8px;
     padding: 7px 11px;
     font-size: 0.88rem;
     letter-spacing: 0.2px;
     cursor: pointer;
-    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .ep-btn:hover:not(:disabled) {
-    transform: translateY(-1px);
-    background: rgba(77, 184, 255, 0.16);
+    background: linear-gradient(180deg, rgba(77, 184, 255, 0.18), rgba(77, 184, 255, 0.1));
     border-color: rgba(77, 184, 255, 0.7);
+    box-shadow: 0 6px 14px rgba(9, 34, 54, 0.35);
 }
 
 .ep-btn:disabled {
@@ -97,11 +109,11 @@
     min-width: 104px;
     text-align: center;
     font-size: 1.02rem;
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: var(--ep-text);
+    border: 1px solid var(--ep-border);
     border-radius: 8px;
     padding: 6px 10px;
-    background: rgba(0, 0, 0, 0.33);
+    background: rgba(6, 11, 18, 0.45);
 }
 
 .ep-type-summary {
@@ -115,7 +127,7 @@
 .ep-status {
     margin-top: 8px;
     margin-bottom: 10px;
-    color: rgba(255, 255, 255, 0.72);
+    color: var(--ep-muted);
     font-size: 0.86rem;
 }
 
@@ -124,17 +136,17 @@
     width: 100%;
     margin: 0 auto;
     grid-template-columns: 220px 1fr;
-    gap: 10px;
+    gap: 12px;
     align-items: stretch;
     min-height: 1000px;
 }
 
 .ep-target-list-panel,
 .ep-detail-panel {
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.02);
-    padding: 9px;
+    border: 1px solid var(--ep-border);
+    border-radius: 11px;
+    background: var(--ep-panel-deep);
+    padding: 10px;
     min-height: 400px;
 }
 
@@ -142,7 +154,7 @@
     margin: 0 0 8px;
     text-align: center;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--ep-text);
     font-size: 1rem;
 }
 
@@ -155,29 +167,37 @@
 }
 
 .ep-target-item {
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid var(--ep-border);
     border-radius: 8px;
-    padding: 9px 8px;
+    padding: 5px 2px;
     font-size: 0.8rem;
     line-height: 1.35;
     cursor: pointer;
-    color: rgba(255, 255, 255, 0.88);
-    background: rgba(0, 0, 0, 0.16);
+    color: var(--ep-text);
+    background: rgba(10, 15, 24, 0.45);
     position: relative;
+    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.ep-target-item:hover {
+    border-color: rgba(77, 184, 255, 0.45);
+    background: rgba(14, 23, 36, 0.6);
+    transform: translateX(3px);
 }
 
 .ep-target-item.done {
-    border-color: rgba(127, 255, 149, 0.4);
-    background: rgba(127, 255, 149, 0.14);
+    border-color: rgba(127, 255, 149, 0.8);
+    background: rgba(127, 255, 149, 0.4);
 }
 
 .ep-target-item.discuss {
-    border-color: rgba(255, 165, 77, 0.45);
-    background: rgba(255, 165, 77, 0.16);
+    border-color: rgba(255, 166, 77, 0.8);
+    background: rgba(255, 165, 77, 0.4);
 }
 
 .ep-target-item.active {
-    box-shadow: inset 0 0 0 1px rgba(77, 184, 255, 0.75);
+    /* box-shadow: inset 0 0 0 1px rgba(77, 184, 255, 0.75); */
+    border-color: rgba(77, 184, 255, 0.7);
 }
 
 .ep-target-item.active::before {
@@ -218,11 +238,11 @@
 
 .ep-target-widget {
     min-height: 700px;
-    border: 1px dashed rgba(255, 255, 255, 0.18);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
     border-radius: 10px;
-    padding: 10px;
+    padding: 12px;
     overflow: auto;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--ep-panel);
 }
 
 .ep-widget-card {
@@ -239,7 +259,7 @@
 .ep-widget-main {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .ep-widget-title-row {
@@ -260,9 +280,9 @@
 }
 
 .ep-widget-reporting-group {
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.75);
-    margin-top: -2px;
+    font-size: 0.79rem;
+    color: var(--ep-soft);
+    margin-top: -1px;
 }
 
 .ep-widget-meta {
@@ -281,22 +301,16 @@
     gap: 9px;
 }
 
-.ep-widget-remove-wrap {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 2px;
-}
-
 .ep-btn-mini {
     padding: 4px 8px;
     font-size: 0.76rem;
 }
 
 .ep-lc-board {
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 8px;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.24);
+    padding: 9px;
+    background: rgba(7, 12, 20, 0.34);
 }
 
 .ep-lc-toolbar {
@@ -420,21 +434,21 @@
 
 .ep-field-input {
     width: 100%;
-    border: 1px solid rgba(255, 255, 255, 0.24);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.36);
+    background: rgba(8, 12, 20, 0.48);
     color: #f8f8f8;
-    padding: 10px 10px;
+    padding: 9px 10px;
     font-size: 0.98rem;
     box-sizing: border-box;
 }
 
 .ep-image-board {
-    margin-top: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    margin-top: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 8px;
     padding: 8px;
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(7, 12, 20, 0.3);
 }
 
 .ep-image-board-title {
@@ -475,10 +489,10 @@
 }
 
 .ep-image-card {
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 8px;
     padding: 4px;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.015);
 }
 
 .ep-image-card img {
@@ -532,7 +546,7 @@
     width: 100%;
     margin-top: 4px;
     border: 1px solid rgba(255, 120, 120, 0.45);
-    background: rgba(255, 120, 120, 0.1);
+    background: rgba(255, 120, 120, 0.14);
     color: #ffb4b4;
     border-radius: 5px;
     font-size: 0.74rem;
@@ -573,6 +587,33 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.ep-target-list,
+.ep-file-list-wrap,
+.ep-target-widget {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 156, 207, 0.45) rgba(255, 255, 255, 0.04);
+}
+
+.ep-target-list::-webkit-scrollbar,
+.ep-file-list-wrap::-webkit-scrollbar,
+.ep-target-widget::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.ep-target-list::-webkit-scrollbar-thumb,
+.ep-file-list-wrap::-webkit-scrollbar-thumb,
+.ep-target-widget::-webkit-scrollbar-thumb {
+    background: rgba(99, 156, 207, 0.45);
+    border-radius: 999px;
+}
+
+.ep-target-list::-webkit-scrollbar-track,
+.ep-file-list-wrap::-webkit-scrollbar-track,
+.ep-target-widget::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .ep-widget-file-row {
@@ -624,8 +665,9 @@
 .ep-nav-buttons {
     display: flex;
     justify-content: center;
-    gap: 8px;
-    margin-top: 8px;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 2px;
 }
 
 .ep-detail-card {
@@ -694,7 +736,8 @@
     }
 
     .ep-target-widget {
-        height: 220px;
+        min-height: 420px;
+        height: auto;
     }
 
     .ep-widget-meta-grid {
@@ -712,5 +755,14 @@
     .ep-lc-toolbar {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .ep-nav-buttons {
+        justify-content: stretch;
+        flex-wrap: wrap;
+    }
+
+    .ep-nav-buttons .ep-btn {
+        flex: 1 1 120px;
     }
 }

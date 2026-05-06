@@ -35,6 +35,7 @@ const epRefreshBtn = document.getElementById('epRefreshBtn');
 const epClearBtn = document.getElementById('epClearBtn');
 const epPrevBtn = document.getElementById('epPrevBtn');
 const epNextBtn = document.getElementById('epNextBtn');
+const epRemoveTargetBtn = document.getElementById('epRemoveTargetBtn');
 const epCounter = document.getElementById('epCounter');
 const epTypeSummary = document.getElementById('epTypeSummary');
 const epStatus = document.getElementById('epStatus');
@@ -52,6 +53,7 @@ function updateActionButtons() {
     epClearBtn.disabled = !hasTarget;
     epPrevBtn.disabled = !hasTarget || epState.selectedIndex <= 0;
     epNextBtn.disabled = !hasTarget || epState.selectedIndex >= epState.targets.length - 1;
+    epRemoveTargetBtn.disabled = !hasTarget || epState.selectedIndex < 0;
 }
 
 function updateCounter() {
@@ -629,15 +631,6 @@ function buildWidgetHTML(target, info) {
                     ${uploadBox}
                     <div class="ep-image-grid">${imageCards || ''}</div>
                 </div>
-                <div class="ep-widget-remove-wrap">
-                    <button
-                        type="button"
-                        class="ep-btn ep-btn-clear"
-                        data-action="remove-target"
-                        data-target-key="${escapeHtml(target.target_key)}"
-                        data-target-name="${escapeHtml(target.target_name)}"
-                    >remove target</button>
-                </div>
             </div>
         </article>
     `;
@@ -945,37 +938,37 @@ function bindWidgetInteractions() {
         }
     });
 
-    epTargetWidget.addEventListener('click', async (event) => {
-        const removeBtn = event.target.closest('[data-action="remove-target"]');
-        if (!removeBtn) return;
+}
 
-        const targetKey = removeBtn.dataset.targetKey || '';
-        const targetName = removeBtn.dataset.targetName || targetKey;
-        if (!targetKey) return;
+async function removeCurrentTarget() {
+    const target = epState.targets[epState.selectedIndex];
+    if (!target) return;
 
-        const c1 = confirm('Remove target "' + targetName + '" and all its uploaded files?');
-        if (!c1) return;
-        const c2 = confirm('Second confirmation: this action cannot be undone. Continue?');
-        if (!c2) return;
-        const c3 = confirm('Final confirmation: permanently delete this target now?');
-        if (!c3) return;
+    const targetKey = target.target_key;
+    const targetName = target.target_name || targetKey;
 
-        try {
-            const resp = await fetch('/api/epessto_support/target', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ target_key: targetKey })
-            });
-            const data = await resp.json();
-            if (!resp.ok || !data.success) {
-                throw new Error(data.error || 'Remove target failed');
-            }
-            applySessionData(data);
-            setStatus('Target removed: ' + targetName + ' (' + (data.removed || 0) + ' file(s) deleted).');
-        } catch (err) {
-            setStatus('Remove target failed: ' + err.message);
+    const c1 = confirm('Remove target "' + targetName + '" and all its uploaded files?');
+    if (!c1) return;
+    const c2 = confirm('Second confirmation: this action cannot be undone. Continue?');
+    if (!c2) return;
+    const c3 = confirm('Final confirmation: permanently delete this target now?');
+    if (!c3) return;
+
+    try {
+        const resp = await fetch('/api/epessto_support/target', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_key: targetKey })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || 'Remove target failed');
         }
-    });
+        applySessionData(data);
+        setStatus('Target removed: ' + targetName + ' (' + (data.removed || 0) + ' file(s) deleted).');
+    } catch (err) {
+        setStatus('Remove target failed: ' + err.message);
+    }
 }
 
 async function loadSession(options = {}) {
@@ -1000,7 +993,12 @@ async function loadSession(options = {}) {
 }
 
 async function clearSession() {
-    if (!confirm('Clear all uploaded files from this session?')) return;
+    const c1 = confirm('Clear all uploaded files from this session?');
+    if (!c1) return;
+    const c2 = confirm('Second confirmation: this action cannot be undone. Continue?');
+    if (!c2) return;
+    const c3 = confirm('Final confirmation: permanently clear all now?');
+    if (!c3) return;
     try {
         const resp = await fetch('/api/epessto_support/clear', { method: 'DELETE' });
         const data = await resp.json();
@@ -1083,6 +1081,8 @@ epNextBtn.addEventListener('click', () => {
         renderSelectedTarget();
     }
 });
+
+epRemoveTargetBtn.addEventListener('click', removeCurrentTarget);
 
 epDownloadReportBtn.addEventListener('click', () => {
     generateReportPdf(false);
