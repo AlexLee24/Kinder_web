@@ -32,6 +32,7 @@ const epFileInput = document.getElementById('epFileInput');
 const epPreviewBtn = document.getElementById('epPreviewBtn');
 const epRefreshBtn = document.getElementById('epRefreshBtn');
 const epAutoRefreshToggle = document.getElementById('epAutoRefreshToggle');
+const epAutoRefreshLabel = document.getElementById('epAutoRefreshLabel');
 let autoRefreshTimer = null;
 
 function startAutoRefresh() {
@@ -1137,8 +1138,10 @@ epRefreshBtn.addEventListener('click', async () => {
 epAutoRefreshToggle.addEventListener('change', () => {
     if (epAutoRefreshToggle.checked) {
         startAutoRefresh();
+        epAutoRefreshLabel.classList.add('is-active');
     } else {
         stopAutoRefresh();
+        epAutoRefreshLabel.classList.remove('is-active');
     }
 });
 

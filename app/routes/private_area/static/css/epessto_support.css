@@ -71,6 +71,12 @@
     gap: 6px;
 }
 
+.ep-top-right-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .ep-btn {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
     border: 1px solid rgba(255, 255, 255, 0.22);
@@ -109,9 +115,24 @@
 .ep-auto-refresh-label {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 7px;
     cursor: pointer;
     user-select: none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 8px;
+    padding: 7px 10px;
+    transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.ep-auto-refresh-label:hover {
+    background: linear-gradient(180deg, rgba(77,184,255,0.12), rgba(77,184,255,0.06));
+    border-color: rgba(77,184,255,0.4);
+}
+
+.ep-auto-refresh-label.is-active {
+    background: linear-gradient(180deg, rgba(100,210,130,0.15), rgba(100,210,130,0.07));
+    border-color: rgba(100,210,130,0.55);
 }
 
 .ep-auto-refresh-label input[type="checkbox"] {
@@ -125,7 +146,7 @@
     background: rgba(255,255,255,0.15);
     border: 1px solid rgba(255,255,255,0.25);
     border-radius: 8px;
-    transition: background 0.2s;
+    transition: background 0.2s, border-color 0.2s;
     flex-shrink: 0;
 }
 
@@ -142,8 +163,8 @@
 }
 
 .ep-auto-refresh-label input:checked + .ep-toggle-slider {
-    background: rgba(100, 210, 130, 0.45);
-    border-color: rgba(100, 210, 130, 0.7);
+    background: rgba(100,210,130,0.45);
+    border-color: rgba(100,210,130,0.7);
 }
 
 .ep-auto-refresh-label input:checked + .ep-toggle-slider::after {
@@ -152,9 +173,9 @@
 }
 
 .ep-toggle-text {
-    font-size: 0.72rem;
-    color: rgba(255,255,255,0.6);
-    letter-spacing: 0.03em;
+    font-size: 0.88rem;
+    color: var(--ep-text);
+    letter-spacing: 0.2px;
 }
 
 .ep-auto-refresh-label input:checked ~ .ep-toggle-text {

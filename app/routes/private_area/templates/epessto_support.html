@@ -23,15 +23,17 @@
                             <input id="epFileInput" type="file" accept=".asci" multiple hidden>
                             <button id="epPreviewBtn" type="button" class="ep-btn" disabled>preview</button>
                             <button id="epRefreshBtn" type="button" class="ep-btn">refresh</button>
-                            <label class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
-                                <input id="epAutoRefreshToggle" type="checkbox">
-                                <span class="ep-toggle-slider"></span>
-                                <span class="ep-toggle-text">auto</span>
-                            </label>
                             <button id="epClearBtn" type="button" class="ep-btn ep-btn-clear" disabled>clear all</button>
                         </div>
                         <div class="ep-top-right">
-                            <div id="epCounter" class="ep-counter">0 / 0</div> 
+                            <div class="ep-top-right-row">
+                                <div id="epCounter" class="ep-counter">0 / 0</div>
+                                <label id="epAutoRefreshLabel" class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
+                                    <input id="epAutoRefreshToggle" type="checkbox">
+                                    <span class="ep-toggle-slider"></span>
+                                    <span class="ep-toggle-text">Auto Refresh</span>
+                                </label>
+                            </div>
                             <div id="epTypeSummary" class="ep-type-summary">Type: -</div>
                         </div>
                     </div>
