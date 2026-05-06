@@ -27,6 +27,7 @@
 | last_modified_date | double precision | save in MJD                                                            |
 | brightest_mag      | double precision | 16.789                                                                 |
 | brightest_abs_mag  | double precision | -22.789                                                                |
+| host_name          | text             | NED host galaxy name (set via NED cone search)                         |
 | permission         | text             | public, login, groups. Default set as "public"                         |
 | groups             | int[]            | {group_id, ...}. Default set as "{}"                                   |
 

@@ -49,8 +49,7 @@ CREATE TABLE transient.objects (
     last_phot_date      DOUBLE PRECISION,       -- MJD
     last_modified_date  DOUBLE PRECISION,       -- MJD
     brightest_mag       DOUBLE PRECISION,
-    brightest_abs_mag   DOUBLE PRECISION,
-    permission          TEXT NOT NULL DEFAULT 'public'
+    brightest_abs_mag   DOUBLE PRECISION,    host_name           TEXT,                   -- NED host galaxy name    permission          TEXT NOT NULL DEFAULT 'public'
                             CHECK (permission IN ('public', 'login', 'groups')),
     groups              INT[] NOT NULL DEFAULT '{}'
 );

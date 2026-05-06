@@ -1646,32 +1646,20 @@ def remove_object_permission_api(object_name):
 # NED Cone Search Proxy
 # ============================================================
 def _get_current_ned_host_name(target_name: str) -> str | None:
-    """Return current NED host name for target, or None if not set."""
+    """Return current NED host name for target from transient.objects.host_name."""
     if not target_name:
         return None
     try:
         conn = get_tns_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "SELECT obj_id FROM transient.objects "
+            "SELECT host_name FROM transient.objects "
             "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
             (target_name, target_name)
         )
         row = cur.fetchone()
-        if not row:
-            conn.close()
-            return None
-
-        obj_id = row[0]
-        cur.execute(
-            "SELECT name FROM transient.cross_matches "
-            "WHERE obj_id = %s AND catalog = 'NED' AND is_host = TRUE "
-            "ORDER BY updated_date DESC NULLS LAST, match_id DESC LIMIT 1",
-            (obj_id,)
-        )
-        h = cur.fetchone()
         conn.close()
-        return h[0] if h and h[0] else None
+        return row[0] if row and row[0] else None
     except Exception as e:
         logger.warning("[NED] read current host failed for %s: %s", target_name, e)
         return None
@@ -1940,48 +1928,19 @@ def ned_set_host():
 
         obj_id = row[0]
 
-        # Reset previous host flags for this object.
-        cur.execute(
-            "UPDATE transient.cross_matches SET is_host = FALSE WHERE obj_id = %s",
-            (obj_id,)
-        )
-
-        note = f"NED host set manually; type={host_type or '-'}; z_flag={z_flag or '-'}"
-        cur.execute(
-            """
-            UPDATE transient.cross_matches
-               SET is_host = TRUE,
-                   separation = %s,
-                   redshift = %s,
-                   updated_date = NOW(),
-                   note = %s,
-                   status = 'Manual-NED',
-                   error_message = NULL
-             WHERE obj_id = %s AND catalog = 'NED' AND name = %s
-            """,
-            (separation_arcsec, redshift_val, note, obj_id, host_name)
-        )
-
-        if cur.rowcount == 0:
-            cur.execute(
-                """
-                INSERT INTO transient.cross_matches
-                    (obj_id, name, catalog, separation, redshift, is_host,
-                     updated_date, note, status, run_date, error_message)
-                VALUES
-                    (%s, %s, 'NED', %s, %s, TRUE,
-                     NOW(), %s, 'Manual-NED', NOW(), NULL)
-                """,
-                (obj_id, host_name, separation_arcsec, redshift_val, note)
-            )
-
+        # Write host_name to transient.objects; conditionally update redshift.
         updated_redshift = False
         if should_update_redshift:
             cur.execute(
-                "UPDATE transient.objects SET redshift = %s WHERE obj_id = %s",
-                (redshift_val, obj_id)
+                "UPDATE transient.objects SET host_name = %s, redshift = %s WHERE obj_id = %s",
+                (host_name, redshift_val, obj_id)
             )
             updated_redshift = True
+        else:
+            cur.execute(
+                "UPDATE transient.objects SET host_name = %s WHERE obj_id = %s",
+                (host_name, obj_id)
+            )
 
         conn.commit()
         conn.close()
@@ -2042,17 +2001,15 @@ def ned_unset_host():
 
         obj_id = row[0]
         cur.execute(
-            "UPDATE transient.cross_matches SET is_host = FALSE, updated_date = NOW() "
-            "WHERE obj_id = %s AND catalog = 'NED' AND is_host = TRUE",
+            "UPDATE transient.objects SET host_name = NULL WHERE obj_id = %s",
             (obj_id,)
         )
-        cleared = cur.rowcount
         conn.commit()
         conn.close()
         conn = None
 
-        logger.info("[NED] unset_host target=%s cleared_rows=%d", target_name, cleared)
-        return jsonify({'success': True, 'cleared': cleared})
+        logger.info("[NED] unset_host target=%s", target_name)
+        return jsonify({'success': True})
     except Exception as e:
         logger.exception("[NED] unset_host error")
         if conn:
