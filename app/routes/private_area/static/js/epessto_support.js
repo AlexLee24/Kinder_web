@@ -30,7 +30,6 @@ function prioritizeSTypeOptions(options) {
 const epUploadBtn = document.getElementById('epUploadBtn');
 const epFileInput = document.getElementById('epFileInput');
 const epPreviewBtn = document.getElementById('epPreviewBtn');
-const epDownloadReportBtn = document.getElementById('epDownloadReportBtn');
 const epRefreshBtn = document.getElementById('epRefreshBtn');
 const epClearBtn = document.getElementById('epClearBtn');
 const epPrevBtn = document.getElementById('epPrevBtn');
@@ -49,7 +48,6 @@ function setStatus(message) {
 function updateActionButtons() {
     const hasTarget = epState.targets.length > 0;
     epPreviewBtn.disabled = !hasTarget;
-    epDownloadReportBtn.disabled = !hasTarget;
     epClearBtn.disabled = !hasTarget;
     epPrevBtn.disabled = !hasTarget || epState.selectedIndex <= 0;
     epNextBtn.disabled = !hasTarget || epState.selectedIndex >= epState.targets.length - 1;
@@ -202,7 +200,7 @@ function drawSummaryPages(doc) {
             drawHeader();
         }
         const f = normalizeUserFields(t.user_fields);
-        const nameDisplay = t.is_discuss ? `${t.target_name} (D)` : t.target_name;
+        const nameDisplay = t.is_discuss ? `${t.target_name} (Discussion)` : t.target_name;
         const values = {
             name: nameDisplay,
             host: f.host,
@@ -1114,10 +1112,6 @@ epNextBtn.addEventListener('click', () => {
 });
 
 epRemoveTargetBtn.addEventListener('click', removeCurrentTarget);
-
-epDownloadReportBtn.addEventListener('click', () => {
-    generateReportPdf(false);
-});
 
 epRefreshBtn.addEventListener('click', async () => {
     await loadSession({ refreshWidget: false });
