@@ -479,6 +479,69 @@ def api_epessto_support_target_state():
     return jsonify({'success': True, **data})
 
 
+@private_area_bp.route('/api/epessto_support/target', methods=['DELETE'])
+def api_epessto_support_remove_target():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    target_key = str(payload.get('target_key', '')).strip().lower()
+    if not target_key:
+        return jsonify({'error': 'target_key is required'}), 400
+
+    sessions = _load_epessto_sessions()
+    upload_dir = _get_epessto_upload_dir()
+    removed = 0
+
+    # Remove target files from batches and disk.
+    kept_batches = []
+    for batch in sessions.get('batches', []):
+        keep_files = []
+        for fn in batch.get('files', []):
+            safe = os.path.basename(str(fn or ''))
+            if not safe:
+                continue
+            parsed = _parse_epessto_filename(safe)
+            file_target_key = str(parsed.get('target_name', '')).strip().lower()
+            if file_target_key == target_key:
+                fp = os.path.join(upload_dir, safe)
+                if os.path.isfile(fp):
+                    os.remove(fp)
+                    removed += 1
+            else:
+                keep_files.append(safe)
+
+        if keep_files:
+            batch['files'] = keep_files
+            kept_batches.append(batch)
+
+    sessions['batches'] = kept_batches
+
+    # Remove target-linked images and target state.
+    state = sessions.get('target_state', {}).get(target_key, {})
+    images = state.get('images', []) if isinstance(state, dict) else []
+    for image in images:
+        filename = str(image.get('filename', '')).strip()
+        if not filename:
+            continue
+        fp = os.path.join(_get_epessto_image_dir(), os.path.basename(filename))
+        if os.path.isfile(fp):
+            os.remove(fp)
+            removed += 1
+
+    sessions.setdefault('target_state', {})
+    sessions['target_state'].pop(target_key, None)
+    _save_epessto_sessions(sessions)
+
+    all_files = _collect_epessto_all_files(sessions)
+    if not all_files:
+        return jsonify({'success': True, 'removed': removed, 'summary': None, 'targets': [], 'batches': []})
+
+    data = _serialize_from_filenames(all_files, sessions)
+    data['batches'] = sessions.get('batches', [])
+    return jsonify({'success': True, 'removed': removed, **data})
+
+
 @private_area_bp.route('/api/epessto_support/target_image', methods=['POST'])
 def api_epessto_support_target_image_upload():
     if not can_view_private_area():

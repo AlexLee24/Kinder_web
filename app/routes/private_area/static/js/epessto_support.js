@@ -629,6 +629,15 @@ function buildWidgetHTML(target, info) {
                     ${uploadBox}
                     <div class="ep-image-grid">${imageCards || ''}</div>
                 </div>
+                <div class="ep-widget-remove-wrap">
+                    <button
+                        type="button"
+                        class="ep-btn ep-btn-clear"
+                        data-action="remove-target"
+                        data-target-key="${escapeHtml(target.target_key)}"
+                        data-target-name="${escapeHtml(target.target_name)}"
+                    >remove target</button>
+                </div>
             </div>
         </article>
     `;
@@ -933,6 +942,38 @@ function bindWidgetInteractions() {
             setStatus('Image deleted.');
         } catch (err) {
             setStatus('Delete image failed: ' + err.message);
+        }
+    });
+
+    epTargetWidget.addEventListener('click', async (event) => {
+        const removeBtn = event.target.closest('[data-action="remove-target"]');
+        if (!removeBtn) return;
+
+        const targetKey = removeBtn.dataset.targetKey || '';
+        const targetName = removeBtn.dataset.targetName || targetKey;
+        if (!targetKey) return;
+
+        const c1 = confirm('Remove target "' + targetName + '" and all its uploaded files?');
+        if (!c1) return;
+        const c2 = confirm('Second confirmation: this action cannot be undone. Continue?');
+        if (!c2) return;
+        const c3 = confirm('Final confirmation: permanently delete this target now?');
+        if (!c3) return;
+
+        try {
+            const resp = await fetch('/api/epessto_support/target', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_key: targetKey })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                throw new Error(data.error || 'Remove target failed');
+            }
+            applySessionData(data);
+            setStatus('Target removed: ' + targetName + ' (' + (data.removed || 0) + ' file(s) deleted).');
+        } catch (err) {
+            setStatus('Remove target failed: ' + err.message);
         }
     });
 }

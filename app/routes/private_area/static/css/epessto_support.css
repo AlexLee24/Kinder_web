@@ -281,6 +281,12 @@
     gap: 9px;
 }
 
+.ep-widget-remove-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 2px;
+}
+
 .ep-btn-mini {
     padding: 4px 8px;
     font-size: 0.76rem;
