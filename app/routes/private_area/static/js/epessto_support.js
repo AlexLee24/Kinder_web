@@ -351,7 +351,8 @@ async function generateReportPdf(previewMode) {
     }
 
     const dateStr = epState.summary ? epState.summary.today_date : 'today';
-    const filename = 'epessto_report_' + dateStr + '.pdf';
+    const roomSlug = epRoomName ? epRoomName.replace(/[^a-zA-Z0-9_\-]/g, '_') : 'room';
+    const filename = roomSlug + '_' + dateStr + '.pdf';
 
     if (previewMode) {
         const blob = doc.output('blob');
