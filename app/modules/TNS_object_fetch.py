@@ -59,6 +59,8 @@ api_key  = os.getenv("TNS_API_KEY")
 
 # ---- Logger ----
 logger = logging.getLogger("tns_fetch")
+if logger.level == logging.NOTSET:
+    logger.setLevel(logging.INFO)
 
 # ---- Function to download TNS API data ----
 def download_TNS_api_hr(hr, debug=False):
@@ -522,11 +524,7 @@ def start_tns_fetcher(log_dir=None):
         if _tns_thread is not None and _tns_thread.is_alive():
             logger.info("TNS fetcher already running.")
             return
-        if log_dir and not logger.handlers:
-            os.makedirs(log_dir, exist_ok=True)
-            fh = logging.FileHandler(os.path.join(log_dir, 'tns_fetch.log'))
-            fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-            logger.addHandler(fh)
+        if logger.level == logging.NOTSET:
             logger.setLevel(logging.INFO)
         _tns_thread = threading.Thread(target=main, daemon=True, name="tns_fetch")
         _tns_thread.start()

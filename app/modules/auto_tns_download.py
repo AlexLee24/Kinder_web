@@ -208,18 +208,6 @@ def addin_database(filepath, debug=False):
 
                     if existing:
                         existing_lm, old_report_group, old_source_group, old_reporters, old_internal_name = existing
-                        needs_backfill = (
-                            (not old_report_group and csv_reporting_group) or
-                            (not old_source_group and csv_source_group) or
-                            ((not old_reporters or len(old_reporters) == 0) and csv_reporters) or
-                            (not old_internal_name and csv_internal_names)
-                        )
-
-                        if new_lm_mjd and existing_lm and new_lm_mjd <= existing_lm and not needs_backfill:
-                            if debug:
-                                logger.debug("Skipping %s: existing data is newer", r.get('name'))
-                            skipped_count += 1
-                            continue
 
                         update_batch.append((
                             r.get('name_prefix'),
@@ -497,12 +485,16 @@ def main():
                     auto_snoozed(now, debug=True)
                 time.sleep(60)
 
-            elif now.hour == 1 and now.minute == 0:
-                logger.info("Daily task at %s", now)
-                yesterday = now - timedelta(days=1)
-                if download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True):
-                    addin_database(work_csv, debug=True)
-                    auto_snoozed(now, debug=True)
+            elif now.hour in (1, 4) and now.minute == 0:
+                logger.info("Daily task at %s (UTC %02d:00): processing yesterday and day-before-yesterday", now, now.hour)
+                for day_offset in (1, 2):
+                    target_day = now - timedelta(days=day_offset)
+                    logger.info("Daily task target day: %s", target_day.date())
+                    if download_TNS_api_with_fallback(target_day.year, target_day.month, target_day.day, debug=True):
+                        addin_database(work_csv, debug=True)
+                        auto_snoozed(now, debug=True)
+                    else:
+                        logger.warning("Daily task download failed for %s", target_day.date())
                 time.sleep(60)
 
             else:
@@ -520,11 +512,9 @@ def start_auto_tns_downloader(log_dir=None):
         if _auto_tns_thread is not None and _auto_tns_thread.is_alive():
             logger.info("Auto TNS downloader already running.")
             return
-        if log_dir and not logger.handlers:
-            os.makedirs(log_dir, exist_ok=True)
-            fh = logging.FileHandler(os.path.join(log_dir, 'auto_tns_download.log'))
-            fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-            logger.addHandler(fh)
+        # Rely on the root logger (setup_logging daily handler) for output.
+        # Only set level if not already configured so propagation works correctly.
+        if logger.level == logging.NOTSET:
             logger.setLevel(logging.INFO)
         _auto_tns_thread = threading.Thread(target=main, daemon=True, name="auto_tns_download")
         _auto_tns_thread.start()
@@ -542,7 +532,8 @@ if __name__ == "__main__":
 
     logger.info("Step 1: Download yesterday (%s-%02d-%02d)",
                 yesterday.year, yesterday.month, yesterday.day)
-    ok = download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True)
+    # ok = download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True)
+    ok = download_TNS_api_with_fallback(2026, 5, 5, debug=True)
 
     if ok:
         logger.info("Step 2: Import into DB")

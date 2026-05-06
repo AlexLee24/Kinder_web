@@ -168,3 +168,56 @@ def get_lens_statistics() -> dict:
     except Exception as e:
         logger.error("get_lens_statistics: %s", e)
         return {'total': 0}
+
+
+# ---------------------------------------------------------------------------
+# cat.ned — NED cone-search result cache
+# ---------------------------------------------------------------------------
+
+def get_ned_cache(object_name: str, radius_arcsec: float) -> dict | None:
+    """Return cached NED cone-search result or None if not cached."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT result_count, results, searched_at "
+                "FROM cat.ned WHERE object_name = %s AND radius_arcsec = %s",
+                (object_name, float(radius_arcsec))
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            'result_count': row['result_count'],
+            'results': row['results'],          # already a Python list (psycopg2 JSONB)
+            'searched_at': row['searched_at'].isoformat() if row['searched_at'] else None,
+            'from_cache': True,
+        }
+    except Exception as e:
+        logger.error("get_ned_cache(%s, %.1f): %s", object_name, radius_arcsec, e)
+        return None
+
+
+def upsert_ned_cache(object_name: str, ra_center: float, dec_center: float,
+                     radius_arcsec: float, results: list) -> None:
+    """Insert or update the NED cone-search cache for an object+radius pair."""
+    import json as _json
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO cat.ned (object_name, ra_center, dec_center, radius_arcsec,
+                                     searched_at, result_count, results)
+                VALUES (%s, %s, %s, %s, NOW(), %s, %s)
+                ON CONFLICT (object_name, radius_arcsec) DO UPDATE
+                    SET ra_center     = EXCLUDED.ra_center,
+                        dec_center    = EXCLUDED.dec_center,
+                        searched_at   = NOW(),
+                        result_count  = EXCLUDED.result_count,
+                        results       = EXCLUDED.results
+            """, (object_name, float(ra_center), float(dec_center),
+                  float(radius_arcsec), len(results),
+                  _json.dumps(results)))
+            conn.commit()
+    except Exception as e:
+        logger.error("upsert_ned_cache(%s, %.1f): %s", object_name, radius_arcsec, e)

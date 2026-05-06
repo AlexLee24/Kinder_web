@@ -3489,7 +3489,7 @@ let aladinInstance = null;
 // let currentSurvey = 'https://alasky.cds.unistra.fr/CDS/P/DSS2/color';
 let currentSurvey = 'CDS/P/DSS2/color';
 // let currentSurvey = 'https://alasky.cds.unistra.fr/DSS/DSS2Color';
-let currentFOV = 0.05;
+let currentFOV = 60 / 3600;  // match DESI cutout: 600px × 0.1"/px = 60" = 0.0167°
 
 // Initialize Aladin Lite
 function initializeAladin() {
@@ -3576,10 +3576,33 @@ function initializeAladin() {
             });
         };
 
-        window.addEventListener('message', function(event) {
-            if (event.data && event.data.type === 'changeSurvey' && aladinInstance) {
-                aladinInstance.setImageSurvey(event.data.survey);
+        let _nedCat = null, _nedSrcs = null;
+        function _removeNEDCat() {
+            if (!_nedCat || !aladinInstance) return;
+            const view = aladinInstance.view;
+            if (view) {
+                ['allOverlayLayers', 'overlays', 'catalogs'].forEach(function(p) {
+                    if (view[p]) { const i = view[p].indexOf(_nedCat); if (i !== -1) view[p].splice(i, 1); }
+                });
+                view.requestRedraw && view.requestRedraw();
             }
+            _nedCat = null;
+        }
+        function _addNEDCat() {
+            _removeNEDCat();
+            _nedCat = A.catalog({ name: 'NED', color: '#f59e0b', sourceSize: 10, shape: 'circle' });
+            _nedCat.addSources((_nedSrcs || []).map(function(s) {
+                return A.source(s.ra, s.dec, {name: s.name, type: s.type || '', idx: s.idx});
+            }));
+            aladinInstance.addCatalog(_nedCat);
+        }
+
+        window.addEventListener('message', function(event) {
+            if (!event.data) return;
+            const d = event.data;
+            if (d.type === 'changeSurvey' && aladinInstance) { aladinInstance.setImageSurvey(d.survey); }
+            else if (d.type === 'addNEDCatalog') { _nedSrcs = d.sources; if (d.visible !== false) _addNEDCat(); }
+            else if (d.type === 'toggleNEDCatalog') { if (d.visible) _addNEDCat(); else _removeNEDCat(); }
         });
     <\/script>
 </body>
@@ -4245,4 +4268,403 @@ async function refreshPermSources() {
     if (c) c.innerHTML = '<div class="perm-loading">Refreshing\u2026</div>';
     await loadPermissionsPanel();
     showNotification('Sources refreshed', 'success');
+}
+
+// ============================================================
+// NED Overlay & Explorer
+// ============================================================
+let nedData = null;
+let _nedHoverListener = null;
+let _nedRadiusArcsec = 30;
+
+function _getNEDRadiusArcsec() {
+    const input = document.getElementById('nedRadiusInput');
+    const raw = input ? Number(input.value) : _nedRadiusArcsec;
+    const r = Number.isFinite(raw) ? Math.max(1, Math.min(600, Math.round(raw))) : 30;
+    if (input) input.value = String(r);
+    _nedRadiusArcsec = r;
+    return r;
+}
+
+let _nedTimedOut   = false;
+let _nedRetryTimer  = null;
+let _nedFromCache   = false;
+let _nedSearchedAt  = null;
+let _nedCurrentHostName = '';
+
+async function fetchNEDData(radiusArcsec = _nedRadiusArcsec, force = false) {
+    if (!objectData || !objectData.ra || !objectData.declination) return null;
+    _nedTimedOut = false;
+    _nedFromCache = false;
+    _nedSearchedAt = null;
+    _nedCurrentHostName = '';
+    const ra  = parseFloat(objectData.ra);
+    const dec = parseFloat(objectData.declination);
+    const name = encodeURIComponent(objectName || '');
+    const forceParam = force ? '1' : '0';
+    try {
+        const resp = await fetch(
+            `/api/ned/cone?ra=${ra}&dec=${dec}&radius_arcsec=${radiusArcsec}` +
+            `&object_name=${name}&force=${forceParam}`
+        );
+        if (!resp.ok) {
+            if (resp.status === 502) {
+                let body = {};
+                try { body = await resp.json(); } catch (_) {}
+                const msg = (body.error || '').toLowerCase();
+                if (msg.includes('timeout') || msg.includes('timed out')) { _nedTimedOut = true; }
+            }
+            throw new Error(`proxy ${resp.status}`);
+        }
+        const json = await resp.json();
+        if (!json.success) throw new Error(json.error || 'NED error');
+        nedData = json.results || [];
+        _nedFromCache  = json.from_cache  || false;
+        _nedSearchedAt = json.searched_at || null;
+        _nedCurrentHostName = json.current_host || '';
+        return nedData;
+    } catch (e) {
+        console.error('NED fetch failed:', e);
+        return null;
+    }
+}
+
+function changeNEDSurvey() {
+    const sel = document.getElementById('nedSurveySelect');
+    if (!sel) return;
+    const iframe = document.getElementById('ned-aladin-iframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, '*');
+    }
+}
+
+function openNEDExplorer() {
+    const modal = document.getElementById('nedExplorerModal');
+    if (modal) { modal.style.display = 'flex'; }
+    // Always hit backend once per open so server-side NED logs are recorded.
+    // Backend will return DB cache unless forceNED=true.
+    _initNEDExplorer(true, false);
+}
+
+function rerunNEDSearch() {
+    if (_nedRetryTimer) { clearInterval(_nedRetryTimer); _nedRetryTimer = null; }
+    nedData = null;  // clear cache so fetchNEDData runs with force=true
+    _initNEDExplorer(true, true);  // forceRefresh=true, forceNED=true
+}
+
+function closeNEDExplorer() {
+    const modal = document.getElementById('nedExplorerModal');
+    if (modal) modal.style.display = 'none';
+    if (_nedHoverListener) { window.removeEventListener('message', _nedHoverListener); _nedHoverListener = null; }
+    if (_nedRetryTimer) { clearInterval(_nedRetryTimer); _nedRetryTimer = null; }
+}
+
+async function setNEDHost(idx, btnEl) {
+    if (!Array.isArray(nedData) || idx < 0 || idx >= nedData.length) return;
+    const row = nedData[idx] || {};
+    if (!row.objname) {
+        showNotification('NED row has no object name', 'error');
+        return;
+    }
+
+    const btn = btnEl || null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
+
+    try {
+        const resp = await fetch('/api/ned/set_host', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_name: objectName,
+                host_name: row.objname,
+                ra: row.ra,
+                dec: row.dec,
+                type: row.type || '',
+                redshift: row.redshift,
+                redshift_type: row.redshift_type || '',
+                distance_arcmin: row.distance_arcmin,
+            }),
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            throw new Error(json.error || json.message || `HTTP ${resp.status}`);
+        }
+
+        _nedCurrentHostName = row.objname;
+        _initNEDExplorer(false, false);
+
+        if (json.updated_redshift && json.redshift != null) {
+            const zNum = Number(json.redshift);
+            objectData.redshift = Number.isFinite(zNum) ? zNum : json.redshift;
+            const zEl = document.getElementById('redshiftValue');
+            if (zEl && Number.isFinite(zNum)) zEl.textContent = zNum.toFixed(5);
+            showNotification(`Host set to ${row.objname}; redshift updated`, 'success');
+        } else {
+            showNotification(`Host set to ${row.objname}; redshift unchanged (z flag not S*)`, 'success');
+        }
+    } catch (e) {
+        console.error('setNEDHost failed:', e);
+        showNotification(`Set host failed: ${e.message || e}`, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Set as Host';
+        }
+    }
+}
+
+async function unsetNEDHost(idx, btnEl) {
+    if (!Array.isArray(nedData) || idx < 0 || idx >= nedData.length) return;
+    const row = nedData[idx] || {};
+    if (!row.objname) return;
+
+    const btn = btnEl || null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Removing...'; }
+
+    try {
+        const resp = await fetch('/api/ned/unset_host', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ target_name: objectName }),
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            throw new Error(json.error || json.message || `HTTP ${resp.status}`);
+        }
+        _nedCurrentHostName = '';
+        _initNEDExplorer(false, false);
+        showNotification(`Host removed: ${row.objname}`, 'success');
+    } catch (e) {
+        console.error('unsetNEDHost failed:', e);
+        showNotification(`Unset host failed: ${e.message || e}`, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Unset Host';
+        }
+    }
+}
+
+async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
+    const container = document.getElementById('nedAladinContainer');
+    const loading   = document.getElementById('nedAladinLoading');
+    const countEl   = document.getElementById('nedResultCount');
+    const tbody     = document.getElementById('nedResultBody');
+    if (!objectData) return;
+
+    const ra  = parseFloat(objectData.ra);
+    const dec = parseFloat(objectData.declination);
+
+    const radiusArcsec = _getNEDRadiusArcsec();
+    if (loading) loading.style.display = 'flex';
+    countEl.textContent = `Fetching NED data (${radiusArcsec}")…`;
+    if (forceRefresh || !nedData) {
+        await fetchNEDData(radiusArcsec, forceNED);
+    }
+
+    // Handle NED upstream timeout — show countdown and auto-retry
+    if (_nedTimedOut) {
+        if (loading) loading.style.display = 'none';
+        let remaining = 10;
+        countEl.textContent = `NED request timed out. Retrying in ${remaining}s…`;
+        tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#f59e0b;">NED server did not respond. Retrying automatically…</td></tr>`;
+        if (_nedRetryTimer) clearInterval(_nedRetryTimer);
+        _nedRetryTimer = setInterval(function() {
+            remaining -= 1;
+            const modal = document.getElementById('nedExplorerModal');
+            if (!modal || modal.style.display === 'none') {
+                clearInterval(_nedRetryTimer); _nedRetryTimer = null; return;
+            }
+            if (remaining <= 0) {
+                clearInterval(_nedRetryTimer); _nedRetryTimer = null;
+                _initNEDExplorer(true);
+            } else {
+                countEl.textContent = `NED request timed out. Retrying in ${remaining}s…`;
+            }
+        }, 1000);
+        return;
+    }
+
+    const sources = (nedData || [])
+        .map((o, i) => ({ra: Number(o.ra), dec: Number(o.dec), name: o.objname || '', type: o.type || '', idx: i}))
+        .filter(s => Number.isFinite(s.ra) && Number.isFinite(s.dec));
+    const _cacheNote = _nedFromCache && _nedSearchedAt
+        ? ` · <span style="color:#f59e0b; font-size:0.75rem;" title="Loaded from database cache">cached ${new Date(_nedSearchedAt).toLocaleString()}</span>`
+        : ` · <span style="color:#4ade80; font-size:0.75rem;">live from NED</span>`;
+    const _hostNote = _nedCurrentHostName
+        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${_nedCurrentHostName}</span>`
+        : '';
+    countEl.innerHTML = (sources.length
+        ? `${sources.length} NED object(s) within ${radiusArcsec}"`
+        : `No NED objects found within ${radiusArcsec}"`) + _cacheNote + _hostNote;
+
+    // Build table
+    tbody.innerHTML = '';
+    if (!nedData || nedData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#666;">No NED objects found within ${radiusArcsec}"</td></tr>`;
+    } else {
+        nedData.forEach((obj, i) => {
+            const z   = obj.redshift != null ? parseFloat(obj.redshift) : null;
+            const cz  = z != null ? Math.round(z * 299792.458).toLocaleString() : '—';
+            const canSetZ = String(obj.redshift_type || '').startsWith('S') && z != null;
+            const isCurrentHost = !!_nedCurrentHostName && (String(obj.objname || '') === String(_nedCurrentHostName));
+            const tr  = document.createElement('tr');
+            tr.dataset.idx = i;
+            tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.06); cursor:default; transition:background 0.1s;';
+            tr.innerHTML = `
+                <td style="padding:5px 8px; color:#555;">${i + 1}</td>
+                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${obj.objname || '—'}${isCurrentHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
+                <td style="padding:5px 8px;">${obj.type || '—'}</td>
+                <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right;">${z != null ? z.toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right;">${cz}</td>
+                <td style="padding:5px 8px; color:#aaa;">${obj.redshift_type || '—'}</td>
+                <td style="padding:4px 8px; text-align:center; white-space:nowrap;">
+                    ${isCurrentHost
+                        ? `<button class="ned-host-btn" onclick="unsetNEDHost(${i}, this)" title="Unset current host" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(248,113,113,0.6); border-radius:6px; background:rgba(248,113,113,0.08); color:#f87171; cursor:pointer;">Unset Host</button>`
+                        : `<button class="ned-host-btn" onclick="setNEDHost(${i}, this)" title="Set this NED object as host${canSetZ ? ' (redshift will update)' : ' (redshift will NOT update: z flag not S*)'}" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(255,255,255,0.2); border-radius:6px; background:rgba(255,255,255,0.04); color:#ddd; cursor:pointer;">Set as Host</button>`}
+                </td>`;
+            tr.addEventListener('mouseenter', () => {
+                document.querySelectorAll('#nedResultBody tr').forEach(r => r.style.background = '');
+                tr.style.background = 'rgba(0,245,212,0.1)';
+                const iframe = document.getElementById('ned-aladin-iframe');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, '*');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.style.background = '';
+                const iframe = document.getElementById('ned-aladin-iframe');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, '*');
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcsec);
+
+    // Receive hover events back from iframe
+    if (_nedHoverListener) window.removeEventListener('message', _nedHoverListener);
+    _nedHoverListener = function(e) {
+        if (!e.data) return;
+        if (e.data.type === 'nedHover') {
+            const idx = e.data.idx;
+            document.querySelectorAll('#nedResultBody tr').forEach(r => {
+                r.style.background = parseInt(r.dataset.idx) === idx ? 'rgba(0,245,212,0.1)' : '';
+            });
+            if (idx >= 0) {
+                const row = document.querySelector(`#nedResultBody tr[data-idx="${idx}"]`);
+                if (row) row.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+            }
+        }
+    };
+    window.addEventListener('message', _nedHoverListener);
+}
+
+function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcsec) {
+    const old = document.getElementById('ned-aladin-iframe');
+    if (old) old.remove();
+
+    const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '').replace(/'/g, "\\'");
+    const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
+
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<style>
+  body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}
+  #al{width:100%;height:100%;}
+</style>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
+<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+</head><body>
+<div id="al"></div>
+<script>
+  const T_RA = ${ra}, T_DEC = ${dec};
+  let al, nedCat;
+
+  A.init.then(function() {
+    al = A.aladin('#al', {
+      survey: '${currentSurvey}',
+      fov: ${fov},
+      target: T_RA + ' ' + T_DEC,
+      cooFrame: 'ICRS',
+      showReticle: false,
+      showZoomControl: true,
+      showFullscreenControl: false,
+      showLayersControl: false,
+      showGotoControl: false,
+      showShareControl: false,
+      showFrame: false,
+      showCooGrid: false,
+      showProjectionControl: false,
+      showSimbadPointerControl: false,
+      showCooGridControl: false,
+      showSettings: false,
+      showLogo: true,
+      showContextMenu: false,
+      allowFullZoomout: true,
+      showStatusBar: false,
+    });
+
+    // Target marker
+    var tCat = A.catalog({name:'Target', color:'#ff4444', sourceSize:16, shape:'cross'});
+    tCat.addSources([A.source(T_RA, T_DEC, {name:'${targetName}', idx:-1})]);
+    al.addCatalog(tCat);
+
+    // Register hover events
+    al.on('objectHovered', function(obj) {
+      if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, '*');
+    });
+    al.on('objectHoveredStop', function() {
+      window.parent.postMessage({type:'nedHover', idx:-1}, '*');
+    });
+
+    // Signal parent that Aladin is ready
+    window.parent.postMessage({type:'nedAladinReady'}, '*');
+  });
+
+  window.addEventListener('message', function(e) {
+    if (!e.data || !al) return;
+    var d = e.data;
+    if (d.type === 'addNEDSources') {
+      if (nedCat) { try { al.removeCatalog && al.removeCatalog(nedCat); } catch(_) {} }
+      nedCat = A.catalog({name:'NED', color:'#f59e0b', sourceSize:14, shape:'circle'});
+      al.addCatalog(nedCat);
+      var srcs = (d.sources || []).map(function(s) {
+        return A.source(s.ra, s.dec, {name: s.name, type: s.type, idx: s.idx});
+      });
+      nedCat.addSources(srcs);
+    } else if (d.type === 'changeSurvey') {
+      al.setImageSurvey(d.survey);
+    } else if (d.type === 'highlightNED' && nedCat) {
+      var idx = d.idx;
+      nedCat.getSources().forEach(function(s){ s.color = null; });
+      if (idx >= 0) {
+        var match = nedCat.getSources().find(function(s){ return s.data && s.data.idx === idx; });
+        if (match) match.color = '#00f5d4';
+      }
+      al.view && al.view.requestRedraw();
+    }
+  });
+<\/script>
+</body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.id    = 'ned-aladin-iframe';
+    iframe.style.cssText = 'width:100%; height:100%; border:none;';
+    iframe.srcdoc = html;
+    container.appendChild(iframe);
+
+    // Once Aladin signals ready, hide loading overlay and send NED sources
+    const onReady = function(e) {
+        if (e.data && e.data.type === 'nedAladinReady') {
+            window.removeEventListener('message', onReady);
+            if (loading) loading.style.display = 'none';
+            // Send sources now that Aladin is fully initialized
+            const iframeEl = document.getElementById('ned-aladin-iframe');
+            if (iframeEl && iframeEl.contentWindow) {
+                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, '*');
+            }
+        }
+    };
+    window.addEventListener('message', onReady);
 }

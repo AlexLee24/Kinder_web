@@ -436,11 +436,7 @@ def start_gap_filler(log_dir=None, delay: float = 60.0):
             logger.info("Gap filler already running.")
             return
         _stop_event.clear()
-        if log_dir and not logger.handlers:
-            os.makedirs(log_dir, exist_ok=True)
-            fh = logging.FileHandler(os.path.join(log_dir, "tns_gap_filler.log"))
-            fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-            logger.addHandler(fh)
+        if logger.level == logging.NOTSET:
             logger.setLevel(logging.INFO)
         _gap_filler_thread = threading.Thread(
             target=_main_loop,

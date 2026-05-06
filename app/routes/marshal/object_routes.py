@@ -3,9 +3,13 @@ Object routes for the Kinder web application.
 """
 import re
 import math
+import logging
 import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response
+import requests as _requests
+
+logger = logging.getLogger(__name__)
 
 from modules.database.transient import (
     search_tns_objects, update_object_status, update_object_activity,
@@ -17,6 +21,7 @@ from modules.database.auth import (
     revoke_object_permission, check_object_access,
     get_source_permissions, set_source_permissions_batch, filter_by_source_permissions
 )
+from modules.database.catalog import get_ned_cache, upsert_ned_cache
 from modules.data_processing import DataVisualization
 from modules import ext_M_calculator
 
@@ -1587,3 +1592,425 @@ def remove_object_permission_api(object_name):
     except Exception as e:
         marshal_bp.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
         return jsonify({'error': 'Failed to delete comment'}), 500
+
+
+# ============================================================
+# NED Cone Search Proxy
+# ============================================================
+def _get_current_ned_host_name(target_name: str) -> str | None:
+    """Return current NED host name for target, or None if not set."""
+    if not target_name:
+        return None
+    try:
+        conn = get_tns_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT obj_id FROM transient.objects "
+            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+            (target_name, target_name)
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return None
+
+        obj_id = row[0]
+        cur.execute(
+            "SELECT name FROM transient.cross_matches "
+            "WHERE obj_id = %s AND catalog = 'NED' AND is_host = TRUE "
+            "ORDER BY updated_date DESC NULLS LAST, match_id DESC LIMIT 1",
+            (obj_id,)
+        )
+        h = cur.fetchone()
+        conn.close()
+        return h[0] if h and h[0] else None
+    except Exception as e:
+        logger.warning("[NED] read current host failed for %s: %s", target_name, e)
+        return None
+
+
+@objects_bp.route('/api/ned/cone')
+def ned_cone_search():
+    """Proxy NED cone search to avoid CORS.
+    Query params: ra, dec, radius_arcsec (default 60), object_name, force (0/1)
+    """
+    try:
+        ra     = float(request.args.get('ra', 0))
+        dec    = float(request.args.get('dec', 0))
+        radius = float(request.args.get('radius_arcsec', 60))
+        object_name = request.args.get('object_name', '').strip()
+        force       = request.args.get('force', '0').strip() not in ('0', 'false', '')
+        current_host = _get_current_ned_host_name(object_name) if object_name else None
+
+        logger.info(
+            "[NED] cone search start ra=%.6f dec=%.6f radius_arcsec=%.1f",
+            ra, dec, radius
+        )
+
+        # --- Try DB cache first (unless force=true) ---
+        if not force and object_name:
+            cached = get_ned_cache(object_name, radius)
+            if cached is not None:
+                logger.info("[NED] cache hit for %s r=%.1f count=%d",
+                            object_name, radius, cached['result_count'])
+                return jsonify({
+                    'success': True,
+                    'count': cached['result_count'],
+                    'results': cached['results'],
+                    'from_cache': True,
+                    'searched_at': cached.get('searched_at'),
+                    'current_host': current_host,
+                })
+
+        radius_arcmin = radius / 60.0
+        url = (
+            "https://ned.ipac.caltech.edu/cgi-bin/objsearch"
+            f"?lon={ra}d&lat={dec}d"
+            f"&radius={radius_arcmin:.4f}"
+            "&search_type=Near+Position+Search"
+            "&in_csys=Equatorial&in_equinox=J2000.0"
+            "&out_csys=Equatorial&out_equinox=J2000.0"
+            "&obj_sort=Distance+to+search+center"
+            "&of=ascii_bar&zv_breaker=30000.0&list_limit=500&img_stamp=NO"
+            "&z_constraint=Unconstrained&nmp_op=ANY"
+        )
+        resp = _requests.get(url, timeout=60, headers={'User-Agent': 'KinderWeb/1.0'})
+        logger.info("[NED] upstream status=%s", resp.status_code)
+        resp.raise_for_status()
+
+        def _norm(s):
+            return ''.join(ch for ch in (s or '').lower() if ch.isalnum())
+
+        def _first_float(s):
+            if s is None:
+                return None
+            m = re.search(r'[-+]?\d+(?:\.\d+)?', str(s))
+            return float(m.group(0)) if m else None
+
+        def _parse_ra_deg(s):
+            if s is None:
+                return None
+            raw = str(s).strip()
+            if not raw:
+                return None
+            v = _first_float(raw)
+            # Decimal degrees from NED are usually in [0, 360].
+            if v is not None and 0.0 <= v <= 360.0 and len(raw.split()) == 1 and ':' not in raw:
+                return v
+            toks = [t for t in re.split(r'[:\s]+', raw) if t]
+            if len(toks) >= 3:
+                try:
+                    h = float(toks[0]); m = float(toks[1]); sec = float(toks[2])
+                    return (h + m / 60.0 + sec / 3600.0) * 15.0
+                except ValueError:
+                    return None
+            return v
+
+        def _parse_dec_deg(s):
+            if s is None:
+                return None
+            raw = str(s).strip()
+            if not raw:
+                return None
+            v = _first_float(raw)
+            if v is not None and -90.0 <= v <= 90.0 and len(raw.split()) == 1 and ':' not in raw:
+                return v
+            toks = [t for t in re.split(r'[:\s]+', raw.replace('+', ' +').replace('-', ' -')) if t]
+            if len(toks) >= 3:
+                try:
+                    d = float(toks[0]); m = float(toks[1]); sec = float(toks[2])
+                    sign = -1.0 if d < 0 else 1.0
+                    return sign * (abs(d) + m / 60.0 + sec / 3600.0)
+                except ValueError:
+                    return None
+            return v
+
+        lines = [ln.rstrip('\n') for ln in resp.text.splitlines()]
+        header = None
+        for ln in lines:
+            if '|' not in ln:
+                continue
+            cols = [c.strip() for c in ln.split('|')]
+            keyline = ' '.join(cols).lower()
+            if ('object' in keyline and 'name' in keyline and 'ra' in keyline and 'dec' in keyline):
+                header = cols
+                break
+
+        # Fallback to legacy index if header cannot be detected
+        if not header:
+            header = ['No.', 'Object Name', 'RA', 'DEC', 'Type', 'Velocity', 'Redshift', 'z flag', 'Magnitude']
+
+        idx = {}
+        for i, col in enumerate(header):
+            n = _norm(col)
+            if n in ('no', 'number', 'sep', 'separation') and 'distance' not in idx:
+                idx['distance'] = i
+            if ('object' in n and 'name' in n) or n in ('objname', 'name'):
+                idx['objname'] = i
+            if n.startswith('ra') and 'ra' not in idx:
+                idx['ra'] = i
+            if n.startswith('dec') and 'dec' not in idx:
+                idx['dec'] = i
+            if n in ('type', 'objtype', 'objecttype') and 'type' not in idx:
+                idx['type'] = i
+            if ('redshift' in n and 'flag' not in n) or n in ('z',):
+                if 'redshift' not in idx:
+                    idx['redshift'] = i
+            if ('redshift' in n and 'flag' in n) or n in ('zflag', 'redshiftflag'):
+                idx['redshift_type'] = i
+
+        def _get(cols, key):
+            i = idx.get(key)
+            if i is None or i >= len(cols):
+                return ''
+            return cols[i].strip()
+
+        results = []
+        for ln in lines:
+            line = ln.strip()
+            if not line or '|' not in line:
+                continue
+            if line.startswith('#'):
+                continue
+            cols = [c.strip() for c in ln.split('|')]
+            joined = ' '.join(cols).lower()
+            if 'object name' in joined and 'ra' in joined and 'dec' in joined:
+                continue
+            if all((not c or set(c) <= set('-=')) for c in cols):
+                continue
+
+            objname = _get(cols, 'objname')
+            if not objname:
+                continue
+
+            ra_val = _parse_ra_deg(_get(cols, 'ra'))
+            dec_val = _parse_dec_deg(_get(cols, 'dec'))
+            if ra_val is None or dec_val is None:
+                continue
+
+            obj = {
+                'objname': objname,
+                'ra': ra_val,
+                'dec': dec_val,
+                'type': _get(cols, 'type') or '',
+                'redshift': _first_float(_get(cols, 'redshift')),
+                'redshift_type': _get(cols, 'redshift_type') or '',
+                'distance_arcmin': _first_float(_get(cols, 'distance')),
+            }
+            results.append(obj)
+
+        sample = [
+            {
+                'name': r.get('objname', ''),
+                'ra': r.get('ra'),
+                'dec': r.get('dec'),
+                'z': r.get('redshift'),
+                'z_flag': r.get('redshift_type', ''),
+            }
+            for r in results[:3]
+        ]
+        logger.info(
+            "[NED] parsed count=%d sample=%s",
+            len(results),
+            sample
+        )
+
+        # --- Write to DB cache ---
+        if object_name:
+            try:
+                upsert_ned_cache(object_name, ra, dec, radius, results)
+                logger.info("[NED] cached %d results for %s r=%.1f",
+                            len(results), object_name, radius)
+            except Exception as _ce:
+                logger.warning("[NED] cache write failed: %s", _ce)
+
+        return jsonify({'success': True, 'count': len(results), 'results': results,
+                'from_cache': False, 'current_host': current_host})
+
+    except _requests.Timeout as e:
+        logger.warning("[NED] upstream timed out: %s", e)
+        return jsonify({'success': False, 'error': f'NED request timed out: {e}'}), 502
+    except _requests.RequestException as e:
+        logger.error("[NED] upstream request failed: %s", e)
+        return jsonify({'success': False, 'error': f'NED request failed: {e}'}), 502
+    except Exception as e:
+        logger.exception("[NED] cone search error")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@objects_bp.route('/api/ned/set_host', methods=['POST'])
+def ned_set_host():
+    """Set selected NED object as host and conditionally update transient redshift.
+
+    Redshift update rule:
+    - only update transient.objects.redshift if z flag starts with uppercase 'S'.
+    """
+    if 'user' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json(silent=True) or {}
+        target_name = str(data.get('target_name') or '').strip()
+        host_name = str(data.get('host_name') or '').strip()
+        host_type = str(data.get('type') or '').strip()
+        z_flag = str(data.get('redshift_type') or '').strip()
+        redshift_raw = data.get('redshift')
+        distance_arcmin_raw = data.get('distance_arcmin')
+
+        if not target_name or not host_name:
+            return jsonify({'success': False, 'error': 'Missing target_name or host_name'}), 400
+
+        redshift_val = None
+        if redshift_raw not in (None, ''):
+            try:
+                redshift_val = float(redshift_raw)
+            except (ValueError, TypeError):
+                redshift_val = None
+
+        separation_arcsec = None
+        if distance_arcmin_raw not in (None, ''):
+            try:
+                separation_arcsec = float(distance_arcmin_raw) * 60.0
+            except (ValueError, TypeError):
+                separation_arcsec = None
+
+        should_update_redshift = (z_flag.startswith('S') and redshift_val is not None)
+
+        conn = get_tns_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT obj_id FROM transient.objects "
+            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+            (target_name, target_name)
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return jsonify({'success': False, 'error': f'Object not found: {target_name}'}), 404
+
+        obj_id = row[0]
+
+        # Reset previous host flags for this object.
+        cur.execute(
+            "UPDATE transient.cross_matches SET is_host = FALSE WHERE obj_id = %s",
+            (obj_id,)
+        )
+
+        note = f"NED host set manually; type={host_type or '-'}; z_flag={z_flag or '-'}"
+        cur.execute(
+            """
+            UPDATE transient.cross_matches
+               SET is_host = TRUE,
+                   separation = %s,
+                   redshift = %s,
+                   updated_date = NOW(),
+                   note = %s,
+                   status = 'Manual-NED',
+                   error_message = NULL
+             WHERE obj_id = %s AND catalog = 'NED' AND name = %s
+            """,
+            (separation_arcsec, redshift_val, note, obj_id, host_name)
+        )
+
+        if cur.rowcount == 0:
+            cur.execute(
+                """
+                INSERT INTO transient.cross_matches
+                    (obj_id, name, catalog, separation, redshift, is_host,
+                     updated_date, note, status, run_date, error_message)
+                VALUES
+                    (%s, %s, 'NED', %s, %s, TRUE,
+                     NOW(), %s, 'Manual-NED', NOW(), NULL)
+                """,
+                (obj_id, host_name, separation_arcsec, redshift_val, note)
+            )
+
+        updated_redshift = False
+        if should_update_redshift:
+            cur.execute(
+                "UPDATE transient.objects SET redshift = %s WHERE obj_id = %s",
+                (redshift_val, obj_id)
+            )
+            updated_redshift = True
+
+        conn.commit()
+        conn.close()
+
+        logger.info(
+            "[NED] set_host target=%s host=%s z=%.6f z_flag=%s updated_redshift=%s",
+            target_name, host_name,
+            redshift_val if redshift_val is not None else float('nan'),
+            z_flag or '-',
+            updated_redshift
+        )
+
+        return jsonify({
+            'success': True,
+            'updated_redshift': updated_redshift,
+            'redshift': redshift_val if updated_redshift else None,
+            'host_name': host_name,
+            'z_flag': z_flag,
+        })
+
+    except Exception as e:
+        logger.exception("[NED] set_host error")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@objects_bp.route('/api/ned/unset_host', methods=['POST'])
+def ned_unset_host():
+    """Unset NED host flag for target object."""
+    if 'user' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+    conn = None
+    try:
+        data = request.get_json(silent=True) or {}
+        target_name = str(data.get('target_name') or '').strip()
+        if not target_name:
+            return jsonify({'success': False, 'error': 'Missing target_name'}), 400
+
+        conn = get_tns_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT obj_id FROM transient.objects "
+            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+            (target_name, target_name)
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            conn = None
+            return jsonify({'success': False, 'error': f'Object not found: {target_name}'}), 404
+
+        obj_id = row[0]
+        cur.execute(
+            "UPDATE transient.cross_matches SET is_host = FALSE, updated_date = NOW() "
+            "WHERE obj_id = %s AND catalog = 'NED' AND is_host = TRUE",
+            (obj_id,)
+        )
+        cleared = cur.rowcount
+        conn.commit()
+        conn.close()
+        conn = None
+
+        logger.info("[NED] unset_host target=%s cleared_rows=%d", target_name, cleared)
+        return jsonify({'success': True, 'cleared': cleared})
+    except Exception as e:
+        logger.exception("[NED] unset_host error")
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({'success': False, 'error': str(e)}), 500

@@ -663,13 +663,18 @@ def tns_download_hourly():
         try:
             from modules.TNS_object_fetch import download_TNS_api_hr, addin_database, auto_snoozed, SAVE_DIR
             hr = f"{datetime.now(timezone.utc).hour:02d}"
+            logger.info('[TNS Manual] hourly task started by admin, hr=%s', hr)
             if download_TNS_api_hr(hr):
                 work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
+                logger.info('[TNS Manual] hourly download ok, importing CSV: %s', work_csv)
                 addin_database(str(work_csv))
+                logger.info('[TNS Manual] hourly import done, running auto_snoozed')
                 auto_snoozed(datetime.now(timezone.utc))
                 _tns_task_status['message'] = f'Hourly download (hr={hr}) + import + snooze done.'
+                logger.info('[TNS Manual] hourly task completed, hr=%s', hr)
             else:
                 _tns_task_status['message'] = f'Download failed for hr={hr}.'
+                logger.warning('[TNS Manual] hourly download failed, hr=%s', hr)
         except Exception as e:
             logger.exception('TNS hourly task error: %s', e)
             _tns_task_status['message'] = f'Error: {e}'
@@ -703,16 +708,22 @@ def tns_download_daily():
                     dt = datetime.strptime(date_str, '%Y-%m-%d')
                 except ValueError:
                     _tns_task_status['message'] = 'Invalid date format'
+                    logger.warning('[TNS Manual] daily task invalid date format: %s', date_str)
                     return
             else:
                 dt = datetime.now(timezone.utc) - timedelta(days=1)
+            logger.info('[TNS Manual] daily task started by admin, date=%s', dt.date())
             if download_TNS_api(dt.year, dt.month, dt.day):
                 work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
+                logger.info('[TNS Manual] daily download ok, importing CSV: %s', work_csv)
                 addin_database(str(work_csv))
+                logger.info('[TNS Manual] daily import done, running auto_snoozed')
                 auto_snoozed(datetime.now(timezone.utc))
                 _tns_task_status['message'] = f'Daily download ({dt.date()}) + import + snooze done.'
+                logger.info('[TNS Manual] daily task completed, date=%s', dt.date())
             else:
                 _tns_task_status['message'] = f'Download failed for {dt.date()}.'
+                logger.warning('[TNS Manual] daily download failed, date=%s', dt.date())
         except Exception as e:
             logger.exception('TNS daily task error: %s', e)
             _tns_task_status['message'] = f'Error: {e}'
@@ -738,8 +749,10 @@ def tns_auto_snooze():
         _tns_task_status['message'] = 'Running...'
         try:
             from modules.TNS_object_fetch import auto_snoozed
+            logger.info('[TNS Manual] auto-snooze started by admin')
             auto_snoozed(datetime.now(timezone.utc))
             _tns_task_status['message'] = 'Auto-snooze completed.'
+            logger.info('[TNS Manual] auto-snooze completed')
         except Exception as e:
             logger.exception('TNS auto-snooze error: %s', e)
             _tns_task_status['message'] = f'Error: {e}'

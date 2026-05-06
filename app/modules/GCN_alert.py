@@ -352,11 +352,7 @@ def start_gcn_listener(log_dir=None):
         if _thread is not None and _thread.is_alive():
             logger.info("GCN listener already running.")
             return
-        if log_dir and not logger.handlers:
-            os.makedirs(log_dir, exist_ok=True)
-            fh = logging.FileHandler(os.path.join(log_dir, 'gcn_alert.log'))
-            fh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
-            logger.addHandler(fh)
+        if logger.level == logging.NOTSET:
             logger.setLevel(logging.INFO)
         _thread = threading.Thread(target=_listener_loop, name='gcn_alert', daemon=True)
         _thread.start()

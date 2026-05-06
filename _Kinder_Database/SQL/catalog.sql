@@ -37,3 +37,20 @@ CREATE TABLE cat.lens (
 );
 
 CREATE INDEX cat_lens_ra_dec_idx ON cat.lens (ra, dec);
+
+-- ------------------------------------------------------------
+-- cat.ned
+-- NED cone-search result cache (one row per object+radius)
+-- ------------------------------------------------------------
+CREATE TABLE cat.ned (
+    ned_id        SERIAL PRIMARY KEY,
+    object_name   TEXT NOT NULL,
+    ra_center     DOUBLE PRECISION NOT NULL,
+    dec_center    DOUBLE PRECISION NOT NULL,
+    radius_arcsec DOUBLE PRECISION NOT NULL DEFAULT 60,
+    searched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    result_count  INT NOT NULL DEFAULT 0,
+    results       JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE UNIQUE INDEX cat_ned_object_radius_idx ON cat.ned (object_name, radius_arcsec);

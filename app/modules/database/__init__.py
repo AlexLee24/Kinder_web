@@ -249,6 +249,24 @@ def _ensure_extra_tables():
              WHERE tag IS NULL
         """)
 
+        # cat.ned — NED cone-search result cache
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS cat.ned (
+                ned_id        SERIAL PRIMARY KEY,
+                object_name   TEXT NOT NULL,
+                ra_center     DOUBLE PRECISION NOT NULL,
+                dec_center    DOUBLE PRECISION NOT NULL,
+                radius_arcsec DOUBLE PRECISION NOT NULL DEFAULT 60,
+                searched_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                result_count  INT NOT NULL DEFAULT 0,
+                results       JSONB NOT NULL DEFAULT '[]'::jsonb
+            )
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS cat_ned_object_radius_idx
+                ON cat.ned (object_name, radius_arcsec)
+        """)
+
         conn.commit()
         cur.close()
         conn.close()

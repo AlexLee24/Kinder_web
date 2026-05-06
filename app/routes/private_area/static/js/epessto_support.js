@@ -633,6 +633,7 @@ function buildWidgetHTML(target, info) {
                 <div class="ep-widget-title-actions">
                     <button type="button" class="ep-btn ep-widget-done-btn ${isDone ? 'is-done' : ''}" data-action="toggle-done" data-target-key="${escapeHtml(target.target_key)}">${doneLabel}</button>
                     <button type="button" class="ep-btn ep-widget-discuss-btn ${isDiscuss ? 'is-discuss' : ''}" data-action="toggle-discuss" data-target-key="${escapeHtml(target.target_key)}">${discussLabel}</button>
+                    <button type="button" class="ep-btn" onclick="epOpenNEDExplorer()" title="NED cone search near target">NED</button>
                 </div>
             </div>
             <div class="ep-widget-reporting-group">Reporting Group: ${escapeHtml(reportingGroup || '-')}</div>
@@ -1158,6 +1159,439 @@ bindWidgetInteractions();
 
 updateCounter();
 renderSelectedTarget();
+
+// ─── NED Explorer (widget context) ──────────────────────────────────────────
+
+let _epNedData = null;
+let _epNedHoverListener = null;
+let _epNedRadiusArcsec = 30;
+let _epNedTimedOut = false;
+let _epNedRetryTimer = null;
+let _epNedFromCache = false;
+let _epNedSearchedAt = null;
+let _epNedCurrentHost = '';
+let _epNedSurvey = 'CDS/P/DSS2/color';
+let _epNedRa = null;
+let _epNedDec = null;
+let _epNedTargetName = '';
+
+function _epGetNEDRadiusArcsec() {
+    const input = document.getElementById('epNedRadiusInput');
+    const raw = input ? Number(input.value) : _epNedRadiusArcsec;
+    const r = Number.isFinite(raw) ? Math.max(1, Math.min(600, Math.round(raw))) : 30;
+    if (input) input.value = String(r);
+    _epNedRadiusArcsec = r;
+    return r;
+}
+
+async function _epResolveTargetCoords(targetName) {
+    try {
+        const resp = await fetch('/api/search_target?q=' + encodeURIComponent(targetName));
+        const data = await resp.json();
+        if (!resp.ok || !data.results || !data.results.length) return null;
+        const exact = data.results.find(
+            r => ((r.prefix || '') + (r.name || '')).replace(/\s+/g, '').toLowerCase() ===
+                 String(targetName || '').replace(/\s+/g, '').toLowerCase()
+        ) || data.results[0];
+        const ra  = exact.ra  != null ? parseFloat(exact.ra)  : null;
+        const dec = exact.dec != null ? parseFloat(exact.dec) : null;
+        if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
+        return { ra, dec };
+    } catch (_) { return null; }
+}
+
+async function _epFetchNEDData(radiusArcsec, force) {
+    if (_epNedRa == null || _epNedDec == null) return null;
+    _epNedTimedOut = false;
+    _epNedFromCache = false;
+    _epNedSearchedAt = null;
+    _epNedCurrentHost = '';
+    const name = encodeURIComponent(_epNedTargetName || '');
+    const forceParam = force ? '1' : '0';
+    try {
+        const resp = await fetch(
+            `/api/ned/cone?ra=${_epNedRa}&dec=${_epNedDec}&radius_arcsec=${radiusArcsec}` +
+            `&object_name=${name}&force=${forceParam}`
+        );
+        if (!resp.ok) {
+            if (resp.status === 502) {
+                let body = {};
+                try { body = await resp.json(); } catch (_) {}
+                const msg = (body.error || '').toLowerCase();
+                if (msg.includes('timeout') || msg.includes('timed out')) { _epNedTimedOut = true; }
+            }
+            throw new Error(`proxy ${resp.status}`);
+        }
+        const json = await resp.json();
+        if (!json.success) throw new Error(json.error || 'NED error');
+        _epNedData = json.results || [];
+        _epNedFromCache  = json.from_cache  || false;
+        _epNedSearchedAt = json.searched_at || null;
+        _epNedCurrentHost = json.current_host || '';
+        return _epNedData;
+    } catch (e) {
+        console.error('EP NED fetch failed:', e);
+        return null;
+    }
+}
+
+function epChangeNEDSurvey() {
+    const sel = document.getElementById('epNedSurveySelect');
+    if (!sel) return;
+    _epNedSurvey = sel.value;
+    const iframe = document.getElementById('ep-ned-aladin-iframe');
+    if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, '*');
+    }
+}
+
+async function epOpenNEDExplorer() {
+    const target = epState.targets[epState.selectedIndex];
+    if (!target) { setStatus('No target selected.'); return; }
+
+    const modal = document.getElementById('epNedExplorerModal');
+    if (modal) modal.style.display = 'flex';
+
+    _epNedTargetName = target.target_name || '';
+    _epNedData = null;
+    _epNedRa = null;
+    _epNedDec = null;
+
+    const countEl = document.getElementById('epNedResultCount');
+    if (countEl) countEl.textContent = `Resolving coordinates for ${_epNedTargetName}…`;
+
+    const coords = await _epResolveTargetCoords(_epNedTargetName);
+    if (!coords) {
+        if (countEl) countEl.textContent = `Could not resolve RA/Dec for ${_epNedTargetName}`;
+        return;
+    }
+    _epNedRa  = coords.ra;
+    _epNedDec = coords.dec;
+
+    _epInitNEDExplorer(true, false);
+}
+
+function epRerunNEDSearch() {
+    if (_epNedRetryTimer) { clearInterval(_epNedRetryTimer); _epNedRetryTimer = null; }
+    _epNedData = null;
+    _epInitNEDExplorer(true, true);
+}
+
+function epCloseNEDExplorer() {
+    const modal = document.getElementById('epNedExplorerModal');
+    if (modal) modal.style.display = 'none';
+    if (_epNedHoverListener) { window.removeEventListener('message', _epNedHoverListener); _epNedHoverListener = null; }
+    if (_epNedRetryTimer) { clearInterval(_epNedRetryTimer); _epNedRetryTimer = null; }
+}
+
+async function epSetNEDHost(idx, btnEl) {
+    if (!Array.isArray(_epNedData) || idx < 0 || idx >= _epNedData.length) return;
+    const row = _epNedData[idx] || {};
+    if (!row.objname) { setStatus('NED row has no object name.'); return; }
+
+    const btn = btnEl || null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
+
+    const target = epState.targets[epState.selectedIndex];
+    if (!target) { if (btn) { btn.disabled = false; btn.textContent = 'Set as Host'; } return; }
+
+    try {
+        const resp = await fetch('/api/ned/set_host', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_name: _epNedTargetName,
+                host_name: row.objname,
+                ra: row.ra,
+                dec: row.dec,
+                type: row.type || '',
+                redshift: row.redshift,
+                redshift_type: row.redshift_type || '',
+                distance_arcmin: row.distance_arcmin,
+            }),
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) throw new Error(json.error || json.message || `HTTP ${resp.status}`);
+
+        _epNedCurrentHost = row.objname;
+
+        // Update widget fields
+        const updates = { host: row.objname };
+        if (json.updated_redshift && json.redshift != null) {
+            const zNum = Number(json.redshift);
+            updates.z_from_host = Number.isFinite(zNum) ? String(zNum) : String(json.redshift);
+        }
+        await updateTargetState(target.target_key, updates, { refreshWidget: false });
+
+        // Update DOM inputs immediately for instant feedback
+        const hostInput = epTargetWidget.querySelector('[data-field="host"]');
+        if (hostInput) { hostInput.value = row.objname; }
+        if (updates.z_from_host) {
+            const zInput = epTargetWidget.querySelector('[data-field="z_from_host"]');
+            if (zInput) { zInput.value = updates.z_from_host; }
+        }
+
+        _epInitNEDExplorer(false, false);
+        const msg = json.updated_redshift
+            ? `Host set to ${row.objname}; redshift updated in widget`
+            : `Host set to ${row.objname}; redshift unchanged (z flag not S*)`;
+        setStatus(msg);
+    } catch (e) {
+        console.error('epSetNEDHost failed:', e);
+        setStatus(`Set host failed: ${e.message || e}`);
+        if (btn) { btn.disabled = false; btn.textContent = 'Set as Host'; }
+    }
+}
+
+async function epUnsetNEDHost(idx, btnEl) {
+    if (!Array.isArray(_epNedData) || idx < 0 || idx >= _epNedData.length) return;
+    const row = _epNedData[idx] || {};
+    if (!row.objname) return;
+
+    const btn = btnEl || null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Removing...'; }
+
+    try {
+        const resp = await fetch('/api/ned/unset_host', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ target_name: _epNedTargetName }),
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) throw new Error(json.error || json.message || `HTTP ${resp.status}`);
+        _epNedCurrentHost = '';
+
+        // Clear host & z_from_host in DB session and widget DOM
+        const target = epState.targets[epState.selectedIndex];
+        if (target) {
+            await updateTargetState(target.target_key, { host: '', z_from_host: '' }, { refreshWidget: false });
+            const hostInput = epTargetWidget.querySelector('[data-field="host"]');
+            if (hostInput) hostInput.value = '';
+            const zInput = epTargetWidget.querySelector('[data-field="z_from_host"]');
+            if (zInput) zInput.value = '';
+        }
+
+        _epInitNEDExplorer(false, false);
+        setStatus(`Host removed: ${row.objname}`);
+    } catch (e) {
+        console.error('epUnsetNEDHost failed:', e);
+        setStatus(`Unset host failed: ${e.message || e}`);
+        if (btn) { btn.disabled = false; btn.textContent = 'Unset Host'; }
+    }
+}
+
+async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
+    const container = document.getElementById('epNedAladinContainer');
+    const loading   = document.getElementById('epNedAladinLoading');
+    const countEl   = document.getElementById('epNedResultCount');
+    const tbody     = document.getElementById('epNedResultBody');
+    if (_epNedRa == null || _epNedDec == null) return;
+
+    const radiusArcsec = _epGetNEDRadiusArcsec();
+    if (loading) loading.style.display = 'flex';
+    if (countEl) countEl.textContent = `Fetching NED data (${radiusArcsec}")…`;
+    if (forceRefresh || !_epNedData) {
+        await _epFetchNEDData(radiusArcsec, forceNED);
+    }
+
+    if (_epNedTimedOut) {
+        if (loading) loading.style.display = 'none';
+        let remaining = 10;
+        if (countEl) countEl.textContent = `NED request timed out. Retrying in ${remaining}s…`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#f59e0b;">NED server did not respond. Retrying automatically…</td></tr>`;
+        if (_epNedRetryTimer) clearInterval(_epNedRetryTimer);
+        _epNedRetryTimer = setInterval(function() {
+            remaining -= 1;
+            const modal = document.getElementById('epNedExplorerModal');
+            if (!modal || modal.style.display === 'none') {
+                clearInterval(_epNedRetryTimer); _epNedRetryTimer = null; return;
+            }
+            if (remaining <= 0) {
+                clearInterval(_epNedRetryTimer); _epNedRetryTimer = null;
+                _epInitNEDExplorer(true);
+            } else {
+                if (countEl) countEl.textContent = `NED request timed out. Retrying in ${remaining}s…`;
+            }
+        }, 1000);
+        return;
+    }
+
+    const sources = (_epNedData || [])
+        .map((o, i) => ({ra: Number(o.ra), dec: Number(o.dec), name: o.objname || '', type: o.type || '', idx: i}))
+        .filter(s => Number.isFinite(s.ra) && Number.isFinite(s.dec));
+
+    const cacheNote = _epNedFromCache && _epNedSearchedAt
+        ? ` · <span style="color:#f59e0b; font-size:0.75rem;" title="Loaded from database cache">cached ${new Date(_epNedSearchedAt).toLocaleString()}</span>`
+        : ` · <span style="color:#4ade80; font-size:0.75rem;">live from NED</span>`;
+    const hostNote = _epNedCurrentHost
+        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${_epNedCurrentHost}</span>`
+        : '';
+    if (countEl) countEl.innerHTML = (sources.length
+        ? `${sources.length} NED object(s) within ${radiusArcsec}"`
+        : `No NED objects found within ${radiusArcsec}"`) + cacheNote + hostNote;
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!_epNedData || _epNedData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#666;">No NED objects found within ${radiusArcsec}"</td></tr>`;
+    } else {
+        _epNedData.forEach((obj, i) => {
+            const z  = obj.redshift != null ? parseFloat(obj.redshift) : null;
+            const cz = z != null ? Math.round(z * 299792.458).toLocaleString() : '—';
+            const canSetZ = String(obj.redshift_type || '').startsWith('S') && z != null;
+            const isHost = !!_epNedCurrentHost && (String(obj.objname || '') === String(_epNedCurrentHost));
+            const tr = document.createElement('tr');
+            tr.dataset.idx = i;
+            tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.06); cursor:default; transition:background 0.1s;';
+            if (isHost) tr.style.borderLeft = '3px solid rgba(0,245,212,0.6)';
+            tr.innerHTML = `
+                <td style="padding:5px 8px; color:#555;">${i + 1}</td>
+                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${obj.objname || '—'}${isHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
+                <td style="padding:5px 8px;">${obj.type || '—'}</td>
+                <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right;">${z != null ? z.toFixed(5) : '—'}</td>
+                <td style="padding:5px 8px; text-align:right;">${cz}</td>
+                <td style="padding:5px 8px; color:#aaa;">${obj.redshift_type || '—'}</td>
+                <td style="padding:4px 8px; text-align:center; white-space:nowrap;">
+                    ${isHost
+                        ? `<button class="ep-ned-host-btn" onclick="epUnsetNEDHost(${i}, this)" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(248,113,113,0.6); border-radius:6px; background:rgba(248,113,113,0.08); color:#f87171; cursor:pointer;">Unset Host</button>`
+                        : `<button class="ep-ned-host-btn" onclick="epSetNEDHost(${i}, this)" title="${canSetZ ? 'redshift will update' : 'redshift will NOT update: z flag not S*'}" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(255,255,255,0.2); border-radius:6px; background:rgba(255,255,255,0.04); color:#ddd; cursor:pointer;">Set as Host</button>`}
+                </td>`;
+            tr.addEventListener('mouseenter', () => {
+                tbody.querySelectorAll('tr').forEach(r => r.style.background = '');
+                tr.style.background = 'rgba(0,245,212,0.1)';
+                const iframe = document.getElementById('ep-ned-aladin-iframe');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, '*');
+            });
+            tr.addEventListener('mouseleave', () => {
+                tr.style.background = '';
+                const iframe = document.getElementById('ep-ned-aladin-iframe');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, '*');
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    _epBuildNEDAladinIframe(container, loading, _epNedRa, _epNedDec, sources, radiusArcsec);
+
+    if (_epNedHoverListener) window.removeEventListener('message', _epNedHoverListener);
+    _epNedHoverListener = function(e) {
+        if (!e.data || e.data.type !== 'nedHover') return;
+        const idx = e.data.idx;
+        tbody.querySelectorAll('tr').forEach(r => {
+            r.style.background = parseInt(r.dataset.idx) === idx ? 'rgba(0,245,212,0.1)' : '';
+        });
+        if (idx >= 0) {
+            const row = tbody.querySelector(`tr[data-idx="${idx}"]`);
+            if (row) row.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        }
+    };
+    window.addEventListener('message', _epNedHoverListener);
+}
+
+function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcsec) {
+    const old = document.getElementById('ep-ned-aladin-iframe');
+    if (old) old.remove();
+    if (!container) return;
+
+    const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
+    const targetName = String(_epNedTargetName || '').replace(/'/g, "\\'");
+    const survey = _epNedSurvey || 'CDS/P/DSS2/color';
+
+    const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<style>
+  body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}
+  #al{width:100%;height:100%;}
+</style>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
+<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+</head><body>
+<div id="al"></div>
+<script>
+  const T_RA = ${ra}, T_DEC = ${dec};
+  let al, nedCat;
+  A.init.then(function() {
+    al = A.aladin('#al', {
+      survey: '${survey}',
+      fov: ${fov},
+      target: T_RA + ' ' + T_DEC,
+      cooFrame: 'ICRS',
+      showReticle: false,
+      showZoomControl: true,
+      showFullscreenControl: false,
+      showLayersControl: false,
+      showGotoControl: false,
+      showShareControl: false,
+      showFrame: false,
+      showCooGrid: false,
+      showProjectionControl: false,
+      showSimbadPointerControl: false,
+      showCooGridControl: false,
+      showSettings: false,
+      showLogo: true,
+      showContextMenu: false,
+      allowFullZoomout: true,
+      showStatusBar: false,
+    });
+    var tCat = A.catalog({name:'Target', color:'#ff4444', sourceSize:16, shape:'cross'});
+    tCat.addSources([A.source(T_RA, T_DEC, {name:'${targetName}', idx:-1})]);
+    al.addCatalog(tCat);
+    al.on('objectHovered', function(obj) {
+      if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, '*');
+    });
+    al.on('objectHoveredStop', function() {
+      window.parent.postMessage({type:'nedHover', idx:-1}, '*');
+    });
+    window.parent.postMessage({type:'nedAladinReady'}, '*');
+  });
+  window.addEventListener('message', function(e) {
+    if (!e.data || !al) return;
+    var d = e.data;
+    if (d.type === 'addNEDSources') {
+      if (nedCat) { try { al.removeCatalog && al.removeCatalog(nedCat); } catch(_) {} }
+      nedCat = A.catalog({name:'NED', color:'#f59e0b', sourceSize:14, shape:'circle'});
+      al.addCatalog(nedCat);
+      var srcs = (d.sources || []).map(function(s) {
+        return A.source(s.ra, s.dec, {name: s.name, type: s.type, idx: s.idx});
+      });
+      nedCat.addSources(srcs);
+    } else if (d.type === 'changeSurvey') {
+      al.setImageSurvey(d.survey);
+    } else if (d.type === 'highlightNED' && nedCat) {
+      var idx = d.idx;
+      nedCat.getSources().forEach(function(s){ s.color = null; });
+      if (idx >= 0) {
+        var match = nedCat.getSources().find(function(s){ return s.data && s.data.idx === idx; });
+        if (match) match.color = '#00f5d4';
+      }
+      al.view && al.view.requestRedraw();
+    }
+  });
+<\/script>
+</body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'ep-ned-aladin-iframe';
+    iframe.style.cssText = 'width:100%; height:100%; border:none;';
+    iframe.srcdoc = html;
+    container.appendChild(iframe);
+
+    const onReady = function(e) {
+        if (e.data && e.data.type === 'nedAladinReady') {
+            window.removeEventListener('message', onReady);
+            if (loading) loading.style.display = 'none';
+            const iframeEl = document.getElementById('ep-ned-aladin-iframe');
+            if (iframeEl && iframeEl.contentWindow) {
+                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, '*');
+            }
+        }
+    };
+    window.addEventListener('message', onReady);
+}
 
 (async function initPage() {
     await loadTypeOptions();

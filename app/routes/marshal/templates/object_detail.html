@@ -170,6 +170,7 @@
             <div class="panel-card" id="star-map">
                 <div class="panel-header">
                     <h3>Aladin</h3>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap;">
                     <select id="surveySelect" class="btn-modern" style="padding:2px 8px; border:none; outline:none;" onchange="changeSurvey()">
                         <optgroup label="Optical">
                             <option value="CDS/P/DSS2/color" selected>DSS2</option>
@@ -193,6 +194,8 @@
                             <option value="simg.de/P/NSNS/DR0_2/ohs8">NSNS-DR0.2-ohs</option>
                         </optgroup>
                     </select>
+                    <button class="btn-modern" style="padding:2px 7px; font-size:0.78rem;" onclick="openNEDExplorer()">NED Explorer</button>
+                    </div><!-- end flex wrapper -->
                 </div>
                 <div class="panel-body" style="padding:10px;">
                     <div class="media-container">
@@ -659,6 +662,78 @@ MJD         magnitude  error   filter  telescope
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeAddPhotometryModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="addPhotometryPoint()">Add Point</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NED Explorer Modal -->
+    <div class="modal" id="nedExplorerModal" style="display:none;">
+        <div class="modal-content" style="max-width:92vw; width:92vw; height:85vh; display:flex; flex-direction:column;">
+            <div class="modal-header">
+                <h3>NED Explorer <span style="font-size:0.8rem; color:#888; font-weight:normal;">— cone search</span></h3>
+                <div style="display:flex; align-items:center; gap:8px; margin-left:auto; margin-right:12px; flex-wrap:wrap;">
+                    <select id="nedSurveySelect" class="btn-modern" style="padding:2px 6px; border:none; outline:none; font-size:0.78rem;" onchange="changeNEDSurvey()">
+                        <optgroup label="Optical">
+                            <option value="CDS/P/DSS2/color" selected>DSS2</option>
+                            <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI-LS-DR10</option>
+                            <option value="P/PanSTARRS/DR1/color-z-zg-g">PanSTARRS-DR1</option>
+                            <option value="CDS/P/Rubin/FirstLook">Rubin-LSST</option>
+                        </optgroup>
+                        <optgroup label="HSC">
+                            <option value="CDS/P/HSC/DR2/deep/color-i-r-g">HSC-DR2-Deep</option>
+                            <option value="CDS/P/HSC/DR2/wide/color-i-r-g">HSC-DR2-Wide</option>
+                        </optgroup>
+                        <optgroup label="Space">
+                            <option value="CDS/P/HST/color">HST-Color</option>
+                            <option value="ESAVO/P/JWST/P/MIRI_Imaging">JWST-MIRI</option>
+                            <option value="ESAVO/P/JWST/NIRCam_Imaging">JWST-NIRCam</option>
+                            <option value="CDS/P/Euclid/ERO/color">Euclid-ERO</option>
+                        </optgroup>
+                        <optgroup label="NSNS">
+                            <option value="simg.de/P/NSNS/DR0_2/hbr8">NSNS-DR0.2-hbr</option>
+                            <option value="simg.de/P/NSNS/DR0_2/rgb8">NSNS-DR0.2-rgb</option>
+                            <option value="simg.de/P/NSNS/DR0_2/ohs8">NSNS-DR0.2-ohs</option>
+                        </optgroup>
+                    </select>
+                    <label for="nedRadiusInput" style="font-size:0.78rem; color:#aaa;">Radius (")</label>
+                    <input id="nedRadiusInput" type="number" min="1" max="600" step="1" value="30"
+                           style="width:74px; background:rgba(0,0,0,0.35); color:#fff; border:1px solid rgba(255,255,255,0.22); border-radius:6px; padding:4px 6px; font-size:0.8rem;">
+                    <button class="btn-modern" style="padding:4px 10px; font-size:0.8rem;" onclick="rerunNEDSearch()" title="Re-fetch from NED and update database cache">Re-search</button>
+                </div>
+                <span class="close" onclick="closeNEDExplorer()">&times;</span>
+            </div>
+            <div class="modal-body" style="flex:1; display:flex; gap:0; padding:0; overflow:hidden; min-height:0;">
+                <!-- Left: Aladin with NED overlay -->
+                <div style="flex:0 0 55%; position:relative; border-right:1px solid rgba(255,255,255,0.1);">
+                    <div id="nedAladinContainer" style="width:100%; height:100%;"></div>
+                    <div id="nedAladinLoading" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.65); color:#00f5d4; gap:8px; z-index:10; font-size:0.85rem;">
+                        <div class="loading-spinner-small"></div> Loading...
+                    </div>
+                </div>
+                <!-- Right: Results table -->
+                <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0;">
+                    <div style="padding:8px 12px 6px; font-size:0.78rem; color:#888; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0;">
+                        <span id="nedResultCount">Fetching NED data…</span>
+                    </div>
+                    <div style="flex:1; overflow-y:auto;">
+                        <table id="nedResultTable" style="width:100%; border-collapse:collapse; font-size:0.78rem; color:#ddd;">
+                            <thead>
+                                <tr style="position:sticky; top:0; background:#1a1a2e; z-index:1; border-bottom:1px solid rgba(255,255,255,0.15);">
+                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">#</th>
+                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">Name</th>
+                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">Phys Type</th>
+                                    <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">RA (°)</th>
+                                    <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">Dec (°)</th>
+                                    <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">z</th>
+                                    <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">cz (km/s)</th>
+                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">z flag</th>
+                                    <th style="padding:6px 8px; text-align:center; font-weight:500; color:#aaa;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nedResultBody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
