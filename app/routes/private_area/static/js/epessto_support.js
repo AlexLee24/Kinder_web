@@ -31,6 +31,22 @@ const epUploadBtn = document.getElementById('epUploadBtn');
 const epFileInput = document.getElementById('epFileInput');
 const epPreviewBtn = document.getElementById('epPreviewBtn');
 const epRefreshBtn = document.getElementById('epRefreshBtn');
+const epAutoRefreshToggle = document.getElementById('epAutoRefreshToggle');
+let autoRefreshTimer = null;
+
+function startAutoRefresh() {
+    if (autoRefreshTimer) return;
+    autoRefreshTimer = setInterval(async () => {
+        await loadSession({ refreshWidget: false });
+    }, 10000);
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+}
 const epClearBtn = document.getElementById('epClearBtn');
 const epPrevBtn = document.getElementById('epPrevBtn');
 const epNextBtn = document.getElementById('epNextBtn');
@@ -1116,6 +1132,14 @@ epRemoveTargetBtn.addEventListener('click', removeCurrentTarget);
 epRefreshBtn.addEventListener('click', async () => {
     await loadSession({ refreshWidget: false });
     setStatus('Refreshed latest shared state.');
+});
+
+epAutoRefreshToggle.addEventListener('change', () => {
+    if (epAutoRefreshToggle.checked) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
 });
 
 bindWidgetInteractions();
