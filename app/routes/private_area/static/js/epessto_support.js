@@ -668,10 +668,13 @@ async function renderTargetWidget(target) {
     rerender();
 }
 
-function renderSelectedTarget() {
+function renderSelectedTarget(options = {}) {
+    const refreshWidget = options.refreshWidget !== false;
     const target = epState.targets[epState.selectedIndex] || null;
     renderTargetList();
-    renderTargetWidget(target);  // async
+    if (refreshWidget) {
+        renderTargetWidget(target);  // async
+    }
     updateActionButtons();
 }
 
@@ -737,7 +740,8 @@ function downloadBlob(filename, content, mimeType) {
     URL.revokeObjectURL(url);
 }
 
-function applySessionData(data) {
+function applySessionData(data, options = {}) {
+    const refreshWidget = options.refreshWidget !== false;
     const currentKey = getCurrentTargetKey();
     epState.targets = (data.targets || []).slice().sort((a, b) =>
         String(a.target_name || '').localeCompare(String(b.target_name || ''), 'en', { sensitivity: 'base' })
@@ -753,7 +757,7 @@ function applySessionData(data) {
         epState.selectedIndex = 0;
     }
     updateCounter();
-    renderSelectedTarget();
+    renderSelectedTarget({ refreshWidget });
 }
 
 async function loadTypeOptions() {
@@ -768,7 +772,7 @@ async function loadTypeOptions() {
     epState.typeOptions = prioritizeSTypeOptions(FALLBACK_TYPE_OPTIONS);
 }
 
-async function updateTargetState(targetKey, updates) {
+async function updateTargetState(targetKey, updates, options = {}) {
     const resp = await fetch('/api/epessto_support/target_state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -778,7 +782,7 @@ async function updateTargetState(targetKey, updates) {
     if (!resp.ok || !data.success) {
         throw new Error(data.error || 'Failed to save target state');
     }
-    applySessionData(data);
+    applySessionData(data, options);
 }
 
 function bindWidgetInteractions() {
@@ -866,7 +870,7 @@ function bindWidgetInteractions() {
 
         try {
             const value = event.target.value || '';
-            await updateTargetState(targetKey, { [field]: value });
+            await updateTargetState(targetKey, { [field]: value }, { refreshWidget: false });
             setStatus('Saved ' + field + ' for ' + targetKey + '.');
         } catch (err) {
             setStatus('Save failed: ' + err.message);
@@ -933,12 +937,13 @@ function bindWidgetInteractions() {
     });
 }
 
-async function loadSession() {
+async function loadSession(options = {}) {
+    const refreshWidget = options.refreshWidget !== false;
     try {
         const resp = await fetch('/api/epessto_support/session');
         const data = await resp.json();
         if (data.success && data.targets && data.targets.length) {
-            applySessionData(data);
+            applySessionData(data, { refreshWidget });
             const batchCount = (data.batches || []).length;
             setStatus(
                 'Restored ' + data.summary.total_files + ' files across ' + batchCount +
@@ -1043,7 +1048,7 @@ epDownloadReportBtn.addEventListener('click', () => {
 });
 
 epRefreshBtn.addEventListener('click', async () => {
-    await loadSession();
+    await loadSession({ refreshWidget: false });
     setStatus('Refreshed latest shared state.');
 });
 
