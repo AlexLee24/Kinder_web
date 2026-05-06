@@ -4,6 +4,13 @@ let filteredUsers = [];
 let currentGroupName = '';
 let availableUsers = [];
 
+// Populated from <script type="application/json" id="adminGroupsData"> injected by Jinja
+const ADMIN_GROUPS = (function () {
+    const el = document.getElementById('adminGroupsData');
+    if (!el) return [];
+    try { return JSON.parse(el.textContent); } catch (e) { return []; }
+})();
+
 const ICONS = {
     chevronUp: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
     chevronDown: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
@@ -27,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(checkDataConsistency, 1000);
     
     // Load GREATLab permissions for settings tab
-    loadGreatLabPermissions();
+    loadPrivatePagePerms();
 
     // Load default source permissions
     loadDefaultSourcePermissions();
@@ -1311,17 +1318,43 @@ async function changeUserRole(userEmail, newRole) {
 
 // State: array of {source_name, allowed_groups (array|null), is_public}
 let _defaultPerms = [];
+let _allSourcesList = [];
 
 function loadDefaultSourcePermissions() {
-    fetch('/admin/default-source-permissions')
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                _defaultPerms = data.permissions || [];
-                renderDefaultPermsTable();
-            }
-        })
-        .catch(e => console.error('loadDefaultSourcePermissions:', e));
+    Promise.all([
+        fetch('/admin/default-source-permissions').then(r => r.json()),
+        fetch('/admin/sources/all').then(r => r.json())
+    ])
+    .then(([permData, srcData]) => {
+        if (permData.success) {
+            _defaultPerms = permData.permissions || [];
+        }
+        _allSourcesList = srcData.sources || [];
+        renderDefaultPermsTable();
+        populateSourceAddSelect();
+    })
+    .catch(e => console.error('loadDefaultSourcePermissions:', e));
+}
+
+function populateSourceAddSelect() {
+    const sel = document.getElementById('sourceAddSelect');
+    if (!sel) return;
+    const existing = new Set(_defaultPerms.map(p => p.source_name));
+    sel.innerHTML = '<option value="">— select source to add —</option>' +
+        _allSourcesList
+            .filter(s => !existing.has(s))
+            .map(s => `<option value="${s}">${s}</option>`)
+            .join('');
+}
+
+function addDefaultPermFromSelect(selectEl) {
+    const sourceName = selectEl.value;
+    if (!sourceName) return;
+    selectEl.value = '';
+    if (_defaultPerms.find(p => p.source_name === sourceName)) return;
+    _defaultPerms.push({ source_name: sourceName, allowed_groups: null, is_public: false });
+    renderDefaultPermsTable();
+    populateSourceAddSelect();
 }
 
 function renderDefaultPermsTable() {
@@ -1431,50 +1464,8 @@ function removeDefaultPermGroup(idx, group) {
 function removeDefaultPermRow(idx) {
     _defaultPerms.splice(idx, 1);
     renderDefaultPermsTable();
+    populateSourceAddSelect();
 }
-
-// Source search dropdown
-let _sourceSearchTimer = null;
-
-function onSourceSearch(query) {
-    clearTimeout(_sourceSearchTimer);
-    const dd = document.getElementById('sourceSearchDropdown');
-    if (!query || query.length < 1) { dd.style.display = 'none'; return; }
-    _sourceSearchTimer = setTimeout(() => {
-        fetch(`/admin/sources/search?q=${encodeURIComponent(query)}`)
-            .then(r => r.json())
-            .then(data => {
-                const sources = (data.sources || []).filter(
-                    s => !_defaultPerms.find(p => p.source_name === s)
-                );
-                if (sources.length === 0) { dd.style.display = 'none'; return; }
-                dd.innerHTML = sources.map(s =>
-                    `<div class="source-search-item" onclick="addDefaultPermFromSearch('${s.replace(/'/g,"\\'")}')">
-                        ${s}
-                     </div>`
-                ).join('');
-                dd.style.display = 'block';
-            })
-            .catch(() => { dd.style.display = 'none'; });
-    }, 250);
-}
-
-function addDefaultPermFromSearch(sourceName) {
-    const dd = document.getElementById('sourceSearchDropdown');
-    dd.style.display = 'none';
-    document.getElementById('sourceSearchInput').value = '';
-    if (_defaultPerms.find(p => p.source_name === sourceName)) return;
-    _defaultPerms.push({ source_name: sourceName, allowed_groups: null, is_public: false });
-    renderDefaultPermsTable();
-}
-
-// Close dropdown when clicking outside
-document.addEventListener('click', function(e) {
-    const wrap = document.getElementById('sourceSearchInput');
-    const dd = document.getElementById('sourceSearchDropdown');
-    if (!wrap || !dd) return;
-    if (!wrap.contains(e.target) && !dd.contains(e.target)) dd.style.display = 'none';
-});
 
 function saveDefaultSourcePermissions() {
     const btn = document.getElementById('saveDefaultPermsBtn');
@@ -1574,4 +1565,108 @@ function runTnsSnooze() {
         .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
 
+// ---------------------------------------------------------------------------
+// Private Area — Per-Page Permissions (group-based, one panel per page)
+// ---------------------------------------------------------------------------
+async function loadPrivatePagePerms() {
+    const container = document.getElementById('privatePagePermsTable');
+    if (!container) return;
+    try {
+        const res = await fetch('/api/admin/private_area/page_perms');
+        const data = await res.json();
+        if (!data.success) { container.innerHTML = '<div style="color:#e06c75;">Failed to load</div>'; return; }
+
+        const perms = data.perms || {};   // {page: [groupName, ...]}
+        const pages = data.pages || [];
+        const labels = data.labels || {};
+        const availableGroups = (typeof ADMIN_GROUPS !== 'undefined' ? ADMIN_GROUPS : [])
+            .filter(g => g !== 'GREAT_Lab');
+
+        container.innerHTML = pages.map(page => {
+            const groups = perms[page] || [];
+            const optionsHtml = availableGroups
+                .map(g => `<option value="${g}">${g}</option>`)
+                .join('');
+            const groupTagsHtml = groups
+                .filter(g => g !== 'GREAT_Lab')
+                .map(g => _ppermGroupTag(page, g))
+                .join('');
+            return `
+            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:0.82rem; font-weight:600; color:#ccc; margin-bottom:8px;">${labels[page] || page}</div>
+                <div id="pperm_tags_${page}" class="permissions-list" style="min-height:28px; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                    <div class="perm-tag perm-locked">
+                        <span>GREAT_Lab</span>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    </div>
+                    ${groupTagsHtml}
+                </div>
+                <div class="settings-row" style="gap:6px;">
+                    <select id="pperm_select_${page}" class="settings-select" style="flex:1;">
+                        <option value="">— Select Group —</option>
+                        ${optionsHtml}
+                    </select>
+                    <button class="btn btn-primary" onclick="addPrivatePagePerm('${page}')">Add</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        if (container) container.innerHTML = '<div style="color:#e06c75;">Error loading permissions</div>';
+    }
+}
+
+function _ppermGroupTag(page, groupName) {
+    return `
+    <div class="perm-tag" style="background:rgba(255,107,107,0.1); border-color:rgba(255,107,107,0.3); color:#ff6b6b;">
+        <span>${groupName}</span>
+        <svg onclick="removePrivatePagePerm('${page}','${groupName}')" style="cursor:pointer; opacity:0.7;" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+    </div>`;
+}
+
+async function addPrivatePagePerm(page) {
+    const sel = document.getElementById(`pperm_select_${page}`);
+    const groupName = sel ? sel.value : '';
+    if (!groupName) { showNotification('Please select a group first.', 'error'); return; }
+    try {
+        const res = await fetch('/api/admin/private_area/page_perms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page, group_name: groupName })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (sel) sel.value = '';
+            // Append tag without full reload
+            const tagsEl = document.getElementById(`pperm_tags_${page}`);
+            if (tagsEl) tagsEl.insertAdjacentHTML('beforeend', _ppermGroupTag(page, groupName));
+            showNotification(`Added "${groupName}" to ${page}`, 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    } catch (e) {
+        showNotification('Error adding permission', 'error');
+    }
+}
+
+async function removePrivatePagePerm(page, groupName) {
+    if (!confirm(`Remove "${groupName}" access from ${page}?`)) return;
+    try {
+        const res = await fetch('/api/admin/private_area/page_perms', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ page, group_name: groupName })
+        });
+        const data = await res.json();
+        if (data.success) {
+            loadPrivatePagePerms();
+            showNotification(`Removed "${groupName}" from ${page}`, 'success');
+        } else {
+            showNotification('Error: ' + data.error, 'error');
+        }
+    } catch (e) {
+        showNotification('Error removing permission', 'error');
+    }
+}
 

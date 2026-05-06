@@ -66,6 +66,26 @@ const epTypeSummary = document.getElementById('epTypeSummary');
 const epStatus = document.getElementById('epStatus');
 const epTargetList = document.getElementById('epTargetList');
 const epTargetWidget = document.getElementById('epTargetWidget');
+const epHomePanel = document.getElementById('epHomePanel');
+const epWorkspacePanel = document.getElementById('epWorkspacePanel');
+const epCreateRoomName = document.getElementById('epCreateRoomName');
+const epCreateRoomPassword = document.getElementById('epCreateRoomPassword');
+const epCreateRoomBtn = document.getElementById('epCreateRoomBtn');
+const epCreatedRoomInfo = document.getElementById('epCreatedRoomInfo');
+const epLiveRooms = document.getElementById('epLiveRooms');
+const epJoinRoomId = document.getElementById('epJoinRoomId');
+const epJoinRoomBtn = document.getElementById('epJoinRoomBtn');
+const epRoomBadge = document.getElementById('epRoomBadge');
+const epLeaveRoomBtn = document.getElementById('epLeaveRoomBtn');
+const epRoomMembersBtn = document.getElementById('epRoomMembersBtn');
+const epCopyInviteBtn = document.getElementById('epCopyInviteBtn');
+const epRoomMembersModal = document.getElementById('epRoomMembersModal');
+const epRoomMembersHint = document.getElementById('epRoomMembersHint');
+const epRoomMembersList = document.getElementById('epRoomMembersList');
+
+let epRoomId = null;
+let epRoomName = '';
+let epInviteToken = '';
 
 function setStatus(message) {
     epStatus.textContent = message;
@@ -830,7 +850,225 @@ async function loadTypeOptions() {
     epState.typeOptions = prioritizeSTypeOptions(FALLBACK_TYPE_OPTIONS);
 }
 
+function setRoomUI(joined) {
+    if (epHomePanel) epHomePanel.style.display = joined ? 'none' : 'flex';
+    if (epWorkspacePanel) epWorkspacePanel.style.display = joined ? '' : 'none';
+    if (epRoomBadge) {
+        const label = epRoomId ? (epRoomId + (epRoomName ? ' · ' + epRoomName : '')) : '-';
+        epRoomBadge.textContent = 'Room: ' + label;
+    }
+}
+
+async function fetchLiveRooms() {
+    if (!epLiveRooms) return;
+    try {
+        const resp = await fetch('/api/epessto_support/rooms/live');
+        const data = await resp.json();
+        const rooms = (resp.ok && data.success && Array.isArray(data.rooms)) ? data.rooms : [];
+        if (!rooms.length) {
+            epLiveRooms.innerHTML = '<div class="ep-empty">No live rooms</div>';
+            return;
+        }
+        epLiveRooms.innerHTML = rooms.map((r) => {
+            const roomId = String(r.room_id || '');
+            const roomName = String(r.room_name || roomId);
+            const t = r.updated_at ? new Date(r.updated_at).toLocaleString() : '-';
+            const by = String(r.updated_by || '').trim();
+            return `
+                <div class="ep-live-room">
+                    <div>
+                        <div class="ep-live-room-id">${roomId} · ${roomName}</div>
+                        <div class="ep-live-room-time">last update: ${t}${by ? ' · ' + by : ''}</div>
+                    </div>
+                    <button type="button" class="ep-btn" data-action="quick-join" data-room-id="${roomId}">join</button>
+                </div>
+            `;
+        }).join('');
+    } catch (_) {
+        epLiveRooms.innerHTML = '<div class="ep-empty">Load failed</div>';
+    }
+}
+
+async function loadCurrentRoom() {
+    const resp = await fetch('/api/epessto_support/room/current');
+    const data = await resp.json();
+    if (resp.ok && data.success && data.joined) {
+        epRoomId = data.room_id;
+        epRoomName = String(data.room_name || '');
+        epInviteToken = String(data.invite_token || '');
+        setRoomUI(true);
+        return true;
+    }
+    epRoomId = null;
+    epRoomName = '';
+    epInviteToken = '';
+    setRoomUI(false);
+    return false;
+}
+
+async function createRoom() {
+    const roomName = (epCreateRoomName ? epCreateRoomName.value : '').trim();
+    const password = (epCreateRoomPassword ? epCreateRoomPassword.value : '').trim();
+    if (!roomName) {
+        if (epCreatedRoomInfo) epCreatedRoomInfo.textContent = 'Please set a room name first.';
+        return;
+    }
+    if (!password) {
+        if (epCreatedRoomInfo) epCreatedRoomInfo.textContent = 'Please set a password first.';
+        return;
+    }
+    const resp = await fetch('/api/epessto_support/rooms/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_name: roomName, password })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Create room failed');
+    }
+    epRoomId = data.room_id;
+    epRoomName = String(data.room_name || roomName);
+    epInviteToken = String(data.invite_token || '');
+    if (epCreatedRoomInfo) epCreatedRoomInfo.textContent = 'Created room: ' + epRoomId + ' · ' + epRoomName;
+    if (epJoinRoomId) epJoinRoomId.value = epRoomId;
+    if (epCreateRoomName) epCreateRoomName.value = '';
+    if (epCreateRoomPassword) epCreateRoomPassword.value = '';
+    setRoomUI(true);
+}
+
+async function joinRoom(roomIdInput, passwordInput) {
+    const room_id = String(roomIdInput || '').trim().toUpperCase();
+    const password = String(passwordInput || '').trim();
+    if (!room_id || !password) {
+        throw new Error('Room ID and password are required');
+    }
+    const resp = await fetch('/api/epessto_support/rooms/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id, password })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Join room failed');
+    }
+    epRoomId = data.room_id;
+    epRoomName = String(data.room_name || '');
+    epInviteToken = String(data.invite_token || '');
+    setRoomUI(true);
+}
+
+async function joinRoomByInvite(inviteToken) {
+    const token = String(inviteToken || '').trim();
+    if (!token) throw new Error('Invalid invite link');
+    const resp = await fetch('/api/epessto_support/rooms/join_by_invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invite_token: token })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Invite join failed');
+    }
+    epRoomId = data.room_id;
+    epRoomName = String(data.room_name || '');
+    epInviteToken = String(data.invite_token || token);
+    setRoomUI(true);
+}
+
+async function leaveRoom() {
+    await fetch('/api/epessto_support/room/leave', { method: 'POST' });
+    stopAutoRefresh();
+    if (epAutoRefreshToggle) epAutoRefreshToggle.checked = false;
+    if (epAutoRefreshLabel) epAutoRefreshLabel.classList.remove('is-active');
+    epRoomId = null;
+    epRoomName = '';
+    epInviteToken = '';
+    setRoomUI(false);
+    epState.targets = [];
+    epState.summary = null;
+    epState.batches = [];
+    epState.selectedIndex = -1;
+    updateCounter();
+    renderSelectedTarget();
+    setStatus('Please join or create a room.');
+    await fetchLiveRooms();
+}
+
+function _inviteLinkFromToken(token) {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('invite', token);
+    return url.toString();
+}
+
+async function copyInviteLink() {
+    if (!epRoomId || !epInviteToken) {
+        setStatus('No room invite token available.');
+        return;
+    }
+    const link = _inviteLinkFromToken(epInviteToken);
+    await navigator.clipboard.writeText(link);
+    setStatus('Invite link copied.');
+}
+
+function epCloseRoomMembers() {
+    if (epRoomMembersModal) epRoomMembersModal.style.display = 'none';
+}
+window.epCloseRoomMembers = epCloseRoomMembers;
+
+async function openRoomMembers() {
+    if (!epRoomId) return;
+    const resp = await fetch('/api/epessto_support/room/members');
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Load members failed');
+    }
+    const members = Array.isArray(data.members) ? data.members : [];
+    if (epRoomMembersHint) {
+        epRoomMembersHint.textContent = data.can_manage
+            ? 'You can kick members (except creator and yourself).'
+            : 'View only. Creator/Admin can kick members.';
+    }
+    if (epRoomMembersList) {
+        if (!members.length) {
+            epRoomMembersList.innerHTML = '<div class="ep-empty">No members</div>';
+        } else {
+            epRoomMembersList.innerHTML = members.map((m) => {
+                const role = m.is_owner
+                    ? '<span class="ep-room-member-role owner">creator</span>'
+                    : (m.is_admin ? '<span class="ep-room-member-role admin">admin</span>' : '');
+                const seen = m.last_seen ? new Date(m.last_seen).toLocaleString() : '-';
+                return `
+                    <div class="ep-room-member-row">
+                        <div>
+                            <div><strong>${m.display_name}</strong>${role}${m.is_self ? ' <span class="ep-room-member-role">you</span>' : ''}</div>
+                            <div class="ep-live-room-time">${m.email} · last seen: ${seen}</div>
+                        </div>
+                        ${m.can_kick ? `<button type="button" class="ep-btn ep-btn-clear" data-action="kick-member" data-email="${m.email}">kick</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+    if (epRoomMembersModal) epRoomMembersModal.style.display = 'flex';
+}
+
+async function kickRoomMember(memberEmail) {
+    const resp = await fetch('/api/epessto_support/room/kick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_email: memberEmail })
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Kick failed');
+    }
+}
+
 async function updateTargetState(targetKey, updates, options = {}) {
+    if (!epRoomId) {
+        throw new Error('Join a room first');
+    }
     const resp = await fetch('/api/epessto_support/target_state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -997,6 +1235,7 @@ function bindWidgetInteractions() {
 }
 
 async function removeCurrentTarget() {
+    if (!epRoomId) return;
     const target = epState.targets[epState.selectedIndex];
     if (!target) return;
 
@@ -1029,9 +1268,20 @@ async function removeCurrentTarget() {
 
 async function loadSession(options = {}) {
     const refreshWidget = options.refreshWidget !== false;
+    if (!epRoomId) {
+        setStatus('Please join or create a room.');
+        return;
+    }
     try {
         const resp = await fetch('/api/epessto_support/session');
         const data = await resp.json();
+        if (resp.status === 401) {
+            epRoomId = null;
+            setRoomUI(false);
+            setStatus('Please join or create a room.');
+            await fetchLiveRooms();
+            return;
+        }
         if (data.success && data.targets && data.targets.length) {
             applySessionData(data, { refreshWidget });
             const batchCount = (data.batches || []).length;
@@ -1049,6 +1299,7 @@ async function loadSession(options = {}) {
 }
 
 async function clearSession() {
+    if (!epRoomId) return;
     const c1 = confirm('Clear all uploaded files from this session?');
     if (!c1) return;
     const c2 = confirm('Second confirmation: this action cannot be undone. Continue?');
@@ -1074,6 +1325,10 @@ async function clearSession() {
 }
 
 async function handleUpload(files) {
+    if (!epRoomId) {
+        setStatus('Please join or create a room first.');
+        return;
+    }
     if (!files.length) return;
     const formData = new FormData();
     Array.from(files).forEach((file) => {
@@ -1142,7 +1397,7 @@ epRemoveTargetBtn.addEventListener('click', removeCurrentTarget);
 
 epRefreshBtn.addEventListener('click', async () => {
     await loadSession({ refreshWidget: false });
-    setStatus('Refreshed latest shared state.');
+    setStatus('Refreshed latest room state.');
 });
 
 epAutoRefreshToggle.addEventListener('change', () => {
@@ -1154,6 +1409,97 @@ epAutoRefreshToggle.addEventListener('change', () => {
         epAutoRefreshLabel.classList.remove('is-active');
     }
 });
+
+if (epCreateRoomBtn) {
+    epCreateRoomBtn.addEventListener('click', async () => {
+        try {
+            await createRoom();
+            await loadSession();
+            await fetchLiveRooms();
+            setStatus('Room ready: ' + epRoomId);
+        } catch (err) {
+            if (epCreatedRoomInfo) epCreatedRoomInfo.textContent = '';
+            setStatus('Create room failed: ' + err.message);
+        }
+    });
+}
+
+if (epJoinRoomBtn) {
+    epJoinRoomBtn.addEventListener('click', async () => {
+        try {
+            const roomId = epJoinRoomId ? epJoinRoomId.value : '';
+            const pwd = prompt('Enter password for room ' + String(roomId || '').toUpperCase() + ':');
+            if (pwd == null) return;
+            await joinRoom(roomId, pwd);
+            await loadSession();
+            setStatus('Joined room: ' + epRoomId);
+        } catch (err) {
+            setStatus('Join failed: ' + err.message);
+        }
+    });
+}
+
+if (epRoomMembersBtn) {
+    epRoomMembersBtn.addEventListener('click', async () => {
+        try {
+            await openRoomMembers();
+        } catch (err) {
+            setStatus('Load members failed: ' + err.message);
+        }
+    });
+}
+
+if (epCopyInviteBtn) {
+    epCopyInviteBtn.addEventListener('click', async () => {
+        try {
+            await copyInviteLink();
+        } catch (err) {
+            setStatus('Copy invite failed: ' + err.message);
+        }
+    });
+}
+
+if (epRoomMembersList) {
+    epRoomMembersList.addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-action="kick-member"]');
+        if (!btn) return;
+        const email = btn.dataset.email || '';
+        if (!email) return;
+        const ok = confirm('Kick ' + email + ' from this room?');
+        if (!ok) return;
+        try {
+            await kickRoomMember(email);
+            await openRoomMembers();
+            setStatus('Member kicked: ' + email);
+        } catch (err) {
+            setStatus('Kick failed: ' + err.message);
+        }
+    });
+}
+
+if (epLiveRooms) {
+    epLiveRooms.addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-action="quick-join"]');
+        if (!btn) return;
+        const roomId = btn.dataset.roomId || '';
+        if (epJoinRoomId) epJoinRoomId.value = roomId;
+        const pwd = prompt('Enter password for room ' + roomId + ':');
+        if (pwd == null) return;
+        try {
+            await joinRoom(roomId, pwd);
+            await loadSession();
+            setStatus('Joined room: ' + epRoomId);
+        } catch (err) {
+            setStatus('Join failed: ' + err.message);
+        }
+    });
+}
+
+if (epLeaveRoomBtn) {
+    epLeaveRoomBtn.addEventListener('click', async () => {
+        await leaveRoom();
+    });
+}
 
 bindWidgetInteractions();
 
@@ -1595,5 +1941,27 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
 
 (async function initPage() {
     await loadTypeOptions();
-    await loadSession();
+    const params = new URLSearchParams(window.location.search);
+    const inviteToken = params.get('invite');
+    let joined = false;
+    if (inviteToken) {
+        try {
+            await joinRoomByInvite(inviteToken);
+            joined = true;
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete('invite');
+            window.history.replaceState({}, '', cleanUrl.toString());
+        } catch (err) {
+            setStatus('Invite join failed: ' + err.message);
+        }
+    }
+    if (!joined) {
+        joined = await loadCurrentRoom();
+    }
+    await fetchLiveRooms();
+    if (joined) {
+        await loadSession();
+    } else {
+        setStatus('Please join or create a room.');
+    }
 })();

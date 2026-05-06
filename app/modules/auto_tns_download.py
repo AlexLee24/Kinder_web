@@ -316,7 +316,7 @@ def addin_database(filepath, debug=False):
                                 r.get('name'),
                                 phot_mjd,
                                 float(phot_mag),
-                                r.get('discmagfilter'),
+                                r.get('filter'),
                                 r.get('source_group'),
                             ))
                         except (ValueError, TypeError):
@@ -380,7 +380,7 @@ def addin_database(filepath, debug=False):
                 for (name, mjd, mag, filt, src) in phot_batch:
                     oid = name_map.get(name)
                     if oid:
-                        phot_rows.append((oid, name, mjd, mag, None, filt, src or 'TNS'))
+                        phot_rows.append((oid, name, mjd, mag, 0.01, filt, f"{src} (TNS)" if src else "(TNS)"))
 
                 if phot_rows:
                     extras.execute_batch(cursor, '''

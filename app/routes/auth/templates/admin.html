@@ -256,28 +256,14 @@
         <div id="settings-tab" class="tab-content">
             <div class="settings-grid">
 
-                <div class="settings-panel">
+                <div class="settings-panel" style="grid-column: 1 / -1;">
                     <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        GREATLab Access Control
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        Private Area — Per-Page Access
                     </div>
-                    <p class="settings-desc">Configure which groups access GREATLab routes. <em>GREAT_Lab</em> always has access.</p>
-                    <div class="settings-row">
-                        <select id="new-permission-group" class="settings-select">
-                            <option value="">— Select Group —</option>
-                            {% for group_name in groups.keys() %}
-                                {% if group_name != 'GREAT_Lab' %}
-                                <option value="{{ group_name }}">{{ group_name }}</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                        <button onclick="addGreatLabPermission()" class="btn btn-primary">Add</button>
-                    </div>
-                    <div id="active-permissions" class="permissions-list">
-                        <div class="perm-tag perm-locked">
-                            <span>GREAT_Lab</span>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                        </div>
+                    <p class="settings-desc">Control which groups can access each Private Area page. <em>GREAT_Lab</em> and admins always have access.</p>
+                    <div id="privatePagePermsTable" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap:14px; margin-top:14px;">
+                        <div style="color:#888; font-size:0.85rem;">Loading…</div>
                     </div>
                 </div>
 
@@ -369,17 +355,11 @@
                 </div>
                 <p class="settings-desc">Set global default visibility rules for each photometry/spectra source (telescope). These apply to all objects unless overridden per-object.</p>
 
-                <!-- Search + add -->
+                <!-- Source add dropdown -->
                 <div class="settings-row" style="align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                    <div style="position: relative; flex: 1; min-width: 200px;">
-                        <input type="text" id="sourceSearchInput"
-                               placeholder="Search telescope / source name…"
-                               oninput="onSourceSearch(this.value)"
-                               autocomplete="off"
-                               class="settings-input"
-                               style="width: 100%;">
-                        <div id="sourceSearchDropdown" class="source-search-dropdown" style="display:none;"></div>
-                    </div>
+                    <select id="sourceAddSelect" class="settings-input" style="flex: 1; min-width: 200px;" onchange="addDefaultPermFromSelect(this)">
+                        <option value="">— select source to add —</option>
+                    </select>
                     <button class="btn btn-primary" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save All</button>
                 </div>
 
@@ -497,9 +477,7 @@
         </div>
     </div>
 
-    <script>
-        const ADMIN_GROUPS = {{ groups.keys() | list | tojson }};
-    </script>
+    <script type="application/json" id="adminGroupsData">{{ groups.keys() | list | tojson }}</script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

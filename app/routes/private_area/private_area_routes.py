@@ -4,15 +4,18 @@ Calendar routes for the Kinder web application.
 import logging
 import os
 import re
+import secrets
+import shutil
 
 logger = logging.getLogger(__name__)
 import urllib.parse
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, Response, abort, send_file
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from modules.database.auth import get_users, user_exists, check_object_access, get_groups
+from modules.database.auth import get_users, user_exists, get_groups, get_page_groups, set_page_groups
 
 
 
@@ -30,7 +33,7 @@ def ensure_tutorials_dir():
 def can_view_documents():
     if 'user' not in session:
         return False
-    return session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)
+    return can_access_page('documents')
 
 def is_admin_user():
     return 'user' in session and bool(session['user'].get('is_admin', False))
@@ -96,17 +99,61 @@ def can_view_private_area():
     return session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)
 
 
+# ---------------------------------------------------------------------------
+# Per-page permission helpers
+# ---------------------------------------------------------------------------
+_PRIVATE_PAGES = ['daily_trigger', 'greatlab_info', 'epessto_support', 'documents']
+_PRIVATE_PAGE_LABELS = {
+    'daily_trigger': 'Daily Trigger',
+    'greatlab_info': 'Lab Info',
+    'epessto_support': 'ePessto++ Support',
+    'documents': 'Documents',
+}
+
+
+def _get_page_extra_groups(page_key: str) -> list:
+    """Return list of extra group names (beyond GREAT_Lab) that can access the page."""
+    return get_page_groups(page_key)
+
+
+def can_access_page(page_key: str) -> bool:
+    """Check if the current session user can access the given private page."""
+    if 'user' not in session:
+        return False
+    user = session['user']
+    if user.get('is_admin', False) or user.get('is_great_lab_member', False):
+        return True
+    user_groups = set(user.get('groups', []))
+    allowed = set(get_page_groups(page_key))
+    return bool(user_groups & allowed)
+
+
 _EPESSTO_DATE_RE = re.compile(r'^20\d{6}$')
+_EPESSTO_ROOM_SESSION_KEY = 'epessto_room_id'
+_EPESSTO_ROOM_IDLE_DELETE_HOURS = 24
+_EPESSTO_ROOM_LIVE_HOURS = 1
 
 
-def _get_epessto_upload_dir():
+def _get_epessto_upload_root_dir():
     d = os.path.join(private_area_bp.root_path, 'data', 'epessto_uploads')
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def _get_epessto_image_dir():
-    d = os.path.join(_get_epessto_upload_dir(), 'images')
+def _get_epessto_upload_dir(room_id=None):
+    if room_id:
+        d = os.path.join(_get_epessto_upload_root_dir(), 'rooms', room_id, 'files')
+    else:
+        d = os.path.join(_get_epessto_upload_root_dir(), 'files')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _get_epessto_image_dir(room_id=None):
+    if room_id:
+        d = os.path.join(_get_epessto_upload_root_dir(), 'rooms', room_id, 'images')
+    else:
+        d = os.path.join(_get_epessto_upload_root_dir(), 'images')
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -115,34 +162,217 @@ def _get_epessto_sessions_path():
     return os.path.join(private_area_bp.root_path, 'data', 'epessto_sessions.json')
 
 
-def _load_epessto_sessions():
+def _utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _get_epessto_actor():
+    user = session.get('user') or {}
+    actor = str(user.get('email') or user.get('name') or user.get('username') or 'unknown').strip()
+    return actor or 'unknown'
+
+
+def _get_epessto_user_identity():
+    user = session.get('user') or {}
+    email = str(user.get('email') or user.get('name') or user.get('username') or '').strip().lower()
+    display_name = str(user.get('name') or user.get('email') or user.get('username') or 'unknown').strip()
+    is_admin = bool(user.get('is_admin', False))
+    return {
+        'email': email,
+        'display_name': display_name,
+        'is_admin': is_admin,
+    }
+
+
+def _parse_utc_iso(iso_text):
+    try:
+        if not iso_text:
+            return None
+        return datetime.fromisoformat(str(iso_text).replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+
+def _new_epessto_room(password, room_name, created_by):
+    now_iso = _utc_now_iso()
+    actor = str(created_by or 'unknown')
+    return {
+        'room_name': str(room_name or '').strip(),
+        'password_hash': generate_password_hash(str(password or '')),
+        'created_by': actor,
+        'updated_by': actor,
+        'invite_token': secrets.token_urlsafe(24),
+        'members': {
+            actor.lower(): {
+                'email': actor.lower(),
+                'display_name': actor,
+                'is_admin': bool(session.get('user', {}).get('is_admin', False)),
+                'joined_at': now_iso,
+                'last_seen': now_iso,
+            }
+        },
+        'kicked_users': [],
+        'created_at': now_iso,
+        'updated_at': now_iso,
+        'batches': [],
+        'target_state': {}
+    }
+
+
+def _load_epessto_store():
     path = _get_epessto_sessions_path()
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if not isinstance(data, dict):
-                    return {'batches': [], 'target_state': {}}
-                if 'batches' not in data or not isinstance(data.get('batches'), list):
-                    data['batches'] = []
-                if 'target_state' not in data or not isinstance(data.get('target_state'), dict):
-                    data['target_state'] = {}
-                return data
+                    return {'rooms': {}}
+
+                # Backward compatible migration from old single-room shape.
+                if 'rooms' not in data:
+                    migrated = {
+                        'rooms': {
+                            'legacy': {
+                                'room_name': 'Legacy Room',
+                                'password_hash': '',
+                                'created_by': 'legacy',
+                                'updated_by': 'legacy',
+                                'invite_token': secrets.token_urlsafe(24),
+                                'members': {},
+                                'kicked_users': [],
+                                'created_at': _utc_now_iso(),
+                                'updated_at': _utc_now_iso(),
+                                'batches': data.get('batches', []) if isinstance(data.get('batches'), list) else [],
+                                'target_state': data.get('target_state', {}) if isinstance(data.get('target_state'), dict) else {}
+                            }
+                        }
+                    }
+                    return migrated
+
+                rooms = data.get('rooms', {})
+                if not isinstance(rooms, dict):
+                    rooms = {}
+                normalized_rooms = {}
+                for room_id, room in rooms.items():
+                    if not isinstance(room, dict):
+                        continue
+                    members = room.get('members', {})
+                    if not isinstance(members, dict):
+                        members = {}
+                    normalized_members = {}
+                    for mk, mv in members.items():
+                        if not isinstance(mv, dict):
+                            continue
+                        mem_email = str(mv.get('email', mk) or mk).strip().lower()
+                        if not mem_email:
+                            continue
+                        normalized_members[mem_email] = {
+                            'email': mem_email,
+                            'display_name': str(mv.get('display_name') or mem_email),
+                            'is_admin': bool(mv.get('is_admin', False)),
+                            'joined_at': str(mv.get('joined_at') or _utc_now_iso()),
+                            'last_seen': str(mv.get('last_seen') or _utc_now_iso()),
+                        }
+
+                    kicked_users = room.get('kicked_users', [])
+                    if not isinstance(kicked_users, list):
+                        kicked_users = []
+                    kicked_users = [str(x).strip().lower() for x in kicked_users if str(x).strip()]
+
+                    normalized_rooms[str(room_id)] = {
+                        'room_name': str(room.get('room_name', room_id) or room_id),
+                        'password_hash': str(room.get('password_hash', '') or ''),
+                        'created_by': str(room.get('created_by', 'unknown') or 'unknown'),
+                        'updated_by': str(room.get('updated_by', room.get('created_by', 'unknown')) or 'unknown'),
+                        'invite_token': str(room.get('invite_token') or secrets.token_urlsafe(24)),
+                        'members': normalized_members,
+                        'kicked_users': kicked_users,
+                        'created_at': str(room.get('created_at') or _utc_now_iso()),
+                        'updated_at': str(room.get('updated_at') or _utc_now_iso()),
+                        'batches': room.get('batches', []) if isinstance(room.get('batches'), list) else [],
+                        'target_state': room.get('target_state', {}) if isinstance(room.get('target_state'), dict) else {}
+                    }
+                return {'rooms': normalized_rooms}
         except Exception:
             pass
-    return {'batches': [], 'target_state': {}}
+    return {'rooms': {}}
 
 
-def _save_epessto_sessions(data):
+def _save_epessto_store(data):
     path = _get_epessto_sessions_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     data = data or {}
-    if 'batches' not in data or not isinstance(data.get('batches'), list):
-        data['batches'] = []
-    if 'target_state' not in data or not isinstance(data.get('target_state'), dict):
-        data['target_state'] = {}
+    if 'rooms' not in data or not isinstance(data.get('rooms'), dict):
+        data['rooms'] = {}
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _touch_epessto_room(room, actor=None):
+    room['updated_at'] = _utc_now_iso()
+    if actor is not None:
+        room['updated_by'] = str(actor or 'unknown')
+
+
+def _upsert_epessto_room_member(room):
+    ident = _get_epessto_user_identity()
+    email = ident['email']
+    if not email:
+        return
+    now_iso = _utc_now_iso()
+    room.setdefault('members', {})
+    member = room['members'].get(email) or {
+        'email': email,
+        'display_name': ident['display_name'] or email,
+        'is_admin': ident['is_admin'],
+        'joined_at': now_iso,
+    }
+    member['display_name'] = ident['display_name'] or member.get('display_name') or email
+    member['is_admin'] = bool(ident['is_admin'])
+    member['last_seen'] = now_iso
+    room['members'][email] = member
+
+
+def _epessto_can_manage_members(room):
+    ident = _get_epessto_user_identity()
+    return bool(ident['is_admin']) or ident['email'] == str(room.get('created_by', '') or '').strip().lower()
+
+
+def _get_active_epessto_room_id():
+    room_id = str(session.get(_EPESSTO_ROOM_SESSION_KEY, '') or '').strip()
+    return room_id
+
+
+def _delete_epessto_room_storage(room_id):
+    room_root = os.path.join(_get_epessto_upload_root_dir(), 'rooms', room_id)
+    if os.path.isdir(room_root):
+        shutil.rmtree(room_root, ignore_errors=True)
+
+
+def _cleanup_epessto_stale_rooms(store):
+    rooms = store.get('rooms', {})
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=_EPESSTO_ROOM_IDLE_DELETE_HOURS)
+    removed = []
+    for room_id, room in list(rooms.items()):
+        updated_at = _parse_utc_iso(room.get('updated_at'))
+        if not updated_at:
+            updated_at = _parse_utc_iso(room.get('created_at'))
+        if not updated_at or updated_at < cutoff:
+            removed.append(room_id)
+    for room_id in removed:
+        rooms.pop(room_id, None)
+        _delete_epessto_room_storage(room_id)
+    return bool(removed)
+
+
+def _generate_epessto_room_id(existing_ids):
+    alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    for _ in range(50):
+        room_id = ''.join(secrets.choice(alphabet) for _ in range(6))
+        if room_id not in existing_ids:
+            return room_id
+    raise RuntimeError('Unable to generate unique room id')
 
 
 def _collect_epessto_all_files(sessions):
@@ -238,7 +468,7 @@ def _serialize_from_filenames(filenames, sessions_data=None):
     """Build targets/summary dict from a list of plain filenames (no FileStorage)."""
     today = datetime.now().date()
     targets = {}
-    sessions_data = sessions_data or _load_epessto_sessions()
+    sessions_data = sessions_data or {'target_state': {}}
     target_state = sessions_data.get('target_state', {})
 
     for filename in filenames:
@@ -298,7 +528,6 @@ def _serialize_from_filenames(filenames, sessions_data=None):
         for key in stale_keys:
             target_state.pop(key, None)
         sessions_data['target_state'] = target_state
-        _save_epessto_sessions(sessions_data)
 
     return {
         'summary': {
@@ -312,10 +541,9 @@ def _serialize_from_filenames(filenames, sessions_data=None):
     }
 
 
-def _serialize_epessto_upload(files):
+def _serialize_epessto_upload(files, room_id, room_data):
     """Save uploaded FileStorage objects to disk, record batch in sessions.json."""
-    upload_dir = _get_epessto_upload_dir()
-    sessions = _load_epessto_sessions()
+    upload_dir = _get_epessto_upload_dir(room_id)
     batch_id = uuid.uuid4().hex
     batch_files = []
 
@@ -326,24 +554,66 @@ def _serialize_epessto_upload(files):
         safe_name = secure_filename(filename)
         if not safe_name:
             continue
-        file_storage.save(os.path.join(upload_dir, safe_name))
+        save_path = os.path.join(upload_dir, safe_name)
+        file_storage.save(save_path)
         batch_files.append(safe_name)
 
     if batch_files:
-        sessions['batches'].append({
+        room_data['batches'].append({
             'batch_id': batch_id,
-            'uploaded_at': datetime.utcnow().isoformat(),
+            'uploaded_at': _utc_now_iso(),
             'files': batch_files
         })
-        _save_epessto_sessions(sessions)
+        _touch_epessto_room(room_data, _get_epessto_actor())
 
-    all_files = _collect_epessto_all_files(sessions)
+    all_files = _collect_epessto_all_files(room_data)
 
-    return _serialize_from_filenames(all_files, sessions)
+    return _serialize_from_filenames(all_files, room_data)
 
 # ===============================================================================
 # PRIVATE AREA
 # ===============================================================================
+
+@private_area_bp.route('/api/admin/private_area/page_perms', methods=['GET'])
+def api_get_private_page_perms():
+    if not is_admin_user():
+        return jsonify({'error': 'Forbidden'}), 403
+    perms = {p: _get_page_extra_groups(p) for p in _PRIVATE_PAGES}
+    return jsonify({'success': True, 'perms': perms, 'pages': _PRIVATE_PAGES, 'labels': _PRIVATE_PAGE_LABELS})
+
+
+@private_area_bp.route('/api/admin/private_area/page_perms', methods=['POST'])
+def api_add_private_page_perm():
+    if not is_admin_user():
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    page = str(data.get('page', '')).strip()
+    group_name = str(data.get('group_name', '')).strip()
+    if page not in _PRIVATE_PAGES or not group_name:
+        return jsonify({'error': 'Invalid page or group'}), 400
+    current = get_page_groups(page)
+    if group_name not in current:
+        current.append(group_name)
+    if set_page_groups(page, current):
+        return jsonify({'success': True})
+    return jsonify({'error': 'Failed to save'}), 500
+
+
+@private_area_bp.route('/api/admin/private_area/page_perms', methods=['DELETE'])
+def api_remove_private_page_perm():
+    if not is_admin_user():
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    page = str(data.get('page', '')).strip()
+    group_name = str(data.get('group_name', '')).strip()
+    if page not in _PRIVATE_PAGES or not group_name:
+        return jsonify({'error': 'Invalid page or group'}), 400
+    current = [g for g in get_page_groups(page) if g != group_name]
+    if set_page_groups(page, current):
+        return jsonify({'success': True})
+    return jsonify({'error': 'Failed to save'}), 500
+
+
 @private_area_bp.route('/daily_trigger')
 def daily_trigger():
     if 'user' not in session:
@@ -352,15 +622,12 @@ def daily_trigger():
     
     user_email = session['user']['email']
     
-    is_great_lab = session['user'].get('is_great_lab_member', False)
-    is_admin = session['user'].get('is_admin', False)
-    
-    if not (is_great_lab or is_admin):
-        flash('Access denied. GREAT Lab members only.', 'error')
+    if not can_access_page('daily_trigger'):
+        flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
     
     all_groups = []
-    if is_admin:
+    if session['user'].get('is_admin', False):
         groups_dict = get_groups()
         all_groups = list(groups_dict.keys())
     
@@ -372,11 +639,8 @@ def greatlab_info():
         flash('Please log in to access this page.', 'warning')
         return redirect(url_for('basic.login'))
 
-    is_great_lab = session['user'].get('is_great_lab_member', False)
-    is_admin = session['user'].get('is_admin', False)
-
-    if not (is_great_lab or is_admin):
-        flash('Access denied. GREAT Lab members only.', 'error')
+    if not can_access_page('greatlab_info'):
+        flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
 
     return render_template('greatlab_info.html', current_path='/greatlab_info')
@@ -388,11 +652,260 @@ def epessto_support_page():
         flash('Please log in to access this page.', 'warning')
         return redirect(url_for('basic.login'))
 
-    if not can_view_private_area():
-        flash('Access denied. GREAT Lab members only.', 'error')
+    if not can_access_page('epessto_support'):
+        flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
 
     return render_template('epessto_support.html', current_path='/epessto_support')
+
+
+def _get_epessto_room_or_response(require_room=True):
+    store = _load_epessto_store()
+    if _cleanup_epessto_stale_rooms(store):
+        _save_epessto_store(store)
+
+    room_id = _get_active_epessto_room_id()
+    room = store.get('rooms', {}).get(room_id) if room_id else None
+
+    if room:
+        ident = _get_epessto_user_identity()
+        kicked = set(str(x).strip().lower() for x in room.get('kicked_users', []))
+        if ident['email'] and ident['email'] in kicked:
+            session.pop(_EPESSTO_ROOM_SESSION_KEY, None)
+            return None, None, None, (jsonify({'error': 'You were removed from this room'}), 403)
+
+        _upsert_epessto_room_member(room)
+        _touch_epessto_room(room, _get_epessto_actor())
+        _save_epessto_store(store)
+
+    if require_room and (not room_id or not room):
+        return None, None, None, (jsonify({'error': 'No room joined'}), 401)
+    return store, room_id, room, None
+
+
+@private_area_bp.route('/api/epessto_support/rooms/live', methods=['GET'])
+def api_epessto_support_live_rooms():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    store, _, _, _ = _get_epessto_room_or_response(require_room=False)
+    now = datetime.now(timezone.utc)
+    live_cutoff = now - timedelta(hours=_EPESSTO_ROOM_LIVE_HOURS)
+    live = []
+    for room_id, room in store.get('rooms', {}).items():
+        updated_at = _parse_utc_iso(room.get('updated_at')) or _parse_utc_iso(room.get('created_at'))
+        if updated_at and updated_at >= live_cutoff:
+            live.append({
+                'room_id': room_id,
+                'room_name': room.get('room_name') or room_id,
+                'updated_by': room.get('updated_by') or room.get('created_by') or 'unknown',
+                'updated_at': room.get('updated_at')
+            })
+    live.sort(key=lambda x: x.get('updated_at') or '', reverse=True)
+    return jsonify({'success': True, 'rooms': live})
+
+
+@private_area_bp.route('/api/epessto_support/rooms/create', methods=['POST'])
+def api_epessto_support_create_room():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    room_name = str(payload.get('room_name', '') or '').strip()
+    password = str(payload.get('password', '') or '')
+    if not room_name:
+        return jsonify({'error': 'room_name is required'}), 400
+    if not password:
+        return jsonify({'error': 'password is required'}), 400
+
+    store, _, _, _ = _get_epessto_room_or_response(require_room=False)
+    room_id = _generate_epessto_room_id(set(store.get('rooms', {}).keys()))
+    actor = _get_epessto_actor()
+    store.setdefault('rooms', {})[room_id] = _new_epessto_room(password, room_name, actor)
+    _save_epessto_store(store)
+    session[_EPESSTO_ROOM_SESSION_KEY] = room_id
+    return jsonify({
+        'success': True,
+        'room_id': room_id,
+        'room_name': room_name,
+        'invite_token': store['rooms'][room_id].get('invite_token') or ''
+    })
+
+
+@private_area_bp.route('/api/epessto_support/rooms/join', methods=['POST'])
+def api_epessto_support_join_room():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    room_id = str(payload.get('room_id', '') or '').strip().upper()
+    password = str(payload.get('password', '') or '')
+    if not room_id or not password:
+        return jsonify({'error': 'room_id and password are required'}), 400
+
+    store, _, _, _ = _get_epessto_room_or_response(require_room=False)
+    room = store.get('rooms', {}).get(room_id)
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+
+    pwd_hash = str(room.get('password_hash', '') or '')
+    valid = False
+    if pwd_hash:
+        try:
+            valid = check_password_hash(pwd_hash, password)
+        except Exception:
+            valid = False
+    else:
+        valid = False
+    if not valid:
+        return jsonify({'error': 'Invalid password'}), 401
+
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
+    session[_EPESSTO_ROOM_SESSION_KEY] = room_id
+    return jsonify({
+        'success': True,
+        'room_id': room_id,
+        'room_name': room.get('room_name') or room_id,
+        'invite_token': room.get('invite_token') or ''
+    })
+
+
+@private_area_bp.route('/api/epessto_support/room/current', methods=['GET'])
+def api_epessto_support_current_room():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+    store, room_id, room, _ = _get_epessto_room_or_response(require_room=False)
+    if not room_id or not room:
+        return jsonify({'success': True, 'joined': False, 'room_id': None})
+    return jsonify({
+        'success': True,
+        'joined': True,
+        'room_id': room_id,
+        'room_name': room.get('room_name') or room_id,
+        'invite_token': room.get('invite_token') or '',
+        'updated_at': room.get('updated_at')
+    })
+
+
+@private_area_bp.route('/api/epessto_support/room/leave', methods=['POST'])
+def api_epessto_support_leave_room():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+    session.pop(_EPESSTO_ROOM_SESSION_KEY, None)
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/epessto_support/room/members', methods=['GET'])
+def api_epessto_support_room_members():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    _, _, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
+    ident = _get_epessto_user_identity()
+    can_manage = _epessto_can_manage_members(room)
+    owner_email = str(room.get('created_by', '') or '').strip().lower()
+
+    members = []
+    for email, member in (room.get('members') or {}).items():
+        if not isinstance(member, dict):
+            continue
+        mem_email = str(email or member.get('email') or '').strip().lower()
+        if not mem_email:
+            continue
+        is_owner = mem_email == owner_email
+        is_admin = bool(member.get('is_admin', False))
+        is_self = mem_email == ident['email']
+        members.append({
+            'email': mem_email,
+            'display_name': str(member.get('display_name') or mem_email),
+            'is_owner': is_owner,
+            'is_admin': is_admin,
+            'joined_at': member.get('joined_at'),
+            'last_seen': member.get('last_seen'),
+            'is_self': is_self,
+            'can_kick': bool(can_manage and (not is_owner) and (not is_self)),
+        })
+
+    members.sort(key=lambda x: (not x['is_owner'], not x['is_admin'], x['display_name'].lower()))
+    return jsonify({'success': True, 'can_manage': can_manage, 'members': members})
+
+
+@private_area_bp.route('/api/epessto_support/room/kick', methods=['POST'])
+def api_epessto_support_room_kick():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    store, _, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
+    if not _epessto_can_manage_members(room):
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    member_email = str(payload.get('member_email') or '').strip().lower()
+    if not member_email:
+        return jsonify({'error': 'member_email is required'}), 400
+
+    owner_email = str(room.get('created_by', '') or '').strip().lower()
+    self_email = _get_epessto_user_identity().get('email', '')
+    if member_email == owner_email:
+        return jsonify({'error': 'Cannot kick room creator'}), 400
+    if member_email == self_email:
+        return jsonify({'error': 'Cannot kick yourself'}), 400
+
+    room.setdefault('members', {})
+    room['members'].pop(member_email, None)
+    room.setdefault('kicked_users', [])
+    if member_email not in room['kicked_users']:
+        room['kicked_users'].append(member_email)
+
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/epessto_support/rooms/join_by_invite', methods=['POST'])
+def api_epessto_support_join_by_invite():
+    if not can_view_private_area():
+        return jsonify({'error': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    invite_token = str(payload.get('invite_token') or '').strip()
+    if not invite_token:
+        return jsonify({'error': 'invite_token is required'}), 400
+
+    store, _, _, _ = _get_epessto_room_or_response(require_room=False)
+    matched = None
+    for room_id, room in store.get('rooms', {}).items():
+        if str(room.get('invite_token') or '') == invite_token:
+            matched = (room_id, room)
+            break
+
+    if not matched:
+        return jsonify({'error': 'Invalid invite link'}), 404
+
+    room_id, room = matched
+    ident = _get_epessto_user_identity()
+    kicked = set(str(x).strip().lower() for x in room.get('kicked_users', []))
+    if ident['email'] in kicked:
+        room['kicked_users'] = [x for x in room.get('kicked_users', []) if str(x).strip().lower() != ident['email']]
+
+    _upsert_epessto_room_member(room)
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
+
+    session[_EPESSTO_ROOM_SESSION_KEY] = room_id
+    return jsonify({
+        'success': True,
+        'room_id': room_id,
+        'room_name': room.get('room_name') or room_id,
+        'invite_token': room.get('invite_token') or ''
+    })
 
 
 @private_area_bp.route('/api/epessto_support/upload', methods=['POST'])
@@ -400,13 +913,18 @@ def api_epessto_support_upload():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
+    store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
     files = request.files.getlist('files')
     if not files:
         return jsonify({'error': 'No files uploaded'}), 400
 
-    payload = _serialize_epessto_upload(files)
-    sessions = _load_epessto_sessions()
-    payload['batches'] = sessions.get('batches', [])
+    payload = _serialize_epessto_upload(files, room_id, room)
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
+    payload['batches'] = room.get('batches', [])
     return jsonify({'success': True, **payload})
 
 
@@ -415,14 +933,17 @@ def api_epessto_support_session():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
-    sessions = _load_epessto_sessions()
-    all_files = _collect_epessto_all_files(sessions)
+    _, _, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
+    all_files = _collect_epessto_all_files(room)
 
     if not all_files:
         return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
 
-    payload = _serialize_from_filenames(all_files, sessions)
-    payload['batches'] = sessions.get('batches', [])
+    payload = _serialize_from_filenames(all_files, room)
+    payload['batches'] = room.get('batches', [])
     return jsonify({'success': True, **payload})
 
 
@@ -431,13 +952,16 @@ def api_epessto_support_target_state():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
+    store, _, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
     payload = request.get_json(silent=True) or {}
     target_key = str(payload.get('target_key', '')).strip().lower()
     if not target_key:
         return jsonify({'error': 'target_key is required'}), 400
 
-    sessions = _load_epessto_sessions()
-    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+    current = _normalize_epessto_target_state(room.get('target_state', {}).get(target_key, {}))
 
     updates = payload.get('updates') or {}
     if not isinstance(updates, dict):
@@ -466,16 +990,17 @@ def api_epessto_support_target_state():
     elif current.get('discuss'):
         current['completed'] = False
 
-    sessions.setdefault('target_state', {})
-    sessions['target_state'][target_key] = current
-    _save_epessto_sessions(sessions)
+    room.setdefault('target_state', {})
+    room['target_state'][target_key] = current
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
 
-    all_files = _collect_epessto_all_files(sessions)
+    all_files = _collect_epessto_all_files(room)
     if not all_files:
         return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
 
-    data = _serialize_from_filenames(all_files, sessions)
-    data['batches'] = sessions.get('batches', [])
+    data = _serialize_from_filenames(all_files, room)
+    data['batches'] = room.get('batches', [])
     return jsonify({'success': True, **data})
 
 
@@ -484,18 +1009,21 @@ def api_epessto_support_remove_target():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
+    store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
     payload = request.get_json(silent=True) or {}
     target_key = str(payload.get('target_key', '')).strip().lower()
     if not target_key:
         return jsonify({'error': 'target_key is required'}), 400
 
-    sessions = _load_epessto_sessions()
-    upload_dir = _get_epessto_upload_dir()
+    upload_dir = _get_epessto_upload_dir(room_id)
     removed = 0
 
     # Remove target files from batches and disk.
     kept_batches = []
-    for batch in sessions.get('batches', []):
+    for batch in room.get('batches', []):
         keep_files = []
         for fn in batch.get('files', []):
             safe = os.path.basename(str(fn or ''))
@@ -515,30 +1043,31 @@ def api_epessto_support_remove_target():
             batch['files'] = keep_files
             kept_batches.append(batch)
 
-    sessions['batches'] = kept_batches
+    room['batches'] = kept_batches
 
     # Remove target-linked images and target state.
-    state = sessions.get('target_state', {}).get(target_key, {})
+    state = room.get('target_state', {}).get(target_key, {})
     images = state.get('images', []) if isinstance(state, dict) else []
     for image in images:
         filename = str(image.get('filename', '')).strip()
         if not filename:
             continue
-        fp = os.path.join(_get_epessto_image_dir(), os.path.basename(filename))
+        fp = os.path.join(_get_epessto_image_dir(room_id), os.path.basename(filename))
         if os.path.isfile(fp):
             os.remove(fp)
             removed += 1
 
-    sessions.setdefault('target_state', {})
-    sessions['target_state'].pop(target_key, None)
-    _save_epessto_sessions(sessions)
+    room.setdefault('target_state', {})
+    room['target_state'].pop(target_key, None)
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
 
-    all_files = _collect_epessto_all_files(sessions)
+    all_files = _collect_epessto_all_files(room)
     if not all_files:
         return jsonify({'success': True, 'removed': removed, 'summary': None, 'targets': [], 'batches': []})
 
-    data = _serialize_from_filenames(all_files, sessions)
-    data['batches'] = sessions.get('batches', [])
+    data = _serialize_from_filenames(all_files, room)
+    data['batches'] = room.get('batches', [])
     return jsonify({'success': True, 'removed': removed, **data})
 
 
@@ -546,6 +1075,10 @@ def api_epessto_support_remove_target():
 def api_epessto_support_target_image_upload():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
+
+    store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
 
     target_key = str(request.form.get('target_key', '')).strip().lower()
     image_file = request.files.get('image')
@@ -558,29 +1091,29 @@ def api_epessto_support_target_image_upload():
     if ext not in {'.png', '.jpg', '.jpeg', '.webp', '.gif'}:
         return jsonify({'error': 'unsupported image type'}), 400
 
-    sessions = _load_epessto_sessions()
-    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+    current = _normalize_epessto_target_state(room.get('target_state', {}).get(target_key, {}))
     images = current.get('images', [])
     if len(images) >= 4:
         return jsonify({'error': 'max 4 images per target'}), 400
 
-    image_dir = _get_epessto_image_dir()
+    image_dir = _get_epessto_image_dir(room_id)
     filename = secure_filename(f"{target_key}_{uuid.uuid4().hex}{ext}")
     save_path = os.path.join(image_dir, filename)
     image_file.save(save_path)
 
     images.append({'filename': filename})
     current['images'] = images
-    sessions.setdefault('target_state', {})
-    sessions['target_state'][target_key] = current
-    _save_epessto_sessions(sessions)
+    room.setdefault('target_state', {})
+    room['target_state'][target_key] = current
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
 
-    all_files = _collect_epessto_all_files(sessions)
+    all_files = _collect_epessto_all_files(room)
     if not all_files:
         return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
 
-    data = _serialize_from_filenames(all_files, sessions)
-    data['batches'] = sessions.get('batches', [])
+    data = _serialize_from_filenames(all_files, room)
+    data['batches'] = room.get('batches', [])
     return jsonify({'success': True, **data})
 
 
@@ -589,32 +1122,36 @@ def api_epessto_support_target_image_delete():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
+    store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
     payload = request.get_json(silent=True) or {}
     target_key = str(payload.get('target_key', '')).strip().lower()
     filename = str(payload.get('filename', '')).strip()
     if not target_key or not filename:
         return jsonify({'error': 'target_key and filename are required'}), 400
 
-    sessions = _load_epessto_sessions()
-    current = _normalize_epessto_target_state(sessions.get('target_state', {}).get(target_key, {}))
+    current = _normalize_epessto_target_state(room.get('target_state', {}).get(target_key, {}))
     images = current.get('images', [])
     current['images'] = [img for img in images if img.get('filename') != filename]
 
-    sessions.setdefault('target_state', {})
-    sessions['target_state'][target_key] = current
-    _save_epessto_sessions(sessions)
+    room.setdefault('target_state', {})
+    room['target_state'][target_key] = current
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
 
     safe_name = os.path.basename(filename)
-    image_path = os.path.join(_get_epessto_image_dir(), safe_name)
+    image_path = os.path.join(_get_epessto_image_dir(room_id), safe_name)
     if os.path.isfile(image_path):
         os.remove(image_path)
 
-    all_files = _collect_epessto_all_files(sessions)
+    all_files = _collect_epessto_all_files(room)
     if not all_files:
         return jsonify({'success': True, 'summary': None, 'targets': [], 'batches': []})
 
-    data = _serialize_from_filenames(all_files, sessions)
-    data['batches'] = sessions.get('batches', [])
+    data = _serialize_from_filenames(all_files, room)
+    data['batches'] = room.get('batches', [])
     return jsonify({'success': True, **data})
 
 
@@ -623,8 +1160,12 @@ def api_epessto_support_image_file(filename):
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
+    _, room_id, _, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
     safe_name = os.path.basename(filename)
-    image_path = os.path.join(_get_epessto_image_dir(), safe_name)
+    image_path = os.path.join(_get_epessto_image_dir(room_id), safe_name)
     if not os.path.isfile(image_path):
         return jsonify({'error': 'Not found'}), 404
     return send_file(image_path)
@@ -635,10 +1176,13 @@ def api_epessto_support_clear():
     if not can_view_private_area():
         return jsonify({'error': 'Forbidden'}), 403
 
-    sessions = _load_epessto_sessions()
-    upload_dir = _get_epessto_upload_dir()
+    store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
+    if err:
+        return err
+
+    upload_dir = _get_epessto_upload_dir(room_id)
     removed = 0
-    for batch in sessions.get('batches', []):
+    for batch in room.get('batches', []):
         for fn in batch.get('files', []):
             # Prevent path traversal
             safe = os.path.basename(fn)
@@ -647,18 +1191,21 @@ def api_epessto_support_clear():
                 os.remove(fp)
                 removed += 1
 
-    for _, state in sessions.get('target_state', {}).items():
+    for _, state in room.get('target_state', {}).items():
         images = state.get('images', []) if isinstance(state, dict) else []
         for image in images:
             filename = str(image.get('filename', '')).strip()
             if not filename:
                 continue
-            fp = os.path.join(_get_epessto_image_dir(), os.path.basename(filename))
+            fp = os.path.join(_get_epessto_image_dir(room_id), os.path.basename(filename))
             if os.path.isfile(fp):
                 os.remove(fp)
                 removed += 1
 
-    _save_epessto_sessions({'batches': [], 'target_state': {}})
+    room['batches'] = []
+    room['target_state'] = {}
+    _touch_epessto_room(room, _get_epessto_actor())
+    _save_epessto_store(store)
     return jsonify({'success': True, 'removed': removed})
 
 @private_area_bp.route('/documents')
@@ -667,12 +1214,11 @@ def documents_list():
         flash('Please log in to access documents.', 'warning')
         return redirect(url_for('basic.login'))
     
-    is_great_lab = session['user'].get('is_great_lab_member', False)
-    is_admin = session['user'].get('is_admin', False)
-    
-    if not (is_great_lab or is_admin):
-        flash('Access denied. GREAT Lab members only.', 'error')
+    if not can_access_page('documents'):
+        flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
+    
+    is_admin = session['user'].get('is_admin', False)
         
     ensure_tutorials_dir()
     md_files = []
@@ -713,12 +1259,11 @@ def document_view(filename):
         flash('Please log in to access documents.', 'warning')
         return redirect(url_for('basic.login'))
         
-    is_great_lab = session['user'].get('is_great_lab_member', False)
-    is_admin = session['user'].get('is_admin', False)
-    
-    if not (is_great_lab or is_admin):
-        flash('Access denied. GREAT Lab members only.', 'error')
+    if not can_access_page('documents'):
+        flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
+    
+    is_admin = session['user'].get('is_admin', False)
         
     safe_filename = sanitize_document_filename(filename)
     if not safe_filename:

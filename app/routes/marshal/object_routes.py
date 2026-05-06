@@ -19,7 +19,8 @@ from modules.database import get_db_connection, get_tns_db_connection, OBJECT_CO
 from modules.database.auth import (
     get_all_groups, get_object_permissions, grant_object_permission,
     revoke_object_permission, check_object_access,
-    get_source_permissions, set_source_permissions_batch, filter_by_source_permissions
+    get_source_permissions, set_source_permissions_batch, filter_by_source_permissions,
+    get_default_source_permissions
 )
 from modules.database.catalog import get_ned_cache, upsert_ned_cache
 from modules.data_processing import DataVisualization
@@ -380,7 +381,7 @@ def api_get_object_tns_format(year, letters):
         })
         
     except Exception as e:
-        marshal_bp.logger.error(f"Error fetching TNS object {year}{letters}: {str(e)}")
+        logger.error(f"Error fetching TNS object {year}{letters}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -426,7 +427,7 @@ def api_update_object_status_tns_format(year, letters):
             return jsonify({'error': 'Failed to update status'}), 500
         
     except Exception as e:
-        marshal_bp.logger.error(f"Error updating status for {year}{letters}: {str(e)}")
+        logger.error(f"Error updating status for {year}{letters}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -702,7 +703,7 @@ def api_update_object_status_generic(object_name):
             return jsonify({'error': 'Failed to update status in database'}), 500
         
     except Exception as e:
-        marshal_bp.logger.error(f"Error updating status for {object_name}: {str(e)}")
+        logger.error(f"Error updating status for {object_name}: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -729,6 +730,7 @@ def get_object_photometry(year, letters):
     object_name = f"{year}{letters}"
     user = session.get('user', {})
     user_email = user.get('email') if user else None
+    user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
     try:
@@ -737,7 +739,7 @@ def get_object_photometry(year, letters):
         photometry = sanitize_for_json(photometry)
         photometry = filter_by_source_permissions(
             object_name, 'phot', photometry,
-            user_email=user_email, is_admin=is_admin
+            user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
@@ -1015,6 +1017,7 @@ def get_object_photometry_plot(year, letters):
 
     user = session.get('user')
     user_email = user.get('email', '') if user else None
+    user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
     if user and not check_object_access(object_name, user_email):
@@ -1036,7 +1039,7 @@ def get_object_photometry_plot(year, letters):
         # Filter by source permissions — public points visible to everyone
         photometry_data = filter_by_source_permissions(
             object_name, 'phot', photometry_data,
-            user_email=user_email, is_admin=is_admin
+            user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
 
         if not photometry_data:
@@ -1108,6 +1111,7 @@ def get_object_photometry_generic(object_name):
     object_name = urllib.parse.unquote(object_name)
     user = session.get('user', {})
     user_email = user.get('email') if user else None
+    user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
@@ -1115,7 +1119,7 @@ def get_object_photometry_generic(object_name):
         photometry = sanitize_for_json(photometry)
         photometry = filter_by_source_permissions(
             object_name, 'phot', photometry,
-            user_email=user_email, is_admin=is_admin
+            user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
@@ -1220,6 +1224,7 @@ def get_object_photometry_plot_generic(object_name):
 
     user = session.get('user')
     user_email = user.get('email', '') if user else None
+    user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
     try:
@@ -1240,7 +1245,7 @@ def get_object_photometry_plot_generic(object_name):
         # Filter by source permissions — public points visible to everyone
         photometry_data = filter_by_source_permissions(
             object_name, 'phot', photometry_data,
-            user_email=user_email, is_admin=is_admin
+            user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
 
         if not photometry_data:
@@ -1355,7 +1360,7 @@ def get_object_comments(object_name):
             'count': len(comments)
         })
     except Exception as e:
-        marshal_bp.logger.error(f"Error getting comments for {object_name}: {str(e)}")
+        logger.error(f"Error getting comments for {object_name}: {str(e)}")
         return jsonify({'error': 'Failed to get comments'}), 500
 
 @objects_bp.route('/api/object/<object_name>/comments', methods=['POST'])
@@ -1391,7 +1396,7 @@ def add_object_comment(object_name):
         })
         
     except Exception as e:
-        marshal_bp.logger.error(f"Error adding comment for {object_name}: {str(e)}")
+        logger.error(f"Error adding comment for {object_name}: {str(e)}")
         return jsonify({'error': 'Failed to add comment'}), 500
 
 @objects_bp.route('/api/comments/<int:comment_id>', methods=['DELETE'])
@@ -1413,7 +1418,7 @@ def delete_comment(comment_id):
         else:
             return jsonify({'error': 'Failed to delete comment'}), 500
     except Exception as e:
-        marshal_bp.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
+        logger.error(f"Error deleting comment {comment_id}: {str(e)}")
         return jsonify({'error': 'Failed to delete comment'}), 500
 
 @objects_bp.route('/api/comments/<int:comment_id>', methods=['PUT', 'PATCH'])
@@ -1448,7 +1453,7 @@ def update_comment(comment_id):
         else:
             return jsonify({'error': 'Failed to update comment'}), 500
     except Exception as e:
-        marshal_bp.logger.error(f"Error updating comment {comment_id}: {str(e)}")
+        logger.error(f"Error updating comment {comment_id}: {str(e)}")
         return jsonify({'error': 'Failed to update comment'}), 500
 
 # ===============================================================================
@@ -1456,7 +1461,7 @@ def update_comment(comment_id):
 # ===============================================================================
 @objects_bp.route('/api/object/<object_name>/sources')
 def get_object_sources(object_name):
-    """Return unique phot/spec sources (telescopes) for an object."""
+    """Return unique phot/spec sources for an object."""
     if 'user' not in session or not session['user'].get('is_admin'):
         return jsonify({'error': 'Access denied'}), 403
     object_name = urllib.parse.unquote(object_name)
@@ -1464,7 +1469,7 @@ def get_object_sources(object_name):
         conn = get_tns_db_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT DISTINCT COALESCE(p.telescope, 'Unknown') as src "
+            "SELECT DISTINCT COALESCE(p.source, 'Unknown') as src "
             "FROM transient.photometry p "
             "JOIN transient.objects o ON p.obj_id = o.obj_id "
             "WHERE o.name ILIKE %s ORDER BY src",
@@ -1491,8 +1496,32 @@ def get_source_permissions_api(object_name):
         return jsonify({'error': 'Access denied'}), 403
     object_name = urllib.parse.unquote(object_name)
     try:
-        perms = get_source_permissions(object_name)
-        return jsonify({'success': True, 'permissions': perms})
+        raw_perms = get_source_permissions(object_name, 'phot') + get_source_permissions(object_name, 'spec')
+        # Convert per-object allowed_groups INT[] → group names
+        raw_defaults = get_default_source_permissions()
+        groups_dict = get_all_groups()
+        id_to_name = {info.get('group_id'): name for name, info in groups_dict.items()}
+
+        perms = []
+        for p in raw_perms:
+            ag = p.get('allowed_groups')  # None = login override, [] = blocked, [ids] = specific groups
+            if ag is None:
+                ag_names = None
+            else:
+                ag_names = [id_to_name[gid] for gid in ag if gid in id_to_name]
+            perms.append({**p, 'allowed_groups': ag_names})
+
+        defaults = []
+        for p in raw_defaults:
+            perm = p.get('permission', 'login')
+            group_names = [id_to_name[gid] for gid in (p.get('groups') or []) if gid in id_to_name]
+            if perm == 'public':
+                defaults.append({'source': p['source'], 'permission': 'public', 'allowed_groups': None})
+            elif perm == 'login':
+                defaults.append({'source': p['source'], 'permission': 'login', 'allowed_groups': None})
+            else:  # 'groups'
+                defaults.append({'source': p['source'], 'permission': 'groups', 'allowed_groups': group_names})
+        return jsonify({'success': True, 'permissions': perms, 'defaults': defaults})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1506,7 +1535,28 @@ def set_source_permissions_batch_api(object_name):
     if not data or 'permissions' not in data:
         return jsonify({'error': 'Missing permissions list'}), 400
     try:
-        set_source_permissions_batch(object_name, data['permissions'])
+        # Build name→id map for group name conversion
+        groups_dict = get_all_groups()
+        name_to_id = {name: info.get('group_id') for name, info in groups_dict.items()}
+
+        perms_by_type = {}
+        for p in data['permissions']:
+            dt = p.get('data_type', 'phot')
+            # Convert allowed_groups names → INT[] IDs
+            # None means public/login (no group restriction)
+            # [] means blocked (empty list kept as [])
+            # [names...] means specific groups
+            ag_names_raw = p.get('allowed_groups')
+            if ag_names_raw is None:
+                ag_ids_final = None
+            else:
+                ag_ids_final = [name_to_id[n] for n in ag_names_raw if n in name_to_id]
+            perms_by_type.setdefault(dt, []).append({
+                **p,
+                'allowed_groups': ag_ids_final
+            })
+        for dt, perms in perms_by_type.items():
+            set_source_permissions_batch(object_name, dt, perms)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1518,12 +1568,14 @@ def set_source_permissions_batch_api(object_name):
 def get_groups_api():
     if 'user' not in session:
         return jsonify({'error': 'Access denied'}), 403
-    
+
     try:
-        groups = get_all_groups()
+        groups_dict = get_all_groups()
+        # get_all_groups returns dict[name→info]; JS expects a list
+        groups_list = [{'name': name, **info} for name, info in groups_dict.items()]
         return jsonify({
             'success': True,
-            'groups': groups
+            'groups': groups_list
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1588,10 +1640,6 @@ def remove_object_permission_api(object_name):
             return jsonify({'error': 'Permission not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-        
-    except Exception as e:
-        marshal_bp.logger.error(f"Error deleting comment {comment_id}: {str(e)}")
-        return jsonify({'error': 'Failed to delete comment'}), 500
 
 
 # ============================================================

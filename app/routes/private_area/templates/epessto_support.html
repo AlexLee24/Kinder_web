@@ -16,50 +16,100 @@
         <div class="container">
             <div class="banner-content">
                 <div class="private-section ep-shell">
-                    <div class="ep-topbar">
-                        <div class="ep-top-left">
-                            <span class="ep-page-title">ePessto++ Support Team</span>
-                            <button id="epUploadBtn" type="button" class="ep-btn">upload .asci</button>
-                            <input id="epFileInput" type="file" accept=".asci" multiple hidden>
-                            <button id="epPreviewBtn" type="button" class="ep-btn" disabled>preview</button>
-                            <button id="epRefreshBtn" type="button" class="ep-btn">refresh</button>
-                            <button id="epClearBtn" type="button" class="ep-btn ep-btn-clear" disabled>clear all</button>
-                        </div>
-                        <div class="ep-top-right">
-                            <div class="ep-top-right-row">
-                                <div id="epCounter" class="ep-counter">0 / 0</div>
-                                <label id="epAutoRefreshLabel" class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
-                                    <input id="epAutoRefreshToggle" type="checkbox">
-                                    <span class="ep-toggle-slider"></span>
-                                    <span class="ep-toggle-text">Auto Refresh</span>
-                                    <span id="epRefreshDot" class="ep-refresh-dot"></span>
+                    <section id="epHomePanel" class="ep-home-panel">
+                        <div class="ep-home-title">eP++ Support Home</div>
+                        <div class="ep-home-grid">
+                            <div class="ep-home-card">
+                                <h3>Create Room</h3>
+                                <label class="ep-home-field">
+                                    <span>Room Name</span>
+                                    <input id="epCreateRoomName" type="text" class="ep-home-input" placeholder="e.g. eP Team A" maxlength="80">
                                 </label>
+                                <label class="ep-home-field">
+                                    <span>Password</span>
+                                    <input id="epCreateRoomPassword" type="password" class="ep-home-input" placeholder="Set room password" autocomplete="new-password" spellcheck="false">
+                                </label>
+                                <button id="epCreateRoomBtn" type="button" class="ep-btn">Create Room</button>
+                                <div id="epCreatedRoomInfo" class="ep-home-hint"></div>
                             </div>
-                            <div id="epTypeSummary" class="ep-type-summary">Type: -</div>
+                            <div class="ep-home-card">
+                                <h3>Live Rooms (updated within 1h)</h3>
+                                <div id="epLiveRooms" class="ep-live-list">
+                                    <div class="ep-empty">No live rooms</div>
+                                </div>
+                                <div class="ep-home-join-row">
+                                    <input id="epJoinRoomId" type="text" class="ep-home-input" placeholder="Room ID">
+                                    <button id="epJoinRoomBtn" type="button" class="ep-btn">Join</button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    </section>
 
-                    <div id="epStatus" class="ep-status">Please upload .asci files.</div>
+                    <section id="epWorkspacePanel" style="display:none;">
+                        <div class="ep-topbar">
+                            <div class="ep-top-left">
+                                <span class="ep-page-title">ePessto++ Support Team</span>
+                                <span id="epRoomBadge" class="ep-room-badge">Room: -</span>
+                                <button id="epRoomMembersBtn" type="button" class="ep-btn">members</button>
+                                <button id="epCopyInviteBtn" type="button" class="ep-btn">copy invite link</button>
+                                <button id="epLeaveRoomBtn" type="button" class="ep-btn ep-btn-clear">leave room</button>
+                                <button id="epUploadBtn" type="button" class="ep-btn">upload .asci</button>
+                                <input id="epFileInput" type="file" accept=".asci" multiple hidden>
+                                <button id="epPreviewBtn" type="button" class="ep-btn" disabled>preview</button>
+                                <button id="epRefreshBtn" type="button" class="ep-btn">refresh</button>
+                                <button id="epClearBtn" type="button" class="ep-btn ep-btn-clear" disabled>clear all</button>
+                            </div>
+                            <div class="ep-top-right">
+                                <div class="ep-top-right-row">
+                                    <div id="epCounter" class="ep-counter">0 / 0</div>
+                                    <label id="epAutoRefreshLabel" class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
+                                        <input id="epAutoRefreshToggle" type="checkbox">
+                                        <span class="ep-toggle-slider"></span>
+                                        <span class="ep-toggle-text">Auto Refresh</span>
+                                        <span id="epRefreshDot" class="ep-refresh-dot"></span>
+                                    </label>
+                                </div>
+                                <div id="epTypeSummary" class="ep-type-summary">Type: -</div>
+                            </div>
+                        </div>
 
-                    <div class="ep-main-grid">
-                        <aside class="ep-target-list-panel">
-                            <h3>Target List</h3>
-                            <div id="epTargetList" class="ep-target-list">
-                                <div class="ep-empty">No targets</div>
-                            </div>
-                        </aside>
+                        <div id="epStatus" class="ep-status">Please upload .asci files.</div>
 
-                        <section class="ep-detail-panel">
-                            <div id="epTargetWidget" class="ep-target-widget">
-                                <div class="ep-empty">target widget</div>
-                            </div>
-                            <div class="ep-nav-buttons">
-                                <button id="epPrevBtn" type="button" class="ep-btn" disabled>prev</button>
-                                <button id="epNextBtn" type="button" class="ep-btn" disabled>next</button>
-                                <button id="epRemoveTargetBtn" type="button" class="ep-btn ep-btn-clear" disabled>remove target</button>
-                            </div>
-                        </section>
-                    </div>
+                        <div class="ep-main-grid">
+                            <aside class="ep-target-list-panel">
+                                <h3>Target List</h3>
+                                <div id="epTargetList" class="ep-target-list">
+                                    <div class="ep-empty">No targets</div>
+                                </div>
+                            </aside>
+
+                            <section class="ep-detail-panel">
+                                <div id="epTargetWidget" class="ep-target-widget">
+                                    <div class="ep-empty">target widget</div>
+                                </div>
+                                <div class="ep-nav-buttons">
+                                    <button id="epPrevBtn" type="button" class="ep-btn" disabled>prev</button>
+                                    <button id="epNextBtn" type="button" class="ep-btn" disabled>next</button>
+                                    <button id="epRemoveTargetBtn" type="button" class="ep-btn ep-btn-clear" disabled>remove target</button>
+                                </div>
+                            </section>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="epRoomMembersModal" style="display:none;">
+        <div class="modal-content" style="max-width:760px; width:90vw;">
+            <div class="modal-header">
+                <h3>Room Members</h3>
+                <span class="close" onclick="epCloseRoomMembers()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="epRoomMembersHint" class="ep-home-hint"></div>
+                <div id="epRoomMembersList" class="ep-live-list">
+                    <div class="ep-empty">No members</div>
                 </div>
             </div>
         </div>

@@ -22,9 +22,29 @@
 .side-panel-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: 1fr;
     gap: var(--spacing-xl);
     height: 100%;
+}
+
+/* Split widget: two scrollable sections stacked vertically */
+.side-widget.split-widget {
+    gap: 0;
+    overflow: hidden;
+}
+
+.split-widget-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.split-widget-section + .split-widget-section {
+    border-top: 1px solid var(--glass-border);
+    padding-top: var(--spacing-md);
+    margin-top: var(--spacing-md);
 }
 
 .side-widget {
@@ -199,14 +219,14 @@
 /* Secondary Statistics */
 .secondary-stats {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-3xl);
 }
 
 .small-stat-card {
-    flex: 1 1 calc(33% - var(--spacing-md));
-    min-width: 120px;
+    flex: 1 1 0;
+    min-width: 0;
     backdrop-filter: blur(15px) saturate(180%);
     -webkit-backdrop-filter: blur(15px) saturate(180%);
     background: var(--glass-bg);
@@ -219,6 +239,10 @@
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     transition: var(--transition-fast);
     color: white;
+}
+
+.small-stat-card.snoozed {
+    flex: 1.4 1 0;
 }
 
 .small-stat-card:hover {
@@ -239,6 +263,7 @@
 }
 
 .small-stat-card.snoozed {
+    flex: 1.4 1 0;
     border-left: 4px solid var(--snoozed-color);
 }
 

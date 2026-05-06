@@ -4098,6 +4098,7 @@ let _permCurrentTab = 'phot';
 let _permData = { phot: {}, spec: {} };   // { sourceName: { allowed_groups: [...] | null, is_public: bool } }
 let _permSources = { phot: [], spec: [] };
 let _permAllGroups = [];
+let _permDefaults = {};  // source_name -> { permission: 'public'|'login', groups: [] }
 
 document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('.perm-panel')) {
@@ -4121,11 +4122,34 @@ async function loadPermissionsPanel() {
         _permAllGroups = (grpData.groups || []).map(g => typeof g === 'object' ? (g.name || g.id) : g);
 
         _permData = { phot: {}, spec: {} };
+        // Build defaults map
+        _permDefaults = {};
+        for (const d of (permDataResp.defaults || [])) {
+            _permDefaults[d.source] = d;
+        }
+        // Per-object overrides (highest priority)
         for (const p of (permDataResp.permissions || [])) {
             _permData[p.data_type][p.source_name] = {
                 allowed_groups: p.allowed_groups,
                 is_public: !!p.is_public
             };
+        }
+        // Pre-populate from defaults for sources not yet overridden,
+        // so renderPermTable shows correct state on first load.
+        for (const type of ['phot', 'spec']) {
+            for (const src of _permSources[type]) {
+                if (_permData[type][src]) continue; // already has per-object override
+                const d = _permDefaults[src];
+                if (d) {
+                    const isPublic = d.permission === 'public';
+                    // 'groups' permission: allowed_groups is already a list of group names
+                    const ag = (d.permission === 'groups') ? (d.allowed_groups || []) : null;
+                    _permData[type][src] = { allowed_groups: ag, is_public: isPublic };
+                } else {
+                    const isTNS = src.toUpperCase().includes('TNS');
+                    _permData[type][src] = { allowed_groups: null, is_public: isTNS };
+                }
+            }
         }
         renderPermTable();
     } catch(e) {
@@ -4154,19 +4178,23 @@ function renderPermTable() {
 
     const rows = sources.map(src => {
         const isTNS = src.toUpperCase().includes('TNS');
-        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: false };
-        const vis = perm.allowed_groups === null ? 'all' :
-                    (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0 ? 'blocked' : 'groups');
+        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: isTNS };
+        const vis = perm.is_public ? 'public' :
+                    (perm.allowed_groups === null ? 'all' :
+                    (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0 ? 'blocked' : 'groups'));
         const chipsHtml = (perm.allowed_groups || []).map(g =>
             `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${_permCurrentTab}','${escapeHtml(src)}','${escapeHtml(g)}')">&times;</span></span>`
         ).join('');
+        const groupAddSelect = `<select class="perm-add-group-select" onchange="addPermGroup('${_permCurrentTab}','${escapeHtml(src)}',this)">
+            <option value="">+ group</option>
+            ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
+        </select>`;
 
         if (isTNS) {
             return `<tr class="perm-row perm-row-locked">
                 <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
-                <td class="perm-vis-cell" colspan="2" style="color:rgba(255,255,255,0.35); font-size:0.8rem; font-style:italic;">
-                    Always public (TNS source)
-                </td>
+                <td class="perm-vis-cell" style="color:rgba(255,255,255,0.35); font-size:0.8rem; font-style:italic;">Always public (TNS source)</td>
+                <td class="perm-groups-cell"></td>
             </tr>`;
         }
 
@@ -4174,46 +4202,44 @@ function renderPermTable() {
             <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
             <td class="perm-vis-cell">
                 <select class="perm-vis-select" onchange="onPermVisChange('${_permCurrentTab}','${escapeHtml(src)}',this.value)">
-                    <option value="all" ${vis === 'all' ? 'selected' : ''}>All logged-in users</option>
-                    <option value="groups" ${vis === 'groups' ? 'selected' : ''}>Selected groups only</option>
+                    <option value="public"  ${vis === 'public'  ? 'selected' : ''}>Public (unlogged visitors)</option>
+                    <option value="all"     ${vis === 'all'     ? 'selected' : ''}>All logged-in users</option>
+                    <option value="groups"  ${vis === 'groups'  ? 'selected' : ''}>Selected groups only</option>
                     <option value="blocked" ${vis === 'blocked' ? 'selected' : ''}>Blocked (admin only)</option>
                 </select>
-                <div class="perm-groups-area" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${vis === 'groups' ? 'flex' : 'none'};">
-                    <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${chipsHtml}</div>
-                    <select class="perm-add-group-select" onchange="addPermGroup('${_permCurrentTab}','${escapeHtml(src)}',this)">
-                        <option value="">+ Add group</option>
-                        ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
-                    </select>
-                </div>
             </td>
-            <td class="perm-public-cell">
-                <label class="perm-public-label" title="Visible to unlogged visitors">
-                    <input type="checkbox" class="perm-public-check" ${perm.is_public ? 'checked' : ''}
-                        onchange="onPermPublicChange('${_permCurrentTab}','${escapeHtml(src)}',this.checked)">
-                    <span>Public</span>
-                </label>
+            <td class="perm-groups-cell" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${vis === 'groups' ? 'table-cell' : 'none'}">
+                <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
+                    <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${chipsHtml}</div>
+                    ${groupAddSelect}
+                </div>
             </td>
         </tr>`;
     }).join('');
 
     container.innerHTML = `<table class="perm-source-table">
-        <thead><tr><th>Source</th><th>Visibility</th><th>Public</th></tr></thead>
+        <thead><tr><th>Source</th><th>Visibility</th><th>Allowed Groups</th></tr></thead>
         <tbody>${rows}</tbody>
     </table>`;
 }
 
 function onPermVisChange(type, source, value) {
     if (!_permData[type][source]) _permData[type][source] = { allowed_groups: null, is_public: false };
-    if (value === 'all') _permData[type][source].allowed_groups = null;
-    else if (value === 'blocked') _permData[type][source].allowed_groups = [];
-    else _permData[type][source].allowed_groups = _permData[type][source].allowed_groups?.length ? _permData[type][source].allowed_groups : [];
-    const area = document.getElementById(`perm-groups-${type}-${source}`);
-    if (area) area.style.display = value === 'groups' ? 'flex' : 'none';
-}
-
-function onPermPublicChange(type, source, checked) {
-    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: null, is_public: false };
-    _permData[type][source].is_public = checked;
+    if (value === 'public') {
+        _permData[type][source].is_public = true;
+        _permData[type][source].allowed_groups = null;
+    } else if (value === 'all') {
+        _permData[type][source].is_public = false;
+        _permData[type][source].allowed_groups = null;
+    } else if (value === 'blocked') {
+        _permData[type][source].is_public = false;
+        _permData[type][source].allowed_groups = [];
+    } else {
+        _permData[type][source].is_public = false;
+        _permData[type][source].allowed_groups = _permData[type][source].allowed_groups?.length ? _permData[type][source].allowed_groups : [];
+    }
+    const cell = document.getElementById(`perm-groups-${type}-${source}`);
+    if (cell) cell.style.display = value === 'groups' ? 'table-cell' : 'none';
 }
 
 function addPermGroup(type, source, select) {

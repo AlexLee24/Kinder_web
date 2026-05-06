@@ -601,6 +601,29 @@ def clean_accepted_invitations() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Page permissions  (stored in auth.system_settings as JSON)
+# ---------------------------------------------------------------------------
+
+def get_page_groups(page_key: str) -> list[str]:
+    """Return extra group names allowed to access a private-area page."""
+    import json
+    raw = get_setting(f'page_perm:{page_key}')
+    if not raw:
+        return []
+    try:
+        v = json.loads(raw)
+        return v if isinstance(v, list) else []
+    except Exception:
+        return []
+
+
+def set_page_groups(page_key: str, group_names: list[str]) -> bool:
+    """Persist the list of extra group names for a private-area page."""
+    import json
+    return set_setting(f'page_perm:{page_key}', json.dumps(group_names))
+
+
+# ---------------------------------------------------------------------------
 # System settings  (auth.system_settings)
 # ---------------------------------------------------------------------------
 
@@ -808,18 +831,21 @@ def set_source_permissions_batch(object_name: str, data_type: str,
 
 
 def set_default_source_permissions_batch(permissions: list[dict]) -> bool:
-    """Each item: {source, permission, groups[]}"""
+    """Replace all default_permissions rows with the given list.
+    Each item: {source, permission, groups[int]}"""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
+            # Delete all existing rows first, then re-insert from the batch.
+            # This ensures removed entries are also deleted from the DB.
+            cur.execute("DELETE FROM transient.default_permissions")
             for p in permissions:
+                if not p.get('source'):
+                    continue
                 cur.execute(
                     "INSERT INTO transient.default_permissions "
                     "(source, permissions_set, groups) "
-                    "VALUES (%s,%s,%s) "
-                    "ON CONFLICT (source) DO UPDATE "
-                    "SET permissions_set=EXCLUDED.permissions_set, "
-                    "    groups=EXCLUDED.groups",
+                    "VALUES (%s,%s,%s)",
                     (p['source'], p.get('permission', 'public'),
                      p.get('groups', []))
                 )
@@ -830,12 +856,24 @@ def set_default_source_permissions_batch(permissions: list[dict]) -> bool:
         return False
 
 
+def _system_default_for_source(source_name: str) -> str:
+    """System-wide fallback permission when no default_permissions row exists.
+    Sources whose name contains 'TNS' (case-insensitive) are public;
+    everything else requires login."""
+    if 'tns' in source_name.lower():
+        return 'public'
+    return 'login'
+
+
 def filter_by_source_permissions(object_name: str, data_type: str,
                                   source_list: list,
                                   user_email: str | None = None,
-                                  user_groups: list[int] | None = None,
+                                  user_groups: list | None = None,
                                   is_admin: bool = False):
-    """Return subset of sources or source-backed records the user is allowed to see."""
+    """Return subset of sources/records the user is allowed to see.
+    user_groups: list of group NAME strings from session.
+    object_source_permissions.allowed_groups: INT[] (group IDs) in DB.
+    NULL = login-mode override, [] = blocked, [ids] = specific groups."""
     if not source_list:
         return []
     if is_admin:
@@ -851,32 +889,73 @@ def filter_by_source_permissions(object_name: str, data_type: str,
     else:
         source_names = list(source_list)
 
+    user_group_set = set(user_groups or [])
+
     try:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            # Per-object overrides (allowed_groups is INT[] of group IDs)
             cur.execute(
                 "SELECT source_name, is_public, allowed_groups "
                 "FROM transient.object_source_permissions "
                 "WHERE object_name = %s AND data_type = %s AND source_name = ANY(%s)",
                 (object_name, data_type, source_names)
             )
-            rows = {r['source_name']: r for r in cur.fetchall()}
+            overrides = {r['source_name']: r for r in cur.fetchall()}
+
+            # System-wide defaults (groups stored as INT[] of group IDs)
+            cur.execute(
+                "SELECT source, permissions_set, groups "
+                "FROM transient.default_permissions "
+                "WHERE source = ANY(%s)",
+                (source_names,)
+            )
+            defaults = {r['source']: r for r in cur.fetchall()}
+
+            # Build id->name map for defaults comparison
+            cur.execute("SELECT name, group_id FROM auth.groups")
+            id_to_name = {r['group_id']: r['name'] for r in cur.fetchall()}
 
         allowed_sources = set()
         for src in source_names:
-            if src not in rows:
-                # No override → default public
-                allowed_sources.add(src)
-                continue
-            r = rows[src]
-            if r['is_public']:
-                allowed_sources.add(src)
-                continue
-            if user_email is None:
-                continue
-            ag = r.get('allowed_groups') or []
-            if not ag or (user_groups and any(g in ag for g in user_groups)):
-                allowed_sources.add(src)
+            if src in overrides:
+                r = overrides[src]
+                if r['is_public']:
+                    allowed_sources.add(src)
+                elif user_email is None:
+                    pass  # not logged in, not public
+                else:
+                    ag = r.get('allowed_groups')  # None = login mode, [] = blocked, [ids...] = specific groups
+                    if ag is None:
+                        allowed_sources.add(src)  # login mode override: any logged-in user
+                    elif len(ag) == 0:
+                        pass  # blocked — empty array means nobody except admin
+                    else:
+                        ag_names = {id_to_name[gid] for gid in ag if gid in id_to_name}
+                        if user_group_set & ag_names:
+                            allowed_sources.add(src)
+                    # no intersection → denied
+            elif src in defaults:
+                d = defaults[src]
+                perm = d.get('permissions_set', 'login')
+                if perm == 'public':
+                    allowed_sources.add(src)
+                elif perm == 'login':
+                    if user_email is not None:
+                        allowed_sources.add(src)
+                else:  # 'groups'
+                    if user_email is not None:
+                        group_ids = d.get('groups') or []
+                        default_group_names = {id_to_name[gid] for gid in group_ids if gid in id_to_name}
+                        if not default_group_names or (user_group_set & default_group_names):
+                            allowed_sources.add(src)
+            else:
+                # System default: TNS sources are public, everything else needs login
+                perm = _system_default_for_source(src)
+                if perm == 'public':
+                    allowed_sources.add(src)
+                elif user_email is not None:
+                    allowed_sources.add(src)
 
         if is_record_list:
             return [

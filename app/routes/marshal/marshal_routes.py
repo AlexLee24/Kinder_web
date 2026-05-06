@@ -33,43 +33,42 @@ def marshal():
         classified_count = stats['classified_count']
         tns_stats = stats['tns_stats']
         
-        # Format last sync data properly
+        # Fetch last sync from transient.download_logs
         last_sync_data = None
-        if tns_stats.get('recent_downloads') and len(tns_stats['recent_downloads']) > 0:
-            recent_download = tns_stats['recent_downloads'][0]
-            if recent_download.get('download_time'):
-                try:
-                    raw_time = recent_download['download_time']
-                    # Format: "Apr05 20:45:06+08"
-                    from datetime import datetime, timezone, timedelta
-                    if hasattr(raw_time, 'strftime'):
-                        dt = raw_time
-                    else:
-                        dt_str = str(raw_time)
-                        for fmt in ('%Y-%m-%d %H:%M:%S.%f%z', '%Y-%m-%d %H:%M:%S%z',
-                                    '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
-                            try:
-                                dt = datetime.strptime(dt_str[:26], fmt)
-                                break
-                            except ValueError:
-                                continue
-                        else:
-                            dt = None
-                    if dt:
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        tz8 = dt.astimezone(timezone(timedelta(hours=8)))
-                        formatted_time = tz8.strftime('%b%d %H:%M:%S+08')
-                    else:
-                        formatted_time = str(raw_time)[:19]
-                    last_sync_data = {
-                        'time': formatted_time,
-                        'status': 'completed',
-                        'imported': recent_download.get('imported_count', 0),
-                        'updated': recent_download.get('updated_count', 0)
-                    }
-                except:
-                    pass
+        try:
+            from datetime import datetime, timezone, timedelta
+            from modules.database import get_db_connection
+            with get_db_connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT download_date, obj_import, obj_update, status, error_message "
+                    "FROM transient.download_logs "
+                    "ORDER BY download_date DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+            if row:
+                dt = row[0]
+                if dt is not None:
+                    if hasattr(dt, 'tzinfo') and dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    tz8 = dt.astimezone(timezone(timedelta(hours=8)))
+                    formatted_time = tz8.strftime('%b%d %H:%M+08')
+                else:
+                    formatted_time = 'N/A'
+                raw_status = (row[3] or '').lower()
+                if 'error' in raw_status:
+                    sync_status = 'failed'
+                else:
+                    sync_status = 'completed'
+                last_sync_data = {
+                    'time': formatted_time,
+                    'status': sync_status,
+                    'imported': row[1] or 0,
+                    'updated': row[2] or 0,
+                    'errors': row[4] if sync_status == 'failed' else None,
+                }
+        except Exception as e:
+            pass
         
         # Smart loading strategy for large datasets
         initial_objects = []

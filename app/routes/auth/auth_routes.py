@@ -74,6 +74,7 @@ def update_user_session_groups(user_email):
         user_groups = user_data.get('groups', []) if user_data else []
 
         session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or session['user'].get('is_admin', False)
+        session['user']['groups'] = user_groups
         session.modified = True
 
 @auth_bp.route('/auth/google')
@@ -126,6 +127,7 @@ def google_callback():
                 'is_admin': is_admin,
                 'role': role,
                 'is_great_lab_member': is_great_lab_member,
+                'groups': user_groups,
                 'api_key': existing_user_data.get('api_key') if existing_user_data else None
             }
             

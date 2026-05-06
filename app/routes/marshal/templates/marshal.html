@@ -296,19 +296,26 @@
         <!-- Right Side Panel -->
         <div class="dashboard-side-panel">
             <div class="side-panel-grid">
-                <!-- Top Viewed -->
-                <div class="side-widget">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h3 style="margin-bottom: 0;">Top Viewed</h3>
-                        <select id="topViewedMode" onchange="loadTopViewed()" style="padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--glass-bg); color: var(--text-primary);">
-                            <option value="all">All Time</option>
-                            <option value="30days">30 Days</option>
-                        </select>
+                <!-- Top Viewed + Pinned Objects (merged, split vertically) -->
+                <div class="side-widget split-widget">
+                    <div class="split-widget-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="margin-bottom: 0;">Top Viewed</h3>
+                            <select id="topViewedMode" onchange="loadTopViewed()" style="padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--glass-bg); color: var(--text-primary);">
+                                <option value="all">All Time</option>
+                                <option value="30days">30 Days</option>
+                            </select>
+                        </div>
+                        <ul class="widget-list" id="topViewedList">
+                            <li class="empty-message">Loading...</li>
+                        </ul>
                     </div>
-                    <ul class="widget-list" id="topViewedList">
-                        <!-- Items populated by JS/Backend -->
-                        <li class="empty-message">Loading...</li>
-                    </ul>
+                    <div class="split-widget-section">
+                        <h3>Pinned Objects</h3>
+                        <ul class="widget-list" id="pinnedObjectsList">
+                            <li class="empty-message">Loading...</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <!-- Recent Comments -->
@@ -316,25 +323,12 @@
                 <div class="side-widget">
                     <h3>Recent Comments</h3>
                     <ul class="widget-list" id="recentCommentsList">
-                        <!-- Items populated by JS/Backend -->
                         <li class="empty-message">Loading...</li>
                     </ul>
                 </div>
                 {% endif %}
 
-                <!-- Pinned Objects -->
-                <div class="side-widget">
-                    <h3>Pinned Objects</h3>
-                    <ul class="widget-list" id="pinnedObjectsList">
-                        <li class="empty-message">Loading...</li>
-                    </ul>
-                </div>
 
-                <!-- Empty Block 2 -->
-                <div class="side-widget empty-widget">
-                    <h3>Reserved Block 2</h3>
-                    <div class="widget-placeholder">Coming soon</div>
-                </div>
             </div>
         </div>
     </div>
