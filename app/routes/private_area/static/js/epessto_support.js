@@ -155,19 +155,46 @@ function drawSummaryPages(doc) {
 
     let y = 38;
     const rowH = 7;
+    const fitCellText = (rawText, innerW, baseSize, minSize) => {
+        const maxW = Math.max(innerW, 2);
+        const original = String(rawText || '-');
+        let text = original;
+        let size = baseSize;
+
+        doc.setFontSize(size);
+        while (size > minSize && doc.getTextWidth(text) > maxW) {
+            size = Math.max(minSize, size - 0.2);
+            doc.setFontSize(size);
+        }
+
+        if (doc.getTextWidth(text) > maxW) {
+            while (text.length > 1 && doc.getTextWidth(text + '...') > maxW) {
+                text = text.slice(0, -1);
+            }
+            text = text.length < original.length ? (text + '...') : text;
+        }
+
+        return { text, size };
+    };
+
+    const drawCellText = (text, x, y0, w, baseSize, minSize) => {
+        const innerW = w - 2.4;
+        const fitted = fitCellText(text, innerW, baseSize, minSize);
+        doc.setFontSize(fitted.size);
+        doc.text(fitted.text, x + 1.2, y0 + 4.7);
+    };
+
     const drawHeader = () => {
-        doc.setFontSize(8);
         let x = left;
         cols.forEach((c) => {
             doc.rect(x, y, c.w, rowH);
-            doc.text(c.label, x + 1.2, y + 4.8, { maxWidth: c.w - 2 });
+            drawCellText(c.label, x, y, c.w, 8, 6.2);
             x += c.w;
         });
         y += rowH;
     };
 
     drawHeader();
-    doc.setFontSize(7.5);
     epState.targets.forEach((t) => {
         if (y + rowH > pageH - 10) {
             doc.addPage();
@@ -188,7 +215,7 @@ function drawSummaryPages(doc) {
         cols.forEach((c) => {
             doc.rect(x, y, c.w, rowH);
             const txt = String(values[c.key] || '-');
-            doc.text(txt, x + 1.2, y + 4.7, { maxWidth: c.w - 2 });
+            drawCellText(txt, x, y, c.w, 7.5, 5.2);
             x += c.w;
         });
         y += rowH;
