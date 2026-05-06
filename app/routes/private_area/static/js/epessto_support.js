@@ -630,7 +630,7 @@ function buildWidgetHTML(target, info) {
                     <select class="ep-field-input" data-target-key="${escapeHtml(target.target_key)}" data-field="phase">${phaseOptionsHtml}</select>
                 </label>
                 <label class="ep-field">
-                    <span>App</span>
+                    <span>Classification Method</span>
                     <input class="ep-field-input" type="text" value="${escapeHtml(userFields.app)}" data-target-key="${escapeHtml(target.target_key)}" data-field="app">
                 </label>
             </div>
