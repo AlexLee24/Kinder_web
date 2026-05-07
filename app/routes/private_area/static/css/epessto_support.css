@@ -529,6 +529,18 @@
     margin-top: -1px;
 }
 
+.ep-reporting-group-input {
+    display: inline-block;
+    width: 220px;
+    font-size: 0.79rem;
+    padding: 2px 6px;
+    vertical-align: middle;
+    margin-left: 2px;
+    background: rgba(255, 200, 60, 0.08);
+    border: 1px solid rgba(255, 200, 60, 0.4);
+    color: #ffd980;
+}
+
 .ep-widget-meta {
     display: grid;
     grid-template-columns: 1fr 1fr;

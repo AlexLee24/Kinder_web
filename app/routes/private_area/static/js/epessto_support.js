@@ -395,6 +395,7 @@ function normalizeUserFields(fields) {
         type: src.type || '',
         phase: src.phase || '',
         app: src.app || '',
+        reporting_group: src.reporting_group || '',
         images,
         completed: Boolean(src.completed),
         discuss: Boolean(src.discuss)
@@ -632,7 +633,10 @@ function buildWidgetHTML(target, info) {
         : `<div class="ep-paste-box is-full">Image limit reached (4/4)</div>`;
 
     const lcIds = getLcPanelIds(target.target_key);
-    const reportingGroup = info && info.reportingGroup ? String(info.reportingGroup).trim() : '';
+    const reportingGroupEditable = Boolean(info && info.reportingGroupEditable);
+    // prefer user-saved override, then API-resolved value
+    const reportingGroup = (reportingGroupEditable ? userFields.reporting_group : '') ||
+        (info && info.reportingGroup ? String(info.reportingGroup).trim() : '');
 
     const fileRows = target.files.map((file) => {
         const observedOn = file.observed_on || '-';
@@ -657,7 +661,9 @@ function buildWidgetHTML(target, info) {
                     <button type="button" class="ep-btn" onclick="epOpenNEDExplorer()" title="NED cone search near target">NED</button>
                 </div>
             </div>
-            <div class="ep-widget-reporting-group">Reporting Group: ${escapeHtml(reportingGroup || '-')}</div>
+            ${reportingGroupEditable
+                ? `<div class="ep-widget-reporting-group">Reporting Group: <input class="ep-field-input ep-reporting-group-input" type="text" placeholder="not found — enter manually" value="${escapeHtml(reportingGroup)}" data-target-key="${escapeHtml(target.target_key)}" data-field="reporting_group"></div>`
+                : `<div class="ep-widget-reporting-group">Reporting Group: ${escapeHtml(reportingGroup || '-')}</div>`}
             <div class="ep-widget-meta-grid">
                 <label class="ep-field">
                     <span>Host</span>
@@ -719,15 +725,18 @@ async function renderTargetWidget(target) {
         return;
     }
     const currentKey = target.target_key;
-    epTargetWidget.innerHTML = buildWidgetHTML(target, { reportingGroup: '' });
+    epTargetWidget.innerHTML = buildWidgetHTML(target, { reportingGroup: '', reportingGroupEditable: false });
 
-    const reportingGroup = await resolveReportingGroup(target.target_name);
+    const apiGroup = await resolveReportingGroup(target.target_name);
     const latest = epState.targets[epState.selectedIndex];
     if (!latest || latest.target_key !== currentKey) {
         return;
     }
 
-    epTargetWidget.innerHTML = buildWidgetHTML(target, { reportingGroup });
+    // If API found a group, show it as readonly; otherwise let the user edit
+    const reportingGroupEditable = !apiGroup;
+    const reportingGroup = apiGroup;
+    epTargetWidget.innerHTML = buildWidgetHTML(target, { reportingGroup, reportingGroupEditable });
 
     const ids = getLcPanelIds(target.target_key);
     const extToggle = document.getElementById(ids.extToggle);
@@ -1163,11 +1172,19 @@ function bindWidgetInteractions() {
         const field = event.target.dataset.field;
         const targetKey = event.target.dataset.targetKey;
         if (!field || !targetKey) return;
-        if (!['host', 'z_from_host', 'z_estimate', 'type', 'phase', 'app'].includes(field)) return;
+        if (!['host', 'z_from_host', 'z_estimate', 'type', 'phase', 'app', 'reporting_group'].includes(field)) return;
 
         try {
             const value = event.target.value || '';
             await updateTargetState(targetKey, { [field]: value }, { refreshWidget: false });
+            // sync local cache so resolveReportingGroup reflects the user's override
+            if (field === 'reporting_group') {
+                const t = epState.targets.find(x => x.target_key === targetKey);
+                if (t) {
+                    const cacheKey = String(t.target_name || '').trim().toLowerCase();
+                    epState.reportingGroupByTarget[cacheKey] = value;
+                }
+            }
             setStatus('Saved ' + field + ' for ' + targetKey + '.');
         } catch (err) {
             setStatus('Save failed: ' + err.message);
