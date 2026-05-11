@@ -134,23 +134,15 @@ def download_TNS_api(year, month, day, debug=False):
 
 
 def download_TNS_api_with_fallback(year, month, day, debug=False):
-    """Try date-based file first, then fall back to recent hourly snapshots."""
+    """Try date-based file only; log reason if unavailable (no hourly fallback)."""
     if download_TNS_api(year, month, day, debug=debug):
         return True
 
-    now_utc = datetime.now(timezone.utc)
-    # Try current hour and two previous hours to avoid full import skip on missing daily file.
-    fallback_hours = [
-        f"{(now_utc.hour - i) % 24:02d}" for i in range(3)
-    ]
     logger.warning(
-        "Date-based TNS file %04d-%02d-%02d not available; trying hourly fallbacks: %s",
-        year, month, day, ', '.join(fallback_hours)
+        "Date-based TNS file %04d-%02d-%02d not available; "
+        "TNS has not yet published this daily file (it may be too recent or delayed).",
+        year, month, day,
     )
-    for hr in fallback_hours:
-        if download_TNS_api_hr(hr, debug=debug):
-            logger.info("Fallback hourly download succeeded with hour=%s", hr)
-            return True
     return False
 
 

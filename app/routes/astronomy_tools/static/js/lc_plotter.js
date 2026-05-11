@@ -858,6 +858,8 @@ function buildLayout() {
             type: logX ? 'log' : 'linear',
             autorange: invertX ? 'reversed' : true,
             ...(xTickInt && !logX ? { dtick: xTickInt, tickmode: 'linear' } : {}),
+            showline: true,
+            mirror: topX === 'none' ? true : false,
             ...axisStyle,
         },
         yaxis: {
@@ -865,6 +867,8 @@ function buildLayout() {
             autorange: invertY ? 'reversed' : true,
             type: logY ? 'log' : 'linear',
             ...(yTickInt && !logY ? { dtick: yTickInt, tickmode: 'linear' } : {}),
+            showline: true,
+            mirror: rightY === 'none' ? true : false,
             ...axisStyle,
         },
         legend: _getLegendPos(tickSize),
