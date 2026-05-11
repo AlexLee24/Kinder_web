@@ -733,6 +733,35 @@ body {
 
 .lcp-back-link a:hover { color: var(--lcp-muted); }
 
+/* ── Floating Render FAB ─────────────────────────────────────────── */
+.lcp-fab-render {
+    position: fixed;
+    bottom: 28px;
+    left: calc(var(--lcp-sidebar-w) - 22px);
+    z-index: 800;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(197,160,89,0.95), rgba(218,183,118,0.95));
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #111;
+    box-shadow: 0 3px 14px rgba(197,160,89,0.35);
+    transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+}
+.lcp-fab-render:hover {
+    transform: scale(1.1);
+    box-shadow: 0 5px 20px rgba(197,160,89,0.5);
+}
+.lcp-fab-render:active { transform: scale(0.96); }
+@media (max-width: 860px) {
+    .lcp-fab-render { left: auto; right: 18px; bottom: 18px; }
+}
+
 /* ── Toast ───────────────────────────────────────────────────────── */
 .lcp-toast {
     position: fixed; bottom: 22px; right: 22px; z-index: 9999;
