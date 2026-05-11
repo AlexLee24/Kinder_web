@@ -62,6 +62,14 @@
                         <label style="margin-left:4px">Y Tick</label><input type="number" id="yTickInterval" placeholder="auto" min="0.1" step="any" style="width:58px">
                     </div>
                     <div class="lcp-static-opts-row">
+                        <label>X min</label><input type="number" id="xRangeMin" placeholder="auto" step="any" style="width:58px">
+                        <label style="margin-left:4px">X max</label><input type="number" id="xRangeMax" placeholder="auto" step="any" style="width:58px">
+                    </div>
+                    <div class="lcp-static-opts-row">
+                        <label>Y min</label><input type="number" id="yRangeMin" placeholder="auto" step="any" style="width:58px">
+                        <label style="margin-left:4px">Y max</label><input type="number" id="yRangeMax" placeholder="auto" step="any" style="width:58px">
+                    </div>
+                    <div class="lcp-static-opts-row">
                         <label>Live BG</label>
                         <select id="liveBgColor" onchange="if(window.plotRendered) renderPlot()" class="lcp-static-opts-sel">
                             <option value="dark" selected>Dark</option>

@@ -815,6 +815,12 @@ function buildLayout() {
     const tickSize  = parseInt(document.getElementById('staticTickSize').value)  || 11;
     const xTickInt  = parseFloat(document.getElementById('xTickInterval').value) || null;
     const yTickInt  = parseFloat(document.getElementById('yTickInterval')?.value) || null;
+    const xRangeMin = document.getElementById('xRangeMin')?.value !== '' ? parseFloat(document.getElementById('xRangeMin').value) : null;
+    const xRangeMax = document.getElementById('xRangeMax')?.value !== '' ? parseFloat(document.getElementById('xRangeMax').value) : null;
+    const yRangeMin = document.getElementById('yRangeMin')?.value !== '' ? parseFloat(document.getElementById('yRangeMin').value) : null;
+    const yRangeMax = document.getElementById('yRangeMax')?.value !== '' ? parseFloat(document.getElementById('yRangeMax').value) : null;
+    const hasXRange = xRangeMin !== null || xRangeMax !== null;
+    const hasYRange = yRangeMin !== null || yRangeMax !== null;
 
     const xColName = document.getElementById('xCol').value;
     const yColName = document.getElementById('yCol').value;
@@ -856,7 +862,13 @@ function buildLayout() {
         xaxis: {
             title: { text: xLabel, standoff: 10 },
             type: logX ? 'log' : 'linear',
-            autorange: invertX ? 'reversed' : true,
+            ...(hasXRange ? (() => {
+                const lo = xRangeMin ?? null, hi = xRangeMax ?? null;
+                const r = (lo !== null && hi !== null)
+                    ? (invertX ? [hi, lo] : [lo, hi])
+                    : (lo !== null ? [lo, lo + 1] : [hi - 1, hi]);
+                return { autorange: false, range: r };
+            })() : { autorange: invertX ? 'reversed' : true }),
             ...(xTickInt && !logX ? { dtick: xTickInt, tickmode: 'linear' } : {}),
             showline: true,
             mirror: topX === 'none' ? true : false,
@@ -864,8 +876,14 @@ function buildLayout() {
         },
         yaxis: {
             title: { text: yLabel, standoff: 10 },
-            autorange: invertY ? 'reversed' : true,
             type: logY ? 'log' : 'linear',
+            ...(hasYRange ? (() => {
+                const lo = yRangeMin ?? null, hi = yRangeMax ?? null;
+                const r = (lo !== null && hi !== null)
+                    ? (invertY ? [hi, lo] : [lo, hi])
+                    : (lo !== null ? [lo, lo + 1] : [hi - 1, hi]);
+                return { autorange: false, range: r };
+            })() : { autorange: invertY ? 'reversed' : true }),
             ...(yTickInt && !logY ? { dtick: yTickInt, tickmode: 'linear' } : {}),
             showline: true,
             mirror: rightY === 'none' ? true : false,
