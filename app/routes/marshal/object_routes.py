@@ -1082,6 +1082,7 @@ def get_object_spectrum_plot(year, letters):
     spectrum_id = request.args.get('spectrum_id')
     rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
     normalise   = request.args.get('normalise',  'false').lower() in ('1', 'true')
+    stack       = request.args.get('stack',      'false').lower() in ('1', 'true')
     
     try:
         redshift = None
@@ -1104,7 +1105,7 @@ def get_object_spectrum_plot(year, letters):
         else:
             plot_html = DataVisualization.create_spectrum_list_plot_from_db(
                 spectrum_data,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack)
         
         return jsonify({
             'success': True,
@@ -1303,6 +1304,7 @@ def get_object_spectrum_plot_generic(object_name):
     spectrum_id = request.args.get('spectrum_id')
     rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
     normalise   = request.args.get('normalise',  'false').lower() in ('1', 'true')
+    stack       = request.args.get('stack',      'false').lower() in ('1', 'true')
     
     try:
         results = search_tns_objects(search_term=object_name, limit=1)
@@ -1330,7 +1332,7 @@ def get_object_spectrum_plot_generic(object_name):
         else:
             plot_html = DataVisualization.create_spectrum_list_plot_from_db(
                 spectrum_data,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack)
         
         return jsonify({
             'success': True,

@@ -391,12 +391,14 @@ class DataVisualization:
             z = float(redshift)
             wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
         
-        # Apply normalisation
+        # Apply normalisation (robust: 98th-percentile to ignore noise spikes)
         if normalise and intensities:
-            valid = [v for v in intensities if v is not None]
-            max_i = max(abs(v) for v in valid) if valid else 1
-            if max_i > 0:
-                intensities = [v / max_i if v is not None else None for v in intensities]
+            import numpy as np
+            valid = np.array([v for v in intensities if v is not None], dtype=float)
+            norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
+            if norm_scale == 0:
+                norm_scale = np.max(np.abs(valid)) or 1.0
+            intensities = [v / norm_scale if v is not None else None for v in intensities]
         
         # Get spectrum metadata
         telescope = spectrum_points[0].get('telescope', 'Unknown')
@@ -453,7 +455,7 @@ class DataVisualization:
         return plot_div
     
     @staticmethod
-    def create_spectrum_list_plot_from_db(spectrum_data, rest_frame=False, redshift=None, normalise=False):
+    def create_spectrum_list_plot_from_db(spectrum_data, rest_frame=False, redshift=None, normalise=False, stack=False):
         """Create plot showing all available spectra for an object"""
         if not spectrum_data:
             return None
@@ -482,20 +484,27 @@ class DataVisualization:
                 z = float(redshift)
                 wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
             
-            # Normalise each spectrum to [0,1] then offset by index
+            # Normalise each spectrum (robust: 98th-percentile)
             if normalise and intensities:
-                valid = [v for v in intensities if v is not None]
-                max_i = max(abs(v) for v in valid) if valid else 1
-                if max_i > 0:
-                    intensities = [v / max_i if v is not None else None for v in intensities]
+                import numpy as np
+                valid = np.array([v for v in intensities if v is not None], dtype=float)
+                norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
+                if norm_scale == 0:
+                    norm_scale = np.max(np.abs(valid)) or 1.0
+                intensities = [v / norm_scale if v is not None else None for v in intensities]
             else:
-                # Normalize for multi-spectrum comparison (legacy behaviour)
+                # Normalise to peak for multi-spectrum comparison
                 if intensities:
-                    max_intensity = max(intensities) if max(intensities) != 0 else 1
-                    intensities = [v / max_intensity if v is not None else None for v in intensities]
+                    import numpy as np
+                    valid = np.array([v for v in intensities if v is not None], dtype=float)
+                    norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
+                    if norm_scale == 0:
+                        norm_scale = np.max(np.abs(valid)) or 1.0
+                    intensities = [v / norm_scale if v is not None else None for v in intensities]
             
-            # Add constant vertical offset per spectrum for visibility
-            intensities = [v + i * 1.2 if v is not None else None for v in intensities]
+            # Apply vertical offset per spectrum only when stack=True
+            if stack:
+                intensities = [v + i * 1.2 if v is not None else None for v in intensities]
             
             telescope = points[0].get('telescope', 'Unknown')
             phase = points[0].get('phase')

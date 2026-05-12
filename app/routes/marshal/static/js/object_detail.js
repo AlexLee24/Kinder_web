@@ -1496,15 +1496,16 @@ async function savePhotometryChanges() {
 
 // Spectrum plot loading with improved loading states
 function _specQueryParams() {
-    const restFrame = document.getElementById('specRestFrame')?.checked;
-    const normalise  = document.getElementById('specNormalise')?.checked;
+    const restFrame    = document.getElementById('specRestFrame')?.checked;
+    const normalise    = document.getElementById('specNormalise')?.checked;
+    const stackOffset  = document.getElementById('specStackOffset')?.checked;
     if (restFrame && (!objectData || objectData.redshift == null)) {
         showNotification('This object has no redshift — please fill it in before using Rest Frame.', 'warning');
         const cb = document.getElementById('specRestFrame');
         if (cb) cb.checked = false;
-        return { rest_frame: false, normalise: normalise || false };
+        return { rest_frame: false, normalise: normalise || false, stack: stackOffset || false };
     }
-    return { rest_frame: restFrame || false, normalise: normalise || false };
+    return { rest_frame: restFrame || false, normalise: normalise || false, stack: stackOffset || false };
 }
 
 function onSpecToggle() {
@@ -1529,10 +1530,11 @@ function loadSpectrumPlot() {
     if (spectrumContainer) spectrumContainer.innerHTML = '';
     
     // Use generic API endpoint to support both TNS name and generic object name
-    const { rest_frame, normalise } = _specQueryParams();
+    const { rest_frame, normalise, stack } = _specQueryParams();
     const params = new URLSearchParams();
     if (rest_frame) params.set('rest_frame', '1');
     if (normalise)  params.set('normalise', '1');
+    if (stack)      params.set('stack', '1');
     const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectrum/plot${params.toString() ? '?' + params.toString() : ''}`;
     console.log('API URL:', apiUrl);
     
@@ -1625,11 +1627,12 @@ function loadSpecificSpectrum() {
     if (loadingDiv) loadingDiv.style.display = 'flex';
     if (spectrumContainer) spectrumContainer.innerHTML = '';
     
-    const { rest_frame, normalise } = _specQueryParams();
+    const { rest_frame, normalise, stack } = _specQueryParams();
     const _p = new URLSearchParams();
     if (spectrumId) _p.set('spectrum_id', spectrumId);
     if (rest_frame) _p.set('rest_frame', '1');
     if (normalise)  _p.set('normalise', '1');
+    if (stack)      _p.set('stack', '1');
     const url = `/api/object/${cleanObjectName}/spectrum/plot?${_p.toString()}`;
     
     fetch(url)
