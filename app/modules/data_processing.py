@@ -369,7 +369,7 @@ class DataVisualization:
         return plot_div
     
     @staticmethod
-    def create_spectrum_plot_from_db(spectrum_data, spectrum_id):
+    def create_spectrum_plot_from_db(spectrum_data, spectrum_id, rest_frame=False, redshift=None, normalise=False):
         """Create interactive spectrum plot from database data"""
         if not spectrum_data:
             return None
@@ -386,9 +386,24 @@ class DataVisualization:
         wavelengths = [point.get('wavelength') for point in spectrum_points]
         intensities = [point.get('intensity') for point in spectrum_points]
         
+        # Apply rest-frame correction
+        if rest_frame and redshift is not None:
+            z = float(redshift)
+            wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
+        
+        # Apply normalisation
+        if normalise and intensities:
+            valid = [v for v in intensities if v is not None]
+            max_i = max(abs(v) for v in valid) if valid else 1
+            if max_i > 0:
+                intensities = [v / max_i if v is not None else None for v in intensities]
+        
         # Get spectrum metadata
         telescope = spectrum_points[0].get('telescope', 'Unknown')
         phase = spectrum_points[0].get('phase')
+        
+        x_label = 'Rest-frame Wavelength (Å)' if (rest_frame and redshift is not None) else 'Wavelength (Å)'
+        y_label = 'Normalized Intensity' if normalise else 'Relative Intensity'
         
         # Create trace
         trace = go.Scatter(
@@ -416,12 +431,12 @@ class DataVisualization:
         layout = go.Layout(
             title=title,
             xaxis=dict(
-                title="Wavelength (Å)",
+                title=x_label,
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             yaxis=dict(
-                title="Relative Intensity",
+                title=y_label,
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
@@ -438,7 +453,7 @@ class DataVisualization:
         return plot_div
     
     @staticmethod
-    def create_spectrum_list_plot_from_db(spectrum_data):
+    def create_spectrum_list_plot_from_db(spectrum_data, rest_frame=False, redshift=None, normalise=False):
         """Create plot showing all available spectra for an object"""
         if not spectrum_data:
             return None
@@ -462,11 +477,25 @@ class DataVisualization:
             wavelengths = [point.get('wavelength') for point in points]
             intensities = [point.get('intensity') for point in points]
             
-            # Normalize intensities for comparison
-            if intensities:
-                max_intensity = max(intensities)
-                if max_intensity > 0:
-                    intensities = [i / max_intensity + i * 0.1 for i in intensities]  # Offset for visibility
+            # Apply rest-frame correction
+            if rest_frame and redshift is not None:
+                z = float(redshift)
+                wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
+            
+            # Normalise each spectrum to [0,1] then offset by index
+            if normalise and intensities:
+                valid = [v for v in intensities if v is not None]
+                max_i = max(abs(v) for v in valid) if valid else 1
+                if max_i > 0:
+                    intensities = [v / max_i if v is not None else None for v in intensities]
+            else:
+                # Normalize for multi-spectrum comparison (legacy behaviour)
+                if intensities:
+                    max_intensity = max(intensities) if max(intensities) != 0 else 1
+                    intensities = [v / max_intensity if v is not None else None for v in intensities]
+            
+            # Add constant vertical offset per spectrum for visibility
+            intensities = [v + i * 1.2 if v is not None else None for v in intensities]
             
             telescope = points[0].get('telescope', 'Unknown')
             phase = points[0].get('phase')
@@ -496,15 +525,18 @@ class DataVisualization:
         if not traces:
             return None
         
+        x_label = 'Rest-frame Wavelength (Å)' if (rest_frame and redshift is not None) else 'Wavelength (Å)'
+        y_label = 'Normalized Intensity (offset)'
+        
         layout = go.Layout(
             title="All Available Spectra",
             xaxis=dict(
-                title="Wavelength (Å)",
+                title=x_label,
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             yaxis=dict(
-                title="Normalized Intensity (offset)",
+                title=y_label,
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),

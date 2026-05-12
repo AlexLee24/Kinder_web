@@ -1080,8 +1080,14 @@ def get_object_spectrum_plot(year, letters):
         return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
+    rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
+    normalise   = request.args.get('normalise',  'false').lower() in ('1', 'true')
     
     try:
+        redshift = None
+        results = search_tns_objects(search_term=object_name, limit=1)
+        if results:
+            redshift = results[0].get('redshift')
         spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
         
         if not spectrum_data:
@@ -1092,11 +1098,13 @@ def get_object_spectrum_plot(year, letters):
             })
         
         if spectrum_id:
-            # Show specific spectrum
-            plot_html = DataVisualization.create_spectrum_plot_from_db(spectrum_data, spectrum_id)
+            plot_html = DataVisualization.create_spectrum_plot_from_db(
+                spectrum_data, spectrum_id,
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
         else:
-            # Show all spectra overview
-            plot_html = DataVisualization.create_spectrum_list_plot_from_db(spectrum_data)
+            plot_html = DataVisualization.create_spectrum_list_plot_from_db(
+                spectrum_data,
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
         
         return jsonify({
             'success': True,
@@ -1293,6 +1301,8 @@ def get_object_spectrum_plot_generic(object_name):
         return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
+    rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
+    normalise   = request.args.get('normalise',  'false').lower() in ('1', 'true')
     
     try:
         results = search_tns_objects(search_term=object_name, limit=1)
@@ -1303,6 +1313,7 @@ def get_object_spectrum_plot_generic(object_name):
                 'error': f'Object {object_name} not found'
             }), 404
         
+        redshift = results[0].get('redshift')
         spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
         
         if not spectrum_data:
@@ -1313,11 +1324,13 @@ def get_object_spectrum_plot_generic(object_name):
             })
         
         if spectrum_id:
-            # Show specific spectrum
-            plot_html = DataVisualization.create_spectrum_plot_from_db(spectrum_data, spectrum_id)
+            plot_html = DataVisualization.create_spectrum_plot_from_db(
+                spectrum_data, spectrum_id,
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
         else:
-            # Show all spectra overview
-            plot_html = DataVisualization.create_spectrum_list_plot_from_db(spectrum_data)
+            plot_html = DataVisualization.create_spectrum_list_plot_from_db(
+                spectrum_data,
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
         
         return jsonify({
             'success': True,

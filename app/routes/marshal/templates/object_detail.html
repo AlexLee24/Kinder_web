@@ -283,10 +283,22 @@
             <div class="panel-card">
                 <div class="panel-header">
                     <h3>Spectroscopy</h3>
-                    <div class="action-row">
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="uploadSpectrum()">Upload</button>
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="downloadCurrentSpectrum()">Download</button>
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div class="phot-toggles">
+                            <label class="phot-toggle-label">
+                                <input type="checkbox" id="specRestFrame" onchange="onSpecToggle()">
+                                <span>Rest Frame</span>
+                            </label>
+                            <label class="phot-toggle-label">
+                                <input type="checkbox" id="specNormalise" onchange="onSpecToggle()">
+                                <span>Normalise</span>
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="uploadSpectrum()">Upload</button>
+                            <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="downloadCurrentSpectrum()">Download</button>
+                            <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
+                        </div>
                     </div>
                 </div>
                 <div class="panel-body">
