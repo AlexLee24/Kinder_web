@@ -369,6 +369,24 @@ class DataVisualization:
         return plot_div
     
     @staticmethod
+    @staticmethod
+    def _window_norm_scale(wavelengths, intensities, w_min=5000, w_max=7000):
+        """Compute normalisation scale using median flux in [w_min, w_max] Å window.
+        Falls back to 98th-percentile of full spectrum if window is empty."""
+        import numpy as np
+        window_vals = [
+            v for w, v in zip(wavelengths, intensities)
+            if w is not None and v is not None and w_min <= w <= w_max
+        ]
+        if window_vals:
+            arr = np.abs(np.array(window_vals, dtype=float))
+            scale = np.median(arr)
+        else:
+            arr = np.abs(np.array([v for v in intensities if v is not None], dtype=float))
+            scale = np.percentile(arr, 98) if len(arr) else 1.0
+        return float(scale) if scale and scale > 0 else float(np.max(arr)) or 1.0
+
+    @staticmethod
     def create_spectrum_plot_from_db(spectrum_data, spectrum_id, rest_frame=False, redshift=None, normalise=False):
         """Create interactive spectrum plot from database data"""
         if not spectrum_data:
@@ -391,13 +409,9 @@ class DataVisualization:
             z = float(redshift)
             wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
         
-        # Apply normalisation (robust: 98th-percentile to ignore noise spikes)
+        # Apply normalisation: median flux in 5000-7000 Å window (rest or observed)
         if normalise and intensities:
-            import numpy as np
-            valid = np.array([v for v in intensities if v is not None], dtype=float)
-            norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
-            if norm_scale == 0:
-                norm_scale = np.max(np.abs(valid)) or 1.0
+            norm_scale = DataVisualization._window_norm_scale(wavelengths, intensities)
             intensities = [v / norm_scale if v is not None else None for v in intensities]
         
         # Get spectrum metadata
@@ -484,23 +498,17 @@ class DataVisualization:
                 z = float(redshift)
                 wavelengths = [w / (1 + z) if w is not None else None for w in wavelengths]
             
-            # Normalise each spectrum (robust: 98th-percentile)
+            # Normalise: window-based (5000-7000 Å) when requested;
+            # always apply basic 98th-pct scale in list view for readable comparison
             if normalise and intensities:
-                import numpy as np
-                valid = np.array([v for v in intensities if v is not None], dtype=float)
-                norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
-                if norm_scale == 0:
-                    norm_scale = np.max(np.abs(valid)) or 1.0
-                intensities = [v / norm_scale if v is not None else None for v in intensities]
+                norm_scale = DataVisualization._window_norm_scale(wavelengths, intensities)
             else:
-                # Normalise to peak for multi-spectrum comparison
-                if intensities:
-                    import numpy as np
-                    valid = np.array([v for v in intensities if v is not None], dtype=float)
-                    norm_scale = np.percentile(np.abs(valid), 98) if len(valid) else 1.0
-                    if norm_scale == 0:
-                        norm_scale = np.max(np.abs(valid)) or 1.0
-                    intensities = [v / norm_scale if v is not None else None for v in intensities]
+                import numpy as np
+                arr = np.abs(np.array([v for v in intensities if v is not None], dtype=float))
+                norm_scale = np.percentile(arr, 98) if len(arr) else 1.0
+                if norm_scale == 0:
+                    norm_scale = np.max(arr) or 1.0
+            intensities = [v / norm_scale if v is not None else None for v in intensities]
             
             # Apply vertical offset per spectrum only when stack=True
             if stack:
