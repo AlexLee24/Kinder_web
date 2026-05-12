@@ -370,6 +370,25 @@ class DataVisualization:
     
     @staticmethod
     @staticmethod
+    def _yrange_from_window(all_wls, all_ints, w_min=4500, w_max=7000, pad=0.12):
+        """Return [ymin, ymax] from 4500-7000 Å window (2nd/98th pct + padding).
+        Falls back to None (autorange) if window has no data."""
+        import numpy as np
+        vals = [
+            v
+            for wls, ints in zip(all_wls, all_ints)
+            for w, v in zip(wls, ints)
+            if w is not None and v is not None and w_min <= w <= w_max
+        ]
+        if not vals:
+            return None
+        arr = np.array(vals, dtype=float)
+        lo = float(np.percentile(arr, 2))
+        hi = float(np.percentile(arr, 98))
+        span = hi - lo or abs(hi) * 0.1 or 0.1
+        return [lo - span * pad, hi + span * pad]
+
+    @staticmethod
     def _window_norm_scale(wavelengths, intensities, w_min=5000, w_max=7000):
         """Compute normalisation scale using median flux in [w_min, w_max] Å window.
         Falls back to 98th-percentile of full spectrum if window is empty."""
@@ -421,6 +440,12 @@ class DataVisualization:
         x_label = 'Rest-frame Wavelength (Å)' if (rest_frame and redshift is not None) else 'Wavelength (Å)'
         y_label = 'Normalized Intensity' if normalise else 'Relative Intensity'
         
+        # Compute y-range from 4500-7000 Å window to avoid noise dominating the view
+        yrange = DataVisualization._yrange_from_window([wavelengths], [intensities])
+        yaxis_cfg = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
+        if yrange:
+            yaxis_cfg['range'] = yrange
+        
         # Create trace
         trace = go.Scatter(
             x=wavelengths,
@@ -451,11 +476,7 @@ class DataVisualization:
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
-            yaxis=dict(
-                title=y_label,
-                showgrid=True,
-                gridcolor='rgba(128,128,128,0.2)'
-            ),
+            yaxis=yaxis_cfg,
             template="plotly_white",
             showlegend=False,
             hovermode='x unified',
@@ -483,6 +504,8 @@ class DataVisualization:
             spectrum_groups[spectrum_id].append(point)
         
         traces = []
+        all_wls_for_range = []   # collect processed wavelengths for y-range
+        all_ints_for_range = []  # collect processed intensities for y-range
         colors = ['rgb(31, 119, 180)', 'rgb(255, 127, 14)', 'rgb(44, 160, 44)', 
                   'rgb(214, 39, 40)', 'rgb(148, 103, 189)', 'rgb(140, 86, 75)']
         
@@ -513,6 +536,9 @@ class DataVisualization:
             # Apply vertical offset per spectrum only when stack=True
             if stack:
                 intensities = [v + i * 1.2 if v is not None else None for v in intensities]
+            
+            all_wls_for_range.append(wavelengths)
+            all_ints_for_range.append(intensities)
             
             telescope = points[0].get('telescope', 'Unknown')
             phase = points[0].get('phase')
@@ -545,6 +571,13 @@ class DataVisualization:
         x_label = 'Rest-frame Wavelength (Å)' if (rest_frame and redshift is not None) else 'Wavelength (Å)'
         y_label = 'Normalized Intensity (offset)'
         
+        # Compute y-range from 4500-7000 Å window; skip when stack offsets are active
+        yaxis_cfg = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
+        if not stack:
+            yrange = DataVisualization._yrange_from_window(all_wls_for_range, all_ints_for_range)
+            if yrange:
+                yaxis_cfg['range'] = yrange
+        
         layout = go.Layout(
             title="All Available Spectra",
             xaxis=dict(
@@ -552,11 +585,7 @@ class DataVisualization:
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
             ),
-            yaxis=dict(
-                title=y_label,
-                showgrid=True,
-                gridcolor='rgba(128,128,128,0.2)'
-            ),
+            yaxis=yaxis_cfg,
             template="plotly_white",
             showlegend=True,
             legend=dict(
