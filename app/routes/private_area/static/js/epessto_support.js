@@ -1623,6 +1623,8 @@ async function epOpenNEDExplorer() {
 
     const countEl = document.getElementById('epNedResultCount');
     if (countEl) countEl.textContent = `Resolving coordinates for ${_epNedTargetName}…`;
+    const tbody0 = document.getElementById('epNedResultBody');
+    if (tbody0) tbody0.innerHTML = '';
 
     const coords = await _epResolveTargetCoords(_epNedTargetName);
     if (!coords) {
@@ -1658,6 +1660,8 @@ async function epSetNEDHost(idx, btnEl) {
 
     const target = epState.targets[epState.selectedIndex];
     if (!target) { if (btn) { btn.disabled = false; btn.textContent = 'Set as Host'; } return; }
+
+    const _snapshotTargetName = _epNedTargetName;
 
     try {
         const resp = await fetch('/api/ned/set_host', {
@@ -1695,7 +1699,7 @@ async function epSetNEDHost(idx, btnEl) {
             if (zInput) { zInput.value = updates.z_from_host; }
         }
 
-        _epInitNEDExplorer(false, false);
+        if (_epNedTargetName === _snapshotTargetName) _epInitNEDExplorer(false, false);
         const msg = json.updated_redshift
             ? `Host set to ${row.objname}; redshift updated in widget`
             : `Host set to ${row.objname}; redshift unchanged (z flag not S*)`;
@@ -1714,6 +1718,8 @@ async function epUnsetNEDHost(idx, btnEl) {
 
     const btn = btnEl || null;
     if (btn) { btn.disabled = true; btn.textContent = 'Removing...'; }
+
+    const _snapshotTargetName = _epNedTargetName;
 
     try {
         const resp = await fetch('/api/ned/unset_host', {
@@ -1735,7 +1741,7 @@ async function epUnsetNEDHost(idx, btnEl) {
             if (zInput) zInput.value = '';
         }
 
-        _epInitNEDExplorer(false, false);
+        if (_epNedTargetName === _snapshotTargetName) _epInitNEDExplorer(false, false);
         setStatus(`Host removed: ${row.objname}`);
     } catch (e) {
         console.error('epUnsetNEDHost failed:', e);

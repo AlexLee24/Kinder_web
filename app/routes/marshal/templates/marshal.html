@@ -297,6 +297,7 @@
         <div class="dashboard-side-panel">
             <div class="side-panel-grid">
                 <!-- Top Viewed + Pinned Objects (merged, split vertically) -->
+                {% if session.user %}
                 <div class="side-widget split-widget">
                     <div class="split-widget-section">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -317,6 +318,7 @@
                         </ul>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Recent Comments -->
                 {% if visibility.comments_sidebar %}

@@ -1,4 +1,5 @@
 let obsFilters = [];
+let isAutoExposure = false;  // tracks whether current obsFilters came from auto exposure
 let logTriggerFilters = [];
 let logObservedFilters = [];
 let logDict = {};
@@ -303,11 +304,14 @@ function openTargetModal(telescope) {
     document.getElementById('obs-telescope').value = telescope;
     document.getElementById('add-target-form').reset();
     obsFilters = [];
+    isAutoExposure = false;
     toggleTelescopeUI(telescope);
     renderFilterRows();
     // Clear name hint on open
     var hint = document.getElementById('obs-name-hint');
     if (hint) { hint.textContent = ''; hint.className = 'pa-name-hint'; }
+    // Clear auto-exp badge
+    _setAutoExpBadge(false);
 }
 
 // Real-time name hint as user types
@@ -355,7 +359,32 @@ function toggleTelescopeUI(telescope) {
         sltAutoExpContainer.style.display = (telescope === 'SLT') ? 'flex' : 'none';
     }
 
+    // LOT does not support auto exposure — clear badge state
+    if (telescope === 'LOT') {
+        _setAutoExpBadge(false);
+    }
+
     renderFilterRows();
+}
+
+// ===================== Auto Exposure Badge =====================
+function _setAutoExpBadge(on) {
+    isAutoExposure = on;
+    const hintEl = document.getElementById('auto-exp-hint');
+    if (!hintEl) return;
+    if (on) {
+        hintEl.innerText = '\u2713 AUTO';
+        hintEl.style.color = '#4ade80';
+        hintEl.style.fontWeight = '600';
+    } else {
+        hintEl.innerText = '';
+        hintEl.style.color = '';
+        hintEl.style.fontWeight = '';
+    }
+}
+
+function _clearAutoExposureState() {
+    if (isAutoExposure) { _setAutoExpBadge(false); }
 }
 
 // ===================== Auto Exposure Button =====================
@@ -392,8 +421,11 @@ async function applyAutoExposure() {
         if (data.success && data.filters) {
             obsFilters = data.filters.map(f => ({ filter: f.filter, exp: f.exp, count: f.count }));
             const summary = obsFilters.map(f => f.filter + ' ' + f.exp + 's x' + f.count).join(', ');
-            if (hintEl) hintEl.innerText = 'Auto: ' + summary;
-            setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 5000);
+            // Show persistent AUTO badge (cleared on any manual filter change)
+            _setAutoExpBadge(true);
+            if (hintEl) {
+                hintEl.innerText = '\u2713 AUTO \u2014 ' + summary;
+            }
             renderFilterRows();
         }
     } catch (e) {
@@ -405,11 +437,13 @@ async function applyAutoExposure() {
 
 // ===================== Filter Rows =====================
 function addFilterRow(filterName) {
+    _clearAutoExposureState();
     obsFilters.push({ filter: filterName || '', exp: 300, count: 1 });
     renderFilterRows();
 }
 
 function addAllFilters(filters) {
+    _clearAutoExposureState();
     const existing = obsFilters.map(f => f.filter);
     filters.forEach(f => {
         if (!existing.includes(f)) {
@@ -420,11 +454,13 @@ function addAllFilters(filters) {
 }
 
 function removeFilterRow(index) {
+    _clearAutoExposureState();
     obsFilters.splice(index, 1);
     renderFilterRows();
 }
 
 function updateFilterRow(index, field, value) {
+    _clearAutoExposureState();
     obsFilters[index][field] = value;
     renderFilterRows();
 }
@@ -553,7 +589,7 @@ async function addObservationTarget(event) {
         dec: dec,
         priority: priority,
         repeat_count: repeatCount,
-        auto_exposure: false,
+        auto_exposure: isAutoExposure,
         filters: obsFilters,
         plan: plan,
         note_gl: note_gl,
@@ -993,6 +1029,10 @@ async function editTarget(id) {
     obsFilters = (t.filters && Array.isArray(t.filters)) ? t.filters.map(function(f) {
         return { filter: f.filter || '', exp: f.exp || 300, count: f.count || 1 };
     }) : [];
+
+    // Restore auto exposure badge state
+    const wasAuto = !!t.auto_exposure && t.telescope !== 'LOT';
+    _setAutoExpBadge(wasAuto);
 
     toggleTelescopeUI(t.telescope);
     renderFilterRows();

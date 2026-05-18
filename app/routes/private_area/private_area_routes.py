@@ -1540,6 +1540,10 @@ def api_observation_targets():
             return jsonify({'error': 'Forbidden'}), 403
             
         data = request.json
+        _telescope = (data.get('telescope') or '').strip().upper()
+        _auto_exp = bool(data.get('auto_exposure', False))
+        if _telescope == 'LOT':
+            _auto_exp = False
         new_id = save_observation_target(
             telescope=data.get('telescope'),
             name=data.get('name'),
@@ -1548,7 +1552,7 @@ def api_observation_targets():
             dec=data.get('dec'),
             priority=data.get('priority'),
             repeat_count=data.get('repeat_count', 0),
-            auto_exposure=data.get('auto_exposure', True),
+            auto_exposure=_auto_exp,
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -1608,6 +1612,10 @@ def api_observation_target_update(target_id):
         return jsonify({'error': 'Forbidden'}), 403
         
     data = request.json
+    _tele_put = (data.get('telescope') or '').strip().upper()
+    _auto_exp_put = bool(data.get('auto_exposure', False))
+    if _tele_put == 'LOT':
+        _auto_exp_put = False
     if update_observation_target(
         target_id=target_id,
         telescope=data.get('telescope'),
@@ -1617,7 +1625,7 @@ def api_observation_target_update(target_id):
         dec=data.get('dec'),
         priority=data.get('priority'),
         repeat_count=data.get('repeat_count', 0),
-        auto_exposure=data.get('auto_exposure', False),
+        auto_exposure=_auto_exp_put,
         filters=data.get('filters', []),
         plan=data.get('plan'),
         program=data.get('program'),

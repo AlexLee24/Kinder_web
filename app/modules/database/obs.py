@@ -12,6 +12,20 @@ from . import get_db_connection
 logger = logging.getLogger(__name__)
 
 
+def _ensure_auto_exposure_column() -> None:
+    """Add auto_exposure column to obs.targets if not present (idempotent)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "ALTER TABLE obs.targets "
+                "ADD COLUMN IF NOT EXISTS auto_exposure BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("_ensure_auto_exposure_column: %s", e)
+
+
 def _parse_ra_deg(value) -> float:
     """Parse RA in decimal degrees or HMS string into decimal degrees."""
     if value is None:
@@ -81,6 +95,7 @@ _TARGET_SELECT = (
     "SELECT t.target_id, t.active, t.name, t.mag, t.ra, t.dec, "
     "t.telescope, t.program, t.priority, t.plan_filter, t.plan_count, "
     "t.plan_time, t.repeat, t.plan, t.note, t.create_by, "
+    "t.auto_exposure, "
     "u.email AS created_by_email "
     "FROM obs.targets t "
     "LEFT JOIN auth.users u ON t.create_by = u.usr_id"
@@ -102,6 +117,7 @@ def _target_to_dict(row) -> dict:
     d['is_active'] = d.get('active', True)
     d['repeat_count'] = d.get('repeat', 0)
     d['note_gl'] = d.get('note')
+    d['auto_exposure'] = bool(d.get('auto_exposure') or False)
     # Return ra/dec as strings to preserve precision and ensure consistent typing
     if d.get('ra') is not None:
         d['ra'] = str(d['ra'])
@@ -111,6 +127,7 @@ def _target_to_dict(row) -> dict:
 
 
 def get_observation_targets(active_only: bool = True) -> list[dict]:
+    _ensure_auto_exposure_column()
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         if active_only:
@@ -130,6 +147,7 @@ def save_observation_target(name: str, ra: float, dec: float,
                              plan: str = '',
                              note: str = '',
                              created_by_email: str | None = None,
+                             auto_exposure: bool = False,
                              **legacy_kwargs) -> int | None:
     """Insert or update an observation target.  Returns target_id."""
     if legacy_kwargs.get('repeat_count') is not None:
@@ -138,6 +156,9 @@ def save_observation_target(name: str, ra: float, dec: float,
         note = legacy_kwargs.get('note_gl') or ''
     if legacy_kwargs.get('user_email') and not created_by_email:
         created_by_email = legacy_kwargs.get('user_email')
+    # LOT never uses auto exposure
+    if (telescope or '').upper() == 'LOT':
+        auto_exposure = False
 
     plan_filter = []
     plan_count = []
@@ -163,21 +184,23 @@ def save_observation_target(name: str, ra: float, dec: float,
                 r = cur.fetchone()
                 create_by = r[0] if r else None
 
+            _ensure_auto_exposure_column()
             cur.execute(
                 "INSERT INTO obs.targets "
                 "(active, name, mag, ra, dec, telescope, program, priority, "
-                " plan_filter, plan_count, plan_time, repeat, plan, note, create_by) "
-                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                " plan_filter, plan_count, plan_time, repeat, plan, note, create_by, auto_exposure) "
+                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                 "ON CONFLICT (name) DO UPDATE SET "
                 "  mag=EXCLUDED.mag, ra=EXCLUDED.ra, dec=EXCLUDED.dec, "
                 "  telescope=EXCLUDED.telescope, program=EXCLUDED.program, "
                 "  priority=EXCLUDED.priority, plan_filter=EXCLUDED.plan_filter, "
                 "  plan_count=EXCLUDED.plan_count, plan_time=EXCLUDED.plan_time, "
-                "  repeat=EXCLUDED.repeat, plan=EXCLUDED.plan, note=EXCLUDED.note "
+                "  repeat=EXCLUDED.repeat, plan=EXCLUDED.plan, note=EXCLUDED.note, "
+                "  auto_exposure=EXCLUDED.auto_exposure "
                 "RETURNING target_id",
                 (name, mag, ra, dec, telescope, program, priority,
                  plan_filter, plan_count, plan_time,
-                 repeat, plan, note, create_by)
+                 repeat, plan, note, create_by, auto_exposure)
             )
             target_id = cur.fetchone()[0]
             conn.commit()
@@ -193,6 +216,7 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         'name': 'name', 'mag': 'mag', 'ra': 'ra', 'dec': 'dec',
         'telescope': 'telescope', 'program': 'program', 'priority': 'priority',
         'repeat': 'repeat', 'plan': 'plan', 'note': 'note',
+        'auto_exposure': 'auto_exposure',
     }
     sets = []
     params = []
@@ -214,7 +238,9 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         kwargs['repeat'] = kwargs.pop('repeat_count')
     if 'note_gl' in kwargs and 'note' not in kwargs:
         kwargs['note'] = kwargs.pop('note_gl')
-    kwargs.pop('auto_exposure', None)
+    # LOT never uses auto exposure
+    if 'telescope' in kwargs and str(kwargs.get('telescope', '')).upper() == 'LOT':
+        kwargs['auto_exposure'] = False
 
     try:
         if 'ra' in kwargs:

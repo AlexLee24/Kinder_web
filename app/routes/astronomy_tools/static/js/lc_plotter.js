@@ -1067,13 +1067,14 @@ function renderPlot() {
             plotDiv.on('plotly_click', onPlotClick);
             _eventsAttached = true;
         }
-        const staticMode = document.querySelector('input[name="previewMode"]:checked')?.value === 'static';
-        const staticImg  = document.getElementById('staticPreviewImg');
-        const noteEl     = document.getElementById('previewNote');
+        const staticMode    = document.querySelector('input[name="previewMode"]:checked')?.value === 'static';
+        const staticImg     = document.getElementById('staticPreviewImg');
+        const staticWrapper = document.getElementById('staticPreviewWrapper');
+        const noteEl        = document.getElementById('previewNote');
         if (staticMode && staticImg) {
             _renderStaticPreview(staticImg, plotDiv, noteEl);
         } else {
-            if (staticImg) staticImg.style.display = 'none';
+            if (staticWrapper) staticWrapper.style.display = 'none';
             if (noteEl) noteEl.style.display = '';
         }
     });
@@ -1092,15 +1093,17 @@ async function _renderStaticPreview(imgEl, livePlotDiv, noteEl) {
     _syncRangesFromLive(layout);
     _applyExportTheme(layout, bg);
 
-    const scale = (parseInt(document.getElementById('exportDpi')?.value) || 100) / 72;
     const tmpDiv = document.createElement('div');
     tmpDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1600px;height:900px;';
     document.body.appendChild(tmpDiv);
     try {
         await Plotly.newPlot(tmpDiv, traces, layout, { staticPlot: true, responsive: false });
-        const url = await Plotly.toImage(tmpDiv, { format: 'png', width: 1600, height: 900, scale });
+        const url = await Plotly.toImage(tmpDiv, { format: 'png', width: 1600, height: 900 });
         imgEl.src = url;
-        imgEl.style.display = '';
+        imgEl.style.width  = '1600px';
+        imgEl.style.height = '900px';
+        const wrapper = document.getElementById('staticPreviewWrapper');
+        if (wrapper) wrapper.style.display = '';
         livePlotDiv.style.display = 'none';
         if (noteEl) noteEl.style.display = 'none';
     } finally {
@@ -1283,13 +1286,12 @@ async function doExport(format) {
     _syncRangesFromLive(layout);
     _applyExportTheme(layout, bg);
 
-    const scale = (parseInt(document.getElementById('exportDpi')?.value) || 100) / 72;
     const tmpDiv = document.createElement('div');
     tmpDiv.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;';
     document.body.appendChild(tmpDiv);
     try {
         await Plotly.newPlot(tmpDiv, traces, layout, { staticPlot: true, responsive: false });
-        await Plotly.downloadImage(tmpDiv, { format, width: 1600, height: 900, scale, filename: name });
+        await Plotly.downloadImage(tmpDiv, { format, width: 1600, height: 900, filename: name });
     } finally {
         Plotly.purge(tmpDiv);
         document.body.removeChild(tmpDiv);

@@ -202,6 +202,10 @@ def api_v1_observation_targets():
     ra        = _limit_decimal_4((data.get('ra') or '').strip())
     dec       = _limit_decimal_4((data.get('dec') or '').strip())
     mag       = _limit_decimal_4(data.get('mag'))
+    # LOT never uses auto exposure
+    auto_exposure = bool(data.get('auto_exposure', False))
+    if telescope == 'LOT':
+        auto_exposure = False
 
     if not telescope or telescope not in ('SLT', 'LOT'):
         return jsonify({'success': False, 'error': 'telescope is required and must be SLT or LOT'}), 400
@@ -223,7 +227,7 @@ def api_v1_observation_targets():
             dec=dec,
             priority=priority,
             repeat_count=int(data.get('repeat_count') or 0),
-            auto_exposure=bool(data.get('auto_exposure', True)),
+            auto_exposure=auto_exposure,
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -244,6 +248,7 @@ def api_v1_observation_targets():
                     'mag': mag,
                     'priority': priority,
                     'repeat_count': int(data.get('repeat_count') or 0),
+                    'auto_exposure': auto_exposure,
                 }
             }), 201
         else:

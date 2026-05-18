@@ -56,7 +56,6 @@
                         <label>Title</label><input type="number" id="staticTitleSize" value="30" min="8" max="48" step="1">
                         <label>Axis</label><input type="number" id="staticAxisSize" value="24" min="6" max="32" step="1">
                         <label>Tick</label><input type="number" id="staticTickSize" value="20" min="6" max="24" step="1">
-                        <label style="margin-left:4px">DPI</label><input type="number" id="exportDpi" value="100" min="72" max="600" step="1" style="width:46px" title="Export DPI (Matplotlib default=100, Plotly native=72)">
                     </div>
                     <div class="lcp-static-opts-row">
                         <label>X Tick</label><input type="number" id="xTickInterval" value="1000" min="1" step="any" style="width:58px">
@@ -379,7 +378,9 @@
                     <p>Upload a file and click <strong>Render</strong></p>
                 </div>
                 <div id="plotlyDiv" style="display:none;width:100%;height:100%"></div>
-                <img id="staticPreviewImg" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:contain">
+                <div id="staticPreviewWrapper" style="display:none;position:absolute;inset:0;overflow:auto;background:#f0f0f0;">
+                    <img id="staticPreviewImg" style="display:block;">
+                </div>
                 <div id="previewNote" style="display:none;position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:0.68rem;color:rgba(80,80,100,0.55);pointer-events:none;white-space:nowrap;letter-spacing:0.02em">
                     Interactive preview only — export PNG / SVG below for full quality
                 </div>
