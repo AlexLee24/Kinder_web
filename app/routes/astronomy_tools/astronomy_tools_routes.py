@@ -1132,7 +1132,11 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     ra_s  = float(row['RAmdeg'])
                     dec_s = float(row['DEmdeg'])
                     try:
-                        hip_val = float(row['HIP']) if 'HIP' in cols else np.nan
+                        _hip_raw = row['HIP'] if 'HIP' in cols else None
+                        if _hip_raw is None or np.ma.is_masked(_hip_raw):
+                            hip_val = np.nan
+                        else:
+                            hip_val = float(_hip_raw)
                         hip = str(int(hip_val)) if np.isfinite(hip_val) else ''
                     except Exception:
                         hip = ''
