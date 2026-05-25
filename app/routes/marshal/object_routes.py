@@ -152,6 +152,50 @@ def object_detail_generic(object_name):
                 conn.close()
                 return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
 
+        # If still no match, strip AT/SN prefix and retry —
+        # handles the AT→SN classification scenario:
+        # e.g. /object/AT2025wny → object was classified, now name_prefix='SN' → find by name='2025wny'
+        if not matching_obj:
+            import re as _re
+            prefix_stripped = _re.sub(
+                r'^(?:AT|SN|SLSN-I{1,2}|Ia|II)\s*(?=[0-9]{4})',
+                '', object_name, flags=_re.IGNORECASE
+            )
+            if prefix_stripped and prefix_stripped.lower() != object_name.lower():
+                # Try name-only match with stripped value
+                cursor.execute(
+                    f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                              o.redshift, NULL::int AS typeid, o.type,
+                              NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                              NULL::int AS source_groupid, o.source_group,
+                              to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                              o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                              o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                              to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                              COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                              o.class_ADS AS class_ads_bibcodes,
+                              to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                              to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                              o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
+                              CASE o.status
+                                  WHEN 'Finish'    THEN 'finished'
+                                  WHEN 'Follow-up' THEN 'followup'
+                                  WHEN 'Snoozed'   THEN 'snoozed'
+                                  ELSE 'object'
+                              END as tag
+                         FROM transient.objects o
+                        WHERE o.name ILIKE %s""",
+                    (prefix_stripped,)
+                )
+                result = cursor.fetchone()
+                if result:
+                    columns = [desc[0] for desc in cursor.description]
+                    matching_obj = dict(zip(columns, result))
+                    # Redirect to canonical name-only URL
+                    canonical = (matching_obj.get('name') or prefix_stripped).strip()
+                    conn.close()
+                    return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
+
         conn.close()
 
         # If no exact match, fall back to fuzzy search

@@ -137,12 +137,18 @@
     .top-section-split {
         flex-direction: column;
     }
+    .side-panel-grid {
+        grid-template-columns: repeat(2, minmax(220px, 1fr));
+    }
     .objects-grid {
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     }
 }
 
 @media (max-width: 1024px) {
+    .side-panel-grid {
+        grid-template-columns: 1fr;
+    }
     .filter-row {
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: var(--spacing-xl);

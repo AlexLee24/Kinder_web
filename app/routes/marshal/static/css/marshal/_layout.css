@@ -7,24 +7,27 @@
 }
 
 .top-section-split > .control-panel {
-    flex: 1;
+    flex: 0 0 34%;
     margin-bottom: 0; /* override earlier margin */
     min-width: 0; /* prevent flex blowout */
 }
 
 .dashboard-side-panel {
-    flex: 1;
+    flex: 0 0 66%;
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
 }
 
 .side-panel-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    grid-template-rows: 1fr;   /* single row, fills all available height */
     gap: var(--spacing-xl);
-    height: 100%;
+    flex: 1;                   /* fill dashboard-side-panel height */
+    min-height: 360px;         /* ensure minimum usable height */
+    align-items: stretch;
 }
 
 /* Split widget: two scrollable sections stacked vertically */
@@ -58,6 +61,9 @@
     color: #ffffff;
     display: flex;
     flex-direction: column;
+    height: 100%;          /* fill grid cell */
+    min-height: 0;
+    box-sizing: border-box;
 }
 
 .side-widget h3 {
@@ -67,14 +73,80 @@
     color: var(--primary-color, #46ffaf);
     border-bottom: 1px solid var(--glass-border);
     padding-bottom: var(--spacing-sm);
+    flex-shrink: 0;
 }
 
 .widget-list {
     list-style: none;
     padding: 0;
     margin: 0;
-    flex-grow: 1;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+.widget-list::-webkit-scrollbar {
+    width: 4px;
+}
+.widget-list::-webkit-scrollbar-track { background: transparent; }
+.widget-list::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+}
+
+/* TNS Updates widget：與其他 widget-list 統一用 flex:1，移除 max-height 限制 */
+#recentTnsUpdatesList {
+    scrollbar-color: rgba(70,255,175,0.3) transparent;
+}
+#recentTnsUpdatesList::-webkit-scrollbar-thumb {
+    background: rgba(70,255,175,0.3);
+}
+
+/* Classified 項目：左側綠色邊框 highlight */
+li.tns-classified-item {
+    border-left: 2px solid var(--primary-color, #46ffaf);
+    padding-left: 8px !important;
+    background: rgba(70,255,175,0.04);
+    border-radius: 0 4px 4px 0;
+}
+
+/* Classified badge */
+.tns-classified-badge {
+    display: inline-block;
+    font-size: 0.68em;
+    font-weight: 600;
+    color: #1a1a2e;
+    background: var(--primary-color, #46ffaf);
+    padding: 1px 5px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* New Add badge */
+.tns-new-add-badge {
+    display: inline-block;
+    font-size: 0.68em;
+    font-weight: 600;
+    color: #1a1a2e;
+    background: #7ec8ff;
+    padding: 1px 5px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* New Add item highlight */
+.tns-new-add-item {
+    padding-left: 8px !important;
+    background: rgba(126,200,255,0.04);
+    border-radius: 0 4px 4px 0;
 }
 
 .widget-list li {

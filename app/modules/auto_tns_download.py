@@ -13,10 +13,10 @@ from psycopg2 import extras
 
 try:
     from modules.database import get_db_connection
-    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
 except ImportError:
     from database import get_db_connection
-    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
 
 # ---- Paths ----
 _module_dir = os.path.dirname(os.path.abspath(__file__))
@@ -62,6 +62,22 @@ def _reporters_arr(s):
     if not s:
         return None
     return [x.strip() for x in str(s).split(',') if x.strip()]
+
+
+def _norm_text(v):
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
+def _norm_float(v):
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---- Download helpers ----
@@ -163,6 +179,7 @@ def addin_database(filepath, debug=False):
 
     insert_batch = []
     update_batch = []
+    update_audit_batch = []
     phot_batch   = []   # (name, mjd, mag, filter, source_group)
 
     try:
@@ -192,14 +209,40 @@ def addin_database(filepath, debug=False):
                     csv_class_ads = r.get('class_ads_bibcodes') or r.get('Class_ADS_bibcodes')
 
                     cursor.execute(
-                        "SELECT last_modified_date, report_group, source_group, reporters, internal_name "
+                        "SELECT last_modified_date, type, redshift, report_group, source_group, internal_name, "
+                        "discovery_mag, last_phot_date "
                         "FROM transient.objects WHERE obj_id = %s",
                         (r.get('objid'),)
                     )
                     existing = cursor.fetchone()
 
                     if existing:
-                        existing_lm, old_report_group, old_source_group, old_reporters, old_internal_name = existing
+                        (
+                            existing_lm,
+                            old_type,
+                            old_redshift,
+                            old_report_group,
+                            old_source_group,
+                            old_internal_name,
+                            old_discovery_mag,
+                            old_last_phot_date,
+                        ) = existing
+
+                        changed_fields = []
+                        if _norm_text(old_type) != _norm_text(r.get('type')) and _norm_text(r.get('type')) is not None:
+                            changed_fields.append('type')
+                        if _norm_float(old_redshift) != _norm_float(r.get('redshift')) and _norm_float(r.get('redshift')) is not None:
+                            changed_fields.append('redshift')
+                        if _norm_text(old_report_group) != _norm_text(csv_reporting_group) and _norm_text(csv_reporting_group) is not None:
+                            changed_fields.append('reporting_group')
+                        if _norm_text(old_source_group) != _norm_text(csv_source_group) and _norm_text(csv_source_group) is not None:
+                            changed_fields.append('source_group')
+                        if _norm_text(old_internal_name) != _norm_text(csv_internal_names) and _norm_text(csv_internal_names) is not None:
+                            changed_fields.append('internal_names')
+                        if _norm_float(old_discovery_mag) != _norm_float(r.get('discoverymag')) and _norm_float(r.get('discoverymag')) is not None:
+                            changed_fields.append('discovery_mag')
+                        if _norm_float(old_last_phot_date) != _norm_float(_to_mjd(r.get('last_photometry_date'))) and _to_mjd(r.get('last_photometry_date')) is not None:
+                            changed_fields.append('last_photometry_date')
 
                         update_batch.append((
                             r.get('name_prefix'),
@@ -223,6 +266,13 @@ def addin_database(filepath, debug=False):
                             new_lm_mjd,
                             r.get('objid'),
                         ))
+                        if changed_fields:
+                            update_audit_batch.append((
+                                int(r.get('objid')),
+                                r.get('name') or '',
+                                changed_fields,
+                                'auto_tns_download',
+                            ))
                         updated_count += 1
 
                         if len(update_batch) >= BATCH_SIZE:
@@ -279,6 +329,13 @@ def addin_database(filepath, debug=False):
                             new_lm_mjd,
                         ))
                         imported_count += 1
+                        # Log new object to audit for "Recent TNS Updates" widget
+                        update_audit_batch.append((
+                            int(r.get('objid')),
+                            r.get('name') or '',
+                            ['new_add'],
+                            'auto_tns_download',
+                        ))
 
                         if len(insert_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
@@ -357,6 +414,9 @@ def addin_database(filepath, debug=False):
                 ''', insert_batch, page_size=BATCH_SIZE)
 
             conn.commit()
+
+            if update_audit_batch:
+                log_tns_update_batch(update_audit_batch)
 
             # ---- Bulk insert discovery photometry ----
             # Resolve name → obj_id in one query then bulk-insert

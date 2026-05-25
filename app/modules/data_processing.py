@@ -1,11 +1,9 @@
 import logging
-import os
+import math
 import numpy as np
 import plotly.graph_objects as go
 import plotly.offline as pyo
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import math
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +49,67 @@ class DataVisualization:
         except (ValueError, TypeError):
             dec = None
         
+        # ── TNS deduplication ──────────────────────────────────────────────────
+        # Rule 1: suppress a TNS point when any non-TNS point shares the same
+        #         filter and falls within 1 day.
+        # Rule 2: among TNS points with the same filter+telescope, keep only the
+        #         first one per 1-day window (deduplicate TNS self-repetition).
+        def _is_tns(telescope_str):
+            return 'tns' in str(telescope_str).lower()
+
+        TNS_DEDUP_WINDOW = 1.0  # days
+
+        # Pre-parse to floats for fast comparison
+        _pts = []
+        for p in photometry_data:
+            try:
+                mjd_f = float(p.get('mjd')) if p.get('mjd') is not None else None
+            except (ValueError, TypeError):
+                mjd_f = None
+            _pts.append((p, mjd_f))
+
+        # Build a lookup: filter -> list of (mjd) for NON-TNS points
+        _non_tns_by_filter = {}
+        for p, mjd_f in _pts:
+            if mjd_f is None:
+                continue
+            tel = p.get('telescope', 'Unknown')
+            if not _is_tns(tel):
+                flt = p.get('filter', 'Unknown')
+                _non_tns_by_filter.setdefault(flt, []).append(mjd_f)
+
+        # Walk TNS points in (filter, telescope) order, tracking seen windows
+        _tns_seen = {}   # (filter, telescope) -> list of accepted mjds
+        _keep_flags = []
+        for p, mjd_f in _pts:
+            tel = p.get('telescope', 'Unknown')
+            flt = p.get('filter', 'Unknown')
+            if not _is_tns(tel) or mjd_f is None:
+                _keep_flags.append(True)
+                continue
+
+            # Rule 1: any non-TNS point within 1 day for same filter?
+            non_tns_mjds = _non_tns_by_filter.get(flt, [])
+            if any(abs(mjd_f - m) < TNS_DEDUP_WINDOW for m in non_tns_mjds):
+                _keep_flags.append(False)
+                continue
+
+            # Rule 2: already accepted a TNS point within 1 day for same filter?
+            # Use filter only — telescope names like "ZTF (TNS)" vs "ZTF(TNS)" are
+            # the same source and should be treated as one group.
+            key = flt
+            accepted = _tns_seen.get(key, [])
+            if any(abs(mjd_f - m) < TNS_DEDUP_WINDOW for m in accepted):
+                _keep_flags.append(False)
+                continue
+
+            # Keep this point
+            _tns_seen.setdefault(flt, []).append(mjd_f)
+            _keep_flags.append(True)
+
+        photometry_data = [p for (p, _), keep in zip(_pts, _keep_flags) if keep]
+        # ── end TNS deduplication ───────────────────────────────────────────
+
         # Group data by filter and telescope
         grouped_data = {}
         
@@ -258,14 +317,24 @@ class DataVisualization:
         if not traces:
             return None
             
-        # Determine ranges
+        # Determine ranges — enforce a minimum 16-day default span (4 grids × 4 days each)
         min_mjd = min(all_mjds) if all_mjds else 59000
         max_mjd = max(all_mjds) if all_mjds else 59100
-        pad_mjd = (max_mjd - min_mjd) * 0.05
-        if pad_mjd == 0: pad_mjd = 1
-        plot_min_mjd = min_mjd - pad_mjd
-        plot_max_mjd = max_mjd + pad_mjd
-        
+        data_span = max_mjd - min_mjd
+        GRID_INTERVAL_DAYS = 1      # each grid cell = 4 days
+        MIN_GRID_CELLS     = 5      # always show at least 4 cells
+        MIN_SPAN_DAYS      = GRID_INTERVAL_DAYS * MIN_GRID_CELLS  # = 16 days
+        if data_span < MIN_SPAN_DAYS:
+            # Center the minimum window on the data
+            center_mjd = (min_mjd + max_mjd) / 2
+            plot_min_mjd = center_mjd - MIN_SPAN_DAYS / 2
+            plot_max_mjd = center_mjd + MIN_SPAN_DAYS / 2
+        else:
+            pad_mjd = data_span * 0.05
+            if pad_mjd == 0: pad_mjd = GRID_INTERVAL_DAYS
+            plot_min_mjd = min_mjd - pad_mjd
+            plot_max_mjd = max_mjd + pad_mjd
+
         # Helper to convert MJD to Date string
         def mjd_to_date_str(mjd):
             dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(days=mjd - 40587)
@@ -274,6 +343,15 @@ class DataVisualization:
         plot_min_date = mjd_to_date_str(plot_min_mjd)
         plot_max_date = mjd_to_date_str(plot_max_mjd)
         
+        # Build xaxis config — if data span is under the minimum window, lock ticks to grid interval
+        _xaxis_extra = {}
+        if data_span < MIN_SPAN_DAYS:
+            _xaxis_extra = dict(
+                tickmode='linear',
+                dtick=GRID_INTERVAL_DAYS,
+                tick0=math.floor(plot_min_mjd)
+            )
+
         # Create layout
         layout = go.Layout(
             title="Photometry Light Curve",
@@ -282,7 +360,8 @@ class DataVisualization:
                 tickformat=".2f",
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)',
-                range=[plot_min_mjd, plot_max_mjd]
+                range=[plot_min_mjd, plot_max_mjd],
+                **_xaxis_extra
             ),
             xaxis2=dict(
                 title="Date (UTC)",
@@ -311,6 +390,8 @@ class DataVisualization:
         )
         
         # Handle Y-axis range and Absolute Magnitude
+        plot_min_mag = 0.0
+        plot_max_mag = 0.0
         if all_mags:
             min_mag = min(all_mags)
             max_mag = max(all_mags)
@@ -361,7 +442,6 @@ class DataVisualization:
         fig = go.Figure(data=traces, layout=layout)
         
         if as_json:
-            import json
             return fig.to_json()
         
         # Convert to HTML div
@@ -442,10 +522,10 @@ class DataVisualization:
         
         # Compute y-range from 4500-7000 Å window to avoid noise dominating the view
         yrange = DataVisualization._yrange_from_window([wavelengths], [intensities])
-        yaxis_cfg = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
+        yaxis_cfg: dict = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
         if yrange:
             yaxis_cfg['range'] = yrange
-        
+
         # Create trace
         trace = go.Scatter(
             x=wavelengths,
@@ -572,7 +652,7 @@ class DataVisualization:
         y_label = 'Normalized Intensity (offset)'
         
         # Compute y-range from 4500-7000 Å window; skip when stack offsets are active
-        yaxis_cfg = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
+        yaxis_cfg: dict = dict(title=y_label, showgrid=True, gridcolor='rgba(128,128,128,0.2)')
         if not stack:
             yrange = DataVisualization._yrange_from_window(all_wls_for_range, all_ints_for_range)
             if yrange:

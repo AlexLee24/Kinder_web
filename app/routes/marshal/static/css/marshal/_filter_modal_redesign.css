@@ -1,0 +1,272 @@
+/* Full-screen redesign for Marshal Advanced Filters modal */
+
+.advanced-filter-overlay {
+    padding: 20px;
+    background: rgba(3, 7, 15, 0.78);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 1200;
+}
+
+.advanced-filter-dialog {
+    width: min(96vw, 1440px) !important;
+    max-width: min(96vw, 1440px) !important;
+    height: min(92vh, 980px);
+    max-height: 92vh !important;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background:
+        radial-gradient(circle at top right, rgba(70, 255, 175, 0.08), transparent 28%),
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 34%),
+        linear-gradient(155deg, rgba(15, 23, 42, 0.98), rgba(9, 14, 24, 0.96));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 22px;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+}
+
+.advanced-filter-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 24px 28px 18px;
+    margin: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(10, 16, 28, 0.98), rgba(10, 16, 28, 0.88));
+}
+
+.advanced-filter-heading h3 {
+    margin: 0 0 6px;
+    color: #f8fbff;
+    font-size: 1.45rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.advanced-filter-heading p {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.advanced-filter-close {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    color: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    transition: all 0.2s ease;
+}
+
+.advanced-filter-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.advanced-filter-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 24px 28px 28px;
+    scrollbar-width: thin;
+}
+
+.advanced-filter-content .filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.advanced-filter-content .filter-group {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    padding: 18px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.advanced-filter-content .filter-group:hover {
+    border-color: rgba(70, 255, 175, 0.22);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+}
+
+.advanced-filter-content .filter-group label {
+    margin-bottom: 12px;
+    font-size: 0.86rem;
+    letter-spacing: 0.9px;
+}
+
+.advanced-filter-content .filter-group select,
+.advanced-filter-content .filter-group input {
+    min-height: 48px;
+    border-radius: 14px;
+    background: rgba(5, 11, 20, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.advanced-filter-content .filter-group select:focus,
+.advanced-filter-content .filter-group input:focus {
+    transform: none;
+    border-color: rgba(70, 255, 175, 0.55);
+    box-shadow:
+        0 0 0 4px rgba(70, 255, 175, 0.08),
+        0 10px 24px rgba(70, 255, 175, 0.08);
+}
+
+.advanced-filter-content .filter-group select[multiple] {
+    min-height: 190px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.advanced-filter-content .date-range-group,
+.advanced-filter-content .magnitude-range-group,
+.advanced-filter-content .redshift-range-group {
+    gap: 10px;
+}
+
+.advanced-filter-content .range-separator {
+    padding: 0 6px;
+    font-size: 1rem;
+}
+
+.advanced-filter-content .filter-tooltip {
+    position: static;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+    margin-top: 10px;
+    padding: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 0.79rem;
+    line-height: 1.45;
+    white-space: normal;
+}
+
+.advanced-filter-content .filter-tooltip::after {
+    display: none;
+}
+
+.advanced-filter-actions-row {
+    display: block !important;
+    margin: 0;
+}
+
+.advanced-filter-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 18px 0 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(10, 16, 28, 0), rgba(10, 16, 28, 0.94) 38%);
+}
+
+.advanced-filter-actions .apply-advanced-btn,
+.advanced-filter-actions .clear-btn {
+    min-width: 168px;
+    min-height: 46px;
+    border-radius: 14px;
+    font-size: 0.92rem;
+    text-transform: none;
+    letter-spacing: 0.3px;
+}
+
+.advanced-filter-actions .apply-advanced-btn {
+    background: linear-gradient(135deg, rgba(49, 184, 255, 0.92), rgba(68, 255, 184, 0.82));
+    color: #051018;
+    border: 1px solid rgba(110, 255, 209, 0.45);
+}
+
+.advanced-filter-actions .clear-btn {
+    background: linear-gradient(135deg, rgba(255, 120, 120, 0.88), rgba(255, 159, 67, 0.82));
+    border: 1px solid rgba(255, 170, 120, 0.32);
+}
+
+.advanced-filter-actions .apply-advanced-btn:hover,
+.advanced-filter-actions .clear-btn:hover {
+    transform: translateY(-1px);
+}
+
+@media (max-width: 1200px) {
+    .advanced-filter-dialog {
+        width: calc(100vw - 24px) !important;
+        max-width: calc(100vw - 24px) !important;
+        height: calc(100vh - 24px);
+        max-height: calc(100vh - 24px) !important;
+    }
+
+    .advanced-filter-content .filter-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .advanced-filter-overlay {
+        padding: 8px;
+    }
+
+    .advanced-filter-dialog {
+        width: calc(100vw - 16px) !important;
+        max-width: calc(100vw - 16px) !important;
+        height: calc(100vh - 16px);
+        max-height: calc(100vh - 16px) !important;
+        border-radius: 16px;
+    }
+
+    .advanced-filter-header,
+    .advanced-filter-content {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    .advanced-filter-header {
+        padding-top: 18px;
+        padding-bottom: 14px;
+        gap: 12px;
+    }
+
+    .advanced-filter-heading h3 {
+        font-size: 1.2rem;
+    }
+
+    .advanced-filter-heading p {
+        font-size: 0.86rem;
+    }
+
+    .advanced-filter-content {
+        padding-top: 16px;
+        padding-bottom: 18px;
+    }
+
+    .advanced-filter-content .filter-group {
+        padding: 14px;
+        border-radius: 14px;
+    }
+
+    .advanced-filter-actions {
+        flex-direction: column;
+    }
+
+    .advanced-filter-actions .apply-advanced-btn,
+    .advanced-filter-actions .clear-btn {
+        width: 100%;
+        min-width: 0;
+    }
+}
+

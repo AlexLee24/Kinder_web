@@ -37,10 +37,26 @@ from psycopg2 import extras
 
 try:
     from modules.database import get_db_connection
-    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
 except ImportError:
     from database import get_db_connection
-    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
+
+
+def _norm_text(v):
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
+def _norm_float(v):
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 # ---- Paths ----
 _module_dir = os.path.dirname(os.path.abspath(__file__))
@@ -226,6 +242,7 @@ def addin_database(filepath, debug=False):
     # Collect data in batches for bulk insert
     insert_batch = []
     update_batch = []
+    update_audit_batch = []
     BATCH_SIZE = 1000
     
     try:
@@ -252,11 +269,25 @@ def addin_database(filepath, debug=False):
                         continue
                     
                     # Check if object exists
-                    cursor.execute('SELECT last_modified_date FROM transient.objects WHERE obj_id = %s', (cleaned_row.get('objid'),))
+                    cursor.execute(
+                        'SELECT last_modified_date, type, redshift, report_group, source_group, internal_name, '
+                        'discovery_mag, last_phot_date '
+                        'FROM transient.objects WHERE obj_id = %s',
+                        (cleaned_row.get('objid'),)
+                    )
                     existing = cursor.fetchone()
 
                     if existing:
-                        existing_lastmodified = existing[0]  # MJD float or None
+                        (
+                            existing_lastmodified,
+                            old_type,
+                            old_redshift,
+                            old_report_group,
+                            old_source_group,
+                            old_internal_name,
+                            old_discovery_mag,
+                            old_last_phot_date,
+                        ) = existing
                         new_lastmodified_mjd = _to_mjd(cleaned_row.get('lastmodified'))
 
                         # Compare last_modified_date (MJD), keep newer data
@@ -267,6 +298,22 @@ def addin_database(filepath, debug=False):
                                 skipped_count += 1
                                 continue
                         
+                        changed_fields = []
+                        if _norm_text(old_type) != _norm_text(cleaned_row.get('type')) and _norm_text(cleaned_row.get('type')) is not None:
+                            changed_fields.append('type')
+                        if _norm_float(old_redshift) != _norm_float(cleaned_row.get('redshift')) and _norm_float(cleaned_row.get('redshift')) is not None:
+                            changed_fields.append('redshift')
+                        if _norm_text(old_report_group) != _norm_text(cleaned_row.get('reporting_group')) and _norm_text(cleaned_row.get('reporting_group')) is not None:
+                            changed_fields.append('reporting_group')
+                        if _norm_text(old_source_group) != _norm_text(cleaned_row.get('source_group')) and _norm_text(cleaned_row.get('source_group')) is not None:
+                            changed_fields.append('source_group')
+                        if _norm_text(old_internal_name) != _norm_text(cleaned_row.get('internal_names')) and _norm_text(cleaned_row.get('internal_names')) is not None:
+                            changed_fields.append('internal_names')
+                        if _norm_float(old_discovery_mag) != _norm_float(cleaned_row.get('discoverymag')) and _norm_float(cleaned_row.get('discoverymag')) is not None:
+                            changed_fields.append('discovery_mag')
+                        if _norm_float(old_last_phot_date) != _norm_float(_to_mjd(cleaned_row.get('last_photometry_date'))) and _to_mjd(cleaned_row.get('last_photometry_date')) is not None:
+                            changed_fields.append('last_photometry_date')
+
                         # Prepare update data
                         update_batch.append((
                             cleaned_row.get('name_prefix'),
@@ -290,6 +337,13 @@ def addin_database(filepath, debug=False):
                             _to_mjd(cleaned_row.get('lastmodified')),
                             cleaned_row.get('objid')
                         ))
+                        if changed_fields:
+                            update_audit_batch.append((
+                                int(cleaned_row.get('objid')),
+                                cleaned_row.get('name') or '',
+                                changed_fields,
+                                'tns_object_fetch',
+                            ))
                         updated_count += 1
                         
                         # Execute batch update
@@ -334,6 +388,13 @@ def addin_database(filepath, debug=False):
                             _to_mjd(cleaned_row.get('lastmodified'))
                         ))
                         imported_count += 1
+                        # Log new object to audit for "Recent TNS Updates" widget
+                        update_audit_batch.append((
+                            int(cleaned_row.get('objid')),
+                            cleaned_row.get('name') or '',
+                            ['new_add'],
+                            'tns_object_fetch',
+                        ))
                         
                         # Execute batch insert
                         if len(insert_batch) >= BATCH_SIZE:
@@ -383,6 +444,9 @@ def addin_database(filepath, debug=False):
                     logger.debug(f"Committed final {len(insert_batch)} inserts")
             
             conn.commit()
+
+            if update_audit_batch:
+                log_tns_update_batch(update_audit_batch)
             cursor.close()
         
         logger.info(f"Import completed: {imported_count} new, {updated_count} updated, {skipped_count} skipped")

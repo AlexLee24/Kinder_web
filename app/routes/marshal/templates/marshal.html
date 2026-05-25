@@ -143,117 +143,7 @@
                     
                 </div>
 
-                <!-- Advanced Filters Modal -->
-                <div class="modal-overlay" id="advancedFilterModal" style="display: none;">
-                    <div class="upload-modal" style="max-width: 800px; background: var(--glass-bg); color: white; border: 1px solid var(--glass-border); padding: 20px;">
-                    <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin:0;">Advanced Filters</h3>
-                        <button class="close-modal" onclick="toggleAdvancedFilters()" style="background:none; border:none; color:white; cursor:pointer;">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        </button>
-                    </div>
-                    <div class="advanced-filters-content" id="advancedFiltersContent" style="display:block;">
-                        <div class="filter-row">
-                            <!-- Classification Filter -->
-                            <div class="filter-group">
-                                <label>Classification</label>
-                                <select id="classificationFilter" multiple style="height: 100px;">
-                                    <option value="">All Classifications</option>
-                                    <!-- Dynamic options will be populated by JavaScript -->
-                                </select>
-                                <div class="filter-tooltip">Filter by object classification type (hold Ctrl/Cmd to select multiple)</div>
-                            </div>
-                            
-                            <!-- Tag Filter -->
-                            <div class="filter-group">
-                                <label>Status Tag</label>
-                                <select id="tagFilter">
-                                    <option value="">All Status</option>
-                                    <option value="object">Inbox</option>
-                                    <option value="followup">Follow-up</option>
-                                    <option value="finished">Finished</option>
-                                    <option value="snoozed">Snoozed</option>
-                                    <option value="flag">Flagged</option>
-                                </select>
-                                <div class="filter-tooltip">Filter by current status tag</div>
-                            </div>
-                        </div>
-                        
-                        <div class="filter-row">
-                            <div class="filter-group">
-                                <label>Discovery Date Range</label>
-                                <div class="date-range-group">
-                                    <input type="date" id="dateFrom" placeholder="From">
-                                    <span class="range-separator">—</span>
-                                    <input type="date" id="dateTo" placeholder="To">
-                                </div>
-                                <div class="filter-tooltip">Filter by discovery date range</div>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label>Apparent Magnitude</label>
-                                <div class="magnitude-range-group">
-                                    <input type="number" step="0.1" id="appMagMin" placeholder="Min mag">
-                                    <span class="range-separator">—</span>
-                                    <input type="number" step="0.1" id="appMagMax" placeholder="Max mag">
-                                </div>
-                                <div class="filter-tooltip">Filter by apparent magnitude range</div>
-                            </div>
-                        </div>
-                        
-                        <div class="filter-row">
-                            <div class="filter-group">
-                                <label>Redshift Range</label>
-                                <div class="redshift-range-group">
-                                    <input type="number" step="0.001" id="redshiftMin" placeholder="Min z">
-                                    <span class="range-separator">—</span>
-                                    <input type="number" step="0.001" id="redshiftMax" placeholder="Max z">
-                                </div>
-                                <div class="filter-tooltip">Filter by redshift (z) range</div>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label>Discoverer/Survey</label>
-                                <input type="text" id="discovererFilter" placeholder="e.g., ATLAS, ZTF, Gaia...">
-                                <div class="filter-tooltip">Filter by discovering survey or group</div>
-                            </div>
-                        </div>
-
-                        <div class="filter-row">
-                            <div class="filter-group">
-                                <label>Brightest Mag Range</label>
-                                <div class="magnitude-range-group">
-                                    <input type="number" step="0.1" id="brightestMagMin" placeholder="Min mag">
-                                    <span class="range-separator">—</span>
-                                    <input type="number" step="0.1" id="brightestMagMax" placeholder="Max mag">
-                                </div>
-                                <div class="filter-tooltip">Filter by brightest magnitude range</div>
-                            </div>
-                            
-                            <div class="filter-group">
-                                <label>Brightest Abs Mag Range</label>
-                                <div class="magnitude-range-group">
-                                    <input type="number" step="0.1" id="brightestAbsMagMin" placeholder="Min M">
-                                    <span class="range-separator">—</span>
-                                    <input type="number" step="0.1" id="brightestAbsMagMax" placeholder="Max M">
-                                </div>
-                                <div class="filter-tooltip">Filter by brightest absolute magnitude range</div>
-                            </div>
-                        </div>
-                        
-                        <div class="filter-row" style="margin-top:20px;">
-                            <div class="filter-actions">
-                                <button class="apply-advanced-btn" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
-                                    Apply Filters
-                                </button>
-                                <button class="clear-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
-                                    Clear All
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                </div>
+                <!-- Advanced Filters Modal (moved to body level, see below) -->
 
                 <!-- Admin Tools -->
                 <div class="admin-tools">
@@ -325,6 +215,13 @@
                 <div class="side-widget">
                     <h3>Recent Comments</h3>
                     <ul class="widget-list" id="recentCommentsList">
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </div>
+
+                <div class="side-widget">
+                    <h3>Recent TNS Updates</h3>
+                    <ul class="widget-list" id="recentTnsUpdatesList">
                         <li class="empty-message">Loading...</li>
                     </ul>
                 </div>
@@ -553,6 +450,121 @@
                 </div>
             </div>
         </div>
+
+    <!-- Advanced Filters Modal -->
+    <div class="modal-overlay advanced-filter-overlay" id="advancedFilterModal" style="display: none;">
+        <div class="upload-modal advanced-filter-dialog">
+        <div class="modal-header advanced-filter-header">
+            <div class="advanced-filter-heading">
+                <h3>Advanced Filters</h3>
+                <p>Use the full-screen filter workspace to narrow the Marshal list more clearly.</p>
+            </div>
+            <button class="close-modal advanced-filter-close" onclick="toggleAdvancedFilters()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+        <div class="advanced-filters-content advanced-filter-content" id="advancedFiltersContent" style="display:block;">
+            <div class="filter-row">
+                <!-- Classification Filter -->
+                <div class="filter-group">
+                    <label>Classification</label>
+                    <select id="classificationFilter" multiple>
+                        <option value="">All Classifications</option>
+                        <!-- Dynamic options will be populated by JavaScript -->
+                    </select>
+                    <div class="filter-tooltip">Filter by object classification type (hold Ctrl/Cmd to select multiple)</div>
+                </div>
+
+                <!-- Tag Filter -->
+                <div class="filter-group">
+                    <label>Status Tag</label>
+                    <select id="tagFilter">
+                        <option value="">All Status</option>
+                        <option value="object">Inbox</option>
+                        <option value="followup">Follow-up</option>
+                        <option value="finished">Finished</option>
+                        <option value="snoozed">Snoozed</option>
+                        <option value="flag">Flagged</option>
+                    </select>
+                    <div class="filter-tooltip">Filter by current status tag</div>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Discovery Date Range</label>
+                    <div class="date-range-group">
+                        <input type="date" id="dateFrom" placeholder="From">
+                        <span class="range-separator">—</span>
+                        <input type="date" id="dateTo" placeholder="To">
+                    </div>
+                    <div class="filter-tooltip">Filter by discovery date range</div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Apparent Magnitude</label>
+                    <div class="magnitude-range-group">
+                        <input type="number" step="0.1" id="appMagMin" placeholder="Min mag">
+                        <span class="range-separator">—</span>
+                        <input type="number" step="0.1" id="appMagMax" placeholder="Max mag">
+                    </div>
+                    <div class="filter-tooltip">Filter by apparent magnitude range</div>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Redshift Range</label>
+                    <div class="redshift-range-group">
+                        <input type="number" step="0.001" id="redshiftMin" placeholder="Min z">
+                        <span class="range-separator">—</span>
+                        <input type="number" step="0.001" id="redshiftMax" placeholder="Max z">
+                    </div>
+                    <div class="filter-tooltip">Filter by redshift (z) range</div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Discoverer/Survey</label>
+                    <input type="text" id="discovererFilter" placeholder="e.g., ATLAS, ZTF, Gaia...">
+                    <div class="filter-tooltip">Filter by discovering survey or group</div>
+                </div>
+            </div>
+
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Brightest Mag Range</label>
+                    <div class="magnitude-range-group">
+                        <input type="number" step="0.1" id="brightestMagMin" placeholder="Min mag">
+                        <span class="range-separator">—</span>
+                        <input type="number" step="0.1" id="brightestMagMax" placeholder="Max mag">
+                    </div>
+                    <div class="filter-tooltip">Filter by brightest magnitude range</div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Brightest Abs Mag Range</label>
+                    <div class="magnitude-range-group">
+                        <input type="number" step="0.1" id="brightestAbsMagMin" placeholder="Min M">
+                        <span class="range-separator">—</span>
+                        <input type="number" step="0.1" id="brightestAbsMagMax" placeholder="Max M">
+                    </div>
+                    <div class="filter-tooltip">Filter by brightest absolute magnitude range</div>
+                </div>
+            </div>
+
+            <div class="filter-row advanced-filter-actions-row">
+                <div class="filter-actions advanced-filter-actions">
+                    <button class="apply-advanced-btn" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
+                        Apply Filters
+                    </button>
+                    <button class="clear-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
+                        Clear All
+                    </button>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
 
     <!-- Upload Modal -->
     <div class="modal-overlay" id="uploadModalOverlay" style="display: none;">

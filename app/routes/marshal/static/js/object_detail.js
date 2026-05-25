@@ -969,6 +969,104 @@ function getNotificationIcon(type) {
     return icons[type] || ICONS.info;
 }
 
+// Keep default LC view from over-zooming when points are very close in time.
+function enforceMinLcXAxisSpan(figData, minSpanDays = 1) {
+    if (!figData || !Array.isArray(figData.data) || figData.data.length === 0) return;
+
+    const numericX = [];
+    const dateXMs = [];
+
+    figData.data.forEach(trace => {
+        if (!trace || !Array.isArray(trace.x)) return;
+
+        trace.x.forEach(value => {
+            if (typeof value === 'number' && Number.isFinite(value)) {
+                numericX.push(value);
+                return;
+            }
+
+            if (typeof value !== 'string') return;
+            const text = value.trim();
+            if (!text) return;
+
+            if (/^-?\d+(\.\d+)?$/.test(text)) {
+                const num = Number(text);
+                if (Number.isFinite(num)) numericX.push(num);
+                return;
+            }
+
+            const ms = Date.parse(text);
+            if (Number.isFinite(ms)) dateXMs.push(ms);
+        });
+    });
+
+    figData.layout = figData.layout || {};
+    figData.layout.xaxis = figData.layout.xaxis || {};
+
+    if (numericX.length > 0 && dateXMs.length === 0) {
+        const minX = Math.min(...numericX);
+        const maxX = Math.max(...numericX);
+        const span = maxX - minX;
+        if (span < minSpanDays) {
+            const center = (minX + maxX) / 2;
+            const forcedMin = center - minSpanDays / 2;
+            const forcedMax = center + minSpanDays / 2;
+            figData.layout.xaxis.range = [forcedMin, forcedMax];
+            figData.layout.xaxis.autorange = false;
+            figData.layout.xaxis.tickmode = 'linear';
+            figData.layout.xaxis.dtick = minSpanDays;
+            figData.layout.xaxis.tick0 = Math.floor(forcedMin);
+        }
+        return;
+    }
+
+    if (dateXMs.length > 0 && numericX.length === 0) {
+        const minSpanMs = minSpanDays * 24 * 60 * 60 * 1000;
+        const minX = Math.min(...dateXMs);
+        const maxX = Math.max(...dateXMs);
+        const span = maxX - minX;
+        if (span < minSpanMs) {
+            const center = (minX + maxX) / 2;
+            const forcedMin = center - minSpanMs / 2;
+            const forcedMax = center + minSpanMs / 2;
+            const tick0Date = new Date(forcedMin);
+            tick0Date.setUTCHours(0, 0, 0, 0);
+            figData.layout.xaxis.range = [new Date(forcedMin), new Date(forcedMax)];
+            figData.layout.xaxis.autorange = false;
+            figData.layout.xaxis.tickmode = 'linear';
+            figData.layout.xaxis.dtick = minSpanMs;
+            figData.layout.xaxis.tick0 = tick0Date;
+        }
+    }
+}
+
+const PHOTOMETRY_FETCH_TIMEOUT_MS = 120000;
+
+function fetchJsonWithTimeout(url, timeoutMs = PHOTOMETRY_FETCH_TIMEOUT_MS, options = {}) {
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+
+    return fetch(url, {
+        ...options,
+        signal: controller.signal
+    })
+        .then(async response => {
+            if (!response.ok) {
+                let body = null;
+                try {
+                    body = await response.json();
+                } catch (_) {
+                    body = null;
+                }
+                const err = new Error((body && body.error) ? body.error : `HTTP ${response.status}`);
+                err.status = response.status;
+                throw err;
+            }
+            return response.json();
+        })
+        .finally(() => clearTimeout(timerId));
+}
+
 // Photometry plot loading with improved loading states
 function loadPhotometryPlot() {
     if (!cleanObjectName) return Promise.resolve();
@@ -989,11 +1087,9 @@ function loadPhotometryPlot() {
 
     // Load both plot and raw data
     return Promise.all([
-        fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
-        fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry`)
-    ]).then(responses => {
-        return Promise.all(responses.map(r => r.json()));
-    }).then(([plotData, rawData]) => {
+        fetchJsonWithTimeout(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry/plot?extinction=${applyExtinction}&k_corr=${applyKCorr}`),
+        fetchJsonWithTimeout(`/api/object/${encodeURIComponent(cleanObjectName)}/photometry`)
+    ]).then(([plotData, rawData]) => {
         console.log('Plot data:', plotData);
         console.log('Raw data:', rawData);
         
@@ -1072,6 +1168,7 @@ function loadPhotometryPlot() {
                             figData.layout.font = figData.layout.font || {};
                             figData.layout.font.color = '#ccc';
                         }
+                        enforceMinLcXAxisSpan(figData, 1);
                         Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
                         _buildTelescopeToggles(figData.data);
                         console.log('Photometry plot rendered successfully');
@@ -1115,10 +1212,11 @@ function loadPhotometryPlot() {
         console.error('Error loading photometry data:', error);
         if (loadingDiv) loadingDiv.style.display = 'none';
         if (photometryContainer) {
+            const timedOut = error && error.name === 'AbortError';
             photometryContainer.innerHTML = `
                 <div class="no-data">
                     <span class="no-data-icon">${ICONS.error}</span>
-                    <span class="no-data-text">Error loading photometry data</span>
+                    <span class="no-data-text">${timedOut ? 'Photometry request timed out. Please try again.' : 'Error loading photometry data'}</span>
                 </div>
             `;
             
@@ -1500,7 +1598,13 @@ function _specQueryParams() {
     const normalise    = document.getElementById('specNormalise')?.checked;
     const stackOffset  = document.getElementById('specStackOffset')?.checked;
     if (restFrame && (!objectData || objectData.redshift == null)) {
-        showNotification('This object has no redshift — please fill it in before using Rest Frame.', 'warning');
+        // Only warn when there is actually spectrum data loaded
+        const selector = document.getElementById('spectrumSelector');
+        const hasSpecData = selector && selector.options.length > 0 &&
+                            !(selector.options.length === 1 && selector.options[0].value === '');
+        if (hasSpecData) {
+            showNotification('This object has no redshift — please fill it in before using Rest Frame.', 'warning');
+        }
         const cb = document.getElementById('specRestFrame');
         if (cb) cb.checked = false;
         return { rest_frame: false, normalise: normalise || false, stack: stackOffset || false };
@@ -3815,13 +3919,16 @@ function fetchPhotometry(silent = false) {
         }
     }
     
-    fetch(`/api/object/${encodeURIComponent(objectName)}/fetch_photometry`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
+    fetchJsonWithTimeout(
+        `/api/object/${encodeURIComponent(objectName)}/fetch_photometry`,
+        PHOTOMETRY_FETCH_TIMEOUT_MS,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         }
-    })
-    .then(response => response.json())
+    )
     .then(data => {
         if (data.success) {
             if (!silent) {
@@ -3846,8 +3953,9 @@ function fetchPhotometry(silent = false) {
     })
     .catch(error => {
         console.error('Error fetching photometry:', error);
+        const timedOut = error && error.name === 'AbortError';
         if (!silent) {
-            showNotification('Failed to fetch photometry', 'error');
+            showNotification(timedOut ? 'Photometry fetch timed out. Please try again.' : 'Failed to fetch photometry', 'error');
             showLoading(false);
         }
     });

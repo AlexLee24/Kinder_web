@@ -2,7 +2,6 @@
 # IMPORTS AND CONFIGURATION
 # ===============================================================================
 from flask import Flask, send_from_directory, abort
-from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import os
 import sys
@@ -117,9 +116,8 @@ register_routes(app)
 import fcntl
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
-from modules.phot_scheduler import fetch_inbox_photometry, fetch_missing_photometry, update_target_mags
-from modules.GCN_alert import start_gcn_listener
-from modules.TNS_object_fetch import start_tns_fetcher
+from modules.phot_scheduler import fetch_inbox_photometry, update_target_mags
+# from modules.GCN_alert import start_gcn_listener  # reserved for future use
 from modules.auto_tns_download import start_auto_tns_downloader
 from modules.tns_gap_filler import start_gap_filler
 

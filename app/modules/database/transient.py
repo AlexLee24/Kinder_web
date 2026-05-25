@@ -173,6 +173,43 @@ def update_download_log(log_id: int, status: str,
         logger.error("update_download_log: %s", e)
 
 
+def _ensure_tns_update_audit_table(cur):
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS transient.tns_update_audit ("
+        "audit_id BIGSERIAL PRIMARY KEY, "
+        "obj_id BIGINT NOT NULL, "
+        "name TEXT NOT NULL, "
+        "changed_fields TEXT[] NOT NULL DEFAULT '{}', "
+        "source TEXT NOT NULL DEFAULT 'tns_sync', "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+        ")"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tns_update_audit_updated_at "
+        "ON transient.tns_update_audit(updated_at DESC)"
+    )
+
+
+def log_tns_update_batch(rows: list[tuple[int, str, list[str], str]]):
+    """rows: (obj_id, name, changed_fields, source)."""
+    if not rows:
+        return
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_tns_update_audit_table(cur)
+            extras.execute_batch(
+                cur,
+                "INSERT INTO transient.tns_update_audit (obj_id, name, changed_fields, source) "
+                "VALUES (%s, %s, %s, %s)",
+                rows,
+                page_size=1000,
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("log_tns_update_batch: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # TNSObjectDB — photometry, spectroscopy, comments, object views
 # ---------------------------------------------------------------------------
@@ -474,6 +511,94 @@ class TNSObjectDB:
                     d['created_at'] = d['created_at'].isoformat()
                 out.append(d)
         return out
+
+    @staticmethod
+    def get_recent_tns_updates(limit: int = 20) -> tuple[list[dict], bool]:
+        """回傳 (updates, is_fallback)。
+        - 只顯示 2 天內的變更
+        - classified（type / name_prefix 變動）排最上面
+        - is_fallback=True 代表 audit 表無近期資料，改用最近修改物件替代。"""
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            _ensure_tns_update_audit_table(cur)
+
+            # 先從 audit table 撈 2 天內的記錄
+            # classified（type 或 name_prefix 有變動）排最前
+            cur.execute(
+                "SELECT a.obj_id, a.name AS object_name, a.changed_fields, a.updated_at, a.source, "
+                "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                "CASE WHEN 'type' = ANY(a.changed_fields) OR 'name_prefix' = ANY(a.changed_fields) "
+                "     THEN 0 ELSE 1 END AS sort_priority "
+                "FROM transient.tns_update_audit a "
+                "LEFT JOIN transient.objects o ON a.obj_id = o.obj_id "
+                "WHERE a.updated_at >= NOW() - INTERVAL '2 days' "
+                "ORDER BY sort_priority ASC, a.updated_at DESC "
+                "LIMIT %s",
+                (limit,)
+            )
+            rows = cur.fetchall()
+            is_fallback = False
+
+            # 2 天內沒有 audit 記錄 → fallback：顯示 2 天內最近修改的物件
+            if not rows:
+                is_fallback = True
+                cur.execute(
+                    "SELECT o.obj_id, o.name AS object_name, "
+                    "'{}'::text[] AS changed_fields, "
+                    "(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day')::timestamptz AS updated_at, "
+                    "'tns_sync' AS source, "
+                    "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                    "CASE WHEN o.name_prefix = 'SN' THEN 0 ELSE 1 END AS sort_priority "
+                    "FROM transient.objects o "
+                    "WHERE o.last_modified_date IS NOT NULL "
+                    "  AND (TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day') "
+                    "      >= NOW() - INTERVAL '2 days' "
+                    "ORDER BY sort_priority ASC, o.last_modified_date DESC "
+                    "LIMIT %s",
+                    (limit,)
+                )
+                rows = cur.fetchall()
+
+                # 2 天內也沒有任何物件 → 放寬到最近修改的前 N 筆
+                if not rows:
+                    cur.execute(
+                        "SELECT o.obj_id, o.name AS object_name, "
+                        "'{}'::text[] AS changed_fields, "
+                        "(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day')::timestamptz AS updated_at, "
+                        "'tns_sync' AS source, "
+                        "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                        "CASE WHEN o.name_prefix = 'SN' THEN 0 ELSE 1 END AS sort_priority "
+                        "FROM transient.objects o "
+                        "WHERE o.last_modified_date IS NOT NULL "
+                        "ORDER BY sort_priority ASC, o.last_modified_date DESC "
+                        "LIMIT %s",
+                        (limit,)
+                    )
+                    rows = cur.fetchall()
+
+            out = []
+            for r in rows:
+                d = dict(r)
+                if d.get('updated_at'):
+                    d['updated_at'] = d['updated_at'].isoformat()
+                if d.get('changed_fields') is None:
+                    d['changed_fields'] = []
+                # 標記是否為 classified（type / name_prefix 有變動）
+                d['is_classified'] = (
+                    'type' in d['changed_fields'] or
+                    'name_prefix' in d['changed_fields'] or
+                    (is_fallback and d.get('name_prefix') == 'SN')
+                )
+                # 標記是否為 new_add（新增物件）
+                d['is_new_add'] = (
+                    not d['is_classified'] and (
+                        'new_add' in d['changed_fields'] or
+                        (is_fallback and d.get('name_prefix') != 'SN')
+                    )
+                )
+                d.pop('sort_priority', None)
+                out.append(d)
+        return out, is_fallback
 
     @staticmethod
     def get_comment_by_id(comment_id: int) -> dict | None:

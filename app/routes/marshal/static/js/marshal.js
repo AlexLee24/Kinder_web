@@ -1444,6 +1444,15 @@ async function fetchDashboardWidgets() {
             }
         }
 
+        // Fetch recent TNS updates
+        const updatesResponse = await fetch('/api/marshal/recent-tns-updates');
+        if (updatesResponse.ok) {
+            const data = await updatesResponse.json();
+            if (data.success && data.updates) {
+                renderRecentTnsUpdates(data.updates, data.is_fallback);
+            }
+        }
+
         // Fetch top viewed initially (without mode argument uses default '30days')
         loadTopViewed();
 
@@ -1576,6 +1585,89 @@ function renderRecentComments(comments) {
             <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
         `;
         li.appendChild(contentDiv);
+        list.appendChild(li);
+    });
+}
+
+function renderRecentTnsUpdates(updates, isFallback) {
+    const list = document.getElementById('recentTnsUpdatesList');
+    if (!list) return;
+
+    // 動態更新 widget 標題
+    const widgetTitle = list.closest('.side-widget')?.querySelector('h3');
+    if (widgetTitle) {
+        widgetTitle.textContent = isFallback ? 'Recent TNS Objects' : 'Recent TNS Updates';
+    }
+
+    if (!updates || updates.length === 0) {
+        list.innerHTML = '<li class="empty-message">No recent TNS data</li>';
+        return;
+    }
+
+    list.innerHTML = '';
+    updates.forEach(u => {
+        const li = document.createElement('li');
+        const d = u.updated_at ? new Date(u.updated_at) : null;
+        const fullName = (u.name_prefix || '') + (u.object_name || 'Unknown');
+        const bareName = u.object_name || '';
+        const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
+        const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
+
+        // classified 項目：不顯示括號 type，改在下方顯示 "Classified as: ..."
+        const showTypeInline = !u.is_classified && !u.is_new_add;
+        const typeLabel = (showTypeInline && u.type)
+            ? ` <span style="font-size:0.78em; color:#aaa;">(${u.type})</span>`
+            : '';
+
+        // classified badge（AT→SN 或 type 變動）
+        const classifiedBadge = u.is_classified
+            ? `<span class="tns-classified-badge">classified</span>`
+            : '';
+
+        // new add badge（新增物件）
+        const newAddBadge = (!u.is_classified && u.is_new_add)
+            ? `<span class="tns-new-add-badge">new add</span>`
+            : '';
+
+        // 下方 subline：classified 顯示 "Classified as: SN II"，new_add 顯示 "Newly added"，其他顯示變動欄位
+        let subline;
+        if (u.is_classified && u.type) {
+            subline = `Classified as: <strong style="color:rgba(255,255,255,0.9);">${u.type}</strong>`;
+        } else if (u.is_new_add) {
+            subline = `Newly added${u.type ? `: <strong style="color:rgba(255,255,255,0.9);">${u.type}</strong>` : ''}`;
+        } else {
+            const changedFields = Array.isArray(u.changed_fields) && u.changed_fields.length > 0
+                ? u.changed_fields.join(', ')
+                : (isFallback ? 'newly added' : 'metadata refresh');
+            subline = `${isFallback ? 'Added' : 'Updated'}: ${changedFields}`;
+        }
+
+        // 時間顯示：相對時間
+        let timeStr = '';
+        if (d) {
+            const now = new Date();
+            const diffMs = now - d;
+            const diffH = diffMs / 3600000;
+            if (diffH < 1) timeStr = `${Math.round(diffMs / 60000)}m ago`;
+            else if (diffH < 24) timeStr = `${Math.round(diffH)}h ago`;
+            else if (diffH < 48) timeStr = 'yesterday';
+            else timeStr = d.toLocaleDateString();
+        }
+
+        if (u.is_classified) {
+            li.classList.add('tns-classified-item');
+        } else if (u.is_new_add) {
+            li.classList.add('tns-new-add-item');
+        }
+
+        li.innerHTML = `
+            <div style="display:flex; align-items:baseline; gap:4px; flex-wrap:wrap;">
+                <strong><a href="${objectLink}" target="_blank"
+                    style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${classifiedBadge}${newAddBadge}${buildObjectTags(u.tags, true)}
+                <span style="font-size:0.78em; color:var(--text-muted); margin-left:auto;">${timeStr}</span>
+            </div>
+            <div style="margin-top:3px; font-size:0.83em; color:rgba(255,255,255,0.65);">${subline}</div>
+        `;
         list.appendChild(li);
     });
 }

@@ -159,6 +159,16 @@ def get_marshal_recent_comments():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@marshal_bp.route('/api/marshal/recent-tns-updates')
+def get_marshal_recent_tns_updates():
+    try:
+        from modules.database.transient import TNSObjectDB
+        updates, is_fallback = TNSObjectDB.get_recent_tns_updates(limit=6)
+        return jsonify({'success': True, 'updates': updates, 'is_fallback': is_fallback})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @marshal_bp.route('/api/marshal/top-viewed')
 def get_marshal_top_viewed():
     try:
