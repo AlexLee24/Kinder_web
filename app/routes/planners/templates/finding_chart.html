@@ -212,12 +212,16 @@
                     </svg>
                     <p>Set target coordinates and click Generate</p>
                 </div>
-                <img id="chart-image" style="display:none; width:100%; height:auto; border-radius:12px;" />
+                <img id="chart-image" alt="Generated finding chart" style="display:none; width:100%; height:auto; border-radius:12px;" />
             </div>
             <div class="chart-actions" id="chart-actions" style="display:none;">
-                <button class="btn-action" id="btn-download" title="Download PNG">
+                <button class="btn-action" id="btn-download-png" title="Download marked PNG">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Download
+                    Download PNG
+                </button>
+                <button class="btn-action" id="btn-download-fits" title="Download raw FITS cutout">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download FITS
                 </button>
                 <span class="chart-info" id="chart-info"></span>
             </div>
@@ -368,6 +372,7 @@
     // GENERATE
     // =========================================================================
     document.getElementById('btn-generate').addEventListener('click', generateChart);
+    let lastFindingChartPayload = null;
 
     async function generateChart() {
         const name = document.getElementById('target-name').value.trim();
@@ -398,17 +403,19 @@
         document.getElementById('btn-generate').disabled = true;
 
         try {
+            const payload = {
+                name, ra, dec, survey, fov,
+                invert, mag_limit: magLimit, name_limit: nameLimit,
+                show_mag: showMag, show_names: showNames,
+                max_stars: maxStars,
+                show_slit: showSlit, slit_pa: slitPa,
+                slit_width: slitWidth, slit_length: slitLength
+            };
+
             const resp = await fetch('/api/finding_chart', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name, ra, dec, survey, fov,
-                    invert, mag_limit: magLimit, name_limit: nameLimit,
-                    show_mag: showMag, show_names: showNames,
-                    max_stars: maxStars,
-                    show_slit: showSlit, slit_pa: slitPa,
-                    slit_width: slitWidth, slit_length: slitLength
-                })
+                body: JSON.stringify(payload)
             });
             const data = await resp.json();
             if (data.logs && data.logs.length) appendLog(data.logs);
@@ -420,6 +427,7 @@
                 document.getElementById('chart-actions').style.display = 'flex';
                 document.getElementById('chart-info').textContent =
                     `RA: ${data.ra_deg.toFixed(4)}° Dec: ${data.dec_deg.toFixed(4)}° | FOV: ${data.fov_arcmin}'`;
+                lastFindingChartPayload = payload;
                 setStatus('', '');
             } else {
                 appendLog([`[ERROR] ${data.error || 'Unknown error'}`]);
@@ -435,7 +443,7 @@
     // =========================================================================
     // DOWNLOAD
     // =========================================================================
-    document.getElementById('btn-download').addEventListener('click', function() {
+    document.getElementById('btn-download-png').addEventListener('click', function() {
         const img = document.getElementById('chart-image');
         if (!img.src) return;
         const a = document.createElement('a');
@@ -443,6 +451,58 @@
         a.href = img.src;
         a.download = `finding_chart_${name.replace(/\s+/g, '_')}.png`;
         a.click();
+    });
+
+    document.getElementById('btn-download-fits').addEventListener('click', async function() {
+        if (!lastFindingChartPayload) {
+            setStatus('Generate chart first, then download FITS.', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-download-fits');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Preparing FITS...';
+        setStatus('Preparing raw FITS cutout...', 'loading');
+
+        try {
+            const resp = await fetch('/api/finding_chart/fits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(lastFindingChartPayload)
+            });
+
+            if (!resp.ok) {
+                let msg = 'Failed to download FITS';
+                try {
+                    const err = await resp.json();
+                    msg = err.error || msg;
+                    if (Array.isArray(err.logs) && err.logs.length) appendLog(err.logs);
+                } catch (_) {}
+                setStatus(msg, 'error');
+                return;
+            }
+
+            const blob = await resp.blob();
+            const disposition = resp.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename="?([^";]+)"?/i);
+            const filename = match ? match[1] : 'finding_chart_cutout.fits';
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            setStatus('', '');
+        } catch (e) {
+            setStatus('Network error: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
     });
 
     // =========================================================================

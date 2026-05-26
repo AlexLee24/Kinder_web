@@ -6,7 +6,7 @@ from flask import session, flash, redirect, url_for, request, jsonify, g
 
 logger = logging.getLogger(__name__)
 from datetime import datetime
-from modules.database.auth import user_exists, get_users, get_user, save_user, update_user, get_setting, get_invitation, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests
+from modules.database.auth import user_exists, get_users, get_user, save_user, update_user, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests
 from modules.config import config
 
 from flask import Blueprint
@@ -36,7 +36,11 @@ def refresh_user_session():
         return
 
     user_email = session['user']['email']
-    user_data = get_user(user_email)  # includes groups via single extra query
+    try:
+        user_data = get_user(user_email)  # includes groups via single extra query
+    except Exception as exc:
+        logger.warning("refresh_user_session skipped because database is unavailable: %s", exc)
+        return
 
     if not user_data:
         return
@@ -70,7 +74,11 @@ def refresh_user_session():
 
 def update_user_session_groups(user_email):
     if 'user' in session and session['user']['email'] == user_email:
-        user_data = get_user(user_email)
+        try:
+            user_data = get_user(user_email)
+        except Exception as exc:
+            logger.warning("update_user_session_groups skipped because database is unavailable: %s", exc)
+            return
         user_groups = user_data.get('groups', []) if user_data else []
 
         session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or session['user'].get('is_admin', False)
@@ -84,10 +92,11 @@ def google_login():
 
 @auth_bp.route('/auth/google/callback')
 def google_callback():
+    user_groups = []
     try:
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
-        
+
         if user_info:
             user_email = user_info.get('email')
             
@@ -104,6 +113,7 @@ def google_callback():
                 user_groups = existing_user_data.get('groups', [])
                 is_great_lab_member = 'GREAT_Lab' in user_groups or is_admin
             else:
+                user_groups = []
                 if user_email == config.ADMIN_EMAIL:
                     is_admin = True
                     role = 'admin'

@@ -7,6 +7,7 @@ Return values use backward-compatible column aliases matching legacy tns_objects
 
 import json
 import logging
+import os
 import re as _re
 import time as _time
 from datetime import datetime, timezone
@@ -74,6 +75,184 @@ def _mjd_update(cur, obj_id: int, mjd: float):
         "WHERE obj_id = %s AND (last_phot_date IS NULL OR last_phot_date < %s)",
         (mjd, obj_id, mjd)
     )
+
+
+def _clean_spectrum_source_name(raw: str | None) -> str:
+    text = str(raw or '').strip()
+    if not text:
+        return ''
+    text = _re.sub(r'[/\\]+', '-', text)
+    text = _re.sub(r'[^0-9A-Za-z ._()+\-]+', ' ', text)
+    text = _re.sub(r'\s+', ' ', text).strip(' ._-')
+    return text[:80]
+
+
+def _infer_spectrum_source_name(original_filename: str | None) -> str:
+    if not original_filename:
+        return ''
+    stem = os.path.splitext(os.path.basename(str(original_filename)))[0]
+    tokens = [tok for tok in _re.split(r'[^0-9A-Za-z]+', stem) if tok]
+    if not tokens:
+        return ''
+    letters = _re.sub(r'[^A-Za-z]+', '', tokens[0])
+    if 2 <= len(letters) <= 10:
+        return _clean_spectrum_source_name(letters.upper())
+    return ''
+
+
+def _build_utc_datetime(year: int, month: int, day: int,
+                        hour: int = 0, minute: int = 0, second: int = 0) -> datetime | None:
+    try:
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _extract_spectrum_datetime(original_filename: str | None) -> datetime | None:
+    if not original_filename:
+        return None
+    stem = os.path.splitext(os.path.basename(str(original_filename)))[0]
+    patterns = [
+        (r'(?<!\d)(20\d{2})(\d{2})(\d{2})[T_\-]?(\d{2})(\d{2})(\d{2})(?!\d)', True),
+        (r'(?<!\d)(20\d{2})[-_](\d{2})[-_](\d{2})[T_\-](\d{2})[-_](\d{2})[-_](\d{2})(?!\d)', True),
+        (r'(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)', False),
+        (r'(?<!\d)(20\d{2})[-_](\d{2})[-_](\d{2})(?!\d)', False),
+    ]
+    for pattern, has_time in patterns:
+        match = _re.search(pattern, stem)
+        if not match:
+            continue
+        year, month, day = map(int, match.group(1, 2, 3))
+        if has_time:
+            hour, minute, second = map(int, match.group(4, 5, 6))
+            dt = _build_utc_datetime(year, month, day, hour, minute, second)
+        else:
+            dt = _build_utc_datetime(year, month, day)
+        if dt is not None:
+            return dt
+    return None
+
+
+def _parse_manual_observation_date(observation_date: str | None) -> datetime | None:
+    text = str(observation_date or '').strip()
+    if not text:
+        return None
+    # Accept date input (YYYY-MM-DD) and ISO datetime strings by taking date part.
+    if 'T' in text:
+        text = text.split('T', 1)[0].strip()
+    if ' ' in text:
+        text = text.split(' ', 1)[0].strip()
+    match = _re.match(r'^(\d{4})-(\d{2})-(\d{2})$', text)
+    if not match:
+        return None
+    year, month, day = map(int, match.groups())
+    return _build_utc_datetime(year, month, day)
+
+
+def _datetime_to_mjd(dt: datetime) -> float:
+    return dt.timestamp() / 86400.0 + 40587.0
+
+
+def _current_utc_mjd() -> float:
+    return _datetime_to_mjd(datetime.now(timezone.utc))
+
+
+def _phase_from_stored_value(value) -> float | None:
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    return val if 0.0 < val < 1000.0 else None
+
+
+def _format_spectrum_observation_label(mjd) -> str:
+    phase = _phase_from_stored_value(mjd)
+    if phase is not None:
+        return ''
+    try:
+        mjd_val = float(mjd)
+    except (TypeError, ValueError):
+        return ''
+    if mjd_val <= 1.0:
+        return ''
+    dt = datetime.fromtimestamp((mjd_val - 40587.0) * 86400.0, tz=timezone.utc)
+    if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+        return dt.strftime('%Y-%m-%d')
+    return dt.strftime('%Y-%m-%d %H:%M UTC')
+
+
+def _legacy_spectrum_source_label(source: str | None) -> str:
+    text = str(source or '').strip()
+    if not text:
+        return ''
+    dt = _extract_spectrum_datetime(text)
+    return _format_spectrum_observation_label(_datetime_to_mjd(dt)) if dt else ''
+
+
+def _build_spectrum_id(source: str | None, mjd) -> str:
+    source_name = _clean_spectrum_source_name(source) or 'Unknown'
+    try:
+        mjd_val = float(mjd)
+    except (TypeError, ValueError):
+        mjd_val = 0.0
+    return f'{source_name}@@{mjd_val:.6f}'
+
+
+def _parse_spectrum_id(spectrum_id: str | None) -> tuple[str, float | None]:
+    raw = str(spectrum_id or '').strip()
+    if '@@' not in raw:
+        return raw, None
+    source_name, mjd_text = raw.rsplit('@@', 1)
+    try:
+        return source_name, float(mjd_text)
+    except (TypeError, ValueError):
+        return source_name, None
+
+
+def _build_spectrum_label(source: str | None, mjd) -> str:
+    source_name = _clean_spectrum_source_name(source)
+    legacy_label = _legacy_spectrum_source_label(source_name)
+    obs_label = _format_spectrum_observation_label(mjd) or legacy_label
+    display_source = '' if legacy_label else source_name
+    if display_source and obs_label:
+        return f'{display_source} - {obs_label}'
+    if display_source:
+        return display_source
+    if obs_label:
+        return obs_label
+    return 'Spectrum'
+
+
+def _resolve_spectrum_source_and_mjd(
+    telescope=None,
+    spectrum_id=None,
+    original_filename=None,
+    phase=None,
+    observation_date=None,
+):
+    parsed_source, parsed_mjd = _parse_spectrum_id(spectrum_id)
+    source_name = (
+        _clean_spectrum_source_name(telescope)
+        or _clean_spectrum_source_name(parsed_source)
+        or _infer_spectrum_source_name(original_filename)
+        or 'Unknown'
+    )
+
+    if parsed_mjd is not None and parsed_mjd > 1.0:
+        mjd = parsed_mjd
+    else:
+        manual_dt = _parse_manual_observation_date(observation_date)
+        if manual_dt is not None:
+            mjd = _datetime_to_mjd(manual_dt)
+        else:
+            observed_dt = _extract_spectrum_datetime(original_filename)
+            if observed_dt is not None:
+                mjd = _datetime_to_mjd(observed_dt)
+            else:
+                phase_val = _phase_from_stored_value(phase)
+                mjd = phase_val if phase_val is not None else _current_utc_mjd()
+
+    return source_name, float(mjd)
 
 
 # ---------------------------------------------------------------------------
@@ -350,12 +529,17 @@ class TNSObjectDB:
 
     @staticmethod
     def add_spectrum_data(object_name: str, wavelength_data, intensity_data,
-                          phase=None, telescope=None, spectrum_id=None):
-        """spectrum_id serves as source label; phase is stored as part of source tag."""
-        if spectrum_id is None:
-            spectrum_id = f"{object_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        source_tag = spectrum_id
-        mjd = 0.0  # unknown; use placeholder
+                          phase=None, telescope=None, spectrum_id=None,
+                          original_filename=None, observation_date=None):
+        """Store spectroscopy with source=telescope/instrument and MJD=observation epoch."""
+        source_tag, mjd = _resolve_spectrum_source_and_mjd(
+            telescope=telescope,
+            spectrum_id=spectrum_id,
+            original_filename=original_filename,
+            phase=phase,
+            observation_date=observation_date,
+        )
+        spectrum_id = _build_spectrum_id(source_tag, mjd)
         rows = [
             (None, object_name, mjd, wl, inten, source_tag)
             for wl, inten in zip(wavelength_data, intensity_data)
@@ -385,14 +569,24 @@ class TNSObjectDB:
             if obj_id is None:
                 return []
             cur.execute(
-                'SELECT spec_id AS id, name AS object_name, "MJD", '
-                'wavelength, intensity, source AS telescope, '
-                'source AS spectrum_id '
+                'SELECT spec_id AS id, name AS object_name, "MJD" AS observation_mjd, '
+                'wavelength, intensity, source AS source_name '
                 'FROM transient.spectroscopy '
                 'WHERE obj_id = %s ORDER BY source, wavelength',
                 (obj_id,)
             )
-            return [dict(r) for r in cur.fetchall()]
+            rows = []
+            for row in cur.fetchall():
+                item = dict(row)
+                source_name = item.pop('source_name', '')
+                observation_mjd = item.get('observation_mjd')
+                item['telescope'] = source_name or 'Unknown'
+                item['phase'] = _phase_from_stored_value(observation_mjd)
+                item['spectrum_id'] = _build_spectrum_id(source_name, observation_mjd)
+                item['spectrum_label'] = _build_spectrum_label(source_name, observation_mjd)
+                item['observation_date_label'] = _format_spectrum_observation_label(observation_mjd)
+                rows.append(item)
+            return rows
 
     @staticmethod
     def get_spectrum_list(object_name: str) -> list[dict]:
@@ -402,25 +596,43 @@ class TNSObjectDB:
             if obj_id is None:
                 return []
             cur.execute(
-                'SELECT source AS spectrum_id, source AS telescope, '
-                '"MJD" AS phase, '
+                'SELECT source AS source_name, "MJD" AS observation_mjd, '
                 'MIN(wavelength) AS min_wavelength, MAX(wavelength) AS max_wavelength, '
-                'COUNT(*) AS point_count, MIN(spec_id) AS observation_date '
+                'COUNT(*) AS point_count, MIN(spec_id) AS observation_row_id '
                 'FROM transient.spectroscopy '
                 'WHERE obj_id = %s '
-                'GROUP BY source, "MJD" ORDER BY observation_date DESC',
+                'GROUP BY source, "MJD" '
+                'ORDER BY "MJD" DESC NULLS LAST, MIN(spec_id) DESC',
                 (obj_id,)
             )
-            return [dict(r) for r in cur.fetchall()]
+            rows = []
+            for row in cur.fetchall():
+                item = dict(row)
+                source_name = item.pop('source_name', '')
+                observation_mjd = item.get('observation_mjd')
+                item['telescope'] = source_name or 'Unknown'
+                item['phase'] = _phase_from_stored_value(observation_mjd)
+                item['spectrum_id'] = _build_spectrum_id(source_name, observation_mjd)
+                item['spectrum_label'] = _build_spectrum_label(source_name, observation_mjd)
+                item['observation_date_label'] = _format_spectrum_observation_label(observation_mjd)
+                rows.append(item)
+            return rows
 
     @staticmethod
     def delete_spectrum(spectrum_id: str) -> bool:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "DELETE FROM transient.spectroscopy WHERE source = %s",
-                (spectrum_id,)
-            )
+            source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
+            if observation_mjd is None:
+                cur.execute(
+                    "DELETE FROM transient.spectroscopy WHERE source = %s",
+                    (source_name,)
+                )
+            else:
+                cur.execute(
+                    'DELETE FROM transient.spectroscopy WHERE source = %s AND ABS("MJD" - %s) < 1e-6',
+                    (source_name, observation_mjd)
+                )
             deleted = cur.rowcount > 0
             conn.commit()
         return deleted

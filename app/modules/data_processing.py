@@ -26,6 +26,44 @@ class DataVisualization:
         except ImportError:
             from . import filter_colors as _fc
         return _fc.get_rgba(filter_name, alpha)
+
+    @staticmethod
+    def _apply_unified_plot_style(layout, legend_right=True):
+        """Apply a shared dark-panel Plotly style across photometry/spectroscopy charts."""
+        layout.update(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#ccc'),
+            hoverlabel=dict(
+                bgcolor='rgba(20,20,20,0.95)',
+                bordercolor='rgba(140,140,140,0.6)',
+                font=dict(color='#eee')
+            )
+        )
+
+        if layout.legend:
+            layout.legend.update(
+                bgcolor='rgba(20,20,20,0.55)',
+                bordercolor='rgba(140,140,140,0.35)',
+                borderwidth=1,
+                font=dict(color='#ddd')
+            )
+            if legend_right:
+                layout.legend.update(x=1.02, y=1, xanchor='left', yanchor='top')
+
+        axis_style = dict(
+            showline=True,
+            linecolor='rgba(180,180,180,0.55)',
+            tickcolor='rgba(180,180,180,0.55)',
+            gridcolor='rgba(120,120,120,0.25)',
+            zerolinecolor='rgba(120,120,120,0.25)'
+        )
+        for axis_name in ('xaxis', 'xaxis2', 'yaxis', 'yaxis2'):
+            axis_obj = getattr(layout, axis_name, None)
+            if axis_obj:
+                axis_obj.update(**axis_style)
+
+        return layout
     
     @staticmethod
     def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False, apply_extinction=True, apply_k_corr=True):
@@ -438,6 +476,8 @@ class DataVisualization:
             showlegend=False,
             hoverinfo='skip'
         ))
+
+        layout = DataVisualization._apply_unified_plot_style(layout, legend_right=True)
         
         fig = go.Figure(data=traces, layout=layout)
         
@@ -516,6 +556,7 @@ class DataVisualization:
         # Get spectrum metadata
         telescope = spectrum_points[0].get('telescope', 'Unknown')
         phase = spectrum_points[0].get('phase')
+        spectrum_label = spectrum_points[0].get('spectrum_label') or telescope or 'Spectrum'
         
         x_label = 'Rest-frame Wavelength (Å)' if (rest_frame and redshift is not None) else 'Wavelength (Å)'
         y_label = 'Normalized Intensity' if normalise else 'Relative Intensity'
@@ -531,23 +572,21 @@ class DataVisualization:
             x=wavelengths,
             y=intensities,
             mode='lines',
-            name=f'Spectrum ({telescope})',
+            name=spectrum_label,
             line=dict(
                 color='rgb(31, 119, 180)',
                 width=1.5
             ),
-            hovertemplate='<b>Spectrum</b><br>' +
+            hovertemplate=f'<b>{spectrum_label}</b><br>' +
                           'Wavelength: %{x:.1f} Å<br>' +
                           'Intensity: %{y:.3e}<br>' +
                           '<extra></extra>'
         )
         
         # Create layout
-        title = f"Spectrum"
+        title = spectrum_label
         if phase is not None:
             title += f" (Phase: {phase:.1f} days)"
-        if telescope != 'Unknown':
-            title += f" - {telescope}"
         
         layout = go.Layout(
             title=title,
@@ -562,6 +601,7 @@ class DataVisualization:
             hovermode='x unified',
             margin=dict(l=60, r=60, t=50, b=60)
         )
+        layout = DataVisualization._apply_unified_plot_style(layout, legend_right=False)
         
         fig = go.Figure(data=[trace], layout=layout)
         
@@ -622,10 +662,9 @@ class DataVisualization:
             
             telescope = points[0].get('telescope', 'Unknown')
             phase = points[0].get('phase')
+            spectrum_label = points[0].get('spectrum_label') or spectrum_id or telescope or 'Spectrum'
             
-            name = f"{spectrum_id}"
-            if telescope != 'Unknown':
-                name += f" ({telescope})"
+            name = spectrum_label
             if phase is not None:
                 name += f" - Phase: {phase:.1f}d"
             
@@ -677,6 +716,7 @@ class DataVisualization:
             hovermode='x unified',
             margin=dict(l=60, r=150, t=50, b=60)
         )
+        layout = DataVisualization._apply_unified_plot_style(layout, legend_right=True)
         
         fig = go.Figure(data=traces, layout=layout)
         

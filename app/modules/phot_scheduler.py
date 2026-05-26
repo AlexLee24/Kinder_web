@@ -4,6 +4,7 @@ Runs daily at UTC+8 09:00 (UTC 01:00).
 """
 import threading
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,19 @@ def fetch_inbox_photometry():
     success_count = 0
     fail_count = 0
     failed_objects = []
+    run_id = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    progress_interval = 50
 
     try:
         from modules.database.transient import search_tns_objects
         from modules.download_phot import process_single_object_workflow
 
         objects = search_tns_objects(tag='object', limit=9999, sort_by='name', sort_order='asc')
-        logger.info(f"fetch_inbox_photometry: found {len(objects)} inbox objects")
+        logger.info(
+            "event=phot_fetch_inbox_start run_id=%s total=%s",
+            run_id,
+            len(objects),
+        )
         _progress["total"] = len(objects)
 
         for i, obj in enumerate(objects, 1):
@@ -45,18 +52,35 @@ def fetch_inbox_photometry():
                 continue
             _progress["current"] = i
             try:
-                logger.info(f"============ {i}/{len(objects)} {name}: fetching photometry ============")
                 process_single_object_workflow(name)
                 success_count += 1
                 _progress["success"] = success_count
+                if i == 1 or i == len(objects) or (i % progress_interval == 0):
+                    logger.info(
+                        "event=phot_fetch_inbox_progress run_id=%s current=%s total=%s success=%s failed=%s",
+                        run_id,
+                        i,
+                        len(objects),
+                        success_count,
+                        fail_count,
+                    )
             except Exception as e:
-                logger.error(f"Failed to fetch photometry for {name}: {e}")
+                logger.error(
+                    "event=phot_fetch_inbox_object_failed run_id=%s object=%s error=%s",
+                    run_id,
+                    name,
+                    e,
+                )
                 fail_count += 1
                 failed_objects.append(name)
                 _progress["failed"] = fail_count
 
         logger.info(
-            f"fetch_inbox_photometry done: {success_count} succeeded, {fail_count} failed"
+            "event=phot_fetch_inbox_done run_id=%s total=%s success=%s failed=%s",
+            run_id,
+            len(objects),
+            success_count,
+            fail_count,
         )
         return {
             "skipped": False,
@@ -67,7 +91,7 @@ def fetch_inbox_photometry():
         }
 
     except Exception as e:
-        logger.error(f"fetch_inbox_photometry error: {e}")
+        logger.error("event=phot_fetch_inbox_error run_id=%s error=%s", run_id, e)
         return {"skipped": False, "total": 0, "success": 0, "failed": 0, "error": str(e)}
 
     finally:
@@ -105,6 +129,8 @@ def fetch_missing_photometry():
     fail_count = 0
     checked = 0
     triggered = 0
+    run_id = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    progress_interval = 100
 
     try:
         from modules.database.transient import search_tns_objects
@@ -112,7 +138,11 @@ def fetch_missing_photometry():
         from modules.download_phot import process_single_object_workflow
 
         objects = search_tns_objects(tag='object', limit=9999, sort_by='name', sort_order='asc')
-        logger.info(f"fetch_missing_photometry: checking {len(objects)} inbox objects")
+        logger.info(
+            "event=phot_fetch_missing_start run_id=%s total=%s",
+            run_id,
+            len(objects),
+        )
 
         conn = get_tns_db_connection()
         cursor = conn.cursor()
@@ -135,19 +165,36 @@ def fetch_missing_photometry():
 
             triggered += 1
             try:
-                logger.info(f"fetch_missing_photometry: {name} has no phot, fetching...")
                 process_single_object_workflow(name)
                 success_count += 1
             except Exception as e:
-                logger.error(f"fetch_missing_photometry: failed for {name}: {e}")
+                logger.error(
+                    "event=phot_fetch_missing_object_failed run_id=%s object=%s error=%s",
+                    run_id,
+                    name,
+                    e,
+                )
                 fail_count += 1
+            if checked == 1 or checked % progress_interval == 0:
+                logger.info(
+                    "event=phot_fetch_missing_progress run_id=%s checked=%s triggered=%s success=%s failed=%s",
+                    run_id,
+                    checked,
+                    triggered,
+                    success_count,
+                    fail_count,
+                )
 
         cursor.close()
         conn.close()
 
         logger.info(
-            f"fetch_missing_photometry done: checked={checked}, triggered={triggered}, "
-            f"success={success_count}, failed={fail_count}"
+            "event=phot_fetch_missing_done run_id=%s checked=%s triggered=%s success=%s failed=%s",
+            run_id,
+            checked,
+            triggered,
+            success_count,
+            fail_count,
         )
         return {
             "skipped": False,
@@ -158,7 +205,7 @@ def fetch_missing_photometry():
         }
 
     except Exception as e:
-        logger.error(f"fetch_missing_photometry error: {e}")
+        logger.error("event=phot_fetch_missing_error run_id=%s error=%s", run_id, e)
         return {"skipped": False, "error": str(e)}
 
     finally:
@@ -179,13 +226,14 @@ def update_target_mags():
         from modules.database import get_db_connection, get_tns_db_connection
         from modules.database.obs import get_observation_targets
 
+        run_id = datetime.utcnow().strftime('%Y%m%d%H%M%S')
         targets = get_observation_targets()
         active = [t for t in targets if t.get('is_active') and t.get('name', '').strip()]
         if not active:
             logger.info("update_target_mags: no active targets, skipping.")
             return
 
-        logger.info(f"update_target_mags: updating mag for {len(active)} active targets")
+        logger.info("event=target_mag_sync_start run_id=%s active_targets=%s", run_id, len(active))
 
         tns_conn = get_tns_db_connection()
         tns_cursor = tns_conn.cursor()
@@ -279,7 +327,12 @@ def update_target_mags():
                     updated += 1
 
                 if name_changed:
-                    logger.info(f"update_target_mags: renamed {full_name} → {new_full_name} in targets")
+                    logger.info(
+                        "event=target_mag_sync_renamed run_id=%s old_name=%s new_name=%s",
+                        run_id,
+                        full_name,
+                        new_full_name,
+                    )
 
                 # Sync observation_logs for non-EP targets only
                 # (EP names stay unchanged; sync AT<bare>/SN<bare>/bare → correct full_name)
@@ -300,7 +353,12 @@ def update_target_mags():
                     n = cursor.rowcount
                     if n > 0:
                         log_synced += n
-                        logger.info(f"update_target_mags: synced {n} log rows → {new_full_name}")
+                        logger.info(
+                            "event=target_mag_sync_log_rows run_id=%s rows=%s target=%s",
+                            run_id,
+                            n,
+                            new_full_name,
+                        )
 
                 conn.commit()
                 cursor.close()
@@ -308,11 +366,14 @@ def update_target_mags():
         tns_cursor.close()
         tns_conn.close()
         logger.info(
-            f"update_target_mags done: {updated}/{len(active)} targets updated, "
-            f"{log_synced} log rows synced"
+            "event=target_mag_sync_done run_id=%s updated=%s total=%s log_synced=%s",
+            run_id,
+            updated,
+            len(active),
+            log_synced,
         )
         return {"updated": updated, "total": len(active), "log_synced": log_synced}
 
     except Exception as e:
-        logger.error(f"update_target_mags error: {e}")
+        logger.error("event=target_mag_sync_error error=%s", e)
         return {"error": str(e)}

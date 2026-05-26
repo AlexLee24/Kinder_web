@@ -8,7 +8,15 @@ import logging
 import os
 import sys
 import threading
-from datetime import date
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
+
+_UTC_PLUS_8 = timezone(timedelta(hours=8))
+
+
+def _utc8_today_str() -> str:
+    return datetime.now(_UTC_PLUS_8).date().isoformat()
 
 _log_dir: str = None
 
@@ -20,17 +28,25 @@ def get_log_dir() -> str:
 class DailyFileHandler(logging.Handler):
     """Writes log records to {log_dir}/{YYYY-MM-DD}.log, rotates at midnight."""
 
-    def __init__(self, log_dir: str, backup_count: int = 7):
+    def __init__(
+        self,
+        log_dir: str,
+        backup_count: int = 7,
+        max_file_bytes: int = 15 * 1024 * 1024,
+        max_line_chars: int = 1600,
+    ):
         super().__init__()
         self.log_dir = log_dir
         self.backup_count = backup_count
+        self.max_file_bytes = max_file_bytes
+        self.max_line_chars = max_line_chars
         self._lock = threading.Lock()
         self._current_date = ''
         self._file = None
         os.makedirs(log_dir, exist_ok=True)
 
     def _rotate_if_needed(self):
-        today = date.today().isoformat()
+        today = _utc8_today_str()
         if today == self._current_date:
             return
         if self._file:
@@ -53,11 +69,30 @@ class DailyFileHandler(logging.Handler):
         except Exception:
             pass
 
+    def _enforce_size_limit(self):
+        if not self._file or self.max_file_bytes <= 0:
+            return
+        try:
+            file_path = self._file.name
+            size = os.path.getsize(file_path)
+            if size < self.max_file_bytes:
+                return
+            self._file.close()
+            self._file = open(file_path, 'w', encoding='utf-8')
+            ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            self._file.write(f"{ts} [log_setup] WARNING log file reached size cap; previous entries were truncated to control disk usage\n")
+            self._file.flush()
+        except Exception:
+            pass
+
     def emit(self, record):
         try:
             msg = self.format(record)
+            if self.max_line_chars > 0 and len(msg) > self.max_line_chars:
+                msg = msg[: self.max_line_chars - 16] + ' ...[truncated]'
             with self._lock:
                 self._rotate_if_needed()
+                self._enforce_size_limit()
                 self._file.write(msg + '\n')
                 self._file.flush()
         except Exception:
@@ -114,9 +149,14 @@ def setup_logging(log_dir: str) -> None:
     global _log_dir
     _log_dir = log_dir
 
-    handler = DailyFileHandler(log_dir, backup_count=7)
+    handler = DailyFileHandler(
+        log_dir,
+        backup_count=7,
+        max_file_bytes=int(os.getenv('LOG_MAX_FILE_BYTES', str(15 * 1024 * 1024))),
+        max_line_chars=int(os.getenv('LOG_MAX_LINE_CHARS', '1600')),
+    )
     formatter = logging.Formatter(
-        fmt='%(asctime)s [%(name)s] %(message)s',
+        fmt='%(asctime)s [%(name)s] %(levelname)s %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
     handler.setFormatter(formatter)

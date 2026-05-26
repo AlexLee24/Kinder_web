@@ -1599,9 +1599,8 @@ function _specQueryParams() {
     const stackOffset  = document.getElementById('specStackOffset')?.checked;
     if (restFrame && (!objectData || objectData.redshift == null)) {
         // Only warn when there is actually spectrum data loaded
-        const selector = document.getElementById('spectrumSelector');
-        const hasSpecData = selector && selector.options.length > 0 &&
-                            !(selector.options.length === 1 && selector.options[0].value === '');
+        const spectrumPlot = document.getElementById('spectrumPlot');
+        const hasSpecData = !!(spectrumPlot && spectrumPlot.querySelector('.plotly-graph-div'));
         if (hasSpecData) {
             showNotification('This object has no redshift — please fill it in before using Rest Frame.', 'warning');
         }
@@ -1613,17 +1612,43 @@ function _specQueryParams() {
 }
 
 function onSpecToggle() {
-    const selector = document.getElementById('spectrumSelector');
-    if (selector && selector.value) {
-        loadSpecificSpectrum();
-    } else {
-        loadSpectrumPlot();
+    loadSpectrumPlot();
+}
+
+function inferSpectrumTelescopeFromFilename(fileName) {
+    const stem = String(fileName || '').replace(/\.[^.]+$/, '');
+    const firstToken = stem.split(/[^A-Za-z0-9]+/).find(Boolean) || '';
+    const lettersOnly = firstToken.replace(/[^A-Za-z]/g, '');
+    return /^[A-Za-z]{2,10}$/.test(lettersOnly) ? lettersOnly.toUpperCase() : '';
+}
+
+function inferSpectrumDateFromFilename(fileName) {
+    const stem = String(fileName || '').replace(/\.[^.]+$/, '');
+    const patterns = [
+        /(?:^|\D)(20\d{2})(\d{2})(\d{2})(?:[T_\-]?\d{2}\d{2}\d{2})?(?:\D|$)/,
+        /(?:^|\D)(20\d{2})[-_](\d{2})[-_](\d{2})(?:[T_\-]?\d{2}[-_]?\d{2}[-_]?\d{2})?(?:\D|$)/,
+    ];
+    for (const pattern of patterns) {
+        const match = stem.match(pattern);
+        if (!match) continue;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const dt = new Date(Date.UTC(year, month - 1, day));
+        if (
+            dt.getUTCFullYear() === year
+            && dt.getUTCMonth() + 1 === month
+            && dt.getUTCDate() === day
+        ) {
+            return `${match[1]}-${match[2]}-${match[3]}`;
+        }
     }
+    return '';
 }
 
 function loadSpectrumPlot() {
     if (!cleanObjectName) return Promise.resolve();
-    
+
     console.log('Loading spectrum plot...');
     
     const spectrumContainer = document.querySelector('#spectrumPlot');
@@ -1680,75 +1705,6 @@ function loadSpectrumPlot() {
                             }
                         }, 100);
                         
-                    } else {
-                        spectrumContainer.innerHTML = `
-                            <div class="no-data">
-                                <span class="no-data-icon">${ICONS.noData}</span>
-                                <span class="no-data-text">${data.message || 'No spectrum data available'}</span>
-                            </div>
-                        `;
-                    }
-                }
-            } else {
-                console.error('Error loading spectrum plot:', data.error);
-                if (spectrumContainer) {
-                    spectrumContainer.innerHTML = `
-                        <div class="no-data">
-                            <span class="no-data-icon">${ICONS.error}</span>
-                            <span class="no-data-text">Error loading spectrum data</span>
-                        </div>
-                    `;
-                }
-            }
-        })
-        .catch(error => {
-            console.error('Error loading spectrum plot:', error);
-            if (loadingDiv) loadingDiv.style.display = 'none';
-            if (spectrumContainer) {
-                spectrumContainer.innerHTML = `
-                    <div class="no-data">
-                        <span class="no-data-icon">${ICONS.error}</span>
-                        <span class="no-data-text">Error loading spectrum data</span>
-                    </div>
-                `;
-            }
-        });
-}
-
-function loadSpecificSpectrum() {
-    const selector = document.getElementById('spectrumSelector');
-    if (!selector) return;
-    
-    const spectrumId = selector.value;
-    console.log('Loading specific spectrum:', spectrumId);
-    
-    if (!cleanObjectName) return;
-    
-    const spectrumContainer = document.querySelector('#spectrumPlot');
-    const loadingDiv = document.querySelector('#spectrumLoading');
-    
-    // Show loading
-    if (loadingDiv) loadingDiv.style.display = 'flex';
-    if (spectrumContainer) spectrumContainer.innerHTML = '';
-    
-    const { rest_frame, normalise, stack } = _specQueryParams();
-    const _p = new URLSearchParams();
-    if (spectrumId) _p.set('spectrum_id', spectrumId);
-    if (rest_frame) _p.set('rest_frame', '1');
-    if (normalise)  _p.set('normalise', '1');
-    if (stack)      _p.set('stack', '1');
-    const url = `/api/object/${cleanObjectName}/spectrum/plot?${_p.toString()}`;
-    
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            // Hide loading
-            if (loadingDiv) loadingDiv.style.display = 'none';
-            
-            if (data.success) {
-                if (spectrumContainer) {
-                    if (data.plot_html) {
-                        spectrumContainer.innerHTML = data.plot_html;
                     } else {
                         spectrumContainer.innerHTML = `
                             <div class="no-data">
@@ -1889,19 +1845,35 @@ function doDownloadPhotometry() {
     closeDownloadModal();
 }
 
-function downloadCurrentSpectrum() {
-    const selector = document.getElementById('spectrumSelector');
-    const spectrumId = selector?.value;
-    if (!spectrumId) {
-        showNotification('No spectrum selected.', 'warning');
-        return;
+async function downloadCurrentSpectrum() {
+    if (!cleanObjectName) return;
+    try {
+        const response = await fetch(`/api/object/${encodeURIComponent(cleanObjectName)}/spectroscopy`);
+        const data = await response.json();
+        const spectra = Array.isArray(data?.spectra) ? data.spectra : [];
+        if (!data?.success || spectra.length === 0) {
+            showNotification('No spectrum available for download.', 'warning');
+            return;
+        }
+
+        const target = spectra[0];
+        const spectrumId = target?.spectrum_id;
+        if (!spectrumId) {
+            showNotification('No spectrum available for download.', 'warning');
+            return;
+        }
+
+        const selectedLabel = target?.spectrum_label || target?.telescope || target?.spectrum_id || 'spectrum';
+        const a = document.createElement('a');
+        a.href = `/api/spectrum/${encodeURIComponent(spectrumId)}/download`;
+        a.download = `${cleanObjectName}_spec_${selectedLabel.replace(/[^\w\-]+/g, '_')}.dat`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (error) {
+        console.error('Error preparing spectrum download:', error);
+        showNotification('Failed to prepare spectrum download.', 'error');
     }
-    const a = document.createElement('a');
-    a.href = `/api/spectrum/${encodeURIComponent(spectrumId)}/download`;
-    a.download = `${cleanObjectName}_spec_${spectrumId}.dat`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
 }
 
 function uploadSpectrum() {
@@ -1929,7 +1901,8 @@ function resetSpectrumUploadModal() {
         uploadPreview: document.getElementById('spectrumUploadPreview'),
         uploadError: document.getElementById('spectrumUploadError'),
         uploadBtn: document.getElementById('spectrumUploadBtn'),
-        telescopeInput: document.getElementById('spectrumTelescope')
+        telescopeInput: document.getElementById('spectrumTelescope'),
+        obsDateInput: document.getElementById('spectrumObsDate')
     };
     
     if (elements.spectrumFile) elements.spectrumFile.value = '';
@@ -1939,6 +1912,7 @@ function resetSpectrumUploadModal() {
     if (elements.uploadError) elements.uploadError.style.display = 'none';
     if (elements.uploadBtn) elements.uploadBtn.disabled = true;
     if (elements.telescopeInput) elements.telescopeInput.value = '';
+    if (elements.obsDateInput) elements.obsDateInput.value = '';
     window.currentSpectrumData = [];
 }
 
@@ -1978,11 +1952,21 @@ function handleSpectrumFileSelect() {
     const fileName = document.getElementById('spectrumFileName');
     const selectedFile = document.getElementById('spectrumSelectedFile');
     const dropZone = document.getElementById('spectrumFileDropZone');
-    
+    const telescopeInput = document.getElementById('spectrumTelescope');
+    const obsDateInput = document.getElementById('spectrumObsDate');
+
     if (fileName) fileName.textContent = file.name;
     if (selectedFile) selectedFile.style.display = 'flex';
     if (dropZone) dropZone.style.display = 'none';
-    
+    if (telescopeInput && !telescopeInput.value.trim()) {
+        const inferred = inferSpectrumTelescopeFromFilename(file.name);
+        if (inferred) telescopeInput.value = inferred;
+    }
+    if (obsDateInput && !obsDateInput.value) {
+        const inferredDate = inferSpectrumDateFromFilename(file.name);
+        if (inferredDate) obsDateInput.value = inferredDate;
+    }
+
     const reader = new FileReader();
     reader.onload = function(e) { validateSpectrumData(e.target.result); };
     reader.readAsText(file);
@@ -2072,6 +2056,9 @@ function submitSpectrumData() {
     if (!window.currentSpectrumData || window.currentSpectrumData.length === 0) return;
     
     const telescope = document.getElementById('spectrumTelescope').value || 'Unknown';
+    const observationDate = (document.getElementById('spectrumObsDate')?.value || '').trim();
+    const spectrumFile = document.getElementById('spectrumFile');
+    const originalFilename = spectrumFile?.files?.[0]?.name || null;
     const uploadBtn = document.getElementById('spectrumUploadBtn');
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Uploading...';
@@ -2079,7 +2066,9 @@ function submitSpectrumData() {
     const payload = {
         wavelength: window.currentSpectrumData.map(d => d.wavelength),
         intensity: window.currentSpectrumData.map(d => d.intensity),
-        telescope: telescope
+        telescope: telescope,
+        original_filename: originalFilename,
+        observation_date: observationDate || null
     };
     
     const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectroscopy`;

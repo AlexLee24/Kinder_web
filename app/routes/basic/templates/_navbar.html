@@ -112,6 +112,7 @@
                                 <li><a href="{{ url_for('basic.profile') }}">Profile</a></li>
                                 {% if session.user.is_admin %}
                                     <li><a href="{{ url_for('admin.admin_panel') }}">Admin Panel</a></li>
+                                    <li><a href="{{ url_for('database_status.database_status_page') }}">DB Status</a></li>
                                 {% endif %}
                                 <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>
                             </ul>

@@ -215,6 +215,51 @@
             color: rgba(255,255,255,0.82);
         }
 
+        .log-line {
+            display: block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 1px 0;
+        }
+        .line-error {
+            background: rgba(255,123,114,0.11);
+            border-left: 2px solid rgba(255,123,114,0.45);
+        }
+        .line-warning {
+            background: rgba(227,179,65,0.10);
+            border-left: 2px solid rgba(227,179,65,0.38);
+        }
+        .line-debug {
+            background: rgba(255,255,255,0.03);
+        }
+        .line-info {
+            background: transparent;
+        }
+
+        .lvl-badge {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 1px 7px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            margin-right: 5px;
+            letter-spacing: 0.02em;
+        }
+        .lvl-error-badge { background: rgba(255,123,114,0.22); color: #ffb4b0; }
+        .lvl-warning-badge { background: rgba(227,179,65,0.23); color: #f7d26a; }
+        .lvl-info-badge { background: rgba(121,192,255,0.20); color: #a5d6ff; }
+        .lvl-debug-badge { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.55); }
+
+        .tok-key { color: #89ddff; }
+        .tok-val { color: rgba(255,255,255,0.92); }
+        .tok-event .tok-key { color: #d2a8ff; }
+        .tok-event .tok-val { color: #e9d5ff; }
+        .tok-status-ok .tok-key, .tok-status-ok .tok-val { color: #86efac; }
+        .tok-status-bad .tok-key, .tok-status-bad .tok-val { color: #ffb4b0; }
+        .tok-duration-slow .tok-key, .tok-duration-slow .tok-val { color: #f7d26a; }
+        .tok-path .tok-key, .tok-path .tok-val { color: #a5d6ff; }
+        .tok-user .tok-key, .tok-user .tok-val { color: #ffcb6b; }
+
         .l-error   { color: #ff7b72; }
         .l-warning { color: #e3b341; }
         .l-info    { color: rgba(255,255,255,0.82); }
@@ -222,27 +267,166 @@
         .l-sep     { color: rgba(255,255,255,0.22); }
         .l-ts      { color: rgba(255,255,255,0.30); }
 
-        /* Source tabs */
-        .source-tabs { display: flex; gap: 4px; }
-        .src-tab {
+        .ctrl-date-group { display: flex; align-items: center; gap: 8px; }
+        .source-filter-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 240px;
+        }
+        .source-filter-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .source-filter-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .source-filter-btn {
+            background: rgba(0,0,0,0.3);
+            color: var(--text-muted);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        .source-filter-btn:hover { color: var(--text-primary); }
+        .source-filter-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(120px, 1fr));
+            gap: 4px 10px;
+            max-height: 96px;
+            overflow: auto;
+            padding: 6px 8px;
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
             background: rgba(0,0,0,0.25);
+        }
+        .source-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            user-select: none;
+        }
+        .source-item input[type="checkbox"] {
+            accent-color: var(--accent);
+            width: 13px;
+            height: 13px;
+        }
+
+        /* ── Level filter buttons ── */
+        .level-filter-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .level-filter-btn {
+            background: rgba(0,0,0,0.3);
             color: var(--text-muted);
             border: 1px solid var(--glass-border);
             border-radius: 7px;
             padding: 5px 11px;
+            font-size: 0.78rem;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s, color .15s, border-color .15s;
+            letter-spacing: 0.02em;
+        }
+        .level-filter-btn:hover { color: var(--text-primary); }
+        .level-filter-btn.active-all  { background: rgba(255,255,255,0.12); color: var(--text-primary); border-color: rgba(255,255,255,0.3); }
+        .level-filter-btn.active-warn { background: rgba(227,179,65,0.22); color: #f7d26a; border-color: rgba(227,179,65,0.5); }
+        .level-filter-btn.active-err  { background: rgba(255,123,114,0.22); color: #ffb4b0; border-color: rgba(255,123,114,0.5); }
+
+        /* CSS-level hiding for level filter */
+        .filter-errors-only .log-line:not(.line-error) { display: none !important; }
+        .filter-warn-up     .log-line:not(.line-error):not(.line-warning) { display: none !important; }
+
+        /* ── Search bar ── */
+        .search-wrap {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .search-input {
+            background: rgba(0,0,0,0.35);
+            color: var(--text-primary);
+            border: 1px solid var(--glass-border);
+            border-radius: 7px;
+            padding: 5px 10px;
+            font-size: 0.82rem;
+            font-family: 'Consolas','Monaco','Courier New',monospace;
+            outline: none;
+            width: 210px;
+            transition: border-color .2s, width .2s;
+        }
+        .search-input:focus { border-color: var(--accent); width: 270px; }
+        .search-input::placeholder { color: rgba(255,255,255,0.28); }
+        .search-nav-btn, .search-clear-btn {
+            background: rgba(0,0,0,0.3);
+            color: var(--text-muted);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            padding: 4px 8px;
             font-size: 0.8rem;
+            cursor: pointer;
+            line-height: 1;
+            transition: color .15s;
+        }
+        .search-nav-btn:hover, .search-clear-btn:hover { color: var(--text-primary); }
+        .search-status {
+            font-size: 0.76rem;
+            color: var(--text-muted);
+            min-width: 52px;
+            text-align: center;
+        }
+
+        /* Search match highlight */
+        .search-hidden { display: none !important; }
+        .search-match { outline: 1px solid rgba(255,214,0,0.3); }
+        .search-current { outline: 2px solid #ffd700 !important; background: rgba(255,214,0,0.12) !important; }
+        mark.sh {
+            background: rgba(255,214,0,0.38);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+        mark.sh-cur {
+            background: rgba(255,214,0,0.70);
+            color: #000;
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+
+        /* ── Stat badges ── */
+        .stat-error { color: #ff7b72; }
+        .stat-warn  { color: #e3b341; }
+        .stat-clickable {
+            cursor: pointer;
+            text-decoration: underline dotted;
+            text-underline-offset: 3px;
+        }
+        .stat-clickable:hover { opacity: 0.8; }
+
+        /* Copy errors button */
+        .ctrl-btn-danger {
+            background: rgba(255,123,114,0.12);
+            color: #ffb4b0;
+            border: 1px solid rgba(255,123,114,0.3);
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 0.85rem;
             font-family: inherit;
             font-weight: 500;
             cursor: pointer;
-            transition: background .2s, color .2s;
+            transition: background .2s;
         }
-        .src-tab:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
-        .src-tab.active {
-            background: rgba(197,160,89,0.2);
-            color: var(--accent);
-            border-color: rgba(197,160,89,0.4);
-        }
-        .ctrl-date-group { display: flex; align-items: center; gap: 8px; }
+        .ctrl-btn-danger:hover { background: rgba(255,123,114,0.26); }
     </style>
 </head>
 <body>
@@ -259,17 +443,50 @@
             <span id="liveDot" class="live-dot off"></span>
             <div class="ctrl-date-group" id="dateControls">
                 <span class="ctrl-label-text">Date:</span>
-                <select class="ctrl-select" id="dateSelect" onchange="switchDate(this.value)"></select>
+                <select class="ctrl-select" id="dateSelect" aria-label="Select log date" onchange="switchDate(this.value)"></select>
+            </div>
+            <div class="ctrl-date-group" id="sourceControls">
+                <div class="source-filter-wrap">
+                    <div class="source-filter-head">
+                        <span class="ctrl-label-text" id="sourceSummary">Sources: 0 selected</span>
+                        <div class="source-filter-actions">
+                            <button type="button" class="source-filter-btn" onclick="selectAllSources()">All</button>
+                            <button type="button" class="source-filter-btn" onclick="clearAllSources()">Clear</button>
+                        </div>
+                    </div>
+                    <div id="sourceList" class="source-filter-list" aria-label="Filter by log sources"></div>
+                </div>
+            </div>
+            <!-- Level filter -->
+            <div class="level-filter-group">
+                <span class="ctrl-label-text">Level:</span>
+                <button id="lvlAll"     class="level-filter-btn active-all"  onclick="setLevelFilter('all')"        title="Show all log lines">All</button>
+                <button id="lvlWarnUp"  class="level-filter-btn"             onclick="setLevelFilter('warn_up')"    title="Show WARNING + ERROR only">⚠ Warn+</button>
+                <button id="lvlErrOnly" class="level-filter-btn"             onclick="setLevelFilter('errors_only')" title="Show ERROR / CRITICAL only">🔴 Error</button>
+            </div>
+            <!-- Search -->
+            <div class="search-wrap">
+                <input type="text" id="searchInput" class="search-input"
+                       placeholder="Search… (Ctrl+F)"
+                       oninput="onSearchInput()"
+                       aria-label="Search log lines">
+                <button class="search-nav-btn" id="searchPrevBtn" onclick="searchNav(-1)" title="Previous match (Shift+Enter)">↑</button>
+                <button class="search-nav-btn" id="searchNextBtn" onclick="searchNav(1)"  title="Next match (Enter)">↓</button>
+                <span   id="searchStatus" class="search-status"></span>
+                <button class="search-clear-btn" id="searchClearBtn" onclick="clearSearch()" style="display:none" title="Clear search">✕</button>
             </div>
             <label class="ctrl-follow">
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
-            <button class="ctrl-btn" onclick="manualRefresh()">Refresh</button>
-            <button class="ctrl-btn" onclick="clearDisplay()">Clear</button>
+            <button class="ctrl-btn" onclick="manualRefresh()">↺ Refresh</button>
+            <button class="ctrl-btn-danger" onclick="copyErrors()" title="Copy all ERROR/WARNING lines to clipboard">⎘ Copy Errors</button>
+            <button class="ctrl-btn" onclick="clearDisplay()">✕ Clear</button>
             <div class="spacer"></div>
             <div class="stats-bar">
                 <span id="statDate">—</span>
                 <span id="statLines">Lines: 0</span>
+                <span id="statErrors" class="stat-error stat-clickable" onclick="setLevelFilter('errors_only')" title="Click to show errors only">Errors: 0</span>
+                <span id="statWarns"  class="stat-warn stat-clickable"  onclick="setLevelFilter('warn_up')"    title="Click to show warnings+">Warns: 0</span>
                 <span id="statBytes">0 B</span>
             </div>
         </div>
@@ -277,7 +494,7 @@
         <!-- Log output panel -->
         <div class="log-panel">
             <div class="log-panel-header">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
                 <span id="logFileName">—</span>
                 &nbsp;·&nbsp; server output
             </div>
@@ -291,15 +508,137 @@
     </div>
 
     <script>
-        const todayStr = new Date().toISOString().slice(0, 10);
+        function utc8DateString() {
+            // Compute calendar date in UTC+8 regardless of browser local timezone.
+            return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        }
+        const todayStr = utc8DateString();
         let currentDate = todayStr;
         let logOffset = 0;
         let lineCount = 0;
         let pollTimer = null;
         let currentMode = 'web'; // only web log
+        let availableSources = [];
+        let selectedSources = new Set();
+        let sourceInitDone = false;
+
+        // ── Level filter ──────────────────────────────────────────────────────
+        let levelFilter = 'all'; // 'all' | 'warn_up' | 'errors_only'
+
+        function setLevelFilter(mode) {
+            levelFilter = mode;
+            const wrap = document.getElementById('logWrap');
+            wrap.classList.remove('filter-errors-only', 'filter-warn-up');
+            if (mode === 'errors_only') wrap.classList.add('filter-errors-only');
+            else if (mode === 'warn_up') wrap.classList.add('filter-warn-up');
+
+            document.getElementById('lvlAll').className    = 'level-filter-btn' + (mode === 'all'         ? ' active-all'  : '');
+            document.getElementById('lvlWarnUp').className = 'level-filter-btn' + (mode === 'warn_up'     ? ' active-warn' : '');
+            document.getElementById('lvlErrOnly').className= 'level-filter-btn' + (mode === 'errors_only' ? ' active-err'  : '');
+
+            // Re-apply search mask so hidden lines stay hidden
+            if (searchQuery.trim()) applySearchMask();
+        }
+
+        // ── Search ────────────────────────────────────────────────────────────
+        let searchQuery = '';
+        let searchMatches = [];
+        let searchIdx = -1;
+
+        function onSearchInput() {
+            searchQuery = document.getElementById('searchInput').value;
+            applySearchMask();
+        }
+
+        function applySearchMask() {
+            const pre = document.getElementById('logPre');
+            const lines = pre.querySelectorAll('.log-line');
+            searchMatches = [];
+
+            const q = searchQuery.trim().toLowerCase();
+            document.getElementById('searchClearBtn').style.display = q ? '' : 'none';
+
+            lines.forEach(line => {
+                line.classList.remove('search-match', 'search-current', 'search-hidden');
+                if (!q) return;
+                if (line.textContent.toLowerCase().includes(q)) {
+                    line.classList.add('search-match');
+                    searchMatches.push(line);
+                } else {
+                    line.classList.add('search-hidden');
+                }
+            });
+
+            searchIdx = searchMatches.length ? 0 : -1;
+            if (searchIdx >= 0) {
+                searchMatches[0].classList.add('search-current');
+                searchMatches[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+            updateSearchStatus();
+        }
+
+        function searchNav(dir) {
+            if (!searchMatches.length) return;
+            if (searchIdx >= 0) searchMatches[searchIdx].classList.remove('search-current');
+            searchIdx = (searchIdx + dir + searchMatches.length) % searchMatches.length;
+            searchMatches[searchIdx].classList.add('search-current');
+            searchMatches[searchIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+            updateSearchStatus();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            searchQuery = '';
+            applySearchMask();
+        }
+
+        function updateSearchStatus() {
+            const q = searchQuery.trim();
+            const el = document.getElementById('searchStatus');
+            if (!q) { el.textContent = ''; return; }
+            if (!searchMatches.length) { el.textContent = 'No match'; el.style.color = '#ff7b72'; return; }
+            el.style.color = 'var(--text-muted)';
+            el.textContent = `${searchIdx + 1} / ${searchMatches.length}`;
+        }
+
+        // ── Copy errors ───────────────────────────────────────────────────────
+        function copyErrors() {
+            const lines = document.getElementById('logPre').querySelectorAll('.line-error, .line-warning');
+            if (!lines.length) { alert('No ERROR / WARNING lines found in current view.'); return; }
+            const text = Array.from(lines).map(l => l.textContent).join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.querySelector('.ctrl-btn-danger');
+                const orig = btn.textContent;
+                btn.textContent = `✓ Copied ${lines.length} lines`;
+                setTimeout(() => { btn.textContent = orig; }, 2000);
+            });
+        }
+
+        // ── Level stats ───────────────────────────────────────────────────────
+        function updateLevelStats() {
+            const pre = document.getElementById('logPre');
+            const errs  = pre.querySelectorAll('.line-error').length;
+            const warns = pre.querySelectorAll('.line-warning').length;
+            document.getElementById('statErrors').textContent = `Errors: ${errs}`;
+            document.getElementById('statWarns').textContent  = `Warns: ${warns}`;
+        }
+
+        // ── Keyboard shortcuts ────────────────────────────────────────────────
+        document.addEventListener('keydown', e => {
+            const inp = document.getElementById('searchInput');
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault(); inp.focus(); inp.select();
+            }
+            if (e.key === 'Escape' && document.activeElement === inp) {
+                clearSearch(); inp.blur();
+            }
+            if (e.key === 'Enter' && document.activeElement === inp) {
+                e.preventDefault(); searchNav(e.shiftKey ? -1 : 1);
+            }
+        });
 
         function esc(s) {
-            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
         // Color palette for different log sources
@@ -315,38 +654,72 @@
             return SRC_COLORS[h % SRC_COLORS.length];
         }
 
-        // Web log: "YYYY-MM-DD HH:MM:SS [source] message"
-        const WEB_LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)\] (.*)/;
+        // Web log: "YYYY-MM-DD HH:MM:SS [source] LEVEL message"
+        const WEB_LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([^\]]+)](?: (DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL))? ?(.*)$/;
         // Daemon-like log: "YYYY-MM-DD HH:MM:SS,mmm LEVEL message"
         const DAEMON_LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+)?) (\w+) (.*)/;
+
+        function colorizeStructured(msgEscaped) {
+            return msgEscaped.replace(/\b(event|status|duration_ms|method|path|user)=([^\s]+)/g, (full, key, val) => {
+                const k = `<span class="tok-key">${esc(key)}</span>`;
+                const v = `<span class="tok-val">${esc(val)}</span>`;
+                if (key === 'event') return `<span class="tok-event">${k}=${v}</span>`;
+                if (key === 'status') {
+                    const num = Number(val);
+                    const ok = Number.isFinite(num) ? (num >= 200 && num < 400) : /^(ok|success)$/i.test(String(val));
+                    return `<span class="${ok ? 'tok-status-ok' : 'tok-status-bad'}">${k}=${v}</span>`;
+                }
+                if (key === 'duration_ms') {
+                    const d = Number(val);
+                    return `<span class="${Number.isFinite(d) && d >= 1000 ? 'tok-duration-slow' : ''}">${k}=${v}</span>`;
+                }
+                if (key === 'path') return `<span class="tok-path">${k}=${v}</span>`;
+                if (key === 'user') return `<span class="tok-user">${k}=${v}</span>`;
+                return `${k}=${v}`;
+            });
+        }
+
+        function levelFromText(s) {
+            const up = String(s || '').toUpperCase();
+            if (up === 'WARN') return 'WARNING';
+            if (!up) return '';
+            return up;
+        }
 
         function colorize(text) {
             return text.split('\n').map(line => {
                 if (line === '') return '<span style="display:block;height:0"></span>';
                 let m = WEB_LOG_RE.exec(line);
                 if (m) {
-                    const [, ts, src, msg] = m;
+                    const [, ts, src, lvlRaw, msgRaw] = m;
+                    const lvl = levelFromText(lvlRaw || (/\b(ERROR|CRITICAL|WARNING|WARN|INFO|DEBUG)\b/i.exec(msgRaw || '') || [,''])[1]);
+                    const msg = msgRaw || '';
+                    let lineCls = 'line-info';
                     let msgCls = 'l-info';
-                    if (/\bERROR\b/i.test(msg))          msgCls = 'l-error';
-                    else if (/\bWARN(ING)?\b/i.test(msg)) msgCls = 'l-warning';
-                    else if (/\bDEBUG\b/i.test(msg))       msgCls = 'l-debug';
+                    let badgeCls = 'lvl-info-badge';
+                    if (lvl === 'ERROR' || lvl === 'CRITICAL') { lineCls = 'line-error'; msgCls = 'l-error'; badgeCls = 'lvl-error-badge'; }
+                    else if (lvl === 'WARNING') { lineCls = 'line-warning'; msgCls = 'l-warning'; badgeCls = 'lvl-warning-badge'; }
+                    else if (lvl === 'DEBUG') { lineCls = 'line-debug'; msgCls = 'l-debug'; badgeCls = 'lvl-debug-badge'; }
                     const sc = sourceColor(src);
-                    return `<span class="l-ts">${esc(ts)}</span> <span style="color:${sc}">[${esc(src)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
+                    const badge = lvl ? `<span class="lvl-badge ${badgeCls}">${esc(lvl)}</span>` : '';
+                    return `<span class="log-line ${lineCls}"><span class="l-ts">${esc(ts)}</span> <span class="src" style="color:${sc}">[${esc(src)}]</span> ${badge}<span class="${msgCls}">${colorizeStructured(esc(msg))}</span></span>`;
                 }
                 m = DAEMON_LOG_RE.exec(line);
                 if (m) {
                     const [, ts, level, msg] = m;
                     const lvlUp = level.toUpperCase();
+                    let lineCls = 'line-info';
                     let msgCls = 'l-info';
-                    if (lvlUp === 'ERROR' || lvlUp === 'CRITICAL') msgCls = 'l-error';
-                    else if (lvlUp === 'WARNING')                   msgCls = 'l-warning';
-                    else if (lvlUp === 'DEBUG')                     msgCls = 'l-debug';
+                    let badgeCls = 'lvl-info-badge';
+                    if (lvlUp === 'ERROR' || lvlUp === 'CRITICAL') { msgCls = 'l-error'; lineCls = 'line-error'; badgeCls = 'lvl-error-badge'; }
+                    else if (lvlUp === 'WARNING')                   { msgCls = 'l-warning'; lineCls = 'line-warning'; badgeCls = 'lvl-warning-badge'; }
+                    else if (lvlUp === 'DEBUG')                     { msgCls = 'l-debug'; lineCls = 'line-debug'; badgeCls = 'lvl-debug-badge'; }
                     const lvlColor = {ERROR:'#ff7b72',CRITICAL:'#ff7b72',WARNING:'#e3b341',INFO:'rgba(255,255,255,0.55)',DEBUG:'rgba(255,255,255,0.3)'}[lvlUp] || 'rgba(255,255,255,0.55)';
-                    return `<span class="l-ts">${esc(ts)}</span> <span style="color:${lvlColor}">[${esc(level)}]</span> <span class="${msgCls}">${esc(msg)}</span>`;
+                    return `<span class="log-line ${lineCls}"><span class="l-ts">${esc(ts)}</span> <span class="lvl-badge ${badgeCls}" style="color:${lvlColor}">${esc(level)}</span> <span class="${msgCls}">${colorizeStructured(esc(msg))}</span></span>`;
                 }
                 let cls = 'l-info';
                 if (/^[-=]{3}/.test(line)) cls = 'l-sep';
-                return `<span class="${cls}">${esc(line)}</span>`;
+                return `<span class="log-line line-info ${cls}">${colorizeStructured(esc(line))}</span>`;
             }).join('\n');
         }
 
@@ -359,7 +732,9 @@
             lineCount += content.split('\n').filter(l => l.trim()).length;
             document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
             document.getElementById('statBytes').textContent = `${logOffset} B`;
-            
+            updateLevelStats();
+            if (searchQuery.trim()) applySearchMask();
+
             // 避免長時間掛機導致的 DOM 數量無限增長
             const MAX_POLL_CHUNKS = 500;
             while (pre.children.length > MAX_POLL_CHUNKS) {
@@ -381,9 +756,96 @@
             }
         }
 
+        function selectedSourceArray() {
+            return Array.from(selectedSources);
+        }
+
+        function updateSourceSummary() {
+            const count = selectedSources.size;
+            document.getElementById('sourceSummary').textContent = `Sources: ${count} selected`;
+        }
+
+        function renderSourceList() {
+            const wrap = document.getElementById('sourceList');
+            wrap.innerHTML = '';
+            if (!availableSources.length) {
+                wrap.innerHTML = '<span class="source-item">No sources</span>';
+                updateSourceSummary();
+                return;
+            }
+
+            availableSources.forEach(src => {
+                const label = document.createElement('label');
+                label.className = 'source-item';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = selectedSources.has(src);
+                cb.onchange = () => {
+                    if (cb.checked) selectedSources.add(src);
+                    else selectedSources.delete(src);
+                    updateSourceSummary();
+                    switchSourceFilters();
+                };
+                const text = document.createElement('span');
+                text.textContent = src;
+                label.appendChild(cb);
+                label.appendChild(text);
+                wrap.appendChild(label);
+            });
+            updateSourceSummary();
+        }
+
+        function selectAllSources() {
+            selectedSources = new Set(availableSources);
+            renderSourceList();
+            switchSourceFilters();
+        }
+
+        function clearAllSources() {
+            selectedSources = new Set();
+            renderSourceList();
+            switchSourceFilters();
+        }
+
         async function fetchWebContent(date, offset) {
-            const res = await fetch(`/api/log/content?date=${encodeURIComponent(date)}&offset=${offset}`);
+            const sel = selectedSourceArray();
+            // If ALL sources selected or none selected → no filter (pass 'all' to avoid empty-filter bug)
+            const sourceParam = (sel.length === 0 || sel.length === availableSources.length)
+                ? 'all'
+                : encodeURIComponent(sel.join(','));
+            const res = await fetch(`/api/log/content?date=${encodeURIComponent(date)}&offset=${offset}&sources=${sourceParam}`);
             return await res.json();
+        }
+
+        async function loadSources(date) {
+            try {
+                const res = await fetch(`/api/log/sources?date=${encodeURIComponent(date)}`);
+                const data = await res.json();
+                const newSources = data.sources || [];
+
+                if (!sourceInitDone) {
+                    availableSources = newSources;
+                    selectedSources = new Set(availableSources.filter(src => src !== 'web.request'));
+                    sourceInitDone = true;
+                } else {
+                    // Auto-add any newly appeared sources to selection
+                    const added = newSources.filter(s => !availableSources.includes(s));
+                    if (added.length) {
+                        availableSources = newSources;
+                        added.forEach(s => { if (s !== 'web.request') selectedSources.add(s); });
+                    } else {
+                        availableSources = newSources;
+                        selectedSources = new Set(selectedSourceArray().filter(src => availableSources.includes(src)));
+                        if (!selectedSources.size) {
+                            selectedSources = new Set(availableSources.filter(src => src !== 'web.request'));
+                        }
+                    }
+                }
+            } catch (e) {
+                availableSources = [];
+                selectedSources = new Set();
+            }
+            renderSourceList();
         }
 
         function showLoading(show) {
@@ -401,11 +863,18 @@
             // Allow UI to update loading state before blocking thread
             await new Promise(r => setTimeout(r, 10));
 
-            const label = date === todayStr ? `${date}  (Today)` : date;
-            document.getElementById('statDate').textContent = label;
-            document.getElementById('logFileName').textContent = `${date}.log`;
+            const selected = selectedSourceArray();
+            const sourceLabel = !selected.length
+                ? 'no source selected'
+                : (selected.length === availableSources.length ? 'all selected' : `${selected.length} selected`);
+            document.getElementById('statDate').textContent = sourceLabel === 'all selected'
+                ? (date === todayStr ? `${date}  (Today)` : date)
+                : `${date}  (${sourceLabel})`;
+            document.getElementById('logFileName').textContent = `${date}.log · ${sourceLabel}`;
             document.getElementById('statLines').textContent = 'Lines: 0';
             document.getElementById('statBytes').textContent = '0 B';
+            document.getElementById('statErrors').textContent = 'Errors: 0';
+            document.getElementById('statWarns').textContent  = 'Warns: 0';
 
             try {
                 const data = await fetchWebContent(date, 0);
@@ -444,14 +913,24 @@
                 document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
 
                 logOffset = data.offset || 0;
+                updateLevelStats();
+                if (searchQuery.trim()) applySearchMask();
                 scrollToBottom();
             } finally {
                 showLoading(false);
             }
         }
 
+        let _pollCount = 0;
         async function pollNew() {
             try {
+                _pollCount++;
+                // Every 30 seconds (30 polls × 1s interval), refresh source list
+                // so newly appeared log sources get added automatically
+                if (_pollCount % 30 === 0) {
+                    await loadSources(currentDate);
+                    renderSourceList();
+                }
                 const data = await fetchWebContent(currentDate, logOffset);
                 if (data.content) {
                     appendHtml(data.content);
@@ -479,8 +958,15 @@
         function switchDate(date) {
             stopPoll();
             currentDate = date;
-            loadFull(date).then(() => {
+            loadSources(date).then(() => loadFull(date)).then(() => {
                 if (date === todayStr) startPoll();
+            });
+        }
+
+        function switchSourceFilters() {
+            stopPoll();
+            loadFull(currentDate).then(() => {
+                if (currentDate === todayStr) startPoll();
             });
         }
 
@@ -494,6 +980,9 @@
             logOffset = 0;
             document.getElementById('statLines').textContent = 'Lines: 0';
             document.getElementById('statBytes').textContent = '0 B';
+            document.getElementById('statErrors').textContent = 'Errors: 0';
+            document.getElementById('statWarns').textContent  = 'Warns: 0';
+            clearSearch();
         }
 
         async function init() {
@@ -516,7 +1005,7 @@
                 sel.value = currentDate;
             }
 
-            loadFull(currentDate).then(() => {
+            loadSources(currentDate).then(() => loadFull(currentDate)).then(() => {
                 if (currentDate === todayStr) startPoll();
             });
         }

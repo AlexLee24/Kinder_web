@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 from modules.database.transient import (
     search_tns_objects, update_object_status, update_object_activity,
-    TNSObjectDB, update_object_abs_mag
+    TNSObjectDB, update_object_abs_mag,
+    _parse_spectrum_id, _build_spectrum_label, _format_spectrum_observation_label,
+    _phase_from_stored_value
 )
 from modules.database import get_db_connection, get_tns_db_connection, OBJECT_COMPAT_COLS
 from modules.database.auth import (
@@ -777,6 +779,7 @@ def get_object_photometry(year, letters):
     user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
+    logger.info("[Photometry] fetch request: object=%s user=%s", object_name, user_email or 'guest')
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
         photometry = TNSObjectDB.get_photometry(object_name)
@@ -785,8 +788,11 @@ def get_object_photometry(year, letters):
             object_name, 'phot', photometry,
             user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
+        logger.info("[Photometry] fetched OK: object=%s points=%d user=%s",
+                    object_name, len(photometry), user_email or 'guest')
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
+        logger.error("[Photometry] fetch error: object=%s error=%s", object_name, str(e))
         return jsonify({'error': str(e)}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectroscopy')
@@ -806,6 +812,24 @@ def get_object_spectroscopy(year, letters):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@objects_bp.route('/api/object/<object_name>/spectroscopy')
+def get_object_spectroscopy_generic(object_name):
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+
+    object_name = urllib.parse.unquote(object_name)
+
+    try:
+        spectra_list = TNSObjectDB.get_spectrum_list(object_name)
+        return jsonify({
+            'success': True,
+            'spectra': spectra_list,
+            'count': len(spectra_list)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectrum/<spectrum_id>')
 def get_spectrum_data(year, letters, spectrum_id):
     if 'user' not in session:
@@ -814,16 +838,26 @@ def get_spectrum_data(year, letters, spectrum_id):
     object_name = f"{year}{letters}"
     
     try:
+        source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
         conn = get_tns_db_connection()
         cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT s.wavelength, s.intensity
-            FROM transient.spectroscopy s
-            JOIN transient.objects o ON s.obj_id = o.obj_id
-            WHERE o.name ILIKE %s AND s.source = %s
-            ORDER BY s.wavelength ASC
-        ''', (object_name, spectrum_id))
+
+        if observation_mjd is None:
+            cursor.execute('''
+                SELECT s.wavelength, s.intensity
+                FROM transient.spectroscopy s
+                JOIN transient.objects o ON s.obj_id = o.obj_id
+                WHERE o.name ILIKE %s AND s.source = %s
+                ORDER BY s.wavelength ASC
+            ''', (object_name, source_name))
+        else:
+            cursor.execute('''
+                SELECT s.wavelength, s.intensity
+                FROM transient.spectroscopy s
+                JOIN transient.objects o ON s.obj_id = o.obj_id
+                WHERE o.name ILIKE %s AND s.source = %s AND ABS(s."MJD" - %s) < 1e-6
+                ORDER BY s.wavelength ASC
+            ''', (object_name, source_name, observation_mjd))
         
         results = cursor.fetchall()
         conn.close()
@@ -885,7 +919,8 @@ def upload_photometry_batch(year, letters):
 def upload_spectroscopy_generic(object_name):
     if 'user' not in session or not session['user'].get('is_admin'):
         return jsonify({'error': 'Access denied'}), 403
-        
+
+    object_name = urllib.parse.unquote(object_name)
     data = request.get_json()
     
     try:
@@ -895,7 +930,9 @@ def upload_spectroscopy_generic(object_name):
             intensity_data=data.get('intensity', []),
             phase=float(data.get('phase')) if data.get('phase') else None,
             telescope=data.get('telescope'),
-            spectrum_id=data.get('spectrum_id')
+            spectrum_id=data.get('spectrum_id'),
+            original_filename=data.get('original_filename'),
+            observation_date=data.get('observation_date')
         )
         
         return jsonify({
@@ -1015,37 +1052,53 @@ def download_spectrum_file(spectrum_id):
         return jsonify({'error': 'Access denied'}), 403
 
     try:
+        source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
         conn = get_tns_db_connection()
         cursor = conn.cursor()
-        cursor.execute('''
-            SELECT o.name AS object_name, s.wavelength, s.intensity, s.source AS telescope, s."MJD" AS phase
-            FROM transient.spectroscopy s
-            JOIN transient.objects o ON s.obj_id = o.obj_id
-            WHERE s.source = %s
-            ORDER BY s.wavelength ASC
-        ''', (spectrum_id,))
+        if observation_mjd is None:
+            cursor.execute('''
+                SELECT o.name AS object_name, s.wavelength, s.intensity, s.source AS telescope, s."MJD" AS observation_mjd
+                FROM transient.spectroscopy s
+                JOIN transient.objects o ON s.obj_id = o.obj_id
+                WHERE s.source = %s
+                ORDER BY s.wavelength ASC
+            ''', (source_name,))
+        else:
+            cursor.execute('''
+                SELECT o.name AS object_name, s.wavelength, s.intensity, s.source AS telescope, s."MJD" AS observation_mjd
+                FROM transient.spectroscopy s
+                JOIN transient.objects o ON s.obj_id = o.obj_id
+                WHERE s.source = %s AND ABS(s."MJD" - %s) < 1e-6
+                ORDER BY s.wavelength ASC
+            ''', (source_name, observation_mjd))
         rows = cursor.fetchall()
         conn.close()
 
         if not rows:
             return jsonify({'error': 'Spectrum not found'}), 404
 
-        obj   = rows[0][0]
-        tel   = rows[0][3] or 'Unknown'
-        phase = rows[0][4]
+        obj = rows[0][0]
+        tel = rows[0][3] or 'Unknown'
+        obs_mjd = rows[0][4]
+        phase = _phase_from_stored_value(obs_mjd)
+        spectrum_label = _build_spectrum_label(tel, obs_mjd)
+        observation_label = _format_spectrum_observation_label(obs_mjd)
 
         lines = [
             f"# {obj} spectrum  id={spectrum_id}",
+            f"# Label: {spectrum_label}",
             f"# Telescope: {tel}",
         ]
         if phase is not None:
             lines.append(f"# Phase: {phase}")
+        elif observation_label:
+            lines.append(f"# Observation date: {observation_label}")
         lines.append("# wavelength intensity")
         for _, wl, intens, _, _ in rows:
             lines.append(f"{wl:.4f}  {intens:.8g}")
 
         content = '\n'.join(lines) + '\n'
-        safe_id = re.sub(r'[^\w\-]', '_', spectrum_id)
+        safe_id = re.sub(r'[^\w\-]+', '_', spectrum_label).strip('_') or 'spectrum'
         return Response(
             content,
             mimetype='text/plain',
@@ -1064,6 +1117,8 @@ def get_object_photometry_plot(year, letters):
     user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
+    logger.info("[Photometry/plot] request: object=%s user=%s", object_name, user_email or 'guest')
+
     if user and not check_object_access(object_name, user_email):
         return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
 
@@ -1078,6 +1133,7 @@ def get_object_photometry_plot(year, letters):
         photometry_data = TNSObjectDB.get_photometry(object_name)
 
         if not photometry_data:
+            logger.info("[Photometry/plot] no data: object=%s", object_name)
             return jsonify({'success': True, 'plot_html': None, 'message': 'No photometry data available'})
 
         # Filter by source permissions — public points visible to everyone
@@ -1092,6 +1148,9 @@ def get_object_photometry_plot(year, letters):
 
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
+
+        logger.info("[Photometry/plot] plotting: object=%s points=%d z=%s extinction=%s k_corr=%s",
+                    object_name, len(photometry_data), redshift, apply_extinction, apply_k_corr)
 
         plot_json = DataVisualization.create_photometry_plot_from_db(
             photometry_data,
@@ -1109,6 +1168,7 @@ def get_object_photometry_plot(year, letters):
             'data_count': len(photometry_data)
         })
     except Exception as e:
+        logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
         return jsonify({'error': str(e)}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectrum/plot')
@@ -1166,6 +1226,7 @@ def get_object_photometry_generic(object_name):
     user_email = user.get('email') if user else None
     user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
+    logger.info("[Photometry] fetch request: object=%s user=%s", object_name, user_email or 'guest')
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
         photometry = TNSObjectDB.get_photometry(object_name)
@@ -1174,8 +1235,11 @@ def get_object_photometry_generic(object_name):
             object_name, 'phot', photometry,
             user_email=user_email, user_groups=user_groups, is_admin=is_admin
         )
+        logger.info("[Photometry] fetched OK: object=%s points=%d user=%s",
+                    object_name, len(photometry), user_email or 'guest')
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
+        logger.error("[Photometry] fetch error: object=%s error=%s", object_name, str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -1280,6 +1344,8 @@ def get_object_photometry_plot_generic(object_name):
     user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
 
+    logger.info("[Photometry/plot] request: object=%s user=%s", object_name, user_email or 'guest')
+
     try:
         if user and not check_object_access(object_name, user_email):
             return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
@@ -1292,6 +1358,7 @@ def get_object_photometry_plot_generic(object_name):
         photometry_data = TNSObjectDB.get_photometry(object_name)
 
         if not photometry_data:
+            logger.info("[Photometry/plot] no data: object=%s", object_name)
             return jsonify({'success': True, 'plot_html': None,
                             'message': 'No photometry data available for this object'})
 
@@ -1313,6 +1380,9 @@ def get_object_photometry_plot_generic(object_name):
         apply_extinction = request.args.get('extinction', 'true').lower() == 'true'
         apply_k_corr = request.args.get('k_corr', 'true').lower() == 'true'
 
+        logger.info("[Photometry/plot] plotting: object=%s points=%d z=%s extinction=%s k_corr=%s",
+                    object_name, len(photometry_data), redshift, apply_extinction, apply_k_corr)
+
         plot_json = DataVisualization.create_photometry_plot_from_db(
             photometry_data,
             redshift=redshift,
@@ -1331,6 +1401,7 @@ def get_object_photometry_plot_generic(object_name):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @objects_bp.route('/api/object/<object_name>/spectrum/plot')

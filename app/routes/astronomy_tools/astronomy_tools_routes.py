@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Ellipse, Polygon
 from PIL import Image
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import render_template, request, jsonify, session, abort, redirect, url_for
+from flask import render_template, request, jsonify, session, abort, redirect, url_for, Response
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astroquery.vizier import Vizier
@@ -741,6 +741,41 @@ def target_autocomplete():
 def finding_chart():
     return render_template('finding_chart.html', current_path='/finding_chart')
 
+
+def _resolve_target_coord(target_name, ra_str, dec_str):
+    """Resolve target coordinates from RA/Dec strings or object name."""
+    def _parse_coord(ra_s, dec_s):
+        """Try sensible unit combinations; return SkyCoord or raise."""
+        ra_s = str(ra_s).strip()
+        dec_s = str(dec_s).strip()
+        ra_is_decimal = bool(re.match(r'^[+-]?[\d]+\.?[\d]*$', ra_s))
+        dec_is_decimal = bool(re.match(r'^[+-]?[\d]+\.?[\d]*$', dec_s))
+        if ra_is_decimal and dec_is_decimal:
+            attempts = [(u.deg, u.deg), (u.hourangle, u.deg)]
+        else:
+            attempts = [(u.hourangle, u.deg), (u.deg, u.deg)]
+        for ra_unit, dec_unit in attempts:
+            try:
+                return SkyCoord(ra_s, dec_s, unit=(ra_unit, dec_unit))
+            except Exception:
+                continue
+        raise ValueError(f'Cannot parse coordinates: RA={ra_s!r} Dec={dec_s!r}')
+
+    if ra_str or dec_str:
+        try:
+            return _parse_coord(ra_str, dec_str)
+        except Exception:
+            if not target_name:
+                raise
+    if target_name:
+        return SkyCoord.from_name(target_name)
+    raise ValueError(f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}')
+
+
+def _safe_chart_basename(name):
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '_', str(name or 'target')).strip('_')
+    return safe or 'target'
+
 @astronomy_tools_bp.route('/api/finding_chart', methods=['POST'])
 def generate_finding_chart():
     """
@@ -772,46 +807,10 @@ def generate_finding_chart():
         slit_pa         = float(data.get('slit_pa', 0.0))
         logs_pre = [f'[INFO] show_mag={show_mag}  show_names={show_names}  max_stars={max_stars}']
 
-        # Resolve coordinates — auto-detect format
-        def _parse_coord(ra_s, dec_s):
-            """Try every sensible unit combination; return SkyCoord or raise."""
-            ra_s  = str(ra_s).strip()
-            dec_s = str(dec_s).strip()
-            # Heuristic: if RA string is a plain decimal number (no colon / h / m)
-            # it is degrees, not hourangle.
-            import re as _re
-            ra_is_decimal  = bool(_re.match(r'^[+-]?[\d]+\.?[\d]*$', ra_s))
-            dec_is_decimal = bool(_re.match(r'^[+-]?[\d]+\.?[\d]*$', dec_s))
-            attempts = []
-            if ra_is_decimal and dec_is_decimal:
-                # Both plain numbers → degrees first
-                attempts = [
-                    (u.deg, u.deg),
-                    (u.hourangle, u.deg),
-                ]
-            else:
-                # Has colons / letters → HMS/DMS first
-                attempts = [
-                    (u.hourangle, u.deg),
-                    (u.deg, u.deg),
-                ]
-            for ra_unit, dec_unit in attempts:
-                try:
-                    return SkyCoord(ra_s, dec_s, unit=(ra_unit, dec_unit))
-                except Exception:
-                    continue
-            raise ValueError(f'Cannot parse coordinates: RA={ra_s!r} Dec={dec_s!r}')
-
         try:
-            if ra_str or dec_str:
-                coord = _parse_coord(ra_str, dec_str)
-            else:
-                coord = SkyCoord.from_name(target_name)
+            coord = _resolve_target_coord(target_name, ra_str, dec_str)
         except Exception:
-            try:
-                coord = SkyCoord.from_name(target_name)
-            except Exception:
-                return jsonify({'error': f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}'}), 400
+            return jsonify({'error': f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}'}), 400
 
         ra_deg = coord.ra.deg
         dec_deg = coord.dec.deg
@@ -861,6 +860,44 @@ def generate_finding_chart():
             'logs': logs
         })
 
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
+
+
+@astronomy_tools_bp.route('/api/finding_chart/fits', methods=['POST'])
+def download_finding_chart_fits():
+    """Download FOV-matched raw FITS cutout with WCS metadata when available."""
+    try:
+        data = request.get_json(silent=True) or {}
+        target_name = data.get('name', 'target')
+        ra_str = data.get('ra', '')
+        dec_str = data.get('dec', '')
+        survey = data.get('survey', 'DSS2 Red')
+        fov_arcmin = float(data.get('fov', 10))
+
+        try:
+            coord = _resolve_target_coord(target_name, ra_str, dec_str)
+        except Exception:
+            return jsonify({'error': f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}'}), 400
+
+        ra_deg = coord.ra.deg
+        dec_deg = coord.dec.deg
+
+        fits_bytes, logs = _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin)
+        if not fits_bytes:
+            return jsonify({
+                'error': f'Raw FITS is unavailable for survey {survey}',
+                'logs': logs,
+            }), 400
+
+        survey_tag = _safe_chart_basename(survey).lower()
+        target_tag = _safe_chart_basename(target_name)
+        filename = f'{target_tag}_{survey_tag}_{fov_arcmin:.1f}arcmin.fits'
+
+        response = Response(fits_bytes, mimetype='application/fits')
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
     except Exception as e:
         traceback.print_exc()
         return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
@@ -1084,6 +1121,100 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 cr = requests.get(cut_url, timeout=timeout)
                 logs.append(f'[PS1] Cutout HTTP {cr.status_code}  size={len(cr.content)} bytes')
                 return (cr.content if cr.status_code == 200 else None), logs
+
+        logs.append(f'[ERROR] Unknown survey: {survey}')
+        return None, logs
+    except Exception as e:
+        traceback.print_exc()
+        logs.append(f'[ERROR] Exception: {e}')
+        return None, logs
+
+
+def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
+    """Fetch raw FITS bytes for selected survey/FOV. Returns (bytes_or_None, logs)."""
+    timeout = 45
+    logs = []
+    try:
+        if survey.startswith('DSS'):
+            survey_map = {
+                'DSS2 Red': 'poss2ukstu_red',
+                'DSS2 Blue': 'poss2ukstu_blue',
+                'DSS2 IR': 'poss2ukstu_ir',
+                'DSS': 'poss1_red',
+                'DSS1': 'poss1_red',
+            }
+            dss_name = survey_map.get(survey, 'poss2ukstu_red')
+            url = (
+                f'https://archive.stsci.edu/cgi-bin/dss_search'
+                f'?v={dss_name}&r={ra_deg}&d={dec_deg}&e=J2000'
+                f'&h={fov_arcmin}&w={fov_arcmin}&f=fits&c=gz&fov=NONE&v3='
+            )
+            logs.append(f'[DSS] GET FITS {url[:80]}...')
+            r = requests.get(url, timeout=timeout)
+            logs.append(f'[DSS] HTTP {r.status_code}  size={len(r.content)} bytes')
+            if r.status_code != 200:
+                return None, logs
+            import gzip
+            try:
+                return gzip.decompress(r.content), logs
+            except Exception:
+                return r.content, logs
+
+        if survey.startswith('DESI'):
+            layer = 'ls-dr10'
+            pixscale = fov_arcmin * 60 / 900
+            band = survey.split('-')[-1].lower() if '-' in survey else 'grz'
+            bands = 'grz' if band == 'color' else band
+            url = (
+                f'https://www.legacysurvey.org/viewer/cutout.fits'
+                f'?ra={ra_deg}&dec={dec_deg}&size=900&layer={layer}'
+                f'&pixscale={pixscale:.4f}&bands={bands}'
+            )
+            logs.append(f'[DESI] GET FITS bands={bands} pixscale={pixscale:.4f}"')
+            r = requests.get(url, timeout=timeout)
+            logs.append(f'[DESI] HTTP {r.status_code}  size={len(r.content)} bytes')
+            return (r.content if r.status_code == 200 else None), logs
+
+        if survey.startswith('PS1'):
+            size_px = 900
+            src_px = max(240, int(fov_arcmin * 60 / 0.25))
+            req_filter = 'r' if 'color' in survey else survey.split('-')[-1].lower()
+
+            fn_url = (
+                f'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py'
+                f'?ra={ra_deg}&dec={dec_deg}&filters={req_filter}&type=stack'
+            )
+            logs.append(f'[PS1] Querying filenames: filters={req_filter}')
+            fr = requests.get(fn_url, timeout=timeout)
+            logs.append(f'[PS1] Filenames HTTP {fr.status_code}')
+            if fr.status_code != 200 or not fr.text.strip():
+                return None, logs
+
+            lines = [l for l in fr.text.strip().split('\n') if l.strip()]
+            if len(lines) < 2:
+                return None, logs
+            header = lines[0].split()
+            rows = []
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) == len(header):
+                    rows.append(dict(zip(header, parts)))
+            if not rows:
+                return None, logs
+            file_map = {row.get('filter', ''): row.get('filename', '') for row in rows}
+            fname = file_map.get(req_filter, '')
+            if not fname:
+                return None, logs
+
+            cut_url = (
+                f'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi'
+                f'?ra={ra_deg}&dec={dec_deg}&size={src_px}&format=fits'
+                f'&output_size={size_px}&red={fname}'
+            )
+            logs.append(f'[PS1] Fetching {req_filter}-band FITS cutout')
+            cr = requests.get(cut_url, timeout=timeout)
+            logs.append(f'[PS1] Cutout HTTP {cr.status_code}  size={len(cr.content)} bytes')
+            return (cr.content if cr.status_code == 200 else None), logs
 
         logs.append(f'[ERROR] Unknown survey: {survey}')
         return None, logs

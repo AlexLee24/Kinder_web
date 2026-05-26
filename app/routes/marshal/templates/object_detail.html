@@ -306,7 +306,6 @@
                     </div>
                 </div>
                 <div class="panel-body">
-                    <select id="spectrumSelector" class="btn-modern" style="width:100%; margin-bottom:12px; display:none;" onchange="loadSpecificSpectrum()"></select>
                     <div style="min-height:250px; display:flex; position:relative;">
                         <div id="spectrumLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Mapping...
@@ -530,6 +529,11 @@ MJD         magnitude  error   filter  telescope
                     <div class="form-group" style="margin-top: 15px;">
                         <label for="spectrumTelescope">Telescope/Instrument (Optional):</label>
                         <input type="text" id="spectrumTelescope" class="form-control" placeholder="e.g. Lulin/LOT">
+                    </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label for="spectrumObsDate">Observation Date (Optional):</label>
+                        <input type="date" id="spectrumObsDate" class="form-control">
+                        <small style="display:block; margin-top:6px; color:#9aa0a6;">Auto-detected from filename when possible; you can edit manually.</small>
                     </div>
                 </div>
                 

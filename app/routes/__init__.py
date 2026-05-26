@@ -15,6 +15,7 @@ def register_routes(app):
     from .marshal.marshal_routes import marshal_bp
     from .detect.detect_routes import detect_bp
     from .web_log.web_log_routes import web_log_bp
+    from .database_status.database_status_routes import database_status_bp
     from .games.games_routes import games_bp
     from .planners.planners_routes import planners_bp
     
@@ -30,5 +31,6 @@ def register_routes(app):
     app.register_blueprint(marshal_bp)
     app.register_blueprint(detect_bp)
     app.register_blueprint(web_log_bp)
+    app.register_blueprint(database_status_bp)
     app.register_blueprint(games_bp)
     app.register_blueprint(planners_bp)

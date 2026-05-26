@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import numpy as np
 import astropy.units as u
 from astropy.coordinates import SkyCoord
@@ -11,6 +12,8 @@ try:
 except ImportError:
     from database import get_db_connection
     from database.catalog import cone_search_desi, cone_search_lens
+
+logger = logging.getLogger(__name__)
 
 
 class _NumpyEncoder(json.JSONEncoder):
@@ -56,7 +59,7 @@ def desi_cross_match_single(ra, dec, search_radius=30):
                 row_dict['separation_arcsec'] = float(separation)
                 matched_data.append(row_dict)
     except Exception as e:
-        print(f"Error in DESI cross match: {e}")
+        logger.error("event=detect_desi_cross_match_error error=%s", e)
     return matched_data
 
 def lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC, table_name='lens_catalogue', catalog_label='Lens_Catalogue'):
@@ -73,7 +76,7 @@ def lens_cross_match_catalogue_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_
                 row_dict['separation_arcsec'] = float(separation)
                 matched_data.append(row_dict)
     except Exception as e:
-        print(f"Error in Lens cross match ({catalog_label}): {e}")
+        logger.error("event=detect_lens_cross_match_error catalog=%s error=%s", catalog_label, e)
     return matched_data
 
 def comprehensive_lens_match_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_ARCSEC):

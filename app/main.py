@@ -1,10 +1,12 @@
 # ===============================================================================
 # IMPORTS AND CONFIGURATION
 # ===============================================================================
-from flask import Flask, send_from_directory, abort
+from flask import Flask, send_from_directory, abort, request, g, session
 from dotenv import load_dotenv
 import os
 import sys
+import time
+import logging
 from werkzeug.routing import BaseConverter
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -30,19 +32,28 @@ app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Check database connection on startup
-if not check_db_connection():
+try:
+    _db_connection_ok = check_db_connection()
+except Exception as exc:
+    _db_connection_ok = False
+    print(f"WARNING: Database connection check raised an exception: {exc}")
+
+if not _db_connection_ok:
     print("WARNING: Database connection failed. Application may not function correctly.")
 
 # Custom URL converter for TNS object names (supports both upper and lowercase letters)
 class AlphaConverter(BaseConverter):
-    def __init__(self, url_map, minlength=1, maxlength=None):
+    def __init__(self, url_map): #, minlength=1, maxlength=None
         super(AlphaConverter, self).__init__(url_map)
         self.regex = r'[a-zA-Z]+'
 
 app.url_map.converters['alpha'] = AlphaConverter
 
 # Initialize Kinder DB connection pool
-init_connection_pool()
+try:
+    init_connection_pool()
+except Exception as exc:
+    print(f"WARNING: Database connection pool could not be initialized: {exc}")
 
 # ===============================================================================
 # STATIC FILE SERVING
@@ -103,6 +114,37 @@ oauth.init_app(app)
 # Register session refresh globally so g.current_user (including DB picture) is
 # available on every request regardless of which blueprint handles it.
 app.before_request(refresh_user_session)
+
+_access_logger = logging.getLogger('web.request')
+_ACCESS_SKIP_PREFIXES = ('/static/', '/api/log/content', '/api/log/daemon/content')
+
+
+@app.before_request
+def _mark_request_start():
+    g._req_start_monotonic = time.monotonic()
+
+
+@app.after_request
+def _log_request_access(response):
+    path = request.path or ''
+    if path.startswith(_ACCESS_SKIP_PREFIXES):
+        return response
+    start = getattr(g, '_req_start_monotonic', None)
+    duration_ms = int((time.monotonic() - start) * 1000) if start is not None else -1
+    user_email = (session.get('user') or {}).get('email', 'anon')
+    user_agent = (request.user_agent.string or '-')[:120]
+    _access_logger.info(
+        'event=http_access method=%s path=%s status=%s duration_ms=%s bytes=%s ip=%s user=%s ua="%s"',
+        request.method,
+        path,
+        response.status_code,
+        duration_ms,
+        response.calculate_content_length() or 0,
+        request.headers.get('X-Forwarded-For', request.remote_addr or '-'),
+        user_email,
+        user_agent,
+    )
+    return response
 
 # ===============================================================================
 # REGISTER ALL ROUTES
