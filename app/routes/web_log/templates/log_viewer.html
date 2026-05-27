@@ -927,7 +927,7 @@
                     await loadSources(currentDate);
                     renderSourceList();
                 }
-                const data = await fetchWebContent(currentDate, logOffset);
+                const data = await fetchWebContent(currentDate, logOffset, { maxBytes: 65536 });
                 if (data.content) {
                     appendHtml(data.content);
                     logOffset = data.offset;

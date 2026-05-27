@@ -3,15 +3,16 @@ Log viewer routes — accessible to GREATLab members and admins.
 """
 import os
 import re
-from collections import deque
 from flask import render_template, session, jsonify, request, redirect, url_for
 
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 _SRC_RE = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[([^\]]+)\]')
-_DEFAULT_MAX_READ_BYTES = 512 * 1024
+_DEFAULT_MAX_READ_BYTES = 128 * 1024
 _MAX_ALLOWED_READ_BYTES = 2 * 1024 * 1024
 _DEFAULT_TAIL_LINES = 300
 _MAX_TAIL_LINES = 2000
+_TAIL_BLOCK_BYTES = 64 * 1024
+_TAIL_MAX_SCAN_BYTES = 4 * 1024 * 1024
 
 
 def _line_source(line: str) -> str:
@@ -25,15 +26,52 @@ def _filter_line(line: str, source_filters: set[str], has_explicit_filter: bool)
     return _line_source(line) in source_filters
 
 
-def _tail_read_lines(log_file: str, max_lines: int, source_filters: set[str], has_explicit_filter: bool) -> tuple[str, int]:
-    selected = deque(maxlen=max_lines)
-    with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-        for line in f:
-            if _filter_line(line, source_filters, has_explicit_filter):
-                selected.append(line.rstrip('\n'))
-    if not selected:
-        return '', 0
-    return '\n'.join(selected) + '\n', len(selected)
+def _tail_read_lines(log_file: str, max_lines: int, source_filters: set[str], has_explicit_filter: bool) -> tuple[str, int, bool]:
+    """Read last lines by scanning from file end in blocks.
+
+    Returns (content, rendered_lines, truncated).
+    """
+    file_size = os.path.getsize(log_file)
+    if file_size <= 0:
+        return '', 0, False
+
+    chunks: list[bytes] = []
+    scanned = 0
+    pos = file_size
+    hit_start = False
+    newline_count = 0
+    estimated_needed = max_lines if not has_explicit_filter else max_lines * 8
+    estimated_needed = max(estimated_needed, _DEFAULT_TAIL_LINES)
+
+    with open(log_file, 'rb') as f:
+        while pos > 0 and scanned < _TAIL_MAX_SCAN_BYTES:
+            read_size = min(_TAIL_BLOCK_BYTES, pos)
+            pos -= read_size
+            f.seek(pos)
+            block = f.read(read_size)
+            chunks.append(block)
+            scanned += read_size
+            newline_count += block.count(b'\n')
+
+            # Stop early when we have enough newline-separated candidates in the buffer.
+            if newline_count >= estimated_needed:
+                break
+
+        if pos == 0:
+            hit_start = True
+
+    raw = b''.join(reversed(chunks))
+    text = raw.decode('utf-8', errors='replace')
+    lines = text.splitlines()
+    if has_explicit_filter:
+        lines = [ln for ln in lines if _line_source(ln) in source_filters]
+
+    if len(lines) > max_lines:
+        lines = lines[-max_lines:]
+
+    if not lines:
+        return '', 0, not hit_start
+    return '\n'.join(lines) + '\n', len(lines), (not hit_start)
 
 
 def _parse_source_filters() -> tuple[set[str], bool]:
@@ -126,16 +164,25 @@ def api_log_content():
     if tail_lines and offset == 0:
         tail_lines = max(1, min(tail_lines, _MAX_TAIL_LINES))
         try:
-            content, rendered_lines = _tail_read_lines(log_file, tail_lines, source_filters, has_explicit_filter)
+            content, rendered_lines, tail_truncated = _tail_read_lines(log_file, tail_lines, source_filters, has_explicit_filter)
             return jsonify({
                 'content': content,
                 'offset': file_size,
                 'returned_lines': rendered_lines,
-                'truncated': rendered_lines >= tail_lines,
+                'truncated': (rendered_lines >= tail_lines) or tail_truncated,
                 'file_size': file_size,
             })
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+    if offset >= file_size:
+        return jsonify({
+            'content': '',
+            'offset': file_size,
+            'returned_lines': 0,
+            'truncated': False,
+            'file_size': file_size,
+        })
 
     try:
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
@@ -213,6 +260,10 @@ def api_daemon_log_content():
     offset = request.args.get('offset', 0, type=int)
     if offset < 0:
         offset = 0
+    max_bytes = request.args.get('max_bytes', _DEFAULT_MAX_READ_BYTES, type=int)
+    if max_bytes <= 0:
+        max_bytes = _DEFAULT_MAX_READ_BYTES
+    max_bytes = min(max_bytes, _MAX_ALLOWED_READ_BYTES)
 
     from modules.log_setup import get_log_dir
     log_dir = get_log_dir()
@@ -228,10 +279,14 @@ def api_daemon_log_content():
     if not os.path.isfile(log_file):
         return jsonify({'content': '', 'offset': 0})
 
+    file_size = os.path.getsize(log_file)
+    if offset >= file_size:
+        return jsonify({'content': '', 'offset': file_size})
+
     try:
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
             f.seek(offset)
-            content = f.read()
+            content = f.read(max_bytes)
             new_offset = f.tell()
         return jsonify({'content': content, 'offset': new_offset})
     except Exception as e:
