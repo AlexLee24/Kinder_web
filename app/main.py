@@ -117,6 +117,7 @@ app.before_request(refresh_user_session)
 
 _access_logger = logging.getLogger('web.request')
 _ACCESS_SKIP_PREFIXES = ('/static/', '/api/log/content', '/api/log/daemon/content')
+_ACCESS_LOG_ENABLED = os.getenv('ACCESS_LOG_ENABLED', '0').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 @app.before_request
@@ -126,6 +127,8 @@ def _mark_request_start():
 
 @app.after_request
 def _log_request_access(response):
+    if not _ACCESS_LOG_ENABLED:
+        return response
     path = request.path or ''
     if path.startswith(_ACCESS_SKIP_PREFIXES):
         return response

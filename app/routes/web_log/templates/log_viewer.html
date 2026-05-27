@@ -478,6 +478,7 @@
             <label class="ctrl-follow">
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
+            <button class="ctrl-btn" id="streamToggleBtn" onclick="toggleLogStream()" title="Start/stop log reading">▶ Start Reading</button>
             <button class="ctrl-btn" onclick="manualRefresh()">↺ Refresh</button>
             <button class="ctrl-btn-danger" onclick="copyErrors()" title="Copy all ERROR/WARNING lines to clipboard">⎘ Copy Errors</button>
             <button class="ctrl-btn" onclick="clearDisplay()">✕ Clear</button>
@@ -517,6 +518,7 @@
         let logOffset = 0;
         let lineCount = 0;
         let pollTimer = null;
+        let streamEnabled = false;
         let currentMode = 'web'; // only web log
         let availableSources = [];
         let selectedSources = new Set();
@@ -940,7 +942,16 @@
             document.getElementById('liveDot').className = on ? 'live-dot' : 'live-dot off';
         }
 
+        function updateStreamToggleUi() {
+            const btn = document.getElementById('streamToggleBtn');
+            if (!btn) return;
+            btn.textContent = streamEnabled ? '■ Stop Reading' : '▶ Start Reading';
+            btn.title = streamEnabled ? 'Stop log reading' : 'Start log reading';
+        }
+
         function startPoll() {
+            if (!streamEnabled) return;
+            if (document.hidden) return;
             if (pollTimer) clearInterval(pollTimer);
             pollTimer = setInterval(pollNew, 1000);
             setLive(true);
@@ -951,23 +962,53 @@
             setLive(false);
         }
 
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                stopPoll();
+                return;
+            }
+            if (streamEnabled && currentDate === todayStr) startPoll();
+        });
+
+        window.addEventListener('pagehide', stopPoll);
+        window.addEventListener('beforeunload', stopPoll);
+
         function switchDate(date) {
             stopPoll();
             currentDate = date;
+            document.getElementById('statDate').textContent = date === todayStr ? `${date}  (Today)` : date;
+            document.getElementById('logFileName').textContent = `${date}.log`;
+            if (!streamEnabled) return;
             loadSources(date).then(() => loadFull(date)).then(() => {
-                if (date === todayStr) startPoll();
+                if (streamEnabled && date === todayStr) startPoll();
             });
         }
 
         function switchSourceFilters() {
             stopPoll();
+            if (!streamEnabled) return;
             loadFull(currentDate).then(() => {
-                if (currentDate === todayStr) startPoll();
+                if (streamEnabled && currentDate === todayStr) startPoll();
             });
         }
 
         function manualRefresh() {
-            loadFull(currentDate);
+            loadSources(currentDate).then(() => loadFull(currentDate));
+        }
+
+        function toggleLogStream() {
+            streamEnabled = !streamEnabled;
+            if (!streamEnabled) {
+                stopPoll();
+                updateStreamToggleUi();
+                return;
+            }
+
+            loadSources(currentDate).then(() => loadFull(currentDate)).then(() => {
+                if (streamEnabled && currentDate === todayStr) startPoll();
+            }).finally(() => {
+                updateStreamToggleUi();
+            });
         }
 
         function clearDisplay() {
@@ -1001,9 +1042,11 @@
                 sel.value = currentDate;
             }
 
-            loadSources(currentDate).then(() => loadFull(currentDate)).then(() => {
-                if (currentDate === todayStr) startPoll();
-            });
+            document.getElementById('statDate').textContent = currentDate === todayStr ? `${currentDate}  (Today)` : currentDate;
+            document.getElementById('logFileName').textContent = `${currentDate}.log · idle`;
+            const pre = document.getElementById('logPre');
+            pre.textContent = 'Log reading is paused. Click "Start Reading" to load logs.';
+            updateStreamToggleUi();
         }
 
         window.addEventListener('scroll', function() {
