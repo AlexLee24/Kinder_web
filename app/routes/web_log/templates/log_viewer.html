@@ -807,13 +807,20 @@
             switchSourceFilters();
         }
 
-        async function fetchWebContent(date, offset) {
+        async function fetchWebContent(date, offset, opts = {}) {
             const sel = selectedSourceArray();
             // If ALL sources selected or none selected → no filter (pass 'all' to avoid empty-filter bug)
             const sourceParam = (sel.length === 0 || sel.length === availableSources.length)
                 ? 'all'
-                : encodeURIComponent(sel.join(','));
-            const res = await fetch(`/api/log/content?date=${encodeURIComponent(date)}&offset=${offset}&sources=${sourceParam}`);
+                : sel.join(',');
+            const params = new URLSearchParams({
+                date: date,
+                offset: String(offset),
+                sources: sourceParam,
+            });
+            if (opts.tailLines) params.set('tail_lines', String(opts.tailLines));
+            if (opts.maxBytes) params.set('max_bytes', String(opts.maxBytes));
+            const res = await fetch(`/api/log/content?${params.toString()}`);
             return await res.json();
         }
 
@@ -877,27 +884,16 @@
             document.getElementById('statWarns').textContent  = 'Warns: 0';
 
             try {
-                const data = await fetchWebContent(date, 0);
+                const data = await fetchWebContent(date, 0, { tailLines: 300, maxBytes: 524288 });
                 if (data.error) { appendHtml(`[Error: ${data.error}]`); return; }
-                
-                const content = data.content || '(No entries yet)';
-                const allLines = content.split('\n');
-                
-                lineCount = allLines.filter(l => l.trim()).length;
-                
-                const MAX_RENDER_LINES = 300;
-                let renderLines = allLines;
-                let truncated = false;
-                
-                if (renderLines.length > MAX_RENDER_LINES) {
-                    renderLines = renderLines.slice(-MAX_RENDER_LINES);
-                    truncated = true;
-                }
+
+                const content = data.content || '';
+                lineCount = data.returned_lines || (content ? content.split('\n').filter(l => l.trim()).length : 0);
 
                 const pre = document.getElementById('logPre');
-                pre.innerHTML = colorize(renderLines.join('\n'));
-                
-                if (truncated) {
+                pre.innerHTML = colorize(content || '(No entries yet)');
+
+                if (data.truncated) {
                     const truncMsg = document.createElement('div');
                     truncMsg.style.textAlign = 'center';
                     truncMsg.style.padding = '8px';
@@ -905,12 +901,12 @@
                     truncMsg.style.fontSize = '0.85rem';
                     truncMsg.style.borderBottom = '1px dashed rgba(255,255,255,0.1)';
                     truncMsg.style.marginBottom = '10px';
-                    truncMsg.innerHTML = `<i>--- Only show  ${MAX_RENDER_LINES} lines ---</i>`;
+                    truncMsg.innerHTML = `<i>--- Showing recent lines only (use date/source filters to narrow further) ---</i>`;
                     pre.insertBefore(truncMsg, pre.firstChild);
                 }
 
                 document.getElementById('statLines').textContent = `Lines: ${lineCount}`;
-                document.getElementById('statBytes').textContent = `${data.offset || 0} B`;
+                document.getElementById('statBytes').textContent = `${data.file_size || data.offset || 0} B`;
 
                 logOffset = data.offset || 0;
                 updateLevelStats();
