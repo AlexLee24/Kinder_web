@@ -4,11 +4,19 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+:root {
+    --gallery-accent: var(--kw-accent);
+    --gallery-border: var(--kw-border);
+    --gallery-text: var(--kw-text-primary);
+    --gallery-muted: var(--kw-text-muted);
+    --gallery-glass: var(--kw-glass-bg);
+}
+
 body {
     background: url('../photo/background.jpg') center/cover no-repeat fixed;
     background-color: #0a0a0a;
-    color: #e0e0e0;
-    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--kw-text-primary);
+    font-family: var(--kw-font-system);
     font-weight: 300;
     margin: 0;
     padding: 0;
@@ -117,7 +125,7 @@ body::before {
 .gallery-card-title {
     font-size: 0.88rem;
     font-weight: 500;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin: 0 0 5px;
     letter-spacing: 0.3px;
     white-space: nowrap;
@@ -247,7 +255,7 @@ body::before {
 .lightbox-title {
     font-size: 1.25rem;
     font-weight: 400;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin: 0;
     letter-spacing: 0.5px;
 }

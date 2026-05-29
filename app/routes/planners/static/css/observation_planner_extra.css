@@ -15,7 +15,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    color: #C5A059;
+    color: var(--kw-accent);
     font-weight: 500;
     font-size: 14px;
 }
@@ -23,7 +23,7 @@
 .checkbox-label input[type="checkbox"] {
     width: 16px;
     height: 16px;
-    accent-color: #C5A059;
+    accent-color: var(--kw-accent);
     cursor: pointer;
 }
 
@@ -67,7 +67,7 @@
 .add-exposure-btn {
     background: rgba(255, 255, 255, 0.1) !important;
     border: 1px solid rgba(197, 160, 89, 0.5) !important;
-    color: #C5A059 !important;
+    color: var(--kw-accent) !important;
     box-shadow: none !important;
 }
 

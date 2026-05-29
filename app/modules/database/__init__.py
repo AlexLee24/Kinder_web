@@ -24,12 +24,18 @@ DB_USER     = os.getenv("PG_USER", "postgres")
 DB_PASSWORD = os.getenv("PG_PASSWORD", "")
 DB_NAME     = "Kinder"
 
+_DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+
+# Smaller pool in DEBUG mode so we don't waste connections during development
+_POOL_MIN = 1  if _DEBUG else 2
+_POOL_MAX = 10 if _DEBUG else 60
+
 logger = logging.getLogger(__name__)
 
 _connection_pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 
-def init_connection_pool(minconn: int = 2, maxconn: int = 60):
+def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
     global _connection_pool
     if _connection_pool is None:
         _connection_pool = psycopg2.pool.ThreadedConnectionPool(
@@ -37,14 +43,119 @@ def init_connection_pool(minconn: int = 2, maxconn: int = 60):
             host=DB_HOST, port=int(DB_PORT),
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
+            # ── Server-side safety timeouts ───────────────────────────────
+            # Kill any connection that sits idle-in-transaction for >5 min,
+            # and any individual statement that runs >2 min.
+            options=(
+                "-c idle_in_transaction_session_timeout=300000"   # 5 min (ms)
+                " -c statement_timeout=120000"                    # 2 min (ms)
+            ),
+            # ── TCP keepalives — detect broken/dead sockets promptly ──────
+            keepalives=1,
+            keepalives_idle=60,      # send keepalive probe after 60 s idle
+            keepalives_interval=10,  # retry probe every 10 s
+            keepalives_count=5,      # 5 failed probes → close socket
         )
         _ensure_extra_tables()
-        logger.info("Kinder connection pool initialised (%d-%d)", minconn, maxconn)
+        logger.info("Kinder connection pool initialised (%d–%d) [debug=%s]",
+                    minconn, maxconn, _DEBUG)
     return _connection_pool
 
 
+def get_pool_stats() -> dict:
+    """Return current pool usage statistics.
+
+    Returns a dict with keys:
+      pool_min, pool_max, in_use, idle, usage_pct
+    Returns all-zero dict if the pool has not been initialised yet.
+    """
+    p = _connection_pool
+    if p is None:
+        return {"pool_min": 0, "pool_max": 0, "in_use": 0, "idle": 0, "usage_pct": 0.0}
+    try:
+        # psycopg2 private attributes – stable across all 2.x versions
+        in_use = len(p._used)   # type: ignore[attr-defined]  — psycopg2 internal, stable across 2.x
+        idle   = len(p._pool)   # type: ignore[attr-defined]  — psycopg2 internal, stable across 2.x
+        total  = p.maxconn
+        return {
+            "pool_min":  p.minconn,
+            "pool_max":  total,
+            "in_use":    in_use,
+            "idle":      idle,
+            "usage_pct": round(in_use / total * 100, 1) if total else 0.0,
+        }
+    except Exception:
+        return {"pool_min": 0, "pool_max": 0, "in_use": 0, "idle": 0, "usage_pct": 0.0}
+
+
+def close_connection_pool():
+    """Close all connections and destroy the pool (e.g. on app teardown)."""
+    global _connection_pool
+    if _connection_pool is not None:
+        try:
+            _connection_pool.closeall()
+            logger.info("Kinder connection pool closed.")
+        except Exception as exc:
+            logger.warning("Error closing connection pool: %s", exc)
+        finally:
+            _connection_pool = None
+
+
+def recycle_idle_connections():
+    """Close and discard all idle (not in-use) connections in the pool so that
+    fresh connections are created on the next request.
+
+    This prevents the 'stale idle connection with high age' problem where pool
+    connections opened at startup are still alive hours later.  Call this
+    periodically (e.g. every 30 minutes) from the background scheduler.
+    """
+    p = _connection_pool
+    if p is None:
+        return
+    try:
+        with p._lock:  # type: ignore[attr-defined]
+            idle_conns = list(p._pool)  # type: ignore[attr-defined]
+            p._pool.clear()             # type: ignore[attr-defined]
+        closed = 0
+        for conn in idle_conns:
+            try:
+                conn.close()
+                closed += 1
+            except Exception:
+                pass
+        logger.info("recycle_idle_connections: closed %d idle connection(s).", closed)
+    except Exception as exc:
+        logger.warning("recycle_idle_connections: %s", exc)
+
+
+def _reset_conn(conn, pool_ref) -> bool:
+    """Ensure a connection is in a clean state before returning it to the pool.
+
+    If the connection has an open / aborted transaction (STATUS_IN_TRANSACTION
+    or STATUS_IN_ERROR) we issue a rollback so PostgreSQL doesn't see it as
+    'idle in transaction'.  Returns False (and discards the connection) if the
+    reset itself fails.
+    """
+    try:
+        status = conn.status   # psycopg2.extensions.STATUS_*
+        if status in (
+            psycopg2.extensions.STATUS_IN_TRANSACTION,   # = 2
+            psycopg2.extensions.STATUS_IN_ERROR,         # = 4
+        ):
+            conn.rollback()
+        return True
+    except Exception as exc:
+        logger.debug("_reset_conn: rollback failed (%s); discarding connection.", exc)
+        try:
+            pool_ref.putconn(conn, close=True)
+        except Exception:
+            pass
+        return False   # caller must NOT putconn again
+
+
 class _PooledConn:
-    """Wraps a pooled psycopg2 connection so that close() returns it to the pool."""
+    """Wraps a pooled psycopg2 connection so that close() returns it to the pool
+    in a clean (STATUS_READY) state — no dirty transactions left open."""
     __slots__ = ('_conn', '_pool')
 
     def __init__(self, conn, pool):
@@ -58,9 +169,10 @@ class _PooledConn:
         setattr(object.__getattribute__(self, '_conn'), name, value)
 
     def close(self):
-        pool = object.__getattribute__(self, '_pool')
+        p    = object.__getattribute__(self, '_pool')
         conn = object.__getattribute__(self, '_conn')
-        pool.putconn(conn)
+        if _reset_conn(conn, p):
+            p.putconn(conn)
 
 
 def get_tns_db_connection() -> '_PooledConn':
@@ -75,10 +187,11 @@ def get_tns_db_connection() -> '_PooledConn':
 def get_db_connection():
     """Yield a pooled psycopg2 connection; returns it to the pool on exit.
 
-    Stale connections (closed by the server while idle in the pool) are
-    discarded and replaced with a fresh one before the caller sees them.
-    If an OperationalError occurs during use the broken connection is
-    discarded so the pool never hands it out again.
+    • Stale connections (server-closed while idle) are discarded and replaced.
+    • Any OperationalError during use discards the broken connection entirely.
+    • Before returning to the pool the connection is always reset (rollback if
+      an open/aborted transaction exists) so PostgreSQL never sees a leftover
+      'idle in transaction' from this pool.
     """
     p = init_connection_pool()
     conn = p.getconn()
@@ -91,12 +204,19 @@ def get_db_connection():
         yield conn
     except psycopg2.OperationalError:
         # Connection broke mid-query; remove it from the pool entirely.
-        p.putconn(conn, close=True)
+        try:
+            p.putconn(conn, close=True)
+        except Exception:
+            pass
         _returned = True
         raise
     finally:
         if not _returned:
-            p.putconn(conn)
+            # Reset dirty state before handing back to pool
+            if not _reset_conn(conn, p):
+                _returned = True  # _reset_conn already discarded it
+            else:
+                p.putconn(conn)
 
 
 def check_db_connection() -> bool:
@@ -121,6 +241,7 @@ def check_db_connection() -> bool:
 def _ensure_extra_tables():
     """Create supplementary tables used by app logic that are absent from the
     core Kinder schema DDL.  All created under appropriate schemas."""
+    conn = None
     try:
         conn = psycopg2.connect(
             host=DB_HOST, port=int(DB_PORT),
@@ -269,9 +390,14 @@ def _ensure_extra_tables():
 
         conn.commit()
         cur.close()
-        conn.close()
     except Exception as e:
         logger.warning("_ensure_extra_tables: %s", e)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

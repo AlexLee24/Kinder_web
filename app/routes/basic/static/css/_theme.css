@@ -1,0 +1,87 @@
+/* ================================================================
+   _theme.css — Global Design Tokens for Kinder Web
+   Loaded by _navbar.html on every page (except home).
+   Change a value here → every page updates automatically.
+   ================================================================ */
+
+/* ── TASA Explorer font (Google Fonts) ───────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=TASA+Explorer:wght@300;400;500;600;700&display=swap');
+
+/* Fluid base font-size: 13px (≤714 px) → 16px (≥1430 px) */
+html {
+    font-size: clamp(13px, calc(10px + 0.42vw), 16px);
+}
+
+/* ── Global body font ────────────────────────────────────────── */
+body {
+    font-family: "TASA Explorer", 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-optical-sizing: auto;
+}
+
+:root {
+    /* ── Accent / Brand ──────────────────────────────────────── */
+    --kw-accent:             #C5A059;              /* muted gold */
+    --kw-accent-hover:       #d4b06a;
+    --kw-accent-dark:        #A08040;
+    --kw-accent-dim:         rgba(197, 160, 89, 0.25);
+    --kw-accent-border:      rgba(197, 160, 89, 0.30);
+    --kw-accent-gradient:    linear-gradient(45deg, #C5A059, #8e7340);
+    --kw-secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
+
+    /* ── Semantic Colors ─────────────────────────────────────── */
+    --kw-color-success: #81C784;
+    --kw-color-warning: #FFD54F;
+    --kw-color-info:    #64B5F6;
+    --kw-color-danger:  #EF5350;
+    --kw-color-blue:    #64B5F6;
+    --kw-color-orange:  #FFB74D;
+    --kw-color-purple:  #BA68C8;
+
+    /* ── Typography ──────────────────────────────────────────── */
+    --kw-font-sans:   "TASA Explorer", 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    --kw-font-system: "TASA Explorer", -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+                      'Helvetica Neue', Arial, sans-serif;
+
+    /* ── Text ────────────────────────────────────────────────── */
+    --kw-text-primary:   #e0e0e0;
+    --kw-text-white:     #ffffff;
+    --kw-text-secondary: rgba(255, 255, 255, 0.85);
+    --kw-text-muted:     rgba(255, 255, 255, 0.55);
+
+    /* ── Surfaces / Glass ────────────────────────────────────── */
+    --kw-glass-bg:       rgba(20, 20, 30, 0.85);
+    --kw-glass-bg-light: rgba(255, 255, 255, 0.08);
+    --kw-glass-border:   rgba(255, 255, 255, 0.15);
+    --kw-glass-shadow:   0 8px 32px rgba(0, 0, 0, 0.30);
+    --kw-bg-overlay:     rgba(255, 255, 255, 0.05);
+
+    /* ── Borders ─────────────────────────────────────────────── */
+    --kw-border:     rgba(255, 255, 255, 0.10);
+    --kw-border-med: rgba(255, 255, 255, 0.18);
+
+    /* ── Spacing ─────────────────────────────────────────────── */
+    --kw-space-xs:  4px;
+    --kw-space-sm:  8px;
+    --kw-space-md:  12px;
+    --kw-space-lg:  16px;
+    --kw-space-xl:  20px;
+    --kw-space-2xl: 24px;
+    --kw-space-3xl: 30px;
+
+    /* ── Border Radius ───────────────────────────────────────── */
+    --kw-radius-sm:  8px;
+    --kw-radius-md:  12px;
+    --kw-radius-lg:  16px;
+    --kw-radius-xl:  20px;
+    --kw-radius-2xl: 25px;
+
+    /* ── Transitions ─────────────────────────────────────────── */
+    --kw-transition:      all 0.25s ease;
+    --kw-transition-fast: 0.3s ease;
+    --kw-transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* ── Shadows ─────────────────────────────────────────────── */
+    --kw-shadow:    0 4px 24px rgba(0, 0, 0, 0.35);
+    --kw-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.30);
+}
+

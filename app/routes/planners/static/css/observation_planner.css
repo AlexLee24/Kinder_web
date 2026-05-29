@@ -1,6 +1,6 @@
 /* Base Styles - Inherited from astronomy_tools.css */
 body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background-image: url('../photo/background_planner.jpg');
     background-attachment: fixed;
     background-size: cover;
@@ -60,7 +60,7 @@ body {
 
 .settings-panel h3, .targets-panel h3, .output-panel h3 {
     font-size: 1.8em;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -79,7 +79,7 @@ body {
     transform: translateX(-50%);
     width: 60px;
     height: 2px;
-    background: linear-gradient(90deg, #C5A059, #8e7340);
+    background: linear-gradient(90deg, var(--kw-accent), var(--kw-accent-dark));
     border-radius: 2px;
 }
 
@@ -99,7 +99,7 @@ body {
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    color: #C5A059;
+    color: var(--kw-accent);
     font-weight: 500;
     letter-spacing: 0.5px;
     font-size: 14px;
@@ -116,14 +116,14 @@ body {
     color: #ffffff;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     font-weight: 300;
     transition: all 0.3s ease;
 }
 
 .form-control:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     box-shadow: 0 0 20px rgba(197, 160, 89, 0.3);
     background: rgba(255, 255, 255, 0.15);
 }
@@ -157,7 +157,7 @@ select.form-control option {
 .checkbox-group input[type="checkbox"] {
     width: 20px;
     height: 20px;
-    accent-color: #C5A059;
+    accent-color: var(--kw-accent);
     cursor: pointer;
 }
 
@@ -188,7 +188,7 @@ select.form-control option {
     letter-spacing: 0.5px;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     text-decoration: none;
     color: #ffffff;
 }
@@ -202,7 +202,7 @@ select.form-control option {
 }
 
 .btn-primary {
-    background: linear-gradient(45deg, #C5A059, #8e7340);
+    background: linear-gradient(45deg, var(--kw-accent), var(--kw-accent-dark));
     box-shadow: 0 6px 20px rgba(197, 160, 89, 0.25);
 }
 .btn-primary:hover {
@@ -293,7 +293,7 @@ select.form-control option {
     padding: 15px 10px;
     text-align: left;
     font-weight: 500;
-    color: #C5A059;
+    color: var(--kw-accent);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     white-space: nowrap;
 }
@@ -317,7 +317,7 @@ select.form-control option {
 }
 
 .targets-table input.form-control:focus, .targets-table select.form-control:focus {
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     background: rgba(0, 0, 0, 0.4);
 }
 
@@ -356,7 +356,7 @@ select.form-control option {
 
 #script-output:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
 }
 
 .btn-copy {

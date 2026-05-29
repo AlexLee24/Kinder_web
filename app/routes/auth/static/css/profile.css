@@ -1,6 +1,15 @@
 /* ===== 基礎樣式 ===== */
+:root {
+    --profile-accent: var(--kw-accent);
+    --profile-accent-hover: var(--kw-accent-hover);
+    --profile-border: var(--kw-border);
+    --profile-glass: var(--kw-glass-bg);
+    --profile-text: var(--kw-text-primary);
+    --profile-muted: var(--kw-text-muted);
+}
+
 body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('../photo/background_profile.jpg');
     background-attachment: fixed;
     background-size: cover;
@@ -146,7 +155,7 @@ body {
     margin: 0 0 12px 0;
     font-size: 2.2em;
     font-weight: 400;
-    color: #C5A059;
+    color: var(--kw-accent);
     letter-spacing: 1px;
     word-break: break-word;
 }
@@ -241,7 +250,7 @@ body {
     margin: 0;
     font-size: 1.5em;
     font-weight: 400;
-    color: #C5A059;
+    color: var(--kw-accent);
     letter-spacing: 1px;
 }
 
@@ -294,7 +303,7 @@ body {
 
 .form-group input:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     background: rgba(40, 40, 40, 0.9);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
@@ -344,7 +353,7 @@ body {
 
 
 .notification-success {
-    background: #C5A059;
+    background: var(--kw-accent);
     border: 1px solid rgba(197, 160, 89, 0.3);
 }
 
@@ -370,7 +379,7 @@ body {
 
 .groups-section h3 {
     font-size: 1.8em;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -429,7 +438,7 @@ body {
     width: 50px;
     height: 50px;
     border-radius: 50%;
-    background: #C5A059;
+    background: var(--kw-accent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -509,7 +518,7 @@ body {
 }
 
 .admin-hint a {
-    color: #C5A059;
+    color: var(--kw-accent);
     text-decoration: none;
     transition: color 0.3s ease;
 }
@@ -526,7 +535,7 @@ body {
 
 .account-section h3 {
     font-size: 1.8em;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -575,7 +584,7 @@ body {
 
 .ask-join-section h3 {
     font-size: 1.8em;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin-bottom: 15px;
     font-weight: 400;
 }
@@ -611,7 +620,7 @@ body {
 .join-form input:focus,
 .join-form textarea:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     background: rgba(40, 40, 40, 0.9);
 }
 
@@ -629,7 +638,7 @@ body {
 
 .admin-section h3 {
     font-size: 1.8em;
-    color: #C5A059;
+    color: var(--kw-accent);
     margin-bottom: 25px;
     font-weight: 400;
     letter-spacing: 1px;
@@ -654,13 +663,13 @@ body {
     text-decoration: none;
     display: inline-block;
     letter-spacing: 0.8px;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     text-align: center;
     min-width: 150px;
 }
 
 .btn-primary {
-    background: #C5A059;
+    background: var(--kw-accent);
     color: #ffffff;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }

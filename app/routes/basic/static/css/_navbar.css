@@ -33,7 +33,7 @@ header {
     border-bottom: none;
     box-shadow: none;
 
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     letter-spacing: 0.03em;
     transition: background-color 0.4s ease, box-shadow 0.4s ease;
 }
@@ -87,7 +87,7 @@ header .container {
 
 .header-content .logo span {
     margin: 0;
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     font-size: 16px;
     font-weight: 700;
     letter-spacing: 0.18em;
@@ -144,7 +144,7 @@ header .container {
     position: relative;
     color: rgba(255, 255, 255, 0.82);
     text-decoration: none;
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     font-size: 13px;
     font-weight: 400;
     letter-spacing: 0.06em;
@@ -165,7 +165,7 @@ header .container {
     transform: translateX(-50%);
     width: 0;
     height: 1.5px;
-    background: linear-gradient(90deg, transparent, #c5a059, transparent);
+    background: linear-gradient(90deg, transparent, var(--kw-accent), transparent);
     transition: width 0.25s ease;
     border-radius: 1px;
 }
@@ -264,7 +264,7 @@ header .container {
     display: flex;
     align-items: center;
     padding: 7px 12px;
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     font-size: 12.5px;
     font-weight: 400;
     letter-spacing: 0.04em;
@@ -281,7 +281,7 @@ header .container {
 
 .header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
     background: rgba(197, 160, 89, 0.12);
-    color: #c5a059;
+    color: var(--kw-accent);
 }
 
 .header-content .main-nav ul li.dropdown:hover > a {
@@ -290,7 +290,7 @@ header .container {
 
 /* ── Login button ────────────────────────────────────────── */
 .nav a.login-button {
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     font-size: 12px;
     font-weight: 400;
     letter-spacing: 0.08em;
@@ -310,8 +310,8 @@ header .container {
 }
 
 .nav a.login-button:hover {
-    border-color: #c5a059;
-    color: #c5a059;
+    border-color: var(--kw-accent);
+    color: var(--kw-accent);
     background: rgba(197, 160, 89, 0.07);
 }
 
@@ -329,7 +329,7 @@ header .container {
     border: none;
     transition: color 0.2s ease;
     white-space: nowrap;
-    font-family: Arial, 'Helvetica Neue', sans-serif;
+    font-family: var(--kw-font-sans);
     font-size: 13px;
     font-weight: 400;
     letter-spacing: 0.04em;
@@ -372,7 +372,7 @@ header .container {
     border-radius: 8px;
     color: #fff;
     font-size: 14px;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     font-weight: 400;
     text-align: center;
     animation: fadeInOut 5s ease-in-out forwards;
@@ -592,7 +592,7 @@ header .container {
 
     .header-content .main-nav ul li.dropdown .dropdown-content li a:hover {
         background: rgba(197, 160, 89, 0.10);
-        color: #c5a059;
+        color: var(--kw-accent);
     }
 }
 

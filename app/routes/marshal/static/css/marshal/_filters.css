@@ -53,7 +53,7 @@
     margin-left: auto;
     transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 1.1rem;
-    color: #C5A059;
+    color: var(--kw-accent);
     font-weight: 700;
 }
 
@@ -104,7 +104,7 @@
     margin-bottom: 8px;
     font-size: 0.9rem;
     font-weight: 600;
-    background: linear-gradient(45deg, #C5A059, #a08040);
+    background: linear-gradient(45deg, var(--kw-accent), var(--kw-accent-dark));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -120,7 +120,7 @@
     left: 0;
     width: 0;
     height: 2px;
-    background: linear-gradient(45deg, #C5A059, #a08040);
+    background: linear-gradient(45deg, var(--kw-accent), var(--kw-accent-dark));
     transition: width 0.3s ease;
 }
 
@@ -141,7 +141,7 @@
     -webkit-backdrop-filter: blur(15px);
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     font-weight: 400;
     box-shadow: 
         0 4px 15px rgba(0, 0, 0, 0.1),
@@ -157,7 +157,7 @@
 .filter-group select:focus,
 .filter-group input:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     background: linear-gradient(135deg, rgba(197, 160, 89, 0.15), rgba(160, 128, 64, 0.15));
     box-shadow: 
         0 0 0 4px rgba(197, 160, 89, 0.1),
@@ -236,7 +236,7 @@
 }
 
 .range-separator {
-    color: #C5A059;
+    color: var(--kw-accent);
     font-weight: 600;
     font-size: 1.1rem;
     text-align: center;
@@ -292,7 +292,7 @@
 }
 
 .apply-advanced-btn {
-    background: linear-gradient(45deg, #C5A059, #a08040);
+    background: linear-gradient(45deg, var(--kw-accent), var(--kw-accent-dark));
     color: white;
     box-shadow: 
         0 6px 20px rgba(197, 160, 89, 0.25),

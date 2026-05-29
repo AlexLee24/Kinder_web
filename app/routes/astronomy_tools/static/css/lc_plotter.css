@@ -2,27 +2,27 @@
    LC Plotter — complete styles
    ───────────────────────────────────────────────────────────────── */
 :root {
-    --lcp-gold:        #C5A059;
-    --lcp-gold-dim:    rgba(197,160,89,0.25);
-    --lcp-gold-border: rgba(197,160,89,0.3);
+    --lcp-gold:        var(--kw-accent);
+    --lcp-gold-dim:    var(--kw-accent-dim);
+    --lcp-gold-border: var(--kw-accent-border);
     --lcp-bg-main:     rgba(9, 9, 18, 0.96);
     --lcp-sidebar-bg:  rgba(14, 14, 26, 0.98);
     --lcp-card-bg:     rgba(22, 22, 38, 0.75);
     --lcp-border:      rgba(255,255,255,0.07);
-    --lcp-border-med:  rgba(255,255,255,0.12);
+    --lcp-border-med:  var(--kw-border);
     --lcp-text:        #dde0ee;
     --lcp-muted:       rgba(210,215,240,0.45);
-    --lcp-input-bg:    rgba(255,255,255,0.05);
-    --lcp-input-bd:    rgba(255,255,255,0.1);
+    --lcp-input-bg:    var(--kw-bg-overlay);
+    --lcp-input-bd:    var(--kw-border);
     --lcp-focus-bd:    rgba(197,160,89,0.55);
-    --lcp-success:     #4caf80;
+    --lcp-success:     var(--kw-color-success);
     --lcp-sidebar-w:   400px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     /* background-image:
         linear-gradient(rgba(0,0,0,0.78), rgba(0,0,0,0.78)),
         url('../photo/background_telescope.jpg'); */
@@ -766,7 +766,7 @@ body {
 .lcp-toast {
     position: fixed; bottom: 22px; right: 22px; z-index: 9999;
     padding: 8px 14px; border-radius: 7px; font-size: 0.8rem;
-    font-family: 'Inter', sans-serif; font-weight: 500;
+    font-family: var(--kw-font-sans); font-weight: 500;
     opacity: 0; transform: translateY(6px);
     transition: opacity 0.22s, transform 0.22s;
     pointer-events: none;

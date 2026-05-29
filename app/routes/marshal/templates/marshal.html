@@ -41,18 +41,15 @@
             <div class="control-panel">
             <div class="panel-header">
                 <h1>Transient Marshal</h1>
-                <!-- <h3>Data since 2016-01</h3> -->
-                <div class="status-info">
+                <div class="panel-meta">
                     <span class="total-count">{{ total_count }} objects</span>
+                    <span class="meta-sep">·</span>
                     <span class="last-sync">
-                        Last sync: 
+                        Last sync:&nbsp;
                         {% if last_sync %}
                             <span id="lastSync">{{ last_sync.time }}</span>
                             {% if last_sync.status == 'completed' %}
-                                <span class="sync-status success">
-                                    ({{ last_sync.imported }} new, {{ last_sync.updated }} updated
-                                    {% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})
-                                </span>
+                                <span class="sync-status success">&nbsp;({{ last_sync.imported }} new, {{ last_sync.updated }} updated{% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})</span>
                             {% elif last_sync.status == 'failed' %}
                                 <span class="sync-status error">(Failed)</span>
                             {% else %}
@@ -65,57 +62,48 @@
                 </div>
             </div>
 
-            <!-- Main Statistics (logged-in only) -->
             {% if session.user %}
-            <div class="main-stats">
-                <div class="big-stat-card at">
-                    <div class="stat-info">
-                        <span class="stat-number">{{ at_count }}</span>
-                        <span class="stat-label">AT</span>
-                    </div>
+            <!-- Type Breakdown Bar -->
+            <div class="type-stats-bar">
+                <div class="type-stat at">
+                    <span class="type-number">{{ at_count }}</span>
+                    <span class="type-label">AT</span>
                 </div>
-                <div class="big-stat-card classified">
-                    <div class="stat-info">
-                        <span class="stat-number">{{ classified_count }}</span>
-                        <span class="stat-label">SN</span>
-                    </div>
+                <div class="type-divider-v"></div>
+                <div class="type-stat sn">
+                    <span class="type-number">{{ classified_count }}</span>
+                    <span class="type-label">SN</span>
                 </div>
             </div>
 
-            <!-- Secondary Statistics -->
-            <div class="secondary-stats">
-                <div class="small-stat-card inbox clickable" onclick="filterByStatus('object')" title="Click to filter Inbox objects">
-                    <div class="stat-info">
-                        <span class="stat-number" id="inboxCount">{{ inbox_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mailbox-icon lucide-mailbox" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg> Inbox</span>
-                    </div>
+            <!-- Status Summary List -->
+            <div class="status-list">
+                <div class="status-row clickable" onclick="filterByStatus('object')" title="Filter Inbox">
+                    <span class="status-dot inbox"></span>
+                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg></span>
+                    <span class="status-name">Inbox</span>
+                    <span class="status-count" id="inboxCount">{{ inbox_count }}</span>
                 </div>
-                <div class="small-stat-card followup clickable" onclick="filterByStatus('followup')" title="Click to filter Follow-up objects">
-                    <div class="stat-info">
-                        <span class="stat-number" id="followupCount">{{ followup_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-telescope-icon lucide-telescope" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg> Follow-up</span>
-                    </div>
+                <div class="status-row clickable" onclick="filterByStatus('followup')" title="Filter DETECT Follow up">
+                    <span class="status-dot followup"></span>
+                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg></span>
+                    <span class="status-name">DETECT Follow up</span>
+                    <span class="status-count" id="followupCount">{{ followup_count }}</span>
                 </div>
-                <div class="small-stat-card finished clickable" onclick="filterByStatus('finished')" title="Click to filter Finished objects">
-                    <div class="stat-info">
-                        <span class="stat-number" id="finishedCount">{{ finished_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-check-icon lucide-book-check" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg> Finished</span>
-                    </div>
-                </div>
-                <div class="small-stat-card snoozed clickable" onclick="filterByStatus('snoozed')" title="Click to filter Snoozed objects">
-                    <div class="stat-info">
-                        <span class="stat-number" id="snoozedCount">{{ snoozed_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-snowflake-icon lucide-snowflake" style="margin-right: 4px; vertical-align: text-bottom;"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg> Snoozed</span>
-                    </div>
-                </div>
-                {# Flag stat card disabled
-                <div class="small-stat-card flag clickable" onclick="filterByStatus('flag')" title="Click to filter Flagged objects">
-                    <div class="stat-info">
-                        <span class="stat-number" id="flagCount">{{ flag_count }}</span>
-                        <span class="stat-label"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flag" style="margin-right: 4px; vertical-align: text-bottom;"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg> Flag for DETECT</span>
-                    </div>
+                {# Finished row disabled — DB value preserved, UI hidden temporarily
+                <div class="status-row clickable" onclick="filterByStatus('finished')" title="Filter Finished">
+                    <span class="status-dot finished"></span>
+                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg></span>
+                    <span class="status-name">Finished</span>
+                    <span class="status-count" id="finishedCount">{{ finished_count }}</span>
                 </div>
                 #}
+                <div class="status-row clickable" onclick="filterByStatus('snoozed')" title="Filter Snoozed">
+                    <span class="status-dot snoozed"></span>
+                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg></span>
+                    <span class="status-name">Snoozed</span>
+                    <span class="status-count" id="snoozedCount">{{ snoozed_count }}</span>
+                </div>
             </div>
             {% endif %}
 
@@ -186,23 +174,34 @@
         <!-- Right Side Panel -->
         <div class="dashboard-side-panel">
             <div class="side-panel-grid">
-                <!-- Top Viewed + Pinned Objects (merged, split vertically) -->
+
+                <!-- Widget 1: Top Viewed + Pinned (split) -->
                 {% if session.user %}
                 <div class="side-widget split-widget">
                     <div class="split-widget-section">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                            <h3 style="margin-bottom: 0;">Top Viewed</h3>
-                            <select id="topViewedMode" onchange="loadTopViewed()" style="padding: 2px 6px; font-size: 0.8rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--glass-bg); color: var(--text-primary);">
-                                <option value="all">All Time</option>
-                                <option value="30days">30 Days</option>
-                            </select>
+                        <div class="widget-header">
+                            <span class="widget-header-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </span>
+                            <span class="widget-header-title">Top Viewed</span>
+                            <div class="widget-header-control">
+                                <select id="topViewedMode" onchange="loadTopViewed()">
+                                    <option value="all">All Time</option>
+                                    <option value="30days">30 Days</option>
+                                </select>
+                            </div>
                         </div>
                         <ul class="widget-list" id="topViewedList">
                             <li class="empty-message">Loading...</li>
                         </ul>
                     </div>
                     <div class="split-widget-section">
-                        <h3>Pinned Objects</h3>
+                        <div class="widget-header">
+                            <span class="widget-header-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 10 7 10"/></svg>
+                            </span>
+                            <span class="widget-header-title">Pinned</span>
+                        </div>
                         <ul class="widget-list" id="pinnedObjectsList">
                             <li class="empty-message">Loading...</li>
                         </ul>
@@ -210,17 +209,28 @@
                 </div>
                 {% endif %}
 
-                <!-- Recent Comments -->
+                <!-- Widget 2: Recent Comments -->
                 {% if visibility.comments_sidebar %}
                 <div class="side-widget">
-                    <h3>Recent Comments</h3>
+                    <div class="widget-header">
+                        <span class="widget-header-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </span>
+                        <span class="widget-header-title">Recent Comments</span>
+                    </div>
                     <ul class="widget-list" id="recentCommentsList">
                         <li class="empty-message">Loading...</li>
                     </ul>
                 </div>
 
+                <!-- Widget 3: Recent TNS Updates -->
                 <div class="side-widget">
-                    <h3>Recent TNS Updates</h3>
+                    <div class="widget-header">
+                        <span class="widget-header-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+                        </span>
+                        <span class="widget-header-title" id="tnsWidgetTitle">Recent TNS Updates</span>
+                    </div>
                     <ul class="widget-list" id="recentTnsUpdatesList">
                         <li class="empty-message">Loading...</li>
                     </ul>
@@ -366,7 +376,7 @@
                 <div class="card-footer">
                     <div class="tag-badge {{ real_tag }}">
                         {% if real_tag == 'followup' %}
-                            Follow-up
+                            DETECT Follow up
                         {% elif real_tag == 'finished' %}
                             Finished
                         {% elif real_tag == 'snoozed' %}
@@ -481,8 +491,10 @@
                     <select id="tagFilter">
                         <option value="">All Status</option>
                         <option value="object">Inbox</option>
-                        <option value="followup">Follow-up</option>
+                        <option value="followup">DETECT Follow up</option>
+                        {# Finished option disabled — DB value preserved, UI hidden temporarily
                         <option value="finished">Finished</option>
+                        #}
                         <option value="snoozed">Snoozed</option>
                         <option value="flag">Flagged</option>
                     </select>

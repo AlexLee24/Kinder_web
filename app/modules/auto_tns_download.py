@@ -441,6 +441,20 @@ def addin_database(filepath, debug=False):
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT ON CONSTRAINT phot_uniq DO NOTHING
                     ''', phot_rows, page_size=BATCH_SIZE)
+
+                    # Update last_phot_date and un-snooze for each affected object
+                    max_mjd_by_oid: dict = {}
+                    for oid, _, mjd, *__ in phot_rows:
+                        if oid not in max_mjd_by_oid or mjd > max_mjd_by_oid[oid]:
+                            max_mjd_by_oid[oid] = mjd
+                    for oid, max_mjd in max_mjd_by_oid.items():
+                        cursor.execute(
+                            "UPDATE transient.objects "
+                            "SET last_phot_date = %s, "
+                            "    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END "
+                            "WHERE obj_id = %s AND (last_phot_date IS NULL OR last_phot_date < %s)",
+                            (max_mjd, oid, max_mjd)
+                        )
                     conn.commit()
                     if debug:
                         logger.debug("Inserted %d photometry points", len(phot_rows))

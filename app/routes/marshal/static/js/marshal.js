@@ -741,7 +741,7 @@ function getTagDisplayName(tag) {
     
     const tagNames = {
         'object': 'Inbox',
-        'followup': 'Follow-up',
+        'followup': 'DETECT Follow up',
         'finished': 'Finished',
         'snoozed': 'Snoozed'
     };
@@ -803,8 +803,8 @@ function filterByStatus(status) {
     
     const statusNames = {
         'object': 'Inbox',
-        'followup': 'Follow-up',
-        'finished': 'Finished', 
+        'followup': 'DETECT Follow up',
+        'finished': 'Finished',
         'snoozed': 'Snoozed'
     };
     
@@ -853,26 +853,28 @@ function clearStatusFilter() {
 }
 
 function updateStatusFilterVisual(status) {
-    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
-        card.classList.remove('active');
+    // Clear all status rows
+    document.querySelectorAll('.status-row.clickable').forEach(row => {
+        row.classList.remove('active');
     });
-    
-    const statusClasses = {
-        'object': 'inbox',
+
+    const statusDotMap = {
+        'object':   'inbox',
         'followup': 'followup',
-        'finished': 'finished', 
-        'snoozed': 'snoozed'
+        'finished': 'finished',
+        'snoozed':  'snoozed'
     };
-    
-    const targetCard = document.querySelector(`.small-stat-card.${statusClasses[status]}.clickable`);
-    if (targetCard) {
-        targetCard.classList.add('active');
+
+    const dotClass = statusDotMap[status];
+    if (dotClass) {
+        const dot = document.querySelector(`.status-row .status-dot.${dotClass}`);
+        if (dot) dot.closest('.status-row').classList.add('active');
     }
 }
 
 function clearStatusFilterVisual() {
-    document.querySelectorAll('.small-stat-card.clickable').forEach(card => {
-        card.classList.remove('active');
+    document.querySelectorAll('.status-row.clickable').forEach(row => {
+        row.classList.remove('active');
     });
 }
 
@@ -904,16 +906,17 @@ function updateCountersFromStats(stats) {
     // Force all counters to match database stats exactly - NEVER calculate from filtered data
     document.getElementById('inboxCount').textContent = stats.inbox_count || 0;
     document.getElementById('followupCount').textContent = stats.followup_count || 0;
-    document.getElementById('finishedCount').textContent = stats.finished_count || 0;
+    const finishedEl = document.getElementById('finishedCount');
+    if (finishedEl) finishedEl.textContent = stats.finished_count || 0;
     document.getElementById('snoozedCount').textContent = stats.snoozed_count || 0;
     const flagCount = document.getElementById('flagCount');
     if (flagCount) flagCount.textContent = stats.flag_count || 0;
-    
-    const atCountElement = document.querySelector('.big-stat-card.at .stat-number');
-    const classifiedCountElement = document.querySelector('.big-stat-card.classified .stat-number');
-    
-    if (atCountElement) atCountElement.textContent = stats.at_count || 0;
-    if (classifiedCountElement) classifiedCountElement.textContent = stats.classified_count || 0;
+
+    // Update type-stats-bar numbers
+    const atEl = document.querySelector('.type-stat.at .type-number');
+    const snEl = document.querySelector('.type-stat.sn .type-number');
+    if (atEl) atEl.textContent = stats.at_count || 0;
+    if (snEl) snEl.textContent = stats.classified_count || 0;
     
     const totalCountElement = document.querySelector('.total-count');
     if (totalCountElement) totalCountElement.textContent = `${stats.total_count || 0} objects`;
@@ -1509,20 +1512,20 @@ function renderPinnedObjects(objects) {
         const bareName = obj.name || '';
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
-        const typeLabel = obj.type ? ` <span style="font-size:0.8em; color:#888;">(${obj.type})</span>` : '';
+        const typeLabel = obj.type ? `<span class="wi-type">(${obj.type})</span>` : '';
         const epTags = buildObjectTags(obj.tags, true);
-        const views = obj.view_count ? `<span style="font-size:0.8em; color:#a78bfa; white-space:nowrap;">${obj.view_count} views</span>` : '';
+        const viewsMeta = obj.view_count
+            ? `<span class="wi-meta"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${obj.view_count}</span>`
+            : '';
         const li = document.createElement('li');
+        li.className = 'widget-item';
         li.innerHTML = `
-            <div style="display:flex; align-items:baseline; gap:6px;">
-                <span style="font-size:0.85em; color:#888; min-width:18px;">${index + 1}.</span>
-                <span style="flex-grow:1; overflow:hidden; text-overflow:ellipsis;">
-                    <strong><a href="${objectLink}" target="_blank"
-                        style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
-                </span>
-                ${views}
-            </div>
-        `;
+            <div class="wi-row">
+                <span class="wi-rank">${index + 1}</span>
+                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                ${typeLabel}${epTags}
+                ${viewsMeta}
+            </div>`;
         list.appendChild(li);
     });
 }
@@ -1559,32 +1562,29 @@ async function loadTopViewed() {
 function renderRecentComments(comments) {
     const list = document.getElementById('recentCommentsList');
     if (!list) return;
-    
     if (!comments || comments.length === 0) {
         list.innerHTML = '<li class="empty-message">No recent comments</li>';
         return;
     }
-    
     list.innerHTML = '';
     comments.forEach(c => {
         const li = document.createElement('li');
+        li.className = 'widget-item';
         const d = new Date(c.created_at);
         const fullName = (c.name_prefix || '') + (c.object_name || '');
         const bareName = c.object_name || '';
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
-        const typeLabel = c.type ? ` <span style="font-size:0.8em; color:#888;">(${c.type})</span>` : '';
-
-        const contentDiv = document.createElement('div');
-        contentDiv.style.cssText = 'margin-top:4px; font-size:0.9em; color:rgba(255,255,255,0.8); font-style:italic;';
-        contentDiv.textContent = `${c.user_name || 'User'}: "${c.content}"`;
+        const typeLabel = c.type ? `<span class="wi-type">(${c.type})</span>` : '';
         const epTags = buildObjectTags(c.tags, true);
         li.innerHTML = `
-            <strong><a href="${objectLink}" target="_blank"
-                style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${epTags}
-            <span style="font-size:0.8em; color:var(--text-muted); float:right;">${d.toLocaleDateString()}</span>
+            <div class="wi-row">
+                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                ${typeLabel}${epTags}
+                <span class="wi-date">${d.toLocaleDateString()}</span>
+            </div>
+            <div class="wi-subline">"${c.content}"<span class="wi-author"> — ${c.user_name || 'User'}</span></div>
         `;
-        li.appendChild(contentDiv);
         list.appendChild(li);
     });
 }
@@ -1593,8 +1593,8 @@ function renderRecentTnsUpdates(updates, isFallback) {
     const list = document.getElementById('recentTnsUpdatesList');
     if (!list) return;
 
-    // 動態更新 widget 標題
-    const widgetTitle = list.closest('.side-widget')?.querySelector('h3');
+    // Update widget title via the ID'd span
+    const widgetTitle = document.getElementById('tnsWidgetTitle');
     if (widgetTitle) {
         widgetTitle.textContent = isFallback ? 'Recent TNS Objects' : 'Recent TNS Updates';
     }
@@ -1613,28 +1613,16 @@ function renderRecentTnsUpdates(updates, isFallback) {
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
 
-        // classified 項目：不顯示括號 type，改在下方顯示 "Classified as: ..."
         const showTypeInline = !u.is_classified && !u.is_new_add;
-        const typeLabel = (showTypeInline && u.type)
-            ? ` <span style="font-size:0.78em; color:#aaa;">(${u.type})</span>`
-            : '';
+        const typeLabel = (showTypeInline && u.type) ? `<span class="wi-type">(${u.type})</span>` : '';
+        const classifiedBadge = u.is_classified ? `<span class="tns-classified-badge">classified</span>` : '';
+        const newAddBadge = (!u.is_classified && u.is_new_add) ? `<span class="tns-new-add-badge">new add</span>` : '';
 
-        // classified badge（AT→SN 或 type 變動）
-        const classifiedBadge = u.is_classified
-            ? `<span class="tns-classified-badge">classified</span>`
-            : '';
-
-        // new add badge（新增物件）
-        const newAddBadge = (!u.is_classified && u.is_new_add)
-            ? `<span class="tns-new-add-badge">new add</span>`
-            : '';
-
-        // 下方 subline：classified 顯示 "Classified as: SN II"，new_add 顯示 "Newly added"，其他顯示變動欄位
         let subline;
         if (u.is_classified && u.type) {
-            subline = `Classified as: <strong style="color:rgba(255,255,255,0.9);">${u.type}</strong>`;
+            subline = `Classified as: <strong style="color:rgba(255,255,255,0.8);">${u.type}</strong>`;
         } else if (u.is_new_add) {
-            subline = `Newly added${u.type ? `: <strong style="color:rgba(255,255,255,0.9);">${u.type}</strong>` : ''}`;
+            subline = `Newly added${u.type ? `: <strong style="color:rgba(255,255,255,0.8);">${u.type}</strong>` : ''}`;
         } else {
             const changedFields = Array.isArray(u.changed_fields) && u.changed_fields.length > 0
                 ? u.changed_fields.join(', ')
@@ -1642,31 +1630,23 @@ function renderRecentTnsUpdates(updates, isFallback) {
             subline = `${isFallback ? 'Added' : 'Updated'}: ${changedFields}`;
         }
 
-        // 時間顯示：相對時間
         let timeStr = '';
         if (d) {
-            const now = new Date();
-            const diffMs = now - d;
-            const diffH = diffMs / 3600000;
-            if (diffH < 1) timeStr = `${Math.round(diffMs / 60000)}m ago`;
+            const diffH = (new Date() - d) / 3600000;
+            if (diffH < 1) timeStr = `${Math.round(diffH * 60)}m ago`;
             else if (diffH < 24) timeStr = `${Math.round(diffH)}h ago`;
             else if (diffH < 48) timeStr = 'yesterday';
             else timeStr = d.toLocaleDateString();
         }
 
-        if (u.is_classified) {
-            li.classList.add('tns-classified-item');
-        } else if (u.is_new_add) {
-            li.classList.add('tns-new-add-item');
-        }
-
+        li.className = `widget-item${u.is_classified ? ' tns-classified-item' : ''}${u.is_new_add ? ' tns-new-add-item' : ''}`;
         li.innerHTML = `
-            <div style="display:flex; align-items:baseline; gap:4px; flex-wrap:wrap;">
-                <strong><a href="${objectLink}" target="_blank"
-                    style="color:var(--primary-color,#46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${classifiedBadge}${newAddBadge}${buildObjectTags(u.tags, true)}
-                <span style="font-size:0.78em; color:var(--text-muted); margin-left:auto;">${timeStr}</span>
+            <div class="wi-row">
+                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                ${typeLabel}${classifiedBadge}${newAddBadge}${buildObjectTags(u.tags, true)}
+                <span class="wi-date">${timeStr}</span>
             </div>
-            <div style="margin-top:3px; font-size:0.83em; color:rgba(255,255,255,0.65);">${subline}</div>
+            <div class="wi-subline">${subline}</div>
         `;
         list.appendChild(li);
     });
@@ -1675,32 +1655,29 @@ function renderRecentTnsUpdates(updates, isFallback) {
 function renderTopViewed(targets) {
     const list = document.getElementById('topViewedList');
     if (!list) return;
-    
     if (!targets || targets.length === 0) {
         list.innerHTML = '<li class="empty-message">No objects viewed recently</li>';
         return;
     }
-    
     list.innerHTML = '';
     targets.forEach((t, index) => {
         const li = document.createElement('li');
-        const typeLabel = t.object_type && t.object_type !== 'Unknown' ? ` <span style="font-size:0.8em; color:#888;">(${t.object_type})</span>` : '';
+        li.className = 'widget-item';
+        const typeLabel = t.object_type && t.object_type !== 'Unknown'
+            ? `<span class="wi-type">(${t.object_type})</span>` : '';
         const fullName = (t.name_prefix || '') + (t.object_name || '');
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(t.object_name)}`;
         li.innerHTML = `
-            <div style="display: flex; align-items: baseline; gap: 8px;">
-                <span style="font-weight:bold; color:var(--text-muted); min-width: 20px;">${index + 1}.</span>
-                <span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <strong><a href="${objectLink}" target="_blank"
-                        style="color:var(--primary-color, #46ffaf); text-decoration:none;">${fullName}</a></strong>${typeLabel}${buildObjectTags(t.tags, true)}
-                </span>
-                <span style="font-size:0.85em; color:var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 4px;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            <div class="wi-row">
+                <span class="wi-rank">${index + 1}</span>
+                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                ${typeLabel}${buildObjectTags(t.tags, true)}
+                <span class="wi-meta">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     ${t.view_count}
                 </span>
-            </div>
-        `;
+            </div>`;
         list.appendChild(li);
     });
 }

@@ -122,7 +122,7 @@
 }
 
 .file-drop-zone.dragover {
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     background: rgba(197, 160, 89, 0.1);
 }
 
@@ -385,7 +385,7 @@
 .form-group input[type="number"]:focus,
 .form-group input[type="text"]:focus {
     outline: none;
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.1);
 }
 

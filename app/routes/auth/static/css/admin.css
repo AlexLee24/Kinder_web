@@ -5,7 +5,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-system);
     background-image: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
                       url('../photo/background_planner.jpg');
     background-attachment: fixed;
@@ -20,19 +20,19 @@ body {
 ::selection, ::-moz-selection { background: rgba(197,160,89,0.3); }
 
 :root {
-    --gold:    #C5A059;
-    --gold10:  rgba(197,160,89,0.10);
-    --gold20:  rgba(197,160,89,0.20);
-    --gold40:  rgba(197,160,89,0.40);
-    --surface: rgba(22,22,30,0.85);
-    --surface2:rgba(30,30,40,0.90);
-    --border:  rgba(255,255,255,0.10);
-    --border2: rgba(255,255,255,0.18);
-    --text:    #e8e8e8;
-    --muted:   rgba(255,255,255,0.45);
-    --radius:  14px;
-    --radius-sm: 8px;
-    --shadow:  0 4px 24px rgba(0,0,0,0.35);
+    --gold:     var(--kw-accent);
+    --gold10:   var(--kw-accent-dim);
+    --gold20:   rgba(197,160,89,0.20);
+    --gold40:   rgba(197,160,89,0.40);
+    --surface:  var(--kw-glass-bg);
+    --surface2: rgba(30,30,40,0.90);
+    --border:   var(--kw-border);
+    --border2:  var(--kw-border-med);
+    --text:     var(--kw-text-primary);
+    --muted:    var(--kw-text-muted);
+    --radius:   14px;
+    --radius-sm: var(--kw-radius-sm);
+    --shadow:   var(--kw-shadow);
 }
 
 /* ── Container ── */

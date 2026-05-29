@@ -1,20 +1,20 @@
 /* ==================== GLOBAL STYLES ==================== */
 :root {
     --astronomy-bg-image: url('../photo/background_telescope.jpg');
-    --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
-    --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
+    --primary-gradient: var(--kw-accent-gradient);
+    --secondary-gradient: var(--kw-secondary-gradient);
     --tertiary-gradient: linear-gradient(45deg, #ff4757, #ff3742);
-    --accent-color: #C5A059;
-    --glass-bg: rgba(255, 255, 255, 0.1);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --text-primary: #ffffff;
-    --text-secondary: rgba(255, 255, 255, 0.9);
-    --text-muted: rgba(255, 255, 255, 0.6);
-    --shadow-primary: 0 8px 32px rgba(0,0,0,0.1);
-    --shadow-hover: 0 12px 40px rgba(0,0,0,0.15);
-    --border-radius: 20px;
+    --accent-color: var(--kw-accent);
+    --glass-bg: var(--kw-glass-bg-light);
+    --glass-border: var(--kw-glass-border);
+    --text-primary: var(--kw-text-white);
+    --text-secondary: var(--kw-text-secondary);
+    --text-muted: var(--kw-text-muted);
+    --shadow-primary: var(--kw-shadow);
+    --shadow-hover: var(--kw-shadow-lg);
+    --border-radius: var(--kw-radius-xl);
     --border-radius-sm: 15px;
-    --transition: all 0.3s ease;
+    --transition: var(--kw-transition);
 }
 
 * {
@@ -24,7 +24,7 @@
 }
 
 body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-system);
     background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), var(--astronomy-bg-image);
     background-attachment: fixed;
     background-size: cover;
@@ -104,7 +104,7 @@ body {
     transform: translateX(-50%);
     width: 80px;
     height: 2px;
-    background: linear-gradient(90deg, #C5A059, #8e7340);
+    background: linear-gradient(90deg, var(--kw-accent), var(--kw-accent-dark));
     border-radius: 2px;
 }
 
@@ -231,7 +231,7 @@ body {
     border: 1px solid var(--accent-color);
     border-radius: 20px;
     font-size: 12px;
-    background: linear-gradient(45deg, #C5A059, #8e7340);
+    background: linear-gradient(45deg, var(--kw-accent), var(--kw-accent-dark));
     color: #000;
     font-weight: 500;
     cursor: pointer;
@@ -393,7 +393,7 @@ body {
     color: var(--text-primary);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     font-weight: 300;
     transition: var(--transition);
     outline: none;
@@ -455,7 +455,7 @@ body {
     letter-spacing: 0.5px;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     position: relative;
     overflow: hidden;
     margin-right: 10px;
@@ -517,7 +517,7 @@ body {
     color: var(--text-secondary);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
 }
 
 .target-btn:hover {
@@ -548,7 +548,7 @@ body {
     color: var(--text-secondary);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     letter-spacing: 0.5px;
     white-space: nowrap;
 }
@@ -630,7 +630,7 @@ body {
     color: var(--text-secondary);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     letter-spacing: 0.3px;
     white-space: nowrap;
     min-width: 70px;

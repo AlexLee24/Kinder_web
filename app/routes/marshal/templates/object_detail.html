@@ -142,8 +142,10 @@
                     
                     {% if session.user and session.user.is_admin %}
                     <div style="margin-top: 16px; display:flex; gap:8px;">
-                        <button class="btn-modern" style="flex:1; border-color:#8338ec; color:#8338ec;" onclick="changeStatus('followup')">Follow-up</button>
+                        <button class="btn-modern" style="flex:1; border-color:#8338ec; color:#8338ec;" onclick="changeStatus('followup')">DETECT Follow up</button>
+                        {# Finished button disabled — DB value preserved, UI hidden temporarily
                         <button class="btn-modern" style="flex:1; border-color:#38b000; color:#38b000;" onclick="changeStatus('finished')">Finished</button>
+                        #}
                         <button class="btn-modern" style="flex:1; border-color:#ff9e00; color:#ff9e00;" onclick="changeStatus('snoozed')">Snooze</button>
                     </div>
                     {% endif %}

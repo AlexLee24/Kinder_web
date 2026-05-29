@@ -276,6 +276,30 @@
     border: 1px solid rgba(239, 83, 80, 0.5);
     box-shadow: 0 0 15px rgba(239, 83, 80, 0.3);
 }
+/* ── Status row active states (replaces small-stat-card active) ─ */
+.status-row.active {
+    background: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.status-row:has(.status-dot.inbox).active {
+    background: rgba(76, 175, 80, 0.12);
+    border-color: rgba(76, 175, 80, 0.35) !important;
+    box-shadow: inset 2px 0 0 var(--inbox-color);
+}
+
+.status-row:has(.status-dot.followup).active {
+    background: rgba(253, 203, 110, 0.10);
+    border-color: rgba(253, 203, 110, 0.35) !important;
+    box-shadow: inset 2px 0 0 var(--followup-color);
+}
+
+.status-row:has(.status-dot.snoozed).active {
+    background: rgba(240, 98, 146, 0.10);
+    border-color: rgba(240, 98, 146, 0.35) !important;
+    box-shadow: inset 2px 0 0 var(--snoozed-color);
+}
+
 /* Back to Top Button */
 #backToTopBtn {
     display: none;

@@ -1,16 +1,16 @@
 /* Astronomy Tools Styles */
 :root {
     --astronomy-bg-image: url('../photo/background_telescope.jpg');
-    --primary-color: #C5A059;
-    --primary-hover: #d4b06a;
-    --bg-overlay: rgba(255, 255, 255, 0.05);
-    --border-color: rgba(255, 255, 255, 0.1);
-    --text-color: #ffffff;
-    --text-muted: rgba(255, 255, 255, 0.6);
+    --primary-color: var(--kw-accent);
+    --primary-hover: var(--kw-accent-hover);
+    --bg-overlay: var(--kw-bg-overlay);
+    --border-color: var(--kw-border);
+    --text-color: var(--kw-text-white);
+    --text-muted: var(--kw-text-muted);
 }
 
 body {
-    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), var(--astronomy-bg-image);
     background-attachment: fixed;
     background-size: cover;
@@ -171,7 +171,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    background: linear-gradient(45deg, var(--primary-color), #8e7340);
+    background: linear-gradient(45deg, var(--primary-color), var(--kw-accent-dark));
     color: #fff;
     border: none;
     padding: 12px 20px;

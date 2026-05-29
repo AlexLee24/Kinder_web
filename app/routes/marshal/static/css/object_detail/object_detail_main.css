@@ -10,7 +10,7 @@
 .object-detail-container {
     width: 95%;
     margin: 50px auto 40px;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: var(--kw-font-sans);
     color: #e0e0e0;
 }
 
@@ -581,8 +581,8 @@
 
 .edit-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    border-color: #C5A059;
-    color: #C5A059;
+    border-color: var(--kw-accent);
+    color: var(--kw-accent);
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
@@ -661,7 +661,7 @@
 
 .perm-tab.active {
     background: rgba(197,160,89,0.18);
-    color: var(--gold, #C5A059);
+    color: var(--kw-accent);
     font-weight: 600;
 }
 
@@ -759,7 +759,7 @@
     background: rgba(197,160,89,0.14);
     border: 1px solid rgba(197,160,89,0.3);
     border-radius: 4px;
-    color: var(--gold, #C5A059);
+    color: var(--kw-accent);
     font-size: 0.76rem;
 }
 
@@ -814,7 +814,7 @@
     width: 14px;
     height: 14px;
     cursor: pointer;
-    accent-color: var(--gold, #C5A059);
+    accent-color: var(--kw-accent);
 }
 
 .perm-empty,
@@ -834,7 +834,7 @@
 .perm-row-locked .perm-source-name {
     color: rgba(255,255,255,0.5);
 }
-    border-color: var(--gold, #C5A059) !important;
-    color: var(--gold, #C5A059) !important;
+    border-color: var(--kw-accent) !important;
+    color: var(--kw-accent) !important;
     font-weight: 600;
 }

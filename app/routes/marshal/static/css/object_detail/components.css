@@ -338,7 +338,7 @@
 
 /* Status Management */
 .status-card {
-    border: 2px solid #C5A059;
+    border: 2px solid var(--kw-accent);
     box-shadow: 0 0 20px rgba(197, 160, 89, 0.2);
 }
 
@@ -449,7 +449,7 @@
 }
 
 .breadcrumb-link {
-    color: #C5A059;
+    color: var(--kw-accent);
     text-decoration: none;
     transition: color 0.2s ease;
     font-weight: 500;
@@ -524,7 +524,7 @@
 }
 
 .info-value.classification {
-    color: #C5A059;
+    color: var(--kw-accent);
     font-weight: 600;
     text-shadow: 0 0 10px rgba(197, 160, 89, 0.3);
 }
@@ -879,7 +879,7 @@
     padding: 16px 20px;
     border-radius: 15px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    border-left: 4px solid #C5A059;
+    border-left: 4px solid var(--kw-accent);
     min-width: 350px;
     animation: slideIn 0.3s ease;
     color: white;
@@ -898,7 +898,7 @@
 }
 
 .notification-info {
-    border-left-color: #C5A059;
+    border-left-color: var(--kw-accent);
 }
 
 .notification-icon {
@@ -1448,7 +1448,7 @@
 .external-link-compact.ned:hover,
 .external-link-compact.desi:hover,
 .external-link-compact.extinction:hover {
-    border-color: #C5A059;
+    border-color: var(--kw-accent);
     box-shadow: 0 4px 15px rgba(197, 160, 89, 0.2);
     background: rgba(197, 160, 89, 0.1);
 }

@@ -1,23 +1,23 @@
 /* ==================== INTERACTIVE PLANNER STYLES ==================== */
 :root {
-    --primary-gradient: linear-gradient(45deg, #C5A059, #8e7340);
-    --secondary-gradient: linear-gradient(45deg, #667eea, #4c63d2);
-    --accent-color: #C5A059;
-    --glass-bg: rgba(255, 255, 255, 0.08);
-    --glass-border: rgba(255, 255, 255, 0.15);
-    --text-primary: #ffffff;
-    --text-secondary: rgba(255, 255, 255, 0.85);
-    --text-muted: rgba(255, 255, 255, 0.5);
-    --shadow-primary: 0 8px 32px rgba(0,0,0,0.2);
-    --border-radius: 16px;
+    --primary-gradient: var(--kw-accent-gradient);
+    --secondary-gradient: var(--kw-secondary-gradient);
+    --accent-color: var(--kw-accent);
+    --glass-bg: var(--kw-glass-bg-light);
+    --glass-border: var(--kw-glass-border);
+    --text-primary: var(--kw-text-white);
+    --text-secondary: var(--kw-text-secondary);
+    --text-muted: var(--kw-text-muted);
+    --shadow-primary: var(--kw-shadow);
+    --border-radius: var(--kw-radius-lg);
     --border-radius-sm: 10px;
-    --transition: all 0.25s ease;
+    --transition: var(--kw-transition);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('../photo/background_planner.jpg');
     background-attachment: fixed;
     background-size: cover;

@@ -69,9 +69,13 @@ def _resolve_obj_id_with_prefix(cur, name: str) -> int | None:
 
 
 def _mjd_update(cur, obj_id: int, mjd: float):
-    """Update last_phot_date if new MJD is later."""
+    """Update last_phot_date when new MJD is later.
+    Also un-snooze the object if it was Snoozed — new photometry means
+    the object is active again and should return to Inbox."""
     cur.execute(
-        "UPDATE transient.objects SET last_phot_date = %s "
+        "UPDATE transient.objects "
+        "SET last_phot_date = %s, "
+        "    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END "
         "WHERE obj_id = %s AND (last_phot_date IS NULL OR last_phot_date < %s)",
         (mjd, obj_id, mjd)
     )
@@ -469,10 +473,14 @@ class TNSObjectDB:
             )
             name_map = {r[0]: r[1] for r in cur.fetchall()}
             rows = []
+            max_mjd_by_oid: dict = {}
             for row in photometry_data:
                 oid = name_map.get(row[0])
                 if oid:
-                    rows.append((oid, row[0], row[1], row[2], row[3], row[4], row[5]))
+                    mjd = row[1]
+                    rows.append((oid, row[0], mjd, row[2], row[3], row[4], row[5]))
+                    if oid not in max_mjd_by_oid or mjd > max_mjd_by_oid[oid]:
+                        max_mjd_by_oid[oid] = mjd
             if rows:
                 extras.execute_batch(
                     cur,
@@ -483,6 +491,9 @@ class TNSObjectDB:
                     rows,
                     page_size=1000
                 )
+                # Update last_phot_date and un-snooze for each affected object
+                for oid, max_mjd in max_mjd_by_oid.items():
+                    _mjd_update(cur, oid, max_mjd)
             conn.commit()
 
     @staticmethod

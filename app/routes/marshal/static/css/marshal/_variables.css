@@ -1,60 +1,55 @@
 :root {
-    /* Primary Colors */
-    --primary-green: #C5A059; /* Muted Gold */
-    --primary-green-dark: #A08040;
-    --primary-green-light: #D4AF37;
-    
+    /* Primary Colors — bridge to _theme.css tokens */
+    --primary-green: var(--kw-accent);
+    --primary-green-dark: var(--kw-accent-dark);
+    --primary-green-light: var(--kw-accent-hover);
+
     /* Secondary Colors */
-    --blue: #64B5F6;
+    --blue: var(--kw-color-blue);
     --blue-dark: #42A5F5;
-    --orange: #FFB74D;
+    --orange: var(--kw-color-orange);
     --orange-dark: #FFA726;
-    --purple: #BA68C8;
+    --purple: var(--kw-color-purple);
     --purple-dark: #AB47BC;
     --red: #E57373;
-    --red-dark: #EF5350;
-    
+    --red-dark: var(--kw-color-danger);
+
     /* Status Colors */
-    --inbox-color: #81C784;
-    --followup-color: #FFD54F;
+    --inbox-color: var(--kw-color-success);
+    --followup-color: var(--kw-color-warning);
     --finished-color: #90CAF9;
     --snoozed-color: #F06292;
-    --flag-color: #EF5350;
-    
+    --flag-color: var(--kw-color-danger);
+
     /* Glass Effect */
-    --glass-bg: rgba(20, 20, 30, 0.85);
-    --glass-border: rgba(255, 255, 255, 0.15);
-    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    
+    --glass-bg: var(--kw-glass-bg);
+    --glass-border: var(--kw-glass-border);
+    --glass-shadow: var(--kw-glass-shadow);
+
     /* Typography */
-    --font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-family: var(--kw-font-sans);
     --font-weight-light: 300;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
-    
-    /* Spacing */
-    --spacing-xs: 4px;
-    --spacing-sm: 8px;
-    --spacing-md: 12px;
-    --spacing-lg: 16px;
-    --spacing-xl: 20px;
-    --spacing-2xl: 24px;
-    --spacing-3xl: 30px;
-    
-    /* Border Radius */
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 15px;
-    --radius-xl: 20px;
-    --radius-2xl: 25px;
-    
-    /* Transitions */
-    --transition-fast: 0.3s ease;
-    --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-/* Fluid base font-size: scales from 13px (≤714px) → 16px (≥1430px) */
-html {
-    font-size: clamp(13px, calc(10px + 0.42vw), 16px);
+    /* Spacing */
+    --spacing-xs: var(--kw-space-xs);
+    --spacing-sm: var(--kw-space-sm);
+    --spacing-md: var(--kw-space-md);
+    --spacing-lg: var(--kw-space-lg);
+    --spacing-xl: var(--kw-space-xl);
+    --spacing-2xl: var(--kw-space-2xl);
+    --spacing-3xl: var(--kw-space-3xl);
+
+    /* Border Radius */
+    --radius-sm: var(--kw-radius-sm);
+    --radius-md: var(--kw-radius-md);
+    --radius-lg: 15px;
+    --radius-xl: var(--kw-radius-xl);
+    --radius-2xl: var(--kw-radius-2xl);
+
+    /* Transitions */
+    --transition-fast: var(--kw-transition-fast);
+    --transition-smooth: var(--kw-transition-slow);
 }

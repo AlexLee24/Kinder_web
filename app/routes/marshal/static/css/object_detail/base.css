@@ -1,25 +1,21 @@
 /* Base styles and CSS variables */
-
-/* Fluid base font-size: scales from 13px (≤714px) → 16px (≥1430px) */
-html {
-    font-size: clamp(13px, calc(10px + 0.42vw), 16px);
-}
+/* html fluid-size is handled by _theme.css (loaded via _navbar.html) */
 
 :root {
-    --primary-color: #C5A059;
-    --primary-hover: #D4AF37;
-    --background-primary: rgba(20, 20, 30, 0.85);
+    --primary-color: var(--kw-accent);
+    --primary-hover: var(--kw-accent-hover);
+    --background-primary: var(--kw-glass-bg);
     --background-secondary: rgba(30, 30, 40, 0.75);
-    --background-hover: rgba(255, 255, 255, 0.08);
-    --border-color: rgba(255, 255, 255, 0.15);
-    --border-light: rgba(255, 255, 255, 0.1);
-    --text-primary: #E0E0E0;
+    --background-hover: var(--kw-glass-bg-light);
+    --border-color: var(--kw-glass-border);
+    --border-light: var(--kw-border);
+    --text-primary: var(--kw-text-primary);
     --text-secondary: #B0B0B0;
     --text-muted: #707070;
     --error-color: #CF6679;
-    --success-color: #81C784;
-    --warning-color: #FFD54F;
-    --info-color: #64B5F6;
+    --success-color: var(--kw-color-success);
+    --warning-color: var(--kw-color-warning);
+    --info-color: var(--kw-color-info);
 }
 
 * {
@@ -29,7 +25,7 @@ html {
 }
 
 body {
-    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: var(--kw-font-system);
     background-color: #0f0f1a;
     background-image: url('../../photo/background.png');
     background-attachment: fixed;

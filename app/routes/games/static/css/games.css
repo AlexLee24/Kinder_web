@@ -1,17 +1,17 @@
 :root {
     --bg-image: url('../photo/background_games.jpg');
-    --primary-color: #C5A059;
-    --primary-hover: #d4b06a;
+    --primary-color: var(--kw-accent);
+    --primary-hover: var(--kw-accent-hover);
     --secondary-color: #667eea;
     --secondary-hover: #7389ff;
-    --bg-overlay: rgba(255, 255, 255, 0.05);
-    --border-color: rgba(255, 255, 255, 0.1);
-    --text-color: #ffffff;
-    --text-muted: rgba(255, 255, 255, 0.6);
+    --bg-overlay: var(--kw-bg-overlay);
+    --border-color: var(--kw-border);
+    --text-color: var(--kw-text-white);
+    --text-muted: var(--kw-text-muted);
 }
 
 body {
-    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), var(--bg-image);
     background-attachment: fixed;
     background-size: cover;
@@ -144,7 +144,7 @@ button {
 }
 
 .btn-primary {
-    background: linear-gradient(45deg, var(--primary-color), #8e7340);
+    background: linear-gradient(45deg, var(--primary-color), var(--kw-accent-dark));
 }
 .btn-primary:hover {
     background: linear-gradient(45deg, var(--primary-hover), #a6874b);

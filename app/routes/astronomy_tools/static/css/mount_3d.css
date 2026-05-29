@@ -1,14 +1,14 @@
 :root {
-    --primary-color: #C5A059;
-    --primary-hover: #d4b06a;
-    --border-color: rgba(255, 255, 255, 0.1);
-    --text-color: #ffffff;
-    --text-muted: rgba(255, 255, 255, 0.6);
+    --primary-color: var(--kw-accent);
+    --primary-hover: var(--kw-accent-hover);
+    --border-color: var(--kw-border);
+    --text-color: var(--kw-text-white);
+    --text-muted: var(--kw-text-muted);
     --panel-bg: rgba(20, 20, 30, 0.6);
 }
 
 body {
-    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--kw-font-sans);
     background: #0a0a14;
     margin: 0;
     padding: 0;
@@ -176,7 +176,7 @@ body {
     width: 100%;
 }
 .ctrl-btn.primary {
-    background: linear-gradient(45deg, var(--primary-color), #8e7340);
+    background: linear-gradient(45deg, var(--primary-color), var(--kw-accent-dark));
 }
 .ctrl-btn.primary:hover {
     background: linear-gradient(45deg, var(--primary-hover), #a6874b);

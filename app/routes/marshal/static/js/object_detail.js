@@ -808,7 +808,7 @@ function changeStatus(newStatus) {
     const fullObjectName = getFullObjectName(objectData) || objectName;
     const statusNames = {
         'object': 'Inbox',
-        'followup': 'Follow-up',
+        'followup': 'DETECT Follow up',
         'finished': 'Finished',
         'snoozed': 'Snoozed',
         'clear': 'Clear'
@@ -883,7 +883,7 @@ function changeStatus(newStatus) {
 function updateStatusDisplay(newStatus) {
     const statusNames = {
         'object': 'Inbox',
-        'followup': 'Follow-up', 
+        'followup': 'DETECT Follow up',
         'finished': 'Finished',
         'snoozed': 'Snoozed',
         'clear': 'Clear'
@@ -908,7 +908,7 @@ function getStatusDisplayName(status) {
     
     const statusNames = {
         'object': 'Inbox',
-        'followup': 'Follow-up',
+        'followup': 'DETECT Follow up',
         'finished': 'Finished',
         'snoozed': 'Snoozed'
     };
