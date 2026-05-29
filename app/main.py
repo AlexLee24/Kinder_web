@@ -55,12 +55,6 @@ try:
 except Exception as exc:
     print(f"WARNING: Database connection pool could not be initialized: {exc}")
 
-# ==============================================================================
-# REGISTER ALL ROUTES
-# ==============================================================================
-# Use package-qualified import to reliably load the `routes` package
-from app.routes import register_routes
-register_routes(app)
 _BLUEPRINT_STATIC_DIRS = [
     os.path.join(current_dir, 'routes', 'basic', 'static'),
     os.path.join(current_dir, 'routes', 'auth', 'static'),

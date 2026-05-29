@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Status - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
+    {% include '_favicon.html' %}
+    <style>
+        :root {
+            --accent: #C5A059;
+            --bg: rgba(8, 10, 24, 0.86);
+            --panel: rgba(255, 255, 255, 0.07);
+            --panel-strong: rgba(255, 255, 255, 0.11);
+            --border: rgba(255, 255, 255, 0.14);
+            --text: rgba(255, 255, 255, 0.96);
+            --muted: rgba(255, 255, 255, 0.62);
+            --ok: #3fb950;
+            --warn: #e3b341;
+            --bad: #ff7b72;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: var(--kw-font-sans);
+            color: var(--text);
+            background-image: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url("{{ url_for('static', filename='photo/background_planner.jpg') }}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        /* Admin Hub Nav */
+        .admin-hub-nav {
+            position: sticky;
+            top: 72px;
+            z-index: 90;
+            background: rgba(8,10,24,0.88);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 0 28px;
+        }
+        .admin-hub-inner {
+            max-width: 1450px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 44px;
+        }
+        .hub-label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: rgba(197,160,89,0.8);
+            margin-right: 12px;
+            white-space: nowrap;
+        }
+        .hub-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.84rem;
+            font-weight: 500;
+            color: rgba(255,255,255,0.65);
+            text-decoration: none;
+            transition: background .2s, color .2s;
+        }
+        .hub-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .hub-link.active { background: rgba(197,160,89,0.18); color: #C5A059; }
+
+        .page-shell {
+            max-width: 1450px;
+            margin: 32px auto 40px;
+            padding: 0 24px;
+        }
+
+        .hero {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: 2rem;
+            line-height: 1.1;
+        }
+        .hero p {
+            margin: 6px 0 0;
+            color: var(--muted);
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            appearance: none;
+            border: 1px solid rgba(197,160,89,0.35);
+            background: rgba(197,160,89,0.14);
+            color: var(--accent);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform .15s ease, background .15s ease, opacity .15s ease;
+        }
+        .btn:hover { transform: translateY(-1px); background: rgba(197,160,89,0.22); }
+        .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+        .btn-danger {
+            color: #ffb4b0;
+            background: rgba(255, 123, 114, 0.12);
+            border-color: rgba(255, 123, 114, 0.26);
+        }
+        .btn-danger:hover { background: rgba(255, 123, 114, 0.18); }
+        .btn-ghost {
+            color: var(--text);
+            background: rgba(255,255,255,0.05);
+            border-color: var(--border);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            backdrop-filter: blur(16px) saturate(180%);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            font-size: .85rem;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-body { padding: 14px; }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+        }
+        .stat-label { color: var(--muted); margin-top: 6px; font-size: .88rem; }
+        .stat-sub { color: var(--muted); margin-top: 4px; font-size: .8rem; }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: .9rem;
+            font-weight: 600;
+        }
+        .status-pill.ok { background: rgba(63,185,80,.14); color: #8ae896; }
+        .status-pill.warn { background: rgba(227,179,65,.14); color: #f7d26a; }
+        .status-pill.bad { background: rgba(255,123,114,.14); color: #ffb4b0; }
+        .status-dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        .banner {
+            margin-bottom: 14px;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.06);
+            color: var(--muted);
+        }
+        .banner strong { color: var(--text); }
+        .banner.bad { border-color: rgba(255,123,114,0.24); background: rgba(255,123,114,0.10); color: #ffd0cd; }
+        .banner.warn { border-color: rgba(227,179,65,0.24); background: rgba(227,179,65,0.10); color: #ffe8a8; }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 14px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            margin-bottom: 14px;
+        }
+        .toolbar-left, .toolbar-right {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .field {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: .9rem;
+        }
+        .field input {
+            width: 90px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(0,0,0,.28);
+            color: var(--text);
+            padding: 8px 10px;
+            outline: none;
+        }
+        .field input:focus { border-color: rgba(197,160,89,.55); }
+
+        .table-wrap {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            background: rgba(12, 14, 28, 0.96);
+            border-bottom: 1px solid rgba(255,255,255,0.10);
+            padding: 12px 10px;
+            text-align: left;
+            font-size: .84rem;
+            color: var(--muted);
+            font-weight: 600;
+            z-index: 1;
+        }
+        tbody td {
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding: 10px;
+            vertical-align: top;
+            font-size: .88rem;
+        }
+        tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .muted { color: var(--muted); }
+        .query {
+            max-width: 560px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: rgba(255,255,255,0.88);
+        }
+        .query.empty { color: var(--muted); font-style: italic; }
+        .row-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .row-actions .btn { padding: 7px 10px; border-radius: 8px; font-size: .84rem; }
+        .checkbox-cell { width: 42px; text-align: center; }
+        .checkbox-cell input { transform: scale(1.08); accent-color: var(--accent); }
+        .self-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: .74rem;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: var(--muted);
+            margin-left: 6px;
+        }
+
+        .footer-note {
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: .86rem;
+            line-height: 1.5;
+        }
+
+        .pressure-grid {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 12px;
+        }
+        .pressure-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 12px;
+        }
+        .pressure-score {
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1;
+        }
+        .pressure-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: .8rem;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+        .pressure-badge.low { background: rgba(63,185,80,.15); color: #8ae896; }
+        .pressure-badge.moderate { background: rgba(227,179,65,.16); color: #f7d26a; }
+        .pressure-badge.high { background: rgba(255,140,90,.16); color: #ffb084; }
+        .pressure-badge.critical { background: rgba(255,123,114,.16); color: #ffb4b0; }
+        .pressure-list {
+            margin: 0;
+            padding-left: 18px;
+            color: rgba(255,255,255,0.85);
+        }
+        .pressure-list li { margin: 6px 0; }
+        .helper-note {
+            color: var(--muted);
+            font-size: .85rem;
+            margin-bottom: 10px;
+        }
+        .recommend-table td, .recommend-table th {
+            white-space: nowrap;
+        }
+        .recommend-reason {
+            white-space: normal;
+            color: rgba(255,255,255,0.86);
+        }
+
+        @media (max-width: 1120px) {
+            .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 760px) {
+            .page-shell { padding: 0 12px; margin-top: 102px; }
+            .grid { grid-template-columns: 1fr; }
+            .pressure-grid { grid-template-columns: 1fr; }
+            .query { max-width: 300px; }
+            thead th, tbody td { padding: 9px 8px; }
+        }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <!-- Admin Hub Navigation -->
+    <div class="admin-hub-nav">
+        <div class="admin-hub-inner">
+            <span class="hub-label">Admin Hub</span>
+            <a href="/admin" class="hub-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Admin Panel
+            </a>
+            <a href="/admin/database" class="hub-link active">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                DB Status
+            </a>
+            <a href="/greatlab/log" class="hub-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                Web Log
+            </a>
+        </div>
+    </div>
+
+    <div class="page-shell">
+        <div class="hero">
+            <div>
+                <h1>Database Status</h1>
+                <p>This page stays available even when the database is down, so you can still inspect status and recover quickly.</p>
+            </div>
+            <div class="hero-actions">
+                <button class="btn" id="refreshBtn" onclick="refreshStatus()">Refresh</button>
+            </div>
+        </div>
+
+        <div id="statusBanner" class="banner">
+            Loading database status...
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="card-header">Connection</div>
+                <div class="card-body">
+                    <div id="connectionPill" class="status-pill warn">
+                        <span class="status-dot"></span>
+                        <span>Checking…</span>
+                    </div>
+                    <div class="stat-sub" id="serverLabel">{{ config_name if config_name else 'Kinder' }}</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Total Sessions</div>
+                <div class="card-body">
+                    <div class="stat-value" id="statTotal">0</div>
+                    <div class="stat-label">pg_stat_activity rows</div>
+                    <div class="stat-sub" id="statCheckedAt">—</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Active / Idle</div>
+                <div class="card-body">
+                    <div class="stat-value"><span id="statActive">0</span> / <span id="statIdle">0</span></div>
+                    <div class="stat-label">Active / Idle sessions</div>
+                    <div class="stat-sub">Idle in transaction: <span id="statIdleTx">0</span></div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">Waiting</div>
+                <div class="card-body">
+                    <div class="stat-value" id="statWaiting">0</div>
+                    <div class="stat-label">Sessions with wait event</div>
+                    <div class="stat-sub" id="statVersion">—</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="actionBanner" class="banner warn" style="display:none;"></div>
+
+        <div class="card" style="margin-bottom:14px;">
+            <div class="card-header">Pressure Guide (Beginner Friendly)</div>
+            <div class="card-body">
+                <div class="pressure-grid">
+                    <div class="pressure-box">
+                        <div class="muted" style="font-size:.82rem;">Pressure Score</div>
+                        <div class="pressure-score" id="pressureScore">0</div>
+                        <div id="pressureLevel" class="pressure-badge low">LOW</div>
+                        <div class="muted" style="margin-top:8px;font-size:.8rem;">0 = calm, 100 = overloaded</div>
+                    </div>
+                    <div class="pressure-box">
+                        <div class="muted" style="font-size:.82rem; margin-bottom:6px;">Why this level</div>
+                        <ul id="pressureReasons" class="pressure-list">
+                            <li>Waiting for first status refresh.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px;">
+            <div class="card-header">
+                <span>Recommended Actions</span>
+                <div class="row-actions">
+                    <button class="btn btn-ghost" id="cancelRecommendedBtn" onclick="runRecommended('cancel')" disabled>Cancel Recommended</button>
+                    <button class="btn btn-danger" id="terminateRecommendedBtn" onclick="runRecommended('terminate')" disabled>Terminate Recommended</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="helper-note">
+                    Safe order for beginners: <strong>Cancel</strong> long-running/waiting queries first, then <strong>Terminate</strong> stuck "idle in transaction" sessions. "Client/ClientRead" usually means waiting for app input, not a lock stall.
+                </div>
+                <div class="table-wrap">
+                    <table class="recommend-table">
+                        <thead>
+                            <tr>
+                                <th>PID</th>
+                                <th>State</th>
+                                <th>Age</th>
+                                <th>Suggested</th>
+                                <th>Reason</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recommendBody">
+                            <tr><td colspan="6" class="muted">No recommendation yet.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button class="btn btn-danger" id="cancelSelectedBtn" onclick="bulkAction('cancel')">Cancel selected</button>
+                <button class="btn btn-danger" id="terminateSelectedBtn" onclick="bulkAction('terminate')">Terminate selected</button>
+                <div class="field">
+                    Terminate idle older than
+                    <input type="number" id="idleMinutes" min="1" max="1440" value="15">
+                    min
+                </div>
+                <button class="btn btn-danger" id="terminateIdleBtn" onclick="terminateIdle()">Terminate idle</button>
+            </div>
+            <div class="toolbar-right">
+                <span class="muted" id="selectionInfo">0 selected</span>
+                <button class="btn btn-ghost" onclick="selectAll(true)">Select all</button>
+                <button class="btn btn-ghost" onclick="selectAll(false)">Clear</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="checkbox-cell">✓</th>
+                        <th>PID</th>
+                        <th>User</th>
+                        <th>App</th>
+                        <th>Client</th>
+                        <th>State</th>
+                        <th>Age</th>
+                        <th>Wait</th>
+                        <th>Query</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionsBody">
+                    <tr><td colspan="10" class="muted">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer-note">
+            Tip: <strong>Cancel</strong> tries to stop a running query, while <strong>Terminate</strong> forces the whole connection to close.
+            When the database is unreachable, this page still loads so you can monitor recovery and retry actions.
+        </div>
+    </div>
+
+    <script>
+        let currentStatus = null;
+        let refreshTimer = null;
+        let recommendedRows = [];
+
+        function esc(text) {
+            return String(text ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function setBanner(message, kind) {
+            const el = document.getElementById('statusBanner');
+            el.className = kind ? `banner ${kind}` : 'banner';
+            el.innerHTML = message;
+        }
+
+        function setActionBanner(message, kind = 'warn') {
+            const el = document.getElementById('actionBanner');
+            if (!message) {
+                el.style.display = 'none';
+                el.textContent = '';
+                return;
+            }
+            el.style.display = 'block';
+            el.className = `banner ${kind}`;
+            el.textContent = message;
+        }
+
+        function setConnectionPill(available, error) {
+            const pill = document.getElementById('connectionPill');
+            const label = pill.querySelector('span:last-child');
+            pill.className = available ? 'status-pill ok' : 'status-pill bad';
+            label.textContent = available ? 'Connected' : 'Unavailable';
+            setBanner(
+                available
+                    ? `<strong>Database is reachable.</strong>${error ? ` ${esc(error)}` : ' You can inspect sessions and run connection actions.'}`
+                    : `<strong>Database is currently unavailable.</strong> ${esc(error || 'Connection failed')}`,
+                available ? 'warn' : 'bad'
+            );
+        }
+
+        function classifyPressure(score) {
+            if (score >= 75) return { label: 'CRITICAL', cls: 'critical' };
+            if (score >= 50) return { label: 'HIGH', cls: 'high' };
+            if (score >= 25) return { label: 'MODERATE', cls: 'moderate' };
+            return { label: 'LOW', cls: 'low' };
+        }
+
+        function isBlockingWaitType(waitType) {
+            return ['Lock', 'LWLock', 'LWLockNamed', 'BufferPin', 'IO', 'IPC'].includes(waitType || '');
+        }
+
+        function analyzePressure(payload, sessions) {
+            if (!payload?.available) {
+                return {
+                    score: 100,
+                    reasons: [
+                        'Database is unreachable, so application features that require DB reads/writes are blocked.',
+                        'Wait for DB recovery first, then refresh to evaluate live sessions.'
+                    ],
+                    recommendations: []
+                };
+            }
+
+            const summary = payload.summary || {};
+            const total = Number(summary.total || 0);
+            const active = Number(summary.active || 0);
+            const idleTx = Number(summary.idle_in_transaction || 0);
+            const blockingWaiting = sessions.filter(r => isBlockingWaitType(r.wait_event_type)).length;
+            const clientWaiting = sessions.filter(r => (r.wait_event_type || '') === 'Client').length;
+            const longActive = sessions.filter(r => r.state === 'active' && Number(r.state_age_seconds || 0) >= 900).length;
+
+            let score = 0;
+            score += Math.min(20, total);
+            score += Math.min(20, active * 2);
+            score += Math.min(30, blockingWaiting * 10);
+            score += Math.min(25, idleTx * 12);
+            score += Math.min(20, longActive * 8);
+            score = Math.min(100, score);
+
+            const reasons = [];
+            if (blockingWaiting > 0) reasons.push(`${blockingWaiting} session(s) are waiting on blocking resources (locks/IO/LWLock/IPC).`);
+            if (idleTx > 0) reasons.push(`${idleTx} session(s) are idle in transaction and may hold locks.`);
+            if (longActive > 0) reasons.push(`${longActive} active query(ies) have been running for over 15 minutes.`);
+            if (total > 40) reasons.push(`Total session count is elevated (${total}).`);
+            if (clientWaiting > 0) reasons.push(`${clientWaiting} session(s) show Client/ClientRead waits, which usually means the DB is waiting for app input (not a lock stall).`);
+            if (!reasons.length) reasons.push('No obvious pressure signals were detected from current sessions.');
+
+            const recommendations = [];
+            sessions.forEach(row => {
+                const age = Number(row.state_age_seconds || 0);
+                const waitType = row.wait_event_type || '';
+                if (row.is_self) return;
+
+                if (row.state === 'idle in transaction' && age >= 300) {
+                    recommendations.push({
+                        pid: row.pid,
+                        state: row.state,
+                        age,
+                        suggested: 'terminate',
+                        reason: 'Idle in transaction for >= 5 minutes. Often safe to disconnect after verification.'
+                    });
+                    return;
+                }
+
+                if (row.state === 'active' && isBlockingWaitType(waitType) && age >= 60) {
+                    recommendations.push({
+                        pid: row.pid,
+                        state: row.state,
+                        age,
+                        suggested: 'cancel',
+                        reason: `Active but waiting (${waitType}) for >= 60s. Cancel is safer as first step.`
+                    });
+                    return;
+                }
+
+                if (row.state === 'active' && age >= 1800) {
+                    recommendations.push({
+                        pid: row.pid,
+                        state: row.state,
+                        age,
+                        suggested: 'cancel',
+                        reason: 'Long-running active query (>= 30 minutes). Consider canceling if unexpected.'
+                    });
+                }
+            });
+
+            recommendations.sort((a, b) => b.age - a.age);
+            return { score, reasons, recommendations };
+        }
+
+        function renderPressure(analysis) {
+            const pressure = classifyPressure(analysis.score || 0);
+            const scoreEl = document.getElementById('pressureScore');
+            const levelEl = document.getElementById('pressureLevel');
+            const reasonsEl = document.getElementById('pressureReasons');
+
+            scoreEl.textContent = String(analysis.score || 0);
+            levelEl.className = `pressure-badge ${pressure.cls}`;
+            levelEl.textContent = pressure.label;
+
+            reasonsEl.innerHTML = (analysis.reasons || [])
+                .map(item => `<li>${esc(item)}</li>`)
+                .join('');
+        }
+
+        function renderRecommendations(items, available) {
+            const body = document.getElementById('recommendBody');
+            recommendedRows = available ? (items || []) : [];
+
+            if (!recommendedRows.length) {
+                body.innerHTML = '<tr><td colspan="6" class="muted">No urgent session to interrupt right now.</td></tr>';
+            } else {
+                body.innerHTML = recommendedRows.map(row => {
+                    const label = row.suggested === 'terminate' ? 'Terminate' : 'Cancel';
+                    const btnClass = row.suggested === 'terminate' ? 'btn-danger' : 'btn-ghost';
+                    return `
+                        <tr>
+                            <td class="mono">${esc(row.pid)}</td>
+                            <td>${esc(row.state)}</td>
+                            <td class="mono">${esc(formatAge(row.age))}</td>
+                            <td>${esc(label)}</td>
+                            <td class="recommend-reason">${esc(row.reason)}</td>
+                            <td><button class="btn ${btnClass}" onclick="singleAction('${esc(row.suggested)}', ${Number(row.pid)})">${esc(label)}</button></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            document.getElementById('cancelRecommendedBtn').disabled = !available || !recommendedRows.length;
+            document.getElementById('terminateRecommendedBtn').disabled = !available || !recommendedRows.length;
+        }
+
+        async function runRecommended(operation) {
+            const pids = recommendedRows
+                .filter(row => row.suggested === operation)
+                .map(row => Number(row.pid))
+                .filter(Boolean);
+
+            if (!pids.length) {
+                setActionBanner(`No recommended ${operation} target right now.`, 'warn');
+                return;
+            }
+            await submitAction({ operation, pids });
+        }
+
+        function formatAge(seconds) {
+            const total = Math.max(0, Number(seconds || 0));
+            const mins = Math.floor(total / 60);
+            const hrs = Math.floor(mins / 60);
+            const days = Math.floor(hrs / 24);
+            if (days > 0) return `${days}d ${hrs % 24}h`;
+            if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+            if (mins > 0) return `${mins}m ${total % 60}s`;
+            return `${total}s`;
+        }
+
+        function updateSelectionInfo() {
+            const selected = document.querySelectorAll('input[data-pid]:checked').length;
+            document.getElementById('selectionInfo').textContent = `${selected} selected`;
+        }
+
+        function selectAll(on) {
+            document.querySelectorAll('input[data-pid]').forEach(el => {
+                if (!el.disabled) el.checked = on;
+            });
+            updateSelectionInfo();
+        }
+
+        function renderSessions(sessions) {
+            const body = document.getElementById('sessionsBody');
+            if (!sessions || !sessions.length) {
+                body.innerHTML = '<tr><td colspan="10" class="muted">No sessions found.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = sessions.map(row => {
+                const pid = row.pid;
+                const state = row.state || 'unknown';
+                const wait = row.wait_event_type && row.wait_event ? `${row.wait_event_type} / ${row.wait_event}` : '—';
+                const query = (row.query || '').trim();
+                const isSelf = Boolean(row.is_self);
+                const selfTag = isSelf ? '<span class="self-tag">self</span>' : '';
+                const checkboxDisabled = isSelf ? 'disabled data-self="1"' : '';
+                const queryHtml = query ? `<div class="query mono">${esc(query)}</div>` : '<div class="query empty">(empty)</div>';
+                const age = formatAge(row.state_age_seconds);
+                const actionHtml = isSelf
+                    ? '<span class="muted">Protected (self)</span>'
+                    : `<div class="row-actions"><button class="btn btn-ghost" onclick="singleAction(\'cancel\', ${pid})">Cancel</button><button class="btn btn-danger" onclick="singleAction(\'terminate\', ${pid})">Terminate</button></div>`;
+                return `
+                    <tr data-pid="${pid}">
+                        <td class="checkbox-cell">
+                            <input type="checkbox" data-pid="${pid}" ${checkboxDisabled} onchange="updateSelectionInfo()">
+                        </td>
+                        <td class="mono">${esc(pid)}${selfTag}</td>
+                        <td>${esc(row.usename || '')}</td>
+                        <td>${esc(row.application_name || '')}</td>
+                        <td class="mono">${esc(row.client_addr || 'local')}${row.client_port ? ':' + esc(row.client_port) : ''}</td>
+                        <td>${esc(state)}</td>
+                        <td class="mono">${esc(age)}</td>
+                        <td>${esc(wait)}</td>
+                        <td>${queryHtml}</td>
+                        <td>${actionHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+            updateSelectionInfo();
+        }
+
+        function updateCards(data) {
+            document.getElementById('statTotal').textContent = data.summary?.total ?? 0;
+            document.getElementById('statActive').textContent = data.summary?.active ?? 0;
+            document.getElementById('statIdle').textContent = data.summary?.idle ?? 0;
+            document.getElementById('statIdleTx').textContent = data.summary?.idle_in_transaction ?? 0;
+            document.getElementById('statWaiting').textContent = data.summary?.waiting ?? 0;
+            document.getElementById('statCheckedAt').textContent = data.checked_at ? `Checked: ${new Date(data.checked_at).toLocaleString()}` : '—';
+            document.getElementById('statVersion').textContent = data.server_version || '—';
+            document.getElementById('serverLabel').textContent = data.server?.server_addr
+                ? `${data.server.host}:${data.server.port} → ${data.server.server_addr}:${data.server.server_port}`
+                : `${data.server?.host || '—'}:${data.server?.port || '—'}`;
+        }
+
+        function refreshButtonsState(available) {
+            document.getElementById('cancelSelectedBtn').disabled = !available;
+            document.getElementById('terminateSelectedBtn').disabled = !available;
+            document.getElementById('terminateIdleBtn').disabled = !available;
+            document.querySelectorAll('input[data-pid]').forEach(el => {
+                const isSelf = el.dataset.self === '1';
+                el.disabled = !available || isSelf;
+            });
+        }
+
+        async function fetchJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok && !payload.error) {
+                payload.error = `HTTP ${res.status}`;
+            }
+            return { ok: res.ok, status: res.status, payload };
+        }
+
+        async function refreshStatus(silent = false) {
+            if (!silent) {
+                document.getElementById('refreshBtn').disabled = true;
+            }
+            try {
+                const { payload } = await fetchJson('/api/admin/database/status');
+                currentStatus = payload;
+                const sessions = payload.sessions || [];
+                const analysis = analyzePressure(payload, sessions);
+                setConnectionPill(Boolean(payload.available), payload.error);
+                updateCards(payload);
+                renderSessions(sessions);
+                renderPressure(analysis);
+                renderRecommendations(analysis.recommendations, Boolean(payload.available));
+                refreshButtonsState(Boolean(payload.available));
+                setActionBanner('', 'warn');
+            } catch (err) {
+                setConnectionPill(false, err.message || 'status request failed');
+                updateCards({ summary: {} });
+                renderSessions([]);
+                renderPressure({ score: 100, reasons: ['Status request failed. Retry after database/network recovery.'] });
+                renderRecommendations([], false);
+                refreshButtonsState(false);
+                setActionBanner(err.message || 'status request failed', 'bad');
+            } finally {
+                document.getElementById('refreshBtn').disabled = false;
+            }
+        }
+
+        function selectedPids() {
+            return Array.from(document.querySelectorAll('input[data-pid]:checked')).map(el => Number(el.dataset.pid)).filter(Boolean);
+        }
+
+        async function singleAction(operation, pid) {
+            const selfPid = Number(currentStatus?.current_pid || 0);
+            if (selfPid && Number(pid) === selfPid) {
+                setActionBanner('The current status connection (self) is protected and cannot be interrupted.', 'warn');
+                return;
+            }
+            const label = operation === 'cancel' ? 'cancel' : 'terminate';
+            if (!confirm(`Are you sure you want to ${label} connection ${pid}?`)) return;
+            await submitAction({ operation, pids: [pid] });
+        }
+
+        async function bulkAction(operation) {
+            const pids = selectedPids();
+            if (!pids.length) {
+                setActionBanner('Please select at least one connection first.', 'warn');
+                return;
+            }
+            const label = operation === 'cancel' ? 'cancel' : 'terminate';
+            if (!confirm(`Are you sure you want to ${label} ${pids.length} selected connection(s)?`)) return;
+            await submitAction({ operation, pids });
+        }
+
+        async function terminateIdle() {
+            const idleMinutes = Number(document.getElementById('idleMinutes').value || 15);
+            if (!confirm(`Terminate all idle connections older than ${idleMinutes} minute(s)?`)) return;
+            await submitAction({ operation: 'terminate_idle', idle_minutes: idleMinutes });
+        }
+
+        async function submitAction(payload) {
+            const selfPid = Number(currentStatus?.current_pid || 0);
+            if (Array.isArray(payload?.pids) && selfPid) {
+                payload.pids = payload.pids
+                    .map(v => Number(v))
+                    .filter(v => v > 0 && v !== selfPid);
+                if (!payload.pids.length && payload.operation !== 'terminate_idle') {
+                    setActionBanner('No valid target remains after excluding protected self connection.', 'warn');
+                    return;
+                }
+            }
+            setActionBanner('Submitting request…', 'warn');
+            try {
+                const { payload: data } = await fetchJson('/api/admin/database/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                if (data.error) {
+                    setActionBanner(data.error, 'bad');
+                } else {
+                    const msg = `Attempted ${data.attempted || 0}, succeeded ${data.succeeded || 0}, failed ${data.failed || 0}, skipped ${data.skipped || 0}.`;
+                    setActionBanner(msg, 'warn');
+                }
+                await refreshStatus(true);
+            } catch (err) {
+                setActionBanner(err.message || 'Action failed', 'bad');
+            }
+        }
+
+        document.getElementById('idleMinutes').addEventListener('change', () => {
+            const value = Math.min(1440, Math.max(1, Number(document.getElementById('idleMinutes').value || 15)));
+            document.getElementById('idleMinutes').value = value;
+        });
+
+        refreshStatus();
+        refreshTimer = setInterval(() => refreshStatus(true), 5000);
+    </script>
+</body>
+</html>
+
+
+
+
+
+
