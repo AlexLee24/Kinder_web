@@ -1,7 +1,11 @@
-# ===============================================================================
-# IMPORTS AND CONFIGURATION
-# ===============================================================================
-from flask import Flask, send_from_directory, abort, request, g, session
+# ==============================================================================
+# OAUTH CONFIGURATION
+# ==============================================================================
+# Use package-qualified imports so the app can be loaded when the project root
+# is not the working directory (for example when run under gunicorn). Referencing
+# the `app.` package ensures Python finds the modules whether the package is
+# executed as a package or a top-level module.
+from app.routes.auth.auth_routes import oauth, refresh_user_session
 from dotenv import load_dotenv
 import os
 import sys
@@ -55,11 +59,12 @@ try:
 except Exception as exc:
     print(f"WARNING: Database connection pool could not be initialized: {exc}")
 
-# ===============================================================================
-# STATIC FILE SERVING
-# Static files are distributed across each blueprint's static/ folder.
-# This route merges them all under a single /static/ URL prefix.
-# ===============================================================================
+# ==============================================================================
+# REGISTER ALL ROUTES
+# ==============================================================================
+# Use package-qualified import to reliably load the `routes` package
+from app.routes import register_routes
+register_routes(app)
 _BLUEPRINT_STATIC_DIRS = [
     os.path.join(current_dir, 'routes', 'basic', 'static'),
     os.path.join(current_dir, 'routes', 'auth', 'static'),
