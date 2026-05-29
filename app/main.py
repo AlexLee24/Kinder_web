@@ -1,11 +1,7 @@
-# ==============================================================================
-# OAUTH CONFIGURATION
-# ==============================================================================
-# Use package-qualified imports so the app can be loaded when the project root
-# is not the working directory (for example when run under gunicorn). Referencing
-# the `app.` package ensures Python finds the modules whether the package is
-# executed as a package or a top-level module.
-from app.routes.auth.auth_routes import oauth, refresh_user_session
+# ===============================================================================
+# IMPORTS AND CONFIGURATION
+# ===============================================================================
+from flask import Flask, send_from_directory, abort, request, g, session
 from dotenv import load_dotenv
 import os
 import sys
