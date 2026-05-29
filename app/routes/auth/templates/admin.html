@@ -11,256 +11,345 @@
 <body>
     {% include '_navbar.html' %}
 
-    <div class="admin-container">
-
-        <!-- ── Header ── -->
-        <div class="admin-header">
-            <div class="admin-title">
-                <h1>Admin Panel</h1>
-                <p>Kinder system management</p>
-            </div>
-            <div class="admin-header-btns">
-                <button class="hdr-btn hdr-btn-info" onclick="checkDataConsistency()">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                    DB Check
-                </button>
-                <button class="hdr-btn hdr-btn-info" onclick="window.location.href='{{ url_for('database_status.database_status_page') }}'">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path></svg>
-                    DB Status
-                </button>
-                <button class="hdr-btn hdr-btn-warn" onclick="triggerManualBackup()">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                    Backup
-                </button>
-                <span id="consistencyStatus" class="hdr-status"></span>
-                <span id="backupStatus" class="hdr-status"></span>
-            </div>
+    <!-- ── Admin Hub Navigation ── -->
+    <div class="admin-hub-nav">
+        <div class="admin-hub-inner">
+            <span class="hub-label">Admin Hub</span>
+            <a href="/admin" class="hub-link active">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                Admin Panel
+            </a>
+            <a href="/admin/database" class="hub-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                DB Status
+            </a>
+            <a href="/greatlab/log" class="hub-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                Web Log
+            </a>
         </div>
+    </div>
 
-        <!-- ── Stats ── -->
-        <div class="stats-row">
-            <div class="stat-card">
-                <div class="stat-value">{{ users|length }}</div>
-                <div class="stat-label">Users</div>
-            </div>
-            <div class="stat-card">
-                {% set admin_count = users.values() | selectattr('is_admin') | list | length %}
-                <div class="stat-value">{{ admin_count }}</div>
-                <div class="stat-label">Admins</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ groups|length }}</div>
-                <div class="stat-label">Groups</div>
-            </div>
-            <div class="stat-card stat-card-alert">
-                <div class="stat-value">{{ group_requests|length }}</div>
-                <div class="stat-label">Pending Requests</div>
-            </div>
-        </div>
+    <!-- ── Admin Layout: Sidebar + Main ── -->
+    <div class="admin-layout">
 
-        <!-- ── Tabs ── -->
-        <div class="tabs">
-            <button class="tab-button active" onclick="showTab('users')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <!-- ── Sidebar Navigation ── -->
+        <aside class="admin-sidebar">
+            <div class="sidebar-section-label">Overview</div>
+            <button class="tab-button active" onclick="showTab('overview')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                Overview
+            </button>
+
+            <div class="sidebar-section-label">Management</div>
+            <button class="tab-button" onclick="showTab('users')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 Users
                 <span class="tab-count">{{ users|length }}</span>
             </button>
             <button class="tab-button" onclick="showTab('groups')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
                 Groups
                 {% if group_requests %}<span class="tab-badge">{{ group_requests|length }}</span>{% endif %}
             </button>
-            <button class="tab-button" onclick="showTab('settings')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                Settings
+
+            <div class="sidebar-section-label">System</div>
+            <button class="tab-button" onclick="showTab('access')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                Access Control
             </button>
-        </div>
+            <button class="tab-button" onclick="showTab('operations')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                Operations
+            </button>
+        </aside>
 
-        <!-- ── Users Tab ── -->
-        <div id="users-tab" class="tab-content active">
-            <div class="tab-toolbar">
-                <div class="toolbar-search">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="userSearch" placeholder="Search by name or email…" onkeyup="searchUsers()">
-                </div>
-                <div class="toolbar-filters">
-                    <label class="filter-pill">
-                        <input type="checkbox" id="adminFilter" onchange="searchUsers()"> Admins only
-                    </label>
-                    <select id="groupFilter" class="filter-select" onchange="searchUsers()">
-                        <option value="">All groups</option>
-                        {% for group_name in groups.keys() %}
-                        <option value="{{ group_name.lower() }}">{{ group_name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn-ghost" onclick="clearSearch()">Clear</button>
-                </div>
-                <div class="toolbar-right">
-                    <span id="searchResults" class="result-count">{{ users|length }} users</span>
-                    <button class="btn btn-primary" onclick="showAddUserModal()">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        Add User
-                    </button>
-                </div>
-            </div>
+        <!-- ── Main Content ── -->
+        <main class="admin-main">
 
-            <div class="data-table-wrap">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>User</th>
-                            <th>Role</th>
-                            <th>Groups</th>
-                            <th>Joined</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for email, user in users.items() %}
-                        <tr>
-                            <td>
-                                <div class="user-cell">
-                                    <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
-                                    <div>
-                                        <div class="user-cell-name">{{ user.name }}</div>
-                                        <div class="user-cell-email">{{ email }}</div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="role-pill role-{{ user.get('role', 'guest') }}">{{ user.get('role', 'guest') }}</span>
-                            </td>
-                            <td>
-                                <div class="groups-cell">
-                                {% if user.get('groups') %}
-                                    {% for group in user.groups %}
-                                    <span class="group-badge">{{ group }}</span>
-                                    {% endfor %}
-                                {% else %}
-                                    <span class="cell-muted">—</span>
-                                {% endif %}
-                                </div>
-                            </td>
-                            <td class="cell-muted cell-date">
-                                {% set active_date = user.invited_at or user.last_login %}
-                                {% if active_date %}{{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
-                                {% else %}—{% endif %}
-                            </td>
-                            <td>
-                                {% if email != session.user.email %}
-                                <div class="row-actions">
-                                    <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange="changeUserRole('{{ email }}', this.value); this.className='role-select role-select-'+this.value;">
-                                        <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
-                                        <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
-                                        <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
-                                    </select>
-                                    <!-- <button class="icon-btn icon-btn-danger" title="Delete user" onclick="deleteUser('{{ email }}')">
-                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                    </button> -->
-                                </div>
-                                {% else %}
-                                <span class="you-badge">You</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ── Groups Tab ── -->
-        <div id="groups-tab" class="tab-content">
-
-            {% if group_requests %}
-            <div class="requests-banner">
-                <div class="requests-banner-header">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                    {{ group_requests|length }} Pending Join Request{{ 's' if group_requests|length != 1 else '' }}
-                </div>
-                {% for req in group_requests %}
-                <div class="request-row">
-                    <div class="request-info">
-                        <span class="request-email">{{ req.user_email }}</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-                        <span class="group-badge">{{ req.group_name }}</span>
-                        <span class="request-time">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</span>
+            <!-- ── Overview Tab ── -->
+            <div id="overview-tab" class="tab-content active">
+                <div class="section-header">
+                    <div class="section-title-block">
+                        <h2>Overview</h2>
+                        <p>System summary and quick actions</p>
                     </div>
-                    <div class="request-actions">
-                        <button class="btn-approve" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'approve')">Approve</button>
-                        <button class="btn-reject"  data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'reject')">Reject</button>
+                    <div class="section-actions">
+                        <span id="consistencyStatus" class="hdr-status"></span>
+                        <span id="backupStatus" class="hdr-status"></span>
                     </div>
                 </div>
-                {% endfor %}
-            </div>
-            {% endif %}
 
-            <div class="tab-toolbar">
-                <h3 class="section-title">Groups <span class="title-count">{{ groups|length }}</span></h3>
-                <button class="btn btn-primary" onclick="showCreateGroupModal()">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    New Group
-                </button>
-            </div>
+                <!-- Stats -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ users|length }}</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                    <div class="stat-card">
+                        {% set admin_count = users.values() | selectattr('is_admin') | list | length %}
+                        <div class="stat-value">{{ admin_count }}</div>
+                        <div class="stat-label">Administrators</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ groups|length }}</div>
+                        <div class="stat-label">Groups</div>
+                    </div>
+                    <div class="stat-card stat-card-alert">
+                        <div class="stat-value">{{ group_requests|length }}</div>
+                        <div class="stat-label">Pending Requests</div>
+                    </div>
+                </div>
 
-            <div class="groups-grid">
-                {% for group_name, group in groups.items() %}
-                <div class="group-card">
-                    <div class="group-card-header">
-                        <div class="group-card-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
-                            <div class="group-icon">{{ group_name[0].upper() }}</div>
-                            <div class="group-title-info">
-                                <div class="group-name-text">{{ group_name }}</div>
-                                <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
-                            </div>
-                            <span class="expand-icon" id="icon-{{ loop.index0 }}">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                            </span>
+                <!-- Quick Action Panels -->
+                <div class="settings-grid">
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                            Database Health
                         </div>
-                        <button class="icon-btn icon-btn-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <p class="settings-desc">Run a data consistency check to find orphaned references, then clean them up.</p>
+                        <div class="settings-row">
+                            <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
+                            <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                            Database Sessions
+                        </div>
+                        <p class="settings-desc">View live PostgreSQL session activity, cancel or terminate stuck connections.</p>
+                        <div class="settings-row">
+                            <a href="/admin/database" class="btn btn-primary">Open DB Status</a>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                            System Log
+                        </div>
+                        <p class="settings-desc">Browse real-time server logs with source and severity filters.</p>
+                        <div class="settings-row">
+                            <a href="/greatlab/log" class="btn btn-primary">Open Web Log</a>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                            Registration Policy
+                        </div>
+                        <p class="settings-desc">Allow or deny new users from signing up with Google OAuth.</p>
+                        <div class="settings-row">
+                            <label class="filter-pill" style="gap:10px; font-size:0.85rem; color:#e8e8e8;">
+                                <input type="checkbox" {% if open_registration %}checked{% endif %}
+                                       onchange="toggleOpenRegistration(this)" style="transform:scale(1.2);">
+                                Open Registration
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Users Tab ── -->
+            <div id="users-tab" class="tab-content">
+                <div class="section-header">
+                    <div class="section-title-block">
+                        <h2>Users <span style="font-size:1rem; color:var(--muted); font-weight:300;">{{ users|length }}</span></h2>
+                        <p>Manage accounts and role assignments</p>
+                    </div>
+                    <div class="section-actions">
+                        <button class="btn btn-primary" onclick="showAddUserModal()">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Add User
                         </button>
                     </div>
-                    {% if group.description %}
-                    <p class="group-desc">{{ group.description }}</p>
-                    {% endif %}
+                </div>
 
-                    <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
-                        <div class="details-header">
-                            <span class="details-label">Members ({{ group.members|length }})</span>
-                            <button class="btn-ghost-sm" onclick="showAddMembersModal('{{ group_name }}')">+ Add</button>
-                        </div>
-                        {% if group.members %}
-                        <div class="members-list">
-                            {% for member in group.members %}
-                            <div class="member-row">
-                                <div class="member-info">
-                                    <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
-                                    <div>
-                                        <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
-                                        <div class="member-email">{{ member }}</div>
-                                    </div>
-                                </div>
-                                <button class="icon-btn icon-btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                </button>
-                            </div>
+                <div class="tab-toolbar">
+                    <div class="toolbar-search">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="text" id="userSearch" placeholder="Search by name or email…" onkeyup="searchUsers()">
+                    </div>
+                    <div class="toolbar-filters">
+                        <label class="filter-pill">
+                            <input type="checkbox" id="adminFilter" onchange="searchUsers()"> Admins only
+                        </label>
+                        <select id="groupFilter" class="filter-select" onchange="searchUsers()">
+                            <option value="">All groups</option>
+                            {% for group_name in groups.keys() %}
+                            <option value="{{ group_name.lower() }}">{{ group_name }}</option>
                             {% endfor %}
-                        </div>
-                        {% else %}
-                        <p class="cell-muted no-members-msg">No members yet.</p>
-                        {% endif %}
+                        </select>
+                        <button class="btn-ghost" onclick="clearSearch()">Clear</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span id="searchResults" class="result-count">{{ users|length }} users</span>
                     </div>
                 </div>
-                {% endfor %}
+
+                <div class="data-table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Groups</th>
+                                <th>Joined</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for email, user in users.items() %}
+                            <tr>
+                                <td>
+                                    <div class="user-cell">
+                                        <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                        <div>
+                                            <div class="user-cell-name">{{ user.name }}</div>
+                                            <div class="user-cell-email">{{ email }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="role-pill role-{{ user.get('role', 'guest') }}">{{ user.get('role', 'guest') }}</span>
+                                </td>
+                                <td>
+                                    <div class="groups-cell">
+                                    {% if user.get('groups') %}
+                                        {% for group in user.groups %}
+                                        <span class="group-badge">{{ group }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="cell-muted">—</span>
+                                    {% endif %}
+                                    </div>
+                                </td>
+                                <td class="cell-muted cell-date">
+                                    {% set active_date = user.invited_at or user.last_login %}
+                                    {% if active_date %}{{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
+                                    {% else %}—{% endif %}
+                                </td>
+                                <td>
+                                    {% if email != session.user.email %}
+                                    <div class="row-actions">
+                                        <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange="changeUserRole('{{ email }}', this.value); this.className='role-select role-select-'+this.value;">
+                                            <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
+                                            <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
+                                            <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
+                                        </select>
+                                    </div>
+                                    {% else %}
+                                    <span class="you-badge">You</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <!-- ── Settings Tab ── -->
-        <div id="settings-tab" class="tab-content">
-            <div class="settings-grid">
+            <!-- ── Groups Tab ── -->
+            <div id="groups-tab" class="tab-content">
+                <div class="section-header">
+                    <div class="section-title-block">
+                        <h2>Groups <span style="font-size:1rem; color:var(--muted); font-weight:300;">{{ groups|length }}</span></h2>
+                        <p>Manage access groups and membership</p>
+                    </div>
+                    <div class="section-actions">
+                        <button class="btn btn-primary" onclick="showCreateGroupModal()">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            New Group
+                        </button>
+                    </div>
+                </div>
 
-                <div class="settings-panel" style="grid-column: 1 / -1;">
+                {% if group_requests %}
+                <div class="requests-banner">
+                    <div class="requests-banner-header">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        {{ group_requests|length }} Pending Join Request{{ 's' if group_requests|length != 1 else '' }}
+                    </div>
+                    {% for req in group_requests %}
+                    <div class="request-row">
+                        <div class="request-info">
+                            <span class="request-email">{{ req.user_email }}</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                            <span class="group-badge">{{ req.group_name }}</span>
+                            <span class="request-time">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</span>
+                        </div>
+                        <div class="request-actions">
+                            <button class="btn-approve" data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'approve')">Approve</button>
+                            <button class="btn-reject"  data-rid="{{ req.id }}" onclick="handleGroupRequest(+this.dataset.rid, 'reject')">Reject</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="groups-grid">
+                    {% for group_name, group in groups.items() %}
+                    <div class="group-card">
+                        <div class="group-card-header">
+                            <div class="group-card-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
+                                <div class="group-icon">{{ group_name[0].upper() }}</div>
+                                <div class="group-title-info">
+                                    <div class="group-name-text">{{ group_name }}</div>
+                                    <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
+                                </div>
+                                <span class="expand-icon" id="icon-{{ loop.index0 }}">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </span>
+                            </div>
+                            <button class="icon-btn icon-btn-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                        {% if group.description %}
+                        <p class="group-desc">{{ group.description }}</p>
+                        {% endif %}
+                        <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
+                            <div class="details-header">
+                                <span class="details-label">Members ({{ group.members|length }})</span>
+                                <button class="btn-ghost-sm" onclick="showAddMembersModal('{{ group_name }}')">+ Add</button>
+                            </div>
+                            {% if group.members %}
+                            <div class="members-list">
+                                {% for member in group.members %}
+                                <div class="member-row">
+                                    <div class="member-info">
+                                        <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                        <div>
+                                            <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
+                                            <div class="member-email">{{ member }}</div>
+                                        </div>
+                                    </div>
+                                    <button class="icon-btn icon-btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    </button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="cell-muted no-members-msg">No members yet.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- ── Access Control Tab ── -->
+            <div id="access-tab" class="tab-content">
+                <div class="section-header">
+                    <div class="section-title-block">
+                        <h2>Access Control</h2>
+                        <p>Per-page and per-source visibility rules</p>
+                    </div>
+                </div>
+
+                <div class="settings-panel" style="margin-bottom:20px;">
                     <div class="settings-panel-header">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                         Private Area — Per-Page Access
@@ -273,122 +362,119 @@
 
                 <div class="settings-panel">
                     <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        Inbox Photometry Fetch
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        Default Source Permissions
                     </div>
-                    <p class="settings-desc">Fetch photometry for all Inbox objects. Auto-runs daily at 09:00 UTC+8.</p>
-                    <div class="settings-row">
-                        <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary">Run Now</button>
-                        <span id="photFetchStatus" class="settings-status"></span>
+                    <p class="settings-desc">Set global default visibility rules for each photometry/spectra source (telescope). These apply to all objects unless overridden per-object.</p>
+                    <div class="settings-row" style="align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                        <select id="sourceAddSelect" class="settings-input" style="flex: 1; min-width: 200px;" onchange="addDefaultPermFromSelect(this)">
+                            <option value="">— select source to add —</option>
+                        </select>
+                        <button class="btn btn-primary" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save All</button>
+                    </div>
+                    <div id="defaultPermsTableWrap">
+                        <table class="data-table" id="defaultPermsTable">
+                            <thead>
+                                <tr>
+                                    <th>Source Name</th>
+                                    <th>Visibility</th>
+                                    <th>Allowed Groups</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="defaultPermsTbody"></tbody>
+                        </table>
+                        <p id="defaultPermsEmpty" class="cell-muted" style="padding: 12px 0; display:none;">No default rules yet. Select and add sources above.</p>
+                    </div>
+                    <span id="defaultPermsSaveStatus" class="settings-status"></span>
+                </div>
+            </div>
+
+            <!-- ── Operations Tab ── -->
+            <div id="operations-tab" class="tab-content">
+                <div class="section-header">
+                    <div class="section-title-block">
+                        <h2>Operations</h2>
+                        <p>Scheduled tasks, data sync, and maintenance</p>
                     </div>
                 </div>
 
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        Missing Photometry Check
-                    </div>
-                    <p class="settings-desc">Check all Inbox objects and fetch photometry only for those with zero data points. Auto-runs hourly.</p>
-                    <div class="settings-row">
-                        <button id="runMissingPhotBtn" onclick="runMissingPhotFetch()" class="btn btn-primary">Run Now</button>
-                        <span id="missingPhotStatus" class="settings-status"></span>
-                    </div>
-                </div>
-
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                        Update Target Magnitudes
-                    </div>
-                    <p class="settings-desc">Look up the latest photometry magnitude for each active observation target and update the mag field. Auto-runs daily at 05:00.</p>
-                    <div class="settings-row">
-                        <button id="runTargetMagBtn" onclick="runUpdateTargetMags()" class="btn btn-primary">Run Now</button>
-                        <span id="targetMagStatus" class="settings-status"></span>
-                    </div>
-                </div>
-
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        Document Images
-                    </div>
-                    <p class="settings-desc">Remove uploaded images no longer referenced in any markdown document.</p>
-                    <div class="settings-row">
-                        <button onclick="cleanDocumentImages()" class="btn btn-warning">Clean Unused Images</button>
-                        <span id="cleanImagesStatus" class="settings-status"></span>
-                    </div>
-                </div>
-
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        Database
-                    </div>
-                    <p class="settings-desc">Check data consistency and trigger manual backups.</p>
-                    <div class="settings-row" style="flex-wrap: wrap; gap: 8px;">
-                        <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
-                        <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
-                    </div>
-                </div>
-
-                <!-- TNS Manual Operations -->
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        TNS Manual Operations
-                    </div>
-                    <p class="settings-desc">Manually trigger TNS data download or auto-snooze. Auto-runs via daemon at :15/:45 (hourly) and 01:00 UTC (daily).</p>
-                    <div class="settings-row" style="flex-wrap: wrap; gap: 8px; align-items: center;">
-                        <button id="tnsDlHrBtn" class="btn btn-primary" onclick="runTnsHourly()">Download Hourly</button>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <button id="tnsDlDailyBtn" class="btn btn-primary" onclick="runTnsDaily()">Download Daily</button>
-                            <input type="date" id="tnsDailyDate" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem;" title="Leave empty for yesterday">
+                <div class="settings-grid">
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            Inbox Photometry Fetch
                         </div>
-                        <button id="tnsSnoozeBtn" class="btn btn-warning" onclick="runTnsSnooze()">Auto-Snooze</button>
-                        <span id="tnsTaskStatus" class="settings-status"></span>
+                        <p class="settings-desc">Fetch photometry for all Inbox objects. Auto-runs daily at 09:00 UTC+8.</p>
+                        <div class="settings-row">
+                            <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary">Run Now</button>
+                            <span id="photFetchStatus" class="settings-status"></span>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            Missing Photometry Check
+                        </div>
+                        <p class="settings-desc">Fetch photometry only for Inbox objects with zero data points. Auto-runs hourly.</p>
+                        <div class="settings-row">
+                            <button id="runMissingPhotBtn" onclick="runMissingPhotFetch()" class="btn btn-primary">Run Now</button>
+                            <span id="missingPhotStatus" class="settings-status"></span>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                            Update Target Magnitudes
+                        </div>
+                        <p class="settings-desc">Look up the latest photometry magnitude for each active target. Auto-runs daily at 05:00.</p>
+                        <div class="settings-row">
+                            <button id="runTargetMagBtn" onclick="runUpdateTargetMags()" class="btn btn-primary">Run Now</button>
+                            <span id="targetMagStatus" class="settings-status"></span>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            TNS Manual Operations
+                        </div>
+                        <p class="settings-desc">Manually trigger TNS data download or auto-snooze. Auto-runs via daemon at :15/:45 (hourly) and 01:00 UTC (daily).</p>
+                        <div class="settings-row" style="flex-wrap:wrap; gap:8px; align-items:center;">
+                            <button id="tnsDlHrBtn" class="btn btn-primary" onclick="runTnsHourly()">Download Hourly</button>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button id="tnsDlDailyBtn" class="btn btn-primary" onclick="runTnsDaily()">Download Daily</button>
+                                <input type="date" id="tnsDailyDate" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem;" title="Leave empty for yesterday">
+                            </div>
+                            <button id="tnsSnoozeBtn" class="btn btn-warning" onclick="runTnsSnooze()">Auto-Snooze</button>
+                            <span id="tnsTaskStatus" class="settings-status"></span>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Document Images
+                        </div>
+                        <p class="settings-desc">Remove uploaded images no longer referenced in any markdown document.</p>
+                        <div class="settings-row">
+                            <button onclick="cleanDocumentImages()" class="btn btn-warning">Clean Unused Images</button>
+                            <span id="cleanImagesStatus" class="settings-status"></span>
+                        </div>
+                    </div>
+                    <div class="settings-panel">
+                        <div class="settings-panel-header">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Database Maintenance
+                        </div>
+                        <p class="settings-desc">Check data consistency and trigger manual backups.</p>
+                        <div class="settings-row" style="flex-wrap:wrap; gap:8px;">
+                            <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
+                            <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
+                        </div>
                     </div>
                 </div>
-
             </div>
 
-            <!-- Default Source Permissions (full-width panel) -->
-            <div class="settings-panel settings-panel-full" style="margin-top: 20px;">
-                <div class="settings-panel-header">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    Default Source Permissions
-                </div>
-                <p class="settings-desc">Set global default visibility rules for each photometry/spectra source (telescope). These apply to all objects unless overridden per-object.</p>
-
-                <!-- Source add dropdown -->
-                <div class="settings-row" style="align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                    <select id="sourceAddSelect" class="settings-input" style="flex: 1; min-width: 200px;" onchange="addDefaultPermFromSelect(this)">
-                        <option value="">— select source to add —</option>
-                    </select>
-                    <button class="btn btn-primary" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save All</button>
-                </div>
-
-                <!-- Table -->
-                <div id="defaultPermsTableWrap">
-                    <table class="data-table" id="defaultPermsTable">
-                        <thead>
-                            <tr>
-                                <th>Source Name</th>
-                                <th>Visibility</th>
-                                <th>Allowed Groups</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="defaultPermsTbody">
-                            <!-- rows injected by JS -->
-                        </tbody>
-                    </table>
-                    <p id="defaultPermsEmpty" class="cell-muted" style="padding: 12px 0; display:none;">No default rules yet. Search and add sources above.</p>
-                </div>
-                <span id="defaultPermsSaveStatus" class="settings-status"></span>
-            </div>
-
-        </div>
-
+        </main>
     </div>
 
     <!-- ── Modals ── -->
@@ -417,7 +503,7 @@
             <form onsubmit="addUser(event)">
                 <div class="form-group">
                     <label for="userEmail">Email Address *</label>
-                    <input type="email" id="userEmail" required>
+                    <input type="email" id="userEmail" required placeholder="user@example.com">
                 </div>
                 <div class="form-group">
                     <label for="userName">Name (optional)</label>
@@ -448,7 +534,7 @@
             <form onsubmit="createGroup(event)">
                 <div class="form-group">
                     <label for="groupName">Group Name *</label>
-                    <input type="text" id="groupName" required>
+                    <input type="text" id="groupName" required placeholder="e.g. Observers">
                 </div>
                 <div class="form-group">
                     <label for="groupDescription">Description</label>
@@ -483,5 +569,12 @@
 
     <script type="application/json" id="adminGroupsData">{{ groups.keys() | list | tojson }}</script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+    <script>
+        // Override DOMContentLoaded default tab to 'overview'
+        document.addEventListener('DOMContentLoaded', function() {
+            const activeTab = sessionStorage.getItem('adminActiveTab') || 'overview';
+            showTab(activeTab);
+        });
+    </script>
 </body>
 </html>

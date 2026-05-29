@@ -10,7 +10,7 @@
 .object-detail-container {
     width: 95%;
     margin: 50px auto 40px;
-    font-family: var(--kw-font-sans);
+    font-family: var(--kw-font-sans), 'Inter', 'Segoe UI', system-ui, sans-serif;
     color: #e0e0e0;
 }
 
@@ -108,8 +108,8 @@
 }
 
 .panel-card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(255,255,255,0.15);
+    border-color: rgba(0, 245, 212, 0.22);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,245,212,0.08);
 }
 
 .panel-header {
@@ -357,6 +357,114 @@
     gap: 24px;
 }
 
+/* Right-column stack: Comments + DETECT stacked vertically */
+.bottom-right-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* Override panel-card defaults inside the right stack */
+.bottom-right-stack .panel-card {
+    min-height: 0;
+    flex: 1;
+}
+
+/* Spectroscopy spans the full bottom row */
+.spec-full-width {
+    grid-column: 1 / -1;
+    min-height: 480px;
+}
+
+/* Spectroscopy panel header: stacked like photometry */
+.spec-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 20px 10px;
+}
+.spec-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.spec-header-top h3 { margin: 0; font-size: 1.1rem; color: #00f5d4; font-weight: 600; }
+
+/* Spectral line group toggle row */
+.spec-lines-groups {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    padding: 4px 0 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+.spec-lines-label {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+    margin-right: 2px;
+    white-space: nowrap;
+}
+.spec-line-btn {
+    padding: 2px 9px;
+    font-size: 0.73rem;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.35);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    letter-spacing: 0.3px;
+}
+.spec-line-btn.active {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+}
+.spec-line-btn:hover { opacity: 0.85; }
+
+/* Trial redshift control for line placement */
+.spec-z-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255,255,255,0.1);
+}
+.spec-z-control label {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: rgba(255,255,255,0.45);
+}
+.spec-z-control input {
+    width: 72px;
+    padding: 2px 6px;
+    font-size: 0.73rem;
+    background: rgba(0,0,0,0.3);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 4px;
+}
+.spec-z-control input:focus {
+    outline: none;
+    border-color: rgba(0,245,212,0.5);
+}
+.spec-z-reset {
+    padding: 1px 6px;
+    font-size: 0.8rem;
+    line-height: 1;
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.5);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.spec-z-reset:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+
 .action-row {
     display: flex;
     gap: 8px;
@@ -405,13 +513,13 @@
 .form-group textarea:focus,
 .form-group select:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+    border-color: var(--primary-color, #00f5d4);
+    box-shadow: 0 0 0 3px rgba(0, 245, 212, 0.1);
 }
 
 .form-group input[readonly] {
-    background-color: var(--bg-secondary);
-    color: var(--text-secondary);
+    background-color: rgba(255,255,255,0.05);
+    color: var(--text-secondary, rgba(255,255,255,0.45));
     cursor: not-allowed;
 }
 
@@ -834,7 +942,133 @@
 .perm-row-locked .perm-source-name {
     color: rgba(255,255,255,0.5);
 }
-    border-color: var(--kw-accent) !important;
-    color: var(--kw-accent) !important;
-    font-weight: 600;
+
+/* ── Photometry sub-plots (Color Index / Δ Magnitude) ─────────────── */
+.phot-subplots-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
 }
+
+.phot-subplot-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.phot-subplot-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: rgba(0,0,0,0.15);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.phot-subplot-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #00f5d4;
+    white-space: nowrap;
+}
+
+.subplot-filter-controls {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.subplot-select {
+    background: rgba(255,255,255,0.08);
+    color: #ddd;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    outline: none;
+}
+.subplot-select:focus { border-color: rgba(0,245,212,0.5); }
+
+.subplot-op {
+    color: rgba(255,255,255,0.4);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.phot-subplot-plot {
+    height: 210px;
+    width: 100%;
+}
+
+.subplot-nodata {
+    height: 100%;
+    min-height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 16px;
+}
+
+@media (max-width: 700px) {
+    .phot-subplots-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ── KN Model slider controls ─────────────────────────────────────────────── */
+#knModelControls {
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 4px 0 0;
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.55);
+}
+
+.kn-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 180px;
+}
+
+#knPeakSlider {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255,255,255,0.15);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    accent-color: #00f5d4;
+}
+#knPeakSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: #00f5d4;
+    cursor: grab;
+    box-shadow: 0 0 4px rgba(0,245,212,0.5);
+}
+#knPeakSlider:active::-webkit-slider-thumb { cursor: grabbing; }
+
+.kn-mjd-label {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: #00f5d4;
+    white-space: nowrap;
+    min-width: 72px;
+}
+
+

@@ -403,6 +403,14 @@ class TNSObjectDB:
     def add_photometry_point(object_name: str, mjd: float,
                              magnitude=None, magnitude_error=None,
                              filter_name=None, telescope=None) -> int | None:
+        # Reject clearly invalid magnitudes (negative apparent mag is unphysical)
+        if magnitude is not None:
+            try:
+                if float(magnitude) < 0:
+                    logger.debug("add_photometry_point: skipping negative mag %.3f for %s", magnitude, object_name)
+                    return None
+            except (TypeError, ValueError):
+                pass
         with get_db_connection() as conn:
             cur = conn.cursor()
             obj_id = _resolve_obj_id_with_prefix(cur, object_name)
@@ -438,6 +446,14 @@ class TNSObjectDB:
             inserted = 0
             max_mjd = None
             for p in points:
+                mag = p.get('magnitude')
+                # Skip negative apparent magnitudes
+                if mag is not None:
+                    try:
+                        if float(mag) < 0:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
                 cur.execute(
                     "INSERT INTO transient.photometry "
                     "(obj_id, name, \"MJD\", mag, mag_err, filter, source) "
@@ -477,8 +493,16 @@ class TNSObjectDB:
             for row in photometry_data:
                 oid = name_map.get(row[0])
                 if oid:
+                    mag = row[2]
+                    # Skip negative apparent magnitudes
+                    if mag is not None:
+                        try:
+                            if float(mag) < 0:
+                                continue
+                        except (TypeError, ValueError):
+                            pass
                     mjd = row[1]
-                    rows.append((oid, row[0], mjd, row[2], row[3], row[4], row[5]))
+                    rows.append((oid, row[0], mjd, mag, row[3], row[4], row[5]))
                     if oid not in max_mjd_by_oid or mjd > max_mjd_by_oid[oid]:
                         max_mjd_by_oid[oid] = mjd
             if rows:
@@ -524,7 +548,9 @@ class TNSObjectDB:
             cur.execute(
                 'SELECT phot_id AS id, name AS object_name, "MJD" AS mjd, '
                 'mag AS magnitude, mag_err AS magnitude_error, filter, source AS telescope '
-                'FROM transient.photometry WHERE obj_id = %s ORDER BY "MJD" ASC',
+                'FROM transient.photometry WHERE obj_id = %s '
+                'AND (mag IS NULL OR mag >= 0) '
+                'ORDER BY "MJD" ASC',
                 (obj_id,)
             )
             return [dict(r) for r in cur.fetchall()]

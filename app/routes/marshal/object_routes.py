@@ -1162,10 +1162,27 @@ def get_object_photometry_plot(year, letters):
             as_json=True
         )
 
+        # Compute distance modulus for KN model overlay
+        _dist_mod2 = 0.0
+        if redshift:
+            try:
+                _z2 = float(redshift)
+                if _z2 > 0:
+                    if ext_M_calculator:
+                        _d2, _ = ext_M_calculator.z_to_lmd(_z2)
+                        if isinstance(_d2, (int, float)):
+                            _dist_mod2 = 5 * math.log10(_d2 * 1e6) - 5
+                    else:
+                        _dist_mod2 = 5 * math.log10((299792.458 * _z2 / 70.0) * 1e6) - 5
+            except Exception:
+                _dist_mod2 = 0.0
+
         return jsonify({
             'success': True,
             'plot_json': plot_json,
-            'data_count': len(photometry_data)
+            'data_count': len(photometry_data),
+            'distance_modulus': round(_dist_mod2, 4),
+            'redshift': redshift,
         })
     except Exception as e:
         logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
@@ -1393,16 +1410,82 @@ def get_object_photometry_plot_generic(object_name):
             as_json=True
         )
 
+        # Compute distance modulus for KN model overlay
+        _dist_mod = 0.0
+        if redshift:
+            try:
+                _z = float(redshift)
+                if _z > 0:
+                    if ext_M_calculator:
+                        _d_mpc, _ = ext_M_calculator.z_to_lmd(_z)
+                        if isinstance(_d_mpc, (int, float)):
+                            _dist_mod = 5 * math.log10(_d_mpc * 1e6) - 5
+                    else:
+                        _d_mpc = (299792.458 * _z) / 70.0
+                        _dist_mod = 5 * math.log10(_d_mpc * 1e6) - 5
+            except Exception:
+                _dist_mod = 0.0
+
         return jsonify({
             'success': True,
             'plot_json': plot_json,
-            'data_count': len(photometry_data)
+            'data_count': len(photometry_data),
+            'distance_modulus': round(_dist_mod, 4),
+            'redshift': redshift,
         })
     except Exception as e:
         import traceback
         traceback.print_exc()
         logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ── KN Model endpoint ─────────────────────────────────────────────────────────
+import os as _os
+_KN_MODEL_CACHE = None
+
+def _parse_kn_model():
+    global _KN_MODEL_CACHE
+    if _KN_MODEL_CACHE is not None:
+        return _KN_MODEL_CACHE
+    path = _os.path.join(_os.path.dirname(__file__), '..', '..', 'modules', 'web_data', 'kn_lc_mag.txt')
+    filters = {}
+    current_filter = None
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                # Check for filter header: "# Filter: sdss::g"
+                if line.startswith('# Filter:'):
+                    raw = line.split(':', 1)[1].strip()
+                    # sdss::g → g
+                    current_filter = raw.split('::')[-1] if '::' in raw else raw
+                    filters[current_filter] = {'time': [], 'min': [], 'median': [], 'max': []}
+                continue
+            if current_filter is None:
+                continue
+            parts = line.split()
+            if len(parts) == 4:
+                try:
+                    t, mn, med, mx = map(float, parts)
+                    filters[current_filter]['time'].append(t)
+                    filters[current_filter]['min'].append(mn)
+                    filters[current_filter]['median'].append(med)
+                    filters[current_filter]['max'].append(mx)
+                except ValueError:
+                    pass
+    _KN_MODEL_CACHE = filters
+    return filters
+
+@objects_bp.route('/api/kn_model')
+def api_kn_model():
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    try:
+        return jsonify({'success': True, 'model': _parse_kn_model()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @objects_bp.route('/api/object/<object_name>/spectrum/plot')
 def get_object_spectrum_plot_generic(object_name):

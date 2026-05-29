@@ -1096,10 +1096,35 @@ function loadPhotometryPlot() {
         // Hide loading
         if (loadingDiv) loadingDiv.style.display = 'none';
         
-            // Store raw data for editing
+        // Store raw data for editing
         if (rawData.success) {
             photometryData = rawData.photometry || [];
-            
+
+            // Default peak MJD for KN model = brightest detection; init slider range
+            const _validPts = photometryData.filter(p => p.magnitude != null && p.magnitude_error != null);
+            if (_validPts.length) {
+                const _mjds = _validPts.map(p => parseFloat(p.mjd)).filter(m => !isNaN(m));
+                const _minMjd = Math.min(..._mjds);
+                const _maxMjd = Math.max(..._mjds);
+                const _brightest = _validPts.reduce((a, b) => parseFloat(a.magnitude) < parseFloat(b.magnitude) ? a : b);
+                const _defMjd = parseFloat(_brightest.mjd);
+                const _slider = document.getElementById('knPeakSlider');
+                if (_slider) {
+                    const _pad = Math.max((_maxMjd - _minMjd) * 0.3, 5);
+                    _slider.min   = (_minMjd - _pad).toFixed(1);
+                    _slider.max   = (_maxMjd + _pad).toFixed(1);
+                    _slider.step  = '0.1';
+                    _slider.value = _defMjd.toFixed(1);
+                    const _lbl = document.getElementById('knMjdLabel');
+                    if (_lbl) _lbl.textContent = _defMjd.toFixed(2);
+                }
+            }
+
+            // Populate and render sub-plots (color index & Δ mag)
+            _populateSubplotSelects(photometryData);
+            renderColorIndexPlot();
+            renderMagDeltaPlot();
+
             // Display Peak Abs Mag Extra info (MJD and filter)
             if (photometryData.length > 0) {
                 const validPoints = photometryData.filter(p => p.magnitude != null && p.magnitude !== '' && p.magnitude_error > 0 && parseFloat(p.magnitude_error) <= 0.3 && !String(p.magnitude).includes('>'));
@@ -1171,6 +1196,14 @@ function loadPhotometryPlot() {
                         enforceMinLcXAxisSpan(figData, 1);
                         Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
                         _buildTelescopeToggles(figData.data);
+
+                        // Store distance modulus & re-apply KN model if active
+                        _knDistMod = typeof plotData.distance_modulus === 'number' ? plotData.distance_modulus : 0;
+                        if (plotData.redshift) _objectRedshift = plotData.redshift;
+                        const dmLabel = document.getElementById('knDistModLabel');
+                        if (dmLabel) dmLabel.textContent = _knDistMod > 0 ? `μ = ${_knDistMod.toFixed(2)}` : '';
+                        if (_knModelActive) _applyKnModelOverlay();
+
                         console.log('Photometry plot rendered successfully');
                         setTimeout(() => { matchStarMapHeight(); }, 200);
                     } catch (error) {
@@ -1228,6 +1261,127 @@ function loadPhotometryPlot() {
     });
 }
 
+// ── Kilonova Model Overlay ──────────────────────────────────────────────────
+
+let _knModelActive    = false;
+let _knModelData      = null;   // cached model JSON
+let _knModelTraceCount = 0;     // number of KN traces added (2 per filter: fill + line)
+let _knDistMod        = 0;      // distance modulus (set when plot loads)
+
+/** KN model filter → hex color (use the same filter color map) */
+const _KN_FILTER_COLORS = { g: '#00a86b', r: '#ff0000', i: '#8b0000' };
+
+function toggleKnModel() {
+    _knModelActive = !_knModelActive;
+    const btn = document.getElementById('knModelBtn');
+    const ctrl = document.getElementById('knModelControls');
+    if (_knModelActive) {
+        btn.style.background    = 'rgba(0,245,212,0.18)';
+        btn.style.borderColor   = 'rgba(0,245,212,0.5)';
+        btn.style.color         = '#00f5d4';
+        if (ctrl) ctrl.style.display = 'flex';
+        _applyKnModelOverlay();
+    } else {
+        btn.style.background  = '';
+        btn.style.borderColor = '';
+        btn.style.color       = '';
+        if (ctrl) ctrl.style.display = 'none';
+        _removeKnModelOverlay();
+    }
+}
+
+function updateKnModelOverlay() {
+    if (_knModelActive) _applyKnModelOverlay();
+}
+
+function onKnSliderInput(val) {
+    const lbl = document.getElementById('knMjdLabel');
+    if (lbl) lbl.textContent = parseFloat(val).toFixed(2);
+    if (_knModelActive) _applyKnModelOverlay();
+}
+
+function _removeKnModelOverlay() {
+    const plotDiv = document.getElementById('phot-plotly-div');
+    if (!plotDiv || !plotDiv.data || _knModelTraceCount === 0) return;
+    const total = plotDiv.data.length;
+    const indices = Array.from({ length: _knModelTraceCount }, (_, i) => total - _knModelTraceCount + i);
+    Plotly.deleteTraces('phot-plotly-div', indices);
+    _knModelTraceCount = 0;
+}
+
+async function _applyKnModelOverlay() {
+    const plotDiv = document.getElementById('phot-plotly-div');
+    if (!plotDiv) return;
+
+    const peakMjd = parseFloat(document.getElementById('knPeakSlider')?.value);
+    if (isNaN(peakMjd)) return;
+
+    // Fetch model data once
+    if (!_knModelData) {
+        try {
+            const res = await fetch('/api/kn_model');
+            const d = await res.json();
+            if (!d.success) return;
+            _knModelData = d.model;
+        } catch (e) { console.error('KN model fetch error', e); return; }
+    }
+
+    // Remove any previously added KN traces
+    _removeKnModelOverlay();
+
+    const traces = [];
+    const filterOrder = ['g', 'r', 'i'];
+
+    filterOrder.forEach(f => {
+        const fd = _knModelData[f];
+        if (!fd) return;
+        const color = _KN_FILTER_COLORS[f] || '#aaa';
+
+        // Shift: apparent = absolute + distance_modulus; x = peakMjd + days
+        const xs     = fd.time.map(t => peakMjd + t);
+        const yMin   = fd.min.map(v => v + _knDistMod);
+        const yMax   = fd.max.map(v => v + _knDistMod);
+        const yMed   = fd.median.map(v => v + _knDistMod);
+
+        // Fill band (min → max)
+        const xFill  = [...xs, ...xs.slice().reverse()];
+        const yFill  = [...yMin, ...yMax.slice().reverse()];
+        traces.push({
+            x: xFill, y: yFill,
+            fill: 'toself',
+            fillcolor: _hexToRgba(color, 0.15),
+            line: { color: 'transparent', width: 0 },
+            mode: 'lines',
+            type: 'scatter',
+            hoverinfo: 'skip',
+            showlegend: false,
+        });
+
+        // Median line
+        traces.push({
+            x: xs, y: yMed,
+            mode: 'lines',
+            type: 'scatter',
+            name: `KN ${f}`,
+            line: { color: color, width: 1.5, dash: 'dot' },
+            hovertemplate: `KN ${f}<br>MJD %{x:.2f}<br>%{y:.2f} mag<extra></extra>`,
+            showlegend: true,
+        });
+    });
+
+    if (!traces.length) return;
+    _knModelTraceCount = traces.length;
+    Plotly.addTraces('phot-plotly-div', traces);
+}
+
+function _hexToRgba(hex, alpha) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // Build telescope quick-toggle buttons above photometry plot
 function _buildTelescopeToggles(traces) {
     const container = document.getElementById('telescopeToggles');
@@ -1269,10 +1423,228 @@ function _buildTelescopeToggles(traces) {
     });
 }
 
+// ── Photometry Sub-plots: Color Index & Δ Magnitude ────────────────────────
+
+const _COLOR_INDEX_PAIRS = [['g','r'],['B','V'],['g','i'],['r','i'],['r','z'],['g','z'],['u','g'],['u','r'],['c','o']];
+const _MAG_DELTA_DEFAULT  = 'r';
+
+/** Canonical filter → hex color (mirrors app/data/filter_colors.json) */
+const _FILTER_COLORS = {
+    uvw2:'#311432', uvm2:'#4b0082', uvw1:'#8a2be2',
+    u:'#800080', U:'#800080',
+    B:'#0000ff', b:'#0000ff',
+    g:'#00a86b',
+    V:'#9acd32', v:'#9acd32',
+    c:'#00ffff', C:'#00ffff',
+    w:'#eeb861', W:'#eeb861',
+    o:'#ffa500',
+    r:'#ff0000', R:'#ff0000',
+    i:'#8b0000', I:'#8b0000',
+    z:'#4a0000', Z:'#4a0000',
+    y:'#cc6600', Y:'#cc6600',
+    J:'#a0522d', H:'#8b4513', K:'#5c4033', Ks:'#5c4033', L:'#362511',
+};
+function _filterColor(f) { return _FILTER_COLORS[f] || '#888888'; }
+
+function _subplotCommonLayout(yLabel) {
+    return {
+        margin: { t: 10, r: 12, b: 44, l: 52 },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor:  'rgba(0,0,0,0)',
+        font: { color: '#ccc', size: 10 },
+        xaxis: {
+            title: { text: 'MJD', font: { size: 10 } },
+            showgrid: true, gridcolor: 'rgba(255,255,255,0.05)',
+            zeroline: false, tickcolor: 'rgba(255,255,255,0.25)', tickfont: { size: 9 },
+            tickformat: '.2f',
+            exponentformat: 'none',
+        },
+        yaxis: {
+            title: { text: yLabel, font: { size: 10 } },
+            showgrid: true, gridcolor: 'rgba(255,255,255,0.05)',
+            zeroline: false, tickcolor: 'rgba(255,255,255,0.25)', tickfont: { size: 9 },
+        },
+        showlegend: false,
+        hovermode: 'closest',
+    };
+}
+
+/** Populate filter <select> dropdowns from photometry data */
+function _populateSubplotSelects(photData) {
+    const selA = document.getElementById('colorFilterA');
+    const selB = document.getElementById('colorFilterB');
+    const selD = document.getElementById('magDeltaFilter');
+    if (!selA || !selB || !selD) return;
+
+    const seen = new Set();
+    const filters = [];
+    photData.forEach(p => {
+        const f = p.filter;
+        if (f && !seen.has(f) && p.magnitude != null && p.magnitude_error != null) {
+            seen.add(f); filters.push(f);
+        }
+    });
+
+    if (!filters.length) {
+        const row = document.getElementById('photSubplotsRow');
+        if (row) row.style.display = 'none';
+        return;
+    }
+
+    const prevA = selA.value, prevB = selB.value, prevD = selD.value;
+    [selA, selB, selD].forEach(s => { s.innerHTML = ''; });
+    filters.forEach(f => {
+        [selA, selB, selD].forEach(s => {
+            const o = document.createElement('option');
+            o.value = f; o.textContent = f;
+            s.appendChild(o);
+        });
+    });
+
+    // Smart default for color index
+    let defA = filters[0], defB = filters.length > 1 ? filters[1] : filters[0];
+    for (const [a, b] of _COLOR_INDEX_PAIRS) {
+        if (filters.includes(a) && filters.includes(b)) { defA = a; defB = b; break; }
+    }
+    selA.value = (prevA && filters.includes(prevA)) ? prevA : defA;
+    selB.value = (prevB && filters.includes(prevB) && prevB !== selA.value) ? prevB : defB;
+    if (selB.value === selA.value) {
+        const alt = filters.find(f => f !== selA.value);
+        if (alt) selB.value = alt;
+    }
+
+    const defD = filters.includes(_MAG_DELTA_DEFAULT) ? _MAG_DELTA_DEFAULT : filters[0];
+    selD.value = (prevD && filters.includes(prevD)) ? prevD : defD;
+
+    const row = document.getElementById('photSubplotsRow');
+    if (row) row.style.display = 'grid';
+}
+
+/** Color index subplot: filterA − filterB vs MJD */
+function renderColorIndexPlot() {
+    const selA = document.getElementById('colorFilterA');
+    const selB = document.getElementById('colorFilterB');
+    const plotDiv = document.getElementById('colorIndexPlot');
+    if (!selA || !selB || !plotDiv || !photometryData) return;
+
+    const fA = selA.value, fB = selB.value;
+    const nodata = (msg) => { plotDiv.innerHTML = `<div class="subplot-nodata">${msg}</div>`; };
+
+    if (!fA || !fB || fA === fB) { nodata('Select two different filters'); return; }
+
+    const getValid = f => photometryData
+        .filter(p => p.filter === f && p.magnitude != null && p.magnitude_error != null)
+        .map(p => ({ mjd: parseFloat(p.mjd), mag: parseFloat(p.magnitude) }))
+        .filter(p => !isNaN(p.mjd) && !isNaN(p.mag))
+        .sort((a, b) => a.mjd - b.mjd);
+
+    const ptsA = getValid(fA), ptsB = getValid(fB);
+    if (!ptsA.length || !ptsB.length) { nodata(`No detections for ${fA} or ${fB}`); return; }
+
+    const pairs = [];
+    ptsA.forEach(pa => {
+        let best = null, bestD = 0.5;
+        ptsB.forEach(pb => { const d = Math.abs(pa.mjd - pb.mjd); if (d < bestD) { bestD = d; best = pb; } });
+        if (best) pairs.push({ mjd: (pa.mjd + best.mjd) / 2, ci: pa.mag - best.mag });
+    });
+
+    if (!pairs.length) { nodata(`No contemporaneous ${fA}/${fB} obs (within 0.5 d)`); return; }
+
+    const trace = {
+        x: pairs.map(p => p.mjd),
+        y: pairs.map(p => p.ci),
+        mode: 'markers',
+        type: 'scatter',
+        marker: { size: 6, color: _filterColor(fA) },
+        hovertemplate: `MJD %{x:.2f}<br>${fA}−${fB} = %{y:.3f} mag<extra></extra>`,
+    };
+
+    Plotly.react(plotDiv, [trace], _subplotCommonLayout(`${fA}−${fB} (mag)`), { responsive: true, displayModeBar: false });
+}
+
+/** Δ magnitude subplot: change between consecutive N-day bins (median per bin) */
+function renderMagDeltaPlot() {
+    const selFilter = document.getElementById('magDeltaFilter');
+    const selBin    = document.getElementById('magDeltaBin');
+    const plotDiv   = document.getElementById('magDeltaPlot');
+    if (!selFilter || !plotDiv || !photometryData) return;
+
+    const filter  = selFilter.value;
+    const binDays = selBin ? parseFloat(selBin.value) || 1 : 1;
+    const nodata  = (msg) => { plotDiv.innerHTML = `<div class="subplot-nodata">${msg}</div>`; };
+    if (!filter) { nodata('No filter selected'); return; }
+
+    const pts = photometryData
+        .filter(p => p.filter === filter && p.magnitude != null && p.magnitude_error != null)
+        .map(p => ({ mjd: parseFloat(p.mjd), mag: parseFloat(p.magnitude) }))
+        .filter(p => !isNaN(p.mjd) && !isNaN(p.mag))
+        .sort((a, b) => a.mjd - b.mjd);
+
+    if (pts.length < 2) { nodata(`Need ≥ 2 ${filter}-band detections`); return; }
+
+    // ── Bin by N-day windows ──────────────────────────────────────────────
+    const origin = pts[0].mjd;
+    const binMap = new Map(); // binIndex → [mag, ...]
+    pts.forEach(p => {
+        const idx = Math.floor((p.mjd - origin) / binDays);
+        if (!binMap.has(idx)) binMap.set(idx, []);
+        binMap.get(idx).push(p.mag);
+    });
+
+    // Convert map to sorted array of { binIdx, mjdCenter, median }
+    const _median = arr => {
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+
+    const bins = [...binMap.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([idx, mags]) => ({
+            mjdCenter: origin + idx * binDays + binDays / 2,
+            median:    _median(mags),
+            n:         mags.length,
+        }));
+
+    if (bins.length < 2) { nodata(`Need ≥ 2 bins of ${binDays} d with ${filter}-band data`); return; }
+
+    // ── Compute delta between consecutive bins ────────────────────────────
+    const deltas = bins.slice(1).map((b, i) => ({
+        mjd:   b.mjdCenter,
+        delta: b.median - bins[i].median,
+        nCur:  b.n,
+        nPrev: bins[i].n,
+        dtBin: +(b.mjdCenter - bins[i].mjdCenter).toFixed(1),
+    }));
+
+    const filterHex = _filterColor(filter);
+    const trace = {
+        x: deltas.map(d => d.mjd),
+        y: deltas.map(d => d.delta),
+        mode: 'markers',
+        type: 'scatter',
+        marker: { size: 7, color: filterHex },
+        customdata: deltas.map(d => [d.dtBin, d.nCur, d.nPrev]),
+        hovertemplate:
+            `MJD %{x:.2f}<br>Δ${filter} = %{y:+.3f} mag` +
+            `<br>Δt = %{customdata[0]} d` +
+            `<br>pts: prev=%{customdata[2]}, cur=%{customdata[1]}<extra></extra>`,
+    };
+
+    const xMin = deltas[0].mjd, xMax = deltas[deltas.length - 1].mjd;
+    const zeroline = {
+        x: [xMin, xMax], y: [0, 0],
+        mode: 'lines', type: 'scatter',
+        line: { color: 'rgba(255,255,255,0.18)', width: 1, dash: 'dot' },
+        hoverinfo: 'skip', showlegend: false,
+    };
+
+    const layout = _subplotCommonLayout(`Δ ${filter} / ${binDays} d (mag)`);
+    Plotly.react(plotDiv, [zeroline, trace], layout, { responsive: true, displayModeBar: false });
+}
+
 function togglePhotometryEditMode() {
     if (isEditingPhotometry) {
-        exitPhotometryEditMode();
-    } else {
         enterPhotometryEditMode();
     }
 }
@@ -1646,6 +2018,274 @@ function inferSpectrumDateFromFilename(fileName) {
     return '';
 }
 
+// ── Spectral Lines Overlay ────────────────────────────────────────────────────
+
+// Rest-frame air wavelengths (Å). `ion` carries the full transition for hover detail.
+const _SPEC_LINES = [
+    // ── Hydrogen (Balmer + Paschen) ──
+    { w: 6562.8, label: 'Hα',  ion: 'H I (Balmer α)',  group: 'H' },
+    { w: 4861.3, label: 'Hβ',  ion: 'H I (Balmer β)',  group: 'H' },
+    { w: 4340.5, label: 'Hγ',  ion: 'H I (Balmer γ)',  group: 'H' },
+    { w: 4101.7, label: 'Hδ',  ion: 'H I (Balmer δ)',  group: 'H' },
+    { w: 3970.1, label: 'Hε',  ion: 'H I (Balmer ε)',  group: 'H' },
+    { w: 3889.1, label: 'Hζ',  ion: 'H I (Balmer ζ)',  group: 'H' },
+    { w: 3835.4, label: 'Hη',  ion: 'H I (Balmer η)',  group: 'H' },
+    { w: 9229.0, label: 'Pa9', ion: 'H I (Paschen 9)', group: 'H' },
+    { w: 9545.9, label: 'Pa8', ion: 'H I (Paschen 8)', group: 'H' },
+    // ── Helium ──
+    { w: 3888.6, label: 'He I 3889', ion: 'He I',  group: 'He' },
+    { w: 4026.2, label: 'He I 4026', ion: 'He I',  group: 'He' },
+    { w: 4471.5, label: 'He I 4471', ion: 'He I',  group: 'He' },
+    { w: 4921.9, label: 'He I 4922', ion: 'He I',  group: 'He' },
+    { w: 5015.7, label: 'He I 5016', ion: 'He I',  group: 'He' },
+    { w: 5875.6, label: 'He I 5876', ion: 'He I',  group: 'He' },
+    { w: 6678.2, label: 'He I 6678', ion: 'He I',  group: 'He' },
+    { w: 7065.2, label: 'He I 7065', ion: 'He I',  group: 'He' },
+    { w: 7281.4, label: 'He I 7281', ion: 'He I',  group: 'He' },
+    { w: 4685.7, label: 'He II 4686',ion: 'He II', group: 'He' },
+    { w: 5411.5, label: 'He II 5412',ion: 'He II', group: 'He' },
+    // ── Calcium ──
+    { w: 3933.7, label: 'Ca II K',     ion: 'Ca II (H&K)',          group: 'Ca' },
+    { w: 3968.5, label: 'Ca II H',     ion: 'Ca II (H&K)',          group: 'Ca' },
+    { w: 4226.7, label: 'Ca I 4227',   ion: 'Ca I',                 group: 'Ca' },
+    { w: 8498.0, label: 'Ca II 8498',  ion: 'Ca II (NIR triplet)',  group: 'Ca' },
+    { w: 8542.1, label: 'Ca II 8542',  ion: 'Ca II (NIR triplet)',  group: 'Ca' },
+    { w: 8662.1, label: 'Ca II 8662',  ion: 'Ca II (NIR triplet)',  group: 'Ca' },
+    { w: 7291.5, label: '[Ca II] 7291',ion: '[Ca II] forbidden',    group: 'Ca' },
+    { w: 7323.9, label: '[Ca II] 7324',ion: '[Ca II] forbidden',    group: 'Ca' },
+    // ── Silicon ──
+    { w: 4128.1, label: 'Si II 4128', ion: 'Si II', group: 'Si' },
+    { w: 4130.9, label: 'Si II 4131', ion: 'Si II', group: 'Si' },
+    { w: 5041.0, label: 'Si II 5041', ion: 'Si II', group: 'Si' },
+    { w: 5055.9, label: 'Si II 5056', ion: 'Si II', group: 'Si' },
+    { w: 5957.6, label: 'Si II 5958', ion: 'Si II', group: 'Si' },
+    { w: 5978.9, label: 'Si II 5979', ion: 'Si II', group: 'Si' },
+    { w: 6347.1, label: 'Si II 6347', ion: 'Si II', group: 'Si' },
+    { w: 6371.4, label: 'Si II 6371', ion: 'Si II (λ6355 blend)', group: 'Si' },
+    { w: 4552.6, label: 'Si III 4553',ion: 'Si III', group: 'Si' },
+    // ── Oxygen ──
+    { w: 7771.9, label: 'O I 7772',   ion: 'O I (triplet)',    group: 'O' },
+    { w: 8446.4, label: 'O I 8446',   ion: 'O I',              group: 'O' },
+    { w: 6300.3, label: '[O I] 6300', ion: '[O I] forbidden',  group: 'O' },
+    { w: 6363.8, label: '[O I] 6364', ion: '[O I] forbidden',  group: 'O' },
+    { w: 3727.4, label: '[O II] 3727',ion: '[O II] forbidden', group: 'O' },
+    { w: 4363.2, label: '[O III] 4363',ion: '[O III] forbidden',group: 'O' },
+    { w: 4958.9, label: '[O III] 4959',ion: '[O III] forbidden',group: 'O' },
+    { w: 5006.8, label: '[O III] 5007',ion: '[O III] forbidden',group: 'O' },
+    // ── Sodium ──
+    { w: 5889.9, label: 'Na I D2', ion: 'Na I D',   group: 'Na' },
+    { w: 5895.9, label: 'Na I D1', ion: 'Na I D',   group: 'Na' },
+    { w: 8183.3, label: 'Na I 8183',ion: 'Na I',    group: 'Na' },
+    { w: 8194.8, label: 'Na I 8195',ion: 'Na I',    group: 'Na' },
+    // ── Iron ──
+    { w: 4233.2, label: 'Fe II 4233', ion: 'Fe II', group: 'Fe' },
+    { w: 4549.5, label: 'Fe II 4550', ion: 'Fe II', group: 'Fe' },
+    { w: 4923.9, label: 'Fe II 4924', ion: 'Fe II (mult. 42)', group: 'Fe' },
+    { w: 5018.4, label: 'Fe II 5018', ion: 'Fe II (mult. 42)', group: 'Fe' },
+    { w: 5169.0, label: 'Fe II 5169', ion: 'Fe II (mult. 42)', group: 'Fe' },
+    { w: 5276.0, label: 'Fe II 5276', ion: 'Fe II', group: 'Fe' },
+    { w: 5316.6, label: 'Fe II 5317', ion: 'Fe II', group: 'Fe' },
+    { w: 4658.1, label: '[Fe III] 4658', ion: '[Fe III] forbidden', group: 'Fe' },
+    { w: 5270.4, label: '[Fe III] 5270', ion: '[Fe III] forbidden', group: 'Fe' },
+    { w: 7155.2, label: '[Fe II] 7155',  ion: '[Fe II] forbidden',  group: 'Fe' },
+    // ── Sulfur ──
+    { w: 5454.0, label: 'S II 5454', ion: 'S II (W feature)', group: 'S' },
+    { w: 5640.0, label: 'S II 5640', ion: 'S II (W feature)', group: 'S' },
+    { w: 6716.4, label: '[S II] 6716',ion: '[S II] forbidden', group: 'S' },
+    { w: 6730.8, label: '[S II] 6731',ion: '[S II] forbidden', group: 'S' },
+    { w: 6312.1, label: '[S III] 6312',ion: '[S III] forbidden',group: 'S' },
+    { w: 9068.6, label: '[S III] 9069',ion: '[S III] forbidden',group: 'S' },
+    { w: 9530.6, label: '[S III] 9531',ion: '[S III] forbidden',group: 'S' },
+    // ── Carbon ──
+    { w: 4267.0, label: 'C II 4267', ion: 'C II',  group: 'C' },
+    { w: 6578.1, label: 'C II 6578', ion: 'C II',  group: 'C' },
+    { w: 7231.3, label: 'C II 7231', ion: 'C II',  group: 'C' },
+    { w: 4647.4, label: 'C III 4647',ion: 'C III', group: 'C' },
+    { w: 5695.9, label: 'C III 5696',ion: 'C III', group: 'C' },
+    { w: 5801.3, label: 'C IV 5801', ion: 'C IV',  group: 'C' },
+    { w: 5811.9, label: 'C IV 5812', ion: 'C IV',  group: 'C' },
+    // ── Magnesium ──
+    { w: 4571.1, label: 'Mg I] 4571', ion: 'Mg I] intercombination', group: 'Mg' },
+    { w: 5167.3, label: 'Mg I b1',    ion: 'Mg I (b triplet)',       group: 'Mg' },
+    { w: 5172.7, label: 'Mg I b2',    ion: 'Mg I (b triplet)',       group: 'Mg' },
+    { w: 5183.6, label: 'Mg I b3',    ion: 'Mg I (b triplet)',       group: 'Mg' },
+    { w: 4481.1, label: 'Mg II 4481', ion: 'Mg II',                  group: 'Mg' },
+    // ── Nitrogen ──
+    { w: 5754.6, label: '[N II] 5755',ion: '[N II] forbidden', group: 'N' },
+    { w: 6548.0, label: '[N II] 6548',ion: '[N II] forbidden', group: 'N' },
+    { w: 6583.5, label: '[N II] 6584',ion: '[N II] forbidden', group: 'N' },
+    { w: 4640.6, label: 'N III 4641', ion: 'N III',            group: 'N' },
+    // ── Titanium ──
+    { w: 4395.0, label: 'Ti II 4395', ion: 'Ti II', group: 'Ti' },
+    { w: 4501.3, label: 'Ti II 4501', ion: 'Ti II', group: 'Ti' },
+    { w: 4805.1, label: 'Ti II 4805', ion: 'Ti II', group: 'Ti' },
+    { w: 5188.7, label: 'Ti II 5189', ion: 'Ti II', group: 'Ti' },
+    // ── Barium ──
+    { w: 4554.0, label: 'Ba II 4554', ion: 'Ba II', group: 'Ba' },
+    { w: 4934.1, label: 'Ba II 4934', ion: 'Ba II', group: 'Ba' },
+    { w: 6141.7, label: 'Ba II 6142', ion: 'Ba II', group: 'Ba' },
+    { w: 6496.9, label: 'Ba II 6497', ion: 'Ba II', group: 'Ba' },
+];
+
+// Telluric (atmospheric) absorption bands — observed frame, not redshifted with object
+const _TELLURIC_BANDS = [
+    { w0: 6860, w1: 6895, label: 'O₂ B' },
+    { w0: 7160, w1: 7340, label: 'H₂O'  },
+    { w0: 7580, w1: 7700, label: 'O₂ A' },
+    { w0: 8100, w1: 8380, label: 'H₂O'  },
+];
+
+const _SPEC_LINE_COLORS = {
+    H: '#4a9eff', He: '#ffd700', Ca: '#bf7fff', Si: '#ff9060',
+    O: '#00e5ff', Na: '#adff2f', Fe: '#cd853f', S: '#7fff00',
+    C: '#ff6347', Mg: '#40e0d0', N: '#ff5ec7', Ti: '#76d7c4',
+    Ba: '#f5b700', Tel: '#b8a060',
+};
+
+let _specLineGroups = new Set();   // empty = no lines shown by default
+let _objectRedshift = null;        // filled when plot data loads
+let _origMarginT    = null;        // saved before first line overlay
+let _specLineRedshift = null;      // trial z for line overlay; null = use object z
+let _specZUserSet     = false;     // true once the user edits the trial z field
+
+// Object's canonical redshift (from DB / loaded data). Used for telluric placement
+// and as the default for the trial-z control.
+function _specObjRedshift() {
+    let z = (objectData && objectData.redshift != null) ? parseFloat(objectData.redshift) : NaN;
+    if (isNaN(z) && _objectRedshift != null) z = parseFloat(_objectRedshift);
+    return isNaN(z) ? 0 : z;
+}
+
+// Redshift actually used to place atomic lines — trial value when set, else object z.
+function _specLinesZ() {
+    return _specLineRedshift != null ? _specLineRedshift : _specObjRedshift();
+}
+
+// Seed the trial-z input with the object redshift until the user overrides it.
+function _initSpecRedshiftInput() {
+    const inp = document.getElementById('specLineRedshift');
+    if (!inp) return;
+    if (!_specZUserSet) {
+        const z = _specObjRedshift();
+        inp.value = z ? z : '';
+        inp.placeholder = z ? String(z) : '0.0';
+    }
+}
+
+function onSpecRedshiftInput(val) {
+    _specZUserSet = true;
+    const z = parseFloat(val);
+    _specLineRedshift = isNaN(z) ? null : z;
+    _applySpecLines();
+}
+
+function resetSpecRedshift() {
+    _specZUserSet = false;
+    _specLineRedshift = null;
+    _initSpecRedshiftInput();
+    _applySpecLines();
+}
+
+function toggleSpecLineGroup(group) {
+    const btn = document.querySelector(`.spec-line-btn[data-group="${group}"]`);
+    if (_specLineGroups.has(group)) {
+        _specLineGroups.delete(group);
+        if (btn) btn.classList.remove('active');
+    } else {
+        _specLineGroups.add(group);
+        if (btn) btn.classList.add('active');
+    }
+    _applySpecLines();
+}
+
+function _applySpecLines() {
+    const plotDiv = document.querySelector('#spectrumPlot .js-plotly-plot');
+    if (!plotDiv) return;
+
+    if (_specLineGroups.size === 0) {
+        const restore = { shapes: [], annotations: [] };
+        if (_origMarginT !== null) restore['margin.t'] = _origMarginT;
+        try { Plotly.relayout(plotDiv, restore); } catch(e) {}
+        return;
+    }
+
+    // Save the plot's original top margin before first overlay
+    if (_origMarginT === null) {
+        _origMarginT = plotDiv._fullLayout?.margin?.t ?? 20;
+    }
+
+    const restFrame = document.getElementById('specRestFrame')?.checked ?? true;
+    const zObj   = _specObjRedshift();      // object frame (data de-redshift in rest mode)
+    const zLines = _specLinesZ();           // trial value for atomic lines
+    // In rest-frame mode the plot x-axis is already divided by (1+zObj); convert the
+    // observed line position (rest_λ × (1+zLines)) into that frame.
+    const denom  = restFrame ? (1 + zObj) : 1;
+
+    const shapes = [], annotations = [];
+
+    // Atomic spectral lines
+    _SPEC_LINES
+        .filter(l => _specLineGroups.has(l.group))
+        .forEach(l => {
+            const xPos = (l.w * (1 + zLines)) / denom;
+            const col  = _SPEC_LINE_COLORS[l.group] || '#aaa';
+            shapes.push({
+                type: 'line', x0: xPos, x1: xPos, y0: 0, y1: 1, yref: 'paper',
+                line: { color: col, width: 1, dash: 'dot' },
+            });
+            const detail = `<b>${l.label}</b><br>${l.ion || ''}<br>`
+                         + `Rest λ: ${l.w.toFixed(1)} Å`
+                         + (Math.abs(xPos - l.w) > 0.5 ? `<br>Plotted: ${xPos.toFixed(1)} Å (z=${zLines})` : '');
+            annotations.push({
+                x: xPos, y: 1.0, yref: 'paper',
+                text: l.label,
+                showarrow: false, textangle: -90,
+                font: { size: 11, color: col },
+                yanchor: 'bottom', xanchor: 'center',
+                bgcolor: 'rgba(0,0,0,0)',
+                hovertext: detail,
+                captureevents: true,
+                hoverlabel: { bgcolor: 'rgba(15,15,25,0.96)', bordercolor: col,
+                              font: { size: 13, color: '#fff' } },
+            });
+        });
+
+    // Telluric absorption bands — atmospheric, fixed in the observed frame.
+    if (_specLineGroups.has('Tel')) {
+        const col = _SPEC_LINE_COLORS['Tel'];
+        _TELLURIC_BANDS.forEach(b => {
+            const x0   = b.w0 / denom;
+            const x1   = b.w1 / denom;
+            const xMid = (x0 + x1) / 2;
+            shapes.push({
+                type: 'rect', x0, x1, y0: 0, y1: 1, yref: 'paper',
+                fillcolor: 'rgba(184,160,96,0.10)',
+                line: { color: 'rgba(184,160,96,0.35)', width: 1 },
+            });
+            annotations.push({
+                x: xMid, y: 1.0, yref: 'paper',
+                text: `⊕ ${b.label}`,
+                showarrow: false, textangle: -90,
+                font: { size: 11, color: col },
+                yanchor: 'bottom', xanchor: 'center',
+                bgcolor: 'rgba(0,0,0,0)',
+                hovertext: `<b>Telluric ${b.label}</b><br>Atmospheric absorption<br>${b.w0}–${b.w1} Å (observed)`,
+                captureevents: true,
+                hoverlabel: { bgcolor: 'rgba(15,15,25,0.96)', bordercolor: col,
+                              font: { size: 13, color: '#fff' } },
+            });
+        });
+    }
+
+    try {
+        Plotly.relayout(plotDiv, {
+            shapes,
+            annotations,
+            'margin.t': Math.max(_origMarginT, 70),
+        });
+    } catch(e) {}
+}
+
 function loadSpectrumPlot() {
     if (!cleanObjectName) return Promise.resolve();
 
@@ -1655,6 +2295,7 @@ function loadSpectrumPlot() {
     const loadingDiv = document.querySelector('#spectrumLoading');
     
     // Show loading
+    _origMarginT = null;  // reset so the new plot's margin is re-sampled
     if (loadingDiv) loadingDiv.style.display = 'flex';
     if (spectrumContainer) spectrumContainer.innerHTML = '';
     
@@ -1694,6 +2335,9 @@ function loadSpectrumPlot() {
                                 });
                                 
                                 console.log('Spectrum plot rendered successfully');
+                                // Seed trial-z field, then re-apply spectral lines if active
+                                _initSpecRedshiftInput();
+                                if (_specLineGroups.size > 0) _applySpecLines();
                             } catch (error) {
                                 console.error('Error executing spectrum plot scripts:', error);
                                 spectrumContainer.innerHTML = `

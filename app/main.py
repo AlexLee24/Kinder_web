@@ -70,7 +70,6 @@ _BLUEPRINT_STATIC_DIRS = [
     os.path.join(current_dir, 'routes', 'private_area', 'static'),
     os.path.join(current_dir, 'routes', 'planners', 'static'),
     os.path.join(current_dir, 'routes', 'web_api', 'static'),
-    os.path.join(current_dir, 'routes', 'web_log', 'static'),
 ]
 _PHOTO_DIR = os.path.abspath(os.path.join(current_dir, '..', 'photo'))
 

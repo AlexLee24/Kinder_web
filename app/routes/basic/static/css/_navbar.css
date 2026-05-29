@@ -356,6 +356,39 @@ header .container {
     border-color: rgba(255, 255, 255, 0.6);
 }
 
+/* ── Admin separator & Manage dropdown ──────────────────── */
+.nav-admin-sep-item {
+    display: flex !important;
+    align-items: center;
+    height: 100%;
+    padding: 0 4px;
+}
+
+.nav-admin-sep {
+    display: block;
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+}
+
+.manage-btn {
+    gap: 5px;
+    color: rgba(197, 160, 89, 0.85) !important;
+}
+
+.manage-btn:hover {
+    color: var(--kw-accent) !important;
+}
+
+/* Right-aligned dropdown (opens to the left) */
+.nav-right .dropdown .dropdown-content,
+.dropdown-align-right {
+    left: auto !important;
+    right: 0 !important;
+    transform-origin: top right !important;
+}
+
 /* ── Flash messages ──────────────────────────────────────── */
 .flash-message-container {
     position: fixed;
@@ -547,6 +580,9 @@ header .container {
     }
 
     .user-avatar { width: 22px; height: 22px; }
+
+    /* Hide admin separator on mobile (replaced by stacked layout) */
+    .nav-admin-sep-item { display: none !important; }
 
     /* ── Mobile dropdowns — accordion style ── */
     /* Remove the hover bridge pseudo-element */

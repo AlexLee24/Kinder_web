@@ -518,6 +518,13 @@
         grid-template-columns: 1fr;
         gap: 10px;
     }
+    .bottom-right-stack {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .spec-full-width {
+        grid-column: 1 / -1;
+    }
 
     /* General panel adjustments */
     .panel-card {

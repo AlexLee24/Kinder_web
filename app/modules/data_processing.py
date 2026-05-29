@@ -49,7 +49,9 @@ class DataVisualization:
                 font=dict(color='#ddd')
             )
             if legend_right:
-                layout.legend.update(x=1.02, y=1, xanchor='left', yanchor='top')
+                # Only set position when the caller hasn't already placed it
+                if layout.legend.x is None:
+                    layout.legend.update(x=1.02, y=1, xanchor='left', yanchor='top')
 
         axis_style = dict(
             showline=True,
@@ -418,13 +420,13 @@ class DataVisualization:
             template="plotly_white",
             showlegend=True,
             legend=dict(
-                x=1.15,
+                x=1.02,
                 y=1,
                 xanchor='left',
                 yanchor='top'
             ),
             hovermode='closest',
-            margin=dict(l=60, r=150, t=80, b=60)
+            margin=dict(l=60, r=160, t=80, b=60)
         )
         
         # Handle Y-axis range and Absolute Magnitude
@@ -450,6 +452,9 @@ class DataVisualization:
                     showgrid=False,
                     tickformat=".2f"
                 )
+                # Push legend further right so it clears the yaxis2 tick labels
+                layout.legend.update(x=1.18)
+                layout.margin.update(r=220)
                 
                 # Add dummy trace to force yaxis2 to appear
                 traces.append(go.Scatter(
@@ -568,13 +573,15 @@ class DataVisualization:
             yaxis_cfg['range'] = yrange
 
         # Create trace
+        # Emerald green sits in a gap between the spectral-line overlay hues (see
+        # SPECTRUM_TRACE_COLORS) so the data line never blends into a line marker.
         trace = go.Scatter(
             x=wavelengths,
             y=intensities,
             mode='lines',
             name=spectrum_label,
             line=dict(
-                color='rgb(31, 119, 180)',
+                color='#3ddc84',
                 width=1.5
             ),
             hovertemplate=f'<b>{spectrum_label}</b><br>' +
@@ -584,12 +591,14 @@ class DataVisualization:
         )
         
         # Create layout
-        title = spectrum_label
+        title_text = spectrum_label
         if phase is not None:
-            title += f" (Phase: {phase:.1f} days)"
-        
+            title_text += f" (Phase: {phase:.1f} days)"
+
         layout = go.Layout(
-            title=title,
+            # Left-aligned so it never collides with spectral-line labels at the top centre
+            title=dict(text=title_text, x=0.01, xanchor='left',
+                       font=dict(size=13, color='#9aa0a6')),
             xaxis=dict(
                 title=x_label,
                 showgrid=True,
@@ -626,8 +635,11 @@ class DataVisualization:
         traces = []
         all_wls_for_range = []   # collect processed wavelengths for y-range
         all_ints_for_range = []  # collect processed intensities for y-range
-        colors = ['rgb(31, 119, 180)', 'rgb(255, 127, 14)', 'rgb(44, 160, 44)', 
-                  'rgb(214, 39, 40)', 'rgb(148, 103, 189)', 'rgb(140, 86, 75)']
+        # Vivid, but chosen to fall in the HUE GAPS between the 14 spectral-line
+        # overlay colours (object_detail.js _SPEC_LINE_COLORS) so a data trace never
+        # matches a line marker: emerald(130°), indigo(240°), purple(296°), rose(345°),
+        # then a darker emerald and a lighter indigo for the 5th/6th spectra.
+        colors = ['#3ddc84', '#6c7bf0', '#cf6be0', '#f76a87', '#28a866', '#a9b2f7']
         
         for i, (spectrum_id, points) in enumerate(spectrum_groups.items()):
             # Sort by wavelength
@@ -698,7 +710,9 @@ class DataVisualization:
                 yaxis_cfg['range'] = yrange
         
         layout = go.Layout(
-            title="All Available Spectra",
+            # Left-aligned so it never collides with spectral-line labels at the top centre
+            title=dict(text="All Available Spectra", x=0.01, xanchor='left',
+                       font=dict(size=13, color='#9aa0a6')),
             xaxis=dict(
                 title=x_label,
                 showgrid=True,

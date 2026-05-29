@@ -239,6 +239,17 @@
                         <button class="btn-modern phot-btn" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
                         {% endif %}
                         <button class="btn-modern phot-btn" onclick="loadPhotometryPlot()">Refresh</button>
+                        <button class="btn-modern phot-btn" id="knModelBtn" onclick="toggleKnModel()" title="Overlay Kilonova model light curves">KN Model</button>
+                    </div>
+                    <!-- KN model peak-MJD controls (shown when KN Model is active) -->
+                    <div id="knModelControls" style="display:none; align-items:center;">
+                        <span style="white-space:nowrap;">Peak MJD&nbsp;</span>
+                        <div class="kn-slider-wrap">
+                            <input type="range" id="knPeakSlider" min="0" max="1" step="0.1" value="0"
+                                   oninput="onKnSliderInput(this.value)">
+                            <span class="kn-mjd-label" id="knMjdLabel">—</span>
+                        </div>
+                        <span id="knDistModLabel" style="font-size:0.75rem; color:rgba(255,255,255,0.3); white-space:nowrap; margin-left:6px;"></span>
                     </div>
                 </div>
                 <div class="panel-body">
@@ -249,43 +260,113 @@
                         </div>
                         <div id="photometryPlot" style="flex:1; width:100%;"></div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Comments -->
-            {% if visibility.comments %}
-            <div class="panel-card">
-                <div class="panel-header">
-                    <h3>Comments</h3>
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
-                </div>
-                <div class="panel-body">
-                    <div id="addCommentForm" style="display:none; margin-bottom:16px;">
-                        <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-                            <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
-                            <div style="display:flex; gap:8px;">
-                                <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
-                                <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
+                    <!-- Sub-plots row: Color Index + Δ Magnitude -->
+                    <div class="phot-subplots-row" id="photSubplotsRow" style="display:none;">
+                        <!-- Color Index -->
+                        <div class="phot-subplot-card">
+                            <div class="phot-subplot-header">
+                                <span class="phot-subplot-title">Color Index</span>
+                                <div class="subplot-filter-controls">
+                                    <select id="colorFilterA" class="subplot-select" onchange="renderColorIndexPlot()"></select>
+                                    <span class="subplot-op">−</span>
+                                    <select id="colorFilterB" class="subplot-select" onchange="renderColorIndexPlot()"></select>
+                                </div>
                             </div>
+                            <div id="colorIndexPlot" class="phot-subplot-plot"></div>
+                        </div>
+                        <!-- Δ Magnitude -->
+                        <div class="phot-subplot-card">
+                            <div class="phot-subplot-header">
+                                <span class="phot-subplot-title">Δ Magnitude</span>
+                                <div class="subplot-filter-controls">
+                                    <select id="magDeltaFilter" class="subplot-select" onchange="renderMagDeltaPlot()"></select>
+                                    <span class="subplot-op" style="font-size:0.72rem; color:rgba(255,255,255,0.3);">bin</span>
+                                    <select id="magDeltaBin" class="subplot-select" onchange="renderMagDeltaPlot()">
+                                        <option value="0.5">0.5 d</option>
+                                        <option value="1" selected>1 d</option>
+                                        <option value="2">2 d</option>
+                                        <option value="3">3 d</option>
+                                        <option value="7">7 d</option>
+                                        <option value="14">14 d</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="magDeltaPlot" class="phot-subplot-plot"></div>
                         </div>
                     </div>
-                    
-                    <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height: 400px; padding-right:8px;">
-                        <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
-                        <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
-                        <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
-                    </div>
                 </div>
             </div>
-            {% endif %}
 
-            <!-- Spectroscopy -->
+            <!-- Right column: Comments + DETECT stacked -->
+            <div class="bottom-right-stack">
+
+                <!-- Comments -->
+                {% if visibility.comments %}
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>Comments</h3>
+                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
+                    </div>
+                    <div class="panel-body">
+                        <div id="addCommentForm" style="display:none; margin-bottom:16px;">
+                            <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                                <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
+                                <div style="display:flex; gap:8px;">
+                                    <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
+                                    <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height:360px; padding-right:8px;">
+                            <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
+                            <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
+                            <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- DETECT -->
+                {% if visibility.detect %}
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <h3>DETECT</h3>
+                        <div class="action-row" style="gap:5px; flex-wrap:wrap;">
+                            <div style="display:flex; border:1px solid rgba(255,255,255,0.15); border-radius:5px; overflow:hidden;">
+                                <button id="detectTabData" onclick="switchDetectTab('data')"
+                                        style="background:rgba(0,245,212,0.15); border:none; color:#00f5d4;
+                                               padding:2px 10px; cursor:pointer; font-size:0.77rem; font-weight:600;">Data</button>
+                                <button id="detectTabChart" onclick="switchDetectTab('chart')"
+                                        style="background:transparent; border:none; color:#666;
+                                               padding:2px 10px; cursor:pointer; font-size:0.77rem;">Chart</button>
+                            </div>
+                            <button class="btn-modern" style="padding:2px 8px; font-size:0.78rem;" onclick="forceDetectRun()">Run/Refresh</button>
+                            <button id="detectImgGenBtn" onclick="generateDetectImages()"
+                                    style="background:rgba(0,245,212,0.06); border:1px solid rgba(0,245,212,0.2);
+                                           color:#00f5d4; border-radius:4px; padding:2px 8px; cursor:pointer;
+                                           font-size:0.78rem;">Generate Chart</button>
+                        </div>
+                    </div>
+                    <div class="panel-body" id="detectBody"
+                         style="display:flex; flex-direction:column; gap:10px; color:#888;
+                                overflow-y:auto; max-height:360px; padding-right:8px;">
+                        <div style="display:flex; justify-content:center; align-items:center; height:100%;">
+                            <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+            </div><!-- end bottom-right-stack -->
+
+            <!-- Spectroscopy — full width row -->
             {% if visibility.spectroscopy %}
-            <div class="panel-card">
-                <div class="panel-header">
-                    <h3>Spectroscopy</h3>
-                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div class="panel-card spec-full-width">
+                <div class="panel-header spec-panel-header">
+                    <div class="spec-header-top">
+                        <h3>Spectroscopy</h3>
                         <div class="phot-toggles">
                             <label class="phot-toggle-label">
                                 <input type="checkbox" id="specRestFrame" checked onchange="onSpecToggle()">
@@ -297,7 +378,7 @@
                             </label>
                             <label class="phot-toggle-label">
                                 <input type="checkbox" id="specStackOffset" onchange="onSpecToggle()">
-                                <span class="phot-tip" data-tip="Add a vertical offset between spectra for easier comparison (list view only)">Stack Offset</span>
+                                <span class="phot-tip" data-tip="Add a vertical offset between spectra">Stack Offset</span>
                             </label>
                         </div>
                         <div class="action-row">
@@ -306,46 +387,38 @@
                             <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
                         </div>
                     </div>
+                    <!-- Spectral line group selectors — always visible -->
+                    <div class="spec-lines-groups" id="specLinesGroups" style="display:flex;">
+                        <span class="spec-lines-label">Lines:</span>
+                        <button class="spec-line-btn" data-group="H"   onclick="toggleSpecLineGroup('H')"   style="--clr:#4a9eff; color:#4a9eff; border-color:#4a9eff44;">H</button>
+                        <button class="spec-line-btn" data-group="He"  onclick="toggleSpecLineGroup('He')"  style="--clr:#ffd700; color:#ffd700; border-color:#ffd70044;">He</button>
+                        <button class="spec-line-btn" data-group="Ca"  onclick="toggleSpecLineGroup('Ca')"  style="--clr:#bf7fff; color:#bf7fff; border-color:#bf7fff44;">Ca</button>
+                        <button class="spec-line-btn" data-group="Si"  onclick="toggleSpecLineGroup('Si')"  style="--clr:#ff9060; color:#ff9060; border-color:#ff906044;">Si</button>
+                        <button class="spec-line-btn" data-group="O"   onclick="toggleSpecLineGroup('O')"   style="--clr:#00e5ff; color:#00e5ff; border-color:#00e5ff44;">O</button>
+                        <button class="spec-line-btn" data-group="Na"  onclick="toggleSpecLineGroup('Na')"  style="--clr:#adff2f; color:#adff2f; border-color:#adff2f44;">Na</button>
+                        <button class="spec-line-btn" data-group="Fe"  onclick="toggleSpecLineGroup('Fe')"  style="--clr:#cd853f; color:#cd853f; border-color:#cd853f44;">Fe</button>
+                        <button class="spec-line-btn" data-group="S"   onclick="toggleSpecLineGroup('S')"   style="--clr:#7fff00; color:#7fff00; border-color:#7fff0044;">S</button>
+                        <button class="spec-line-btn" data-group="C"   onclick="toggleSpecLineGroup('C')"   style="--clr:#ff6347; color:#ff6347; border-color:#ff634744;">C</button>
+                        <button class="spec-line-btn" data-group="Mg"  onclick="toggleSpecLineGroup('Mg')"  style="--clr:#40e0d0; color:#40e0d0; border-color:#40e0d044;">Mg</button>
+                        <button class="spec-line-btn" data-group="N"   onclick="toggleSpecLineGroup('N')"   style="--clr:#ff5ec7; color:#ff5ec7; border-color:#ff5ec744;">N</button>
+                        <button class="spec-line-btn" data-group="Ti"  onclick="toggleSpecLineGroup('Ti')"  style="--clr:#76d7c4; color:#76d7c4; border-color:#76d7c444;">Ti</button>
+                        <button class="spec-line-btn" data-group="Ba"  onclick="toggleSpecLineGroup('Ba')"  style="--clr:#f5b700; color:#f5b700; border-color:#f5b70044;">Ba</button>
+                        <button class="spec-line-btn" data-group="Tel" onclick="toggleSpecLineGroup('Tel')" style="--clr:#b8a060; color:#b8a060; border-color:#b8a06044;">Telluric</button>
+                        <span class="spec-z-control">
+                            <label for="specLineRedshift">z</label>
+                            <input type="number" id="specLineRedshift" step="0.001" min="0"
+                                   oninput="onSpecRedshiftInput(this.value)"
+                                   title="Temporary redshift for spectral-line placement (does not change the object's stored z)">
+                            <button type="button" class="spec-z-reset" onclick="resetSpecRedshift()" title="Reset to object redshift">↺</button>
+                        </span>
+                    </div>
                 </div>
                 <div class="panel-body">
-                    <div style="min-height:250px; display:flex; position:relative;">
+                    <div style="min-height:380px; display:flex; position:relative;">
                         <div id="spectrumLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Mapping...
                         </div>
                         <div id="spectrumPlot" style="flex:1; width:100%;"></div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- DETECT -->
-            {% if visibility.detect %}
-            <div class="panel-card">
-                <div class="panel-header">
-                    <h3>DETECT</h3>
-                    <div class="action-row" style="gap:5px; flex-wrap:wrap;">
-                        <!-- Tab toggle -->
-                        <div style="display:flex; border:1px solid rgba(255,255,255,0.15); border-radius:5px; overflow:hidden;">
-                            <button id="detectTabData" onclick="switchDetectTab('data')"
-                                    style="background:rgba(0,245,212,0.15); border:none; color:#00f5d4;
-                                           padding:2px 10px; cursor:pointer; font-size:0.77rem; font-weight:600;">Data</button>
-                            <button id="detectTabChart" onclick="switchDetectTab('chart')"
-                                    style="background:transparent; border:none; color:#666;
-                                           padding:2px 10px; cursor:pointer; font-size:0.77rem;">Chart</button>
-                        </div>
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.78rem;" onclick="forceDetectRun()">Run/Refresh</button>
-                        <button id="detectImgGenBtn" onclick="generateDetectImages()"
-                                style="background:rgba(0,245,212,0.06); border:1px solid rgba(0,245,212,0.2);
-                                       color:#00f5d4; border-radius:4px; padding:2px 8px; cursor:pointer;
-                                       font-size:0.78rem;">Generate Chart</button>
-                    </div>
-                </div>
-                <!-- Shared body: Data tab and Chart tab both render here -->
-                <div class="panel-body" id="detectBody"
-                     style="display:flex; flex-direction:column; gap:10px; color:#888;
-                            overflow-y:auto; max-height:400px; padding-right:8px;">
-                    <div style="display:flex; justify-content:center; align-items:center; height:100%;">
-                        <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
                     </div>
                 </div>
             </div>

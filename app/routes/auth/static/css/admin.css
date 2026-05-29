@@ -35,15 +35,152 @@ body {
     --shadow:   var(--kw-shadow);
 }
 
-/* ── Container ── */
-.admin-container {
-    max-width: 1300px;
-    margin: 110px auto 60px;
+/* ================================================================
+   Admin Hub Nav (shared across admin, db-status, web-log)
+   ================================================================ */
+.admin-hub-nav {
+    position: sticky;
+    top: 72px;
+    z-index: 90;
+    background: rgba(8,10,24,0.88);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 0 28px;
+}
+.admin-hub-inner {
+    max-width: 1340px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 44px;
+}
+.hub-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(197,160,89,0.8);
+    margin-right: 12px;
+    white-space: nowrap;
+}
+.hub-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.84rem;
+    font-weight: 500;
+    color: rgba(255,255,255,0.65);
+    text-decoration: none;
+    transition: background .2s, color .2s;
+}
+.hub-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.hub-link.active { background: rgba(197,160,89,0.18); color: #C5A059; }
+
+/* ================================================================
+   Admin Layout — Sidebar + Main
+   ================================================================ */
+.admin-layout {
+    display: flex;
+    max-width: 1340px;
+    margin: 28px auto 60px;
     padding: 0 24px;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+/* ── Sidebar ── */
+.admin-sidebar {
+    width: 210px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    backdrop-filter: blur(16px) saturate(180%);
+    border-radius: 16px;
+    padding: 16px 10px;
+    position: sticky;
+    top: 130px;
+}
+.sidebar-section-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    padding: 8px 12px 4px;
+    margin-top: 6px;
+}
+.sidebar-section-label:first-child { margin-top: 0; }
+.tab-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.65);
+    font-size: 0.88rem;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    position: relative;
+}
+.tab-button:hover { background: rgba(255,255,255,0.07); color: #fff; }
+.tab-button.active { background: rgba(197,160,89,0.16); color: #C5A059; font-weight: 500; }
+.tab-button svg { opacity: 0.7; flex-shrink: 0; }
+.tab-button.active svg { opacity: 1; }
+.tab-count, .tab-badge {
+    margin-left: auto;
+    font-size: 0.75rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.tab-count { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); }
+.tab-badge { background: rgba(255,123,114,0.2); color: #ff9f98; }
+
+/* ── Main Content ── */
+.admin-main {
+    flex: 1;
+    min-width: 0;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Section header */
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.section-title-block h2 {
+    font-size: 1.4rem;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    color: #fff;
+    margin: 0 0 2px;
+}
+.section-title-block p { font-size: 0.83rem; color: var(--muted); margin: 0; }
+.section-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ── Overview Stats Grid ── */
+.overview-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
 }
 
 /* ================================================================
-   Header
+   Header (legacy, keep for compatibility)
    ================================================================ */
 .admin-header {
     display: flex;
@@ -899,4 +1036,33 @@ body {
 }
 .source-search-item:hover {
     background: rgba(70, 255, 175, 0.12);
+}
+
+/* ================================================================
+   Responsive — Sidebar Collapse on Mobile
+   ================================================================ */
+@media (max-width: 860px) {
+    .admin-layout {
+        flex-direction: column;
+        padding: 0 14px;
+    }
+    .admin-sidebar {
+        width: 100%;
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 10px;
+    }
+    .sidebar-section-label { display: none; }
+    .tab-button {
+        flex: 0 0 auto;
+        padding: 7px 12px;
+        width: auto;
+    }
+    .tab-count, .tab-badge { display: inline; }
+}
+@media (max-width: 520px) {
+    .admin-hub-nav { padding: 0 14px; }
+    .hub-label { display: none; }
 }

@@ -24,16 +24,10 @@ const ICONS = {
 document.addEventListener('DOMContentLoaded', function() {
     loadUsersData();
     
-    // Restore active tab if exists
-    const activeTab = sessionStorage.getItem('adminActiveTab');
-    if (activeTab) {
-        showTab(activeTab);
-    }
-    
     // Auto-check consistency when page loads
     setTimeout(checkDataConsistency, 1000);
     
-    // Load GREATLab permissions for settings tab
+    // Load GREATLab permissions for access tab
     loadPrivatePagePerms();
 
     // Load default source permissions
