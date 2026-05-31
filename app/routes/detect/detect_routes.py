@@ -1,15 +1,256 @@
 import logging
+import os
+from collections import OrderedDict
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
 
 logger = logging.getLogger(__name__)
-from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host, update_object_status
+from modules.database.transient import (get_cross_match_results, update_cross_match_flag, get_available_dates,
+    get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host,
+    update_tns_redshift, unset_cross_match_host, update_object_status, get_followup_objects_for_tracking,
+    get_photometry_batch, get_object_details_batch, get_latest_photometry_for_names)
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
 import io
+import urllib.parse
+import time
+import threading
 
 from flask import Blueprint
 detect_bp = Blueprint('detect', __name__, template_folder='templates', static_folder='static')
+
+# Lightweight in-memory cache for DETECT card lightcurves.
+_DETECT_LC_CACHE = OrderedDict()
+_DETECT_LC_CACHE_MAX_SIZE = int(os.getenv('DETECT_LC_CACHE_MAX_SIZE', '300'))
+
+# In-memory page cache for DETECT results by date.
+_DETECT_PAGE_CACHE = OrderedDict()
+_DETECT_PAGE_BUILDING = set()
+_DETECT_PAGE_CACHE_LOCK = threading.Lock()
+_DETECT_PAGE_CACHE_TTL_SEC = int(os.getenv('DETECT_PAGE_CACHE_TTL_SEC', '600'))
+_DETECT_PAGE_CACHE_MAX_SIZE = int(os.getenv('DETECT_PAGE_CACHE_MAX_SIZE', '8'))
+_DETECT_PAGE_PREWARM_DAYS = int(os.getenv('DETECT_PAGE_PREWARM_DAYS', '3'))
+_DETECT_PAGE_CACHE_STATS = {'hits': 0, 'misses': 0, 'evictions': 0}
+_DETECT_LC_CACHE_STATS = {'hits': 0, 'misses': 0, 'evictions': 0}
+
+
+def _cache_hit_rate(stats):
+    total = stats['hits'] + stats['misses']
+    return (stats['hits'] / total) if total else 0.0
+
+
+def _log_detect_cache_stats(context, selected_date=None, target_name=None):
+    with _DETECT_PAGE_CACHE_LOCK:
+        logger.info(
+            '[DETECT-CACHE] %s date=%s target=%s page(hit=%.1f%% size=%d/%d evict=%d) lc(hit=%.1f%% size=%d/%d evict=%d)',
+            context,
+            selected_date or '-',
+            target_name or '-',
+            100.0 * _cache_hit_rate(_DETECT_PAGE_CACHE_STATS),
+            len(_DETECT_PAGE_CACHE),
+            _DETECT_PAGE_CACHE_MAX_SIZE,
+            _DETECT_PAGE_CACHE_STATS['evictions'],
+            100.0 * _cache_hit_rate(_DETECT_LC_CACHE_STATS),
+            len(_DETECT_LC_CACHE),
+            _DETECT_LC_CACHE_MAX_SIZE,
+            _DETECT_LC_CACHE_STATS['evictions'],
+        )
+
+
+def _get_detect_page_cache(selected_date):
+    with _DETECT_PAGE_CACHE_LOCK:
+        entry = _DETECT_PAGE_CACHE.get(selected_date)
+        if entry is not None:
+            _DETECT_PAGE_CACHE.move_to_end(selected_date)
+            _DETECT_PAGE_CACHE_STATS['hits'] += 1
+        else:
+            _DETECT_PAGE_CACHE_STATS['misses'] += 1
+        return entry
+
+
+def _is_detect_page_cache_fresh(entry):
+    if not entry:
+        return False
+    return (time.time() - entry.get('built_at', 0)) < _DETECT_PAGE_CACHE_TTL_SEC
+
+
+def _set_detect_page_cache(selected_date, payload):
+    with _DETECT_PAGE_CACHE_LOCK:
+        _DETECT_PAGE_CACHE[selected_date] = {
+            'payload': payload,
+            'built_at': time.time(),
+        }
+        _DETECT_PAGE_CACHE.move_to_end(selected_date)
+        while len(_DETECT_PAGE_CACHE) > _DETECT_PAGE_CACHE_MAX_SIZE:
+            evicted_key, _ = _DETECT_PAGE_CACHE.popitem(last=False)
+            _DETECT_PAGE_CACHE_STATS['evictions'] += 1
+            logger.info('[DETECT-CACHE] page LRU evicted date=%s size=%d/%d', evicted_key, len(_DETECT_PAGE_CACHE), _DETECT_PAGE_CACHE_MAX_SIZE)
+
+
+def _detect_page_is_building(selected_date):
+    with _DETECT_PAGE_CACHE_LOCK:
+        return selected_date in _DETECT_PAGE_BUILDING
+
+
+def _detect_page_mark_building(selected_date):
+    with _DETECT_PAGE_CACHE_LOCK:
+        if selected_date in _DETECT_PAGE_BUILDING:
+            return False
+        _DETECT_PAGE_BUILDING.add(selected_date)
+        return True
+
+
+def _detect_page_unmark_building(selected_date):
+    with _DETECT_PAGE_CACHE_LOCK:
+        _DETECT_PAGE_BUILDING.discard(selected_date)
+
+
+def _start_detect_page_build(selected_date, app_obj=None, force=False):
+    if not selected_date:
+        return
+    if not force:
+        entry = _get_detect_page_cache(selected_date)
+        if entry and _is_detect_page_cache_fresh(entry):
+            return
+    if not _detect_page_mark_building(selected_date):
+        return
+
+    if app_obj is None:
+        from flask import current_app
+        app_obj = current_app._get_current_object()
+
+    def _runner():
+        try:
+            with app_obj.app_context():
+                payload = _assemble_detect_payload(selected_date)
+                _set_detect_page_cache(selected_date, payload)
+                _log_detect_cache_stats('page-build-complete', selected_date=selected_date)
+        except Exception as e:
+            logger.error('Background DETECT cache build failed for %s: %s', selected_date, e)
+        finally:
+            _detect_page_unmark_building(selected_date)
+
+    threading.Thread(target=_runner, daemon=True).start()
+
+
+def _get_detect_page_payload_swr(selected_date):
+    entry = _get_detect_page_cache(selected_date)
+    if not entry:
+        return None, False
+    payload = entry.get('payload')
+    is_fresh = _is_detect_page_cache_fresh(entry)
+    if not is_fresh:
+        _start_detect_page_build(selected_date)
+    return payload, is_fresh
+
+
+def _get_detect_lc_cache(target_name):
+    with _DETECT_PAGE_CACHE_LOCK:
+        payload = _DETECT_LC_CACHE.get(target_name)
+        if payload is not None:
+            _DETECT_LC_CACHE.move_to_end(target_name)
+            _DETECT_LC_CACHE_STATS['hits'] += 1
+        else:
+            _DETECT_LC_CACHE_STATS['misses'] += 1
+        return payload
+
+
+def _set_detect_lc_cache(target_name, payload):
+    with _DETECT_PAGE_CACHE_LOCK:
+        _DETECT_LC_CACHE[target_name] = payload
+        _DETECT_LC_CACHE.move_to_end(target_name)
+        while len(_DETECT_LC_CACHE) > _DETECT_LC_CACHE_MAX_SIZE:
+            evicted_key, _ = _DETECT_LC_CACHE.popitem(last=False)
+            _DETECT_LC_CACHE_STATS['evictions'] += 1
+            logger.info('[DETECT-CACHE] LC LRU evicted target=%s size=%d/%d', evicted_key, len(_DETECT_LC_CACHE), _DETECT_LC_CACHE_MAX_SIZE)
+
+
+def prewarm_detect_page_cache(prewarm_days=None, refresh_latest=True, force_latest=True, app_obj=None):
+    """Prewarm DETECT page cache for the latest N dates.
+
+    Safe to call from a scheduler or manually. Starts background builds only.
+    """
+    if app_obj is None:
+        from flask import current_app
+        app_obj = current_app._get_current_object()
+
+    prewarm_days = _DETECT_PAGE_PREWARM_DAYS if prewarm_days is None else max(0, int(prewarm_days))
+
+    def _runner():
+        with app_obj.app_context():
+            available_dates = get_available_dates() or []
+            if not available_dates:
+                logger.info('[DETECT-PREWARM] no available dates')
+                return
+
+            queued = []
+            latest_date = available_dates[0]
+
+            if refresh_latest and latest_date:
+                _start_detect_page_build(latest_date, app_obj=app_obj, force=force_latest)
+                queued.append(latest_date)
+
+            for date in available_dates[:prewarm_days]:
+                if refresh_latest and date == latest_date:
+                    continue
+                entry = _get_detect_page_cache(date)
+                if entry and _is_detect_page_cache_fresh(entry):
+                    continue
+                _start_detect_page_build(date, app_obj=app_obj)
+                queued.append(date)
+
+            logger.info(
+                '[DETECT-PREWARM] queued=%s latest=%s prewarm_days=%s page_cache_size=%s lc_cache_size=%s',
+                queued,
+                latest_date,
+                prewarm_days,
+                len(_DETECT_PAGE_CACHE),
+                len(_DETECT_LC_CACHE),
+            )
+            _log_detect_cache_stats('prewarm', selected_date=latest_date)
+
+    threading.Thread(target=_runner, daemon=True).start()
+    return {'success': True, 'prewarm_days': prewarm_days, 'refresh_latest': refresh_latest, 'force_latest': force_latest}
+
+
+def _parse_float_or_none(value):
+    try:
+        if value is None or value == '':
+            return None
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _build_detect_lc_payload(target_name):
+    details = tns_object_db.get_object_details(target_name) or {}
+    photometry = get_photometry_batch([target_name]).get(target_name, [])
+
+    if not photometry:
+        return {
+            'success': True,
+            'plot_json': None,
+            'data_count': 0,
+            'message': 'No photometry data available'
+        }
+
+    z = _parse_float_or_none(details.get('redshift'))
+    ra = _parse_float_or_none(details.get('ra'))
+    dec = _parse_float_or_none(details.get('declination'))
+
+    plot_json = DataVisualization.create_photometry_plot_from_db(
+        photometry,
+        z,
+        ra,
+        dec,
+        as_json=True,
+    )
+
+    return {
+        'success': True,
+        'plot_json': plot_json,
+        'data_count': len(photometry),
+    }
 @detect_bp.route('/detect_image/<target_name>')
 def detect_image(target_name):
     if 'user' not in session:
@@ -157,55 +398,62 @@ def detect_results():
     # If no date selected, render the homepage
     if not selected_date:
         daily_counts = get_daily_match_counts()
+        # Prefetch latest date in background to keep first detailed load responsive.
+        if latest_date:
+            cached_latest, _ = _get_detect_page_payload_swr(latest_date)
+            if cached_latest is None and not _detect_page_is_building(latest_date):
+                _start_detect_page_build(latest_date)
         return render_template('detect_home.html',
                                latest_date=latest_date,
                                daily_counts=daily_counts,
                                current_path='/detect')
 
+    payload, is_fresh = _get_detect_page_payload_swr(selected_date)
+    if payload:
+        logger.info('[DETECT] serving cached payload date=%s fresh=%s', selected_date, is_fresh)
+        return render_template('detect_results.html', **payload)
+
+    if not _detect_page_is_building(selected_date):
+        _start_detect_page_build(selected_date)
+
+    # Fast fallback page while heavy payload builds in background.
+    return render_template('detect_results_loading.html',
+                           selected_date=selected_date,
+                           available_dates=available_dates,
+                           current_path='/detect')
+
+
+def _assemble_detect_payload(selected_date):
+    t0 = time.perf_counter()
+    available_dates = get_available_dates()
     results = get_cross_match_results(date=selected_date)
-    
-    # Group results by target
+    t_query = time.perf_counter()
+
+    # Group results by target, parse match_data
     results_by_target = {}
     for row in results:
-        # Parse match_data if needed
         if isinstance(row.get('match_data'), str):
             try:
                 row['match_data'] = json.loads(row['match_data'])
-            except:
+            except Exception:
                 pass
-        
         t_name = row.get('target_name')
-        if not t_name: continue
-        
-        if t_name not in results_by_target:
-            results_by_target[t_name] = []
-        results_by_target[t_name].append(row)
-        
+        if not t_name:
+            continue
+        results_by_target.setdefault(t_name, []).append(row)
+
+    # Keep payload build light: object details + latest photometry point per target.
+    all_names = list(results_by_target.keys())
+    details_batch = get_object_details_batch(all_names)
+    latest_phot = get_latest_photometry_for_names(all_names)
+    t_batch = time.perf_counter()
+
     final_target_list = []
-    target_cache = {} # Cache to avoid repeated DB calls for same target
-    
     for target_name, matches in results_by_target.items():
-        # Sort matches by separation
         matches.sort(key=lambda x: float(x.get('separation_arcsec', 9999)))
-        
-        # Fetch common data (photometry, tns_details)
-        if target_name not in target_cache:
-            photometry = tns_object_db.get_photometry(target_name)
-            for point in photometry:
-                if 'created_at' in point:
-                    point['created_at'] = str(point['created_at'])
-                if 'updated_at' in point:
-                    point['updated_at'] = str(point['updated_at'])
-            
-            tns_details = tns_object_db.get_object_details(target_name)
-            target_cache[target_name] = {
-                'photometry': photometry,
-                'tns_details': tns_details
-            }
-        
-        photometry = target_cache[target_name]['photometry']
-        tns_details = target_cache[target_name]['tns_details']
-        
+        latest_point = latest_phot.get(target_name)
+        tns_details = details_batch.get(target_name)
+
         processed_matches = []
         for row in matches:
             match_data = row.get('match_data') or {}
@@ -214,8 +462,7 @@ def detect_results():
                     match_data = json.loads(match_data)
                 except Exception:
                     match_data = {}
-            
-            # Normalize TNS Info
+
             if tns_details:
                 row['tns_info'] = {
                     'discoverydate': tns_details.get('discoverydate', 'N/A'),
@@ -230,8 +477,7 @@ def detect_results():
                     'ra': match_data.get('tns_ra', 'N/A'),
                     'dec': match_data.get('tns_dec', 'N/A')
                 }
-            
-            # Redshift: DB column first, then match_data JSON fallback
+
             redshift = None
             db_z = row.get('z')
             if db_z is not None:
@@ -249,160 +495,242 @@ def detect_results():
                         if redshift is not None:
                             break
             row['z'] = redshift
-            
-            # RA/Dec for plot (TNS coords preferred)
-            ra = row['tns_info']['ra']
-            dec = row['tns_info']['dec']
+
+            abs_mag = match_data.get('brightest_abs_mag') or match_data.get('latest_abs_mag')
             try:
-                ra = float(ra) if ra != 'N/A' else None
-                dec = float(dec) if dec != 'N/A' else None
-            except:
-                ra, dec = None, None
+                abs_mag = float(abs_mag) if abs_mag is not None else None
+            except (ValueError, TypeError):
+                abs_mag = None
+            row['abs_mag'] = abs_mag
 
-            # Absolute Magnitude Calculation (per match) using latest point
-            calc_z = redshift
-            calculated_abs_mag = None
-            
-            has_mag_data = bool(photometry) or (tns_details and tns_details.get('discoverymag') is not None)
-            
-            import sys
-            import os
-            is_debug = os.getenv('DEBUG', 'False').lower() in ('true', '1')
-            if is_debug:
-                print(f"[DEBUG] Target {target_name} match: z={calc_z}, photometry_len={len(photometry) if photometry else 0}, has_tns_mag={tns_details.get('discoverymag') if tns_details else None}, RA={ra}, DEC={dec}", file=sys.stderr, flush=True)
-                logger.info(f"[DEBUG-LOGGER] Target {target_name} match: z={calc_z}, photometry_len={len(photometry) if photometry else 0}, has_tns_mag={tns_details.get('discoverymag') if tns_details else None}, RA={ra}, DEC={dec}")
-
-            if calc_z is not None and has_mag_data and ra is not None and dec is not None:
-                try:
-                    latest_mag = None
-                    filter_name = 'V'
-                    
-                    if photometry:
-                        for point in reversed(photometry):
-                            mag = point.get('magnitude')
-                            if mag is not None:
-                                try:
-                                    latest_mag = float(mag)
-                                    filter_name = point.get('filter', 'V')
-                                    break
-                                except:
-                                    continue
-                        if is_debug:
-                            print(f"[DEBUG] Target {target_name} using photometry latest_mag: {latest_mag} filter: {filter_name}", file=sys.stderr, flush=True)
-                    else:
-                        try:
-                            latest_mag = float(tns_details.get('discoverymag'))
-                            filter_name = tns_details.get('filter', 'V')
-                        except:
-                            latest_mag = None
-                        if is_debug:
-                            print(f"[DEBUG] Target {target_name} using TNS discoverymag: {latest_mag} filter: {filter_name}", file=sys.stderr, flush=True)
-
-                    if latest_mag is not None:
-                        extinction = get_extinction(ra, dec, filter_name)
-                        if hasattr(extinction, 'item'):
-                            extinction = extinction.item()
-                        calculated_abs_mag = apm_to_abm(latest_mag, calc_z, extinction)
-                        if is_debug:
-                            print(f"[DEBUG] Target {target_name} calc abs_mag: ext={extinction}, result={calculated_abs_mag}", file=sys.stderr, flush=True)
-                            logger.info(f"[DEBUG-LOGGER] Target {target_name} calc abs_mag: ext={extinction}, result={calculated_abs_mag}")
-                        if isinstance(calculated_abs_mag, dict):
-                            if is_debug:
-                                print(f"[DEBUG] Target {target_name} calc error: {calculated_abs_mag}", file=sys.stderr, flush=True)
-                            calculated_abs_mag = None
-                except Exception as e:
-                    logger.error('Error calculating abs mag for %s: %s', target_name, e)
-                    if is_debug:
-                        print(f"[DEBUG] Error calculating abs mag: {e}", file=sys.stderr, flush=True)
-            else:
-                if is_debug:
-                    print(f"[DEBUG] Target {target_name} skipped calc. Details: z={calc_z}, has_mag_data={has_mag_data}, ra={ra}, dec={dec}", file=sys.stderr, flush=True)
-                    logger.info(f"[DEBUG-LOGGER] Target {target_name} skipped calc.")
-            
-            if calculated_abs_mag is not None:
-                row['abs_mag'] = calculated_abs_mag
-                if is_debug:
-                    print(f"[DEBUG] Target {target_name} SET final abs_mag: {calculated_abs_mag}", file=sys.stderr, flush=True)
-            else:
-                abs_mag = match_data.get('brightest_abs_mag') # fallback or empty
-                if not abs_mag:
-                    abs_mag = match_data.get('latest_abs_mag') # if it exists
-                try:
-                    abs_mag = float(abs_mag) if abs_mag is not None else None
-                except (ValueError, TypeError):
-                    abs_mag = None
-                row['abs_mag'] = abs_mag
-                if is_debug:
-                    print(f"[DEBUG] Target {target_name} FALLBACK abs_mag: {abs_mag}", file=sys.stderr, flush=True)
-                
             row['is_flagged'] = bool(row.get('flag'))
             row['flag_id'] = row.get('id')
             row['is_host'] = bool(row.get('is_host'))
             processed_matches.append(row)
-        
-        # Create Target Object
+
         if not processed_matches:
             continue
-            
+
         best_match = processed_matches[0]
-        
-        # Generate plot for the target (using best match's Z for reference)
-        plot_json = None
+
+        # Compute one fresh abs-mag for best match only.
         try:
-            ra = best_match['tns_info']['ra']
-            dec = best_match['tns_info']['dec']
-            ra = float(ra) if ra != 'N/A' else None
-            dec = float(dec) if dec != 'N/A' else None
-            
-            plot_json = DataVisualization.create_photometry_plot_from_db(
-                photometry, best_match.get('z'), ra, dec, as_json=True
-            )
+            bm_ra = best_match['tns_info'].get('ra')
+            bm_dec = best_match['tns_info'].get('dec')
+            bm_ra = float(bm_ra) if bm_ra != 'N/A' else None
+            bm_dec = float(bm_dec) if bm_dec != 'N/A' else None
+            bm_z = best_match.get('z')
+
+            latest_mag = None
+            filter_name = 'V'
+            if latest_point and latest_point.get('magnitude') is not None:
+                latest_mag = float(latest_point.get('magnitude'))
+                filter_name = latest_point.get('filter', 'V')
+            elif tns_details and tns_details.get('discoverymag') is not None:
+                latest_mag = float(tns_details.get('discoverymag'))
+                filter_name = tns_details.get('filter', 'V')
+
+            if bm_z is not None and latest_mag is not None and bm_ra is not None and bm_dec is not None:
+                ext = get_extinction(bm_ra, bm_dec, filter_name)
+                if hasattr(ext, 'item'):
+                    ext = ext.item()
+                fresh_abs_mag = apm_to_abm(latest_mag, float(bm_z), ext)
+                if not isinstance(fresh_abs_mag, dict):
+                    best_match['abs_mag'] = fresh_abs_mag
         except Exception as e:
-            logger.error('Error generating plot for %s: %s', target_name, e)
-        
+            logger.error('Best-match abs_mag calculation error for %s: %s', target_name, e)
+
         target_has_host = any(m.get('is_host') for m in processed_matches)
-        # Get object status from already-cached tns_details (fetched once per target)
         raw_status = (tns_details or {}).get('status', '') or ''
-        # Normalise DB values ('Follow-up', 'Finish', 'Inbox', 'Snoozed') → short keys
-        _NORM = {'Follow-up': 'followup', 'Finish': 'finished',
-                 'Inbox': 'object', 'Snoozed': 'snoozed'}
+        _NORM = {'Follow-up': 'followup', 'Finish': 'finished', 'Inbox': 'object', 'Snoozed': 'snoozed'}
         obj_status = _NORM.get(raw_status, raw_status.lower() or 'object')
 
         target_obj = {
             'target_name': target_name,
             'id': best_match.get('id'),
             'tns_info': best_match.get('tns_info'),
-            'plot_json': plot_json,
+            'plot_json': None,
             'matches': processed_matches,
             'best_match': best_match,
             'is_flagged': best_match.get('is_flagged'),
             'flag_id': best_match.get('flag_id'),
             'is_host': target_has_host,
-            'target_is_host': target_has_host,  # Alias for template consistency
+            'target_is_host': target_has_host,
             'obj_status': obj_status,
         }
         final_target_list.append(target_obj)
-    
-    # Sort: confirmed host targets first, then alphabetically
+
+    t_build = time.perf_counter()
     final_target_list.sort(key=lambda x: (not x.get('is_host', False), x['target_name']))
-    
-    # Summary results (best match from each target, enriched with target-level is_host)
+
     summary_results = []
     for t in final_target_list:
         row = dict(t['best_match'])
         row['target_is_host'] = t.get('is_host', False)
-        row['obj_status']     = t.get('obj_status', 'object')
+        row['obj_status'] = t.get('obj_status', 'object')
         summary_results.append(row)
-    
+
     daily_counts = get_daily_match_counts()
-        
-    return render_template('detect_results.html', 
-                         results=final_target_list, 
-                         summary_results=summary_results,
-                         current_path='/detect',
-                         available_dates=available_dates,
-                         daily_counts=daily_counts,
-                         selected_date=selected_date)
+    t_counts = time.perf_counter()
+
+    logger.info(
+        '[DETECT-BUILD] date=%s results=%d targets=%d timings: query=%.3fs batch=%.3fs build=%.3fs counts=%.3fs total=%.3fs',
+        selected_date,
+        len(results),
+        len(final_target_list),
+        t_query - t0,
+        t_batch - t_query,
+        t_build - t_batch,
+        t_counts - t_build,
+        t_counts - t0,
+    )
+
+    return {
+        'results': final_target_list,
+        'summary_results': summary_results,
+        'current_path': '/detect',
+        'available_dates': available_dates,
+        'daily_counts': daily_counts,
+        'selected_date': selected_date,
+    }
+
+
+@detect_bp.route('/api/detect/cache_status')
+def detect_cache_status_api():
+    if 'user' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    selected_date = request.args.get('detect_results', '').strip()
+    if not selected_date:
+        return jsonify({'success': False, 'message': 'Missing detect_results date'}), 400
+
+    payload, fresh = _get_detect_page_payload_swr(selected_date)
+    building = _detect_page_is_building(selected_date)
+
+    if payload is None and not building:
+        _start_detect_page_build(selected_date)
+        building = True
+
+    _log_detect_cache_stats('cache-status', selected_date=selected_date)
+
+    return jsonify({
+        'success': True,
+        'ready': payload is not None,
+        'fresh': fresh,
+        'building': building,
+    })
+
+
+@detect_bp.route('/api/detect/lightcurve/<path:target_name>')
+def detect_lightcurve_api(target_name):
+    if 'user' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    target_name = urllib.parse.unquote(target_name or '').strip()
+    if not target_name:
+        return jsonify({'success': False, 'message': 'Missing target name'}), 400
+
+    force_refresh = request.args.get('refresh', '0').lower() in ('1', 'true', 'yes')
+
+    cached_lc = _get_detect_lc_cache(target_name)
+    if not force_refresh and cached_lc is not None:
+        cached = dict(cached_lc)
+        cached['cached'] = True
+        _log_detect_cache_stats('lc-hit', target_name=target_name)
+        return jsonify(cached)
+
+    _log_detect_cache_stats('lc-miss', target_name=target_name)
+
+    try:
+        payload = _build_detect_lc_payload(target_name)
+        payload['cached'] = False
+        _set_detect_lc_cache(target_name, payload)
+        _log_detect_cache_stats('lc-build-complete', target_name=target_name)
+
+        return jsonify(payload)
+    except Exception as e:
+        logger.error('Error loading LC for %s: %s', target_name, e)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@detect_bp.route('/api/detect/followup_tracker')
+def followup_tracker_api():
+    """Lazy-loaded endpoint: compute abs_mag for all follow-up objects."""
+    if 'user' not in session:
+        return jsonify({'success': False}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False}), 401
+
+    followup_raw = get_followup_objects_for_tracking()
+    if not followup_raw:
+        return jsonify({'success': True, 'tracker': []})
+
+    names = [fu['name'] for fu in followup_raw]
+    latest_phot = get_latest_photometry_for_names(names)  # one batch query
+
+    _NORM2 = {'Follow-up': 'followup', 'Finish': 'finished', 'Inbox': 'object', 'Snoozed': 'snoozed'}
+    tracker = []
+    for fu in followup_raw:
+        fu_name = fu['name']
+        fu_z = None
+        for z_src in (fu.get('match_z'), fu.get('redshift')):
+            if z_src is not None:
+                try:
+                    fu_z = float(z_src)
+                    break
+                except (ValueError, TypeError):
+                    pass
+        try:
+            fu_ra  = float(fu['ra'])         if fu.get('ra')          else None
+            fu_dec = float(fu['declination']) if fu.get('declination') else None
+        except (ValueError, TypeError):
+            fu_ra = fu_dec = None
+
+        fu_abs_mag = None
+        if fu_z and fu_ra and fu_dec:
+            lp = latest_phot.get(fu_name)
+            latest_mag, filter_name = None, 'V'
+            if lp and lp.get('magnitude') is not None:
+                try:
+                    latest_mag  = float(lp['magnitude'])
+                    filter_name = lp.get('filter') or 'V'
+                except (ValueError, TypeError):
+                    pass
+            if latest_mag is None and fu.get('discoverymag'):
+                try:
+                    latest_mag  = float(fu['discoverymag'])
+                    filter_name = fu.get('disc_filter') or 'V'
+                except (ValueError, TypeError):
+                    pass
+            if latest_mag is not None:
+                try:
+                    ext = get_extinction(fu_ra, fu_dec, filter_name)
+                    if hasattr(ext, 'item'):
+                        ext = ext.item()
+                    result_am = apm_to_abm(latest_mag, fu_z, ext)
+                    if not isinstance(result_am, dict):
+                        fu_abs_mag = result_am
+                except Exception as e:
+                    logger.error('Tracker abs_mag %s: %s', fu_name, e)
+
+        sep = fu.get('separation_arcsec')
+        tracker.append({
+            'name':             fu_name,
+            'z':                fu_z,
+            'abs_mag':          fu_abs_mag,
+            'catalog_name':     fu.get('catalog_name') or '—',
+            'separation_arcsec': float(sep) if sep is not None else None,
+            'discoverydate':    fu.get('discoverydate') or '—',
+            'obj_status':       _NORM2.get(fu.get('status', '') or '', 'object'),
+        })
+
+    tracker.sort(key=lambda x: (x['abs_mag'] is None, x['abs_mag'] if x['abs_mag'] is not None else 0))
+    return jsonify({'success': True, 'tracker': tracker})
+
 
 @detect_bp.route('/detect/archives')
 def detect_archives():

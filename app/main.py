@@ -162,6 +162,7 @@ from modules.tns_gap_filler import start_gap_filler
 from modules.db_monitor import check_and_alert as _db_check_and_alert
 from modules.database import recycle_idle_connections as _db_recycle
 from modules.database.transient import sync_host_redshifts
+from routes.detect.detect_routes import prewarm_detect_page_cache
 
 # Use a file lock to prevent duplicate background jobs when multiple processes
 # import this module (e.g. gunicorn multi-worker, process manager restart race).
@@ -184,9 +185,11 @@ if _acquired_bg_lock:
         _scheduler.add_job(sync_host_redshifts,  'cron',     hour=6,   minute=0, id='daily_host_redshift_sync')
         _scheduler.add_job(_db_check_and_alert,  'interval', minutes=10,  id='db_monitor')
         _scheduler.add_job(_db_recycle,          'interval', minutes=30,  id='db_recycle')
+        _scheduler.add_job(prewarm_detect_page_cache, 'interval', minutes=30, id='detect_page_prewarm')
     _scheduler.start()
     if not config.DEBUG:
         run_daily_backup()  # run once immediately on startup
+        prewarm_detect_page_cache(prewarm_days=1, refresh_latest=True, force_latest=True, app_obj=app)
         # start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
         start_auto_tns_downloader(log_dir=os.path.join(current_dir, 'log'))
         start_gap_filler(log_dir=os.path.join(current_dir, 'log'))

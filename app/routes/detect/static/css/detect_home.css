@@ -125,15 +125,21 @@ body {
     width: 100%;
 }
 
+.newest-label {
+    font-size: 1.4rem;
+    font-weight: 400;
+    letter-spacing: 1px;
+}
+
 .result-link.newest {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 1.8rem;
+    font-size: 1rem;
     color: #fff;
     text-decoration: none;
-    padding: 25px 40px;
+    padding: 22px 36px;
     border-radius: 15px;
     transition: all 0.4s ease;
     background: linear-gradient(135deg, rgba(70, 255, 175, 0.15), rgba(0, 150, 255, 0.15));

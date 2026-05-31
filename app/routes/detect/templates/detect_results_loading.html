@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DETECT Loading — {{ selected_date }} · Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
+    {% include '_favicon.html' %}
+    <style>
+        .detect-loading-wrap {
+            max-width: 920px;
+            margin: 24px auto 0;
+            padding: 0 20px;
+        }
+        .detect-loading-card {
+            background: rgba(12, 14, 12, 0.78);
+            border: 1px solid rgba(70, 255, 175, 0.28);
+            border-radius: 14px;
+            padding: 28px;
+            text-align: center;
+            color: #d8d8d8;
+            box-shadow: 0 6px 26px rgba(0, 0, 0, 0.35);
+        }
+        .detect-loading-title {
+            margin: 0 0 8px;
+            color: #fff;
+            font-size: 1.3rem;
+            font-weight: 500;
+            letter-spacing: 0.4px;
+        }
+        .detect-loading-sub {
+            margin: 0;
+            color: #8e8e8e;
+            font-size: 0.9rem;
+        }
+        .detect-loading-spinner {
+            margin: 16px auto 12px;
+            width: 22px;
+            height: 22px;
+            border: 3px solid rgba(70, 255, 175, 0.2);
+            border-top-color: #46ffaf;
+            border-radius: 50%;
+            animation: detectSpin 0.8s linear infinite;
+        }
+        .detect-loading-help {
+            margin-top: 16px;
+            font-size: 0.82rem;
+            color: #777;
+        }
+        @keyframes detectSpin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="detect-loading-wrap">
+        <div class="detect-loading-card">
+            <h1 class="detect-loading-title">Preparing DETECT Results</h1>
+            <p class="detect-loading-sub">Date: {{ selected_date }}</p>
+            <div class="detect-loading-spinner" aria-hidden="true"></div>
+            <p>Data is building in the background. This page will switch automatically.</p>
+            <p class="detect-loading-help">If it takes longer than expected, keep this tab open and it will refresh when ready.</p>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const selectedDate = {{ selected_date|tojson }};
+            const targetUrl = `/detect?detect_results=${encodeURIComponent(selectedDate)}`;
+            const statusUrl = `/api/detect/cache_status?detect_results=${encodeURIComponent(selectedDate)}`;
+
+            async function pollStatus() {
+                try {
+                    const response = await fetch(statusUrl, { credentials: 'same-origin' });
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    if (data && data.success && data.ready) {
+                        window.location.replace(targetUrl);
+                    }
+                } catch (err) {
+                    // Keep polling; transient network failures are expected.
+                }
+            }
+
+            pollStatus();
+            setInterval(pollStatus, 1500);
+        })();
+    </script>
+</body>
+</html>
+
