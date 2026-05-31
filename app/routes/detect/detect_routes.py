@@ -2,7 +2,7 @@ import logging
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
 
 logger = logging.getLogger(__name__)
-from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host, sync_host_redshifts
+from modules.database.transient import get_cross_match_results, update_cross_match_flag, get_available_dates, get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host, update_tns_redshift, unset_cross_match_host, update_object_status
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -64,18 +64,16 @@ def set_host():
         
     # 1. Update cross_match_results (set is_host)
     if set_cross_match_host(match_id, target_name):
-        # 2. Update tns_objects redshift
+        # 2. Mark object as Follow-up
+        update_object_status(target_name, 'followup')
+        # 3. Update tns_objects redshift
         if redshift is not None:
             try:
-                # Format to 3 decimal places
                 z_val = float(redshift)
                 z_str = f"{z_val:.3f}"
             except (ValueError, TypeError):
                 z_str = str(redshift)
-            
-            # User requested 3 decimal places, no source
-            redshift_str = z_str
-            update_tns_redshift(target_name, redshift_str)
+            update_tns_redshift(target_name, z_str)
             return jsonify({'success': True})
         return jsonify({'success': True, 'message': 'Host set, but no redshift to update'})
     else:
@@ -100,6 +98,42 @@ def unset_host():
         return jsonify({'success': True})
     else:
         return jsonify({'success': False, 'message': 'Database error'})
+
+@detect_bp.route('/api/get_object_status')
+def get_object_status_api():
+    """Lightweight endpoint: return current obj_status for one target."""
+    if 'user' not in session:
+        return jsonify({'success': False}), 401
+    target_name = request.args.get('name', '').strip()
+    if not target_name:
+        return jsonify({'success': False, 'message': 'Missing name'})
+    obj_details = tns_object_db.get_object_details(target_name)
+    raw_status  = (obj_details or {}).get('status', '') or ''
+    _NORM = {'Follow-up': 'followup', 'Finish': 'finished',
+             'Inbox': 'object', 'Snoozed': 'snoozed'}
+    obj_status = _NORM.get(raw_status, raw_status.lower() or 'object')
+    return jsonify({'success': True, 'obj_status': obj_status})
+
+
+@detect_bp.route('/api/set_object_status', methods=['POST'])
+def set_object_status():
+    """Set object status from DETECT page. Accepts 'finished' or 'followup'."""
+    if 'user' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    data = request.json
+    target_name = data.get('target_name')
+    status = data.get('status')  # 'finished', 'followup', or 'object' (reset to Inbox)
+
+    if not target_name or status not in ('finished', 'followup', 'object'):
+        return jsonify({'success': False, 'message': 'Missing or invalid parameters'})
+
+    if update_object_status(target_name, status):
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'message': 'Database error'})
+
 
 @detect_bp.route('/detect')
 def detect_results():
@@ -127,9 +161,6 @@ def detect_results():
                                latest_date=latest_date,
                                daily_counts=daily_counts,
                                current_path='/detect')
-
-    # Sync is_host redshifts back to objects table on every page load
-    sync_host_redshifts()
 
     results = get_cross_match_results(date=selected_date)
     
@@ -330,6 +361,13 @@ def detect_results():
             logger.error('Error generating plot for %s: %s', target_name, e)
         
         target_has_host = any(m.get('is_host') for m in processed_matches)
+        # Get object status from already-cached tns_details (fetched once per target)
+        raw_status = (tns_details or {}).get('status', '') or ''
+        # Normalise DB values ('Follow-up', 'Finish', 'Inbox', 'Snoozed') → short keys
+        _NORM = {'Follow-up': 'followup', 'Finish': 'finished',
+                 'Inbox': 'object', 'Snoozed': 'snoozed'}
+        obj_status = _NORM.get(raw_status, raw_status.lower() or 'object')
+
         target_obj = {
             'target_name': target_name,
             'id': best_match.get('id'),
@@ -340,6 +378,8 @@ def detect_results():
             'is_flagged': best_match.get('is_flagged'),
             'flag_id': best_match.get('flag_id'),
             'is_host': target_has_host,
+            'target_is_host': target_has_host,  # Alias for template consistency
+            'obj_status': obj_status,
         }
         final_target_list.append(target_obj)
     
@@ -351,6 +391,7 @@ def detect_results():
     for t in final_target_list:
         row = dict(t['best_match'])
         row['target_is_host'] = t.get('is_host', False)
+        row['obj_status']     = t.get('obj_status', 'object')
         summary_results.append(row)
     
     daily_counts = get_daily_match_counts()

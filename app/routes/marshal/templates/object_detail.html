@@ -31,43 +31,53 @@
     <div class="object-detail-container">
         <!-- Top Navigation Bar -->
         <div class="top-nav-bar">
-            <div class="top-left-group">
-                <div class="breadcrumb" style="display:inline-flex; align-items:center;">
-                    <a href="{{ url_for('marshal.marshal') }}" style="color:#a0a0b0; text-decoration:none;">Marshal</a>
-                    <span style="margin: 0 8px; color:#666;">/</span>
+            <div class="top-nav-top">
+                <a href="{{ url_for('marshal.marshal') }}" class="top-breadcrumb">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    Marshal
+                </a>
+                <div class="top-nav-actions">
+                    <button class="btn-nav-action" onclick="openFindingChart()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                        Finding Chart
+                    </button>
+                    <button class="btn-nav-action" onclick="openVisibilityPlot()">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Visibility
+                    </button>
                 </div>
-                <h1 class="object-main-title" id="objectName">{{ object_name }}</h1>
-                <span class="badge type-badge" id="classificationBadge">
-                    {{ object_data.type or 'AT' }}
-                </span>
-                <span class="badge tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
-                    {{ object_data.tag|title or 'Inbox' }}
-                </span>
-                <span id="tagsContainer">
-                    {% if visibility.tags and object_data.tags %}
-                        {% for t in object_data.tags.split(',') %}
-                            {% set t = t.strip() %}
-                            {% if t %}
-                                <span class="custom-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>
-                            {% endif %}
-                        {% endfor %}
-                    {% endif %}
-                </span>
-                {% if session.user and session.user.is_admin %}
-                {# Flag button disabled
-                <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#ffbe0b;" id="flagBtn" onclick="toggleFlag()" title="Toggle Flag">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round."><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>
-                </button>
-                #}
-                <button class="btn-modern" style="padding:4px 8px; border:none; background:transparent; color:#a78bfa;" id="pinBtn" onclick="togglePin()" title="Pin this object">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-                </button>
-                {% endif %}
             </div>
-            
-            <div class="top-right-group">
-                <button class="btn-modern" onclick="openFindingChart()">Finding Chart</button>
-                <button class="btn-modern" onclick="openVisibilityPlot()">Visibility Chart</button>
+
+            <div class="top-nav-divider"></div>
+
+            <div class="top-nav-bottom">
+                <div class="top-title-group">
+                    <h1 class="object-main-title" id="objectName">{{ object_name }}</h1>
+                    <div class="top-badge-row">
+                        <span class="badge type-badge" id="classificationBadge">{{ object_data.type or 'AT' }}</span>
+                        <span class="badge tag-badge {{ object_data.tag or 'object' }}" id="statusBadge">
+                            <span class="tag-dot"></span>{{ object_data.tag|title or 'Inbox' }}
+                        </span>
+                        <span id="tagsContainer">
+                            {% if visibility.tags and object_data.tags %}
+                                {% for t in object_data.tags.split(',') %}
+                                    {% set t = t.strip() %}
+                                    {% if t %}
+                                        <span class="custom-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                {% if session.user and session.user.is_admin %}
+                <div class="top-admin-actions">
+                    <button class="btn-admin-icon" id="pinBtn" onclick="togglePin()" title="Pin this object">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+                        Pin
+                    </button>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -254,7 +264,7 @@
                 </div>
                 <div class="panel-body">
                     <div id="telescopeToggles" style="display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;"></div>
-                    <div style="min-height:400px; display:flex; position:relative;" id="photometryPlotContainer">
+                    <div style="height:420px; display:flex; position:relative; overflow:hidden;" id="photometryPlotContainer">
                         <div id="photometryLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Loading data...
                         </div>
@@ -414,7 +424,7 @@
                     </div>
                 </div>
                 <div class="panel-body">
-                    <div style="min-height:380px; display:flex; position:relative;">
+                    <div style="height:420px; display:flex; position:relative; overflow:hidden;">
                         <div id="spectrumLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Mapping...
                         </div>
@@ -438,16 +448,17 @@
                     </div>
                 </div>
                 <div class="perm-header-right">
+                    <span id="permSaveStatus" class="perm-save-status perm-save-idle"></span>
                     <button class="btn-modern perm-refresh-btn" onclick="refreshPermSources()">Refresh Sources</button>
-                    <button class="btn-modern perm-save-btn" onclick="savePermissions()">Save</button>
+                    <button class="btn-modern perm-save-btn" onclick="savePermissions(false)">Save now</button>
                 </div>
             </div>
             <div class="panel-body">
                 <div class="perm-hint">
-                    <strong>Visibility</strong>: <em>All logged-in</em> (default) — any authenticated member.&nbsp;
-                    <em>Selected groups</em> — restricted to chosen groups.&nbsp;
-                    <em>Blocked</em> — hidden from everyone except admins.&nbsp;&nbsp;
-                    <strong>Public</strong> — also visible to unlogged visitors.
+                    🌐 <strong>Public</strong> — visible to everyone including non-logged visitors &nbsp;·&nbsp;
+                    🔓 <strong>Members</strong> — any authenticated user (default) &nbsp;·&nbsp;
+                    👥 <strong>Groups</strong> — restricted to selected groups &nbsp;·&nbsp;
+                    🚫 <strong>Blocked</strong> — hidden from everyone except admins
                 </div>
                 <div id="permTableContainer"><div class="perm-loading">Loading sources…</div></div>
             </div>

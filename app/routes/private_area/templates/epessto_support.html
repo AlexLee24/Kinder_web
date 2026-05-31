@@ -16,68 +16,141 @@
         <div class="container">
             <div class="banner-content">
                 <div class="private-section ep-shell">
+
+                    <!-- ══ HOME PANEL ══════════════════════════════════════ -->
                     <section id="epHomePanel" class="ep-home-panel">
-                        <div class="ep-home-title">eP++ Support Home</div>
+
+                        <div class="ep-home-hero">
+                            <div class="ep-home-hero-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+                            </div>
+                            <div class="ep-home-hero-text">
+                                <div class="ep-home-title">ePESSTO<span class="ep-home-title-plus">++</span> Support</div>
+                            </div>
+                        </div>
+
+                        <div class="ep-home-divider"></div>
+
                         <div class="ep-home-grid">
+                            <!-- Create Room Card -->
                             <div class="ep-home-card">
-                                <h3>Create Room</h3>
+                                <div class="ep-home-card-header">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                                    <h3>Create Room</h3>
+                                </div>
                                 <label class="ep-home-field">
                                     <span>Room Name</span>
-                                    <input id="epCreateRoomName" type="text" class="ep-home-input" placeholder="e.g. eP Team A" maxlength="80">
+                                    <input id="epCreateRoomName" type="text" class="ep-home-input" placeholder="e.g. eP Team A — Night 2026-05-30" maxlength="80">
                                 </label>
                                 <label class="ep-home-field">
                                     <span>Password</span>
                                     <input id="epCreateRoomPassword" type="password" class="ep-home-input" placeholder="Set room password" autocomplete="new-password" spellcheck="false">
                                 </label>
-                                <button id="epCreateRoomBtn" type="button" class="ep-btn">Create Room</button>
+                                <button id="epCreateRoomBtn" type="button" class="ep-btn ep-btn-primary">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                                    Create Room
+                                </button>
                                 <div id="epCreatedRoomInfo" class="ep-home-hint"></div>
                             </div>
+
+                            <!-- Join Room Card -->
                             <div class="ep-home-card">
-                                <h3>Live Rooms (updated within 1h)</h3>
+                                <div class="ep-home-card-header">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M10 15l5-3-5-3v6z" fill="currentColor" stroke="none"/></svg>
+                                    <h3>Live Rooms <span class="ep-card-tag">updated within 1h</span></h3>
+                                </div>
                                 <div id="epLiveRooms" class="ep-live-list">
                                     <div class="ep-empty">No live rooms</div>
                                 </div>
                                 <div class="ep-home-join-row">
-                                    <input id="epJoinRoomId" type="text" class="ep-home-input" placeholder="Room ID">
-                                    <button id="epJoinRoomBtn" type="button" class="ep-btn">Join</button>
+                                    <input id="epJoinRoomId" type="text" class="ep-home-input" placeholder="Enter Room ID directly…">
+                                    <button id="epJoinRoomBtn" type="button" class="ep-btn ep-btn-accent">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+                                        Join
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </section>
 
+                    <!-- ══ WORKSPACE PANEL ═════════════════════════════════ -->
                     <section id="epWorkspacePanel" style="display:none;">
+
+                        <!-- Toolbar -->
                         <div class="ep-topbar">
-                            <div class="ep-top-left">
-                                <span class="ep-page-title">ePessto++ Support Team</span>
+                            <!-- Group 1: Identity -->
+                            <div class="ep-tb-group">
+                                <span class="ep-page-title">eP++</span>
+                                <div class="ep-tb-sep"></div>
                                 <span id="epRoomBadge" class="ep-room-badge">Room: -</span>
-                                <button id="epRoomMembersBtn" type="button" class="ep-btn">members</button>
-                                <button id="epCopyInviteBtn" type="button" class="ep-btn">copy invite link</button>
-                                <button id="epLeaveRoomBtn" type="button" class="ep-btn ep-btn-clear">leave room</button>
-                                <button id="epUploadBtn" type="button" class="ep-btn">upload .asci</button>
+                                <button id="epRoomMembersBtn" type="button" class="ep-tb-btn" title="View room members">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                    Members
+                                </button>
+                                <button id="epCopyInviteBtn" type="button" class="ep-tb-btn" title="Copy invite link">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                                    Invite
+                                </button>
+                            </div>
+
+                            <div class="ep-tb-divider"></div>
+
+                            <!-- Group 2: Data operations -->
+                            <div class="ep-tb-group">
+                                <button id="epUploadBtn" type="button" class="ep-tb-btn ep-tb-btn-primary" title="Upload .asci files">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                    Upload .asci
+                                </button>
                                 <input id="epFileInput" type="file" accept=".asci" multiple hidden>
-                                <button id="epPreviewBtn" type="button" class="ep-btn" disabled>preview</button>
-                                <button id="epRefreshBtn" type="button" class="ep-btn">refresh</button>
-                                <button id="epClearBtn" type="button" class="ep-btn ep-btn-clear" disabled>clear all</button>
+                                <button id="epPreviewBtn" type="button" class="ep-tb-btn" disabled title="Preview selected">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    Preview
+                                </button>
+                                <button id="epRefreshBtn" type="button" class="ep-tb-btn" title="Refresh data">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                                    Refresh
+                                </button>
+                                <button id="epClearBtn" type="button" class="ep-tb-btn ep-tb-btn-danger" disabled title="Clear all targets">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                    Clear
+                                </button>
                             </div>
-                            <div class="ep-top-right">
-                                <div class="ep-top-right-row">
-                                    <div id="epCounter" class="ep-counter">0 / 0</div>
-                                    <label id="epAutoRefreshLabel" class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
-                                        <input id="epAutoRefreshToggle" type="checkbox">
-                                        <span class="ep-toggle-slider"></span>
-                                        <span class="ep-toggle-text">Auto Refresh</span>
-                                        <span id="epRefreshDot" class="ep-refresh-dot"></span>
-                                    </label>
-                                </div>
-                                <div id="epTypeSummary" class="ep-type-summary">Type: -</div>
+
+                            <!-- Spacer -->
+                            <div class="ep-tb-spacer"></div>
+
+                            <!-- Group 3: Status -->
+                            <div class="ep-tb-group ep-tb-group-right">
+                                <div id="epCounter" class="ep-counter">0 / 0</div>
+                                <label id="epAutoRefreshLabel" class="ep-auto-refresh-label" title="Auto refresh every 10s (excludes LC)">
+                                    <input id="epAutoRefreshToggle" type="checkbox">
+                                    <span class="ep-toggle-slider"></span>
+                                    <span class="ep-toggle-text">Auto</span>
+                                    <span id="epRefreshDot" class="ep-refresh-dot"></span>
+                                </label>
                             </div>
+
+                            <div class="ep-tb-divider"></div>
+
+                            <!-- Group 4: Leave (danger, isolated) -->
+                            <button id="epLeaveRoomBtn" type="button" class="ep-tb-btn ep-tb-btn-leave" title="Leave this room">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                Leave
+                            </button>
                         </div>
 
-                        <div id="epStatus" class="ep-status">Please upload .asci files.</div>
+                        <!-- Status + Type Summary bar -->
+                        <div class="ep-statusbar">
+                            <span id="epStatus" class="ep-status-msg">Please upload .asci files.</span>
+                            <span id="epTypeSummary" class="ep-type-summary"></span>
+                        </div>
 
+                        <!-- Main Grid -->
                         <div class="ep-main-grid">
                             <aside class="ep-target-list-panel">
-                                <h3>Target List</h3>
+                                <div class="ep-panel-header">
+                                    <h3>Targets</h3>
+                                </div>
                                 <div id="epTargetList" class="ep-target-list">
                                     <div class="ep-empty">No targets</div>
                                 </div>
@@ -85,16 +158,26 @@
 
                             <section class="ep-detail-panel">
                                 <div id="epTargetWidget" class="ep-target-widget">
-                                    <div class="ep-empty">target widget</div>
+                                    <div class="ep-empty ep-empty-workspace">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.25; margin-bottom:10px;"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                                        <div>Select a target from the list</div>
+                                    </div>
                                 </div>
                                 <div class="ep-nav-buttons">
-                                    <button id="epPrevBtn" type="button" class="ep-btn" disabled>prev</button>
-                                    <button id="epNextBtn" type="button" class="ep-btn" disabled>next</button>
-                                    <button id="epRemoveTargetBtn" type="button" class="ep-btn ep-btn-clear" disabled>remove target</button>
+                                    <button id="epPrevBtn" type="button" class="ep-btn" disabled>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        Prev
+                                    </button>
+                                    <button id="epNextBtn" type="button" class="ep-btn" disabled>
+                                        Next
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                    </button>
+                                    <button id="epRemoveTargetBtn" type="button" class="ep-btn ep-btn-clear" disabled>Remove</button>
                                 </div>
                             </section>
                         </div>
                     </section>
+
                 </div>
             </div>
         </div>

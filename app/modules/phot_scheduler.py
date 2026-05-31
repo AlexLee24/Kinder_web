@@ -377,3 +377,123 @@ def update_target_mags():
     except Exception as e:
         logger.error("event=target_mag_sync_error error=%s", e)
         return {"error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Daily follow-up retirement check
+# ---------------------------------------------------------------------------
+
+_FOLLOWUP_RETIRE_DAYS = 2   # retire if last photometry point is older than this
+
+
+def retire_stale_followups():
+    """Daily job: move Follow-up objects to Finish when they are no longer active.
+
+    Two conditions independently trigger retirement:
+      1. Status is Snoozed  — already effectively inactive; mark Finish.
+      2. Last photometry point is > _FOLLOWUP_RETIRE_DAYS days old (or missing)
+         — nothing new to observe.
+
+    Objects in status 'Follow-up' that just received fresh photometry keep
+    their status unchanged.
+    """
+    from datetime import timezone
+
+    run_id = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    logger.info("event=retire_stale_followups_start run_id=%s", run_id)
+
+    retired_snoozed = []
+    retired_stale   = []
+    skipped         = []
+    errors          = []
+
+    try:
+        from modules.database import get_db_connection
+
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+
+            # Fetch all Follow-up objects with their last_phot_date and status
+            cur.execute(
+                """SELECT name, status, last_phot_date
+                   FROM transient.objects
+                   WHERE status IN ('Follow-up', 'Snoozed')"""
+            )
+            rows = cur.fetchall()
+
+        now_utc = datetime.now(timezone.utc)
+
+        for name, status, last_phot_date in rows:
+            try:
+                retire_reason = None
+
+                if status == 'Snoozed':
+                    # Rule 1: Follow-up that got snoozed → retire
+                    retire_reason = 'snoozed'
+
+                elif status == 'Follow-up':
+                    if last_phot_date is None:
+                        # No photometry at all → retire
+                        retire_reason = 'no_photometry'
+                    else:
+                        # Normalise: DB may return a date or a datetime
+                        if hasattr(last_phot_date, 'tzinfo') and last_phot_date.tzinfo is None:
+                            last_phot_date = last_phot_date.replace(tzinfo=timezone.utc)
+                        elif not hasattr(last_phot_date, 'tzinfo'):
+                            # plain date → midnight UTC
+                            from datetime import date as _date
+                            last_phot_date = datetime(
+                                last_phot_date.year, last_phot_date.month, last_phot_date.day,
+                                tzinfo=timezone.utc
+                            )
+                        age_days = (now_utc - last_phot_date).total_seconds() / 86400
+                        if age_days > _FOLLOWUP_RETIRE_DAYS:
+                            retire_reason = f'stale_{age_days:.1f}d'
+
+                if retire_reason is None:
+                    skipped.append(name)
+                    continue
+
+                # Update to Finish
+                from modules.database.transient import update_object_status
+                ok = update_object_status(name, 'finished')
+                if ok:
+                    logger.info(
+                        "event=retire_followup run_id=%s object=%s reason=%s prev_status=%s",
+                        run_id, name, retire_reason, status,
+                    )
+                    if status == 'Snoozed':
+                        retired_snoozed.append(name)
+                    else:
+                        retired_stale.append(name)
+                else:
+                    logger.warning(
+                        "event=retire_followup_failed run_id=%s object=%s", run_id, name
+                    )
+                    errors.append(name)
+
+            except Exception as e:
+                logger.error(
+                    "event=retire_followup_object_error run_id=%s object=%s error=%s",
+                    run_id, name, e,
+                )
+                errors.append(name)
+
+    except Exception as e:
+        logger.error("event=retire_stale_followups_error run_id=%s error=%s", run_id, e)
+        return {"error": str(e)}
+
+    logger.info(
+        "event=retire_stale_followups_done run_id=%s retired_snoozed=%s retired_stale=%s skipped=%s errors=%s",
+        run_id,
+        len(retired_snoozed),
+        len(retired_stale),
+        len(skipped),
+        len(errors),
+    )
+    return {
+        "retired_snoozed": retired_snoozed,
+        "retired_stale":   retired_stale,
+        "skipped":         len(skipped),
+        "errors":          errors,
+    }

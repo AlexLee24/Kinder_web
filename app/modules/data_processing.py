@@ -51,7 +51,12 @@ class DataVisualization:
             if legend_right:
                 # Only set position when the caller hasn't already placed it
                 if layout.legend.x is None:
-                    layout.legend.update(x=1.02, y=1, xanchor='left', yanchor='top')
+                    layout.legend.update(
+                        x=0.99, y=0.99, xanchor='right', yanchor='top',
+                        bgcolor='rgba(12,12,20,0.72)',
+                        bordercolor='rgba(160,160,160,0.25)',
+                        borderwidth=1,
+                    )
 
         axis_style = dict(
             showline=True,
@@ -357,13 +362,13 @@ class DataVisualization:
         if not traces:
             return None
             
-        # Determine ranges — enforce a minimum 16-day default span (4 grids × 4 days each)
+        # Determine ranges — enforce a minimum 5-day default span (5 grids × 1 day each)
         min_mjd = min(all_mjds) if all_mjds else 59000
         max_mjd = max(all_mjds) if all_mjds else 59100
         data_span = max_mjd - min_mjd
-        GRID_INTERVAL_DAYS = 1      # each grid cell = 4 days
-        MIN_GRID_CELLS     = 5      # always show at least 4 cells
-        MIN_SPAN_DAYS      = GRID_INTERVAL_DAYS * MIN_GRID_CELLS  # = 16 days
+        GRID_INTERVAL_DAYS = 1      # each grid cell = 1 day
+        MIN_GRID_CELLS     = 5      # always show at least 5 cells
+        MIN_SPAN_DAYS      = GRID_INTERVAL_DAYS * MIN_GRID_CELLS  # = 5 days
         if data_span < MIN_SPAN_DAYS:
             # Center the minimum window on the data
             center_mjd = (min_mjd + max_mjd) / 2
@@ -420,29 +425,47 @@ class DataVisualization:
             template="plotly_white",
             showlegend=True,
             legend=dict(
-                x=1.02,
-                y=1,
-                xanchor='left',
-                yanchor='top'
+                x=0.99,
+                y=0.99,
+                xanchor='right',
+                yanchor='top',
+                bgcolor='rgba(12,12,20,0.72)',
+                bordercolor='rgba(160,160,160,0.25)',
+                borderwidth=1,
             ),
             hovermode='closest',
-            margin=dict(l=60, r=160, t=80, b=60)
+            margin=dict(l=60, r=30, t=80, b=60)
         )
         
-        # Handle Y-axis range and Absolute Magnitude
+        # Handle Y-axis range and Absolute Magnitude.
+        # Mirror the x-axis behaviour: when the magnitude span is small, enforce a
+        # minimum window and lock ticks to a fixed grid.
+        GRID_INTERVAL_MAG = 0.2     # each grid cell = 0.2 mag
+        MIN_GRID_CELLS_MAG = 6      # always show at least 6 cells
+        MIN_SPAN_MAG = GRID_INTERVAL_MAG * MIN_GRID_CELLS_MAG  # = 3.0 mag
         plot_min_mag = 0.0
         plot_max_mag = 0.0
         if all_mags:
             min_mag = min(all_mags)
             max_mag = max(all_mags)
-            mag_pad = (max_mag - min_mag) * 0.1
-            if mag_pad == 0: mag_pad = 0.5
-            plot_min_mag = min_mag - mag_pad
-            plot_max_mag = max_mag + mag_pad
-            
+            mag_span = max_mag - min_mag
+            if mag_span < MIN_SPAN_MAG:
+                # Center the minimum window on the data and lock ticks to the grid
+                center_mag = (min_mag + max_mag) / 2
+                plot_min_mag = center_mag - MIN_SPAN_MAG / 2
+                plot_max_mag = center_mag + MIN_SPAN_MAG / 2
+                layout.yaxis.tickmode = 'linear'
+                layout.yaxis.dtick = GRID_INTERVAL_MAG
+                layout.yaxis.tick0 = math.floor(plot_min_mag / GRID_INTERVAL_MAG) * GRID_INTERVAL_MAG
+            else:
+                mag_pad = mag_span * 0.1
+                if mag_pad == 0: mag_pad = GRID_INTERVAL_MAG
+                plot_min_mag = min_mag - mag_pad
+                plot_max_mag = max_mag + mag_pad
+
             # Reversed Y-axis: [max, min]
             layout.yaxis.range = [plot_max_mag, plot_min_mag]
-            
+
             if total_shift > 0:
                 layout.yaxis2 = dict(
                     title="Absolute Magnitude",
@@ -452,9 +475,11 @@ class DataVisualization:
                     showgrid=False,
                     tickformat=".2f"
                 )
-                # Push legend further right so it clears the yaxis2 tick labels
-                layout.legend.update(x=1.18)
-                layout.margin.update(r=220)
+                # Keep the absolute-mag ticks on the same 0.5-mag grid when locked
+                if mag_span < MIN_SPAN_MAG:
+                    layout.yaxis2.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
+                # yaxis2 tick labels sit on the right; legend stays inside the plot
+                layout.margin.update(r=60)
                 
                 # Add dummy trace to force yaxis2 to appear
                 traces.append(go.Scatter(
@@ -728,12 +753,12 @@ class DataVisualization:
                 yanchor='top'
             ),
             hovermode='x unified',
-            margin=dict(l=60, r=150, t=50, b=60)
+            margin=dict(l=60, r=30, t=50, b=60)
         )
         layout = DataVisualization._apply_unified_plot_style(layout, legend_right=True)
-        
+
         fig = go.Figure(data=traces, layout=layout)
-        
+
         # Convert to HTML div
         plot_div = pyo.plot(fig, output_type='div', include_plotlyjs=False)
         return plot_div

@@ -1549,19 +1549,29 @@ function _epGetNEDRadiusArcsec() {
 }
 
 async function _epResolveTargetCoords(targetName) {
-    try {
-        const resp = await fetch('/api/search_target?q=' + encodeURIComponent(targetName));
-        const data = await resp.json();
-        if (!resp.ok || !data.results || !data.results.length) return null;
-        const exact = data.results.find(
-            r => ((r.prefix || '') + (r.name || '')).replace(/\s+/g, '').toLowerCase() ===
-                 String(targetName || '').replace(/\s+/g, '').toLowerCase()
-        ) || data.results[0];
-        const ra  = exact.ra  != null ? parseFloat(exact.ra)  : null;
-        const dec = exact.dec != null ? parseFloat(exact.dec) : null;
-        if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
-        return { ra, dec };
-    } catch (_) { return null; }
+    // Strip common AT/SN/etc. prefix to search by just the name part (e.g. "AT2026nbd" → "2026nbd")
+    const nameOnly = String(targetName || '').replace(/^(AT|SN|ATLAS|PS\d*|ZTF)\s*/i, '').trim();
+
+    async function _trySearch(q) {
+        try {
+            const resp = await fetch('/api/search_target?q=' + encodeURIComponent(q));
+            const data = await resp.json();
+            if (!resp.ok || !data.results || !data.results.length) return null;
+            const fullNorm = String(targetName || '').replace(/\s+/g, '').toLowerCase();
+            const exact = data.results.find(
+                r => ((r.prefix || '') + (r.name || '')).replace(/\s+/g, '').toLowerCase() === fullNorm
+            ) || data.results.find(
+                r => String(r.name || '').replace(/\s+/g, '').toLowerCase() === nameOnly.toLowerCase()
+            ) || data.results[0];
+            const ra  = exact.ra  != null ? parseFloat(exact.ra)  : null;
+            const dec = exact.dec != null ? parseFloat(exact.dec) : null;
+            if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
+            return { ra, dec };
+        } catch (_) { return null; }
+    }
+
+    // Try full name first, then fallback to name-only (without prefix)
+    return (await _trySearch(nameOnly)) || (nameOnly !== targetName ? await _trySearch(targetName) : null);
 }
 
 async function _epFetchNEDData(radiusArcsec, force) {
@@ -1685,7 +1695,7 @@ async function epSetNEDHost(idx, btnEl) {
 
         // Update widget fields
         const updates = { host: row.objname };
-        if (json.updated_redshift && json.redshift != null) {
+        if (json.redshift != null) {
             const zNum = Number(json.redshift);
             updates.z_from_host = Number.isFinite(zNum) ? String(zNum) : String(json.redshift);
         }
@@ -1700,9 +1710,9 @@ async function epSetNEDHost(idx, btnEl) {
         }
 
         if (_epNedTargetName === _snapshotTargetName) _epInitNEDExplorer(false, false);
-        const msg = json.updated_redshift
-            ? `Host set to ${row.objname}; redshift updated in widget`
-            : `Host set to ${row.objname}; redshift unchanged (z flag not S*)`;
+        const msg = json.redshift != null
+            ? `Host set to ${row.objname}; redshift updated`
+            : `Host set to ${row.objname}`;
         setStatus(msg);
     } catch (e) {
         console.error('epSetNEDHost failed:', e);

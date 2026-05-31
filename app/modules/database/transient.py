@@ -685,7 +685,8 @@ class TNSObjectDB:
                 "             'YYYY-MM-DD HH24:MI:SS') END AS discoverydate, "
                 "COALESCE(internal_name,'') || "
                 "  CASE WHEN other_name IS NOT NULL THEN ', '||other_name ELSE '' END AS internal_names, "
-                "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter "
+                "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter, "
+                "status "
                 "FROM transient.objects WHERE name = %s",
                 (object_name,)
             )

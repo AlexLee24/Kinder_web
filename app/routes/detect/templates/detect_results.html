@@ -34,7 +34,7 @@
             
             <!-- Summary Table -->
             <h2>Summary Table</h2>
-            <table class="results-table">
+            <table class="results-table" id="summaryTable">
                 <thead>
                     <tr>
                         <th style="width: 50px;">Flag</th>
@@ -45,15 +45,19 @@
                         <th>Sep (")</th>
                         <th>Z</th>
                         <th>Abs Mag</th>
+                        <th>Check</th>
                         <th>Link</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for result in summary_results %}
-                    <tr>
+                    <tr id="summary-row-{{ result.target_name }}"
+                        data-card-index="{{ loop.index0 }}"
+                        onclick="jumpToCard({{ loop.index0 }})"
+                        style="cursor:pointer;" title="Jump to card">
                         {% if session.user and session.user.is_admin %}
                         <td style="text-align: center;">
-                            <span class="flag-btn {% if result.is_flagged %}active{% endif %}" 
+                            <span class="flag-btn {% if result.is_flagged %}active{% endif %}"
                                   onclick="toggleFlag('{{ result.flag_id }}', this)"
                                   title="Toggle Flag">
                                 ★
@@ -63,7 +67,7 @@
                         <td>
                             <a href="/object/{{ result.target_name }}" style="color:#fff; font-size:1.1em; text-decoration: underline;"><strong>{{ result.target_name }}</strong></a>
                         </td>
-                        <td style="text-align:center;">
+                        <td style="text-align:center;" id="host-cell-{{ result.target_name }}">
                             {% if result.target_is_host %}
                                 <span class="badge-host" title="Host confirmed">✓ HOST</span>
                             {% else %}
@@ -104,144 +108,193 @@
                                 -
                             {% endif %}
                         </td>
-                        <td>
-                            <a href="#{{ result.id }}" class="btn-details">Details</a>
+                        <td style="text-align:center;" id="status-cell-{{ result.target_name }}">
+                            {% if result.obj_status == 'finished' %}
+                                {% if result.target_is_host %}
+                                    <span class="badge-checked" title="Host confirmed, finished">✓ Checked</span>
+                                {% else %}
+                                    <span class="badge-nohost" title="No host in this target">✗ No Host</span>
+                                {% endif %}
+                            {% elif result.obj_status == 'followup' %}
+                                <span class="badge-followup" title="Follow-up">⬤ Follow-up</span>
+                            {% else %}
+                                <span style="color:#555;">—</span>
+                            {% endif %}
+                        </td>
+                        <td onclick="event.stopPropagation()">
+                            <a href="#cardNavBar" class="btn-details" onclick="jumpToCard({{ loop.index0 }})">Details</a>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
 
-            <!-- Detailed Analysis -->
-            <h2>Detailed Analysis</h2>
-            
+            <!-- Card Navigation -->
+            <h2 style="margin-bottom:16px;">Detailed Analysis</h2>
+            <div class="card-nav-bar" id="cardNavBar">
+                <button class="card-nav-btn" id="prevCardBtn" onclick="prevCard()" title="Previous (← arrow key)">← Prev</button>
+                <span class="card-nav-counter">
+                    <span id="cardCurrent">1</span> / <span id="cardTotal">{{ results|length }}</span>
+                </span>
+                <button class="card-nav-btn" id="nextCardBtn" onclick="nextCard()" title="Next (→ arrow key)">Next →</button>
+            </div>
+
+            <!-- Cards -->
+            <div id="cardStage">
             {% for result in results %}
-            <div id="{{ result.id }}" class="anchor">
-                <h3><a href="/object/{{ result.target_name }}" style="color: inherit; text-decoration: none;">{{ result.target_name }}</a></h3>
-                <div class="meta-info">
-                    <strong>Discovery Date:</strong> {{ result.tns_info.discoverydate }} &nbsp;|&nbsp; 
-                    <strong>Internal Names:</strong> {{ result.tns_info.internal_names }} &nbsp;|&nbsp;
-                    <strong>TNS Coords:</strong> {{ result.tns_info.ra }}, {{ result.tns_info.dec }}
-                </div>
-                
-                <div class="section-title">Visual Inspection</div>
-                <div class="featured-container">
-                    <div class="featured-image-box">
-                        <h4>DESI Finder Chart</h4>
-                        <div style="text-align: center;">
-                            <img src="{{ url_for('detect.detect_image', target_name=result.target_name) }}" 
-                                 alt="DESI Image for {{ result.target_name }}"
-                                 style="max-width: 100%; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);"
-                                 onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'padding: 20px; border: 1px dashed #555; color: #888;\'>Image not available</div>';">
+            <div class="target-card" id="card-{{ loop.index0 }}" data-index="{{ loop.index0 }}" {% if not loop.first %}style="display:none"{% endif %}>
+
+                <!-- Card header -->
+                <div class="card-header-bar">
+                    <div>
+                        <h3 style="margin:0 0 6px;">
+                            <a href="/object/{{ result.target_name }}" target="_blank"
+                               style="color:inherit; text-decoration:none;">
+                                {{ result.target_name }} <span style="font-size:0.65em; opacity:0.5;">↗</span>
+                            </a>
+                        </h3>
+                        <div class="card-meta-line">
+                            <span><strong>Date:</strong> {{ result.tns_info.discoverydate or '—' }}</span>
+                            <span><strong>Coords:</strong> {{ result.tns_info.ra }}, {{ result.tns_info.dec }}</span>
+                            {% if result.tns_info.internal_names %}
+                            <span><strong>Internal:</strong> {{ result.tns_info.internal_names }}</span>
+                            {% endif %}
                         </div>
                     </div>
+                    <div class="card-header-actions">
+                        <div id="card-status-{{ result.target_name }}" class="card-status-badge">
+                            {% if result.obj_status == 'finished' %}
+                                {% if result.target_is_host %}
+                                    <span class="badge-checked">✓ Checked</span>
+                                {% else %}
+                                    <span class="badge-nohost">✗ No Host</span>
+                                {% endif %}
+                            {% elif result.obj_status == 'followup' %}
+                                <span class="badge-followup">⬤ Follow-up</span>
+                            {% endif %}
+                        </div>
+                        {% if session.user and session.user.is_admin %}
+                        <div class="card-action-buttons">
+                            {% if result.obj_status == 'finished' and not result.target_is_host %}
+                                {# Already marked "No Host" — show Remove button #}
+                                <button class="btn-action btn-remove" onclick="unmarkNoHost('{{ result.target_name }}')" title="Undo no-host decision">Remove</button>
+                            {% elif result.obj_status != 'finished' and not result.target_is_host %}
+                                {# No host yet — show "Mark as No Host" button (only if no host match is set) #}
+                                <button class="btn-action btn-nohost" onclick="markNoHost('{{ result.target_name }}')" title="Mark target as having no host">No Host</button>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
-                
-                <div class="section-title">Photometry</div>
-                <div id="plot-{{ result.id }}" class="plot-container">
-                    {% if result.plot_json %}
-                        <div id="plotly-div-{{ result.id }}" class="plotly-chart" data-plot="{{ result.plot_json }}"></div>
-                    {% else %}
-                        <div style="text-align:center; padding-top:200px; color:#888;">No photometry data available</div>
-                    {% endif %}
+
+                <!-- Card body: image + plot side by side -->
+                <div class="card-body-grid">
+                    <div class="card-image-col">
+                        <div class="card-section-label">DESI Finder Chart</div>
+                        <img src="{{ url_for('detect.detect_image', target_name=result.target_name) }}"
+                             alt="DESI {{ result.target_name }}"
+                             style="width:100%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.4); cursor:zoom-in;"
+                             onclick="openImgModal(this)"
+                             onerror="this.parentElement.innerHTML='<div class=\'card-img-missing\'>Image not available</div>'">
+                    </div>
+                    <div class="card-plot-col">
+                        <div class="card-section-label">Photometry</div>
+                        {% if result.plot_json %}
+                            <div class="plotly-chart"
+                                 id="plotly-card-{{ loop.index0 }}"
+                                 data-plot="{{ result.plot_json }}"
+                                 style="width:100%; height:360px;"></div>
+                        {% else %}
+                            <div class="card-no-data">No photometry data available</div>
+                        {% endif %}
+                    </div>
                 </div>
-                
-                <div class="section-title">Match Details</div>
-                <table class="results-table" style="margin-top: 10px;">
-                    <thead>
-                        <tr>
-                            <th>Source</th>
-                            <th>ID</th>
-                            <th>Coords</th>
-                            <th>Sep (")</th>
-                            <th>Z</th>
-                            <th>Abs Mag</th>
-                            <th>Score / Grade (Lens only)</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for match in result.matches %}
-                        {% set md = match.get('match_data') or {} %}
-                        <tr>
-                            <td>{{ match.catalog_name }}</td>
-                            <td>
-                                {% set match_id = md.get('id', match.get('id')) %}
-                                {% if match_id %}
-                                    {{ "%d"|format(match_id|int) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% set match_ra  = match.get('match_ra')  or md.get('ra')  or md.get('_RAJ2000') %}
-                                {% set match_dec = match.get('match_dec') or md.get('dec') or md.get('_DEJ2000') %}
-                                {% if match_ra is not none and match_dec is not none and match_ra != '' and match_dec != '' %}
-                                    {{ "%.4f"|format(match_ra|float) }},
-                                    {{ "%.4f"|format(match_dec|float) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>{{ "%.2f"|format(match.separation_arcsec) }}</td>
-                            <td>
-                                {% if match.z is not none %}
-                                    {{ "%.4f"|format(match.z) }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if match.abs_mag is not none %}
-                                    {% set am = match.abs_mag|float %}
-                                    {% set sep = match.separation_arcsec|float %}
-                                    {% if am < -20 or am > -15 %}
-                                        {% if sep < 10 %}
-                                            <span style="color: #ff4444; font-weight: bold;">{{ "%.2f"|format(match.abs_mag) }}</span>
-                                        {% else %}
-                                            <span style="color: #ffaa00;">{{ "%.2f"|format(match.abs_mag) }}</span>
+
+                <!-- Match table -->
+                <div class="card-section-label" style="margin-top:20px;">Match Details</div>
+                <div class="card-matches-wrap">
+                    <table class="results-table" style="margin:8px 0 0;">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>ID</th>
+                                <th>Coords</th>
+                                <th>Sep (")</th>
+                                <th>Z</th>
+                                <th>Abs Mag</th>
+                                <th>Score</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for match in result.matches %}
+                            {% set md = match.get('match_data') or {} %}
+                            <tr>
+                                <td>{{ match.catalog_name }}</td>
+                                <td>
+                                    {% set match_id = md.get('id', match.get('id')) %}
+                                    {{ "%d"|format(match_id|int) if match_id else '-' }}
+                                </td>
+                                <td>
+                                    {% set mr = match.get('match_ra') or md.get('ra') or md.get('_RAJ2000') %}
+                                    {% set md2 = match.get('match_dec') or md.get('dec') or md.get('_DEJ2000') %}
+                                    {% if mr and md2 %}{{ "%.4f"|format(mr|float) }}, {{ "%.4f"|format(md2|float) }}
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>{{ "%.2f"|format(match.separation_arcsec) }}</td>
+                                <td>{% if match.z is not none %}{{ "%.4f"|format(match.z) }}{% else %}-{% endif %}</td>
+                                <td>
+                                    {% if match.abs_mag is not none %}
+                                        {% set am = match.abs_mag|float %}
+                                        {% set sep = match.separation_arcsec|float %}
+                                        {% if am < -20 or am > -15 %}
+                                            <span style="color:{% if sep < 10 %}#ff4444{% else %}#ffaa00{% endif %};font-weight:bold;">{{ "%.2f"|format(match.abs_mag) }}</span>
+                                        {% else %}{{ "%.2f"|format(match.abs_mag) }}{% endif %}
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>
+                                    {% if 'Hsu' in match.catalog_name %}Grade: {{ md.get('Grade', '-') }}
+                                    {% elif 'Karp' in match.catalog_name %}
+                                        {% set lp = md.get('LENS_PROBABILITY') %}
+                                        Prob: {{ "%.3f"|format(lp|float) if lp else '-' }}
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td style="white-space:nowrap;">
+                                    {% if match.is_host %}
+                                        {# This match IS the host #}
+                                        <span class="badge-host">✓ HOST</span>
+                                        {% if session.user and session.user.is_admin %}
+                                        <button class="btn-action btn-remove" onclick="unsetHost('{{ result.target_name }}')" title="Clear host selection">Remove</button>
+                                        {% if result.obj_status != 'finished' %}
+                                        <button class="btn-action btn-checked" onclick="markChecked('{{ result.target_name }}')" title="Host confirmed, no follow-up needed">Check ✓</button>
                                         {% endif %}
+                                        {% endif %}
+                                    {% elif result.obj_status == 'finished' and result.target_is_host %}
+                                        {# Host confirmed and checked — other matches show nothing #}
+                                        <span style="color:#444;">—</span>
+                                    {% elif result.obj_status == 'finished' and not result.target_is_host %}
+                                        {# Target marked "No Host" — no actions, defer to card header #}
+                                        <span style="color:#555;">—</span>
                                     {% else %}
-                                        {{ "%.2f"|format(match.abs_mag) }}
+                                        {# No decision yet — show Set Host button only #}
+                                        {% if session.user and session.user.is_admin %}
+                                        {% if result.target_is_host %}
+                                            {# Host already set by another match — disable Set Host for this match #}
+                                            <button class="btn-action btn-set-host" disabled title="Another match is already the host">Set Host</button>
+                                        {% else %}
+                                            <button class="btn-action btn-set-host" onclick="setHost('{{ match.id }}', '{{ result.target_name }}', '{{ match.z }}', '{{ match.catalog_name }}')">Set Host</button>
+                                        {% endif %}
+                                        {% endif %}
                                     {% endif %}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% set match_source = md.get('match_source', match.get('match_source', '')) %}
-                                {% if 'Hsu' in match.catalog_name or 'Hsu' in match_source %}
-                                    Grade: {{ md.get('Grade', match.get('Grade', '-')) }}
-                                {% elif 'Karp' in match.catalog_name or 'Karp' in match_source %}
-                                    {% set lens_prob = md.get('LENS_PROBABILITY', match.get('LENS_PROBABILITY')) %}
-                                    Prob: {{ "%.3f"|format(lens_prob|float) if lens_prob else '-' }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if match.is_host %}
-                                    <span class="badge-host">✓ HOST</span>
-                                    {% if session.user and session.user.is_admin %}
-                                    <button class="btn-action btn-clear" onclick="unsetHost('{{ result.target_name }}')">
-                                        Remove
-                                    </button>
-                                    {% endif %}
-                                {% else %}
-                                    {% if session.user and session.user.is_admin %}
-                                    <button class="btn-action" onclick="setHost('{{ match.id }}', '{{ result.target_name }}', '{{ match.z }}', '{{ match.catalog_name }}')">
-                                        Set Host
-                                    </button>
-                                    {% endif %}
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <hr>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% endfor %}
+            </div>
 
             {% else %}
             <div class="no-results">
@@ -256,6 +309,21 @@
             <path d="M18 15l-6-6-6 6"/>
         </svg>
     </button>
+
+    <!-- Image lightbox -->
+    <div id="imgModal" onclick="closeImgModal()" style="
+        display:none; position:fixed; inset:0; z-index:2000;
+        background:rgba(0,0,0,0.88); cursor:zoom-out;
+        align-items:center; justify-content:center;">
+        <button onclick="closeImgModal(); event.stopPropagation()" style="
+            position:absolute; top:20px; right:28px;
+            background:none; border:none; color:#fff; font-size:2rem;
+            cursor:pointer; line-height:1; opacity:0.7;">✕</button>
+        <img id="imgModalSrc" style="
+            max-width:90vw; max-height:90vh;
+            border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,0.8);
+            object-fit:contain;">
+    </div>
 
     <script src="{{ url_for('static', filename='js/detect_results.js') }}"></script>
 </body>

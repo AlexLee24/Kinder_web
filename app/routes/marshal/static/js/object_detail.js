@@ -1645,6 +1645,8 @@ function renderMagDeltaPlot() {
 
 function togglePhotometryEditMode() {
     if (isEditingPhotometry) {
+        exitPhotometryEditMode();
+    } else {
         enterPhotometryEditMode();
     }
 }
@@ -4863,14 +4865,39 @@ function toggleFlag() {
 */
 
 // ==========================================
+// ==========================================
 // Data Source Permissions (admin)
 // ==========================================
 
 let _permCurrentTab = 'phot';
-let _permData = { phot: {}, spec: {} };   // { sourceName: { allowed_groups: [...] | null, is_public: bool } }
+let _permData = { phot: {}, spec: {} };
 let _permSources = { phot: [], spec: [] };
 let _permAllGroups = [];
-let _permDefaults = {};  // source_name -> { permission: 'public'|'login', groups: [] }
+let _permDefaults = {};
+
+// ── Auto-save state ──────────────────────
+let _permDirty   = false;
+let _permSaveTimer = null;
+const _PERM_AUTOSAVE_DELAY = 1500; // ms
+
+function _permMarkDirty() {
+    _permDirty = true;
+    _permSetStatus('unsaved');
+    clearTimeout(_permSaveTimer);
+    _permSaveTimer = setTimeout(() => savePermissions(true), _PERM_AUTOSAVE_DELAY);
+}
+
+function _permSetStatus(state) {
+    const el = document.getElementById('permSaveStatus');
+    if (!el) return;
+    el.className = 'perm-save-status perm-save-' + state;
+    el.textContent = state === 'unsaved' ? '● Unsaved changes'
+                   : state === 'saving'  ? '↻ Saving…'
+                   : state === 'saved'   ? '✓ Saved'
+                   : state === 'error'   ? '✕ Save failed'
+                   : '';
+    if (state === 'saved') setTimeout(() => { if (el.classList.contains('perm-save-saved')) { el.className = 'perm-save-status perm-save-idle'; el.textContent = ''; } }, 2500);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('.perm-panel')) {
@@ -4938,6 +4965,33 @@ function switchPermTab(tab) {
     renderPermTable();
 }
 
+const _PERM_OPTS = [
+    { val: 'public',  label: 'Public',  icon: '🌐', cls: 'perm-pill-public'  },
+    { val: 'all',     label: 'Members', icon: '🔓', cls: 'perm-pill-all'     },
+    { val: 'groups',  label: 'Groups',  icon: '👥', cls: 'perm-pill-groups'  },
+    { val: 'blocked', label: 'Blocked', icon: '🚫', cls: 'perm-pill-blocked' },
+];
+
+function _permGetVis(perm, isTNS) {
+    if (isTNS || perm.is_public) return 'public';
+    if (perm.allowed_groups === null) return 'all';
+    if (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0) return 'blocked';
+    return 'groups';
+}
+
+function _permChipsHtml(type, src, groups) {
+    return (groups || []).map(g =>
+        `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(src)}','${escapeHtml(g)}')">&times;</span></span>`
+    ).join('');
+}
+
+function _permGroupSelectHtml(type, src) {
+    return `<select class="perm-add-group-select" onchange="addPermGroup('${type}','${escapeHtml(src)}',this)">
+        <option value="">+ group</option>
+        ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
+    </select>`;
+}
+
 function renderPermTable() {
     const container = document.getElementById('permTableContainer');
     if (!container) return;
@@ -4948,51 +5002,75 @@ function renderPermTable() {
         return;
     }
 
-    const rows = sources.map(src => {
+    const cards = sources.map(src => {
         const isTNS = src.toUpperCase().includes('TNS');
         const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: isTNS };
-        const vis = perm.is_public ? 'public' :
-                    (perm.allowed_groups === null ? 'all' :
-                    (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0 ? 'blocked' : 'groups'));
-        const chipsHtml = (perm.allowed_groups || []).map(g =>
-            `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${_permCurrentTab}','${escapeHtml(src)}','${escapeHtml(g)}')">&times;</span></span>`
-        ).join('');
-        const groupAddSelect = `<select class="perm-add-group-select" onchange="addPermGroup('${_permCurrentTab}','${escapeHtml(src)}',this)">
-            <option value="">+ group</option>
-            ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
-        </select>`;
+        const vis = _permGetVis(perm, isTNS);
 
         if (isTNS) {
-            return `<tr class="perm-row perm-row-locked">
-                <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
-                <td class="perm-vis-cell" style="color:rgba(255,255,255,0.35); font-size:0.8rem; font-style:italic;">Always public (TNS source)</td>
-                <td class="perm-groups-cell"></td>
-            </tr>`;
+            return `<div class="perm-card perm-card-locked">
+                <div class="perm-card-check-wrap"><input type="checkbox" class="perm-row-check" disabled></div>
+                <div class="perm-card-source"><span class="perm-source-name">${escapeHtml(src)}</span></div>
+                <div class="perm-card-pills">
+                    <span class="perm-locked-label">🌐 Always public (TNS)</span>
+                </div>
+            </div>`;
         }
 
-        return `<tr class="perm-row">
-            <td class="perm-source-cell"><span class="perm-source-name">${escapeHtml(src)}</span></td>
-            <td class="perm-vis-cell">
-                <select class="perm-vis-select" onchange="onPermVisChange('${_permCurrentTab}','${escapeHtml(src)}',this.value)">
-                    <option value="public"  ${vis === 'public'  ? 'selected' : ''}>Public (unlogged visitors)</option>
-                    <option value="all"     ${vis === 'all'     ? 'selected' : ''}>All logged-in users</option>
-                    <option value="groups"  ${vis === 'groups'  ? 'selected' : ''}>Selected groups only</option>
-                    <option value="blocked" ${vis === 'blocked' ? 'selected' : ''}>Blocked (admin only)</option>
-                </select>
-            </td>
-            <td class="perm-groups-cell" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${vis === 'groups' ? 'table-cell' : 'none'}">
-                <div style="display:flex; flex-wrap:wrap; gap:4px; align-items:center;">
-                    <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${chipsHtml}</div>
-                    ${groupAddSelect}
-                </div>
-            </td>
-        </tr>`;
+        const pills = _PERM_OPTS.map(o =>
+            `<button class="perm-pill ${o.cls}${vis === o.val ? ' active' : ''}"
+                onclick="onPermVisChange('${_permCurrentTab}','${escapeHtml(src)}','${o.val}')"
+                title="${o.val === 'public' ? 'Visible to everyone including non-logged visitors' :
+                         o.val === 'all'    ? 'Visible to all logged-in members' :
+                         o.val === 'groups' ? 'Restricted to selected groups only' :
+                                             'Hidden from everyone except admins'}"
+            >${o.icon} ${o.label}</button>`
+        ).join('');
+
+        const groupsDisplay = vis === 'groups' ? 'flex' : 'none';
+        return `<div class="perm-card" data-src="${escapeHtml(src)}" data-type="${_permCurrentTab}">
+            <div class="perm-card-check-wrap">
+                <input type="checkbox" class="perm-row-check" onchange="_permRowCheckChanged()">
+            </div>
+            <div class="perm-card-source">
+                <span class="perm-source-name">${escapeHtml(src)}</span>
+            </div>
+            <div class="perm-card-pills">
+                <div class="perm-pill-group">${pills}</div>
+            </div>
+            <div class="perm-card-groups" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${groupsDisplay}">
+                <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${_permChipsHtml(_permCurrentTab, src, perm.allowed_groups)}</div>
+                ${_permGroupSelectHtml(_permCurrentTab, src)}
+            </div>
+        </div>`;
     }).join('');
 
-    container.innerHTML = `<table class="perm-source-table">
-        <thead><tr><th>Source</th><th>Visibility</th><th>Allowed Groups</th></tr></thead>
-        <tbody>${rows}</tbody>
-    </table>`;
+    container.innerHTML = `
+        <div class="perm-toolbar" id="permToolbar">
+            <div class="perm-toolbar-idle" id="permToolbarIdle">
+                <label class="perm-select-all-label">
+                    <input type="checkbox" id="permSelectAll" onchange="_permSelectAll(this.checked)">
+                    <span class="perm-select-all-text">Select all</span>
+                </label>
+                <span class="perm-toolbar-hint">Check sources to batch-edit</span>
+            </div>
+            <div class="perm-toolbar-active" id="permToolbarActive" style="display:none;">
+                <label class="perm-select-all-label perm-select-all-inline">
+                    <input type="checkbox" id="permSelectAllActive" onchange="_permSelectAll(this.checked)">
+                    <span class="perm-batch-count-badge" id="permBatchCount">0</span>
+                    <span class="perm-batch-count-label">selected</span>
+                </label>
+                <span class="perm-batch-divider"></span>
+                <span class="perm-batch-apply-label">Apply:</span>
+                ${_PERM_OPTS.map(o =>
+                    `<button class="perm-batch-btn perm-pill ${o.cls}" onclick="batchApplyPerm('${o.val}')" title="${
+                        o.val==='public'?'Set selected to Public':o.val==='all'?'Set selected to Members only':o.val==='groups'?'Set selected to Groups only':'Block selected'
+                    }">${o.icon} ${o.label}</button>`
+                ).join('')}
+                <button class="perm-batch-clear-btn" onclick="_permSelectAll(false)" title="Clear selection">✕</button>
+            </div>
+        </div>
+        <div class="perm-card-list">${cards}</div>`;
 }
 
 function onPermVisChange(type, source, value) {
@@ -5006,12 +5084,55 @@ function onPermVisChange(type, source, value) {
     } else if (value === 'blocked') {
         _permData[type][source].is_public = false;
         _permData[type][source].allowed_groups = [];
-    } else {
+    } else { // groups
         _permData[type][source].is_public = false;
-        _permData[type][source].allowed_groups = _permData[type][source].allowed_groups?.length ? _permData[type][source].allowed_groups : [];
+        if (!Array.isArray(_permData[type][source].allowed_groups) || _permData[type][source].allowed_groups === null) {
+            _permData[type][source].allowed_groups = [];
+        }
+    }
+    // Update pill active states
+    const card = document.querySelector(`.perm-card[data-src="${CSS.escape(source)}"][data-type="${type}"]`);
+    if (card) {
+        card.querySelectorAll('.perm-pill').forEach((btn, i) => {
+            btn.classList.toggle('active', _PERM_OPTS[i].val === value);
+        });
     }
     const cell = document.getElementById(`perm-groups-${type}-${source}`);
-    if (cell) cell.style.display = value === 'groups' ? 'table-cell' : 'none';
+    if (cell) cell.style.display = value === 'groups' ? 'flex' : 'none';
+    _permMarkDirty();
+}
+
+function _permRowCheckChanged() {
+    const checked = document.querySelectorAll('.perm-row-check:checked').length;
+    const total   = document.querySelectorAll('.perm-row-check:not(:disabled)').length;
+    const cnt     = document.getElementById('permBatchCount');
+    const idle    = document.getElementById('permToolbarIdle');
+    const active  = document.getElementById('permToolbarActive');
+    const saAll   = document.getElementById('permSelectAll');
+    const saAllA  = document.getElementById('permSelectAllActive');
+    if (cnt) cnt.textContent = checked;
+    const isActive = checked > 0;
+    if (idle)   idle.style.display   = isActive ? 'none' : 'flex';
+    if (active) active.style.display = isActive ? 'flex' : 'none';
+    [saAll, saAllA].forEach(cb => {
+        if (!cb) return;
+        cb.checked       = checked === total && total > 0;
+        cb.indeterminate = checked > 0 && checked < total;
+    });
+}
+
+function _permSelectAll(checked) {
+    document.querySelectorAll('.perm-row-check:not(:disabled)').forEach(cb => cb.checked = checked);
+    _permRowCheckChanged();
+}
+
+function batchApplyPerm(value) {
+    document.querySelectorAll('.perm-card[data-src]').forEach(card => {
+        const cb = card.querySelector('.perm-row-check');
+        if (!cb || !cb.checked) return;
+        onPermVisChange(card.dataset.type, card.dataset.src, value);
+    });
+    _permSelectAll(false);
 }
 
 function addPermGroup(type, source, select) {
@@ -5024,9 +5145,8 @@ function addPermGroup(type, source, select) {
         groups.push(grp);
         _permData[type][source].allowed_groups = groups;
         const chips = document.getElementById(`perm-chips-${type}-${source}`);
-        if (chips) chips.innerHTML = groups.map(g =>
-            `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(source)}','${escapeHtml(g)}')">&times;</span></span>`
-        ).join('');
+        if (chips) chips.innerHTML = _permChipsHtml(type, source, groups);
+        _permMarkDirty();
     }
 }
 
@@ -5034,12 +5154,13 @@ function removePermGroup(type, source, grp) {
     if (!_permData[type]?.[source]?.allowed_groups) return;
     _permData[type][source].allowed_groups = _permData[type][source].allowed_groups.filter(g => g !== grp);
     const chips = document.getElementById(`perm-chips-${type}-${source}`);
-    if (chips) chips.innerHTML = _permData[type][source].allowed_groups.map(g =>
-        `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(source)}','${escapeHtml(g)}')">&times;</span></span>`
-    ).join('');
+    if (chips) chips.innerHTML = _permChipsHtml(type, source, _permData[type][source].allowed_groups);
+    _permMarkDirty();
 }
 
-async function savePermissions() {
+async function savePermissions(isAuto = false) {
+    clearTimeout(_permSaveTimer);
+    _permSetStatus('saving');
     const batch = [];
     for (const type of ['phot', 'spec']) {
         for (const [source, perm] of Object.entries(_permData[type])) {
@@ -5054,9 +5175,16 @@ async function savePermissions() {
             body: JSON.stringify({ permissions: batch })
         });
         const data = await res.json();
-        if (data.success) showNotification('Permissions saved', 'success');
-        else showNotification(data.error || 'Error saving', 'error');
+        if (data.success) {
+            _permDirty = false;
+            _permSetStatus('saved');
+            if (!isAuto) showNotification('Permissions saved', 'success');
+        } else {
+            _permSetStatus('error');
+            showNotification(data.error || 'Error saving', 'error');
+        }
     } catch(e) {
+        _permSetStatus('error');
         showNotification('Failed to save permissions', 'error');
     }
 }

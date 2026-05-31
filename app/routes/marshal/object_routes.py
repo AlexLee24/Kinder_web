@@ -2089,10 +2089,10 @@ def ned_cone_search():
 
 @objects_bp.route('/api/ned/set_host', methods=['POST'])
 def ned_set_host():
-    """Set selected NED object as host and conditionally update transient redshift.
+    """Set selected NED object as host for the epessto support session.
 
-    Redshift update rule:
-    - only update transient.objects.redshift if z flag starts with uppercase 'S'.
+    Host info is stored in the session only (via updateTargetState on the client).
+    Redshift is returned whenever available so the client can fill it in.
     """
     if 'user' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
@@ -2102,11 +2102,9 @@ def ned_set_host():
     try:
         data = request.get_json(silent=True) or {}
         target_name = str(data.get('target_name') or '').strip()
-        host_name = str(data.get('host_name') or '').strip()
-        host_type = str(data.get('type') or '').strip()
-        z_flag = str(data.get('redshift_type') or '').strip()
+        host_name   = str(data.get('host_name')   or '').strip()
+        z_flag      = str(data.get('redshift_type') or '').strip()
         redshift_raw = data.get('redshift')
-        distance_arcmin_raw = data.get('distance_arcmin')
 
         if not target_name or not host_name:
             return jsonify({'success': False, 'error': 'Missing target_name or host_name'}), 400
@@ -2118,117 +2116,40 @@ def ned_set_host():
             except (ValueError, TypeError):
                 redshift_val = None
 
-        separation_arcsec = None
-        if distance_arcmin_raw not in (None, ''):
-            try:
-                separation_arcsec = float(distance_arcmin_raw) * 60.0
-            except (ValueError, TypeError):
-                separation_arcsec = None
-
-        should_update_redshift = (z_flag.startswith('S') and redshift_val is not None)
-
-        conn = get_tns_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT obj_id FROM transient.objects "
-            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
-            (target_name, target_name)
-        )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            return jsonify({'success': False, 'error': f'Object not found: {target_name}'}), 404
-
-        obj_id = row[0]
-
-        # Write host_name to transient.objects; conditionally update redshift.
-        updated_redshift = False
-        if should_update_redshift:
-            cur.execute(
-                "UPDATE transient.objects SET host_name = %s, redshift = %s WHERE obj_id = %s",
-                (host_name, redshift_val, obj_id)
-            )
-            updated_redshift = True
-        else:
-            cur.execute(
-                "UPDATE transient.objects SET host_name = %s WHERE obj_id = %s",
-                (host_name, obj_id)
-            )
-
-        conn.commit()
-        conn.close()
-
-        logger.info(
-            "[NED] set_host target=%s host=%s z=%.6f z_flag=%s updated_redshift=%s",
-            target_name, host_name,
-            redshift_val if redshift_val is not None else float('nan'),
-            z_flag or '-',
-            updated_redshift
-        )
+        has_redshift = redshift_val is not None
+        logger.info("[NED] set_host target=%s host=%s redshift=%s z_flag=%s",
+                    target_name, host_name, redshift_val, z_flag or '-')
 
         return jsonify({
             'success': True,
-            'updated_redshift': updated_redshift,
-            'redshift': redshift_val if updated_redshift else None,
             'host_name': host_name,
+            'updated_redshift': has_redshift,
+            'redshift': redshift_val,
             'z_flag': z_flag,
         })
 
     except Exception as e:
         logger.exception("[NED] set_host error")
-        try:
-            conn.rollback()
-            conn.close()
-        except Exception:
-            pass
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @objects_bp.route('/api/ned/unset_host', methods=['POST'])
 def ned_unset_host():
-    """Unset NED host flag for target object."""
+    """Unset NED host for the epessto support session."""
     if 'user' not in session:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
 
-    conn = None
     try:
         data = request.get_json(silent=True) or {}
         target_name = str(data.get('target_name') or '').strip()
         if not target_name:
             return jsonify({'success': False, 'error': 'Missing target_name'}), 400
 
-        conn = get_tns_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT obj_id FROM transient.objects "
-            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
-            (target_name, target_name)
-        )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            conn = None
-            return jsonify({'success': False, 'error': f'Object not found: {target_name}'}), 404
-
-        obj_id = row[0]
-        cur.execute(
-            "UPDATE transient.objects SET host_name = NULL WHERE obj_id = %s",
-            (obj_id,)
-        )
-        conn.commit()
-        conn.close()
-        conn = None
-
         logger.info("[NED] unset_host target=%s", target_name)
         return jsonify({'success': True})
+
     except Exception as e:
         logger.exception("[NED] unset_host error")
-        if conn:
-            try:
-                conn.rollback()
-                conn.close()
-            except Exception:
-                pass
         return jsonify({'success': False, 'error': str(e)}), 500

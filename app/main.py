@@ -155,12 +155,13 @@ register_routes(app)
 import fcntl
 from apscheduler.schedulers.background import BackgroundScheduler
 from modules.backup import run_daily_backup
-from modules.phot_scheduler import fetch_inbox_photometry, update_target_mags
+from modules.phot_scheduler import fetch_inbox_photometry, update_target_mags, retire_stale_followups
 # from modules.GCN_alert import start_gcn_listener  # reserved for future use
 from modules.auto_tns_download import start_auto_tns_downloader
 from modules.tns_gap_filler import start_gap_filler
 from modules.db_monitor import check_and_alert as _db_check_and_alert
 from modules.database import recycle_idle_connections as _db_recycle
+from modules.database.transient import sync_host_redshifts
 
 # Use a file lock to prevent duplicate background jobs when multiple processes
 # import this module (e.g. gunicorn multi-worker, process manager restart race).
@@ -179,7 +180,7 @@ if _acquired_bg_lock:
         _scheduler.add_job(fetch_inbox_photometry,   'cron', hour=3, minute=30, id='daily_phot_fetch')
         # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,          id='hourly_missing_phot')
         _scheduler.add_job(update_target_mags,       'cron', hour=5, minute=0,  id='daily_target_mag_update')
-        from modules.database.transient import sync_host_redshifts
+        _scheduler.add_job(retire_stale_followups,   'cron', hour=5, minute=30, id='daily_retire_stale_followups')
         _scheduler.add_job(sync_host_redshifts,  'cron',     hour=6,   minute=0, id='daily_host_redshift_sync')
         _scheduler.add_job(_db_check_and_alert,  'interval', minutes=10,  id='db_monitor')
         _scheduler.add_job(_db_recycle,          'interval', minutes=30,  id='db_recycle')
