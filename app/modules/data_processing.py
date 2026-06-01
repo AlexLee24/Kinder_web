@@ -427,15 +427,15 @@ class DataVisualization:
             legend=dict(
                 orientation='h',
                 x=0.5,
-                y=1.10,
-                xanchor='left',
-                yanchor='bottom',
+                y=-0.26,
+                xanchor='center',
+                yanchor='top',
                 bgcolor='rgba(12,12,20,0.72)',
                 bordercolor='rgba(160,160,160,0.25)',
                 borderwidth=1,
             ),
             hovermode='closest',
-            margin=dict(l=60, r=60, t=95, b=60)
+            margin=dict(l=60, r=60, t=95, b=95)
         )
         
         # Handle Y-axis range and Absolute Magnitude.
