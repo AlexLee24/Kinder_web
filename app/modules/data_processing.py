@@ -426,16 +426,16 @@ class DataVisualization:
             showlegend=True,
             legend=dict(
                 orientation='h',
-                x=0.5,
-                y=-0.26,
-                xanchor='center',
-                yanchor='top',
+                x=0.99,
+                y=1.18,
+                xanchor='right',
+                yanchor='bottom',
                 bgcolor='rgba(12,12,20,0.72)',
                 bordercolor='rgba(160,160,160,0.25)',
                 borderwidth=1,
             ),
             hovermode='closest',
-            margin=dict(l=60, r=60, t=95, b=95)
+            margin=dict(l=60, r=60, t=95, b=60)
         )
         
         # Handle Y-axis range and Absolute Magnitude.
@@ -467,7 +467,9 @@ class DataVisualization:
             # Reversed Y-axis: [max, min]
             layout.yaxis.range = [plot_max_mag, plot_min_mag]
 
-            if total_shift > 0:
+            has_abs_mag_axis = bool(total_shift > 0)
+
+            if has_abs_mag_axis:
                 abs_min = plot_min_mag - total_shift
                 abs_max = plot_max_mag - total_shift
             else:
@@ -477,16 +479,16 @@ class DataVisualization:
                 abs_max = plot_max_mag
 
             layout.yaxis2 = dict(
-                title="Abs Mag" if total_shift > 0 else "Abs Mag (z N/A)",
+                title="Abs Mag" if has_abs_mag_axis else "Abs Mag (z N/A)",
                 overlaying='y',
                 side='right',
                 range=[abs_max, abs_min],
                 showgrid=False,
                 tickformat=".2f",
-                showticklabels=total_shift > 0,
+                showticklabels=has_abs_mag_axis,
             )
             # Keep the absolute-mag ticks on the same 0.5-mag grid when locked
-            if mag_span < MIN_SPAN_MAG and total_shift > 0:
+            if mag_span < MIN_SPAN_MAG and has_abs_mag_axis:
                 layout.yaxis2.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
 
             # Add dummy trace to force yaxis2 to appear

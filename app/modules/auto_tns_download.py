@@ -208,16 +208,21 @@ def addin_database(filepath, debug=False):
                     csv_discovery_ads = r.get('discovery_ads_bibcode') or r.get('Discovery_ADS_bibcode')
                     csv_class_ads = r.get('class_ads_bibcodes') or r.get('Class_ADS_bibcodes')
 
+                    # Query by name only
                     cursor.execute(
-                        "SELECT last_modified_date, type, redshift, report_group, source_group, internal_name, "
+                        "SELECT obj_id, last_modified_date, type, redshift, report_group, source_group, internal_name, "
                         "discovery_mag, last_phot_date "
-                        "FROM transient.objects WHERE obj_id = %s",
-                        (r.get('objid'),)
+                        "FROM transient.objects WHERE name = %s",
+                        (r.get('name'),)
                     )
                     existing = cursor.fetchone()
+                    existing_obj_id = None
+                    if existing:
+                        existing_obj_id = existing[0]
 
                     if existing:
                         (
+                            _,  # obj_id already in existing_obj_id
                             existing_lm,
                             old_type,
                             old_redshift,
@@ -264,7 +269,7 @@ def addin_database(filepath, debug=False):
                             _to_mjd(r.get('creationdate')),
                             _to_mjd(r.get('last_photometry_date')),
                             new_lm_mjd,
-                            r.get('objid'),
+                            existing_obj_id,
                         ))
                         if changed_fields:
                             update_audit_batch.append((
@@ -278,12 +283,12 @@ def addin_database(filepath, debug=False):
                         if len(update_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
                                 UPDATE transient.objects SET
-                                    name_prefix = COALESCE(%s, name_prefix),
+                                    name_prefix = %s,
                                     name = COALESCE(%s, name),
                                     ra = COALESCE(%s, ra),
                                     dec = COALESCE(%s, dec),
                                     redshift = COALESCE(%s, redshift),
-                                    type = COALESCE(%s, type),
+                                    type = %s,
                                     report_group = COALESCE(%s, report_group),
                                     source_group = COALESCE(%s, source_group),
                                     discovery_date = COALESCE(%s, discovery_date),
@@ -296,7 +301,7 @@ def addin_database(filepath, debug=False):
                                     class_ADS = COALESCE(%s, class_ADS),
                                     creation_date = COALESCE(%s, creation_date),
                                     last_phot_date = COALESCE(%s, last_phot_date),
-                                    last_modified_date = COALESCE(%s, last_modified_date),
+                                    last_modified_date = %s,
                                     status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
                                 WHERE obj_id = %s
                             ''', update_batch, page_size=BATCH_SIZE)
@@ -375,12 +380,12 @@ def addin_database(filepath, debug=False):
             if update_batch:
                 extras.execute_batch(cursor, '''
                     UPDATE transient.objects SET
-                        name_prefix = COALESCE(%s, name_prefix),
+                        name_prefix = %s,
                         name = COALESCE(%s, name),
                         ra = COALESCE(%s, ra),
                         dec = COALESCE(%s, dec),
                         redshift = COALESCE(%s, redshift),
-                        type = COALESCE(%s, type),
+                        type = %s,
                         report_group = COALESCE(%s, report_group),
                         source_group = COALESCE(%s, source_group),
                         discovery_date = COALESCE(%s, discovery_date),
@@ -393,7 +398,7 @@ def addin_database(filepath, debug=False):
                         class_ADS = COALESCE(%s, class_ADS),
                         creation_date = COALESCE(%s, creation_date),
                         last_phot_date = COALESCE(%s, last_phot_date),
-                        last_modified_date = COALESCE(%s, last_modified_date),
+                        last_modified_date = %s,
                         status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
                     WHERE obj_id = %s
                 ''', update_batch, page_size=BATCH_SIZE)
@@ -551,7 +556,7 @@ def main():
                     auto_snoozed(now, debug=True)
                 time.sleep(60)
 
-            elif now.hour in (1, 4) and now.minute == 0:
+            elif now.hour in (1, 4, 12) and now.minute == 0:
                 logger.info("Daily task at %s (UTC %02d:00): processing yesterday and day-before-yesterday", now, now.hour)
                 for day_offset in (1, 2):
                     target_day = now - timedelta(days=day_offset)
@@ -589,24 +594,26 @@ def start_auto_tns_downloader(log_dir=None):
 
 if __name__ == "__main__":
     """Quick one-shot test: download yesterday → import → auto-snooze."""
-    logging.basicConfig(level=logging.DEBUG,
-                        format='%(asctime)s [%(levelname)s] %(message)s')
-    logger.info("========= TEST START =========")
-    now       = datetime.now(timezone.utc)
-    yesterday = now - timedelta(days=1)
-    work_csv  = SAVE_DIR / "tns_public_objects_WORK.csv"
-
-    logger.info("Step 1: Download yesterday (%s-%02d-%02d)",
-                yesterday.year, yesterday.month, yesterday.day)
-    # ok = download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True)
-    ok = download_TNS_api_with_fallback(2026, 5, 5, debug=True)
-
-    if ok:
-        logger.info("Step 2: Import into DB")
-        addin_database(work_csv, debug=True)
-        logger.info("Step 3: Auto-snooze")
-        auto_snoozed(now, debug=True)
-    else:
-        logger.warning("Download failed, skipping import.")
-
-    logger.info("========= TEST DONE =========")
+    # logging.basicConfig(level=logging.DEBUG,
+    #                     format='%(asctime)s [%(levelname)s] %(message)s')
+    # logger.info("========= TEST START =========")
+    # now       = datetime.now(timezone.utc)
+    # yesterday = now - timedelta(days=1)
+    # work_csv  = SAVE_DIR / "tns_public_objects_WORK.csv"
+    #
+    # logger.info("Step 1: Download yesterday (%s-%02d-%02d)",
+    #             yesterday.year, yesterday.month, yesterday.day)
+    # # ok = download_TNS_api_with_fallback(yesterday.year, yesterday.month, yesterday.day, debug=True)
+    # ok = download_TNS_api_with_fallback(2026, 5, 5, debug=True)
+    #
+    # if ok:
+    #     logger.info("Step 2: Import into DB")
+    #     addin_database(work_csv, debug=True)
+    #     logger.info("Step 3: Auto-snooze")
+    #     auto_snoozed(now, debug=True)
+    # else:
+    #     logger.warning("Download failed, skipping import.")
+    #
+    # logger.info("========= TEST DONE =========")
+    # download_TNS_api_hr(17)
+    download_TNS_api(2026,5,31)
