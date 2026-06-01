@@ -720,10 +720,47 @@ body {
 
 /* ── Target card ───────────────────────────────────────────────── */
 .target-card {
+    position: relative;
     background: rgba(255,255,255,0.02);
     border: 1px solid var(--border-dim);
     border-radius: 14px;
     padding: 20px 22px 24px;
+}
+
+.card-busy {
+    overflow: hidden;
+}
+
+.card-busy-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5,10,13,0.72);
+    border-radius: inherit;
+    backdrop-filter: blur(3px);
+    cursor: progress;
+}
+
+.card-busy-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    color: var(--accent);
+    background: rgba(0,0,0,0.42);
+    border: 1px solid var(--border-glow);
+    border-radius: 8px;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.35);
+    font-size: 0.92rem;
+}
+
+.card-busy-spinner {
+    width: 22px;
+    height: 22px;
+    border-width: 3px;
 }
 
 .card-header-bar {

@@ -7,9 +7,25 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
     {% include '_favicon.html' %}
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <!-- ── 效能修正：加入 defer，避免 3.5MB 的 Plotly 阻塞網頁初次渲染 ── -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
 </head>
 <body>
+    {% macro render_abs_mag(value, sep=None) -%}
+        {% if value is not none %}
+            {% set am = value|float %}
+            {% if am < -20 %}
+                <span class="absmag-chip absmag-verybright" {% if sep is not none and sep|float >= 10 %}style="opacity:0.7"{% endif %}>{{ "%.2f"|format(am) }}</span>
+            {% elif am <= -18 %}
+                <span class="absmag-chip absmag-peak">{{ "%.2f"|format(am) }}</span>
+            {% elif am <= -15 %}
+                {{ "%.2f"|format(am) }}
+            {% else %}
+                <span class="absmag-chip absmag-dim">{{ "%.2f"|format(am) }}</span>
+            {% endif %}
+        {% else %}—{% endif %}
+    {%- endmacro %}
+
     {% include '_navbar.html' %}
 
     <div class="detect-wrap">
@@ -135,21 +151,7 @@
                                 {% if result.z is not none %}{{ "%.4f"|format(result.z) }}{% else %}—{% endif %}
                             </td>
 
-                            <td>
-                                {% if result.abs_mag is not none %}
-                                    {% set am = result.abs_mag|float %}
-                                    {% set sep = result.separation_arcsec|float %}
-                                    {% if am < -20 %}
-                                        <span class="absmag-chip absmag-verybright" style="{% if sep >= 10 %}opacity:0.7{% endif %}">{{ "%.2f"|format(am) }}</span>
-                                    {% elif am <= -18 %}
-                                        <span class="absmag-chip absmag-peak">{{ "%.2f"|format(am) }}</span>
-                                    {% elif am <= -15 %}
-                                        {{ "%.2f"|format(am) }}
-                                    {% else %}
-                                        <span class="absmag-chip absmag-dim">{{ "%.2f"|format(am) }}</span>
-                                    {% endif %}
-                                {% else %}—{% endif %}
-                            </td>
+                            <td class="td-absmag">{{ render_abs_mag(result.abs_mag, result.separation_arcsec) }}</td>
 
                             <td id="status-cell-{{ result.target_name }}" style="text-align:center;">
                                 {% if is_done %}
@@ -161,7 +163,7 @@
                                 {% elif result.obj_status == 'followup' %}
                                     <span class="badge-followup">⬤ Follow-up</span>
                                 {% else %}
-                                    <span class="badge-unreviewed">! Review</span>
+                                    <span class="badge-unreviewed">Review</span>
                                 {% endif %}
                             </td>
 
@@ -221,16 +223,7 @@
                             {% if result.best_match.abs_mag is not none %}
                             <span class="card-absmag-inline">
                                 <strong>M =</strong>
-                                {% set cam = result.best_match.abs_mag|float %}
-                                {% if cam < -20 %}
-                                    <span class="absmag-chip absmag-verybright">{{ "%.2f"|format(cam) }}</span>
-                                {% elif cam <= -18 %}
-                                    <span class="absmag-chip absmag-peak">{{ "%.2f"|format(cam) }}</span>
-                                {% elif cam <= -15 %}
-                                    {{ "%.2f"|format(cam) }}
-                                {% else %}
-                                    <span class="absmag-chip absmag-dim">{{ "%.2f"|format(cam) }}</span>
-                                {% endif %}
+                                {{ render_abs_mag(result.best_match.abs_mag) }}
                             </span>
                             {% endif %}
                         </div>
@@ -322,21 +315,7 @@
                                 </td>
                                 <td>{{ "%.2f"|format(match.separation_arcsec) }}</td>
                                 <td>{% if match.z is not none %}{{ "%.4f"|format(match.z) }}{% else %}—{% endif %}</td>
-                                <td>
-                                    {% if match.abs_mag is not none %}
-                                        {% set am = match.abs_mag|float %}
-                                        {% set sep = match.separation_arcsec|float %}
-                                        {% if am < -20 %}
-                                            <span class="absmag-chip absmag-verybright" style="{% if sep >= 10 %}opacity:0.7{% endif %}">{{ "%.2f"|format(am) }}</span>
-                                        {% elif am <= -18 %}
-                                            <span class="absmag-chip absmag-peak">{{ "%.2f"|format(am) }}</span>
-                                        {% elif am <= -15 %}
-                                            {{ "%.2f"|format(am) }}
-                                        {% else %}
-                                            <span class="absmag-chip absmag-dim">{{ "%.2f"|format(am) }}</span>
-                                        {% endif %}
-                                    {% else %}—{% endif %}
-                                </td>
+                                <td class="td-absmag">{{ render_abs_mag(match.abs_mag, match.separation_arcsec) }}</td>
                                 <td>
                                     {% if 'Hsu' in match.catalog_name %}Grade: {{ md.get('Grade', '—') }}
                                     {% elif 'Karp' in match.catalog_name %}

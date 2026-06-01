@@ -244,6 +244,46 @@ def _safe_coord(v):
         return str(v) if v else ''
 
 
+def _detect_abs_mag_inputs(latest_point, tns_details, tns_info):
+    latest_mag = None
+    filter_name = 'V'
+
+    if latest_point and latest_point.get('magnitude') is not None:
+        latest_mag = _parse_float_or_none(latest_point.get('magnitude'))
+        if latest_mag is not None:
+            filter_name = latest_point.get('filter') or 'V'
+
+    if latest_mag is None and tns_details and tns_details.get('discoverymag') is not None:
+        latest_mag = _parse_float_or_none(tns_details.get('discoverymag'))
+        if latest_mag is not None:
+            filter_name = tns_details.get('filter') or tns_details.get('discmagfilter') or 'V'
+
+    tns_details = tns_details or {}
+    tns_info = tns_info or {}
+    ra = _parse_float_or_none(tns_details.get('ra') or tns_info.get('ra'))
+    dec = _parse_float_or_none(
+        tns_details.get('declination') or tns_details.get('dec') or tns_info.get('dec')
+    )
+
+    return latest_mag, filter_name, ra, dec
+
+
+def _calculate_detect_abs_mag(target_name, apparent_mag, redshift, extinction, catalog_name=''):
+    apparent_mag = _parse_float_or_none(apparent_mag)
+    redshift = _parse_float_or_none(redshift)
+    extinction = _parse_float_or_none(extinction)
+
+    if apparent_mag is None or redshift is None or redshift <= 0 or extinction is None:
+        return None
+
+    try:
+        result = apm_to_abm(apparent_mag, redshift, extinction)
+        return None if isinstance(result, dict) else result
+    except Exception as e:
+        logger.error('DETECT abs_mag calculation error for %s %s: %s', target_name, catalog_name, e)
+        return None
+
+
 def _build_detect_lc_payload(target_name):
     # Single DB connection for both object details and photometry (Marshal pattern)
     lc_data = get_detect_lc_data(target_name)
@@ -595,34 +635,32 @@ def _assemble_detect_payload(selected_date):
         if not processed_matches:
             continue
 
+        latest_mag, filter_name, target_ra, target_dec = _detect_abs_mag_inputs(
+            latest_point,
+            tns_details,
+            processed_matches[0].get('tns_info'),
+        )
+        extinction = None
+        if latest_mag is not None and target_ra is not None and target_dec is not None:
+            try:
+                extinction = get_extinction(target_ra, target_dec, filter_name)
+                if hasattr(extinction, 'item'):
+                    extinction = extinction.item()
+            except Exception as e:
+                logger.error('DETECT extinction calculation error for %s: %s', target_name, e)
+
+        for match in processed_matches:
+            fresh_abs_mag = _calculate_detect_abs_mag(
+                target_name,
+                latest_mag,
+                match.get('z'),
+                extinction,
+                match.get('catalog_name') or '',
+            )
+            if fresh_abs_mag is not None:
+                match['abs_mag'] = fresh_abs_mag
+
         best_match = processed_matches[0]
-
-        # Compute one fresh abs-mag for best match only.
-        try:
-            bm_ra = best_match['tns_info'].get('ra')
-            bm_dec = best_match['tns_info'].get('dec')
-            bm_ra = float(bm_ra) if bm_ra != 'N/A' else None
-            bm_dec = float(bm_dec) if bm_dec != 'N/A' else None
-            bm_z = best_match.get('z')
-
-            latest_mag = None
-            filter_name = 'V'
-            if latest_point and latest_point.get('magnitude') is not None:
-                latest_mag = float(latest_point.get('magnitude'))
-                filter_name = latest_point.get('filter', 'V')
-            elif tns_details and tns_details.get('discoverymag') is not None:
-                latest_mag = float(tns_details.get('discoverymag'))
-                filter_name = tns_details.get('filter', 'V')
-
-            if bm_z is not None and latest_mag is not None and bm_ra is not None and bm_dec is not None:
-                ext = get_extinction(bm_ra, bm_dec, filter_name)
-                if hasattr(ext, 'item'):
-                    ext = ext.item()
-                fresh_abs_mag = apm_to_abm(latest_mag, float(bm_z), ext)
-                if not isinstance(fresh_abs_mag, dict):
-                    best_match['abs_mag'] = fresh_abs_mag
-        except Exception as e:
-            logger.error('Best-match abs_mag calculation error for %s: %s', target_name, e)
 
         target_has_host = any(m.get('is_host') for m in processed_matches)
         raw_status = (tns_details or {}).get('status', '') or ''

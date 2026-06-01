@@ -17,17 +17,22 @@ let _total = 0;
 function _showCard(idx) {
     if (idx < 0 || idx >= _total) return;
 
-    document.querySelectorAll('.target-card').forEach((card, i) => {
-        const visible = (i === idx);
-        card.style.display = visible ? '' : 'none';
+    // ── 效能優化：只操作舊卡片與新卡片，避免對全部卡片執行 DOM 重排 ──
+    const oldCard = document.getElementById(`card-${_cur}`);
+    if (oldCard && _cur !== idx) {
+        oldCard.style.display = 'none';
+        // 清理隱藏卡片的 Plotly，釋放記憶體
+        const pd = document.getElementById(`plotly-card-${_cur}`);
+        if (pd && pd._fullLayout) { try { Plotly.purge(pd); } catch (_) {} }
+    }
 
-        // Purge non-visible Plotly charts to free memory
-        if (!visible) {
-            const pd = document.getElementById(`plotly-card-${i}`);
-            if (pd && pd._fullLayout) { try { Plotly.purge(pd); } catch (_) {} }
-        }
-    });
+    const newCard = document.getElementById(`card-${idx}`);
+    if (newCard) {
+        newCard.style.display = '';
+    }
+
     _cur = idx;
+    // ────────────────────────────────────────────────────────────────
 
     // Update counter
     const el = document.getElementById('cardCurrent');
@@ -36,8 +41,7 @@ function _showCard(idx) {
     // Update object name in nav bar
     const nameEl = document.getElementById('cardNavObjName');
     if (nameEl) {
-        const card      = document.getElementById(`card-${idx}`);
-        const titleLink = card && card.querySelector('.card-obj-title a');
+        const titleLink = newCard && newCard.querySelector('.card-obj-title a');
         nameEl.textContent = titleLink
             ? titleLink.textContent.replace(/↗/g, '').trim()
             : '';
@@ -55,9 +59,8 @@ function _showCard(idx) {
     if (next) next.disabled = (idx === _total - 1);
 
     // Lazy-load the finder image (with spinner)
-    const visCard = document.getElementById(`card-${idx}`);
-    if (visCard) {
-        const img = visCard.querySelector('img.lazy-img');
+    if (newCard) {
+        const img = newCard.querySelector('img.lazy-img');
         if (img) _loadCardImage(img);
     }
 
@@ -169,6 +172,13 @@ function _fetchLC(targetName, cardIdx, forceRefresh) {
     plotDiv.innerHTML = '<div class="card-lc-loading"><span class="tracker-spinner"></span>&nbsp;Loading photometry…</div>';
     if (statusEl) { statusEl.textContent = ''; statusEl.className = 'card-lc-status'; }
 
+    // ====== 加入 Plotly 是否已載入的檢查 ======
+    if (typeof Plotly === 'undefined') {
+        // 如果使用了 defer，Plotly 可能還沒載入完，延遲一下再試
+        setTimeout(() => _fetchLC(targetName, cardIdx, forceRefresh), 200);
+        return;
+    }
+
     const url = `/api/detect/lightcurve/${encodeURIComponent(targetName)}` + (forceRefresh ? '?refresh=1' : '');
     fetch(url)
         .then(r => r.json())
@@ -203,6 +213,20 @@ function _renderPlotly(plotDiv, plotJsonStr, targetName) {
         console.error('[detect] plot render error for', targetName, err);
         plotDiv.innerHTML = '<div class="card-no-data">Plot render failed</div>';
     }
+}
+
+function _formatAbsMag(value, sep) {
+    const am = Number(value);
+    if (!Number.isFinite(am)) return '—';
+
+    const label = am.toFixed(2);
+    const sepValue = Number(sep);
+    const dimStyle = Number.isFinite(sepValue) && sepValue >= 10 ? ' style="opacity:0.7"' : '';
+
+    if (am < -20) return `<span class="absmag-chip absmag-verybright"${dimStyle}>${label}</span>`;
+    if (am <= -18) return `<span class="absmag-chip absmag-peak">${label}</span>`;
+    if (am <= -15) return label;
+    return `<span class="absmag-chip absmag-dim">${label}</span>`;
 }
 
 // ── Filter summary table ──────────────────────────────────────────────────
@@ -285,14 +309,7 @@ function loadTracker(force) {
                 + '</tr></thead><tbody>';
 
             tracker.forEach(item => {
-                const am = item.abs_mag;
-                let amHtml = '—';
-                if (am !== null && am !== undefined) {
-                    if      (am < -20)  amHtml = `<span class="absmag-chip absmag-verybright">${am.toFixed(2)}</span>`;
-                    else if (am <= -18) amHtml = `<span class="absmag-chip absmag-peak">${am.toFixed(2)}</span>`;
-                    else if (am <= -15) amHtml = am.toFixed(2);
-                    else                amHtml = `<span class="absmag-chip absmag-dim">${am.toFixed(2)}</span>`;
-                }
+                const amHtml = _formatAbsMag(item.abs_mag, item.separation_arcsec);
                 html += `<tr>
                     <td><a href="/object/${item.name}" class="tracker-obj-link" target="_blank">${item.name}</a></td>
                     <td class="td-absmag">${amHtml}</td>
@@ -341,6 +358,7 @@ function refreshPage() { location.reload(); }
 // ── Host management ───────────────────────────────────────────────────────
 function setHost(matchId, targetName, redshift, source) {
     if (!confirm(`Set this match as host for ${targetName}?\nThis will update the TNS redshift.`)) return;
+    _setCardBusy(targetName, true);
     fetch('/api/set_host', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -351,11 +369,13 @@ function setHost(matchId, targetName, redshift, source) {
         if (d.success) _updateUIAfterSetHost(matchId, targetName, redshift);
         else alert('Failed: ' + (d.message || 'Unknown'));
     })
-    .catch(() => alert('An error occurred'));
+    .catch(() => alert('An error occurred'))
+    .finally(() => _setCardBusy(targetName, false));
 }
 
 function unsetHost(targetName) {
     if (!confirm(`Clear the host for ${targetName}?`)) return;
+    _setCardBusy(targetName, true);
     fetch('/api/unset_host', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,7 +386,8 @@ function unsetHost(targetName) {
         if (d.success) _updateUIAfterUnsetHost(targetName);
         else alert('Failed: ' + (d.message || 'Unknown'));
     })
-    .catch(() => alert('An error occurred'));
+    .catch(() => alert('An error occurred'))
+    .finally(() => _setCardBusy(targetName, false));
 }
 
 // ── Object status ─────────────────────────────────────────────────────────
@@ -380,13 +401,16 @@ function _postStatusAPI(targetName, status) {
 
 function markChecked(targetName) {
     if (!confirm(`Mark ${targetName} as Checked (Snoozed)?`)) return;
+    _setCardBusy(targetName, true);
     _postStatusAPI(targetName, 'snoozed')
         .then(d => { if (d.success) _updateUIAfterMarkChecked(targetName); else alert('Failed: ' + (d.message || 'Unknown')); })
-        .catch(() => alert('An error occurred'));
+        .catch(() => alert('An error occurred'))
+        .finally(() => _setCardBusy(targetName, false));
 }
 
 function markNoHost(targetName) {
     if (!confirm(`Mark ${targetName} as having no host?`)) return;
+    _setCardBusy(targetName, true);
     fetch('/api/mark_no_host', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -394,11 +418,13 @@ function markNoHost(targetName) {
     })
     .then(r => r.json())
     .then(d => { if (d.success) _updateUIAfterMarkNoHost(targetName); else alert('Failed: ' + (d.message || 'Unknown')); })
-    .catch(() => alert('An error occurred'));
+    .catch(() => alert('An error occurred'))
+    .finally(() => _setCardBusy(targetName, false));
 }
 
 function unmarkNoHost(targetName) {
     if (!confirm(`Remove "No Host" decision for ${targetName}?`)) return;
+    _setCardBusy(targetName, true);
     // Reuse unset_host: sets is_host=False + status → Inbox
     fetch('/api/unset_host', {
         method: 'POST',
@@ -407,7 +433,8 @@ function unmarkNoHost(targetName) {
     })
     .then(r => r.json())
     .then(d => { if (d.success) _updateUIAfterUnsetHost(targetName); else alert('Failed: ' + (d.message || 'Unknown')); })
-    .catch(() => alert('An error occurred'));
+    .catch(() => alert('An error occurred'))
+    .finally(() => _setCardBusy(targetName, false));
 }
 
 // ── DOM helpers shared across update functions ────────────────────────────
@@ -419,6 +446,40 @@ function _getCardIdx(targetName) {
 function _getCard(targetName) {
     const idx = _getCardIdx(targetName);
     return idx >= 0 ? document.getElementById(`card-${idx}`) : null;
+}
+
+function _setCardBusy(targetName, busy, message = 'Updating card…') {
+    const card = _getCard(targetName);
+    if (!card) return;
+
+    let overlay = card.querySelector('.card-busy-overlay');
+    if (busy) {
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'card-busy-overlay';
+            overlay.setAttribute('role', 'status');
+            overlay.setAttribute('aria-live', 'polite');
+            card.appendChild(overlay);
+        }
+        overlay.innerHTML = `<div class="card-busy-box"><span class="tracker-spinner card-busy-spinner"></span><span>${message}</span></div>`;
+        card.classList.add('card-busy');
+        card.setAttribute('aria-busy', 'true');
+        card.querySelectorAll('button').forEach(btn => {
+            if (!btn.dataset.busyWasDisabled) {
+                btn.dataset.busyWasDisabled = btn.disabled ? 'true' : 'false';
+            }
+            btn.disabled = true;
+        });
+        return;
+    }
+
+    card.classList.remove('card-busy');
+    card.removeAttribute('aria-busy');
+    card.querySelectorAll('button[data-busy-was-disabled]').forEach(btn => {
+        btn.disabled = btn.dataset.busyWasDisabled === 'true';
+        delete btn.dataset.busyWasDisabled;
+    });
+    if (overlay) overlay.remove();
 }
 
 // ── After setHost: is_host=True, status=followup ──────────────────────────
