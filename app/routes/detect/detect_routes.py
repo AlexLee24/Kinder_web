@@ -7,7 +7,8 @@ logger = logging.getLogger(__name__)
 from modules.database.transient import (get_cross_match_results, update_cross_match_flag, get_available_dates,
     get_daily_match_counts, tns_object_db, get_target_image, get_detect_image_by_id, set_cross_match_host,
     update_tns_redshift, unset_cross_match_host, update_object_status, get_followup_objects_for_tracking,
-    get_photometry_batch, get_object_details_batch, get_latest_photometry_for_names)
+    get_photometry_batch, get_object_details_batch, get_latest_photometry_for_names,
+    get_detect_metadata, get_detect_page_data, get_detect_lc_data)
 from modules.data_processing import DataVisualization
 from modules.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -178,7 +179,7 @@ def prewarm_detect_page_cache(prewarm_days=None, refresh_latest=True, force_late
 
     def _runner():
         with app_obj.app_context():
-            available_dates = get_available_dates() or []
+            available_dates = get_detect_metadata().get('available_dates') or []
             if not available_dates:
                 logger.info('[DETECT-PREWARM] no available dates')
                 return
@@ -222,9 +223,32 @@ def _parse_float_or_none(value):
         return None
 
 
+def _safe_float(v):
+    """Return a plain Python float or None. Handles Decimal, numpy, str."""
+    if v is None:
+        return None
+    try:
+        r = float(v)
+        return None if r != r else r   # NaN → None
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_coord(v):
+    """Return a 4-decimal-place coordinate string, or ''."""
+    if v is None:
+        return ''
+    try:
+        return f'{float(v):.4f}'
+    except (TypeError, ValueError):
+        return str(v) if v else ''
+
+
 def _build_detect_lc_payload(target_name):
-    details = tns_object_db.get_object_details(target_name) or {}
-    photometry = get_photometry_batch([target_name]).get(target_name, [])
+    # Single DB connection for both object details and photometry (Marshal pattern)
+    lc_data = get_detect_lc_data(target_name)
+    details = lc_data.get('details') or {}
+    photometry = lc_data.get('photometry') or []
 
     if not photometry:
         return {
@@ -307,6 +331,11 @@ def set_host():
     if set_cross_match_host(match_id, target_name):
         # 2. Mark object as Follow-up
         update_object_status(target_name, 'followup')
+        # Invalidate page cache so next load gets fresh data
+        _soft_invalidate_page_cache()
+        # Soft-invalidate tracker cache: keep stale value for SWR, trigger bg rebuild
+        _TRACKER_CACHE['expires_at'] = 0.0
+        _start_tracker_build()
         # 3. Update tns_objects redshift
         if redshift is not None:
             try:
@@ -320,22 +349,41 @@ def set_host():
     else:
         return jsonify({'success': False, 'message': 'Database error'})
 
+def _soft_invalidate_page_cache():
+    """Mark all cached detect pages as stale and kick off background rebuilds.
+    Called after any mutation (host change, status change) so the next page
+    load gets fresh data instead of the old cached payload.
+    """
+    with _DETECT_PAGE_CACHE_LOCK:
+        dates_to_rebuild = list(_DETECT_PAGE_CACHE.keys())
+        for key in dates_to_rebuild:
+            if _DETECT_PAGE_CACHE.get(key):
+                _DETECT_PAGE_CACHE[key]['built_at'] = 0.0
+    for date in dates_to_rebuild:
+        _start_detect_page_build(date)
+    logger.info('[DETECT-CACHE] page cache soft-invalidated for %d dates, rebuilds started', len(dates_to_rebuild))
+
+
 @detect_bp.route('/api/unset_host', methods=['POST'])
 def unset_host():
     if 'user' not in session:
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
     elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-    elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-        
+
     data = request.json
     target_name = data.get('target_name')
-    
+
     if not target_name:
         return jsonify({'success': False, 'message': 'Missing parameters'})
-        
+
     if unset_cross_match_host(target_name):
+        # Reset object status back to Inbox so it leaves the Follow-up tracker
+        update_object_status(target_name, 'object')
+        # Invalidate both caches so next page load gets fresh data
+        _soft_invalidate_page_cache()
+        _TRACKER_CACHE['expires_at'] = 0.0
+        _start_tracker_build()
         return jsonify({'success': True})
     else:
         return jsonify({'success': False, 'message': 'Database error'})
@@ -368,10 +416,39 @@ def set_object_status():
     target_name = data.get('target_name')
     status = data.get('status')  # 'finished', 'followup', or 'object' (reset to Inbox)
 
-    if not target_name or status not in ('finished', 'followup', 'object'):
+    if not target_name or status not in ('finished', 'followup', 'object', 'snoozed'):
         return jsonify({'success': False, 'message': 'Missing or invalid parameters'})
 
     if update_object_status(target_name, status):
+        # Invalidate page cache so next load gets fresh data
+        _soft_invalidate_page_cache()
+        # Soft-invalidate tracker cache: keep stale value for SWR, trigger bg rebuild
+        _TRACKER_CACHE['expires_at'] = 0.0
+        _start_tracker_build()
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'message': 'Database error'})
+
+
+@detect_bp.route('/api/mark_no_host', methods=['POST'])
+def mark_no_host():
+    """Mark target as having no host: cross_match is_host=False, status=Snoozed."""
+    if 'user' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    data = request.json
+    target_name = data.get('target_name')
+    if not target_name:
+        return jsonify({'success': False, 'message': 'Missing parameters'})
+
+    # Ensure no cross_match is flagged as host
+    unset_cross_match_host(target_name)
+    # Set status to Snoozed
+    if update_object_status(target_name, 'snoozed'):
+        _soft_invalidate_page_cache()
+        _TRACKER_CACHE['expires_at'] = 0.0
+        _start_tracker_build()
         return jsonify({'success': True})
     return jsonify({'success': False, 'message': 'Database error'})
 
@@ -391,13 +468,14 @@ def detect_results():
     # Get date from query parameter
     selected_date = request.args.get('detect_results')
     
-    # Get available dates for the dropdown
-    available_dates = get_available_dates()
+    # Single cached call for both available_dates and daily_counts (Marshal pattern)
+    metadata = get_detect_metadata()
+    available_dates = metadata.get('available_dates') or []
     latest_date = available_dates[0] if available_dates else None
-    
+
     # If no date selected, render the homepage
     if not selected_date:
-        daily_counts = get_daily_match_counts()
+        daily_counts = metadata.get('daily_counts', [])
         # Prefetch latest date in background to keep first detailed load responsive.
         if latest_date:
             cached_latest, _ = _get_detect_page_payload_swr(latest_date)
@@ -425,8 +503,18 @@ def detect_results():
 
 def _assemble_detect_payload(selected_date):
     t0 = time.perf_counter()
-    available_dates = get_available_dates()
-    results = get_cross_match_results(date=selected_date)
+
+    # ── Metadata: available_dates + daily_counts (cached, 1 conn or 0 if fresh) ──
+    metadata = get_detect_metadata()
+    available_dates = metadata.get('available_dates', [])
+    daily_counts    = metadata.get('daily_counts', [])
+    t_meta = time.perf_counter()
+
+    # ── All page data in a SINGLE DB connection (cross-matches + details + phot) ──
+    page_data = get_detect_page_data(selected_date)
+    results        = page_data.get('results', [])
+    details_batch  = page_data.get('details_batch', {})
+    latest_phot    = page_data.get('latest_phot', {})
     t_query = time.perf_counter()
 
     # Group results by target, parse match_data
@@ -442,10 +530,6 @@ def _assemble_detect_payload(selected_date):
             continue
         results_by_target.setdefault(t_name, []).append(row)
 
-    # Keep payload build light: object details + latest photometry point per target.
-    all_names = list(results_by_target.keys())
-    details_batch = get_object_details_batch(all_names)
-    latest_phot = get_latest_photometry_for_names(all_names)
     t_batch = time.perf_counter()
 
     final_target_list = []
@@ -570,29 +654,205 @@ def _assemble_detect_payload(selected_date):
         row['obj_status'] = t.get('obj_status', 'object')
         summary_results.append(row)
 
-    daily_counts = get_daily_match_counts()
     t_counts = time.perf_counter()
 
+    # ── Compact JSON-safe data for client-side rendering ─────────────────
+    summary_table = []
+    cards_data    = []
+    for t in final_target_list:
+        bm = t['best_match']
+        ti = t.get('tns_info') or {}
+        summary_table.append({
+            'target_name':       str(t['target_name']),
+            'ra':                str(ti.get('ra') or ''),
+            'dec':               str(ti.get('dec') or ''),
+            'catalog_name':      str(bm.get('catalog_name') or ''),
+            'separation_arcsec': _safe_float(bm.get('separation_arcsec')),
+            'z':                 _safe_float(bm.get('z')),
+            'abs_mag':           _safe_float(bm.get('abs_mag')),
+            'is_flagged':        bool(bm.get('is_flagged')),
+            'flag_id':           bm.get('flag_id'),
+            'is_host':           bool(t.get('is_host', False)),
+            'obj_status':        str(t.get('obj_status', 'object')),
+        })
+        matches_clean = []
+        for m in t['matches']:
+            md = m.get('match_data') or {}
+            matches_clean.append({
+                'id':                m.get('id'),
+                'catalog_name':      str(m.get('catalog_name') or ''),
+                'separation_arcsec': _safe_float(m.get('separation_arcsec')),
+                'z':                 _safe_float(m.get('z')),
+                'abs_mag':           _safe_float(m.get('abs_mag')),
+                'is_host':           bool(m.get('is_host')),
+                'is_flagged':        bool(m.get('is_flagged')),
+                'flag_id':           m.get('flag_id'),
+                'match_ra':          _safe_coord(m.get('match_ra') or md.get('ra') or md.get('_RAJ2000')),
+                'match_dec':         _safe_coord(m.get('match_dec') or md.get('dec') or md.get('_DEJ2000')),
+                'obj_id':            str(md.get('id') or ''),
+                'grade':             str(md.get('Grade') or ''),
+                'lens_prob':         _safe_float(md.get('LENS_PROBABILITY')),
+            })
+        cards_data.append({
+            'target_name': str(t['target_name']),
+            'tns_info': {
+                'discoverydate':  str(ti.get('discoverydate') or '—'),
+                'internal_names': str(ti.get('internal_names') or ''),
+                'ra':             str(ti.get('ra') or ''),
+                'dec':            str(ti.get('dec') or ''),
+            },
+            'z':          _safe_float(bm.get('z')),
+            'abs_mag':    _safe_float(bm.get('abs_mag')),
+            'obj_status': str(t.get('obj_status', 'object')),
+            'is_host':    bool(t.get('is_host', False)),
+            'is_flagged': bool(bm.get('is_flagged')),
+            'flag_id':    bm.get('flag_id'),
+            'matches':    matches_clean,
+        })
+
     logger.info(
-        '[DETECT-BUILD] date=%s results=%d targets=%d timings: query=%.3fs batch=%.3fs build=%.3fs counts=%.3fs total=%.3fs',
+        '[DETECT-BUILD] date=%s results=%d targets=%d timings: meta=%.3fs query=%.3fs build=%.3fs total=%.3fs',
         selected_date,
         len(results),
         len(final_target_list),
-        t_query - t0,
-        t_batch - t_query,
-        t_build - t_batch,
-        t_counts - t_build,
+        t_meta - t0,
+        t_query - t_meta,
+        t_build - t_query,
         t_counts - t0,
     )
 
     return {
-        'results': final_target_list,
+        'results':        final_target_list,
         'summary_results': summary_results,
-        'current_path': '/detect',
+        'summary_table':  summary_table,
+        'cards_data':     cards_data,
+        'current_path':   '/detect',
         'available_dates': available_dates,
-        'daily_counts': daily_counts,
-        'selected_date': selected_date,
+        'daily_counts':   daily_counts,
+        'selected_date':  selected_date,
     }
+
+
+# ── Follow-up tracker: SWR cache (expensive abs_mag computation) ──────────
+_TRACKER_CACHE: dict = {'expires_at': 0.0, 'value': None}
+_TRACKER_CACHE_TTL = int(os.getenv('DETECT_TRACKER_CACHE_TTL', '300'))  # 5 min default
+
+
+def _build_tracker_data() -> list:
+    """Compute abs_mag for all follow-up objects. May take 10-20 s on first call."""
+    followup_raw = get_followup_objects_for_tracking()
+    if not followup_raw:
+        return []
+
+    names = [fu['name'] for fu in followup_raw]
+    latest_phot = get_latest_photometry_for_names(names)
+
+    _NORM2 = {'Follow-up': 'followup', 'Finish': 'finished', 'Inbox': 'object', 'Snoozed': 'snoozed'}
+    tracker = []
+    for fu in followup_raw:
+        # Skip objects that are already Done — they no longer need follow-up attention
+        if _NORM2.get(fu.get('status', '') or '', 'object') == 'finished':
+            continue
+        fu_name = fu['name']
+        fu_z = None
+        for z_src in (fu.get('match_z'), fu.get('redshift')):
+            if z_src is not None:
+                try:
+                    fu_z = float(z_src)
+                    break
+                except (ValueError, TypeError):
+                    pass
+        try:
+            fu_ra  = float(fu['ra'])         if fu.get('ra')          else None
+            fu_dec = float(fu['declination']) if fu.get('declination') else None
+        except (ValueError, TypeError):
+            fu_ra = fu_dec = None
+
+        fu_abs_mag = None
+        if fu_z and fu_ra and fu_dec:
+            lp = latest_phot.get(fu_name)
+            latest_mag, filter_name = None, 'V'
+            if lp and lp.get('magnitude') is not None:
+                try:
+                    latest_mag  = float(lp['magnitude'])
+                    filter_name = lp.get('filter') or 'V'
+                except (ValueError, TypeError):
+                    pass
+            if latest_mag is None and fu.get('discoverymag'):
+                try:
+                    latest_mag  = float(fu['discoverymag'])
+                    filter_name = fu.get('disc_filter') or 'V'
+                except (ValueError, TypeError):
+                    pass
+            if latest_mag is not None:
+                try:
+                    ext = get_extinction(fu_ra, fu_dec, filter_name)
+                    if hasattr(ext, 'item'):
+                        ext = ext.item()
+                    result_am = apm_to_abm(latest_mag, fu_z, ext)
+                    if not isinstance(result_am, dict):
+                        fu_abs_mag = result_am
+                except Exception as e:
+                    logger.error('Tracker abs_mag %s: %s', fu_name, e)
+
+        sep = fu.get('separation_arcsec')
+        tracker.append({
+            'name':              fu_name,
+            'z':                 fu_z,
+            'abs_mag':           _safe_float(fu_abs_mag),
+            'catalog_name':      fu.get('catalog_name') or '—',
+            'separation_arcsec': float(sep) if sep is not None else None,
+            'discoverydate':     fu.get('discoverydate') or '—',
+            'obj_status':        _NORM2.get(fu.get('status', '') or '', 'object'),
+        })
+
+    tracker.sort(key=lambda x: (x['abs_mag'] is None, x['abs_mag'] if x['abs_mag'] is not None else 0))
+    return tracker
+
+
+def _start_tracker_build(app_obj=None):
+    """Start a background thread that rebuilds the tracker cache."""
+    if app_obj is None:
+        from flask import current_app
+        app_obj = current_app._get_current_object()
+
+    def _runner():
+        try:
+            with app_obj.app_context():
+                tracker = _build_tracker_data()
+                _TRACKER_CACHE['value']      = tracker
+                _TRACKER_CACHE['expires_at'] = time.time() + _TRACKER_CACHE_TTL
+                logger.info('[DETECT-TRACKER] background build done, %d objects', len(tracker))
+        except Exception as e:
+            logger.error('[DETECT-TRACKER] background build failed: %s', e)
+
+    threading.Thread(target=_runner, daemon=True).start()
+
+
+@detect_bp.route('/api/detect/followup_tracker')
+def followup_tracker_api():
+    """SWR-cached endpoint: instant on repeat calls, refreshes in background."""
+    if 'user' not in session:
+        return jsonify({'success': False}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False}), 401
+
+    now         = time.time()
+    cached_val  = _TRACKER_CACHE['value']
+    is_fresh    = cached_val is not None and now < _TRACKER_CACHE['expires_at']
+
+    if cached_val is not None:
+        # SWR: return stale data immediately, refresh in background if expired
+        if not is_fresh:
+            _start_tracker_build()
+        return jsonify({'success': True, 'tracker': cached_val, 'cached': True,
+                        'fresh': is_fresh})
+
+    # Cold cache: return empty immediately and start background build.
+    # Client will poll again; avoids blocking for 10-20 s on first call.
+    _start_tracker_build()
+    return jsonify({'success': True, 'tracker': [], 'cached': False,
+                    'building': True, 'message': 'Building tracker, please retry shortly.'})
 
 
 @detect_bp.route('/api/detect/cache_status')
@@ -656,82 +916,6 @@ def detect_lightcurve_api(target_name):
         logger.error('Error loading LC for %s: %s', target_name, e)
         return jsonify({'success': False, 'message': str(e)}), 500
 
-
-@detect_bp.route('/api/detect/followup_tracker')
-def followup_tracker_api():
-    """Lazy-loaded endpoint: compute abs_mag for all follow-up objects."""
-    if 'user' not in session:
-        return jsonify({'success': False}), 401
-    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
-        return jsonify({'success': False}), 401
-
-    followup_raw = get_followup_objects_for_tracking()
-    if not followup_raw:
-        return jsonify({'success': True, 'tracker': []})
-
-    names = [fu['name'] for fu in followup_raw]
-    latest_phot = get_latest_photometry_for_names(names)  # one batch query
-
-    _NORM2 = {'Follow-up': 'followup', 'Finish': 'finished', 'Inbox': 'object', 'Snoozed': 'snoozed'}
-    tracker = []
-    for fu in followup_raw:
-        fu_name = fu['name']
-        fu_z = None
-        for z_src in (fu.get('match_z'), fu.get('redshift')):
-            if z_src is not None:
-                try:
-                    fu_z = float(z_src)
-                    break
-                except (ValueError, TypeError):
-                    pass
-        try:
-            fu_ra  = float(fu['ra'])         if fu.get('ra')          else None
-            fu_dec = float(fu['declination']) if fu.get('declination') else None
-        except (ValueError, TypeError):
-            fu_ra = fu_dec = None
-
-        fu_abs_mag = None
-        if fu_z and fu_ra and fu_dec:
-            lp = latest_phot.get(fu_name)
-            latest_mag, filter_name = None, 'V'
-            if lp and lp.get('magnitude') is not None:
-                try:
-                    latest_mag  = float(lp['magnitude'])
-                    filter_name = lp.get('filter') or 'V'
-                except (ValueError, TypeError):
-                    pass
-            if latest_mag is None and fu.get('discoverymag'):
-                try:
-                    latest_mag  = float(fu['discoverymag'])
-                    filter_name = fu.get('disc_filter') or 'V'
-                except (ValueError, TypeError):
-                    pass
-            if latest_mag is not None:
-                try:
-                    ext = get_extinction(fu_ra, fu_dec, filter_name)
-                    if hasattr(ext, 'item'):
-                        ext = ext.item()
-                    result_am = apm_to_abm(latest_mag, fu_z, ext)
-                    if not isinstance(result_am, dict):
-                        fu_abs_mag = result_am
-                except Exception as e:
-                    logger.error('Tracker abs_mag %s: %s', fu_name, e)
-
-        sep = fu.get('separation_arcsec')
-        tracker.append({
-            'name':             fu_name,
-            'z':                fu_z,
-            'abs_mag':          fu_abs_mag,
-            'catalog_name':     fu.get('catalog_name') or '—',
-            'separation_arcsec': float(sep) if sep is not None else None,
-            'discoverydate':    fu.get('discoverydate') or '—',
-            'obj_status':       _NORM2.get(fu.get('status', '') or '', 'object'),
-        })
-
-    tracker.sort(key=lambda x: (x['abs_mag'] is None, x['abs_mag'] if x['abs_mag'] is not None else 0))
-    return jsonify({'success': True, 'tracker': tracker})
-
-
 @detect_bp.route('/detect/archives')
 def detect_archives():
     if 'user' not in session:
@@ -740,7 +924,7 @@ def detect_archives():
     elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         flash('Access denied. This page is not available for Guest users.', 'error')
         return redirect(url_for('basic.home'))
-    daily_counts = get_daily_match_counts()
+    daily_counts = get_detect_metadata().get('daily_counts', [])
     return render_template('detect_archives.html',
                            daily_counts=daily_counts,
                            current_path='/detect/archives')

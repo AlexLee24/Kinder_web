@@ -831,6 +831,26 @@ body {
     font-size: 0.85em;
 }
 
+.card-lc-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 260px;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.85em;
+}
+
+/* Image loading spinner overlay */
+.card-img-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--text-muted);
+}
+
 /* Match detail table inside card */
 .card-matches-wrap {
     margin-top: 6px;

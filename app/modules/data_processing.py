@@ -417,7 +417,7 @@ class DataVisualization:
                 showgrid=False
             ),
             yaxis=dict(
-                title="Apparent Magnitude",
+                title="App Mag",
                 tickformat=".2f",
                 showgrid=True,
                 gridcolor='rgba(128,128,128,0.2)'
@@ -425,16 +425,17 @@ class DataVisualization:
             template="plotly_white",
             showlegend=True,
             legend=dict(
-                x=0.99,
-                y=0.99,
-                xanchor='right',
-                yanchor='top',
+                orientation='h',
+                x=0.5,
+                y=1.10,
+                xanchor='left',
+                yanchor='bottom',
                 bgcolor='rgba(12,12,20,0.72)',
                 bordercolor='rgba(160,160,160,0.25)',
                 borderwidth=1,
             ),
             hovermode='closest',
-            margin=dict(l=60, r=30, t=80, b=60)
+            margin=dict(l=60, r=60, t=95, b=60)
         )
         
         # Handle Y-axis range and Absolute Magnitude.
@@ -467,31 +468,38 @@ class DataVisualization:
             layout.yaxis.range = [plot_max_mag, plot_min_mag]
 
             if total_shift > 0:
-                layout.yaxis2 = dict(
-                    title="Absolute Magnitude",
-                    overlaying='y',
-                    side='right',
-                    range=[plot_max_mag - total_shift, plot_min_mag - total_shift],
-                    showgrid=False,
-                    tickformat=".2f"
-                )
-                # Keep the absolute-mag ticks on the same 0.5-mag grid when locked
-                if mag_span < MIN_SPAN_MAG:
-                    layout.yaxis2.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
-                # yaxis2 tick labels sit on the right; legend stays inside the plot
-                layout.margin.update(r=60)
-                
-                # Add dummy trace to force yaxis2 to appear
-                traces.append(go.Scatter(
-                    x=[plot_min_mjd],
-                    y=[plot_max_mag - total_shift],
-                    xaxis='x',
-                    yaxis='y2',
-                    mode='markers',
-                    marker=dict(opacity=0),
-                    showlegend=False,
-                    hoverinfo='skip'
-                ))
+                abs_min = plot_min_mag - total_shift
+                abs_max = plot_max_mag - total_shift
+            else:
+                # No redshift — mirror the apparent-mag axis so the right axis
+                # still renders (labelled "Abs Mag" with N/A hint in title).
+                abs_min = plot_min_mag
+                abs_max = plot_max_mag
+
+            layout.yaxis2 = dict(
+                title="Abs Mag" if total_shift > 0 else "Abs Mag (z N/A)",
+                overlaying='y',
+                side='right',
+                range=[abs_max, abs_min],
+                showgrid=False,
+                tickformat=".2f",
+                showticklabels=total_shift > 0,
+            )
+            # Keep the absolute-mag ticks on the same 0.5-mag grid when locked
+            if mag_span < MIN_SPAN_MAG and total_shift > 0:
+                layout.yaxis2.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
+
+            # Add dummy trace to force yaxis2 to appear
+            traces.append(go.Scatter(
+                x=[plot_min_mjd],
+                y=[abs_max],
+                xaxis='x',
+                yaxis='y2',
+                mode='markers',
+                marker=dict(opacity=0),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
         else:
              layout.yaxis.autorange = "reversed"
              
@@ -507,8 +515,8 @@ class DataVisualization:
             hoverinfo='skip'
         ))
 
-        layout = DataVisualization._apply_unified_plot_style(layout, legend_right=True)
-        
+        layout = DataVisualization._apply_unified_plot_style(layout, legend_right=False)
+
         fig = go.Figure(data=traces, layout=layout)
         
         if as_json:

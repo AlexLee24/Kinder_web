@@ -1488,8 +1488,167 @@ def get_latest_photometry_for_names(names: list) -> dict:
         return {}
 
 
+# ---------------------------------------------------------------------------
+# DETECT — Combined single-connection helpers  (Marshal-style)
+# ---------------------------------------------------------------------------
+
+_detect_metadata_cache: dict = {'expires_at': 0.0, 'value': None}
+
+
+def get_detect_metadata(cache_ttl: int = 120) -> dict:
+    """Return available_dates + daily_counts in a single DB connection.
+
+    Results are cached for *cache_ttl* seconds (default 120 s) to avoid
+    redundant queries every home-page or archives request.
+    Returns {'available_dates': [...], 'daily_counts': [...]}.
+    """
+    now = _time.monotonic()
+    cached = _detect_metadata_cache.get('value')
+    if cached is not None and now < _detect_metadata_cache['expires_at']:
+        return dict(cached)
+
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT DISTINCT updated_date::date AS d "
+                "FROM transient.cross_matches ORDER BY d DESC"
+            )
+            available_dates = [r[0].strftime('%Y-%m-%d') for r in cur.fetchall()]
+
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                WITH dates AS (
+                    SELECT generate_series(
+                        (SELECT MIN(updated_date::date) FROM transient.cross_matches),
+                        (SELECT MAX(updated_date::date) FROM transient.cross_matches),
+                        '1 day'::interval
+                    )::date AS date
+                )
+                SELECT d.date,
+                       COUNT(DISTINCT c.obj_id) AS unique_targets,
+                       COALESCE(BOOL_OR(c.catalog LIKE 'Lens_%'), FALSE) AS has_lens
+                FROM dates d
+                LEFT JOIN transient.cross_matches c ON d.date = c.updated_date::date
+                GROUP BY d.date ORDER BY d.date DESC
+            """)
+            daily_counts = [
+                {'date': r['date'].strftime('%Y-%m-%d'),
+                 'count': r['unique_targets'],
+                 'has_lens': r['has_lens']}
+                for r in cur.fetchall()
+            ]
+
+        result = {'available_dates': available_dates, 'daily_counts': daily_counts}
+        _detect_metadata_cache['value'] = result
+        _detect_metadata_cache['expires_at'] = now + cache_ttl
+        return dict(result)
+    except Exception as e:
+        logger.error('get_detect_metadata: %s', e)
+        return {'available_dates': [], 'daily_counts': []}
+
+
+def get_detect_page_data(date: str) -> dict:
+    """Fetch cross-match results, object details, and latest photometry for
+    *date* in a **single** DB connection (3 sequential queries on 1 conn).
+
+    Returns {'results': [...], 'details_batch': {...}, 'latest_phot': {...}}
+    or {} on error.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT match_id AS id, name AS target_name, catalog AS catalog_name, "
+                "separation AS separation_arcsec, is_host, updated_date AS created_at, "
+                "status, flag, redshift AS z, match_data, match_ra, match_dec "
+                "FROM transient.cross_matches WHERE updated_date::date = %s "
+                "ORDER BY updated_date DESC",
+                (date,)
+            )
+            results = list(cur.fetchall())
+
+            all_names = list({r['target_name'] for r in results if r.get('target_name')})
+
+            details_batch: dict = {}
+            latest_phot: dict = {}
+            if all_names:
+                cur = conn.cursor(cursor_factory=extras.DictCursor)
+                cur.execute(
+                    "SELECT name, ra, dec AS declination, "
+                    "CASE WHEN discovery_date IS NOT NULL THEN "
+                    "     to_char(TIMESTAMP '1858-11-17' + discovery_date * INTERVAL '1 day', "
+                    "             'YYYY-MM-DD HH24:MI:SS') END AS discoverydate, "
+                    "COALESCE(internal_name,'') || "
+                    "  CASE WHEN other_name IS NOT NULL THEN ', '||other_name ELSE '' END AS internal_names, "
+                    "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter, status "
+                    "FROM transient.objects WHERE name = ANY(%s)",
+                    (all_names,)
+                )
+                details_batch = {row['name']: dict(row) for row in cur.fetchall()}
+
+                cur = conn.cursor(cursor_factory=extras.DictCursor)
+                cur.execute(
+                    'SELECT DISTINCT ON (o.name) '
+                    '    o.name, p.mag AS magnitude, p.filter, p."MJD" AS mjd '
+                    'FROM transient.photometry p '
+                    'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                    'WHERE o.name = ANY(%s) AND p.mag IS NOT NULL AND p.mag >= 0 '
+                    'ORDER BY o.name, p."MJD" DESC',
+                    (all_names,)
+                )
+                latest_phot = {row['name']: dict(row) for row in cur.fetchall()}
+
+            return {
+                'results': results,
+                'details_batch': details_batch,
+                'latest_phot': latest_phot,
+            }
+    except Exception as e:
+        logger.error('get_detect_page_data(%s): %s', date, e)
+        return {}
+
+
+def get_detect_lc_data(target_name: str) -> dict:
+    """Return object details + full photometry for *target_name* in a
+    **single** DB connection (2 sequential queries on 1 conn).
+
+    Returns {'details': {...}, 'photometry': [...]} or {} on error.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT name, ra, dec AS declination, redshift, "
+                "discovery_mag AS discoverymag, discovery_filter AS filter, status "
+                "FROM transient.objects WHERE name = %s",
+                (target_name,)
+            )
+            row = cur.fetchone()
+            details = dict(row) if row else {}
+
+            cur.execute(
+                'SELECT p.phot_id AS id, p."MJD" AS mjd, '
+                'p.mag AS magnitude, p.mag_err AS magnitude_error, p.filter, p.source AS telescope '
+                'FROM transient.photometry p '
+                'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                'WHERE o.name = %s AND (p.mag IS NULL OR p.mag >= 0) '
+                'ORDER BY p."MJD" ASC',
+                (target_name,)
+            )
+            photometry = [dict(r) for r in cur.fetchall()]
+
+        return {'details': details, 'photometry': photometry}
+    except Exception as e:
+        logger.error('get_detect_lc_data(%s): %s', target_name, e)
+        return {}
+
+
 def get_followup_objects_for_tracking() -> list:
-    """Return all Follow-up (and Checked) objects with their host cross-match info for abs mag tracking."""
+    """Return all Follow-up objects with their host cross-match info for abs mag tracking."""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -1513,7 +1672,6 @@ def get_followup_objects_for_tracking() -> list:
                 LEFT JOIN transient.cross_matches c
                     ON c.name = o.name AND c.is_host = TRUE
                 WHERE o.status = 'Follow-up'
-                   OR (o.status = 'Finish' AND c.is_host = TRUE)
                 ORDER BY o.name
             """)
             result = []
