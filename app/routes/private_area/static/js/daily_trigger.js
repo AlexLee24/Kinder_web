@@ -150,6 +150,16 @@ function searchTarget(query) {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(async () => {
         try {
+            // Only search database for SN or AT prefixes; other names must be entered manually
+            const queryUpper = query.toUpperCase();
+            const isSNorAT = queryUpper.startsWith('SN') || queryUpper.startsWith('AT');
+
+            if (!isSNorAT) {
+                dropdown.innerHTML = '<div class="pa-search-empty">Enter name manually + coordinates for non-SN/AT targets</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+
             const resp = await _apiFetch('/api/search_target?q=' + encodeURIComponent(query));
             const data = await resp.json();
             if (data.results && data.results.length > 0) {
@@ -331,7 +341,7 @@ function checkTargetNameHint(value) {
         if (badPrefix) {
             hint.textContent = '\u26d4 Survey ID (' + badPrefix + ') \u2014 please use TNS/IAU or EP name.';
             hint.className = 'pa-name-hint error';
-        } else if (/^(AT|SN|EP)\s/i.test(v) || /^(AT|SN|EP)\d/i.test(v)) {
+        } else if (/^(AT|SN|EPt?)\s/i.test(v) || /^(AT|SN|EPt?)\d/i.test(v)) {
             hint.textContent = '\u2713 Good \u2014 TNS/IAU or EP name detected.';
             hint.className = 'pa-name-hint ok';
         } else {
