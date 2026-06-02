@@ -427,7 +427,7 @@ class DataVisualization:
             legend=dict(
                 orientation='h',
                 x=0.99,
-                y=1.18,
+                y=1.38,
                 xanchor='right',
                 yanchor='bottom',
                 bgcolor='rgba(12,12,20,0.72)',
