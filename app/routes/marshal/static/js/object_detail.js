@@ -27,6 +27,9 @@ let photometryChanges = {
     toDelete: [],
     toAdd: []
 };
+let editTableFilter = { telescope: '', filter: '' };
+let editTableSort = { col: 'mjd', dir: 'asc' };
+let editSelectedIds = new Set();
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -1528,7 +1531,12 @@ function renderColorIndexPlot() {
     if (!selA || !selB || !plotDiv || !photometryData) return;
 
     const fA = selA.value, fB = selB.value;
-    const nodata = (msg) => { plotDiv.innerHTML = `<div class="subplot-nodata">${msg}</div>`; };
+    const nodata = (msg) => {
+        Plotly.react(plotDiv, [], Object.assign(_subplotCommonLayout(''), {
+            annotations: [{ text: msg, showarrow: false, xref: 'paper', yref: 'paper',
+                x: 0.5, y: 0.5, font: { color: 'rgba(255,255,255,0.35)', size: 11 } }]
+        }), { responsive: true, displayModeBar: false });
+    };
 
     if (!fA || !fB || fA === fB) { nodata('Select two different filters'); return; }
 
@@ -1571,7 +1579,12 @@ function renderMagDeltaPlot() {
 
     const filter  = selFilter.value;
     const binDays = selBin ? parseFloat(selBin.value) || 1 : 1;
-    const nodata  = (msg) => { plotDiv.innerHTML = `<div class="subplot-nodata">${msg}</div>`; };
+    const nodata  = (msg) => {
+        Plotly.react(plotDiv, [], Object.assign(_subplotCommonLayout(''), {
+            annotations: [{ text: msg, showarrow: false, xref: 'paper', yref: 'paper',
+                x: 0.5, y: 0.5, font: { color: 'rgba(255,255,255,0.35)', size: 11 } }]
+        }), { responsive: true, displayModeBar: false });
+    };
     if (!filter) { nodata('No filter selected'); return; }
 
     const pts = photometryData
@@ -1653,51 +1666,184 @@ function togglePhotometryEditMode() {
 
 function enterPhotometryEditMode() {
     isEditingPhotometry = true;
-    
+
     const editBtn = document.getElementById('photometryEditBtn');
     if (editBtn) {
         editBtn.innerHTML = 'Editing...';
         editBtn.title = 'Currently editing — click to close';
     }
-    
+
     const modal = document.getElementById('editPhotometryModal');
     if (modal) modal.style.display = 'flex';
-    
-    populatePhotometryTable();
+
     photometryChanges = { toDelete: [], toAdd: [] };
+    editSelectedIds = new Set();
+    editTableFilter = { telescope: '', filter: '' };
+    editTableSort = { col: 'mjd', dir: 'asc' };
+
+    _buildEditFilterDropdowns();
+    populatePhotometryTable();
+}
+
+function _buildEditFilterDropdowns() {
+    const telescopes = [...new Set(photometryData.map(p => p.telescope || 'Unknown'))].sort();
+    const filters = [...new Set(photometryData.map(p => p.filter || 'N/A'))].sort();
+
+    const telSel = document.getElementById('editTelescopeFilter');
+    const filtSel = document.getElementById('editFilterFilter');
+    if (!telSel || !filtSel) return;
+
+    telSel.innerHTML = '<option value="">All</option>' +
+        telescopes.map(t => `<option value="${t}">${t}</option>`).join('');
+    filtSel.innerHTML = '<option value="">All</option>' +
+        filters.map(f => `<option value="${f}">${f}</option>`).join('');
 }
 
 function populatePhotometryTable() {
     const tableBody = document.getElementById('photometryTableBody');
     if (!tableBody) return;
-    
+
+    // Filter
+    let rows = photometryData.map((point, index) => ({ point, index }));
+    if (editTableFilter.telescope) {
+        rows = rows.filter(r => (r.point.telescope || 'Unknown') === editTableFilter.telescope);
+    }
+    if (editTableFilter.filter) {
+        rows = rows.filter(r => (r.point.filter || 'N/A') === editTableFilter.filter);
+    }
+
+    // Sort
+    const col = editTableSort.col;
+    const dir = editTableSort.dir === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+        let va = a.point[col] ?? '';
+        let vb = b.point[col] ?? '';
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        return String(va).localeCompare(String(vb)) * dir;
+    });
+
+    // Update sort arrows
+    ['mjd','magnitude','filter','telescope'].forEach(c => {
+        const el = document.getElementById(`sortArrow-${c}`);
+        if (!el) return;
+        el.textContent = c === col ? (editTableSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    });
+
     tableBody.innerHTML = '';
-    
-    photometryData.forEach((point, index) => {
+
+    rows.forEach(({ point, index }) => {
         const row = document.createElement('tr');
         row.dataset.index = index;
         row.dataset.pointId = point.id;
-        
-        const isUpperLimit = point.magnitude_error === null || 
-                             point.magnitude_error === undefined || 
+
+        const isUpperLimit = point.magnitude_error === null ||
+                             point.magnitude_error === undefined ||
                              Number.isNaN(point.magnitude_error) ||
                              (typeof point.magnitude_error === 'number' && !isFinite(point.magnitude_error));
-        
+
+        const isMarked = photometryChanges.toDelete.includes(point.id);
+        const isSelected = editSelectedIds.has(point.id);
+
+        if (isMarked) row.classList.add('marked-for-deletion');
+
         row.innerHTML = `
+            <td style="padding:6px 10px;">
+                <input type="checkbox" class="edit-row-cb" data-id="${point.id}" data-index="${index}"
+                       ${isSelected ? 'checked' : ''}
+                       onchange="toggleEditRowSelect(this)"
+                       style="width:14px; height:14px; cursor:pointer;">
+            </td>
             <td>${point.mjd}</td>
             <td>${isUpperLimit ? '>' : ''}${point.magnitude}</td>
             <td>${point.magnitude_error || 'N/A'}</td>
             <td>${point.filter || 'N/A'}</td>
             <td>${point.telescope || 'Unknown'}</td>
             <td>
-                <button class="btn-small btn-danger" onclick="markForDeletion(${index}, ${point.id})" title="Delete this point">
-                    <span class="btn-icon">${ICONS.delete}</span>
+                <button class="btn-small ${isMarked ? 'btn-secondary' : 'btn-danger'}"
+                        onclick="markForDeletion(${index}, ${point.id})"
+                        title="${isMarked ? 'Undo deletion' : 'Delete this point'}">
+                    <span class="btn-icon">${isMarked ? ICONS.undo : ICONS.delete}</span>
                 </button>
             </td>
         `;
-        
+
         tableBody.appendChild(row);
     });
+
+    _updateEditSelectionCount();
+    _syncSelectAllCheckbox();
+}
+
+function applyEditTableFilter() {
+    editTableFilter.telescope = document.getElementById('editTelescopeFilter')?.value || '';
+    editTableFilter.filter = document.getElementById('editFilterFilter')?.value || '';
+    editSelectedIds = new Set();
+    populatePhotometryTable();
+}
+
+function setEditSort(col) {
+    if (editTableSort.col === col) {
+        editTableSort.dir = editTableSort.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+        editTableSort.col = col;
+        editTableSort.dir = 'asc';
+    }
+    populatePhotometryTable();
+}
+
+function toggleEditRowSelect(cb) {
+    const id = parseInt(cb.dataset.id);
+    if (cb.checked) {
+        editSelectedIds.add(id);
+    } else {
+        editSelectedIds.delete(id);
+    }
+    _updateEditSelectionCount();
+    _syncSelectAllCheckbox();
+}
+
+function toggleEditSelectAll(cb) {
+    const checkboxes = document.querySelectorAll('.edit-row-cb');
+    checkboxes.forEach(c => {
+        const id = parseInt(c.dataset.id);
+        c.checked = cb.checked;
+        if (cb.checked) {
+            editSelectedIds.add(id);
+        } else {
+            editSelectedIds.delete(id);
+        }
+    });
+    _updateEditSelectionCount();
+}
+
+function _updateEditSelectionCount() {
+    const el = document.getElementById('editSelectionCount');
+    if (!el) return;
+    el.textContent = editSelectedIds.size > 0 ? `${editSelectedIds.size} selected` : '';
+}
+
+function _syncSelectAllCheckbox() {
+    const cb = document.getElementById('editSelectAll');
+    if (!cb) return;
+    const all = document.querySelectorAll('.edit-row-cb');
+    if (all.length === 0) { cb.checked = false; cb.indeterminate = false; return; }
+    const checkedCount = [...all].filter(c => c.checked).length;
+    cb.indeterminate = checkedCount > 0 && checkedCount < all.length;
+    cb.checked = checkedCount === all.length;
+}
+
+function deleteSelectedPhotometry() {
+    if (editSelectedIds.size === 0) {
+        showNotification('No rows selected', 'info');
+        return;
+    }
+    editSelectedIds.forEach(id => {
+        if (!photometryChanges.toDelete.includes(id)) {
+            photometryChanges.toDelete.push(id);
+        }
+    });
+    editSelectedIds = new Set();
+    populatePhotometryTable();
 }
 
 function markForDeletion(index, pointId) {
@@ -1848,7 +1994,10 @@ async function addPhotometryPoint() {
             
             // Reload photometry data and re-populate edit table
             loadPhotometryPlot().then(() => {
-                if (isEditingPhotometry) populatePhotometryTable();
+                if (isEditingPhotometry) {
+                    _buildEditFilterDropdowns();
+                    populatePhotometryTable();
+                }
             });
         } else {
             if (errorDiv && errorText) {
@@ -1874,6 +2023,7 @@ function cancelPhotometryEdit() {
     
     // Reset changes and reload data
     photometryChanges = { toDelete: [], toAdd: [] };
+    editSelectedIds = new Set();
     loadPhotometryPlot(); // This will reload fresh data
     exitPhotometryEditMode();
 }

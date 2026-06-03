@@ -858,6 +858,16 @@
     color: var(--text-muted);
 }
 
+.edit-sort-th:hover {
+    color: #00f5d4;
+    background: rgba(0, 245, 212, 0.05);
+}
+
+.sort-arrow {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
 /* Notifications */
 .notification-container {
     position: fixed;
