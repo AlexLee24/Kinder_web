@@ -683,7 +683,14 @@ def _assemble_detect_payload(selected_date):
         final_target_list.append(target_obj)
 
     t_build = time.perf_counter()
-    final_target_list.sort(key=lambda x: (not x.get('is_host', False), x['target_name']))
+    # Resolved objects (Checked / No-Host → status finished or snoozed) sink to the
+    # bottom regardless of host, since they are no longer actionable and won't
+    # reappear the next day. Within each group, hosts sort first, then by name.
+    final_target_list.sort(key=lambda x: (
+        x.get('obj_status') in ('finished', 'snoozed'),
+        not x.get('is_host', False),
+        x['target_name'],
+    ))
 
     summary_results = []
     for t in final_target_list:

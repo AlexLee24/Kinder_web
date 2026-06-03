@@ -409,7 +409,8 @@ async function applyAutoExposure() {
         return;
     }
 
-    const mag = parseFloat(magInput);
+    const magNumeric = magInput.replace(/^>/, '').trim();
+    const mag = parseFloat(magNumeric);
     if (isNaN(mag)) {
         if (hintEl) hintEl.innerText = 'Invalid magnitude value';
         setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 3000);

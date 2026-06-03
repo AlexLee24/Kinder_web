@@ -26,6 +26,26 @@ def _ensure_auto_exposure_column() -> None:
         logger.error("_ensure_auto_exposure_column: %s", e)
 
 
+def _parse_mag_value(value) -> float | None:
+    """Parse a magnitude value that may be empty, None, or prefixed with '>'.
+
+    Returns a float or None (stored as NULL).  The '>' prefix is stripped so
+    that upper-limit entries like '>22' are accepted without a DB type error.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    s = s.lstrip('>')  # strip leading '>' (upper-limit marker)
+    if not s:
+        return None
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def _parse_ra_deg(value) -> float:
     """Parse RA in decimal degrees or HMS string into decimal degrees."""
     if value is None:
@@ -176,6 +196,7 @@ def save_observation_target(name: str, ra: float, dec: float,
     try:
         ra = _parse_ra_deg(ra)
         dec = _parse_dec_deg(dec)
+        mag = _parse_mag_value(mag)
         with get_db_connection() as conn:
             cur = conn.cursor()
             create_by = None
@@ -247,6 +268,8 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
             kwargs['ra'] = _parse_ra_deg(kwargs.get('ra'))
         if 'dec' in kwargs:
             kwargs['dec'] = _parse_dec_deg(kwargs.get('dec'))
+        if 'mag' in kwargs:
+            kwargs['mag'] = _parse_mag_value(kwargs.get('mag'))
     except (TypeError, ValueError) as e:
         logger.error("update_observation_target %d: %s", target_id, e)
         return False

@@ -44,16 +44,29 @@ _auto_tns_thread_lock = threading.Lock()
 _MJD_EPOCH = _date(1858, 11, 17)
 
 
-def _to_mjd(s):
+def _to_mjd(s, _field_hint=''):
     """Convert date string to MJD float."""
     if s is None:
         return None
-    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
+    raw = str(s).strip()
+    if not raw:
+        return None
+    for fmt in (
+        '%Y-%m-%d %H:%M:%S.%f',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%dT%H:%M:%S.%f',
+        '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%d',
+        '%Y/%m/%d %H:%M:%S',
+        '%Y/%m/%d',
+    ):
         try:
-            dt = datetime.strptime(str(s).strip(), fmt)
+            dt = datetime.strptime(raw, fmt)
             return (_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
         except ValueError:
             continue
+    logger.warning("_to_mjd: unrecognised date format%s: %r",
+                   f' ({_field_hint})' if _field_hint else '', raw)
     return None
 
 
@@ -162,8 +175,13 @@ def download_TNS_api_with_fallback(year, month, day, debug=False):
     return False
 
 
-def addin_database(filepath, debug=False):
-    """Import CSV into transient.objects + seed transient.photometry with discovery point."""
+def addin_database(filepath, debug=False, fetch_phot_for_new=False):
+    """Import CSV into transient.objects + seed transient.photometry with discovery point.
+
+    When ``fetch_phot_for_new`` is True, each newly inserted object triggers an
+    immediate light-curve fetch (same workflow as the object-detail "Fetch"
+    button) once the import has been committed.
+    """
 
     filename = os.path.basename(filepath) if os.path.exists(filepath) else "file_not_found"
     log_id   = log_download_attempt(filename=filename)
@@ -181,6 +199,7 @@ def addin_database(filepath, debug=False):
     update_batch = []
     update_audit_batch = []
     phot_batch   = []   # (name, mjd, mag, filter, source_group)
+    new_object_names = []   # names of objects newly inserted this run
 
     try:
         with get_db_connection() as conn:
@@ -199,7 +218,8 @@ def addin_database(filepath, debug=False):
                     if not r.get('objid') or not r.get('name'):
                         continue
 
-                    new_lm_mjd = _to_mjd(r.get('lastmodified'))
+                    obj_name = r.get('name', '')
+                    new_lm_mjd = _to_mjd(r.get('lastmodified'), 'lastmodified')
 
                     csv_reporting_group = r.get('reporting_group')
                     csv_source_group = r.get('source_group')
@@ -207,6 +227,22 @@ def addin_database(filepath, debug=False):
                     csv_internal_names = r.get('internal_names')
                     csv_discovery_ads = r.get('discovery_ads_bibcode') or r.get('Discovery_ADS_bibcode')
                     csv_class_ads = r.get('class_ads_bibcodes') or r.get('Class_ADS_bibcodes')
+
+                    csv_time_received = _to_mjd(r.get('time_received'), f'{obj_name}/time_received')
+                    csv_discoverydate = _to_mjd(r.get('discoverydate'), f'{obj_name}/discoverydate')
+                    csv_creationdate  = _to_mjd(r.get('creationdate'),  f'{obj_name}/creationdate')
+                    csv_last_phot_date = _to_mjd(r.get('last_photometry_date'), f'{obj_name}/last_photometry_date')
+
+                    # 診斷：reporters 有值但 time_received 為 None（可能是欄位錯位）
+                    # 或兩者同時為 None（TNS 本身沒有這筆資料）
+                    _raw_reporters     = r.get('reporters')
+                    _raw_time_received = r.get('time_received')
+                    if debug and csv_time_received is None and _raw_time_received is None:
+                        logger.debug(
+                            "time_received 欄位在 CSV 中為空 for %s | reporters=%r | "
+                            "欄位清單(前30)=%s",
+                            obj_name, _raw_reporters, list(r.keys())[:30]
+                        )
 
                     # Query by name only
                     cursor.execute(
@@ -246,7 +282,7 @@ def addin_database(filepath, debug=False):
                             changed_fields.append('internal_names')
                         if _norm_float(old_discovery_mag) != _norm_float(r.get('discoverymag')) and _norm_float(r.get('discoverymag')) is not None:
                             changed_fields.append('discovery_mag')
-                        if _norm_float(old_last_phot_date) != _norm_float(_to_mjd(r.get('last_photometry_date'))) and _to_mjd(r.get('last_photometry_date')) is not None:
+                        if _norm_float(old_last_phot_date) != _norm_float(csv_last_phot_date) and csv_last_phot_date is not None:
                             changed_fields.append('last_photometry_date')
 
                         update_batch.append((
@@ -258,16 +294,16 @@ def addin_database(filepath, debug=False):
                             r.get('type'),
                             csv_reporting_group,
                             csv_source_group,
-                            _to_mjd(r.get('discoverydate')),
+                            csv_discoverydate,
                             r.get('discoverymag'),
                             r.get('discmagfilter'),
                             csv_reporters,
-                            _to_mjd(r.get('time_received')),
+                            csv_time_received,
                             csv_internal_names,
                             csv_discovery_ads,
                             csv_class_ads,
-                            _to_mjd(r.get('creationdate')),
-                            _to_mjd(r.get('last_photometry_date')),
+                            csv_creationdate,
+                            csv_last_phot_date,
                             new_lm_mjd,
                             existing_obj_id,
                         ))
@@ -321,19 +357,21 @@ def addin_database(filepath, debug=False):
                             r.get('type'),
                             csv_reporting_group,
                             csv_source_group,
-                            _to_mjd(r.get('discoverydate')),
+                            csv_discoverydate,
                             r.get('discoverymag'),
                             r.get('discmagfilter'),
                             csv_reporters,
-                            _to_mjd(r.get('time_received')),
+                            csv_time_received,
                             csv_internal_names,
                             csv_discovery_ads,
                             csv_class_ads,
-                            _to_mjd(r.get('creationdate')),
-                            _to_mjd(r.get('last_photometry_date')),
+                            csv_creationdate,
+                            csv_last_phot_date,
                             new_lm_mjd,
                         ))
                         imported_count += 1
+                        if obj_name:
+                            new_object_names.append(obj_name)
                         # Log new object to audit for "Recent TNS Updates" widget
                         update_audit_batch.append((
                             int(r.get('objid')),
@@ -362,7 +400,7 @@ def addin_database(filepath, debug=False):
                             insert_batch = []
 
                     # Collect discovery photometry point
-                    phot_mjd = _to_mjd(r.get('discoverydate'))
+                    phot_mjd = csv_discoverydate
                     phot_mag = r.get('discoverymag')
                     if r.get('name') and phot_mjd is not None and phot_mag is not None:
                         try:
@@ -453,10 +491,16 @@ def addin_database(filepath, debug=False):
                         if oid not in max_mjd_by_oid or mjd > max_mjd_by_oid[oid]:
                             max_mjd_by_oid[oid] = mjd
                     for oid, max_mjd in max_mjd_by_oid.items():
+                        # New photometry re-activates dormant objects:
+                        # Snoozed → Inbox (needs re-evaluation), Finish → Follow-up (new data warrants follow-up)
                         cursor.execute(
                             "UPDATE transient.objects "
                             "SET last_phot_date = %s, "
-                            "    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END "
+                            "    status = CASE "
+                            "        WHEN status = 'Snoozed' THEN 'Inbox' "
+                            "        WHEN status = 'Finish' THEN 'Follow-up' "
+                            "        ELSE status "
+                            "    END "
                             "WHERE obj_id = %s AND (last_phot_date IS NULL OR last_phot_date < %s)",
                             (max_mjd, oid, max_mjd)
                         )
@@ -474,6 +518,12 @@ def addin_database(filepath, debug=False):
         n = sync_kinder_ids()
         if n:
             logger.info("sync_kinder_ids: assigned %d new kinder_ids", n)
+
+        # Immediately fetch a light curve for each newly added object,
+        # mirroring the object-detail page "Fetch" button.
+        if fetch_phot_for_new and new_object_names:
+            _fetch_phot_for_new_objects(new_object_names, debug=debug)
+
         return True
 
     except Exception as e:
@@ -485,10 +535,34 @@ def addin_database(filepath, debug=False):
         return False
 
 
+def _fetch_phot_for_new_objects(names, debug=False):
+    """Run the photometry-fetch workflow for each newly added object name.
+
+    Each object is processed independently; a failure on one does not abort the
+    rest.  Uses the same workflow as the object-detail "Fetch" button.
+    """
+    try:
+        from modules.download_phot import process_single_object_workflow
+    except ImportError:
+        from download_phot import process_single_object_workflow
+
+    total = len(names)
+    success = 0
+    failed = 0
+    logger.info("Fetch LC for %d new object(s) after import", total)
+    for name in names:
+        try:
+            process_single_object_workflow(name)
+            success += 1
+        except Exception as e:
+            failed += 1
+            logger.error("Fetch LC failed for new object %s: %s", name, e)
+    logger.info("Fetch LC for new objects done: %d ok, %d failed", success, failed)
+
+
 def auto_snoozed(time_now_utc, debug=False):
     """Auto-snooze objects with no photometry for 15+ days."""
-    snoozed_count         = 0
-    finished_follow_count = 0
+    snoozed_count = 0
 
     try:
         with get_db_connection() as conn:
@@ -499,39 +573,30 @@ def auto_snoozed(time_now_utc, debug=False):
             if debug:
                 logger.debug("Auto-snooze cutoff MJD: %d", cutoff_mjd)
 
+            # Only Inbox objects are candidates for snoozing — never touch Follow-up or Finish
             cursor.execute('''
-                SELECT obj_id, name, last_phot_date, status
+                SELECT obj_id, name, last_phot_date
                 FROM transient.objects
-                WHERE status NOT IN ('Snoozed', 'Finish')
+                WHERE status = 'Inbox'
                 AND (
                     (last_phot_date IS NOT NULL AND last_phot_date < %s)
                     OR (last_phot_date IS NULL AND last_modified_date < %s)
                 )
             ''', (cutoff_mjd, cutoff_mjd))
 
-            for obj_id, name, last_phot, status in cursor.fetchall():
-                if status == 'Follow-up':
-                    cursor.execute(
-                        "UPDATE transient.objects SET status = 'Finish' WHERE obj_id = %s",
-                        (obj_id,)
-                    )
-                    finished_follow_count += 1
-                    if debug:
-                        logger.debug("Finished follow: %s (last_phot MJD: %s)", name, last_phot)
-                else:
-                    cursor.execute(
-                        "UPDATE transient.objects SET status = 'Snoozed' WHERE obj_id = %s",
-                        (obj_id,)
-                    )
-                    if debug:
-                        logger.debug("Snoozed: %s (last_phot MJD: %s)", name, last_phot)
+            for obj_id, name, last_phot in cursor.fetchall():
+                cursor.execute(
+                    "UPDATE transient.objects SET status = 'Snoozed' WHERE obj_id = %s",
+                    (obj_id,)
+                )
                 snoozed_count += 1
+                if debug:
+                    logger.debug("Snoozed: %s (last_phot MJD: %s)", name, last_phot)
 
             conn.commit()
             cursor.close()
 
-        logger.info("Auto-snooze: %d snoozed (%d finished follow)",
-                    snoozed_count, finished_follow_count)
+        logger.info("Auto-snooze: %d snoozed", snoozed_count)
         return True
 
     except Exception as e:
@@ -550,15 +615,18 @@ def main():
             if now.minute in (15, 45):
                 logger.info("Hourly task at %s", now)
                 if download_TNS_api_hr(f"{now.hour:02d}", debug=True):
-                    addin_database(work_csv, debug=True)
+                    # Newly added hourly objects get an immediate light-curve fetch.
+                    addin_database(work_csv, debug=True, fetch_phot_for_new=True)
                     auto_snoozed(now, debug=True)
                 if now.hour == 0:
                     auto_snoozed(now, debug=True)
                 time.sleep(60)
 
             elif now.hour in (1, 4, 12) and now.minute == 0:
-                logger.info("Daily task at %s (UTC %02d:00): processing yesterday and day-before-yesterday", now, now.hour)
-                for day_offset in (1, 2):
+                # day_offset=0: 今天（補充每小時 CSV 可能缺少的欄位）
+                # day_offset=1: 昨天；day_offset=2: 前天
+                logger.info("Daily task at %s (UTC %02d:00): processing today, yesterday, and day-before-yesterday", now, now.hour)
+                for day_offset in (0, 1, 2):
                     target_day = now - timedelta(days=day_offset)
                     logger.info("Daily task target day: %s", target_day.date())
                     if download_TNS_api_with_fallback(target_day.year, target_day.month, target_day.day, debug=True):
@@ -574,6 +642,54 @@ def main():
         except Exception as e:
             logger.exception("Error in main loop: %s", e)
             time.sleep(10)
+
+
+def diagnose_csv_columns(filepath=None, names=None, max_rows=20):
+    """診斷工具：印出 CSV 中 reporters / time_received 欄位的原始值。
+
+    用法（在 Python shell 裡執行）：
+        from modules.auto_tns_download import diagnose_csv_columns
+        diagnose_csv_columns(names=['2026ocm', '2026abc'])
+    """
+    if filepath is None:
+        filepath = str(SAVE_DIR / "tns_public_objects_WORK.csv")
+
+    print(f"[診斷] 讀取 {filepath}")
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            first_line = f.readline().rstrip('\n')
+            print(f"[第1行（跳過）] {first_line[:120]}")
+            reader = csv.DictReader(f)
+            print(f"[欄位列表] {reader.fieldnames}")
+
+            found = 0
+            for row in reader:
+                r = {}
+                for k, v in row.items():
+                    k2 = k.strip().strip('"') if k else k
+                    r[k2] = None if (v == '' or v == 'NULL' or v is None) \
+                             else (v.strip().strip('"') if isinstance(v, str) else v)
+
+                obj_name = r.get('name', '')
+                if names and obj_name not in names:
+                    continue
+
+                print(
+                    f"  [{obj_name}] "
+                    f"reporters={r.get('reporters')!r:40s} "
+                    f"time_received={r.get('time_received')!r:25s} "
+                    f"discmagfilter={r.get('discmagfilter')!r}"
+                )
+                found += 1
+                if found >= max_rows:
+                    break
+
+        if found == 0:
+            print("[診斷] 在 CSV 中找不到指定的目標名稱，請確認 CSV 是否是最新的。")
+    except FileNotFoundError:
+        print(f"[診斷] 找不到檔案 {filepath}，請先執行下載。")
+    except Exception as e:
+        print(f"[診斷] 錯誤：{e}")
 
 
 def start_auto_tns_downloader(log_dir=None):

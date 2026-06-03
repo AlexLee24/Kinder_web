@@ -18,14 +18,12 @@ document.addEventListener('DOMContentLoaded', function() {
 // Initialize Aladin Lite
 function initializeAladin() {
     const loadingElement = document.getElementById('aladinLoading');
-    const aladinDiv = document.getElementById('aladin-lite-div');
-    
+
     try {
-        // Show loading state
         loadingElement.style.display = 'flex';
-        aladinDiv.style.display = 'none';
-        
-        // Wait for Aladin to be ready, then initialize
+
+        // Aladin must initialize on a visible, properly-sized element so its
+        // internal canvas pixel-per-degree ratio is correct from the start.
         A.init.then(() => {
             aladin = A.aladin('#aladin-lite-div', {
                 survey: currentSurvey,
@@ -53,30 +51,30 @@ function initializeAladin() {
                 reticleSize: 20,
                 showStatusBar: false,
             });
-            
-            // Wait a moment for Aladin to fully load
+
             setTimeout(() => {
                 loadingElement.style.display = 'none';
-                aladinDiv.style.display = 'block';
                 isAladinReady = true;
-                
-                // Set up Aladin monitors
+
+                // Force Aladin to recalculate canvas dimensions after the
+                // loading overlay is removed and the layout is stable.
+                window.dispatchEvent(new Event('resize'));
+
                 setupAladinMonitors();
-                
-                // Auto-display initial FOV after a longer delay
+
                 setTimeout(() => {
                     console.log('Auto-displaying initial FOV...');
                     autoDisplayFOV();
                     adjustAladinFOV();
                 }, 1500);
             }, 1000);
-            
+
         }).catch(error => {
             console.error('Error initializing Aladin:', error);
             loadingElement.style.display = 'none';
             showNotification('Failed to load sky map', 'error');
         });
-        
+
     } catch (error) {
         console.error('Error initializing Aladin:', error);
         loadingElement.style.display = 'none';
@@ -114,6 +112,9 @@ function changeSurvey(surveyId) {
             // Change survey in Aladin
             aladin.setImageSurvey(surveyId);
             currentSurvey = surveyId;
+
+            // Reflect active survey name in the collapsed panel header
+            if (activeButton) updateSurveySummary(activeButton.textContent.trim());
         } catch (error) {
             console.error('Error changing survey:', error);
             showNotification('Failed to change survey', 'error');
@@ -121,6 +122,41 @@ function changeSurvey(surveyId) {
     } else {
         showNotification('Aladin not ready yet', 'error');
     }
+}
+
+// Toggle collapsible panel (survey / instrument)
+function togglePanel(id) {
+    const panel = document.getElementById(id);
+    if (!panel) return;
+    const wasCollapsed = panel.classList.contains('is-collapsed');
+    panel.classList.toggle('is-collapsed');
+
+    // Redraw FOV overlay after instrument panel is re-expanded so the overlay
+    // covers the newly visible area with correct pixel dimensions.
+    if (id === 'instrumentPanel' && wasCollapsed) {
+        setTimeout(() => {
+            clearMosaicFromMap();
+            autoDisplayFOV();
+        }, 420);
+    }
+}
+
+function updateSurveySummary(label) {
+    const el = document.getElementById('surveySummary');
+    if (el) el.textContent = label;
+}
+
+function updateInstrumentSummary() {
+    const el = document.getElementById('instrumentSummary');
+    if (!el) return;
+    const fl  = document.getElementById('effectiveFocalLength');
+    const fr  = document.getElementById('fRatio');
+    const fov = document.getElementById('singleFrameFOV');
+    const parts = [];
+    if (fl  && fl.textContent)  parts.push(fl.textContent);
+    if (fr  && fr.textContent)  parts.push(fr.textContent);
+    if (fov && fov.textContent) parts.push(fov.textContent);
+    el.textContent = parts.join(' · ');
 }
 
 // Toggle collapsible cards
@@ -227,7 +263,10 @@ function calculateFOV() {
     
     // Update mosaic info without re-displaying FOV (avoid double clearing)
     updateMosaicInfo();
-    
+
+    // Keep instrument panel header summary in sync
+    updateInstrumentSummary();
+
     // Clear old FOV and update with new parameters
     clearMosaicFromMap();
     setTimeout(() => {

@@ -77,7 +77,6 @@ body {
 }
 
 .sky-map-container:hover {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-hover);
 }
 
@@ -134,15 +133,15 @@ body {
 /* ==================== ALADIN LOADING ==================== */
 .aladin-loading {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    inset: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 15px;
     color: var(--text-secondary);
     z-index: 10;
+    background: rgba(0, 0, 0, 0.75);
 }
 
 .aladin-loading span {
@@ -608,6 +607,34 @@ body {
     padding-top: 0;
 }
 
+.survey-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(197, 160, 89, 0.55);
+}
+
+.survey-section-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(197, 160, 89, 0.3), transparent);
+}
+
+.survey-section-header:first-child {
+    padding-top: 0;
+}
+
+/* first survey-group after a section header doesn't need extra top spacing */
+.survey-section-header + .survey-group {
+    padding-top: 2px;
+}
+
 .survey-group-label {
     font-size: 0.72rem;
     font-weight: 600;
@@ -656,6 +683,76 @@ body {
 .survey-selection-embedded .survey-btn.active:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(197, 160, 89, 0.5);
+}
+
+/* ==================== COLLAPSIBLE PANELS ==================== */
+.panel-wrap {
+    margin-top: 10px;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    gap: 10px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.panel-header:hover {
+    background: rgba(197, 160, 89, 0.07);
+    border-color: rgba(197, 160, 89, 0.25);
+}
+
+.panel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+    color: rgba(197, 160, 89, 0.7);
+}
+
+.panel-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: rgba(197, 160, 89, 0.8);
+    flex-shrink: 0;
+}
+
+.panel-summary {
+    font-size: 0.69rem;
+    color: rgba(255, 255, 255, 0.38);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.panel-chevron {
+    color: rgba(197, 160, 89, 0.5);
+    flex-shrink: 0;
+    transition: transform 0.28s ease;
+}
+
+.panel-wrap.is-collapsed .panel-chevron {
+    transform: rotate(-90deg);
+}
+
+.panel-body {
+    overflow: hidden;
+    max-height: 2000px;
+    transition: max-height 0.38s ease;
+}
+
+.panel-wrap.is-collapsed .panel-body {
+    max-height: 0;
 }
 
 /* ==================== CALCULATED INFO ==================== */

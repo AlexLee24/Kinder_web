@@ -146,7 +146,50 @@ function _autoFetchLC(cardIdx) {
 }
 
 function fetchCardLightcurve(targetName, cardIdx) {
-    _fetchLC(targetName, cardIdx, false);
+    const plotDiv  = document.getElementById(`plotly-card-${cardIdx}`);
+    const statusEl = document.getElementById(`lc-status-${cardIdx}`);
+    const fetchBtn = document.querySelector(`#card-${cardIdx} .card-lc-actions button:first-child`);
+    if (!plotDiv) return;
+
+    // Show spinner in plot area immediately (same visual as refresh)
+    if (plotDiv._fullLayout) { try { Plotly.purge(plotDiv); } catch (_) {} }
+    plotDiv.innerHTML = '<div class="card-lc-loading"><span class="tracker-spinner"></span>&nbsp;Fetching from TNS…</div>';
+    if (statusEl) { statusEl.textContent = ''; statusEl.className = 'card-lc-status'; }
+
+    // Disable button and show inline spinner
+    if (fetchBtn) {
+        fetchBtn.disabled = true;
+        fetchBtn._origText = fetchBtn.innerHTML;
+        fetchBtn.innerHTML = '<span class="tracker-spinner"></span>&nbsp;Fetching…';
+    }
+
+    _lcCache.delete(targetName);
+
+    fetch(`/api/object/${encodeURIComponent(targetName)}/fetch_photometry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (fetchBtn) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = fetchBtn._origText || 'Fetch LC';
+        }
+        if (data.success) {
+            _fetchLC(targetName, cardIdx, true);
+        } else {
+            plotDiv.innerHTML = `<div class="card-no-data">Fetch failed: ${data.error || 'Unknown error'}</div>`;
+            if (statusEl) { statusEl.textContent = 'Error'; statusEl.className = 'card-lc-status error'; }
+        }
+    })
+    .catch(() => {
+        if (fetchBtn) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = fetchBtn._origText || 'Fetch LC';
+        }
+        plotDiv.innerHTML = '<div class="card-no-data">Failed to fetch photometry</div>';
+        if (statusEl) { statusEl.textContent = 'Error'; statusEl.className = 'card-lc-status error'; }
+    });
 }
 
 function refreshCardLightcurve(targetName, cardIdx) {
