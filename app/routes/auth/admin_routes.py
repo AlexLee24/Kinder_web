@@ -841,16 +841,18 @@ _SCHEDULED_JOBS = {
 
 
 def _calc_next_run(trigger_type, **kwargs):
-    """Compute the theoretical next fire time from a trigger definition.
+    """Compute the next fire time from a trigger definition (pure Python, no APScheduler needed).
     Used as fallback when the scheduler lives in another gunicorn worker."""
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
     try:
         if trigger_type == 'cron':
-            from apscheduler.triggers.cron import CronTrigger
-            trigger = CronTrigger(hour=kwargs.get('hour'), minute=kwargs.get('minute', 0), timezone='UTC')
-            nxt = trigger.get_next_fire_time(None, now)
-            return nxt.isoformat() if nxt else None
+            hour = kwargs.get('hour', 0)
+            minute = kwargs.get('minute', 0)
+            candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if candidate <= now:
+                candidate += timedelta(days=1)
+            return candidate.isoformat()
         elif trigger_type == 'interval':
             return (now + timedelta(minutes=kwargs['minutes'])).isoformat()
     except Exception:
