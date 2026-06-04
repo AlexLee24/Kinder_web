@@ -81,3 +81,4 @@ test*
 DETECT_tools/
 temp_work/
 migrate_kinder_web.py
+/.claude/

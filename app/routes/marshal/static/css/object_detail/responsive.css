@@ -193,14 +193,6 @@
 
 /* Large screen optimizations */
 @media (min-width: 1400px) {
-    .object-detail-container {
-        max-width: 1600px;
-    }
-    
-    .detail-content {
-        grid-template-columns: 1fr 450px;
-    }
-    
     .basic-info-grid {
         grid-template-columns: repeat(4, 1fr);
     }
@@ -471,6 +463,14 @@
         gap: 10px;
         padding: 12px 14px;
     }
+    .top-nav-bottom {
+        flex-wrap: wrap;
+    }
+    .top-inline-panels {
+        flex: unset;
+        width: 100%;
+        flex-wrap: wrap;
+    }
     .top-left-group {
         flex-wrap: wrap;
         gap: 8px;
@@ -513,13 +513,8 @@
         min-height: 200px !important;
     }
 
-    /* Bottom grid: single column */
+    /* Bottom grid */
     .bottom-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-    }
-    .bottom-right-stack {
-        flex-direction: column;
         gap: 10px;
     }
     .spec-full-width {

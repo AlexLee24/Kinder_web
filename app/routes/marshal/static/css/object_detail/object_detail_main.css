@@ -8,7 +8,7 @@
 
 /* Page-specific overrides and customizations */
 .object-detail-container {
-    width: 95%;
+    width: calc(100% - 40px);
     margin: 50px auto 40px;
     font-family: var(--kw-font-sans), 'Inter', 'Segoe UI', system-ui, sans-serif;
     color: #e0e0e0;
@@ -84,13 +84,21 @@
     margin: 0 -2px;
 }
 
-/* 下列：標題 + badges + 管理員按鈕 */
+/* 下列：標題 + inline panels + 管理員按鈕 */
 .top-nav-bottom {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-start;
     gap: 16px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+}
+
+/* Inline Comments + DETECT panels between title and pin */
+.top-inline-panels {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
 }
 
 .top-title-group {
@@ -222,6 +230,60 @@
 
 /* 舊的 top-left/right-group 保留空殼避免 JS 引用錯誤 */
 .top-left-group, .top-right-group { display: none; }
+
+/* ── Quick-access panel chips (Comments / DETECT) in top nav ──────────── */
+.top-panel-chips {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.btn-nav-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 7px;
+    color: rgba(255,255,255,0.55);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.17s, color 0.17s, border-color 0.17s;
+    white-space: nowrap;
+    position: relative;
+}
+.btn-nav-chip:hover {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.22);
+    color: rgba(255,255,255,0.9);
+}
+.btn-nav-chip svg { flex-shrink: 0; }
+
+.chip-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background: rgba(0,245,212,0.18);
+    color: #00f5d4;
+    border: 1px solid rgba(0,245,212,0.3);
+    line-height: 1;
+}
+.chip-badge-detect {
+    background: rgba(197,160,89,0.18);
+    color: var(--kw-accent, #c5a059);
+    border-color: rgba(197,160,89,0.3);
+    font-size: 0.62rem;
+    padding: 0 6px;
+}
 
 
 
@@ -515,24 +577,100 @@
     height: 100%;
 }
 
-/* Bottom Section Grid */
+/* Bottom Section Grid — full width */
 .bottom-grid {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr;
     gap: 24px;
 }
 
-/* Right-column stack: Comments + DETECT stacked vertically */
-.bottom-right-stack {
+/* ── Top-nav mini panels (Comments + DETECT) ──────────────────────────── */
+.top-mini-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding-top: 10px;
+}
+
+/* When inside top-inline-panels, each panel fills equally */
+.top-inline-panels .top-mini-panel {
+    flex: 1;
+    min-width: 0;
+}
+
+.top-mini-panel {
+    background: rgba(0,0,0,0.18);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 24px;
 }
 
-/* Override panel-card defaults inside the right stack */
-.bottom-right-stack .panel-card {
-    min-height: 0;
+.top-mini-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(0,0,0,0.15);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    flex-shrink: 0;
+}
+
+.top-mini-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #00f5d4;
+    letter-spacing: 0.3px;
+}
+
+.top-mini-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 0.67rem;
+    font-weight: 700;
+    background: rgba(0,245,212,0.15);
+    color: #00f5d4;
+    border: 1px solid rgba(0,245,212,0.28);
+    line-height: 1;
+}
+
+.top-mini-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.top-mini-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px;
+    color: rgba(255,255,255,0.4);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+}
+.top-mini-btn:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.85);
+}
+
+.top-mini-slot {
+    padding: 6px 10px;
     flex: 1;
+    overflow: hidden;
 }
 
 /* Spectroscopy spans the full bottom row */
@@ -852,6 +990,85 @@
     color: white;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(207, 102, 121, 0.2);
+}
+
+/* ── Photometry filter-legend toggle buttons (below chart) ──────────────── */
+.phot-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px 3px 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03);
+    color: rgba(255,255,255,0.25);
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    user-select: none;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+.phot-filter-btn.active {
+    color: rgba(255,255,255,0.7);
+    border-color: rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.05);
+}
+.phot-filter-btn.tel-off {
+    opacity: 0.35;
+    cursor: default;
+}
+.phot-filter-btn:not(.tel-off):hover {
+    border-color: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.09);
+    color: rgba(255,255,255,0.85);
+}
+.phot-filter-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--fc, #888);
+    flex-shrink: 0;
+    opacity: 0.3;
+    transition: opacity 0.12s;
+}
+.phot-filter-btn.active .phot-filter-dot { opacity: 1; }
+.phot-filter-up {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 7px solid var(--fc, #888);
+    flex-shrink: 0;
+    opacity: 0.3;
+    transition: opacity 0.12s;
+}
+.phot-filter-btn.active .phot-filter-up { opacity: 1; }
+
+/* Telescope group header label in filter legend */
+.phot-legend-tel {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: rgba(255,255,255,0.28);
+    letter-spacing: 0.4px;
+    padding: 0 2px;
+    white-space: nowrap;
+    align-self: center;
+}
+
+/* Thin divider between telescope groups */
+.phot-legend-sep {
+    display: inline-block;
+    width: 1px;
+    height: 14px;
+    background: rgba(255,255,255,0.1);
+    margin: 0 4px;
+    align-self: center;
+    flex-shrink: 0;
 }
 
 /* Touch-action fix: allow Plotly and Aladin to handle touch events natively */

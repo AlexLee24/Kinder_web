@@ -51,6 +51,7 @@
             <div class="top-nav-divider"></div>
 
             <div class="top-nav-bottom">
+                <!-- Title + badges -->
                 <div class="top-title-group">
                     <h1 class="object-main-title" id="objectName">{{ object_name }}</h1>
                     <div class="top-badge-row">
@@ -70,6 +71,61 @@
                         </span>
                     </div>
                 </div>
+
+                <!-- Comments + DETECT mini panels — inline between name and pin -->
+                {% if visibility.comments or visibility.detect %}
+                <div class="top-inline-panels">
+                    {% if visibility.comments %}
+                    <div class="top-mini-panel" id="commentsMiniPanel">
+                        <div class="top-mini-header">
+                            <span class="top-mini-title">Comments</span>
+                            <span class="top-mini-count" id="commentsCount" style="display:none;"></span>
+                            <div class="top-mini-actions">
+                                {% if session.user %}
+                                <button class="top-mini-btn" onclick="openCommentsModal(true)" title="Add comment">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
+                                {% endif %}
+                                <button class="top-mini-btn" onclick="openCommentsModal()" title="Open full view">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="top-mini-slot" id="commentsMiniSlot">
+                            <div id="commentsContainer" style="overflow-y:auto; max-height:110px; padding-right:4px;">
+                                <div id="commentsLoading" style="text-align:center; padding:14px; color:#00f5d4;"><div class="loading-spinner-small" style="margin:0 auto;"></div></div>
+                                <div id="noComments" style="display:none; text-align:center; color:#555; padding:14px 0; font-size:0.82rem;">No comments yet.</div>
+                                <div id="commentsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if visibility.detect %}
+                    <div class="top-mini-panel" id="detectMiniPanel">
+                        <div class="top-mini-header">
+                            <span class="top-mini-title">DETECT</span>
+                            <div class="top-mini-actions">
+                                <button class="top-mini-btn" onclick="openDetectModal()" title="Open full view">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="top-mini-slot" id="detectMiniSlot">
+                            <div id="detectBody"
+                                 style="display:flex; flex-direction:column; gap:6px; color:#888;
+                                        overflow-y:auto; max-height:110px; padding:6px 2px; font-size:0.82rem;">
+                                <div style="display:flex; justify-content:center; align-items:center; height:60px;">
+                                    <div class="loading-spinner-small" style="margin-right:8px;"></div> Running...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Pin (admin only) -->
                 {% if session.user and session.user.is_admin %}
                 <div class="top-admin-actions">
                     <button class="btn-admin-icon" id="pinBtn" onclick="togglePin()" title="Pin this object">
@@ -271,6 +327,9 @@
                         <div id="photometryPlot" style="flex:1; width:100%;"></div>
                     </div>
 
+                    <!-- Filter legend (built by JS, clickable toggles below chart) -->
+                    <div id="photLegend" style="display:none; flex-wrap:wrap; gap:4px 6px; padding:8px 0 6px; max-height:108px; overflow-y:auto; border-top:1px solid rgba(255,255,255,0.06); margin-top:8px;"></div>
+
                     <!-- Sub-plots row: Color Index + Δ Magnitude -->
                     <div class="phot-subplots-row" id="photSubplotsRow" style="display:none;">
                         <!-- Color Index -->
@@ -308,68 +367,7 @@
                 </div>
             </div>
 
-            <!-- Right column: Comments + DETECT stacked -->
-            <div class="bottom-right-stack">
 
-                <!-- Comments -->
-                {% if visibility.comments %}
-                <div class="panel-card">
-                    <div class="panel-header">
-                        <h3>Comments</h3>
-                        <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
-                    </div>
-                    <div class="panel-body">
-                        <div id="addCommentForm" style="display:none; margin-bottom:16px;">
-                            <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="3" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit;"></textarea>
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-                                <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
-                                <div style="display:flex; gap:8px;">
-                                    <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
-                                    <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="commentsContainer" style="overflow-y:auto; flex:1; max-height:360px; padding-right:8px;">
-                            <div id="commentsLoading" style="text-align:center; padding:20px; color:#00f5d4;"><div class="loading-spinner-small"></div></div>
-                            <div id="noComments" style="display:none; text-align:center; color:#888; padding:20px 0;">No comments yet.</div>
-                            <div id="commentsList" style="display:flex; flex-direction:column; gap:12px;"></div>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- DETECT -->
-                {% if visibility.detect %}
-                <div class="panel-card">
-                    <div class="panel-header">
-                        <h3>DETECT</h3>
-                        <div class="action-row" style="gap:5px; flex-wrap:wrap;">
-                            <div style="display:flex; border:1px solid rgba(255,255,255,0.15); border-radius:5px; overflow:hidden;">
-                                <button id="detectTabData" onclick="switchDetectTab('data')"
-                                        style="background:rgba(0,245,212,0.15); border:none; color:#00f5d4;
-                                               padding:2px 10px; cursor:pointer; font-size:0.77rem; font-weight:600;">Data</button>
-                                <button id="detectTabChart" onclick="switchDetectTab('chart')"
-                                        style="background:transparent; border:none; color:#666;
-                                               padding:2px 10px; cursor:pointer; font-size:0.77rem;">Chart</button>
-                            </div>
-                            <button class="btn-modern" style="padding:2px 8px; font-size:0.78rem;" onclick="forceDetectRun()">Run/Refresh</button>
-                            <button id="detectImgGenBtn" onclick="generateDetectImages()"
-                                    style="background:rgba(0,245,212,0.06); border:1px solid rgba(0,245,212,0.2);
-                                           color:#00f5d4; border-radius:4px; padding:2px 8px; cursor:pointer;
-                                           font-size:0.78rem;">Generate Chart</button>
-                        </div>
-                    </div>
-                    <div class="panel-body" id="detectBody"
-                         style="display:flex; flex-direction:column; gap:10px; color:#888;
-                                overflow-y:auto; max-height:360px; padding-right:8px;">
-                        <div style="display:flex; justify-content:center; align-items:center; height:100%;">
-                            <div class="loading-spinner-small" style="margin-right:8px;"></div> Running cross-match...
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-            </div><!-- end bottom-right-stack -->
 
             <!-- Spectroscopy — full width row -->
             {% if visibility.spectroscopy %}
@@ -465,6 +463,67 @@
         </div>
         {% endif %}
     </div>
+
+    <!-- Comments Full Modal -->
+    {% if visibility.comments %}
+    <div class="modal" id="commentsModal" style="display:none;">
+        <div class="modal-content" style="max-width:680px; width:92%; max-height:88vh; display:flex; flex-direction:column;">
+            <div class="modal-header">
+                <h3>Comments</h3>
+                <div style="display:flex; align-items:center; gap:8px; margin-left:auto; margin-right:12px;">
+                    {% if session.user %}
+                    <button class="btn-modern" style="padding:3px 10px; font-size:0.8rem;" onclick="showAddCommentForm()" id="addCommentBtn">+ Comment</button>
+                    {% endif %}
+                </div>
+                <span class="close" onclick="closeCommentsModal()">&times;</span>
+            </div>
+            <div class="modal-body" style="flex:1; overflow-y:auto; padding:16px 20px; display:flex; flex-direction:column; gap:14px;">
+                <!-- addCommentForm lives here permanently -->
+                <div id="addCommentForm" style="display:none;">
+                    <textarea id="commentContent" placeholder="Enter observational notes..." maxlength="1000" rows="4" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:10px; resize:vertical; font-family:inherit; box-sizing:border-box;"></textarea>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                        <span id="charCounter" style="font-size:0.8rem; color:#888;">0 / 1000</span>
+                        <div style="display:flex; gap:8px;">
+                            <button class="btn-modern" style="padding:4px 12px; border:none;" onclick="cancelAddComment()">Cancel</button>
+                            <button class="btn-modern" style="padding:4px 12px; background:#00f5d4; color:#000; border:none; font-weight:bold;" onclick="submitComment()">Post</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- commentsContainer moves here when modal opens -->
+                <div id="commentsModalSlot"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- DETECT Full Modal -->
+    {% if visibility.detect %}
+    <div class="modal" id="detectModal" style="display:none;">
+        <div class="modal-content" style="max-width:820px; width:92%; max-height:88vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="flex-wrap:wrap; gap:8px;">
+                <h3>DETECT</h3>
+                <div class="action-row" style="gap:5px; flex-wrap:wrap; margin-left:auto; margin-right:12px;">
+                    <div style="display:flex; border:1px solid rgba(255,255,255,0.15); border-radius:5px; overflow:hidden;">
+                        <button id="detectTabData" onclick="switchDetectTab('data')"
+                                style="background:rgba(0,245,212,0.15); border:none; color:#00f5d4;
+                                       padding:2px 10px; cursor:pointer; font-size:0.77rem; font-weight:600;">Data</button>
+                        <button id="detectTabChart" onclick="switchDetectTab('chart')"
+                                style="background:transparent; border:none; color:#666;
+                                       padding:2px 10px; cursor:pointer; font-size:0.77rem;">Chart</button>
+                    </div>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.78rem;" onclick="forceDetectRun()">Run/Refresh</button>
+                    <button id="detectImgGenBtn" onclick="generateDetectImages()"
+                            style="background:rgba(0,245,212,0.06); border:1px solid rgba(0,245,212,0.2);
+                                   color:#00f5d4; border-radius:4px; padding:2px 8px; cursor:pointer;
+                                   font-size:0.78rem;">Generate Chart</button>
+                </div>
+                <span class="close" onclick="closeDetectModal()">&times;</span>
+            </div>
+            <!-- detectBody moves here when modal opens -->
+            <div id="detectModalSlot" style="flex:1; overflow-y:auto; min-height:0;"></div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay" style="display: none;">

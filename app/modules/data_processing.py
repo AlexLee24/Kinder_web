@@ -308,7 +308,7 @@ class DataVisualization:
                     y=[data['magnitude'][i] for i in with_errors],
                     customdata=custom_data,
                     mode='markers',
-                    name=f'{filter_name} ({telescope})',
+                    name=f'{filter_name} - {telescope}',
                     marker=dict(
                         color=DataVisualization.get_filter_color(filter_name),
                         symbol=symbol,
@@ -344,7 +344,7 @@ class DataVisualization:
                     y=[data['magnitude'][i] for i in without_errors],
                     customdata=abs_mags,
                     mode='markers',
-                    name=f'{filter_name} ({telescope}) - Up',
+                    name=f'{filter_name} - {telescope} - Limit',
                     marker=dict(
                         color=DataVisualization.get_filter_color(filter_name),
                         symbol='triangle-down-open',
@@ -423,19 +423,9 @@ class DataVisualization:
                 gridcolor='rgba(128,128,128,0.2)'
             ),
             template="plotly_white",
-            showlegend=True,
-            legend=dict(
-                orientation='h',
-                x=0.99,
-                y=1.38,
-                xanchor='right',
-                yanchor='bottom',
-                bgcolor='rgba(12,12,20,0.72)',
-                bordercolor='rgba(160,160,160,0.25)',
-                borderwidth=1,
-            ),
+            showlegend=False,
             hovermode='closest',
-            margin=dict(l=60, r=60, t=95, b=60)
+            margin=dict(l=60, r=60, t=45, b=60)
         )
         
         # Handle Y-axis range and Absolute Magnitude.

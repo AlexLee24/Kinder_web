@@ -357,6 +357,16 @@ function renderDetectData(results) {
     html += '</ul>';
     
     detectBody.innerHTML = html;
+
+    // DETECT chip summary (no longer used, kept as no-op)
+    const chip = document.getElementById('detectChipSummary');
+    if (chip && results.length > 0) {
+        const best = results[0];
+        const sep = parseFloat(best.separation_arcsec).toFixed(1);
+        const cat = (best.catalog_name || '').replace(/_/g, ' ');
+        chip.textContent = `${cat} ${sep}"`;
+        chip.style.display = 'inline-flex';
+    }
 }
 
 function loadDetectData() {
@@ -1195,10 +1205,13 @@ function loadPhotometryPlot() {
                             figData.layout.plot_bgcolor  = 'rgba(0,0,0,0)';
                             figData.layout.font = figData.layout.font || {};
                             figData.layout.font.color = '#ccc';
+                            figData.layout.showlegend = false;
+                            figData.layout.margin = Object.assign(figData.layout.margin || {}, { t: 45 });
                         }
                         enforceMinLcXAxisSpan(figData, 1);
                         Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
                         _buildTelescopeToggles(figData.data);
+                        _buildFilterLegend(figData.data);
 
                         // Store distance modulus & re-apply KN model if active
                         _knDistMod = typeof plotData.distance_modulus === 'number' ? plotData.distance_modulus : 0;
@@ -1385,25 +1398,59 @@ function _hexToRgba(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// ── Shared photometry visibility state ────────────────────────────────────
+let _photTelActive   = null;  // Set<string> — active telescopes
+let _photTraceActive = null;  // Set<string> — active trace names
+
+// Parse telescope from trace name: "{filter} - {telescope}" or "{filter} - {telescope} - Limit"
+function _telFromTraceName(name) {
+    if (!name) return null;
+    const base = name.endsWith(' - Limit') ? name.slice(0, -8).trimEnd() : name;
+    const idx = base.lastIndexOf(' - ');
+    return idx >= 0 ? base.slice(idx + 3) : null;
+}
+
+function _applyPhotVis() {
+    const plotDiv = document.getElementById('phot-plotly-div');
+    if (!plotDiv || !plotDiv.data) return;
+    const visArr = plotDiv.data.map(tr => {
+        if (tr.showlegend === false || !tr.name) return true;
+        const tel = _telFromTraceName(tr.name);
+        const telOk   = !_photTelActive   || !tel || _photTelActive.has(tel);
+        const traceOk = !_photTraceActive || _photTraceActive.has(tr.name);
+        return (telOk && traceOk) ? true : 'legendonly';
+    });
+    Plotly.restyle('phot-plotly-div', 'visible', visArr);
+
+    // Sync filter-legend button visual state
+    document.querySelectorAll('.phot-filter-btn').forEach(btn => {
+        const name = btn.dataset.traceName;
+        const tel = _telFromTraceName(name);
+        const traceOn = !_photTraceActive || _photTraceActive.has(name);
+        const telOn   = !_photTelActive   || !tel || _photTelActive.has(tel);
+        btn.classList.toggle('active',  traceOn && telOn);
+        btn.classList.toggle('tel-off', traceOn && !telOn);
+    });
+}
+
 // Build telescope quick-toggle buttons above photometry plot
 function _buildTelescopeToggles(traces) {
     const container = document.getElementById('telescopeToggles');
     if (!container) return;
 
-    // Extract unique telescopes from trace names: "{filter} ({telescope})" / "{filter} ({telescope}) - Up"
     const telescopes = [];
     const seen = new Set();
     traces.forEach(t => {
-        const m = t.name && t.name.match(/\((.+?)\)(?:\s*-\s*Up)?$/);
-        if (m && !seen.has(m[1])) { seen.add(m[1]); telescopes.push(m[1]); }
+        const tel = _telFromTraceName(t.name);
+        if (tel && !seen.has(tel)) { seen.add(tel); telescopes.push(tel); }
     });
+
+    _photTelActive = new Set(telescopes);
 
     if (telescopes.length <= 1) { container.style.display = 'none'; return; }
 
     container.innerHTML = '';
     container.style.display = 'flex';
-
-    const activeSet = new Set(telescopes);
 
     telescopes.forEach(tel => {
         const btn = document.createElement('button');
@@ -1411,19 +1458,88 @@ function _buildTelescopeToggles(traces) {
         btn.textContent = tel;
         btn.dataset.telescope = tel;
         btn.addEventListener('click', function () {
-            if (activeSet.has(tel)) { activeSet.delete(tel); btn.classList.remove('active'); }
-            else                    { activeSet.add(tel);    btn.classList.add('active');    }
-            const plotDiv = document.getElementById('phot-plotly-div');
-            if (!plotDiv || !plotDiv.data) return;
-            const visArr = plotDiv.data.map(tr => {
-                const m2 = tr.name && tr.name.match(/\((.+?)\)(?:\s*-\s*Up)?$/);
-                const trTel = m2 ? m2[1] : null;
-                return trTel ? (activeSet.has(trTel) ? true : 'legendonly') : true;
-            });
-            Plotly.restyle('phot-plotly-div', 'visible', visArr);
+            if (_photTelActive.has(tel)) { _photTelActive.delete(tel); btn.classList.remove('active'); }
+            else                         { _photTelActive.add(tel);    btn.classList.add('active');    }
+            _applyPhotVis();
         });
         container.appendChild(btn);
     });
+}
+
+// ── Photometry filter legend (below chart, replaces Plotly built-in legend) ──
+function _buildFilterLegend(traces) {
+    const container = document.getElementById('photLegend');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const entries = [];
+    const seen = new Set();
+    traces.forEach(t => {
+        if (t.showlegend === false || !t.name) return;
+        if (seen.has(t.name)) return;
+        seen.add(t.name);
+        const color = (t.marker && t.marker.color) ? t.marker.color : '#888';
+        const tel   = _telFromTraceName(t.name) || '';
+        const isUp  = t.name.endsWith(' - Limit');
+        // filter label = part before the last " - telescope" segment
+        const base  = isUp ? t.name.slice(0, -8).trimEnd() : t.name;
+        const filterLabel = base.slice(0, base.lastIndexOf(' - ') >= 0 ? base.lastIndexOf(' - ') : base.length);
+        entries.push({ name: t.name, color, isUp, tel, filterLabel });
+    });
+
+    _photTraceActive = new Set(entries.map(e => e.name));
+
+    if (entries.length === 0) { container.style.display = 'none'; return; }
+
+    // Sort: by telescope name, then detections before limits, then filter name
+    entries.sort((a, b) => {
+        if (a.tel !== b.tel) return a.tel.localeCompare(b.tel);
+        if (a.isUp !== b.isUp) return a.isUp ? 1 : -1;
+        return a.filterLabel.localeCompare(b.filterLabel);
+    });
+
+    // Group by telescope — build groups with a header label
+    let currentTel = null;
+    entries.forEach(({ name, color, isUp, tel, filterLabel }) => {
+        // Telescope group header
+        if (tel !== currentTel) {
+            currentTel = tel;
+            if (container.childElementCount > 0) {
+                // thin divider between groups
+                const sep = document.createElement('span');
+                sep.className = 'phot-legend-sep';
+                container.appendChild(sep);
+            }
+            const hdr = document.createElement('span');
+            hdr.className = 'phot-legend-tel';
+            hdr.textContent = tel || '—';
+            container.appendChild(hdr);
+        }
+
+        const btn = document.createElement('button');
+        btn.className = 'phot-filter-btn active';
+        btn.dataset.traceName = name;
+        btn.style.setProperty('--fc', color);
+
+        const dot = document.createElement('span');
+        dot.className = isUp ? 'phot-filter-up' : 'phot-filter-dot';
+
+        const label = document.createElement('span');
+        label.textContent = isUp ? filterLabel + ' - Limit' : filterLabel;
+
+        btn.appendChild(dot);
+        btn.appendChild(label);
+
+        btn.addEventListener('click', function () {
+            if (_photTraceActive.has(name)) _photTraceActive.delete(name);
+            else                            _photTraceActive.add(name);
+            _applyPhotVis();
+        });
+
+        container.appendChild(btn);
+    });
+
+    container.style.display = 'flex';
 }
 
 // ── Photometry Sub-plots: Color Index & Δ Magnitude ────────────────────────
@@ -3629,6 +3745,13 @@ function displayComments(comments) {
         const commentElement = createCommentElement(comment);
         commentsList.appendChild(commentElement);
     });
+
+    // Update mini panel count badge
+    const badge = document.getElementById('commentsCount');
+    if (badge) {
+        badge.textContent = comments.length;
+        badge.style.display = comments.length > 0 ? 'inline-flex' : 'none';
+    }
 }
 
 function createCommentElement(comment) {
@@ -3739,6 +3862,56 @@ async function saveEditComment(commentId) {
         console.error('Error updating comment:', error);
         showNotification('Error updating comment', 'error');
     }
+}
+
+// ── Comments / DETECT modal open-close (DOM-move approach) ────────────────
+function openCommentsModal(openForm) {
+    const modal    = document.getElementById('commentsModal');
+    const slot     = document.getElementById('commentsModalSlot');
+    const container = document.getElementById('commentsContainer');
+    if (modal && slot && container) {
+        container.style.maxHeight = 'none';
+        slot.appendChild(container);
+        modal.style.display = 'flex';
+    }
+    if (openForm) setTimeout(showAddCommentForm, 50);
+}
+function closeCommentsModal() {
+    const modal     = document.getElementById('commentsModal');
+    const miniSlot  = document.getElementById('commentsMiniSlot');
+    const container = document.getElementById('commentsContainer');
+    cancelAddComment();
+    if (miniSlot && container) {
+        container.style.maxHeight = '110px';
+        miniSlot.appendChild(container);
+    }
+    if (modal) modal.style.display = 'none';
+}
+function openDetectModal() {
+    const modal    = document.getElementById('detectModal');
+    const slot     = document.getElementById('detectModalSlot');
+    const body     = document.getElementById('detectBody');
+    if (modal && slot && body) {
+        body.style.maxHeight = 'none';
+        body.style.flex = '1';
+        body.style.padding = '14px 20px';
+        body.style.fontSize = '0.88rem';
+        slot.appendChild(body);
+        modal.style.display = 'flex';
+    }
+}
+function closeDetectModal() {
+    const modal    = document.getElementById('detectModal');
+    const miniSlot = document.getElementById('detectMiniSlot');
+    const body     = document.getElementById('detectBody');
+    if (miniSlot && body) {
+        body.style.maxHeight = '110px';
+        body.style.flex = '';
+        body.style.padding = '6px 2px';
+        body.style.fontSize = '0.82rem';
+        miniSlot.appendChild(body);
+    }
+    if (modal) modal.style.display = 'none';
 }
 
 function showAddCommentForm() {
