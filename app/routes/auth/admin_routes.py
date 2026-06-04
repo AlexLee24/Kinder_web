@@ -826,16 +826,37 @@ def tns_task_status():
 # ===============================================================================
 # SCHEDULED JOBS STATUS
 # ===============================================================================
-_SCHEDULED_JOB_LABELS = {
-    'daily_backup':                 ('Daily Backup',              'Daily 03:00 UTC'),
-    'daily_phot_fetch':             ('Inbox Photometry Fetch',    'Daily 03:30 UTC'),
-    'daily_target_mag_update':      ('Update Target Mags',        'Daily 05:00 UTC'),
-    'daily_retire_stale_followups': ('Retire Stale Follow-ups',   'Daily 05:30 UTC'),
-    'daily_host_redshift_sync':     ('Host Redshift Sync',        'Daily 06:00 UTC'),
-    'db_monitor':                   ('DB Health Monitor',         'Every 10 min'),
-    'db_recycle':                   ('DB Connection Recycle',     'Every 30 min'),
-    'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min'),
+
+# (label, schedule_desc, trigger_type, trigger_kwargs)
+_SCHEDULED_JOBS = {
+    'daily_backup':                 ('Daily Backup',              'Daily 03:00 UTC',  'cron',     {'hour': 3,  'minute': 0}),
+    'daily_phot_fetch':             ('Inbox Photometry Fetch',    'Daily 03:30 UTC',  'cron',     {'hour': 3,  'minute': 30}),
+    'daily_target_mag_update':      ('Update Target Mags',        'Daily 05:00 UTC',  'cron',     {'hour': 5,  'minute': 0}),
+    'daily_retire_stale_followups': ('Retire Stale Follow-ups',   'Daily 05:30 UTC',  'cron',     {'hour': 5,  'minute': 30}),
+    'daily_host_redshift_sync':     ('Host Redshift Sync',        'Daily 06:00 UTC',  'cron',     {'hour': 6,  'minute': 0}),
+    'db_monitor':                   ('DB Health Monitor',         'Every 10 min',     'interval', {'minutes': 10}),
+    'db_recycle':                   ('DB Connection Recycle',     'Every 30 min',     'interval', {'minutes': 30}),
+    'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min',     'interval', {'minutes': 30}),
 }
+
+
+def _calc_next_run(trigger_type, **kwargs):
+    """Compute the theoretical next fire time from a trigger definition.
+    Used as fallback when the scheduler lives in another gunicorn worker."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    try:
+        if trigger_type == 'cron':
+            from apscheduler.triggers.cron import CronTrigger
+            trigger = CronTrigger(hour=kwargs.get('hour'), minute=kwargs.get('minute', 0), timezone='UTC')
+            nxt = trigger.get_next_fire_time(None, now)
+            return nxt.isoformat() if nxt else None
+        elif trigger_type == 'interval':
+            return (now + timedelta(minutes=kwargs['minutes'])).isoformat()
+    except Exception:
+        pass
+    return None
+
 
 @admin_bp.route('/admin/scheduled-jobs-status')
 def scheduled_jobs_status():
@@ -848,13 +869,18 @@ def scheduled_jobs_status():
     all_records = _js.get_all()
 
     jobs_out = []
-    for job_id, (label, schedule_desc) in _SCHEDULED_JOB_LABELS.items():
+    for job_id, (label, schedule_desc, trigger_type, trigger_kwargs) in _SCHEDULED_JOBS.items():
         rec = all_records.get(job_id, {})
+
+        # Prefer live APScheduler value (works when this worker owns the scheduler)
         next_run = None
         if sched:
             job = sched.get_job(job_id)
             if job and job.next_run_time:
                 next_run = job.next_run_time.isoformat()
+        # Fallback: compute from trigger definition (other workers, DEBUG mode)
+        if not next_run:
+            next_run = _calc_next_run(trigger_type, **trigger_kwargs)
 
         jobs_out.append({
             'id': job_id,

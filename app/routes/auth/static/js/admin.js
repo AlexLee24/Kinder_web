@@ -1695,7 +1695,7 @@ async function _loadScheduledJobs() {
         const data = await res.json();
         _renderScheduledJobs(data.jobs || []);
         const el = document.getElementById('scheduledJobsUpdated');
-        if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        if (el) el.textContent = 'Updated ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
     } catch (e) { /* network error — ignore */ }
 }
 
