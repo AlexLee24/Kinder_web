@@ -149,6 +149,20 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Scheduled Jobs -->
+                <div class="settings-panel" style="margin-top:24px;">
+                    <div class="settings-panel-header" style="justify-content:space-between;">
+                        <span style="display:flex;align-items:center;gap:8px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            Scheduled Jobs
+                        </span>
+                        <span id="scheduledJobsUpdated" style="font-size:0.75rem;color:var(--muted);font-weight:300;"></span>
+                    </div>
+                    <div id="scheduledJobsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:14px;">
+                        <div style="color:var(--muted);font-size:0.83rem;padding:4px;">Loading…</div>
+                    </div>
+                </div>
             </div>
 
             <!-- ── Users Tab ── -->

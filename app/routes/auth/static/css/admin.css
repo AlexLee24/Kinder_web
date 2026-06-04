@@ -1066,3 +1066,68 @@ body {
     .admin-hub-nav { padding: 0 14px; }
     .hub-label { display: none; }
 }
+
+/* ================================================================
+   Scheduled Jobs Cards
+   ================================================================ */
+.sj-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: border-color 0.2s;
+}
+.sj-card:hover { border-color: var(--border2); }
+.sj-card.sj-running {
+    border-color: rgba(197,160,89,0.4);
+    background: rgba(197,160,89,0.05);
+}
+
+.sj-name {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 2px;
+}
+
+.sj-schedule {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 10px;
+}
+
+.sj-state {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+.sj-state.running {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--gold);
+    font-weight: 500;
+}
+
+.sj-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--gold);
+    flex-shrink: 0;
+    animation: sjPulse 1.4s ease-in-out infinite;
+}
+@keyframes sjPulse {
+    0%, 100% { opacity: 1;   transform: scale(1);   }
+    50%       { opacity: 0.4; transform: scale(0.65); }
+}
+
+.sj-last {
+    font-size: 0.76rem;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.sj-last.success { color: #55d473; }
+.sj-last.error   { color: #ff6b6b; }

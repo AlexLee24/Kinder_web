@@ -175,21 +175,36 @@ except OSError:
     _acquired_bg_lock = False
 
 if _acquired_bg_lock:
+    from modules import scheduler_state as _sched_state, job_status as _job_status
+
+    def _tracked(job_id, fn):
+        def wrapper(*args, **kwargs):
+            _job_status.record_start(job_id)
+            try:
+                fn(*args, **kwargs)
+                _job_status.record_finish(job_id, True)
+            except Exception as _exc:
+                _job_status.record_finish(job_id, False, str(_exc)[:200])
+                raise
+        wrapper.__name__ = fn.__name__
+        return wrapper
+
     _scheduler = BackgroundScheduler(daemon=True)
+    _sched_state.scheduler = _scheduler
     if not config.DEBUG:
-        _scheduler.add_job(run_daily_backup,         'cron', hour=3, minute=0,  id='daily_backup')
-        _scheduler.add_job(fetch_inbox_photometry,   'cron', hour=3, minute=30, id='daily_phot_fetch')
-        # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,          id='hourly_missing_phot')
-        _scheduler.add_job(update_target_mags,       'cron', hour=5, minute=0,  id='daily_target_mag_update')
-        _scheduler.add_job(retire_stale_followups,   'cron', hour=5, minute=30, id='daily_retire_stale_followups')
-        _scheduler.add_job(sync_host_redshifts,  'cron',     hour=6,   minute=0, id='daily_host_redshift_sync')
-        _scheduler.add_job(_db_check_and_alert,  'interval', minutes=10,  id='db_monitor')
-        _scheduler.add_job(_db_recycle,          'interval', minutes=30,  id='db_recycle')
-        _scheduler.add_job(prewarm_detect_page_cache, 'interval', minutes=30, id='detect_page_prewarm')
+        _scheduler.add_job(_tracked('daily_backup', run_daily_backup),                        'cron', hour=3, minute=0,  id='daily_backup')
+        _scheduler.add_job(_tracked('daily_phot_fetch', fetch_inbox_photometry),              'cron', hour=3, minute=30, id='daily_phot_fetch')
+        # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,                      id='hourly_missing_phot')
+        _scheduler.add_job(_tracked('daily_target_mag_update', update_target_mags),           'cron', hour=5, minute=0,  id='daily_target_mag_update')
+        _scheduler.add_job(_tracked('daily_retire_stale_followups', retire_stale_followups),  'cron', hour=5, minute=30, id='daily_retire_stale_followups')
+        _scheduler.add_job(_tracked('daily_host_redshift_sync', sync_host_redshifts),         'cron', hour=6, minute=0,  id='daily_host_redshift_sync')
+        _scheduler.add_job(_tracked('db_monitor', _db_check_and_alert),                       'interval', minutes=10,   id='db_monitor')
+        _scheduler.add_job(_tracked('db_recycle', _db_recycle),                               'interval', minutes=30,   id='db_recycle')
+        _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm')
     _scheduler.start()
     if not config.DEBUG:
-        run_daily_backup()  # run once immediately on startup
-        prewarm_detect_page_cache(prewarm_days=1, refresh_latest=True, force_latest=True, app_obj=app)
+        _tracked('daily_backup', run_daily_backup)()
+        _tracked('detect_page_prewarm', prewarm_detect_page_cache)(prewarm_days=1, refresh_latest=True, force_latest=True, app_obj=app)
         # start_gcn_listener(log_dir=os.path.join(current_dir, 'log'))
         start_auto_tns_downloader(log_dir=os.path.join(current_dir, 'log'))
         start_gap_filler(log_dir=os.path.join(current_dir, 'log'))

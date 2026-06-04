@@ -105,7 +105,7 @@ function showTab(tabName) {
 
     const tabContents = document.querySelectorAll('.tab-content');
     tabContents.forEach(content => content.classList.remove('active'));
-    
+
     const tabButtons = document.querySelectorAll('.tab-button');
     tabButtons.forEach(button => {
         button.classList.remove('active');
@@ -113,10 +113,16 @@ function showTab(tabName) {
             button.classList.add('active');
         }
     });
-    
+
     const targetTab = document.getElementById(tabName + '-tab');
     if (targetTab) {
         targetTab.classList.add('active');
+    }
+
+    if (tabName === 'overview') {
+        _startJobsPolling();
+    } else {
+        _stopJobsPolling();
     }
 }
 
@@ -1664,3 +1670,89 @@ async function removePrivatePagePerm(page, groupName) {
     }
 }
 
+// ============================================================
+// SCHEDULED JOBS — Overview panel
+// ============================================================
+let _jobsPollTimer = null;
+
+function _startJobsPolling() {
+    if (_jobsPollTimer) return;
+    _loadScheduledJobs();
+    _jobsPollTimer = setInterval(_loadScheduledJobs, 15000);
+}
+
+function _stopJobsPolling() {
+    if (_jobsPollTimer) {
+        clearInterval(_jobsPollTimer);
+        _jobsPollTimer = null;
+    }
+}
+
+async function _loadScheduledJobs() {
+    try {
+        const res = await fetch('/admin/scheduled-jobs-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        _renderScheduledJobs(data.jobs || []);
+        const el = document.getElementById('scheduledJobsUpdated');
+        if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) { /* network error — ignore */ }
+}
+
+function _fmtJobTime(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-GB', {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+        timeZone: 'UTC'
+    }) + ' UTC';
+}
+
+function _timeAgo(iso) {
+    if (!iso) return '';
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (min < 1)  return 'just now';
+    if (min < 60) return min + 'm ago';
+    const h = Math.floor(min / 60);
+    if (h < 24)   return h + 'h ago';
+    return Math.floor(h / 24) + 'd ago';
+}
+
+function _renderScheduledJobs(jobs) {
+    const grid = document.getElementById('scheduledJobsGrid');
+    if (!grid) return;
+
+    if (!jobs.length) {
+        grid.innerHTML = '<div style="color:var(--muted);font-size:0.83rem;padding:4px;">No scheduled jobs found.</div>';
+        return;
+    }
+
+    grid.innerHTML = jobs.map(j => {
+        let stateHtml, lastHtml;
+
+        if (j.is_running) {
+            stateHtml = `<div class="sj-state running"><span class="sj-dot"></span>Running</div>`;
+        } else {
+            const nextTxt = j.next_run
+                ? 'Wait for next run at ' + _fmtJobTime(j.next_run)
+                : 'Not scheduled';
+            stateHtml = `<div class="sj-state">${nextTxt}</div>`;
+        }
+
+        if (!j.last_status) {
+            lastHtml = `<div class="sj-last">Last run: —</div>`;
+        } else if (j.last_status === 'success') {
+            lastHtml = `<div class="sj-last success">Last run: ✓ ${_timeAgo(j.last_run_at)}</div>`;
+        } else {
+            const msg = j.last_message ? ': ' + j.last_message.slice(0, 80) : '';
+            lastHtml = `<div class="sj-last error">Last run: ✗ Failed${msg}</div>`;
+        }
+
+        return `<div class="sj-card${j.is_running ? ' sj-running' : ''}">
+            <div class="sj-name">${j.name}</div>
+            <div class="sj-schedule">${j.schedule}</div>
+            ${stateHtml}
+            ${lastHtml}
+        </div>`;
+    }).join('');
+}

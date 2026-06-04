@@ -821,3 +821,50 @@ def tns_task_status():
     if 'user' not in session or not session['user'].get('is_admin'):
         return jsonify({'error': 'Access denied'}), 403
     return jsonify(_tns_task_status)
+
+
+# ===============================================================================
+# SCHEDULED JOBS STATUS
+# ===============================================================================
+_SCHEDULED_JOB_LABELS = {
+    'daily_backup':                 ('Daily Backup',              'Daily 03:00 UTC'),
+    'daily_phot_fetch':             ('Inbox Photometry Fetch',    'Daily 03:30 UTC'),
+    'daily_target_mag_update':      ('Update Target Mags',        'Daily 05:00 UTC'),
+    'daily_retire_stale_followups': ('Retire Stale Follow-ups',   'Daily 05:30 UTC'),
+    'daily_host_redshift_sync':     ('Host Redshift Sync',        'Daily 06:00 UTC'),
+    'db_monitor':                   ('DB Health Monitor',         'Every 10 min'),
+    'db_recycle':                   ('DB Connection Recycle',     'Every 30 min'),
+    'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min'),
+}
+
+@admin_bp.route('/admin/scheduled-jobs-status')
+def scheduled_jobs_status():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+
+    from modules import scheduler_state as _sched_state, job_status as _js
+
+    sched = _sched_state.scheduler
+    all_records = _js.get_all()
+
+    jobs_out = []
+    for job_id, (label, schedule_desc) in _SCHEDULED_JOB_LABELS.items():
+        rec = all_records.get(job_id, {})
+        next_run = None
+        if sched:
+            job = sched.get_job(job_id)
+            if job and job.next_run_time:
+                next_run = job.next_run_time.isoformat()
+
+        jobs_out.append({
+            'id': job_id,
+            'name': label,
+            'schedule': schedule_desc,
+            'next_run': next_run,
+            'is_running': _js.is_running(job_id),
+            'last_status': rec.get('status'),
+            'last_message': rec.get('message', ''),
+            'last_run_at': rec.get('finished_at'),
+        })
+
+    return jsonify({'jobs': jobs_out})
