@@ -96,6 +96,7 @@
                             <th style="width:44px;">★</th>
                             {% endif %}
                             <th>Object</th>
+                            <th>Type</th>
                             <th>Host</th>
                             <th>Coords</th>
                             <th>Match (Catalog)</th>
@@ -128,6 +129,14 @@
                                 <a href="/object/{{ result.target_name }}" class="obj-name-link" onclick="event.stopPropagation()">
                                     {{ result.target_name }}
                                 </a>
+                            </td>
+
+                            <td style="text-align:center;">
+                                {% if result.tns_info and result.tns_info.type %}
+                                    <span class="badge-type">{{ result.tns_info.type }}</span>
+                                {% else %}
+                                    <span class="badge-type-unclassified">Unclassified</span>
+                                {% endif %}
                             </td>
 
                             <td id="host-cell-{{ result.target_name }}" style="text-align:center;">
@@ -214,6 +223,13 @@
                         <div class="card-meta-line">
                             <span><strong>Discovery:</strong> {{ result.tns_info.discoverydate or '—' }}</span>
                             <span><strong>Coords:</strong> {{ result.tns_info.ra }}, {{ result.tns_info.dec }}</span>
+                            <span><strong>Type:</strong>
+                                {% if result.tns_info.type %}
+                                    <span class="badge-type">{{ result.tns_info.type }}</span>
+                                {% else %}
+                                    <span class="badge-type-unclassified">Unclassified</span>
+                                {% endif %}
+                            </span>
                             {% if result.tns_info.internal_names %}
                             <span><strong>Internal:</strong> {{ result.tns_info.internal_names }}</span>
                             {% endif %}

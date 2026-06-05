@@ -592,14 +592,16 @@ def _assemble_detect_payload(selected_date):
                     'discoverydate': tns_details.get('discoverydate', 'N/A'),
                     'internal_names': tns_details.get('internal_names', 'N/A'),
                     'ra': tns_details.get('ra', 'N/A'),
-                    'dec': tns_details.get('declination', 'N/A')
+                    'dec': tns_details.get('declination', 'N/A'),
+                    'type': tns_details.get('type') or '',
                 }
             else:
                 row['tns_info'] = {
                     'discoverydate': match_data.get('tns_discoverydate', 'N/A'),
                     'internal_names': match_data.get('tns_internal_names', 'N/A'),
                     'ra': match_data.get('tns_ra', 'N/A'),
-                    'dec': match_data.get('tns_dec', 'N/A')
+                    'dec': match_data.get('tns_dec', 'N/A'),
+                    'type': match_data.get('type') or '',
                 }
 
             redshift = None
@@ -745,6 +747,7 @@ def _assemble_detect_payload(selected_date):
                 'internal_names': str(ti.get('internal_names') or ''),
                 'ra':             str(ti.get('ra') or ''),
                 'dec':            str(ti.get('dec') or ''),
+                'type':           str(ti.get('type') or ''),
             },
             'z':          _safe_float(bm.get('z')),
             'abs_mag':    _safe_float(bm.get('abs_mag')),

@@ -457,6 +457,29 @@ body {
     font-weight: 700;
 }
 
+/* ── Type badge ────────────────────────────────────────────────── */
+.badge-type {
+    background: rgba(150, 180, 255, 0.1);
+    border: 1px solid rgba(150, 180, 255, 0.35);
+    color: #96b4ff;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 0.78em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-type-unclassified {
+    background: rgba(120, 120, 120, 0.08);
+    border: 1px solid rgba(120, 120, 120, 0.3);
+    color: #888;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 0.78em;
+    font-style: italic;
+    white-space: nowrap;
+}
+
 /* ── Catalog badge ─────────────────────────────────────────────── */
 .badge {
     background: rgba(70, 255, 175, 0.08);
