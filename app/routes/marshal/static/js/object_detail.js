@@ -63,6 +63,8 @@ document.addEventListener('DOMContentLoaded', function() {
     cleanObjectName = extractYearAndLetters(objectName);
     console.log(`Original name: ${objectName}, Clean name (year+letters): ${cleanObjectName}`);
     
+    _buildSpecChipsUI();
+
     if (objectName) {
         loadObjectData();
         // checkFlagStatus(); // Flag disabled
@@ -2415,8 +2417,8 @@ const _SPEC_LINE_COLORS = {
 let _specLinesNist  = null;
 function _activeSpecLines() { return _specLinesNist ?? _SPEC_LINES_BUILTIN; }
 
-let _specLineGroups   = new Set(); // empty = no lines shown by default
-let _specExcludedKeys = new Set(); // individually disabled line labels within active groups
+let _specActiveKeys = new Set(); // allowlist: labels of lines currently shown on plot
+let _specTelActive  = false;     // whether telluric bands are shown
 let _objectRedshift = null;        // filled when plot data loads
 let _origMarginT    = null;        // saved before first line overlay
 let _specLineRedshift = null;      // trial z for line overlay; null = use object z
@@ -2524,7 +2526,7 @@ async function _fetchNistSpecLines() {
         }
         _specLinesNist = data.lines;
         _updateNistBadge('nist');
-        if (_specLineGroups.size > 0) _applySpecLines();
+        if (_specActiveKeys.size > 0 || _specTelActive) _applySpecLines();
     } catch (e) {
         _updateNistBadge('builtin');
     }
@@ -2543,74 +2545,128 @@ function _updateNistBadge(state) {
     el.className   = `spec-source-badge ${cfg.cls}`;
 }
 
-function toggleSpecLineGroup(group) {
-    const btn = document.querySelector(`.spec-line-btn[data-group="${group}"]`);
-    if (_specLineGroups.has(group)) {
-        _specLineGroups.delete(group);
-        if (btn) btn.classList.remove('active');
-        // clear individual exclusions for this group so next toggle-on starts fresh
-        _SPEC_LINES_BUILTIN.filter(l => l.group === group).forEach(l => _specExcludedKeys.delete(l.label));
-    } else {
-        _specLineGroups.add(group);
-        if (btn) btn.classList.add('active');
-        // reset to all-on for this group
-        _SPEC_LINES_BUILTIN.filter(l => l.group === group).forEach(l => _specExcludedKeys.delete(l.label));
-    }
-    _renderSpecLineDetails();
-    _applySpecLines();
-}
-
-function toggleSpecLine(label) {
-    if (_specExcludedKeys.has(label)) _specExcludedKeys.delete(label);
-    else _specExcludedKeys.add(label);
-    _renderSpecLineDetails();
-    _applySpecLines();
-}
-
 const _GROUP_ORDER = ['H','He','Ca','Si','O','Na','Fe','S','C','Mg','N','Ti','Ba'];
 
-function _renderSpecLineDetails() {
-    const container = document.getElementById('specLineDetails');
-    if (!container) return;
+// Derive compact chip text: strip element name, keep ionization + identifier.
+// "[O III] 5007" → "[OIII] 5007", "He II 4686" → "II 4686", "Hα" → "Hα"
+function _chipText(l) {
+    const s = l.label;
+    const m1 = s.match(/^\[(\w+)\s+(\w+)\]\s*(.+)$/);
+    if (m1) return `[${m1[1]}${m1[2]}] ${m1[3]}`.trim();
+    const m2 = s.match(/^\w+\s+([IVX]+\]?\s+.+)$/);
+    if (m2) return m2[1].replace(']', '').trim();
+    return s;
+}
 
-    const activeAtomic = _GROUP_ORDER.filter(g => _specLineGroups.has(g));
-    if (activeAtomic.length === 0) { container.style.display = 'none'; return; }
-    container.style.display = 'flex';
-    container.innerHTML = '';
+function _buildSpecChipsUI() {
+    const grid = document.getElementById('specChipsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
 
-    activeAtomic.forEach(g => {
+    _GROUP_ORDER.forEach(g => {
         const col = _SPEC_LINE_COLORS[g];
-        const groupLines = _SPEC_LINES_BUILTIN.filter(l => l.group === g);
+        const row = document.createElement('div');
+        row.className = 'spec-chip-row';
+        row.dataset.group = g;
 
-        const groupEl = document.createElement('span');
-        groupEl.className = 'spec-detail-group';
-
-        const lbl = document.createElement('span');
-        lbl.className = 'spec-detail-label';
+        const lbl = document.createElement('button');
+        lbl.className = 'spec-group-lbl';
         lbl.style.color = col;
-        lbl.textContent = g + ':';
-        groupEl.appendChild(lbl);
+        lbl.style.setProperty('--clr', col);
+        lbl.textContent = g;
+        lbl.title = 'Toggle all ' + g + ' lines';
+        lbl.onclick = () => toggleSpecGroup(g);
+        row.appendChild(lbl);
 
-        groupLines.forEach(l => {
+        _SPEC_LINES_BUILTIN.filter(l => l.group === g).forEach(l => {
             const btn = document.createElement('button');
-            const excluded = _specExcludedKeys.has(l.label);
-            btn.className = 'spec-detail-btn' + (excluded ? '' : ' active');
+            btn.className = 'spec-chip';
+            btn.dataset.key = l.label;
             btn.style.setProperty('--clr', col);
-            btn.textContent = l.label;
-            btn.title = `${l.ion} — ${l.w.toFixed(1)} Å`;
-            btn.onclick = () => toggleSpecLine(l.label);
-            groupEl.appendChild(btn);
+            btn.textContent = _chipText(l);
+            btn.title = `${l.label}\n${l.ion} — ${l.w.toFixed(1)} Å`;
+            btn.onclick = () => toggleSpecChip(l.label);
+            row.appendChild(btn);
         });
 
-        container.appendChild(groupEl);
+        grid.appendChild(row);
     });
+
+    // Telluric row
+    const telCol = _SPEC_LINE_COLORS['Tel'];
+    const telRow = document.createElement('div');
+    telRow.className = 'spec-chip-row';
+    telRow.dataset.group = 'Tel';
+
+    const telLbl = document.createElement('button');
+    telLbl.className = 'spec-group-lbl';
+    telLbl.style.color = telCol;
+    telLbl.style.setProperty('--clr', telCol);
+    telLbl.textContent = 'Tel';
+    telLbl.title = 'Toggle telluric absorption bands';
+    telLbl.onclick = () => toggleTelluric();
+    telRow.appendChild(telLbl);
+
+    _TELLURIC_BANDS.forEach(b => {
+        const btn = document.createElement('button');
+        btn.className = 'spec-chip tel-chip';
+        btn.dataset.key = 'Tel_' + b.w0;
+        btn.style.setProperty('--clr', telCol);
+        btn.textContent = b.label;
+        btn.title = `Telluric ${b.label}\n${b.w0}–${b.w1} Å (observed frame)`;
+        btn.onclick = () => toggleTelluric();
+        telRow.appendChild(btn);
+    });
+
+    grid.appendChild(telRow);
+    _refreshChipStates();
+}
+
+function _refreshChipStates() {
+    document.querySelectorAll('#specChipsGrid .spec-chip').forEach(btn => {
+        const g = btn.closest('[data-group]')?.dataset.group;
+        const active = g === 'Tel' ? _specTelActive : _specActiveKeys.has(btn.dataset.key);
+        btn.classList.toggle('active', active);
+    });
+    document.querySelectorAll('#specChipsGrid .spec-group-lbl').forEach(lbl => {
+        const g = lbl.closest('[data-group]')?.dataset.group;
+        if (!g) return;
+        let anyActive;
+        if (g === 'Tel') {
+            anyActive = _specTelActive;
+        } else {
+            anyActive = _SPEC_LINES_BUILTIN.filter(l => l.group === g).some(l => _specActiveKeys.has(l.label));
+        }
+        lbl.classList.toggle('any-active', anyActive);
+    });
+}
+
+function toggleSpecGroup(g) {
+    const lines = _SPEC_LINES_BUILTIN.filter(l => l.group === g);
+    const allActive = lines.every(l => _specActiveKeys.has(l.label));
+    lines.forEach(l => allActive ? _specActiveKeys.delete(l.label) : _specActiveKeys.add(l.label));
+    _refreshChipStates();
+    _applySpecLines();
+}
+
+function toggleSpecChip(label) {
+    if (_specActiveKeys.has(label)) _specActiveKeys.delete(label);
+    else _specActiveKeys.add(label);
+    _refreshChipStates();
+    _applySpecLines();
+}
+
+function toggleTelluric() {
+    _specTelActive = !_specTelActive;
+    _refreshChipStates();
+    _applySpecLines();
 }
 
 function _applySpecLines() {
     const plotDiv = document.querySelector('#spectrumPlot .js-plotly-plot');
     if (!plotDiv) return;
 
-    if (_specLineGroups.size === 0) {
+    if (_specActiveKeys.size === 0 && !_specTelActive) {
         const restore = { shapes: [], annotations: [] };
         if (_origMarginT !== null) restore['margin.t'] = _origMarginT;
         try { Plotly.relayout(plotDiv, restore); } catch(e) {}
@@ -2631,13 +2687,12 @@ function _applySpecLines() {
 
     const shapes = [], annotations = [];
 
-    // Atomic spectral lines
+    // Atomic spectral lines — only those explicitly selected (allowlist)
     _activeSpecLines()
-        .filter(l => _specLineGroups.has(l.group))
+        .filter(l => _specActiveKeys.has(l.label))
         .forEach(l => {
             const xPos = (l.w * (1 + zLines)) / denom;
             if (_specWaveMin != null && (xPos < _specWaveMin || xPos > _specWaveMax)) return;
-            if (_specExcludedKeys.has(l.label)) return;
             const col  = _SPEC_LINE_COLORS[l.group] || '#aaa';
             shapes.push({
                 type: 'line', x0: xPos, x1: xPos, y0: 0, y1: 1, yref: 'paper',
@@ -2661,7 +2716,7 @@ function _applySpecLines() {
         });
 
     // Telluric absorption bands — atmospheric, fixed in the observed frame.
-    if (_specLineGroups.has('Tel')) {
+    if (_specTelActive) {
         const col = _SPEC_LINE_COLORS['Tel'];
         _TELLURIC_BANDS.forEach(b => {
             const x0   = b.w0 / denom;
@@ -2751,7 +2806,7 @@ function loadSpectrumPlot() {
                                 console.log('Spectrum plot rendered successfully');
                                 // Seed trial-z field, then re-apply spectral lines if active
                                 _initSpecRedshiftInput();
-                                if (_specLineGroups.size > 0) _applySpecLines();
+                                if (_specActiveKeys.size > 0 || _specTelActive) _applySpecLines();
                                 // Seed wavelength range inputs from data extent
                                 _initSpecWaveRange();
                                 // Attempt to upgrade to NIST lines (no-op if already loaded)

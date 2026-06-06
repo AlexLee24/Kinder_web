@@ -395,23 +395,10 @@
                             <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem;" onclick="loadSpectrumPlot()">Refresh</button>
                         </div>
                     </div>
-                    <!-- Spectral line group selectors — always visible -->
-                    <div class="spec-lines-groups" id="specLinesGroups" style="display:flex; flex-wrap:wrap;">
-                        <span class="spec-lines-label">Lines:</span>
-                        <button class="spec-line-btn" data-group="H"   onclick="toggleSpecLineGroup('H')"   style="--clr:#4a9eff; color:#4a9eff; border-color:#4a9eff44;">H</button>
-                        <button class="spec-line-btn" data-group="He"  onclick="toggleSpecLineGroup('He')"  style="--clr:#ffd700; color:#ffd700; border-color:#ffd70044;">He</button>
-                        <button class="spec-line-btn" data-group="Ca"  onclick="toggleSpecLineGroup('Ca')"  style="--clr:#bf7fff; color:#bf7fff; border-color:#bf7fff44;">Ca</button>
-                        <button class="spec-line-btn" data-group="Si"  onclick="toggleSpecLineGroup('Si')"  style="--clr:#ff9060; color:#ff9060; border-color:#ff906044;">Si</button>
-                        <button class="spec-line-btn" data-group="O"   onclick="toggleSpecLineGroup('O')"   style="--clr:#00e5ff; color:#00e5ff; border-color:#00e5ff44;">O</button>
-                        <button class="spec-line-btn" data-group="Na"  onclick="toggleSpecLineGroup('Na')"  style="--clr:#adff2f; color:#adff2f; border-color:#adff2f44;">Na</button>
-                        <button class="spec-line-btn" data-group="Fe"  onclick="toggleSpecLineGroup('Fe')"  style="--clr:#cd853f; color:#cd853f; border-color:#cd853f44;">Fe</button>
-                        <button class="spec-line-btn" data-group="S"   onclick="toggleSpecLineGroup('S')"   style="--clr:#7fff00; color:#7fff00; border-color:#7fff0044;">S</button>
-                        <button class="spec-line-btn" data-group="C"   onclick="toggleSpecLineGroup('C')"   style="--clr:#ff6347; color:#ff6347; border-color:#ff634744;">C</button>
-                        <button class="spec-line-btn" data-group="Mg"  onclick="toggleSpecLineGroup('Mg')"  style="--clr:#40e0d0; color:#40e0d0; border-color:#40e0d044;">Mg</button>
-                        <button class="spec-line-btn" data-group="N"   onclick="toggleSpecLineGroup('N')"   style="--clr:#ff5ec7; color:#ff5ec7; border-color:#ff5ec744;">N</button>
-                        <button class="spec-line-btn" data-group="Ti"  onclick="toggleSpecLineGroup('Ti')"  style="--clr:#76d7c4; color:#76d7c4; border-color:#76d7c444;">Ti</button>
-                        <button class="spec-line-btn" data-group="Ba"  onclick="toggleSpecLineGroup('Ba')"  style="--clr:#f5b700; color:#f5b700; border-color:#f5b70044;">Ba</button>
-                        <button class="spec-line-btn" data-group="Tel" onclick="toggleSpecLineGroup('Tel')" style="--clr:#b8a060; color:#b8a060; border-color:#b8a06044;">Telluric</button>
+                    <!-- Spectral line chip grid — built by JS on page load -->
+                    <div class="spec-chips-grid" id="specChipsGrid"></div>
+                    <!-- Controls: NIST badge + z + wavelength range -->
+                    <div class="spec-lines-controls">
                         <span id="specLineSourceBadge" class="spec-source-badge spec-source-builtin"
                               title="Using built-in spectral line list">Built-in</span>
                         <span class="spec-z-control">
@@ -434,8 +421,6 @@
                             <button type="button" class="spec-z-reset" onclick="resetSpecWaveRange()" title="Reset to data range">↺</button>
                         </span>
                     </div>
-                    <!-- Individual line chips — dynamic, shown when groups are active -->
-                    <div class="spec-line-details" id="specLineDetails" style="display:none;"></div>
                 </div>
                 <div class="panel-body">
                     <div style="height:420px; display:flex; position:relative; overflow:hidden;">
