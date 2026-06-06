@@ -566,13 +566,20 @@ body {
     color: rgba(255, 255, 255, 0.8);
     letter-spacing: 0.5px;
     font-size: 1em;
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-right: 12px;
 }
 
 .info-value {
     color: #ffffff;
     font-weight: 400;
     font-size: 1em;
-    word-break: break-word;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
 }
 
 /* ===== Ask to Join Group ===== */
