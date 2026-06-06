@@ -421,6 +421,18 @@
                                    title="Temporary redshift for spectral-line placement (does not change the object's stored z)">
                             <button type="button" class="spec-z-reset" onclick="resetSpecRedshift()" title="Reset to object redshift">↺</button>
                         </span>
+                        <span class="spec-wave-control">
+                            <label>λ</label>
+                            <input type="number" id="specWaveMin" step="10" min="100"
+                                   oninput="onSpecWaveInput('min', this.value)"
+                                   title="Minimum wavelength (Å)">
+                            <span class="spec-wave-sep">–</span>
+                            <input type="number" id="specWaveMax" step="10" min="100"
+                                   oninput="onSpecWaveInput('max', this.value)"
+                                   title="Maximum wavelength (Å)">
+                            <span class="spec-wave-unit">Å</span>
+                            <button type="button" class="spec-z-reset" onclick="resetSpecWaveRange()" title="Reset to data range">↺</button>
+                        </span>
                     </div>
                 </div>
                 <div class="panel-body">

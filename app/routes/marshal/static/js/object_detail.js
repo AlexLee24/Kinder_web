@@ -2420,6 +2420,9 @@ let _objectRedshift = null;        // filled when plot data loads
 let _origMarginT    = null;        // saved before first line overlay
 let _specLineRedshift = null;      // trial z for line overlay; null = use object z
 let _specZUserSet     = false;     // true once the user edits the trial z field
+let _specDataXRange   = [null, null]; // raw [min, max] Å from data at load time
+let _specWaveMin      = null;      // current user x-axis min (display Å)
+let _specWaveMax      = null;      // current user x-axis max (display Å)
 
 // Object's canonical redshift (from DB / loaded data). Used for telluric placement
 // and as the default for the trial-z control.
@@ -2456,6 +2459,47 @@ function resetSpecRedshift() {
     _specZUserSet = false;
     _specLineRedshift = null;
     _initSpecRedshiftInput();
+    _applySpecLines();
+}
+
+function _initSpecWaveRange() {
+    const plotDiv = document.querySelector('#spectrumPlot .js-plotly-plot');
+    if (!plotDiv?._fullLayout?.xaxis) return;
+    const r = plotDiv._fullLayout.xaxis.range;
+    if (!r || r.length < 2) return;
+    const rawMin = parseFloat(r[0]);
+    const rawMax = parseFloat(r[1]);
+    if (isNaN(rawMin) || isNaN(rawMax)) return;
+    _specDataXRange = [rawMin, rawMax];
+    const dMin = Math.min(rawMin, 400);
+    const dMax = Math.max(rawMax, 700);
+    _specWaveMin = dMin;
+    _specWaveMax = dMax;
+    const inpMin = document.getElementById('specWaveMin');
+    const inpMax = document.getElementById('specWaveMax');
+    if (inpMin) inpMin.value = Math.round(dMin);
+    if (inpMax) inpMax.value = Math.round(dMax);
+    _applySpecLines();
+}
+
+function onSpecWaveInput(which, val) {
+    const v = parseFloat(val);
+    if (which === 'min') _specWaveMin = isNaN(v) ? null : v;
+    else                 _specWaveMax = isNaN(v) ? null : v;
+    _applySpecLines();
+}
+
+function resetSpecWaveRange() {
+    if (_specDataXRange[0] == null) return;
+    const [rawMin, rawMax] = _specDataXRange;
+    const dMin = Math.min(rawMin, 400);
+    const dMax = Math.max(rawMax, 700);
+    _specWaveMin = dMin;
+    _specWaveMax = dMax;
+    const inpMin = document.getElementById('specWaveMin');
+    const inpMax = document.getElementById('specWaveMax');
+    if (inpMin) inpMin.value = Math.round(dMin);
+    if (inpMax) inpMax.value = Math.round(dMax);
     _applySpecLines();
 }
 
@@ -2508,6 +2552,10 @@ function _applySpecLines() {
     if (_specLineGroups.size === 0) {
         const restore = { shapes: [], annotations: [] };
         if (_origMarginT !== null) restore['margin.t'] = _origMarginT;
+        if (_specWaveMin != null && _specWaveMax != null) {
+            restore['xaxis.range'] = [_specWaveMin, _specWaveMax];
+            restore['xaxis.autorange'] = false;
+        }
         try { Plotly.relayout(plotDiv, restore); } catch(e) {}
         return;
     }
@@ -2531,6 +2579,7 @@ function _applySpecLines() {
         .filter(l => _specLineGroups.has(l.group))
         .forEach(l => {
             const xPos = (l.w * (1 + zLines)) / denom;
+            if (_specWaveMin != null && (xPos < _specWaveMin || xPos > _specWaveMax)) return;
             const col  = _SPEC_LINE_COLORS[l.group] || '#aaa';
             shapes.push({
                 type: 'line', x0: xPos, x1: xPos, y0: 0, y1: 1, yref: 'paper',
@@ -2559,6 +2608,7 @@ function _applySpecLines() {
         _TELLURIC_BANDS.forEach(b => {
             const x0   = b.w0 / denom;
             const x1   = b.w1 / denom;
+            if (_specWaveMin != null && (x1 < _specWaveMin || x0 > _specWaveMax)) return;
             const xMid = (x0 + x1) / 2;
             shapes.push({
                 type: 'rect', x0, x1, y0: 0, y1: 1, yref: 'paper',
@@ -2580,13 +2630,16 @@ function _applySpecLines() {
         });
     }
 
-    try {
-        Plotly.relayout(plotDiv, {
-            shapes,
-            annotations,
-            'margin.t': Math.max(_origMarginT, 70),
-        });
-    } catch(e) {}
+    const layoutUpdate = {
+        shapes,
+        annotations,
+        'margin.t': Math.max(_origMarginT, 70),
+    };
+    if (_specWaveMin != null && _specWaveMax != null) {
+        layoutUpdate['xaxis.range'] = [_specWaveMin, _specWaveMax];
+        layoutUpdate['xaxis.autorange'] = false;
+    }
+    try { Plotly.relayout(plotDiv, layoutUpdate); } catch(e) {}
 }
 
 function loadSpectrumPlot() {
@@ -2599,6 +2652,9 @@ function loadSpectrumPlot() {
     
     // Show loading
     _origMarginT = null;  // reset so the new plot's margin is re-sampled
+    _specDataXRange = [null, null];
+    _specWaveMin = null;
+    _specWaveMax = null;
     if (loadingDiv) loadingDiv.style.display = 'flex';
     if (spectrumContainer) spectrumContainer.innerHTML = '';
     
@@ -2641,6 +2697,8 @@ function loadSpectrumPlot() {
                                 // Seed trial-z field, then re-apply spectral lines if active
                                 _initSpecRedshiftInput();
                                 if (_specLineGroups.size > 0) _applySpecLines();
+                                // Seed wavelength range inputs from data extent
+                                _initSpecWaveRange();
                                 // Attempt to upgrade to NIST lines (no-op if already loaded)
                                 _fetchNistSpecLines();
                             } catch (error) {
