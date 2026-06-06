@@ -163,6 +163,7 @@ from modules.db_monitor import check_and_alert as _db_check_and_alert
 from modules.database import recycle_idle_connections as _db_recycle
 from modules.database.transient import sync_host_redshifts
 from routes.detect.detect_routes import prewarm_detect_page_cache
+from modules.spectral_lines import warm_cache_async as _warm_spec_lines
 
 # Use a file lock to prevent duplicate background jobs when multiple processes
 # import this module (e.g. gunicorn multi-worker, process manager restart race).
@@ -210,6 +211,8 @@ if _acquired_bg_lock:
         start_gap_filler(log_dir=os.path.join(current_dir, 'log'))
     else:
         print("DEBUG mode: all background scheduled jobs are disabled.")
+    # Warm NIST spectral-line cache regardless of DEBUG mode (no-op if cache is fresh)
+    _warm_spec_lines()
 else:
     print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
 
