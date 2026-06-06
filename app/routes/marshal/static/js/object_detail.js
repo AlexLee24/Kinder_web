@@ -2288,8 +2288,9 @@ function inferSpectrumDateFromFilename(fileName) {
 
 // ── Spectral Lines Overlay ────────────────────────────────────────────────────
 
+// Built-in fallback line list (used until NIST cache is ready).
 // Rest-frame air wavelengths (Å). `ion` carries the full transition for hover detail.
-const _SPEC_LINES = [
+const _SPEC_LINES_BUILTIN = [
     // ── Hydrogen (Balmer + Paschen) ──
     { w: 6562.8, label: 'Hα',  ion: 'H I (Balmer α)',  group: 'H' },
     { w: 4861.3, label: 'Hβ',  ion: 'H I (Balmer β)',  group: 'H' },
@@ -2410,6 +2411,10 @@ const _SPEC_LINE_COLORS = {
     Ba: '#f5b700', Tel: '#b8a060',
 };
 
+// NIST-fetched lines (null = not yet loaded, use builtin fallback)
+let _specLinesNist  = null;
+function _activeSpecLines() { return _specLinesNist ?? _SPEC_LINES_BUILTIN; }
+
 let _specLineGroups = new Set();   // empty = no lines shown by default
 let _objectRedshift = null;        // filled when plot data loads
 let _origMarginT    = null;        // saved before first line overlay
@@ -2454,6 +2459,36 @@ function resetSpecRedshift() {
     _applySpecLines();
 }
 
+async function _fetchNistSpecLines() {
+    if (_specLinesNist !== null) return;   // already loaded
+    try {
+        const res  = await fetch('/api/spectral-lines');
+        const data = await res.json();
+        if (!data.success || !data.lines?.length) {
+            _updateNistBadge('building');
+            return;
+        }
+        _specLinesNist = data.lines;
+        _updateNistBadge('nist');
+        if (_specLineGroups.size > 0) _applySpecLines();
+    } catch (e) {
+        _updateNistBadge('builtin');
+    }
+}
+
+function _updateNistBadge(state) {
+    const el = document.getElementById('specLineSourceBadge');
+    if (!el) return;
+    const cfg = {
+        nist:     { text: 'NIST',     title: 'Spectral lines from NIST Atomic Spectra Database', cls: 'spec-source-nist'    },
+        building: { text: 'Building…', title: 'NIST cache is being built — using built-in lines', cls: 'spec-source-building' },
+        builtin:  { text: 'Built-in', title: 'Using built-in spectral line list',                 cls: 'spec-source-builtin'  },
+    }[state] || { text: state, title: '', cls: '' };
+    el.textContent = cfg.text;
+    el.title       = cfg.title;
+    el.className   = `spec-source-badge ${cfg.cls}`;
+}
+
 function toggleSpecLineGroup(group) {
     const btn = document.querySelector(`.spec-line-btn[data-group="${group}"]`);
     if (_specLineGroups.has(group)) {
@@ -2492,7 +2527,7 @@ function _applySpecLines() {
     const shapes = [], annotations = [];
 
     // Atomic spectral lines
-    _SPEC_LINES
+    _activeSpecLines()
         .filter(l => _specLineGroups.has(l.group))
         .forEach(l => {
             const xPos = (l.w * (1 + zLines)) / denom;
@@ -2606,6 +2641,8 @@ function loadSpectrumPlot() {
                                 // Seed trial-z field, then re-apply spectral lines if active
                                 _initSpecRedshiftInput();
                                 if (_specLineGroups.size > 0) _applySpecLines();
+                                // Attempt to upgrade to NIST lines (no-op if already loaded)
+                                _fetchNistSpecLines();
                             } catch (error) {
                                 console.error('Error executing spectrum plot scripts:', error);
                                 spectrumContainer.innerHTML = `

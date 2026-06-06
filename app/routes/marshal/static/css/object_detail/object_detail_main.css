@@ -729,6 +729,35 @@
 }
 .spec-line-btn:hover { opacity: 0.85; }
 
+/* NIST data source badge */
+.spec-source-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 0.72em;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: default;
+    user-select: none;
+    transition: background 0.2s;
+}
+.spec-source-nist {
+    background: rgba(70, 255, 175, 0.12);
+    border: 1px solid rgba(70, 255, 175, 0.4);
+    color: #46ffaf;
+}
+.spec-source-building {
+    background: rgba(255, 220, 60, 0.1);
+    border: 1px solid rgba(255, 220, 60, 0.35);
+    color: #ffd93d;
+}
+.spec-source-builtin {
+    background: rgba(120, 120, 120, 0.1);
+    border: 1px solid rgba(120, 120, 120, 0.3);
+    color: #888;
+}
+
 /* Trial redshift control for line placement */
 .spec-z-control {
     display: inline-flex;

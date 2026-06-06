@@ -1108,6 +1108,42 @@ def download_spectrum_file(spectrum_id):
         return jsonify({'error': str(e)}), 500
 
 
+@objects_bp.route('/api/spectral-lines')
+def get_spectral_lines():
+    """Return NIST atomic spectral line data for the spectrum viewer.
+
+    Returns cached data if available; triggers a background build and returns
+    an empty list on first call (client falls back to built-in hardcoded lines).
+    """
+    if 'user' not in session:
+        return jsonify({'error': 'Access denied'}), 403
+    try:
+        from modules.spectral_lines import get_spectral_lines as _get_lines
+        lines = _get_lines()
+        return jsonify({
+            'success': True,
+            'source': 'nist' if lines else 'building',
+            'count': len(lines),
+            'lines': lines,
+        })
+    except Exception as exc:
+        logger.error('get_spectral_lines error: %s', exc)
+        return jsonify({'success': False, 'lines': [], 'source': 'error'}), 200
+
+
+@objects_bp.route('/api/spectral-lines/rebuild', methods=['POST'])
+def rebuild_spectral_lines():
+    """Admin endpoint to force-rebuild the NIST spectral lines cache."""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    try:
+        from modules.spectral_lines import warm_cache_async
+        warm_cache_async()
+        return jsonify({'success': True, 'message': 'Rebuild started in background'})
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/plot')
 def get_object_photometry_plot(year, letters):
     object_name = f"{year}{letters}"
