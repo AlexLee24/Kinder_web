@@ -2415,7 +2415,8 @@ const _SPEC_LINE_COLORS = {
 let _specLinesNist  = null;
 function _activeSpecLines() { return _specLinesNist ?? _SPEC_LINES_BUILTIN; }
 
-let _specLineGroups = new Set();   // empty = no lines shown by default
+let _specLineGroups   = new Set(); // empty = no lines shown by default
+let _specExcludedKeys = new Set(); // individually disabled line labels within active groups
 let _objectRedshift = null;        // filled when plot data loads
 let _origMarginT    = null;        // saved before first line overlay
 let _specLineRedshift = null;      // trial z for line overlay; null = use object z
@@ -2462,6 +2463,13 @@ function resetSpecRedshift() {
     _applySpecLines();
 }
 
+function _applySpecXRange() {
+    if (_specWaveMin == null || _specWaveMax == null) return;
+    const plotDiv = document.querySelector('#spectrumPlot .js-plotly-plot');
+    if (!plotDiv) return;
+    try { Plotly.relayout(plotDiv, { 'xaxis.range': [_specWaveMin, _specWaveMax], 'xaxis.autorange': false }); } catch(e) {}
+}
+
 function _initSpecWaveRange() {
     const plotDiv = document.querySelector('#spectrumPlot .js-plotly-plot');
     if (!plotDiv?._fullLayout?.xaxis) return;
@@ -2471,36 +2479,38 @@ function _initSpecWaveRange() {
     const rawMax = parseFloat(r[1]);
     if (isNaN(rawMin) || isNaN(rawMax)) return;
     _specDataXRange = [rawMin, rawMax];
-    const dMin = Math.min(rawMin, 400);
-    const dMax = Math.max(rawMax, 700);
+    const dMin = Math.min(rawMin, 4000);
+    const dMax = Math.max(rawMax, 7000);
     _specWaveMin = dMin;
     _specWaveMax = dMax;
     const inpMin = document.getElementById('specWaveMin');
     const inpMax = document.getElementById('specWaveMax');
     if (inpMin) inpMin.value = Math.round(dMin);
     if (inpMax) inpMax.value = Math.round(dMax);
-    _applySpecLines();
+    _applySpecXRange(); // apply once at load; does NOT reset zoom on line toggles
 }
 
 function onSpecWaveInput(which, val) {
     const v = parseFloat(val);
     if (which === 'min') _specWaveMin = isNaN(v) ? null : v;
     else                 _specWaveMax = isNaN(v) ? null : v;
-    _applySpecLines();
+    _applySpecXRange(); // explicit user change → apply zoom
+    _applySpecLines();  // re-filter visible line labels
 }
 
 function resetSpecWaveRange() {
     if (_specDataXRange[0] == null) return;
     const [rawMin, rawMax] = _specDataXRange;
-    const dMin = Math.min(rawMin, 400);
-    const dMax = Math.max(rawMax, 700);
+    const dMin = Math.min(rawMin, 4000);
+    const dMax = Math.max(rawMax, 7000);
     _specWaveMin = dMin;
     _specWaveMax = dMax;
     const inpMin = document.getElementById('specWaveMin');
     const inpMax = document.getElementById('specWaveMax');
     if (inpMin) inpMin.value = Math.round(dMin);
     if (inpMax) inpMax.value = Math.round(dMax);
-    _applySpecLines();
+    _applySpecXRange(); // explicit reset → apply zoom
+    _applySpecLines();  // re-filter visible line labels
 }
 
 async function _fetchNistSpecLines() {
@@ -2538,11 +2548,62 @@ function toggleSpecLineGroup(group) {
     if (_specLineGroups.has(group)) {
         _specLineGroups.delete(group);
         if (btn) btn.classList.remove('active');
+        // clear individual exclusions for this group so next toggle-on starts fresh
+        _SPEC_LINES_BUILTIN.filter(l => l.group === group).forEach(l => _specExcludedKeys.delete(l.label));
     } else {
         _specLineGroups.add(group);
         if (btn) btn.classList.add('active');
+        // reset to all-on for this group
+        _SPEC_LINES_BUILTIN.filter(l => l.group === group).forEach(l => _specExcludedKeys.delete(l.label));
     }
+    _renderSpecLineDetails();
     _applySpecLines();
+}
+
+function toggleSpecLine(label) {
+    if (_specExcludedKeys.has(label)) _specExcludedKeys.delete(label);
+    else _specExcludedKeys.add(label);
+    _renderSpecLineDetails();
+    _applySpecLines();
+}
+
+const _GROUP_ORDER = ['H','He','Ca','Si','O','Na','Fe','S','C','Mg','N','Ti','Ba'];
+
+function _renderSpecLineDetails() {
+    const container = document.getElementById('specLineDetails');
+    if (!container) return;
+
+    const activeAtomic = _GROUP_ORDER.filter(g => _specLineGroups.has(g));
+    if (activeAtomic.length === 0) { container.style.display = 'none'; return; }
+    container.style.display = 'flex';
+    container.innerHTML = '';
+
+    activeAtomic.forEach(g => {
+        const col = _SPEC_LINE_COLORS[g];
+        const groupLines = _SPEC_LINES_BUILTIN.filter(l => l.group === g);
+
+        const groupEl = document.createElement('span');
+        groupEl.className = 'spec-detail-group';
+
+        const lbl = document.createElement('span');
+        lbl.className = 'spec-detail-label';
+        lbl.style.color = col;
+        lbl.textContent = g + ':';
+        groupEl.appendChild(lbl);
+
+        groupLines.forEach(l => {
+            const btn = document.createElement('button');
+            const excluded = _specExcludedKeys.has(l.label);
+            btn.className = 'spec-detail-btn' + (excluded ? '' : ' active');
+            btn.style.setProperty('--clr', col);
+            btn.textContent = l.label;
+            btn.title = `${l.ion} — ${l.w.toFixed(1)} Å`;
+            btn.onclick = () => toggleSpecLine(l.label);
+            groupEl.appendChild(btn);
+        });
+
+        container.appendChild(groupEl);
+    });
 }
 
 function _applySpecLines() {
@@ -2552,10 +2613,6 @@ function _applySpecLines() {
     if (_specLineGroups.size === 0) {
         const restore = { shapes: [], annotations: [] };
         if (_origMarginT !== null) restore['margin.t'] = _origMarginT;
-        if (_specWaveMin != null && _specWaveMax != null) {
-            restore['xaxis.range'] = [_specWaveMin, _specWaveMax];
-            restore['xaxis.autorange'] = false;
-        }
         try { Plotly.relayout(plotDiv, restore); } catch(e) {}
         return;
     }
@@ -2580,6 +2637,7 @@ function _applySpecLines() {
         .forEach(l => {
             const xPos = (l.w * (1 + zLines)) / denom;
             if (_specWaveMin != null && (xPos < _specWaveMin || xPos > _specWaveMax)) return;
+            if (_specExcludedKeys.has(l.label)) return;
             const col  = _SPEC_LINE_COLORS[l.group] || '#aaa';
             shapes.push({
                 type: 'line', x0: xPos, x1: xPos, y0: 0, y1: 1, yref: 'paper',
@@ -2630,16 +2688,13 @@ function _applySpecLines() {
         });
     }
 
-    const layoutUpdate = {
-        shapes,
-        annotations,
-        'margin.t': Math.max(_origMarginT, 70),
-    };
-    if (_specWaveMin != null && _specWaveMax != null) {
-        layoutUpdate['xaxis.range'] = [_specWaveMin, _specWaveMax];
-        layoutUpdate['xaxis.autorange'] = false;
-    }
-    try { Plotly.relayout(plotDiv, layoutUpdate); } catch(e) {}
+    try {
+        Plotly.relayout(plotDiv, {
+            shapes,
+            annotations,
+            'margin.t': Math.max(_origMarginT, 70),
+        });
+    } catch(e) {}
 }
 
 function loadSpectrumPlot() {

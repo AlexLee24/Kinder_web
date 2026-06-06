@@ -396,7 +396,7 @@
                         </div>
                     </div>
                     <!-- Spectral line group selectors — always visible -->
-                    <div class="spec-lines-groups" id="specLinesGroups" style="display:flex;">
+                    <div class="spec-lines-groups" id="specLinesGroups" style="display:flex; flex-wrap:wrap;">
                         <span class="spec-lines-label">Lines:</span>
                         <button class="spec-line-btn" data-group="H"   onclick="toggleSpecLineGroup('H')"   style="--clr:#4a9eff; color:#4a9eff; border-color:#4a9eff44;">H</button>
                         <button class="spec-line-btn" data-group="He"  onclick="toggleSpecLineGroup('He')"  style="--clr:#ffd700; color:#ffd700; border-color:#ffd70044;">He</button>
@@ -434,6 +434,8 @@
                             <button type="button" class="spec-z-reset" onclick="resetSpecWaveRange()" title="Reset to data range">↺</button>
                         </span>
                     </div>
+                    <!-- Individual line chips — dynamic, shown when groups are active -->
+                    <div class="spec-line-details" id="specLineDetails" style="display:none;"></div>
                 </div>
                 <div class="panel-body">
                     <div style="height:420px; display:flex; position:relative; overflow:hidden;">

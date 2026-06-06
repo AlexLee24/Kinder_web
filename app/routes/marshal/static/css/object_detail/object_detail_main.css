@@ -797,6 +797,47 @@
 }
 .spec-z-reset:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
 
+/* Individual spectral line detail chips row */
+.spec-line-details {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 5px 0 2px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    align-items: flex-start;
+}
+.spec-detail-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+.spec-detail-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-right: 2px;
+    white-space: nowrap;
+    opacity: 0.85;
+}
+.spec-detail-btn {
+    padding: 1px 6px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(255,255,255,0.25);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.spec-detail-btn.active {
+    color: var(--clr, #aaa);
+    border-color: color-mix(in srgb, var(--clr, #aaa) 40%, transparent);
+    background: color-mix(in srgb, var(--clr, #aaa) 10%, transparent);
+}
+.spec-detail-btn:hover { opacity: 0.8; }
+
 /* Wavelength range control */
 .spec-wave-control {
     display: inline-flex;
