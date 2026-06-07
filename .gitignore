@@ -82,3 +82,4 @@ DETECT_tools/
 temp_work/
 migrate_kinder_web.py
 /.claude/
+app/modules/_spectral_lines_cache.json
