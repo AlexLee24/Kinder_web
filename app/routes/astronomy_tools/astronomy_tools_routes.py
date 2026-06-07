@@ -10,6 +10,7 @@ import base64
 import ephem
 import uuid
 import time
+import threading
 import pytz
 import numpy as np
 import requests
@@ -37,6 +38,30 @@ from modules.observation_script import get_followup_targets_json, process_observ
 from flask import Blueprint
 astronomy_tools_bp = Blueprint('astronomy_tools', __name__, template_folder='templates', static_folder='static')
 """Register astronomy tools routes with the Flask app"""
+
+# ── Public API rate limiter ────────────────────────────────────────────────────
+_rl_lock  = threading.Lock()
+_rl_store = {}   # {(ip, endpoint_key): last_allowed_timestamp}
+_RL_INTERVAL = 1.0  # seconds
+
+def _client_ip():
+    return (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+
+def _rate_ok(ip, key, interval=None):
+    """Return True and record the timestamp if the request is allowed.
+    interval overrides _RL_INTERVAL for this specific call."""
+    limit = interval if interval is not None else _RL_INTERVAL
+    now = time.monotonic()
+    k = (ip, key)
+    with _rl_lock:
+        if now - _rl_store.get(k, 0) < limit:
+            return False
+        _rl_store[k] = now
+        if len(_rl_store) > 20000:
+            cutoff = now - 120
+            for old in [x for x, t in list(_rl_store.items()) if t < cutoff]:
+                _rl_store.pop(old, None)
+        return True
 
 # ===============================================================================
 # ASTRONOMY TOOLS
@@ -163,10 +188,13 @@ def calculate_redshift():
         data = request.get_json()
         redshift = float(data.get('redshift', 0))
         redshift_error = float(data.get('redshift_error')) if data.get('redshift_error') else None
-        
-        result = calculate_redshift_distance(redshift, redshift_error)
+        H0 = float(data.get('H0', 67.7))
+        Om0 = float(data.get('Om0', 0.309))
+        Tcmb0 = float(data.get('Tcmb0', 2.725))
+
+        result = calculate_redshift_distance(redshift, redshift_error, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         return jsonify({'success': True, 'result': result})
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
@@ -177,8 +205,11 @@ def calculate_absolute_magnitude_route():
         apparent_magnitude = float(data.get('apparent_magnitude'))
         redshift = float(data.get('redshift'))
         extinction = float(data.get('extinction', 0))
-        
-        result = calculate_absolute_magnitude(apparent_magnitude, redshift, extinction)
+        H0 = float(data.get('H0', 67.7))
+        Om0 = float(data.get('Om0', 0.309))
+        Tcmb0 = float(data.get('Tcmb0', 2.725))
+
+        result = calculate_absolute_magnitude(apparent_magnitude, redshift, extinction, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         return jsonify({'success': True, 'result': result})
         
     except Exception as e:
@@ -1625,3 +1656,324 @@ def _nice_scale_bar(fov_arcmin):
         if v >= target * 0.5:
             return v
     return nice_values[-1]
+
+
+# ===============================================================================
+# PUBLIC JSON API  (no key required · 1 request / second / IP / endpoint)
+# ===============================================================================
+
+_API_DOCS = {
+    'api': 'Kinder Astronomy Tools — Public JSON API',
+    'rate_limit': '1 request per second per IP per endpoint',
+    'cosmology_defaults': {
+        'H0': 67.7, 'Om0': 0.309, 'Tcmb0': 2.725,
+        'reference': 'Planck 2018 (A&A 641 A6)'
+    },
+    'endpoints': {
+        'GET /api/distance': {
+            'description': 'Luminosity distance and/or absolute magnitude from redshift',
+            'params': {
+                'z':      '(required) redshift',
+                'z_err':  '(optional) redshift uncertainty',
+                'm':      '(optional) apparent magnitude → enables absolute magnitude output',
+                'A':      '(optional) extinction, default 0',
+                'H0':     '(optional) Hubble constant km/s/Mpc, default 67.7',
+                'Om0':    '(optional) matter density Ω_m, default 0.309',
+                'Tcmb0':  '(optional) CMB temperature K, default 2.725',
+            },
+            'example': '/api/distance?z=0.039&m=15.3&A=0.1',
+        },
+        'GET /api/coords': {
+            'description': 'Convert RA or DEC between HMS/DMS and decimal degrees',
+            'params': {
+                'ra_hms':  '(optional) RA in hh:mm:ss.s  → returns decimal degrees',
+                'ra_deg':  '(optional) RA in decimal °   → returns HMS',
+                'dec_dms': '(optional) DEC in ±dd:mm:ss  → returns decimal degrees',
+                'dec_deg': '(optional) DEC in decimal °  → returns DMS',
+            },
+            'note': 'Provide ra_hms OR ra_deg, and/or dec_dms OR dec_deg in one call',
+            'example': '/api/coords?ra_hms=12:34:56.78&dec_dms=-23:45:12.34',
+        },
+        'GET /api/date': {
+            'description': 'Convert between MJD, JD and calendar date (UTC)',
+            'params': {
+                'mjd':  '(optional) Modified Julian Date',
+                'jd':   '(optional) Julian Date',
+                'date': '(optional) ISO date string, e.g. 2024-06-01T12:00:00',
+            },
+            'note': 'Provide exactly one of the three parameters',
+            'example': '/api/date?mjd=59000.5',
+        },
+        'GET /api/finding_chart/image': {
+            'description': 'Finding chart PNG image returned directly (Content-Type: image/png). Rate limit: 1 req/30s.',
+            'params': {
+                'ra':         '(required) Right Ascension — HMS or decimal degrees',
+                'dec':        '(required) Declination — DMS or decimal degrees',
+                'name':       '(optional) Object name label, default "Target"',
+                'survey':     '(optional) Image source: DSS2 Red | DESI-color | DESI-r | PS1-color | … (default DESI-color)',
+                'fov':        '(optional) Field of view in arcmin, default 10',
+                'invert':     '(optional) 1 = white background (single-band surveys only), default 0',
+                'mag_limit':  '(optional) Faintest star to annotate (mag), default 15',
+                'show_names': '(optional) 0/1 show star names, default 1',
+                'show_mag':   '(optional) 0/1 show magnitude labels, default 1',
+            },
+            'example': '/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&survey=DESI-color&fov=10',
+        },
+        'GET /api/visibility/image': {
+            'description': 'Nightly visibility (altitude vs time) plot returned as JPEG. Rate limit: 1 req/15s.',
+            'params': {
+                'date': '(required) Observation date YYYY-MM-DD',
+                'ra':   '(required) Target RA — HMS or decimal degrees',
+                'dec':  '(required) Target Dec — DMS or decimal degrees',
+                'name': '(optional) Target name, default "Target"',
+                'lon':  '(optional) Observatory longitude ddd:mm:ss or decimal (default Lulin 120:52:21.5)',
+                'lat':  '(optional) Observatory latitude ±dd:mm:ss or decimal (default Lulin 23:28:10.0)',
+                'alt':  '(optional) Observatory altitude in metres, default 2800',
+                'tz':   '(optional) UTC offset integer, default 8',
+            },
+            'example': '/api/visibility/image?date=2026-06-07&ra=12:34:56.78&dec=-23:45:12.34',
+        },
+    },
+}
+
+
+@astronomy_tools_bp.route('/api', methods=['GET'])
+def api_index():
+    if request.headers.get('Accept', '').startswith('application/json') or request.args.get('format') == 'json':
+        return jsonify(_API_DOCS)
+    return render_template('api_docs.html', current_path='/api')
+
+
+@astronomy_tools_bp.route('/api/distance', methods=['GET'])
+def api_distance():
+    ip = _client_ip()
+    if not _rate_ok(ip, 'distance'):
+        return jsonify({'error': 'Rate limit exceeded — max 1 request/second per IP.'}), 429
+
+    z_raw = request.args.get('z')
+    if not z_raw:
+        return jsonify({
+            'error': "Missing required parameter 'z' (redshift).",
+            'example': '/api/distance?z=0.039&m=15.3',
+        }), 400
+
+    try:
+        z      = float(z_raw)
+        z_err  = float(request.args['z_err'])  if 'z_err'  in request.args else None
+        m      = float(request.args['m'])      if 'm'      in request.args else None
+        A      = float(request.args.get('A',     0))
+        H0     = float(request.args.get('H0',    67.7))
+        Om0    = float(request.args.get('Om0',   0.309))
+        Tcmb0  = float(request.args.get('Tcmb0', 2.725))
+    except ValueError as e:
+        return jsonify({'error': f'Invalid parameter value: {e}'}), 400
+
+    try:
+        out = {
+            'input': {'z': z, 'z_err': z_err, 'm': m, 'A': A},
+            'cosmology': {'H0': H0, 'Om0': Om0, 'Tcmb0': Tcmb0,
+                          'reference': 'Planck 2018 (A&A 641 A6)'},
+            'distance': calculate_redshift_distance(z, z_err, H0=H0, Om0=Om0, Tcmb0=Tcmb0),
+        }
+        if m is not None:
+            out['magnitude'] = calculate_absolute_magnitude(m, z, A, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
+        return jsonify({'success': True, 'result': out})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@astronomy_tools_bp.route('/api/coords', methods=['GET'])
+def api_coords():
+    ip = _client_ip()
+    if not _rate_ok(ip, 'coords'):
+        return jsonify({'error': 'Rate limit exceeded — max 1 request/second per IP.'}), 429
+
+    ra_hms  = request.args.get('ra_hms')
+    ra_deg  = request.args.get('ra_deg')
+    dec_dms = request.args.get('dec_dms')
+    dec_deg = request.args.get('dec_deg')
+
+    if not any([ra_hms, ra_deg, dec_dms, dec_deg]):
+        return jsonify({
+            'error': 'Provide at least one of: ra_hms, ra_deg, dec_dms, dec_deg',
+            'example': '/api/coords?ra_hms=12:34:56.78&dec_dms=-23:45:12.34',
+        }), 400
+
+    result = {}
+    try:
+        if ra_hms:
+            result.update(convert_ra_hms_to_decimal(ra_hms))
+        elif ra_deg:
+            result.update(convert_ra_decimal_to_hms(float(ra_deg)))
+
+        if dec_dms:
+            result.update(convert_dec_dms_to_decimal(dec_dms))
+        elif dec_deg:
+            result.update(convert_dec_decimal_to_dms(float(dec_deg)))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+    return jsonify({'success': True, 'result': result})
+
+
+@astronomy_tools_bp.route('/api/date', methods=['GET'])
+def api_date():
+    ip = _client_ip()
+    if not _rate_ok(ip, 'date'):
+        return jsonify({'error': 'Rate limit exceeded — max 1 request/second per IP.'}), 429
+
+    mjd  = request.args.get('mjd')
+    jd   = request.args.get('jd')
+    date = request.args.get('date')
+
+    if not any([mjd, jd, date]):
+        return jsonify({
+            'error': "Provide one of: mjd, jd, date",
+            'example': '/api/date?mjd=59000.5',
+        }), 400
+
+    try:
+        if mjd:
+            result = convert_mjd_to_date(float(mjd))
+        elif jd:
+            result = convert_jd_to_date(float(jd))
+        else:
+            result = convert_common_date_to_jd(date)
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@astronomy_tools_bp.route('/api/finding_chart/image', methods=['GET'])
+def api_finding_chart_image():
+    """Return a finding chart as a PNG image (Content-Type: image/png). Rate limit: 1/30s."""
+    ip = _client_ip()
+    if not _rate_ok(ip, 'fc_image', interval=30.0):
+        return Response('Rate limit exceeded — max 1 request per 30 seconds per IP.', 429, mimetype='text/plain')
+
+    ra_raw  = request.args.get('ra',  '').strip()
+    dec_raw = request.args.get('dec', '').strip()
+    if not ra_raw or not dec_raw:
+        return Response("Missing required parameters: ra, dec\nExample: /api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34", 400, mimetype='text/plain')
+
+    name       = request.args.get('name', 'Target').strip() or 'Target'
+    survey     = request.args.get('survey', 'DESI-color').strip()
+    fov        = float(request.args.get('fov', 10))
+    invert     = request.args.get('invert', '0') == '1'
+    mag_limit  = float(request.args.get('mag_limit', 15))
+    name_limit = float(request.args.get('name_limit', 10))
+    show_mag   = request.args.get('show_mag',   '1') != '0'
+    show_names = request.args.get('show_names', '1') != '0'
+
+    try:
+        coord   = _resolve_target_coord(name, ra_raw, dec_raw)
+        ra_deg  = coord.ra.deg
+        dec_deg = coord.dec.deg
+    except Exception as e:
+        return Response(f'Invalid coordinates: {e}', 400, mimetype='text/plain')
+
+    try:
+        img_data, _ = _fetch_survey_image(survey, ra_deg, dec_deg, fov)
+        if img_data is None:
+            return Response(f'Failed to fetch image from survey "{survey}".', 500, mimetype='text/plain')
+
+        img = Image.open(io.BytesIO(img_data))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        is_single = 'color' not in survey.lower()
+        if invert and is_single:
+            img = Image.fromarray(255 - np.array(img))
+
+        star_data, band_used, _ = _query_nearby_stars(ra_deg, dec_deg, fov, mag_limit)
+
+        png_b64 = _render_finding_chart(
+            img, ra_deg, dec_deg, fov, name,
+            star_data, band_used, mag_limit, name_limit, invert, survey,
+            show_mag=show_mag, show_names=show_names,
+        )
+        png_bytes = base64.b64decode(png_b64)
+
+        safe = re.sub(r'[^\w.-]', '_', name)[:40]
+        return Response(
+            png_bytes,
+            mimetype='image/png',
+            headers={'Content-Disposition': f'inline; filename="finding_chart_{safe}.png"'},
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return Response(f'Error generating chart: {e}', 500, mimetype='text/plain')
+
+
+@astronomy_tools_bp.route('/api/visibility/image', methods=['GET'])
+def api_visibility_image():
+    """Return a nightly visibility plot as a JPEG image. Rate limit: 1/15s."""
+    ip = _client_ip()
+    if not _rate_ok(ip, 'vis_image', interval=15.0):
+        return Response('Rate limit exceeded — max 1 request per 15 seconds per IP.', 429, mimetype='text/plain')
+
+    date_raw = request.args.get('date', '').strip()
+    ra_raw   = request.args.get('ra',   '').strip()
+    dec_raw  = request.args.get('dec',  '').strip()
+    if not date_raw or not ra_raw or not dec_raw:
+        return Response("Missing required parameters: date, ra, dec\nExample: /api/visibility/image?date=2026-06-07&ra=12:34:56&dec=-23:45:12", 400, mimetype='text/plain')
+
+    name    = request.args.get('name', 'Target').strip() or 'Target'
+    lon_raw = request.args.get('lon', '120:52:21.5').strip()
+    lat_raw = request.args.get('lat', '23:28:10.0').strip()
+    alt_m   = float(request.args.get('alt', 2800))
+    tz_off  = int(request.args.get('tz', 8))
+
+    try:
+        date_clean = date_raw.replace('-', '').replace('/', '')
+        if len(date_clean) != 8:
+            return Response('date must be YYYY-MM-DD', 400, mimetype='text/plain')
+
+        next_d      = str(int(date_clean) + 1)
+        obs_date_f  = f"{date_clean[:4]}/{date_clean[4:6]}/{date_clean[6:]}"
+        next_date_f = f"{next_d[:4]}/{next_d[4:6]}/{next_d[6:]}"
+
+        ra_c  = re.sub(r'[hH]', ':', re.sub(r'[mM]', ':', re.sub(r'[sS]', '', str(ra_raw)))).strip()
+        dec_c = re.sub(r'[dD°]', ':', re.sub(r"[mM′']", ':', re.sub(r'[sS″"]', '', str(dec_raw)))).strip()
+
+        ephem_target = obs.create_ephem_target(name, ra_c, dec_c)
+
+        timezone_name = obs.get_timezone_name(tz_off)
+        if not timezone_name:
+            return Response(f'Invalid timezone offset: {tz_off}', 400, mimetype='text/plain')
+
+        lon_f = parse_coordinate(lon_raw)
+        lat_f = parse_coordinate(lat_raw)
+        obs_site = obs.create_ephem_observer(name, lon_f, lat_f, alt_m)
+
+        obs_start = ephem.Date(f'{obs_date_f} 17:00:00')
+        obs_end   = ephem.Date(f'{next_date_f} 09:00:00')
+        start_loc = obs.dt_naive_to_dt_aware(obs_start.datetime(), timezone_name)
+        end_loc   = obs.dt_naive_to_dt_aware(obs_end.datetime(),   timezone_name)
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tf:
+            tmp_path = tf.name
+        try:
+            obs.plot_night_observing_tracks(
+                [ephem_target], obs_site, start_loc, end_loc,
+                simpletracks=True, toptime='local', timezone='calculate',
+                n_steps=500, savepath=tmp_path,
+            )
+            with open(tmp_path, 'rb') as fh:
+                img_bytes = fh.read()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        safe = re.sub(r'[^\w.-]', '_', name)[:40]
+        return Response(
+            img_bytes,
+            mimetype='image/jpeg',
+            headers={'Content-Disposition': f'inline; filename="visibility_{date_raw}_{safe}.jpg"'},
+        )
+    except Exception as e:
+        traceback.print_exc()
+        return Response(f'Error generating plot: {e}', 500, mimetype='text/plain')

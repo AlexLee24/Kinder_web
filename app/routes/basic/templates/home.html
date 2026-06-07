@@ -58,7 +58,6 @@
             </button>
             <nav class="home-mobile-nav-links">
                 <a href="{{ url_for('marshal.marshal') }}">Marshal</a>
-                <a href="{{ url_for('basic.gallery') }}">Gallery</a>
                 <div class="home-mobile-group">
                     <button class="home-mobile-group-btn">Tools
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -79,7 +78,15 @@
                         <a href="{{ url_for('astronomy_tools.finding_chart') }}">Finding Chart</a>
                     </div>
                 </div>
-                <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About</a>
+                <div class="home-mobile-group">
+                    <button class="home-mobile-group-btn">About Us
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="home-mobile-group-items">
+                        <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About GREAT Lab</a>
+                        <a href="https://www.lulin.ncu.edu.tw/weather/" target="_blank" rel="noopener noreferrer">NCU Lulin Observatory</a>
+                    </div>
+                </div>
                 {% if session.user and session.user.get('is_great_lab_member') %}
                 <div class="home-mobile-group">
                     <button class="home-mobile-group-btn">Private
@@ -88,6 +95,7 @@
                     <div class="home-mobile-group-items">
                         <a href="{{ url_for('detect.detect_results') }}">DETECT</a>
                         <a href="{{ url_for('private_area.daily_trigger') }}">Daily Trigger</a>
+                        <a href="{{ url_for('private_area.epessto_support_page') }}">ePessto++ Support Team</a>
                         <a href="{{ url_for('private_area.documents_list') }}">Documents</a>
                         <a href="{{ url_for('private_area.greatlab_info') }}">Lab Info</a>
                     </div>
@@ -101,12 +109,10 @@
         <!-- Bottom Bar: quick nav + info -->
         <div class="bottom-bar">
             <!-- Quick Navigation Strip -->
-            <nav class="home-nav">
-                <a href="{{ url_for('marshal.marshal') }}">Marshal</a>
-                <span class="home-nav-sep">·</span>
-                <a href="{{ url_for('basic.gallery') }}">Gallery</a>
-                <span class="home-nav-sep">·</span>
-                <div class="home-nav-group">
+             <nav class="home-nav">
+                 <a href="{{ url_for('marshal.marshal') }}">Marshal</a>
+                 <span class="home-nav-sep">·</span>
+                 <div class="home-nav-group">
                     <span class="home-nav-trigger">Tools
                         <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </span>
@@ -128,7 +134,15 @@
                     </div>
                 </div>
                 <span class="home-nav-sep">·</span>
-                <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About</a>
+                <div class="home-nav-group">
+                    <span class="home-nav-trigger">About Us
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </span>
+                    <div class="home-nav-dropdown">
+                        <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About GREAT Lab</a>
+                        <a href="https://www.lulin.ncu.edu.tw/weather/" target="_blank" rel="noopener noreferrer">NCU Lulin Observatory</a>
+                    </div>
+                </div>
                 {% if session.user and session.user.get('is_great_lab_member') %}
                 <span class="home-nav-sep">·</span>
                 <div class="home-nav-group">
@@ -138,6 +152,7 @@
                     <div class="home-nav-dropdown">
                         <a href="{{ url_for('detect.detect_results') }}">DETECT</a>
                         <a href="{{ url_for('private_area.daily_trigger') }}">Daily Trigger</a>
+                        <a href="{{ url_for('private_area.epessto_support_page') }}">ePessto++ Support Team</a>
                         <a href="{{ url_for('private_area.documents_list') }}">Documents</a>
                         <a href="{{ url_for('private_area.greatlab_info') }}">Lab Info</a>
                     </div>
@@ -171,6 +186,243 @@
             </div>
         </div>
     </div>
+
+    <!-- Gallery Section -->
+    <section class="home-gallery-section">
+        <div class="home-gallery-header">
+            <h2 class="home-gallery-title">Gallery</h2>
+            <p class="home-gallery-subtitle">Curated collection of astronomy images from GREAT Lab</p>
+
+            {% if session.user and session.user.is_admin %}
+            <div class="home-admin-actions">
+                <button class="home-upload-btn" id="homeUploadBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Upload Image
+                </button>
+            </div>
+            {% endif %}
+        </div>
+
+            <div class="home-gallery-container">
+                 <div class="home-gallery-grid" id="homeGalleryGrid">
+                     <!-- Gallery items injected by JS -->
+                     <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(255,255,255,0.5);">Loading gallery...</div>
+                 </div>
+             </div>
+    </section>
+
+    <!-- Lightbox -->
+    <div class="home-lightbox" id="homeLightbox" hidden>
+        <div class="home-lightbox-backdrop" id="homeLightboxBackdrop"></div>
+        <div class="home-lightbox-content">
+            <button class="home-lightbox-close" id="homeLightboxClose" aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+
+            <button class="home-lightbox-nav home-lightbox-prev" id="homeLightboxPrev" aria-label="Previous">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+
+            <div class="home-lightbox-img-wrap">
+                <img class="home-lightbox-img" id="homeLightboxImg" src="" alt="" />
+            </div>
+
+            <div class="home-lightbox-info">
+                <h3 class="home-lightbox-title" id="homeLightboxTitle"></h3>
+                <p class="home-lightbox-caption" id="homeLightboxCaption"></p>
+                <p class="home-lightbox-author" id="homeLightboxAuthor"></p>
+
+                {% if session.user and session.user.is_admin %}
+                <div class="home-admin-controls">
+                    <button class="home-action-btn home-edit-btn" id="homeLightboxEdit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 2 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                        Edit
+                    </button>
+                    <button class="home-delete-btn" id="homeLightboxDelete">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        </svg>
+                        Delete
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+
+            <button class="home-lightbox-nav home-lightbox-next" id="homeLightboxNext" aria-label="Next">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            </button>
+
+            <!-- Dock -->
+            <div class="home-lightbox-dock">
+                <div class="home-dock-items" id="homeDockItems"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="home-edit-modal" id="homeEditModal" hidden>
+        <div class="home-edit-modal-backdrop" id="homeEditModalBackdrop"></div>
+        <div class="home-edit-modal-content">
+            <div class="home-edit-modal-header">
+                <h2>Edit Image</h2>
+                <button class="home-edit-modal-close" id="homeEditModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                   </svg>
+                </button>
+            </div>
+            <form id="homeEditForm" class="home-edit-form">
+                <div class="home-edit-form-group">
+                    <label for="homeEditTitle">Title *</label>
+                    <input type="text" id="homeEditTitle" name="title" required maxlength="100" />
+                </div>
+                <div class="home-edit-form-group">
+                    <label for="homeEditDescription">Description</label>
+                    <textarea id="homeEditDescription" name="description" maxlength="500" rows="3"></textarea>
+                </div>
+                <div class="home-edit-form-group">
+                    <label for="homeEditPhotographer">Photographer</label>
+                    <input type="text" id="homeEditPhotographer" name="photographer" maxlength="50" />
+                </div>
+                <div class="home-edit-form-group">
+                    <label for="homeEditSpan">Display Size</label>
+                    <select id="homeEditSpan" name="span">
+                        <option value="col-span-1 row-span-1">Normal (1x1)</option>
+                        <option value="col-span-2 row-span-1">Wide (2x1)</option>
+                        <option value="col-span-1 row-span-2">Tall (1x2)</option>
+                        <option value="col-span-2 row-span-2">Feature (2x2)</option>
+                    </select>
+                </div>
+                <div class="home-edit-form-actions">
+                    <button type="button" class="home-edit-btn-cancel" id="homeEditCancel">Cancel</button>
+                    <button type="submit" class="home-edit-btn-save" id="homeEditSave">
+                        <span id="homeEditSaveText">Save Changes</span>
+                        <span id="homeEditSaveSpinner" style="display: none;">
+                            <svg class="home-spinner" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
+            </form>
+            <div id="homeEditError" class="home-edit-error" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="home-upload-modal" id="homeUploadModal" hidden>
+        <div class="home-upload-modal-backdrop" id="homeUploadModalBackdrop"></div>
+        <div class="home-upload-modal-content">
+            <div class="home-upload-modal-header">
+                <h2>Upload Gallery Image</h2>
+                <button class="home-upload-modal-close" id="homeUploadModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <form id="homeUploadForm" class="home-upload-form" enctype="multipart/form-data">
+                <!-- Image Upload -->
+                <div class="home-form-group">
+                    <label class="home-form-label">Image File *</label>
+                    <div class="home-upload-zone" id="homeUploadZone">
+                        <svg class="home-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p class="home-upload-text">
+                            <span class="home-upload-browse">Click to browse</span> or drag and drop
+                        </p>
+                        <p class="home-upload-hint">PNG, JPG, GIF up to 10MB</p>
+                        <input type="file" id="homeImageFile" name="image" accept="image/*" required hidden />
+                    </div>
+                    <div id="homeImagePreview" class="home-image-preview" style="display: none;">
+                        <img id="homePreviewImg" src="" alt="Preview" />
+                        <button type="button" class="home-remove-btn" id="homeRemovePreview">×</button>
+                    </div>
+                </div>
+
+                <!-- Title -->
+                <div class="home-form-group">
+                    <label for="homeUploadTitle" class="home-form-label">Title *</label>
+                    <input type="text" id="homeUploadTitle" name="title" placeholder="e.g., Milky Way over Lulin Observatory" required maxlength="100" />
+                </div>
+
+                <!-- Description -->
+                <div class="home-form-group">
+                    <label for="homeUploadDescription" class="home-form-label">Description</label>
+                    <textarea id="homeUploadDescription" name="description" placeholder="Add details about this image..." maxlength="500" rows="4"></textarea>
+                </div>
+
+                <!-- Photographer -->
+                <div class="home-form-group">
+                    <label for="homeUploadPhotographer" class="home-form-label">Photographer</label>
+                    <input type="text" id="homeUploadPhotographer" name="photographer" placeholder="Your name or credit" maxlength="50" />
+                </div>
+
+                <!-- Display Size -->
+                <div class="home-form-group">
+                    <label for="homeUploadSpan" class="home-form-label">Display Size</label>
+                    <select id="homeUploadSpan" name="span">
+                        <option value="col-span-1 row-span-1">Normal (1x1)</option>
+                        <option value="col-span-2 row-span-1">Wide (2x1)</option>
+                        <option value="col-span-1 row-span-2">Tall (1x2)</option>
+                        <option value="col-span-2 row-span-2">Feature (2x2)</option>
+                    </select>
+                </div>
+
+                <!-- Submit Buttons -->
+                <div class="home-form-actions">
+                    <button type="button" class="home-btn home-btn-secondary" id="homeUploadCancel">Cancel</button>
+                    <button type="submit" class="home-btn home-btn-primary" id="homeSubmitBtn">
+                        <span id="homeSubmitText">Upload Image</span>
+                        <span id="homeSubmitSpinner" style="display: none;">
+                            <svg class="home-spinner" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Success Message -->
+            <div id="homeSuccessMessage" class="home-message home-message-success" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <p>Image uploaded successfully!</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="homeErrorMessage" class="home-message home-message-error" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <p id="homeErrorText"></p>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/home.js') }}"></script>
+    <script src="{{ url_for('basic.static', filename='js/home_gallery.js') }}"></script>
 </body>
 </html>

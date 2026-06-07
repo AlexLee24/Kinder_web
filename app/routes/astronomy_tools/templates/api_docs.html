@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference - Kinder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/astronomy_tools.css') }}">
+    {% include '_favicon.html' %}
+    <style>
+        :root {
+            --primary-color: #c5a059;
+            --border-color: rgba(197, 160, 89, 0.25);
+            --text-muted: #a0a0a8;
+        }
+
+        .api-wrap {
+            width: 90%;
+            max-width: 1100px;
+            margin: 0 auto 80px;
+        }
+
+        /* Section divider */
+        .api-section-label {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin: 50px 0 20px;
+        }
+        .api-section-label h2 {
+            color: #fff;
+            font-size: 1.25rem;
+            font-weight: 500;
+            margin: 0;
+            white-space: nowrap;
+        }
+        .api-section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(197,160,89,0.25);
+        }
+
+        /* Auth badge chips */
+        .auth-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .auth-chip-public {
+            background: rgba(72, 199, 142, 0.15);
+            border: 1px solid rgba(72, 199, 142, 0.4);
+            color: #48c78e;
+        }
+        .auth-chip-key {
+            background: rgba(197, 160, 89, 0.15);
+            border: 1px solid rgba(197, 160, 89, 0.4);
+            color: var(--primary-color);
+        }
+
+        /* Endpoint cards */
+        .api-card {
+            background: rgba(20, 20, 30, 0.6);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 0;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .api-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 24px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            cursor: pointer;
+            user-select: none;
+        }
+        .api-card-header:hover { background: rgba(255,255,255,0.03); }
+
+        /* HTTP method badges */
+        .method-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 5px;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+        }
+        .method-get  { background: rgba(72,199,142,0.2);  color: #48c78e;  border: 1px solid rgba(72,199,142,0.4); }
+        .method-post { background: rgba(100,160,255,0.2); color: #6fa6ff;  border: 1px solid rgba(100,160,255,0.4); }
+
+        .api-path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: #e0e0e0;
+            flex: 1;
+        }
+        .api-card-desc {
+            color: var(--text-muted);
+            font-size: 0.88rem;
+            margin-left: auto;
+            text-align: right;
+            max-width: 300px;
+        }
+        .api-chevron {
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .api-card.open .api-chevron { transform: rotate(180deg); }
+
+        .api-card-body {
+            display: none;
+            padding: 20px 24px 24px;
+        }
+        .api-card.open .api-card-body { display: block; }
+
+        /* Params table */
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 0.875rem;
+        }
+        .params-table th {
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 7px 12px;
+            background: rgba(255,255,255,0.04);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .params-table td {
+            padding: 9px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            vertical-align: top;
+        }
+        .params-table tr:last-child td { border-bottom: none; }
+        .param-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            color: #b0d4ff;
+        }
+        .param-req {
+            font-size: 0.75rem;
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .req { background: rgba(255,100,100,0.15); color: #ff8080; border: 1px solid rgba(255,100,100,0.3); }
+        .opt { background: rgba(150,150,150,0.12); color: #aaa; border: 1px solid rgba(150,150,150,0.25); }
+        .param-desc { color: var(--text-muted); font-size: 0.85rem; }
+        .param-default { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #c5a059; }
+
+        /* Code block */
+        .api-example-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 18px 0 6px;
+        }
+        .api-code {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 14px 18px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.83rem;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.6;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 5px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            padding: 3px 9px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+
+        /* Notes */
+        .api-note {
+            background: rgba(197,160,89,0.08);
+            border-left: 3px solid var(--primary-color);
+            border-radius: 0 6px 6px 0;
+            padding: 10px 14px;
+            font-size: 0.84rem;
+            color: var(--text-muted);
+            margin: 14px 0;
+        }
+        .api-note strong { color: var(--primary-color); }
+
+        /* Info box at top */
+        .api-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 10px;
+        }
+        @media(max-width:700px){ .api-info-grid { grid-template-columns: 1fr; } }
+        .api-info-box {
+            background: rgba(20,20,30,0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px 22px;
+        }
+        .api-info-box h4 {
+            color: var(--primary-color);
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin: 0 0 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .api-info-box p, .api-info-box li {
+            color: var(--text-muted);
+            font-size: 0.86rem;
+            margin: 0;
+            line-height: 1.7;
+        }
+        .api-info-box ul { padding-left: 18px; margin: 0; }
+        .api-info-box code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            background: rgba(0,0,0,0.3);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: #b0d4ff;
+        }
+
+        /* Body example grid */
+        .body-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media(max-width:700px){ .body-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <div class="page-header">
+        <h1>API Reference</h1>
+        <p>Public endpoints &amp; authenticated API</p>
+    </div>
+
+    <div class="api-wrap">
+
+        <!-- ── Overview boxes ──────────────────────────────────────────────── -->
+        <div class="api-info-grid">
+            <div class="api-info-box">
+                <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Base URL
+                </h4>
+                <p>All responses are JSON. <code>success: true/false</code> is always present.</p>
+                <br>
+                <p>Base: <code>https://kinder.astro.ncu.edu.tw</code></p>
+            </div>
+            <div class="api-info-box">
+                <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Authentication
+                </h4>
+                <ul>
+                    <li><strong style="color:#48c78e">Public API</strong> — No key needed. Rate limited to <strong>1 req/s</strong> per IP per endpoint.</li>
+                    <li><strong style="color:#c5a059">Authenticated API</strong> — Pass API key via <code>X-API-Key</code> header or <code>?api_key=</code> query param.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!-- PUBLIC API                                                         -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <div class="api-section-label">
+            <h2>Public API</h2>
+            <span class="auth-chip auth-chip-public">No key required &nbsp;·&nbsp; 1 req/s per IP</span>
+        </div>
+
+        <!-- /api/distance -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/distance</span>
+                <span class="api-card-desc">Luminosity distance &amp; absolute magnitude</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Calculate luminosity distance from redshift using a flat ΛCDM cosmology. Optionally compute absolute magnitude when apparent magnitude is provided. Cosmological parameters default to Planck 2018.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">z</td><td><span class="param-req req">required</span></td><td class="param-desc">Redshift</td><td></td></tr>
+                        <tr><td class="param-name">z_err</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Redshift uncertainty → adds distance error to response</td><td></td></tr>
+                        <tr><td class="param-name">m</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Apparent magnitude → enables absolute magnitude output</td><td></td></tr>
+                        <tr><td class="param-name">A</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Extinction (magnitudes)</td><td class="param-default">0</td></tr>
+                        <tr><td class="param-name">H0</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Hubble constant (km/s/Mpc)</td><td class="param-default">67.7</td></tr>
+                        <tr><td class="param-name">Om0</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Matter density Ω<sub>m</sub></td><td class="param-default">0.309</td></tr>
+                        <tr><td class="param-name">Tcmb0</td><td><span class="param-req opt">optional</span></td><td class="param-desc">CMB temperature (K)</td><td class="param-default">2.725</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-note"><strong>Cosmology reference:</strong> Planck Collaboration 2020, A&amp;A, 641, A6 — <a href="https://ui.adsabs.harvard.edu/#abs/2020A%26A...641A...6P" target="_blank" rel="noopener" style="color:var(--primary-color)">ADS</a></div>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">/api/distance?z=0.039&amp;m=15.3&amp;A=0.1<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success": true,
+  "result": {
+    "input":      { "z": 0.039, "z_err": null, "m": 15.3, "A": 0.1 },
+    "cosmology":  { "H0": 67.7, "Om0": 0.309, "Tcmb0": 2.725 },
+    "distance": {
+      "distance_mpc": 171.23,  "distance_gpc": 0.1712,
+      "distance_pc":  171230000.0,
+      "distance_ly":  558511800.0,
+      "distance_km":  5.28e21,
+      "redshift":     0.039
+    },
+    "magnitude": {
+      "absolute_magnitude": -18.52,
+      "distance_modulus":    36.17,
+      "k_correction":         0.17,
+      "distance_mpc":       171.23,
+      "extinction":           0.1
+    }
+  }
+}</div>
+            </div>
+        </div>
+
+        <!-- /api/coords -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/coords</span>
+                <span class="api-card-desc">RA / DEC coordinate conversion</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Convert between HMS/DMS sexagesimal and decimal degree formats. RA and DEC can be converted in the same request.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">ra_hms</td><td><span class="param-req opt">optional</span></td><td class="param-desc">RA in <code>hh:mm:ss.s</code> → returns decimal degrees</td></tr>
+                        <tr><td class="param-name">ra_deg</td><td><span class="param-req opt">optional</span></td><td class="param-desc">RA in decimal ° → returns HMS</td></tr>
+                        <tr><td class="param-name">dec_dms</td><td><span class="param-req opt">optional</span></td><td class="param-desc">DEC in <code>±dd:mm:ss</code> → returns decimal degrees</td></tr>
+                        <tr><td class="param-name">dec_deg</td><td><span class="param-req opt">optional</span></td><td class="param-desc">DEC in decimal ° → returns DMS</td></tr>
+                    </tbody>
+                </table>
+                <div class="api-note">Provide <code>ra_hms</code> <em>or</em> <code>ra_deg</code>, and/or <code>dec_dms</code> <em>or</em> <code>dec_deg</code>. At least one parameter is required.</div>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">/api/coords?ra_hms=12:34:56.78&amp;dec_dms=-23:45:12.34<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success": true,
+  "result": {
+    "ra_hms":     "12:34:56.78",
+    "ra_decimal": 188.73658,
+    "dec_dms":    "-23:45:12.34",
+    "dec_decimal": -23.75343
+  }
+}</div>
+            </div>
+        </div>
+
+        <!-- /api/date -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/date</span>
+                <span class="api-card-desc">MJD / JD / calendar date conversion</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Convert between Modified Julian Date (MJD), Julian Date (JD), and calendar date (UTC). Provide exactly one of the three parameters.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">mjd</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Modified Julian Date (days since 1858-11-17)</td></tr>
+                        <tr><td class="param-name">jd</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Julian Date</td></tr>
+                        <tr><td class="param-name">date</td><td><span class="param-req opt">optional</span></td><td class="param-desc">ISO 8601 calendar date, e.g. <code>2024-06-01T12:00:00</code></td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">/api/date?mjd=59000.5<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success": true,
+  "result": {
+    "mjd":         59000.5,
+    "jd":          2459001.0,
+    "common_date": "2020-08-02 12:00:00 UTC"
+  }
+}</div>
+            </div>
+        </div>
+
+
+        <!-- /api/finding_chart/image -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/finding_chart/image</span>
+                <span class="api-card-desc">Finding chart — PNG image direct download</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Returns a finding chart PNG directly (<code>Content-Type: image/png</code>). Pulls imagery from DSS / DESI LS / Pan-STARRS and overlays Tycho-2 + UCAC4 star annotations. <strong>Rate limit: 1 request per 30 seconds per IP</strong> (network-heavy).</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">ra</td><td><span class="param-req req">required</span></td><td class="param-desc">Right Ascension — HMS (<code>hh:mm:ss.s</code>) or decimal degrees</td><td></td></tr>
+                        <tr><td class="param-name">dec</td><td><span class="param-req req">required</span></td><td class="param-desc">Declination — DMS (<code>±dd:mm:ss</code>) or decimal degrees</td><td></td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Object name drawn on chart</td><td class="param-default">Target</td></tr>
+                        <tr><td class="param-name">survey</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>DSS2 Red</code> · <code>DSS2 Blue</code> · <code>DSS2 IR</code> · <code>DESI-color</code> · <code>DESI-r</code> · <code>PS1-color</code> · <code>PS1-r</code> …</td><td class="param-default">DESI-color</td></tr>
+                        <tr><td class="param-name">fov</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Field of view in arcmin</td><td class="param-default">10</td></tr>
+                        <tr><td class="param-name">invert</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = white background (single-band surveys only)</td><td class="param-default">0</td></tr>
+                        <tr><td colspan="4" style="padding: 8px 12px; background: rgba(197,160,89,0.08); font-weight: 600; color: var(--primary-color);">Star Annotation Controls</td></tr>
+                        <tr><td class="param-name">mag_limit</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Faintest star to annotate (magnitude) — controls which stars appear</td><td class="param-default">15</td></tr>
+                        <tr><td class="param-name">show_mag</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show magnitude labels, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
+                        <tr><td class="param-name">show_names</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show bright star names, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-example-label">URL (basic with all star annotations)</div>
+                <div class="api-code" style="position:relative">/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&survey=DESI-color&fov=10&name=SN2025abc<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">URL (no star labels)</div>
+                <div class="api-code" style="position:relative">/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&show_mag=0&show_names=0<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">wget</div>
+                <div class="api-code" style="position:relative">wget -O SN2025abc_chart.png \
+  "https://kinder.astro.ncu.edu.tw/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&survey=DESI-color&fov=10&show_mag=1&show_names=1"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">curl</div>
+                <div class="api-code" style="position:relative">curl -o SN2025abc_chart.png \
+  "https://kinder.astro.ncu.edu.tw/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&survey=DESI-color&show_mag=1&show_names=1&mag_limit=13"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Python</div>
+                <div class="api-code" style="position:relative">import requests
+r = requests.get("https://kinder.astro.ncu.edu.tw/api/finding_chart/image", params={
+    "ra": "12:34:56.78",
+    "dec": "-23:45:12.34",
+    "name": "SN2025abc",
+    "survey": "DESI-color",      # Image source
+    "fov": 10,                    # Arcminutes
+    "show_mag": 1,                # Show magnitudes
+    "show_names": 1,              # Show star names
+    "mag_limit": 15,              # Only annotate stars brighter than this
+})
+open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-note"><strong>Star annotation:</strong> Use <code>show_mag=0</code> to hide magnitudes, <code>show_names=0</code> to hide star names, or <code>mag_limit=12</code> to only show brighter stars. &nbsp;|&nbsp; <strong>Invert colors:</strong> <code>invert=1</code> for white background (single-band surveys only)</div>
+            </div>
+        </div>
+
+        <!-- /api/visibility/image -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/visibility/image</span>
+                <span class="api-card-desc">Nightly visibility plot — JPEG image direct download</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Returns an altitude-vs-time observing track plot as JPEG (<code>Content-Type: image/jpeg</code>). Defaults to <strong>Lulin Observatory</strong> (NCU, Taiwan, UTC+8). <strong>Pass coordinates for any observing location:</strong> <code>lon</code> (longitude), <code>lat</code> (latitude), <code>alt</code> (altitude), <code>tz</code> (timezone). <strong>Rate limit: 1 req / 15 s per IP</strong>.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default (Lulin)</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">date</td><td><span class="param-req req">required</span></td><td class="param-desc">Observation date <code>YYYY-MM-DD</code></td><td></td></tr>
+                        <tr><td class="param-name">ra</td><td><span class="param-req req">required</span></td><td class="param-desc">Target RA — HMS (<code>hh:mm:ss</code>) or decimal °</td><td></td></tr>
+                        <tr><td class="param-name">dec</td><td><span class="param-req req">required</span></td><td class="param-desc">Target Dec — DMS (<code>±dd:mm:ss</code>) or decimal °</td><td></td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Target label on plot</td><td class="param-default">Target</td></tr>
+                        <tr><td colspan="4" style="padding: 8px 12px; background: rgba(72,199,142,0.08); font-weight: 600; color: #48c78e;">Observatory Location — Choose a preset or specify custom coordinates</td></tr>
+                        <tr><td class="param-name">lon</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Longitude — DMS (<code>±dd:mm:ss</code>) or decimal °. East positive, West negative.</td><td class="param-default">120:52:21.5</td></tr>
+                        <tr><td class="param-name">lat</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Latitude — DMS (<code>±dd:mm:ss</code>) or decimal °. North positive, South negative.</td><td class="param-default">23:28:10.0</td></tr>
+                        <tr><td class="param-name">alt</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Altitude in metres above sea level</td><td class="param-default">2800</td></tr>
+                        <tr><td class="param-name">tz</td><td><span class="param-req opt">optional</span></td><td class="param-desc">UTC offset (integer, −12 to +14). Negative for West, positive for East.</td><td class="param-default">8</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-note">
+                    <strong>Observatory location presets (copy-paste the coordinates):</strong><br>
+                    <code style="display: block; margin: 4px 0; padding: 3px 6px; background: rgba(255,255,255,0.05);">Lulin (NCU, Taiwan)</code> <code>lon=120:52:21.5  lat=23:28:10.0  alt=2800  tz=8</code><br>
+                    <code style="display: block; margin: 8px 0 4px;">Las Campanas, Chile</code> <code>lon=-70:41:33.0  lat=-29:00:51.12  alt=2282  tz=-3</code><br>
+                    <code style="display: block; margin: 8px 0 4px;">Palomar, California</code> <code>lon=-116:51:50.0  lat=33:21:21.0  alt=1706  tz=-8</code>
+                </div>
+
+                <div class="api-example-label">URL (Lulin Observatory, default location)</div>
+                <div class="api-code" style="position:relative">/api/visibility/image?date=2026-06-07&ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">URL (Las Campanas, Spain, custom location)</div>
+                <div class="api-code" style="position:relative">/api/visibility/image?date=2026-06-07&ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&lon=-70:41:33&lat=-29:00:51&alt=2282&tz=-3<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">URL (Custom location: Tokyo, Japan)</div>
+                <div class="api-code" style="position:relative">/api/visibility/image?date=2026-06-07&ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&lon=139:46:00&lat=35:40:00&alt=0&tz=9<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">wget (custom location)</div>
+                <div class="api-code" style="position:relative">wget -O visibility.jpg \
+  "https://kinder.astro.ncu.edu.tw/api/visibility/image?date=2026-06-07&ra=12:34:56.78&dec=-23:45:12.34&name=SN2025abc&lon=-70:41:33&lat=-29:00:51&alt=2282&tz=-3"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Python (with custom location)</div>
+                <div class="api-code" style="position:relative">import requests
+r = requests.get("https://kinder.astro.ncu.edu.tw/api/visibility/image", params={
+    "date": "2026-06-07",
+    "ra": "12:34:56.78",
+    "dec": "-23:45:12.34",
+    "name": "SN2025abc",
+    # Custom location: Las Campanas
+    "lon": "-70:41:33",   # West (negative)
+    "lat": "-29:00:51",   # South (negative)
+    "alt": 2282,          # metres
+    "tz": -3,             # UTC-3
+})
+open("visibility.jpg", "wb").write(r.content)<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-note"><strong>Location format:</strong> Use DMS (<code>±dd:mm:ss</code>) or decimal degrees both work. East/North are positive, West/South are negative. &nbsp;|&nbsp; <strong>No presets?</strong> Find your location's lon/lat/tz and use the custom parameters.</div>
+            </div>
+        </div>
+
+
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!-- AUTHENTICATED API                                                  -->
+        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <div class="api-section-label">
+            <h2>Authenticated API</h2>
+            <span class="auth-chip auth-chip-key">API Key required</span>
+        </div>
+
+        <div class="api-info-box" style="margin-bottom:20px">
+            <h4>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                How to authenticate
+            </h4>
+            <ul>
+                <li>Via HTTP header: <code>X-API-Key: your_key_here</code></li>
+                <li>Via query param: <code>?api_key=your_key_here</code></li>
+                <li>Generate your key from the account settings page (authorized users only).</li>
+            </ul>
+        </div>
+
+        <!-- /api/test -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/test</span>
+                <span class="api-card-desc">Validate API key</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Test whether an API key is valid. Returns the associated user information on success.</p>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">curl -H "X-API-Key: YOUR_KEY" https://kinder.astro.ncu.edu.tw/api/test<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success": true,
+  "message": "API Authentication successful!",
+  "user": {
+    "name":     "Alex Lee",
+    "email":    "user@example.com",
+    "role":     "admin",
+    "is_admin": true,
+    "groups":   ["GREAT Lab"]
+  }
+}</div>
+            </div>
+        </div>
+
+        <!-- /api/v1/observation_targets GET -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/v1/observation_targets</span>
+                <span class="api-card-desc">Get daily observation targets</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Retrieve the current active observation target list for SLT, LOT, or both telescopes.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">telescope</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Filter by telescope: <code>SLT</code> or <code>LOT</code>. Omit to get both.</td></tr>
+                        <tr><td class="param-name">api_key</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Alternative to <code>X-API-Key</code> header</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">curl -H "X-API-Key: YOUR_KEY" \
+  "https://kinder.astro.ncu.edu.tw/api/v1/observation_targets?telescope=SLT"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success":      true,
+  "generated_at": "2026-06-07T12:00:00Z",
+  "requested_by": "user@example.com",
+  "SLT": [
+    {
+      "name": "SN2025abc", "ra": "12:34:56.7", "dec": "+12:34:56",
+      "mag": 18.5, "priority": "High",
+      "filters": [{"filter": "rp", "exp": 300, "count": 3}]
+    }
+  ]
+}</div>
+            </div>
+        </div>
+
+        <!-- /api/v1/observation_targets POST -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-post">POST</span>
+                <span class="api-path">/api/v1/observation_targets</span>
+                <span class="api-card-desc">Add an observation target</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Add a new target to the observation queue. Requires <strong>GREAT Lab member</strong> or <strong>admin</strong> role.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Field (JSON body)</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">telescope</td><td><span class="param-req req">required</span></td><td class="param-desc"><code>SLT</code> or <code>LOT</code></td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req req">required</span></td><td class="param-desc">Object name, e.g. <code>SN2025abc</code></td></tr>
+                        <tr><td class="param-name">ra</td><td><span class="param-req req">required</span></td><td class="param-desc">Right Ascension (decimal ° or hh:mm:ss)</td></tr>
+                        <tr><td class="param-name">dec</td><td><span class="param-req req">required</span></td><td class="param-desc">Declination (decimal ° or ±dd:mm:ss)</td></tr>
+                        <tr><td class="param-name">mag</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Apparent magnitude</td></tr>
+                        <tr><td class="param-name">priority</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>Normal</code> / <code>High</code> / <code>Urgent</code></td></tr>
+                        <tr><td class="param-name">repeat_count</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Number of repeat observations</td></tr>
+                        <tr><td class="param-name">filters</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Array of <code>{"filter":"rp","exp":300,"count":3}</code></td></tr>
+                        <tr><td class="param-name">plan</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Free-text observing note</td></tr>
+                        <tr><td class="param-name">program</td><td><span class="param-req opt">optional</span></td><td class="param-desc">LOT program code, e.g. <code>R01</code></td></tr>
+                        <tr><td class="param-name">note_gl</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Internal GREAT Lab note</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="body-grid">
+                    <div>
+                        <div class="api-example-label">Example request</div>
+                        <div class="api-code" style="position:relative">curl -X POST \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "telescope": "SLT",
+    "name":      "SN2025abc",
+    "ra":        "12:34:56.7",
+    "dec":       "+12:34:56",
+    "mag":       18.5,
+    "priority":  "High",
+    "filters":   [{"filter":"rp","exp":300,"count":3}]
+  }' \
+  https://kinder.astro.ncu.edu.tw/api/v1/observation_targets<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                    <div>
+                        <div class="api-example-label">Example response (201)</div>
+                        <div class="api-code">{
+  "success": true,
+  "message": "Target SN2025abc added to SLT",
+  "id": 42,
+  "target": {
+    "telescope": "SLT",
+    "name":      "SN2025abc",
+    "ra":        "12:34:56.7",
+    "dec":       "+12:34:56",
+    "mag":       18.5,
+    "priority":  "High"
+  }
+}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- /api/v1/observation_logs GET -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/v1/observation_logs</span>
+                <span class="api-card-desc">Query observation logs</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Retrieve observation logs. Query by year+month or a specific date.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">year</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Year, e.g. <code>2026</code></td></tr>
+                        <tr><td class="param-name">month</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Month, 1–12</td></tr>
+                        <tr><td class="param-name">date</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Specific date <code>YYYY-MM-DD</code> (overrides year/month)</td></tr>
+                    </tbody>
+                </table>
+                <div class="api-note">* Provide either <code>year</code>+<code>month</code>, or a specific <code>date</code>.</div>
+
+                <div class="api-example-label">Example request</div>
+                <div class="api-code" style="position:relative">curl -H "X-API-Key: YOUR_KEY" \
+  "https://kinder.astro.ncu.edu.tw/api/v1/observation_logs?date=2026-06-07"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                <div class="api-example-label">Example response</div>
+                <div class="api-code">{
+  "success":      true,
+  "generated_at": "2026-06-07T12:00:00Z",
+  "requested_by": "user@example.com",
+  "query_params": {"year": 2026, "month": 6, "date": "2026-06-07"},
+  "logs": [
+    {
+      "target_name":     "SN2025abc",
+      "obs_date":        "2026-06-07",
+      "telescope":       "SLT",
+      "is_triggered":    true,
+      "trigger_filter":  "rp",
+      "trigger_exp":     300,
+      "trigger_count":   12,
+      "is_observed":     true,
+      "observed_filter": "rp",
+      "observed_exp":    300,
+      "observed_count":  12,
+      "user_name":       "Alex"
+    }
+  ]
+}</div>
+            </div>
+        </div>
+
+        <!-- /api/v1/observation_logs POST -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-post">POST</span>
+                <span class="api-path">/api/v1/observation_logs</span>
+                <span class="api-card-desc">Add / update / delete a log entry</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Upsert (insert or update) an observation log entry. Set <code>"action":"delete"</code> to delete instead.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Field (JSON body)</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">target_name</td><td><span class="param-req req">required</span></td><td class="param-desc">Object name, e.g. <code>SN2025abc</code></td></tr>
+                        <tr><td class="param-name">obs_date</td><td><span class="param-req req">required</span></td><td class="param-desc">Observation date <code>YYYY-MM-DD</code></td></tr>
+                        <tr><td class="param-name">action</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>upsert</code> (default) or <code>delete</code></td></tr>
+                        <tr><td class="param-name">telescope</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>SLT</code> or <code>LOT</code></td></tr>
+                        <tr><td class="param-name">is_triggered</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Was observation triggered? (bool)</td></tr>
+                        <tr><td class="param-name">trigger_filter</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Filter used for trigger, e.g. <code>rp</code></td></tr>
+                        <tr><td class="param-name">trigger_exp</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Trigger exposure time (seconds)</td></tr>
+                        <tr><td class="param-name">trigger_count</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Number of trigger frames</td></tr>
+                        <tr><td class="param-name">is_observed</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Was the object observed? (bool)</td></tr>
+                        <tr><td class="param-name">observed_filter</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Filter actually used</td></tr>
+                        <tr><td class="param-name">observed_exp</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Actual exposure time (seconds)</td></tr>
+                        <tr><td class="param-name">observed_count</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Number of frames taken</td></tr>
+                        <tr><td class="param-name">user_name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Observer name (auto-filled from API key owner)</td></tr>
+                        <tr><td class="param-name">priority</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>Normal</code> / <code>High</code> / <code>Urgent</code> / <code>Filler</code></td></tr>
+                    </tbody>
+                </table>
+
+                <div class="body-grid">
+                    <div>
+                        <div class="api-example-label">Upsert example</div>
+                        <div class="api-code" style="position:relative">curl -X POST \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_name":    "SN2025abc",
+    "obs_date":       "2026-06-07",
+    "telescope":      "SLT",
+    "is_triggered":   true,
+    "trigger_filter": "rp",
+    "trigger_exp":    300,
+    "trigger_count":  12,
+    "is_observed":    true
+  }' \
+  https://kinder.astro.ncu.edu.tw/api/v1/observation_logs<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                    <div>
+                        <div class="api-example-label">Delete example</div>
+                        <div class="api-code" style="position:relative">curl -X POST \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action":      "delete",
+    "target_name": "SN2025abc",
+    "obs_date":    "2026-06-07"
+  }' \
+  https://kinder.astro.ncu.edu.tw/api/v1/observation_logs<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /api-wrap -->
+
+    <script>
+        function toggleCard(header) {
+            header.parentElement.classList.toggle('open');
+        }
+        function copyCode(btn) {
+            const block = btn.closest('.api-code');
+            const text = block.childNodes[0].textContent.trim();
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'copied!';
+                setTimeout(() => btn.textContent = 'copy', 1800);
+            });
+        }
+    </script>
+</body>
+</html>

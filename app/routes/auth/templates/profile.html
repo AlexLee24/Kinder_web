@@ -75,24 +75,46 @@
                                 </div>
                                 {% endif %}
                                 
-                                <!-- NEW API KEY SECTION -->
+                                <!-- API KEY SECTION -->
                                 {% if session.user.get('role') != 'guest' %}
                                 <div class="info-item api-key-section" style="grid-column: 1 / -1; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                                    <span class="info-label" style="display: block; margin-bottom: 8px;">Your API Key:</span>
-                                    <div style="display: flex; gap: 10px; align-items: center;">
-                                        <input type="password" id="apiKeyDisplay" readonly 
-                                            value="{{ user_data.api_key if user_data and user_data.api_key else 'No API key generated' }}" 
-                                            style="flex-grow: 1; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-family: monospace;">
-                                        
+                                    <span class="info-label" style="display: block; margin-bottom: 8px;">API Key:</span>
+
+                                    {% if user_data and user_data.api_key %}
+                                    <!-- Has an active key -->
+                                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                        <input type="password" id="apiKeyDisplay" readonly
+                                            value="{{ user_data.api_key }}"
+                                            style="flex-grow: 1; min-width: 160px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-family: monospace;">
                                         <button onclick="toggleApiKeyVisibility(event)" class="btn-api btn-api-secondary" style="min-width: 70px;">Show</button>
-                                        <button onclick="copyApiKey()" class="btn-api btn-api-secondary" style="padding: 0 12px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
-                                        <button onclick="generateNewApiKey(event)" class="btn-api btn-api-warning" style="white-space: nowrap;">
-                                            {{ 'Regenerate' if user_data and user_data.api_key else 'Generate' }} API Key
+                                        <button onclick="copyApiKey()" class="btn-api btn-api-secondary" style="padding: 0 12px;" title="Copy">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                         </button>
+                                        {% if user_data.api_key_request_pending %}
+                                        <button class="btn-api btn-api-secondary" disabled style="white-space: nowrap; opacity: 0.6; display:inline-flex; align-items:center; gap:6px;">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                            Reset Requested
+                                        </button>
+                                        {% else %}
+                                        <button onclick="requestApiKey(event, true)" class="btn-api btn-api-warning" style="white-space: nowrap;">Request Reset</button>
+                                        {% endif %}
                                     </div>
-                                    <p style="font-size: 0.85rem; color: #ff0000">
-                                        Do not share it
-                                    </p>
+                                    <p style="font-size: 0.82rem; color: rgba(255,100,100,0.85); margin-top: 6px;">Do not share your API key.</p>
+
+                                    {% elif user_data and user_data.api_key_request_pending %}
+                                    <!-- No key, but request pending -->
+                                    <div style="display: flex; align-items: center; gap: 12px; color: #c5a059; font-size: 0.9rem;">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                        Your API key request is pending. An admin will review it.
+                                    </div>
+
+                                    {% else %}
+                                    <!-- No key, no pending request -->
+                                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                                        <span style="color: var(--text-muted, #aaa); font-size: 0.88rem;">No API key assigned yet.</span>
+                                        <button onclick="requestApiKey(event, false)" class="btn-api btn-api-warning" style="white-space: nowrap;">Request API Key</button>
+                                    </div>
+                                    {% endif %}
                                 </div>
                                 {% endif %}
                             </div>

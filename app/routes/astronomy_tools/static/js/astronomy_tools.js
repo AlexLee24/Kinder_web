@@ -1,3 +1,56 @@
+// Cosmological parameters (Planck 2018 defaults)
+const PLANCK2018 = { H0: 67.7, Om0: 0.309, Tcmb0: 2.725 };
+let cosmoParams = { ...PLANCK2018 };
+
+function openCosmoModal() {
+    document.getElementById('cosmo-H0').value = cosmoParams.H0;
+    document.getElementById('cosmo-Om0').value = cosmoParams.Om0;
+    document.getElementById('cosmo-Tcmb0').value = cosmoParams.Tcmb0;
+    document.getElementById('cosmo-modal-overlay').classList.add('active');
+}
+
+function closeCosmoModal() {
+    document.getElementById('cosmo-modal-overlay').classList.remove('active');
+}
+
+function closeCosmoModalIfOverlay(event) {
+    if (event.target === document.getElementById('cosmo-modal-overlay')) {
+        closeCosmoModal();
+    }
+}
+
+function resetCosmoParams() {
+    document.getElementById('cosmo-H0').value = PLANCK2018.H0;
+    document.getElementById('cosmo-Om0').value = PLANCK2018.Om0;
+    document.getElementById('cosmo-Tcmb0').value = PLANCK2018.Tcmb0;
+}
+
+function applyCosmoParams() {
+    const H0 = parseFloat(document.getElementById('cosmo-H0').value);
+    const Om0 = parseFloat(document.getElementById('cosmo-Om0').value);
+    const Tcmb0 = parseFloat(document.getElementById('cosmo-Tcmb0').value);
+
+    if (isNaN(H0) || isNaN(Om0) || isNaN(Tcmb0) || H0 <= 0 || Om0 <= 0 || Tcmb0 <= 0) {
+        alert('Please enter valid positive values for all parameters.');
+        return;
+    }
+
+    cosmoParams = { H0, Om0, Tcmb0 };
+    closeCosmoModal();
+    _updateCosmoChip();
+
+    const resultDiv = document.getElementById('combined-result');
+    if (resultDiv && resultDiv.innerHTML.includes('Distance Calculations')) {
+        calculateBoth();
+    }
+}
+
+function _updateCosmoChip() {
+    const el = document.getElementById('cosmo-display-text');
+    if (!el) return;
+    el.innerHTML = `H₀ = ${cosmoParams.H0} &nbsp;&middot;&nbsp; Ω<sub>m</sub> = ${cosmoParams.Om0} &nbsp;&middot;&nbsp; T<sub>CMB</sub> = ${cosmoParams.Tcmb0} K`;
+}
+
 // SVG icon strings used in result headings
 const _SVG_SCOPE    = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
 const _SVG_STAR     = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
@@ -115,12 +168,17 @@ function calculateBoth() {
 
 function calculateDistanceData(redshift) {
     const redshiftError = document.getElementById('redshift-error').value;
-    const data = { redshift: parseFloat(redshift) };
-    
+    const data = {
+        redshift: parseFloat(redshift),
+        H0: cosmoParams.H0,
+        Om0: cosmoParams.Om0,
+        Tcmb0: cosmoParams.Tcmb0
+    };
+
     if (redshiftError) {
         data.redshift_error = parseFloat(redshiftError);
     }
-    
+
     return fetch('/calculate_redshift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -133,9 +191,12 @@ function calculateMagnitudeData(apparentMagnitude, redshift) {
     const data = {
         apparent_magnitude: parseFloat(apparentMagnitude),
         redshift: parseFloat(redshift),
-        extinction: parseFloat(extinction)
+        extinction: parseFloat(extinction),
+        H0: cosmoParams.H0,
+        Om0: cosmoParams.Om0,
+        Tcmb0: cosmoParams.Tcmb0
     };
-    
+
     return fetch('/calculate_absolute_magnitude', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

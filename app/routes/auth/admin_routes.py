@@ -19,7 +19,8 @@ from modules.database.auth import (
     check_data_consistency, clean_data_consistency,
     get_setting, set_setting,
     get_group_requests, update_group_request_status, get_group_request, delete_group_request,
-    get_default_source_permissions, set_default_source_permissions_batch
+    get_default_source_permissions, set_default_source_permissions_batch,
+    generate_api_key_for_user, revoke_api_key, get_api_key_requests,
 )
 from modules.email_utils import send_invitation_email
 
@@ -91,20 +92,47 @@ def admin_panel():
     groups = get_groups()
     invitations = get_invitations()
     group_requests = get_group_requests('pending')
-    
+    api_key_requests = get_api_key_requests()
+
     current_user_email = session['user']['email']
-    
-    # Get settings
+
     open_registration = get_setting('open_registration', 'true') == 'true'
-    
-    return render_template('admin.html', 
+
+    return render_template('admin.html',
                          current_path='/admin',
                          users=users,
                          groups=groups,
                          invitations=invitations,
                          group_requests=group_requests,
+                         api_key_requests=api_key_requests,
                          current_user_email=current_user_email,
                          open_registration=open_registration)
+
+@admin_bp.route('/admin/api-key/issue', methods=['POST'])
+def admin_issue_api_key():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    email = (request.get_json(silent=True) or {}).get('email', '').strip()
+    if not email:
+        return jsonify({'error': 'email required'}), 400
+    new_key = generate_api_key_for_user(email)
+    if not new_key:
+        return jsonify({'error': 'Failed to generate key or user not found'}), 500
+    return jsonify({'success': True, 'message': f'API key issued for {email}'})
+
+
+@admin_bp.route('/admin/api-key/revoke', methods=['POST'])
+def admin_revoke_api_key():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    email = (request.get_json(silent=True) or {}).get('email', '').strip()
+    if not email:
+        return jsonify({'error': 'email required'}), 400
+    ok = revoke_api_key(email)
+    if not ok:
+        return jsonify({'error': 'User not found'}), 404
+    return jsonify({'success': True, 'message': f'API key revoked for {email}'})
+
 
 @admin_bp.route('/admin/group-requests/<int:request_id>/<action>', methods=['POST'])
 def handle_group_request(request_id, action):

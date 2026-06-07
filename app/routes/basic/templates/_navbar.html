@@ -33,7 +33,6 @@
                 <!-- Left Navigation -->
                 <ul class="nav-left">
                     <li><a href="{{ url_for('marshal.marshal') }}">Marshal</a></li>
-                    <li><a href="{{ url_for('basic.gallery') }}" {% if current_path == '/gallery' %}class="active"{% endif %}>Gallery</a></li>
 
                     <li class="dropdown">
                         <a href="#" class="dropdown-toggle" {% if current_path in ['/astronomy_tools', '/telescope_simulator', '/mount_3d', '/lc_plotter', '/games'] %}class="active"{% endif %}>

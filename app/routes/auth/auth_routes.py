@@ -6,7 +6,7 @@ from flask import session, flash, redirect, url_for, request, jsonify, g
 
 logger = logging.getLogger(__name__)
 from datetime import datetime
-from modules.database.auth import user_exists, get_users, get_user, save_user, update_user, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests
+from modules.database.auth import user_exists, get_users, get_user, save_user, update_user, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key
 from modules.config import config
 
 from flask import Blueprint
@@ -332,3 +332,16 @@ def profile_leave_group():
     if remove_user_from_group(user_email, group_name):
         return jsonify({'success': True, 'message': f'Left group "{group_name}"'})
     return jsonify({'error': 'Failed to leave group'}), 500
+
+
+@auth_bp.route('/api/profile/request_api_key', methods=['POST'])
+def profile_request_api_key():
+    if 'user' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    role = session['user'].get('role', 'guest')
+    if role == 'guest':
+        return jsonify({'error': 'Guests cannot request an API key'}), 403
+    user_email = session['user']['email']
+    if request_api_key(user_email):
+        return jsonify({'success': True, 'message': 'Request submitted. An admin will review it.'})
+    return jsonify({'error': 'Failed to submit request'}), 500

@@ -104,11 +104,11 @@ def _can_view():
     u = session['user']
     return bool(u.get('is_great_lab_member')) or bool(u.get('is_admin'))
 
-@web_log_bp.route('/greatlab/log')
+@web_log_bp.route('/admin/log')
 def log_viewer():
     if not _can_view():
         return redirect(url_for('basic.home'))
-    return render_template('log_viewer.html', current_path='/greatlab/log')
+    return render_template('log_viewer.html', current_path='/admin/log')
 
 @web_log_bp.route('/api/log/files')
 def api_log_files():

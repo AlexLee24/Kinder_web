@@ -1,13 +1,13 @@
 import math
 from datetime import datetime
 
-def calculate_redshift_distance(redshift, redshift_error=None):
+def calculate_redshift_distance(redshift, redshift_error=None, H0=67.7, Om0=0.309, Tcmb0=2.725):
     """Calculate distance from redshift using cosmological models"""
     try:
         from astropy.cosmology import FlatLambdaCDM
         import astropy.units as u
-        
-        cosmo = FlatLambdaCDM(H0=67.7 * u.km / u.s / u.Mpc, Om0=0.309, Tcmb0=2.725 * u.K)
+
+        cosmo = FlatLambdaCDM(H0=H0 * u.km / u.s / u.Mpc, Om0=Om0, Tcmb0=Tcmb0 * u.K)
         
         distance = cosmo.luminosity_distance(redshift)
         distance_mpc = distance.to(u.Mpc).value
@@ -29,7 +29,7 @@ def calculate_redshift_distance(redshift, redshift_error=None):
             dz = 0.001
             z_plus = redshift + dz
             z_minus = max(0, redshift - dz)
-            
+
             dist_plus = cosmo.luminosity_distance(z_plus).to(u.Mpc).value
             dist_minus = cosmo.luminosity_distance(z_minus).to(u.Mpc).value
             
@@ -78,13 +78,13 @@ def calculate_redshift_distance(redshift, redshift_error=None):
         
         return result
 
-def calculate_absolute_magnitude(apparent_magnitude, redshift, extinction=0):
+def calculate_absolute_magnitude(apparent_magnitude, redshift, extinction=0, H0=67.7, Om0=0.309, Tcmb0=2.725):
     """Calculate absolute magnitude from apparent magnitude and redshift"""
     try:
         from astropy.cosmology import FlatLambdaCDM
         import astropy.units as u
-        
-        cosmo = FlatLambdaCDM(H0=67.7 * u.km / u.s / u.Mpc, Om0=0.309, Tcmb0=2.725 * u.K)
+
+        cosmo = FlatLambdaCDM(H0=H0 * u.km / u.s / u.Mpc, Om0=Om0, Tcmb0=Tcmb0 * u.K)
         distance = cosmo.luminosity_distance(redshift)
         distance_pc = distance.to(u.pc).value
         

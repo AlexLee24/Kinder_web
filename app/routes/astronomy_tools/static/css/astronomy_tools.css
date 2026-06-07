@@ -258,3 +258,164 @@ body {
     font-family: 'Courier New', monospace;
     font-weight: 600;
 }
+
+/* Cosmological parameters chip (inline display) */
+.cosmo-params-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: rgba(197, 160, 89, 0.08);
+    border: 1px solid rgba(197, 160, 89, 0.25);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-bottom: 18px;
+    transition: background 0.2s, border-color 0.2s;
+    flex-wrap: wrap;
+}
+
+.cosmo-params-chip:hover {
+    background: rgba(197, 160, 89, 0.15);
+    border-color: rgba(197, 160, 89, 0.45);
+}
+
+.cosmo-chip-ref {
+    color: var(--primary-color);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.cosmo-chip-ref:hover {
+    text-decoration: underline;
+}
+
+/* Gear button inside section header */
+.cosmo-settings-btn {
+    background: none;
+    border: 1px solid rgba(197, 160, 89, 0.35);
+    color: var(--primary-color);
+    border-radius: 6px;
+    padding: 4px 7px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    margin-top: 0;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+}
+
+.cosmo-settings-btn:hover {
+    background: rgba(197, 160, 89, 0.12);
+    border-color: var(--primary-color);
+}
+
+/* Modal overlay */
+.cosmo-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+}
+
+.cosmo-modal-overlay.active {
+    display: flex;
+}
+
+.cosmo-modal {
+    background: rgba(12, 12, 22, 0.97);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(197, 160, 89, 0.3);
+    border-radius: 18px;
+    width: 370px;
+    max-width: 92vw;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.cosmo-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 15px;
+    border-bottom: 1px solid rgba(197, 160, 89, 0.2);
+}
+
+.cosmo-modal-header h4 {
+    color: var(--primary-color);
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cosmo-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 3px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.cosmo-modal-close:hover {
+    color: #fff;
+}
+
+.cosmo-modal-body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.cosmo-modal-ref {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.cosmo-modal-ref a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.cosmo-modal-ref a:hover {
+    text-decoration: underline;
+}
+
+.cosmo-modal-footer {
+    display: flex;
+    gap: 10px;
+    padding: 14px 24px 20px;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(197, 160, 89, 0.2);
+}
+
+.cosmo-modal-footer .at-btn {
+    margin-top: 0;
+    padding: 9px 18px;
+    font-size: 0.9rem;
+}
+
+.cosmo-reset-btn {
+    background: rgba(255, 255, 255, 0.07) !important;
+    color: var(--text-muted) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.cosmo-reset-btn:hover {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #fff !important;
+    box-shadow: none !important;
+}

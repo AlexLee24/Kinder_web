@@ -25,8 +25,15 @@
             <h3>
                 <svg class="section-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 Distance &amp; Magnitude Calculator
+                <button type="button" class="cosmo-settings-btn" onclick="openCosmoModal()" title="Cosmological parameters" style="margin-left:auto">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
             </h3>
             <p class="at-desc">Calculate distances and absolute magnitudes from redshift data</p>
+            <div class="cosmo-params-chip" onclick="openCosmoModal()">
+                <span id="cosmo-display-text">H₀ = 67.7 &nbsp;·&nbsp; Ω<sub>m</sub> = 0.309 &nbsp;·&nbsp; T<sub>CMB</sub> = 2.725 K</span>
+                <a href="https://ui.adsabs.harvard.edu/#abs/2020A%26A...641A...6P" target="_blank" rel="noopener" class="cosmo-chip-ref" onclick="event.stopPropagation()">[Planck 2018]</a>
+            </div>
             <div class="at-tool-grid">
                 <div class="at-col">
                     <div class="form-group">
@@ -175,6 +182,41 @@
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                     Open LC Plotter
                 </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cosmological Parameters Modal -->
+    <div id="cosmo-modal-overlay" class="cosmo-modal-overlay" onclick="closeCosmoModalIfOverlay(event)">
+        <div class="cosmo-modal">
+            <div class="cosmo-modal-header">
+                <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Cosmological Parameters
+                </h4>
+                <button type="button" class="cosmo-modal-close" onclick="closeCosmoModal()">&times;</button>
+            </div>
+            <div class="cosmo-modal-body">
+                <p class="cosmo-modal-ref">
+                    Default: <strong>Planck 2018</strong>
+                    (<a href="https://ui.adsabs.harvard.edu/#abs/2020A%26A...641A...6P" target="_blank" rel="noopener">Planck Collab. 2020, A&amp;A, 641, A6</a>)
+                </p>
+                <div class="form-group">
+                    <label for="cosmo-H0">H₀ &nbsp;<span style="color:var(--text-muted);font-size:0.85em">(km/s/Mpc)</span></label>
+                    <input type="number" step="any" id="cosmo-H0" value="67.7" min="1" max="200">
+                </div>
+                <div class="form-group">
+                    <label for="cosmo-Om0">Ω<sub>m</sub> &nbsp;<span style="color:var(--text-muted);font-size:0.85em">(matter density)</span></label>
+                    <input type="number" step="any" id="cosmo-Om0" value="0.309" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label for="cosmo-Tcmb0">T<sub>CMB</sub> &nbsp;<span style="color:var(--text-muted);font-size:0.85em">(K)</span></label>
+                    <input type="number" step="any" id="cosmo-Tcmb0" value="2.725" min="0">
+                </div>
+            </div>
+            <div class="cosmo-modal-footer">
+                <button type="button" class="at-btn cosmo-reset-btn" onclick="resetCosmoParams()">Reset to Planck 2018</button>
+                <button type="button" class="at-btn" onclick="applyCosmoParams()">Apply</button>
             </div>
         </div>
     </div>

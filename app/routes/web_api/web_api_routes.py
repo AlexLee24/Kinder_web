@@ -84,18 +84,10 @@ def _normalize_target_precision(target: dict) -> dict:
 # ===============================================================================
 @web_api_bp.route('/api/generate_key', methods=['POST'])
 def generate_key():
-    if 'user' not in session or session['user'].get('role') == 'guest':
-        return jsonify({'success': False, 'error': 'API keys are only available for authorized users.'}), 403
-
-    email = session['user']['email']
-    new_key = generate_api_key_for_user(email)
-    
-    if new_key:
-        session['user']['api_key'] = new_key
-        session.modified = True
-        return jsonify({'success': True, 'api_key': new_key})
-    else:
-        return jsonify({'success': False, 'error': 'Failed to generate API key.'}), 500
+    return jsonify({
+        'success': False,
+        'error': 'Self-service key generation is disabled. Please request a key from your profile page; an admin will issue it.'
+    }), 403
 
 @web_api_bp.route('/api/test', methods=['GET', 'POST'])
 def api_test():

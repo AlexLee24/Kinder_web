@@ -18,6 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# One-time schema migration: ensure api_key_requested_at column exists
+# ---------------------------------------------------------------------------
+
+def _ensure_api_key_request_col() -> None:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "ALTER TABLE auth.users "
+                "ADD COLUMN IF NOT EXISTS api_key_requested_at TIMESTAMPTZ"
+            )
+            conn.commit()
+    except Exception as e:
+        logger.warning("_ensure_api_key_request_col: %s", e)
+
+_ensure_api_key_request_col()
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -40,6 +59,10 @@ def _user_row_to_dict(row) -> dict:
         d['last_login'] = d['last_login'].isoformat()
     if d.get('join_date') and hasattr(d['join_date'], 'isoformat'):
         d['join_date'] = d['join_date'].isoformat()
+    if d.get('api_key_requested_at') and hasattr(d['api_key_requested_at'], 'isoformat'):
+        d['api_key_requested_at'] = d['api_key_requested_at'].isoformat()
+    d['has_api_key'] = bool(d.get('api_key'))
+    d['api_key_request_pending'] = bool(d.get('api_key_requested_at'))
     return d
 
 
@@ -58,7 +81,7 @@ def _group_row_to_dict(row) -> dict:
 
 _USER_SELECT = (
     "SELECT u.usr_id, u.email, u.name, u.picture_url, u.roles, "
-    "u.last_login, u.join_date, u.api_key "
+    "u.last_login, u.join_date, u.api_key, u.api_key_requested_at "
     "FROM auth.users u"
 )
 
@@ -191,13 +214,14 @@ def delete_user(email: str) -> bool:
 
 
 def generate_api_key_for_user(email: str) -> str | None:
+    """Admin action: generate (or replace) API key and clear any pending request."""
     alphabet = string.ascii_letters + string.digits
     api_key = ''.join(secrets.choice(alphabet) for _ in range(48))
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE auth.users SET api_key = %s WHERE email = %s",
+                "UPDATE auth.users SET api_key = %s, api_key_requested_at = NULL WHERE email = %s",
                 (api_key, email)
             )
             if cur.rowcount == 0:
@@ -207,6 +231,62 @@ def generate_api_key_for_user(email: str) -> str | None:
     except Exception as e:
         logger.error("generate_api_key: %s", e)
         return None
+
+
+def revoke_api_key(email: str) -> bool:
+    """Admin action: remove a user's API key and clear any pending request."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE auth.users SET api_key = NULL, api_key_requested_at = NULL WHERE email = %s",
+                (email,)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("revoke_api_key %s: %s", email, e)
+        return False
+
+
+def request_api_key(email: str) -> bool:
+    """User action: mark that this user is requesting a new or reset API key."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE auth.users SET api_key_requested_at = now() WHERE email = %s",
+                (email,)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("request_api_key %s: %s", email, e)
+        return False
+
+
+def get_api_key_requests() -> list[dict]:
+    """Return users with a pending API key request, ordered by request time."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT email, name, (api_key IS NOT NULL) AS has_key, api_key_requested_at "
+                "FROM auth.users WHERE api_key_requested_at IS NOT NULL "
+                "ORDER BY api_key_requested_at ASC"
+            )
+            out = []
+            for r in cur.fetchall():
+                d = dict(r)
+                if d.get('api_key_requested_at') and hasattr(d['api_key_requested_at'], 'isoformat'):
+                    d['api_key_requested_at'] = d['api_key_requested_at'].isoformat()
+                out.append(d)
+        return out
+    except Exception as e:
+        logger.error("get_api_key_requests: %s", e)
+        return []
 
 
 def get_user_by_api_key(api_key: str) -> dict | None:

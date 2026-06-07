@@ -368,35 +368,38 @@ function copyApiKey() {
     showNotification('API Key copied to clipboard!', 'success');
 }
 
-async function generateNewApiKey(event) {
-    if (!confirm('Are you sure? Any existing integrations using your old key will immediately stop working.')) return;
-    
+async function requestApiKey(event, isReset) {
+    const confirmMsg = isReset
+        ? 'Request a key reset? Your current key stays active until an admin issues a new one.'
+        : 'Submit a request for an API key? An admin will review it.';
+    if (!confirm(confirmMsg)) return;
+
     const btn = event.currentTarget;
     const ogText = btn.textContent;
-    btn.textContent = 'Generating...';
+    btn.textContent = 'Submitting…';
     btn.disabled = true;
-    
+
     try {
-        const response = await fetch('/api/generate_key', {
+        const response = await fetch('/api/profile/request_api_key', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
+            headers: {'Content-Type': 'application/json'}
         });
-        
         const data = await response.json();
         if (data.success) {
-            document.getElementById('apiKeyDisplay').value = data.api_key;
-            showNotification('New API Key generated successfully!', 'success');
-            btn.textContent = 'Regenerate API Key';
+            showNotification(data.message || 'Request submitted. An admin will review it.', 'success');
+            const _clockSvg = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+            btn.innerHTML = _clockSvg + (isReset ? ' Reset Requested' : ' Request Pending');
+            btn.style.display = 'inline-flex';
+            btn.style.alignItems = 'center';
+            btn.style.gap = '6px';
         } else {
-            showNotification('Error: ' + (data.error || 'Failed generating'), 'error');
+            showNotification('Error: ' + (data.error || 'Failed'), 'error');
             btn.textContent = ogText;
+            btn.disabled = false;
         }
     } catch (error) {
-        showNotification('An error occurred during generation', 'error');
+        showNotification('Network error', 'error');
         btn.textContent = ogText;
-    } finally {
         btn.disabled = false;
     }
 }

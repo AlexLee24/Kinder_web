@@ -23,7 +23,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
                 DB Status
             </a>
-            <a href="/greatlab/log" class="hub-link">
+            <a href="/admin/log" class="hub-link">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 Web Log
             </a>
@@ -46,6 +46,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 Users
                 <span class="tab-count">{{ users|length }}</span>
+                {% if api_key_requests %}<span class="tab-badge">{{ api_key_requests|length }}</span>{% endif %}
             </button>
             <button class="tab-button" onclick="showTab('groups')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
@@ -131,7 +132,7 @@
                         </div>
                         <p class="settings-desc">Browse real-time server logs with source and severity filters.</p>
                         <div class="settings-row">
-                            <a href="/greatlab/log" class="btn btn-primary">Open Web Log</a>
+                            <a href="/admin/log" class="btn btn-primary">Open Web Log</a>
                         </div>
                     </div>
                     <div class="settings-panel">
@@ -202,6 +203,30 @@
                     </div>
                 </div>
 
+                {% if api_key_requests %}
+                <div class="requests-banner" style="margin-bottom:18px">
+                    <div class="requests-banner-header">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                        {{ api_key_requests|length }} Pending API Key Request{{ 's' if api_key_requests|length != 1 else '' }}
+                    </div>
+                    {% for req in api_key_requests %}
+                    <div class="request-row" id="apikey-req-{{ loop.index0 }}">
+                        <div class="request-info">
+                            <span class="request-email">{{ req.name }} &lt;{{ req.email }}&gt;</span>
+                            <span class="group-badge" style="background:{% if req.has_key %}rgba(197,160,89,0.2){% else %}rgba(72,199,142,0.15){% endif %}">
+                                {{ 'Reset request' if req.has_key else 'New key request' }}
+                            </span>
+                            <span class="request-time">{{ req.api_key_requested_at[:16] if req.api_key_requested_at else '' }}</span>
+                        </div>
+                        <div class="request-actions">
+                            <button class="btn-approve" onclick="adminIssueApiKey('{{ req.email }}', this)">Assign Key</button>
+                            <button class="btn-reject"  onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">Dismiss</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 <div class="data-table-wrap">
                     <table class="data-table">
                         <thead>
@@ -210,6 +235,7 @@
                                 <th>Role</th>
                                 <th>Groups</th>
                                 <th>Joined</th>
+                                <th>API Key</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -243,6 +269,28 @@
                                     {% set active_date = user.invited_at or user.last_login %}
                                     {% if active_date %}{{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
                                     {% else %}—{% endif %}
+                                </td>
+                                <td>
+                                    <div class="row-actions" style="gap:6px;flex-wrap:wrap;">
+                                    {% if user.api_key_request_pending %}
+                                        <span class="role-pill" style="background:rgba(197,160,89,0.18);color:#c5a059;border:1px solid rgba(197,160,89,0.35);display:inline-flex;align-items:center;gap:4px;">
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                            Requested
+                                        </span>
+                                    {% elif user.has_api_key %}
+                                        <span class="role-pill" style="background:rgba(72,199,142,0.15);color:#48c78e;border:1px solid rgba(72,199,142,0.35);">Active</span>
+                                    {% else %}
+                                        <span class="cell-muted" style="font-size:0.8rem;">None</span>
+                                    {% endif %}
+                                    {% if email != session.user.email %}
+                                        <button class="btn btn-primary" style="padding:3px 10px;font-size:0.78rem;" onclick="adminIssueApiKey('{{ email }}', this)">
+                                            {{ 'Reset' if user.has_api_key else 'Assign' }}
+                                        </button>
+                                        {% if user.has_api_key %}
+                                        <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick="adminRevokeApiKey('{{ email }}', this)">Revoke</button>
+                                        {% endif %}
+                                    {% endif %}
+                                    </div>
                                 </td>
                                 <td>
                                     {% if email != session.user.email %}
@@ -584,11 +632,92 @@
     <script type="application/json" id="adminGroupsData">{{ groups.keys() | list | tojson }}</script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     <script>
-        // Override DOMContentLoaded default tab to 'overview'
         document.addEventListener('DOMContentLoaded', function() {
             const activeTab = sessionStorage.getItem('adminActiveTab') || 'overview';
             showTab(activeTab);
         });
+
+        async function adminIssueApiKey(email, btn) {
+            if (!confirm(`Assign / reset API key for ${email}?\nThe old key will be immediately invalidated.`)) return;
+            btn.disabled = true;
+            const origText = btn.textContent;
+            btn.textContent = '…';
+            try {
+                const r = await fetch('/admin/api-key/issue', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showAdminNotification(`API key assigned for ${email}`, 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminNotification(d.error || 'Failed', 'error');
+                    btn.disabled = false; btn.textContent = origText;
+                }
+            } catch(e) {
+                showAdminNotification('Network error', 'error');
+                btn.disabled = false; btn.textContent = origText;
+            }
+        }
+
+        async function adminRevokeApiKey(email, btn) {
+            if (!confirm(`Revoke API key for ${email}? This cannot be undone.`)) return;
+            btn.disabled = true;
+            try {
+                const r = await fetch('/admin/api-key/revoke', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showAdminNotification(`API key revoked for ${email}`, 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminNotification(d.error || 'Failed', 'error');
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                showAdminNotification('Network error', 'error');
+                btn.disabled = false;
+            }
+        }
+
+        async function adminDismissApiKeyRequest(email, btn) {
+            if (!confirm(`Dismiss the API key request from ${email} without issuing a key?`)) return;
+            btn.disabled = true;
+            try {
+                const r = await fetch('/admin/api-key/revoke', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showAdminNotification(`Request dismissed for ${email}`, 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminNotification(d.error || 'Failed', 'error');
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                showAdminNotification('Network error', 'error');
+                btn.disabled = false;
+            }
+        }
+
+        function showAdminNotification(msg, type) {
+            const n = document.createElement('div');
+            n.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;
+                padding:12px 20px;border-radius:8px;font-size:0.9rem;
+                background:${type==='success'?'rgba(72,199,142,0.9)':'rgba(255,100,100,0.9)'};
+                color:#fff;box-shadow:0 4px 20px rgba(0,0,0,0.3)`;
+            n.textContent = msg;
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 3000);
+        }
     </script>
 </body>
 </html>
