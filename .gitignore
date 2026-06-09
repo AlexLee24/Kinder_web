@@ -83,3 +83,4 @@ temp_work/
 migrate_kinder_web.py
 /.claude/
 app/modules/_spectral_lines_cache.json
+/app/routes/basic/gallery_uploads/

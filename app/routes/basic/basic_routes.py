@@ -105,7 +105,7 @@ def profile():
         new_pic = user_data.get('picture') or ''
         if new_pic and not new_pic.startswith('data:image'):
             session['user']['picture'] = new_pic
-        if session['user'].get('picture', '').startswith('data:image'):
+        if (session['user'].get('picture') or '').startswith('data:image'):
             session['user']['picture'] = ''
         session['user']['is_admin'] = user_data.get('is_admin', False)
         session['user']['is_great_lab_member'] = 'GREAT_Lab' in user_groups or session['user'].get('is_admin', False)

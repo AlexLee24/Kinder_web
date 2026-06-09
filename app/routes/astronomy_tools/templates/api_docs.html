@@ -17,8 +17,8 @@
         }
 
         .api-wrap {
-            width: 90%;
-            max-width: 1100px;
+            width: 92%;
+            max-width: 1600px;
             margin: 0 auto 80px;
         }
 
@@ -444,18 +444,20 @@
                 <table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default</th></tr></thead>
                     <tbody>
-                        <tr><td class="param-name">ra</td><td><span class="param-req req">required</span></td><td class="param-desc">Right Ascension — HMS (<code>hh:mm:ss.s</code>) or decimal degrees</td><td></td></tr>
-                        <tr><td class="param-name">dec</td><td><span class="param-req req">required</span></td><td class="param-desc">Declination — DMS (<code>±dd:mm:ss</code>) or decimal degrees</td><td></td></tr>
-                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Object name drawn on chart</td><td class="param-default">Target</td></tr>
+                        <tr><td class="param-name">obj_name</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Look up RA/Dec from database — accepts full name (<code>AT2025wny</code>) or year+letters (<code>2025wny</code>)</td><td></td></tr>
+                        <tr><td class="param-name">ra</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Right Ascension — HMS (<code>hh:mm:ss.s</code>) or decimal degrees</td><td></td></tr>
+                        <tr><td class="param-name">dec</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Declination — DMS (<code>±dd:mm:ss</code>) or decimal degrees</td><td></td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Custom display label on chart — defaults to DB full name when <code>obj_name</code> is used</td><td class="param-default">Target</td></tr>
                         <tr><td class="param-name">survey</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>DSS2 Red</code> · <code>DSS2 Blue</code> · <code>DSS2 IR</code> · <code>DESI-color</code> · <code>DESI-r</code> · <code>PS1-color</code> · <code>PS1-r</code> …</td><td class="param-default">DESI-color</td></tr>
                         <tr><td class="param-name">fov</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Field of view in arcmin</td><td class="param-default">10</td></tr>
                         <tr><td class="param-name">invert</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = white background (single-band surveys only)</td><td class="param-default">0</td></tr>
                         <tr><td colspan="4" style="padding: 8px 12px; background: rgba(197,160,89,0.08); font-weight: 600; color: var(--primary-color);">Star Annotation Controls</td></tr>
-                        <tr><td class="param-name">mag_limit</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Faintest star to annotate (magnitude) — controls which stars appear</td><td class="param-default">15</td></tr>
+                        <tr><td class="param-name">mag_limit</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Faintest star to annotate (magnitude)</td><td class="param-default">15</td></tr>
                         <tr><td class="param-name">show_mag</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show magnitude labels, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
                         <tr><td class="param-name">show_names</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show bright star names, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
                     </tbody>
                 </table>
+                <div class="api-note">* Provide <code>obj_name</code> <strong>or</strong> both <code>ra</code> + <code>dec</code>. &nbsp;|&nbsp; See all available surveys: <a href="/api/finding_chart/surveys" target="_blank" style="color:var(--primary-color)"><code>GET /api/finding_chart/surveys</code></a></div>
 
                 <div class="api-example-label">URL (basic with all star annotations)</div>
                 <div class="api-code" style="position:relative">/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&survey=DESI-color&fov=10&name=SN2025abc<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -504,9 +506,10 @@ open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCo
                     <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default (Lulin)</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">date</td><td><span class="param-req req">required</span></td><td class="param-desc">Observation date <code>YYYY-MM-DD</code></td><td></td></tr>
-                        <tr><td class="param-name">ra</td><td><span class="param-req req">required</span></td><td class="param-desc">Target RA — HMS (<code>hh:mm:ss</code>) or decimal °</td><td></td></tr>
-                        <tr><td class="param-name">dec</td><td><span class="param-req req">required</span></td><td class="param-desc">Target Dec — DMS (<code>±dd:mm:ss</code>) or decimal °</td><td></td></tr>
-                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Target label on plot</td><td class="param-default">Target</td></tr>
+                        <tr><td class="param-name">obj_name</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Look up RA/Dec from database — accepts full name (<code>AT2025wny</code>) or year+letters (<code>2025wny</code>)</td><td></td></tr>
+                        <tr><td class="param-name">ra</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Target RA — HMS (<code>hh:mm:ss</code>) or decimal °</td><td></td></tr>
+                        <tr><td class="param-name">dec</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Target Dec — DMS (<code>±dd:mm:ss</code>) or decimal °</td><td></td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Custom display label on plot — defaults to DB full name when <code>obj_name</code> is used</td><td class="param-default">Target</td></tr>
                         <tr><td colspan="4" style="padding: 8px 12px; background: rgba(72,199,142,0.08); font-weight: 600; color: #48c78e;">Observatory Location — Choose a preset or specify custom coordinates</td></tr>
                         <tr><td class="param-name">lon</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Longitude — DMS (<code>±dd:mm:ss</code>) or decimal °. East positive, West negative.</td><td class="param-default">120:52:21.5</td></tr>
                         <tr><td class="param-name">lat</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Latitude — DMS (<code>±dd:mm:ss</code>) or decimal °. North positive, South negative.</td><td class="param-default">23:28:10.0</td></tr>
@@ -514,6 +517,8 @@ open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCo
                         <tr><td class="param-name">tz</td><td><span class="param-req opt">optional</span></td><td class="param-desc">UTC offset (integer, −12 to +14). Negative for West, positive for East.</td><td class="param-default">8</td></tr>
                     </tbody>
                 </table>
+
+                <div class="api-note">* Provide <code>obj_name</code> <strong>or</strong> both <code>ra</code> + <code>dec</code>.</div>
 
                 <div class="api-note">
                     <strong>Observatory location presets (copy-paste the coordinates):</strong><br>
@@ -551,6 +556,103 @@ r = requests.get("https://kinder.astro.ncu.edu.tw/api/visibility/image", params=
 open("visibility.jpg", "wb").write(r.content)<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
 
                 <div class="api-note"><strong>Location format:</strong> Use DMS (<code>±dd:mm:ss</code>) or decimal degrees both work. East/North are positive, West/South are negative. &nbsp;|&nbsp; <strong>No presets?</strong> Find your location's lon/lat/tz and use the custom parameters.</div>
+            </div>
+        </div>
+
+
+        <!-- /api/objects/<name> -->
+        <div class="api-card">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/objects/<i style="opacity:.7">{name}</i></span>
+                <span class="api-card-desc">Object metadata (+ photometry &amp; spectra with key)</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">Returns object metadata (coordinates, redshift, type, discovery info, etc.) for anyone. Pass a valid <code>api_key</code> to also receive photometry and spectroscopy, filtered to only the sources your account has permission to access.</p>
+
+                <table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">{name}</td><td><span class="param-req req">path</span></td><td class="param-desc">Object name — full (<code>AT2025wny</code>, <code>SN2024abc</code>) or year+letters (<code>2025wny</code>)</td></tr>
+                        <tr><td class="param-name">api_key</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Your API key. When valid, adds <code>photometry</code> and <code>spectra</code> arrays to the response</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="api-note">
+                    <strong>Without key</strong> — returns <code>metadata</code> only (public fields).<br>
+                    <strong>With key</strong> — also returns <code>photometry[]</code> and <code>spectra[]</code>, each filtered to sources you have access to.
+                </div>
+
+                <div class="body-grid" style="margin-top:16px;">
+                    <div>
+                        <div class="api-example-label">Public (no key)</div>
+                        <div class="api-code" style="position:relative">/api/objects/2025wny<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                        <div class="api-example-label">With API key</div>
+                        <div class="api-code" style="position:relative">/api/objects/2025wny?api_key=YOUR_KEY<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                        <div class="api-example-label">Python</div>
+                        <div class="api-code" style="position:relative">import requests
+
+# Public (metadata only)
+r = requests.get("https://your-domain.com/api/objects/2025wny")
+
+# Authenticated (+ photometry + spectra)
+r = requests.get("https://your-domain.com/api/objects/2025wny",
+                 params={"api_key": "YOUR_KEY"})
+print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                    <div>
+                        <div class="api-example-label">Response (no key)</div>
+                        <div class="api-code">{
+  "success": true,
+  "name": "AT2025wny",
+  "metadata": {
+    "name":              "AT2025wny",
+    "name_prefix":       "AT",
+    "type":              "AT",
+    "ra_deg":            188.7366,
+    "dec_deg":           -23.7534,
+    "ra_hms":            "12:34:56.78",
+    "dec_dms":           "-23:45:12.3",
+    "discovery_date":    "2025-04-15",
+    "discovery_mag":     18.5,
+    "reporting_group":   "ZTF",
+    "redshift":          0.039,
+    "distance_mpc":      171.23,
+    "brightest_abs_mag": -18.52,
+    "internal_names":    "ZTF25abc",
+    "status":            "followup"
+  }
+}</div>
+
+                        <div class="api-example-label">Response (with key, extra fields)</div>
+                        <div class="api-code">{
+  "success": true,
+  "name": "AT2025wny",
+  "metadata": { ... },
+  "photometry": [
+    {
+      "mjd": 60750.5, "magnitude": 18.32,
+      "magnitude_error": 0.04,
+      "filter": "rp", "telescope": "SLT",
+      "is_upper_limit": false
+    }, ...
+  ],
+  "photometry_count": 42,
+  "spectra": [
+    {
+      "source": "LOT/SPRAT",
+      "mjd": 60752.0,
+      "label": "LOT/SPRAT @ MJD 60752.0"
+    }
+  ],
+  "spectra_count": 1,
+  "requested_by": "user@example.com"
+}</div>
+                    </div>
+                </div>
             </div>
         </div>
 

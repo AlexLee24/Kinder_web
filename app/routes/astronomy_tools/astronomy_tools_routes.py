@@ -1719,6 +1719,16 @@ _API_DOCS = {
             },
             'example': '/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&survey=DESI-color&fov=10',
         },
+        'GET /api/objects/<name>': {
+            'description': 'Object metadata. Add ?api_key= to also receive photometry and spectroscopy filtered by your access permissions.',
+            'auth': 'No key → metadata only (public). Valid api_key → + photometry + spectroscopy.',
+            'params': {
+                'name':    '(path) Object name: full (AT2025wny, SN2024abc) or year+letters (2025wny)',
+                'api_key': '(optional) Your API key — enables photometry and spectroscopy in the response',
+            },
+            'example': '/api/objects/2025wny',
+            'example_auth': '/api/objects/2025wny?api_key=YOUR_KEY',
+        },
         'GET /api/visibility/image': {
             'description': 'Nightly visibility (altitude vs time) plot returned as JPEG. Rate limit: 1 req/15s.',
             'params': {
@@ -1844,6 +1854,78 @@ def api_date():
         return jsonify({'error': str(e)}), 400
 
 
+_FINDING_CHART_SURVEYS = [
+    {'value': 'DSS2 Red',   'group': 'DSS', 'label': 'DSS2 Red'},
+    {'value': 'DSS2 Blue',  'group': 'DSS', 'label': 'DSS2 Blue'},
+    {'value': 'DSS2 IR',    'group': 'DSS', 'label': 'DSS2 IR'},
+    {'value': 'DSS',        'group': 'DSS', 'label': 'DSS1'},
+    {'value': 'DESI-color', 'group': 'DESI Legacy Survey DR10', 'label': 'DESI LS — Color (grz)', 'default': True},
+    {'value': 'DESI-g',     'group': 'DESI Legacy Survey DR10', 'label': 'DESI LS — g-band'},
+    {'value': 'DESI-r',     'group': 'DESI Legacy Survey DR10', 'label': 'DESI LS — r-band'},
+    {'value': 'DESI-z',     'group': 'DESI Legacy Survey DR10', 'label': 'DESI LS — z-band'},
+    {'value': 'DESI-i',     'group': 'DESI Legacy Survey DR10', 'label': 'DESI LS — i-band'},
+    {'value': 'PS1-color',  'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — Color (gri)'},
+    {'value': 'PS1-g',      'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — g-band'},
+    {'value': 'PS1-r',      'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — r-band'},
+    {'value': 'PS1-i',      'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — i-band'},
+    {'value': 'PS1-z',      'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — z-band'},
+    {'value': 'PS1-y',      'group': 'Pan-STARRS (PS1)',        'label': 'PS1 — y-band'},
+]
+
+
+@astronomy_tools_bp.route('/api/finding_chart/surveys', methods=['GET'])
+def api_finding_chart_surveys():
+    """Return the list of available image surveys for /api/finding_chart/image."""
+    return jsonify({
+        'success': True,
+        'default': 'DESI-color',
+        'surveys': _FINDING_CHART_SURVEYS,
+    })
+
+
+def _db_lookup_coords(obj_name: str):
+    """Look up an object by name in the transient DB.
+    Returns (ra_str, dec_str, full_name) or raises ValueError if not found."""
+    from modules.database import get_tns_db_connection, OBJECT_COMPAT_COLS
+    from modules.database.transient import search_tns_objects
+
+    conn = get_tns_db_connection()
+    cur  = conn.cursor()
+    row  = None
+    for q in [
+        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+    ]:
+        cur.execute(q, (obj_name,))
+        row = cur.fetchone()
+        if row:
+            cols = [d[0] for d in cur.description]
+            row  = dict(zip(cols, row))
+            break
+    conn.close()
+
+    if not row:
+        for r in search_tns_objects(search_term=obj_name, limit=20):
+            pref = (r.get('name_prefix') or '').strip()
+            nm   = (r.get('name') or '').strip()
+            if (pref + nm).lower() == obj_name.lower() or nm.lower() == obj_name.lower():
+                row = r
+                break
+
+    if not row:
+        raise ValueError(f'Object "{obj_name}" not found in database.')
+
+    ra  = row.get('ra')
+    dec = row.get('declination') or row.get('dec')
+    if ra is None or dec is None:
+        raise ValueError(f'Object "{obj_name}" has no coordinates in database.')
+
+    pref      = (row.get('name_prefix') or '').strip()
+    name_only = (row.get('name') or '').strip()
+    full      = (pref + name_only) if (pref or name_only) else obj_name
+    return str(ra), str(dec), full
+
+
 @astronomy_tools_bp.route('/api/finding_chart/image', methods=['GET'])
 def api_finding_chart_image():
     """Return a finding chart as a PNG image (Content-Type: image/png). Rate limit: 1/30s."""
@@ -1851,12 +1933,27 @@ def api_finding_chart_image():
     if not _rate_ok(ip, 'fc_image', interval=30.0):
         return Response('Rate limit exceeded — max 1 request per 30 seconds per IP.', 429, mimetype='text/plain')
 
-    ra_raw  = request.args.get('ra',  '').strip()
-    dec_raw = request.args.get('dec', '').strip()
-    if not ra_raw or not dec_raw:
-        return Response("Missing required parameters: ra, dec\nExample: /api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34", 400, mimetype='text/plain')
+    obj_name = request.args.get('obj_name', '').strip()
+    ra_raw   = request.args.get('ra',  '').strip()
+    dec_raw  = request.args.get('dec', '').strip()
 
-    name       = request.args.get('name', 'Target').strip() or 'Target'
+    # obj_name → look up RA/Dec from DB
+    db_full_name = None
+    if obj_name:
+        try:
+            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name)
+        except ValueError as e:
+            return Response(str(e), 404, mimetype='text/plain')
+
+    if not ra_raw or not dec_raw:
+        return Response(
+            "Provide ra+dec, or obj_name to look up coordinates from the database.\n"
+            "Example: /api/finding_chart/image?obj_name=2025wny\n"
+            "Example: /api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34",
+            400, mimetype='text/plain')
+
+    # name = display label on chart; defaults to db full name or obj_name, then 'Target'
+    name       = request.args.get('name', '').strip() or db_full_name or obj_name or 'Target'
     survey     = request.args.get('survey', 'DESI-color').strip()
     fov        = float(request.args.get('fov', 10))
     invert     = request.args.get('invert', '0') == '1'
@@ -1913,12 +2010,27 @@ def api_visibility_image():
         return Response('Rate limit exceeded — max 1 request per 15 seconds per IP.', 429, mimetype='text/plain')
 
     date_raw = request.args.get('date', '').strip()
+    obj_name = request.args.get('obj_name', '').strip()
     ra_raw   = request.args.get('ra',   '').strip()
     dec_raw  = request.args.get('dec',  '').strip()
-    if not date_raw or not ra_raw or not dec_raw:
-        return Response("Missing required parameters: date, ra, dec\nExample: /api/visibility/image?date=2026-06-07&ra=12:34:56&dec=-23:45:12", 400, mimetype='text/plain')
 
-    name    = request.args.get('name', 'Target').strip() or 'Target'
+    # obj_name → look up RA/Dec from DB
+    db_full_name = None
+    if obj_name:
+        try:
+            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name)
+        except ValueError as e:
+            return Response(str(e), 404, mimetype='text/plain')
+
+    if not date_raw:
+        return Response("Missing required parameter: date (YYYY-MM-DD)", 400, mimetype='text/plain')
+    if not ra_raw or not dec_raw:
+        return Response(
+            "Provide ra+dec, or obj_name to look up coordinates from the database.\n"
+            "Example: /api/visibility/image?date=2026-06-07&obj_name=2025wny",
+            400, mimetype='text/plain')
+
+    name    = request.args.get('name', '').strip() or db_full_name or obj_name or 'Target'
     lon_raw = request.args.get('lon', '120:52:21.5').strip()
     lat_raw = request.args.get('lat', '23:28:10.0').strip()
     alt_m   = float(request.args.get('alt', 2800))
@@ -1977,3 +2089,166 @@ def api_visibility_image():
     except Exception as e:
         traceback.print_exc()
         return Response(f'Error generating plot: {e}', 500, mimetype='text/plain')
+
+
+@astronomy_tools_bp.route('/api/objects/<path:object_name>', methods=['GET'])
+def api_public_object(object_name):
+    """Public object API.
+    No key  → metadata only (name, coords, redshift, type, etc.).
+    api_key → + photometry + spectroscopy filtered by caller's access permissions.
+    Rate limit: 1 req/s per IP.
+    """
+    ip = _client_ip()
+    if not _rate_ok(ip, 'obj_lookup'):
+        return jsonify({'error': 'Rate limit exceeded — max 1 request/second per IP.'}), 429
+
+    import urllib.parse as _urlparse
+    import math as _math
+
+    object_name = _urlparse.unquote(object_name).strip()
+
+    # Optional API key
+    api_key = request.args.get('api_key', '').strip()
+    auth_user = None
+    if api_key:
+        from modules.database.auth import get_user_by_api_key as _get_user
+        auth_user = _get_user(api_key)
+        if not auth_user:
+            return jsonify({'error': 'Invalid API key.'}), 401
+
+    def _san(v):
+        """Recursively sanitize NaN/Inf for JSON serialization."""
+        if isinstance(v, list):
+            return [_san(x) for x in v]
+        if isinstance(v, dict):
+            return {k: _san(w) for k, w in v.items()}
+        if isinstance(v, float) and not _math.isfinite(v):
+            return None
+        return v
+
+    def _build_meta(obj):
+        """Extract the most useful public fields from the raw DB row."""
+        prefix  = (obj.get('name_prefix') or '').strip()
+        name    = (obj.get('name') or '').strip()
+        full    = prefix + name if (prefix or name) else obj.get('full_name', '')
+        ra_deg  = obj.get('ra')
+        dec_deg = obj.get('declination') or obj.get('dec')
+        # HMS/DMS conversion (best-effort, no crash)
+        ra_hms, dec_dms = None, None
+        try:
+            from modules.coordinate_converter import (
+                convert_ra_decimal_to_hms, convert_dec_decimal_to_dms
+            )
+            if ra_deg is not None:
+                ra_hms  = convert_ra_decimal_to_hms(float(ra_deg)).get('ra_hms')
+            if dec_deg is not None:
+                dec_dms = convert_dec_decimal_to_dms(float(dec_deg)).get('dec_dms')
+        except Exception:
+            pass
+        redshift     = obj.get('redshift')
+        distance_mpc = obj.get('distance_mpc')
+        if distance_mpc is None and redshift is not None:
+            try:
+                dist_result  = calculate_redshift_distance(float(redshift))
+                distance_mpc = dist_result.get('distance_mpc')
+            except Exception:
+                pass
+
+        return {
+            'name':              full,
+            'name_prefix':       prefix or None,
+            'type':              obj.get('type') or obj.get('object_type'),
+            'ra_deg':            float(ra_deg)  if ra_deg  is not None else None,
+            'dec_deg':           float(dec_deg) if dec_deg is not None else None,
+            'ra_hms':            ra_hms,
+            'dec_dms':           dec_dms,
+            'discovery_date':    str(obj.get('discoverydate') or obj.get('discovery_date') or '')[:10] or None,
+            'discovery_mag':     obj.get('discoverymag') or obj.get('discovery_mag'),
+            'reporting_group':   obj.get('reporting_group') or obj.get('source_group'),
+            'redshift':          redshift,
+            'distance_mpc':      round(distance_mpc, 2) if distance_mpc is not None else None,
+            'brightest_abs_mag': obj.get('brightest_abs_mag'),
+            'internal_names':    obj.get('internal_names'),
+            'status':            obj.get('tag') or obj.get('status'),
+            'tags':              obj.get('tags'),
+        }
+
+    try:
+        from modules.database import get_tns_db_connection, OBJECT_COMPAT_COLS
+        from modules.database.transient import search_tns_objects
+
+        conn = get_tns_db_connection()
+        cur  = conn.cursor()
+        obj  = None
+        for q in [
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+        ]:
+            cur.execute(q, (object_name,))
+            row = cur.fetchone()
+            if row:
+                cols = [d[0] for d in cur.description]
+                obj  = dict(zip(cols, row))
+                break
+        conn.close()
+
+        if not obj:
+            for r in search_tns_objects(search_term=object_name, limit=50):
+                pref = (r.get('name_prefix') or '').strip()
+                nm   = (r.get('name') or '').strip()
+                if (pref + nm).lower() == object_name.lower() or nm.lower() == object_name.lower():
+                    obj = r
+                    break
+
+        if not obj:
+            return jsonify({'error': f'Object "{object_name}" not found.'}), 404
+
+        obj  = _san(obj)
+        meta = _san(_build_meta(obj))
+        full_name = meta['name'] or object_name
+
+        out = {
+            'success':  True,
+            'name':     full_name,
+            'metadata': meta,
+        }
+
+        if auth_user:
+            from modules.database.transient import TNSObjectDB
+            from modules.database.auth import filter_by_source_permissions
+
+            user_email  = auth_user.get('email')
+            user_groups = auth_user.get('groups', [])
+            is_admin    = auth_user.get('is_admin', False)
+
+            try:
+                phot = TNSObjectDB.get_photometry(full_name)
+                phot = _san(phot)
+                phot = filter_by_source_permissions(
+                    full_name, 'phot', phot,
+                    user_email=user_email, user_groups=user_groups, is_admin=is_admin,
+                )
+                out['photometry']       = phot
+                out['photometry_count'] = len(phot)
+            except Exception as pe:
+                out['photometry_error'] = str(pe)
+
+            try:
+                spectra = TNSObjectDB.get_spectrum_list(full_name)
+                spectra = _san(spectra)
+                spectra = filter_by_source_permissions(
+                    full_name, 'spec', spectra,
+                    user_email=user_email, user_groups=user_groups, is_admin=is_admin,
+                )
+                out['spectra']       = spectra
+                out['spectra_count'] = len(spectra)
+            except Exception as se:
+                out['spectra_error'] = str(se)
+
+            out['requested_by'] = user_email
+
+        return jsonify(out)
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

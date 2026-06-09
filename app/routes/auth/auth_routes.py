@@ -273,7 +273,7 @@ def update_profile():
                 session['user']['picture'] = picture
             
             # Failsafe: if a base64 string accidentally got stuck in the session, clear it
-            if session['user'].get('picture', '').startswith('data:image'):
+            if (session['user'].get('picture') or '').startswith('data:image'):
                 session['user']['picture'] = ''
             session.modified = True
             
