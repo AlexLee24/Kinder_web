@@ -291,11 +291,11 @@
                             {% set full_name = (obj.name_prefix or '') + obj.name %}
                             
                             {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank">
+                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank" rel="noopener noreferrer">
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" target="_blank">
+                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" target="_blank" rel="noopener noreferrer">
                                     {{ obj.name_prefix or '' }}{{ obj.name }}
                                 </a>
                             {% endif %}
@@ -394,16 +394,16 @@
                             {% set full_name = (obj.name_prefix or '') + obj.name %}
                             
                             {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank">
+                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
                                     View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% else %}
-                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
+                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
                                     View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% endif %}
                         {% else %}
-                            <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank">
+                            <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
                                 View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                             </a>
                         {% endif %}

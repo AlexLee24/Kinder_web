@@ -354,7 +354,7 @@ function loadTracker(force) {
             tracker.forEach(item => {
                 const amHtml = _formatAbsMag(item.abs_mag, item.separation_arcsec);
                 html += `<tr>
-                    <td><a href="/object/${item.name}" class="tracker-obj-link" target="_blank">${item.name}</a></td>
+                    <td><a href="/object/${item.name}" class="tracker-obj-link" target="_blank" rel="noopener noreferrer">${item.name}</a></td>
                     <td class="td-absmag">${amHtml}</td>
                     <td>${item.z != null ? item.z.toFixed(4) : '—'}</td>
                     <td class="td-catalog">${item.catalog_name}</td>

@@ -547,7 +547,7 @@ function generateTableView() {
         
         row.innerHTML = `
             <td class="object-name-cell">
-                <a href="${objectLink}" target="_blank">${obj.name}</a>${buildObjectTags(obj.tags, true)}
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer">${obj.name}</a>${buildObjectTags(obj.tags, true)}
             </td>
             <td class="class-cell">
                 <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
@@ -566,7 +566,7 @@ function generateTableView() {
                 </span>
             </td>
             <td class="actions-cell">
-                <a href="${objectLink}" target="_blank" class="action-btn view" title="View">View</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="action-btn view" title="View">View</a>
                 ${window.isAdmin ? `<button class="action-btn edit" onclick="editTags('${escapedName}')" title="Edit Tags">Edit</button>` : ''}
             </td>
         `;
@@ -605,7 +605,7 @@ function generateCompactView() {
         
         item.innerHTML = `
             <div class="compact-main">
-                <a href="${objectLink}" target="_blank" class="compact-name">${obj.name}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="compact-name">${obj.name}</a>
                 <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
                 <span class="compact-coords">${formattedRA}, ${formattedDec}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
@@ -661,7 +661,7 @@ function generateCardsView() {
         card.innerHTML = `
             <div class="card-header">
                 <div class="object-name">
-                    <a href="${objectLink}" target="_blank">
+                    <a href="${objectLink}" target="_blank" rel="noopener noreferrer">
                         ${obj.name}
                     </a>
                 </div>
@@ -718,7 +718,7 @@ function generateCardsView() {
                     ${obj.last_update ? obj.last_update.substring(0, 16) : 'No update'}
                 </div>
                 <div class="card-actions">
-                    <a href="${objectLink}" target="_blank" class="quick-action">
+                    <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="quick-action">
                         View${buildObjectTags(obj.tags, true)}
                     </a>
                 </div>
@@ -1522,7 +1522,7 @@ function renderPinnedObjects(objects) {
         li.innerHTML = `
             <div class="wi-row">
                 <span class="wi-rank">${index + 1}</span>
-                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
                 ${typeLabel}${epTags}
                 ${viewsMeta}
             </div>`;
@@ -1579,7 +1579,7 @@ function renderRecentComments(comments) {
         const epTags = buildObjectTags(c.tags, true);
         li.innerHTML = `
             <div class="wi-row">
-                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
                 ${typeLabel}${epTags}
                 <span class="wi-date">${d.toLocaleDateString()}</span>
             </div>
@@ -1642,7 +1642,7 @@ function renderRecentTnsUpdates(updates, isFallback) {
         li.className = `widget-item${u.is_classified ? ' tns-classified-item' : ''}${u.is_new_add ? ' tns-new-add-item' : ''}`;
         li.innerHTML = `
             <div class="wi-row">
-                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
                 ${typeLabel}${classifiedBadge}${newAddBadge}${buildObjectTags(u.tags, true)}
                 <span class="wi-date">${timeStr}</span>
             </div>
@@ -1671,7 +1671,7 @@ function renderTopViewed(targets) {
         li.innerHTML = `
             <div class="wi-row">
                 <span class="wi-rank">${index + 1}</span>
-                <a href="${objectLink}" target="_blank" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
                 ${typeLabel}${buildObjectTags(t.tags, true)}
                 <span class="wi-meta">
                     <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>

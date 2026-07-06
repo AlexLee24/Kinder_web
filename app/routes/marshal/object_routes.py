@@ -18,6 +18,7 @@ from modules.database.transient import (
     _phase_from_stored_value
 )
 from modules.database import get_db_connection, get_tns_db_connection, OBJECT_COMPAT_COLS
+from modules.request_validation import get_int_arg, get_float_arg, ParamOutOfRangeError
 from modules.database.auth import (
     get_all_groups, get_object_permissions, grant_object_permission,
     revoke_object_permission, check_object_access,
@@ -991,8 +992,8 @@ def download_photometry(year, letters):
 
     telescopes_param = request.args.get('telescopes', '')
     filters_param    = request.args.get('filters', '')
-    mjd_min          = request.args.get('mjd_min', type=float)
-    mjd_max          = request.args.get('mjd_max', type=float)
+    mjd_min          = get_float_arg('mjd_min')
+    mjd_max          = get_float_arg('mjd_max')
     include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
 
     sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
@@ -1340,8 +1341,8 @@ def download_photometry_generic(object_name):
 
     telescopes_param = request.args.get('telescopes', '')
     filters_param    = request.args.get('filters', '')
-    mjd_min          = request.args.get('mjd_min', type=float)
-    mjd_max          = request.args.get('mjd_max', type=float)
+    mjd_min          = get_float_arg('mjd_min')
+    mjd_max          = get_float_arg('mjd_max')
     include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
 
     sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
@@ -1920,9 +1921,9 @@ def ned_cone_search():
     Query params: ra, dec, radius_arcsec (default 60), object_name, force (0/1)
     """
     try:
-        ra     = float(request.args.get('ra', 0))
-        dec    = float(request.args.get('dec', 0))
-        radius = float(request.args.get('radius_arcsec', 60))
+        ra     = get_float_arg('ra', 0)
+        dec    = get_float_arg('dec', 0)
+        radius = get_float_arg('radius_arcsec', 60)
         object_name = request.args.get('object_name', '').strip()
         force       = request.args.get('force', '0').strip() not in ('0', 'false', '')
         current_host = _get_current_ned_host_name(object_name) if object_name else None
@@ -2118,6 +2119,8 @@ def ned_cone_search():
     except _requests.RequestException as e:
         logger.error("[NED] upstream request failed: %s", e)
         return jsonify({'success': False, 'error': f'NED request failed: {e}'}), 502
+    except ParamOutOfRangeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         logger.exception("[NED] cone search error")
         return jsonify({'success': False, 'error': str(e)}), 500

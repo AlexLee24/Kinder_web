@@ -26,6 +26,7 @@ import astropy.units as u
 from astroquery.vizier import Vizier
 
 from modules.astronomy_calculator import calculate_redshift_distance, calculate_absolute_magnitude
+from modules.request_validation import get_int_arg, get_float_arg, ParamOutOfRangeError
 from modules.date_converter import convert_mjd_to_date, convert_jd_to_date, convert_common_date_to_jd
 from modules.coordinate_converter import (
     convert_ra_hms_to_decimal, convert_ra_decimal_to_hms,
@@ -1768,13 +1769,13 @@ def api_distance():
         }), 400
 
     try:
-        z      = float(z_raw)
-        z_err  = float(request.args['z_err'])  if 'z_err'  in request.args else None
-        m      = float(request.args['m'])      if 'm'      in request.args else None
-        A      = float(request.args.get('A',     0))
-        H0     = float(request.args.get('H0',    67.7))
-        Om0    = float(request.args.get('Om0',   0.309))
-        Tcmb0  = float(request.args.get('Tcmb0', 2.725))
+        z      = get_float_arg('z')
+        z_err  = get_float_arg('z_err')
+        m      = get_float_arg('m')
+        A      = get_float_arg('A',     0)
+        H0     = get_float_arg('H0',    67.7)
+        Om0    = get_float_arg('Om0',   0.309)
+        Tcmb0  = get_float_arg('Tcmb0', 2.725)
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter value: {e}'}), 400
 
@@ -1955,10 +1956,10 @@ def api_finding_chart_image():
     # name = display label on chart; defaults to db full name or obj_name, then 'Target'
     name       = request.args.get('name', '').strip() or db_full_name or obj_name or 'Target'
     survey     = request.args.get('survey', 'DESI-color').strip()
-    fov        = float(request.args.get('fov', 10))
+    fov        = get_float_arg('fov', 10)
     invert     = request.args.get('invert', '0') == '1'
-    mag_limit  = float(request.args.get('mag_limit', 15))
-    name_limit = float(request.args.get('name_limit', 10))
+    mag_limit  = get_float_arg('mag_limit', 15)
+    name_limit = get_float_arg('name_limit', 10)
     show_mag   = request.args.get('show_mag',   '1') != '0'
     show_names = request.args.get('show_names', '1') != '0'
 
@@ -2033,8 +2034,8 @@ def api_visibility_image():
     name    = request.args.get('name', '').strip() or db_full_name or obj_name or 'Target'
     lon_raw = request.args.get('lon', '120:52:21.5').strip()
     lat_raw = request.args.get('lat', '23:28:10.0').strip()
-    alt_m   = float(request.args.get('alt', 2800))
-    tz_off  = int(request.args.get('tz', 8))
+    alt_m   = get_float_arg('alt', 2800)
+    tz_off  = get_int_arg('tz', 8)
 
     try:
         date_clean = date_raw.replace('-', '').replace('/', '')

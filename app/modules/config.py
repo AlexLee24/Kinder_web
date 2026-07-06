@@ -10,7 +10,11 @@ class Config:
     DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
     HOST = os.getenv('HOST', '127.0.0.1')
     PORT = int(os.getenv('PORT', '5000'))
-    
+
+    # Public base URL used to build absolute links (e.g. OAuth redirect_uri).
+    # Must NOT be derived from the request's Host header (host header injection).
+    APP_BASE_URL = os.getenv('APP_BASE_URL', f'http://{HOST}:{PORT}')
+
     # Flask settings
     SECRET_KEY = os.getenv('SECRET_KEY', 'your-very-secure-secret-key')
     

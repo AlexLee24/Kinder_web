@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from modules.database.auth import get_users, user_exists, get_groups, get_page_groups, set_page_groups
+from modules.request_validation import get_int_arg, get_float_arg, ParamOutOfRangeError
 
 
 
@@ -1859,8 +1860,8 @@ def api_get_observation_logs():
     
     try:
         if request.method == 'GET':
-            year = request.args.get('year', type=int)
-            month = request.args.get('month', type=int)
+            year = get_int_arg('year')
+            month = get_int_arg('month')
             if not year or not month:
                 return jsonify({'success': False, 'error': 'Year and month are required'}), 400
                 
@@ -1934,6 +1935,8 @@ def api_get_observation_logs():
                 return jsonify({'success': True})
             else:
                 return jsonify({'success': False, 'error': 'Failed to save log'}), 500
+    except ParamOutOfRangeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

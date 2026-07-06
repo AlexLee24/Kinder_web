@@ -654,7 +654,7 @@ function buildWidgetHTML(target, info) {
     return `
         <article class="ep-widget-main">
             <div class="ep-widget-title-row">
-                <a href="${objectLink}" class="ep-widget-title-link" target="_blank">${escapeHtml(target.target_name)}</a>
+                <a href="${objectLink}" class="ep-widget-title-link" target="_blank" rel="noopener noreferrer">${escapeHtml(target.target_name)}</a>
                 <div class="ep-widget-title-actions">
                     <button type="button" class="ep-btn ep-widget-done-btn ${isDone ? 'is-done' : ''}" data-action="toggle-done" data-target-key="${escapeHtml(target.target_key)}">${doneLabel}</button>
                     <button type="button" class="ep-btn ep-widget-discuss-btn ${isDiscuss ? 'is-discuss' : ''}" data-action="toggle-discuss" data-target-key="${escapeHtml(target.target_key)}">${discussLabel}</button>

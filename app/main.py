@@ -1,7 +1,7 @@
 # ===============================================================================
 # IMPORTS AND CONFIGURATION
 # ===============================================================================
-from flask import Flask, send_from_directory, abort, request, g, session
+from flask import Flask, send_from_directory, abort, request, g, session, jsonify
 from dotenv import load_dotenv
 import os
 import sys
@@ -25,11 +25,30 @@ setup_logging(os.path.join(current_dir, 'log'))
 # Import modules
 from modules.config import config
 from modules.database import init_connection_pool, check_db_connection
+from modules.request_validation import ParamOutOfRangeError
 
 # Create Flask app
 app = Flask(__name__, template_folder='html', static_folder=None)
 app.secret_key = config.SECRET_KEY
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so only
+# enforce it outside of DEBUG (production sits behind an HTTPS-terminating proxy).
+app.config['SESSION_COOKIE_SECURE'] = not config.DEBUG
+
+from urllib.parse import urlparse
+
+_ALLOWED_HOST = urlparse(config.APP_BASE_URL).netloc
+
+
+@app.before_request
+def _enforce_allowed_host():
+    # Reject requests whose Host header doesn't match the configured public
+    # domain (e.g. direct-IP access) — the Host header is attacker-controlled
+    # and must not be trusted for routing/redirect decisions.
+    if request.host != _ALLOWED_HOST:
+        abort(404)
 
 # Check database connection on startup
 try:
@@ -117,6 +136,43 @@ _ACCESS_LOG_ENABLED = os.getenv('ACCESS_LOG_ENABLED', '0').strip().lower() in {'
 @app.before_request
 def _mark_request_start():
     g._req_start_monotonic = time.monotonic()
+
+
+def _contains_pipe(value):
+    if isinstance(value, str):
+        return '|' in value
+    if isinstance(value, dict):
+        return any(_contains_pipe(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_pipe(v) for v in value)
+    return False
+
+
+@app.before_request
+def _block_pipe_in_api_params():
+    if not request.path.startswith('/api/'):
+        return None
+
+    if any('|' in v for v in request.args.values()):
+        return jsonify({'error': "Invalid character '|' is not allowed"}), 400
+
+    if any('|' in v for v in request.form.values()):
+        return jsonify({'error': "Invalid character '|' is not allowed"}), 400
+
+    if request.is_json:
+        try:
+            body = request.get_json(silent=True)
+        except Exception:
+            body = None
+        if _contains_pipe(body):
+            return jsonify({'error': "Invalid character '|' is not allowed"}), 400
+
+    return None
+
+
+@app.errorhandler(ParamOutOfRangeError)
+def _handle_param_out_of_range(exc):
+    return jsonify({'error': str(exc)}), 400
 
 
 @app.after_request

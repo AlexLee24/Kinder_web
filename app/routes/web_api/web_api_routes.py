@@ -18,6 +18,7 @@ from modules.database.transient import (
     get_object_pin_status, toggle_object_pin
 )
 from modules.database import get_db_connection, get_tns_db_connection, OBJECT_COMPAT_COLS
+from modules.request_validation import get_int_arg, get_float_arg, ParamOutOfRangeError
 from modules.database.auth import (
     generate_api_key_for_user, get_user_by_api_key
 )
@@ -292,8 +293,8 @@ def api_v1_observation_logs():
 
     try:
         if request.method == 'GET':
-            year = request.args.get('year', type=int)
-            month = request.args.get('month', type=int)
+            year = get_int_arg('year')
+            month = get_int_arg('month')
             date_str = request.args.get('date', type=str)
             
             # If a specific date is requested, ignore year/month
@@ -409,6 +410,8 @@ def api_v1_observation_logs():
                 else:
                     return jsonify({'success': False, 'error': 'Failed to save log'}), 500
 
+    except ParamOutOfRangeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -927,35 +930,28 @@ def fetch_photometry(object_name):
 
 @web_api_bp.route('/api/objects')
 def api_get_objects():
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    page = get_int_arg('page', 1, min_val=1)
+    per_page = get_int_arg('per_page', 50, min_val=1, max_val=500)
     sort_by = request.args.get('sort_by', 'discoverydate')
     sort_order = request.args.get('sort_order', 'desc')
     search = request.args.get('search', '')
     classification = request.args.get('classification', '')
     tag = request.args.get('tag', '')
-    
+
     # Handle optional parameters that might be empty strings
     date_from = request.args.get('date_from', '')
     date_from = date_from if date_from else None
-    
+
     date_to = request.args.get('date_to', '')
     date_to = date_to if date_to else None
-    
-    app_mag_min = request.args.get('app_mag_min', '')
-    app_mag_min = float(app_mag_min) if app_mag_min else None
-    
-    app_mag_max = request.args.get('app_mag_max', '')
-    app_mag_max = float(app_mag_max) if app_mag_max else None
-    
-    redshift_min = request.args.get('redshift_min', '')
-    redshift_min = float(redshift_min) if redshift_min else None
-    
-    redshift_max = request.args.get('redshift_max', '')
-    redshift_max = float(redshift_max) if redshift_max else None
-    
+
+    app_mag_min = get_float_arg('app_mag_min')
+    app_mag_max = get_float_arg('app_mag_max')
+    redshift_min = get_float_arg('redshift_min')
+    redshift_max = get_float_arg('redshift_max')
+
     discoverer = request.args.get('discoverer', '')
-    
+
     try:
         objects = search_tns_objects(
             search_term=search, 

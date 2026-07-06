@@ -23,7 +23,8 @@ google = oauth.register(
     client_secret=config.GOOGLE_CLIENT_SECRET,
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={
-        'scope': 'openid email profile'
+        'scope': 'openid email profile',
+        'code_challenge_method': 'S256'
     }
 )
 
@@ -87,7 +88,9 @@ def update_user_session_groups(user_email):
 
 @auth_bp.route('/auth/google')
 def google_login():
-    redirect_uri = url_for('auth.google_callback', _external=True)
+    # Build the callback URL from the configured base URL rather than the
+    # request's Host header, which is attacker-controlled (host header injection).
+    redirect_uri = config.APP_BASE_URL.rstrip('/') + url_for('auth.google_callback')
     return google.authorize_redirect(redirect_uri)
 
 @auth_bp.route('/auth/google/callback')
