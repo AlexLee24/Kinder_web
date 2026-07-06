@@ -4870,7 +4870,7 @@ function initializeAladin() {
                 aladinInstance.addCatalog(cat);
 
                 // Notify parent that setup is done
-                window.parent.postMessage({type: 'aladinReady'}, '*');
+                window.parent.postMessage({type: 'aladinReady'}, window.location.origin);
             });
         };
 
@@ -4941,7 +4941,7 @@ function changeSurvey() {
             iframe.contentWindow.postMessage({
                 type: 'changeSurvey',
                 survey: currentSurvey
-            }, '*');
+            }, window.location.origin);
         } else if (aladinInstance) {
             // Fallback if iframe approach fails
             aladinInstance.setImageSurvey(currentSurvey);
@@ -5788,7 +5788,7 @@ function changeNEDSurvey() {
     if (!sel) return;
     const iframe = document.getElementById('ned-aladin-iframe');
     if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, '*');
+        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, window.location.origin);
     }
 }
 
@@ -5981,12 +5981,12 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
                 document.querySelectorAll('#nedResultBody tr').forEach(r => r.style.background = '');
                 tr.style.background = 'rgba(0,245,212,0.1)';
                 const iframe = document.getElementById('ned-aladin-iframe');
-                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, '*');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, window.location.origin);
             });
             tr.addEventListener('mouseleave', () => {
                 tr.style.background = '';
                 const iframe = document.getElementById('ned-aladin-iframe');
-                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, '*');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, window.location.origin);
             });
             tbody.appendChild(tr);
         });
@@ -6066,14 +6066,14 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     // Register hover events
     al.on('objectHovered', function(obj) {
       if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
-        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, '*');
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, window.location.origin);
     });
     al.on('objectHoveredStop', function() {
-      window.parent.postMessage({type:'nedHover', idx:-1}, '*');
+      window.parent.postMessage({type:'nedHover', idx:-1}, window.location.origin);
     });
 
     // Signal parent that Aladin is ready
-    window.parent.postMessage({type:'nedAladinReady'}, '*');
+    window.parent.postMessage({type:'nedAladinReady'}, window.location.origin);
   });
 
   window.addEventListener('message', function(e) {
@@ -6116,7 +6116,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
             // Send sources now that Aladin is fully initialized
             const iframeEl = document.getElementById('ned-aladin-iframe');
             if (iframeEl && iframeEl.contentWindow) {
-                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, '*');
+                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, window.location.origin);
             }
         }
     };

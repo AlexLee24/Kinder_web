@@ -1615,7 +1615,7 @@ function epChangeNEDSurvey() {
     _epNedSurvey = sel.value;
     const iframe = document.getElementById('ep-ned-aladin-iframe');
     if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, '*');
+        iframe.contentWindow.postMessage({type: 'changeSurvey', survey: sel.value}, window.location.origin);
     }
 }
 
@@ -1842,12 +1842,12 @@ async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
                 tbody.querySelectorAll('tr').forEach(r => r.style.background = '');
                 tr.style.background = 'rgba(0,245,212,0.1)';
                 const iframe = document.getElementById('ep-ned-aladin-iframe');
-                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, '*');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, window.location.origin);
             });
             tr.addEventListener('mouseleave', () => {
                 tr.style.background = '';
                 const iframe = document.getElementById('ep-ned-aladin-iframe');
-                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, '*');
+                if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: -1}, window.location.origin);
             });
             tbody.appendChild(tr);
         });
@@ -1921,12 +1921,12 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
     al.addCatalog(tCat);
     al.on('objectHovered', function(obj) {
       if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
-        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, '*');
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, window.location.origin);
     });
     al.on('objectHoveredStop', function() {
-      window.parent.postMessage({type:'nedHover', idx:-1}, '*');
+      window.parent.postMessage({type:'nedHover', idx:-1}, window.location.origin);
     });
-    window.parent.postMessage({type:'nedAladinReady'}, '*');
+    window.parent.postMessage({type:'nedAladinReady'}, window.location.origin);
   });
   window.addEventListener('message', function(e) {
     if (!e.data || !al) return;
@@ -1966,7 +1966,7 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
             if (loading) loading.style.display = 'none';
             const iframeEl = document.getElementById('ep-ned-aladin-iframe');
             if (iframeEl && iframeEl.contentWindow) {
-                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, '*');
+                iframeEl.contentWindow.postMessage({type: 'addNEDSources', sources: sources}, window.location.origin);
             }
         }
     };
