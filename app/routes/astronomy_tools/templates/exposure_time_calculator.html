@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Exposure Time Calculator - Kinder</title>
     <meta name="description" content="CASTOR-powered optical exposure time calculator for Lulin Observatory instruments">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
     <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/exposure_time_calculator.css') }}">
     {% include '_favicon.html' %}
@@ -125,10 +122,23 @@
                         </p>
                     </div>
 
-                    <input type="hidden" name="target.sed.type" value="flat">
+                    <h4>Spectral Energy Distribution (SED)</h4>
+                    <ul>
+                        <li>
+                            <label for="sed-type">SED Model</label>
+                            <select id="sed-type" name="target.sed.type">
+                                <option value="flat">Flat Spectrum</option>
+                                <option value="Temp">Blackbody (Temp)</option>
+                            </select>
+                        </li>
+                        <li id="group-temperature" class="dynamic-group" hidden>
+                            <label>Blackbody Temperature (K)</label>
+                            <input type="number" name="target.sed.temperature_k" value="5800" step="any" min="0">
+                        </li>
+                    </ul>
 
                     <h4>Astrometry Coordinates</h4>
-                    <p class="etc-hint">Decimal degrees (J2000) &mdash; used to compute real airmass and moonlight automatically.</p>
+                    <p class="etc-hint">Must be in Decimal Degrees (J2000).</p>
                     <ul>
                         <li>
                             <label>Right Ascension (RA, 0&ndash;360 deg)</label>
@@ -221,11 +231,26 @@
                             <input type="number" name="options.target_snr" value="10.0" step="any" min="0.001">
                         </p>
                     </div>
+
+                    <hr>
+
+                    <p>
+                        <label class="etc-checkbox-row">
+                            <input type="checkbox" id="toggle-array-mode">
+                            Enable Batch Array Mode (Time-Series Simulation)
+                        </label>
+                    </p>
                 </section>
 
                 <div class="stepper-actions">
-                    <button type="button" id="btn-prev" class="btn-secondary" hidden>&larr; Back</button>
-                    <button type="button" id="btn-next" class="btn-primary">Next Step &rarr;</button>
+                    <button type="button" id="btn-prev" class="btn-secondary" hidden>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                        Back
+                    </button>
+                    <button type="button" id="btn-next" class="btn-primary">
+                        Next Step
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
                     <button type="submit" id="btn-submit" class="btn-submit" hidden>Run Simulation</button>
                 </div>
                 <div id="etc-form-error" class="etc-error" hidden></div>
@@ -237,13 +262,18 @@
             <h2>5. Results Dashboard</h2>
 
             <div id="results-placeholder" class="placeholder-box">
-                <span class="icon">&#128301;</span>
+                <span class="icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5 3 17.5l3.5 2L14 5"/><path d="M14 5l7 4-2 3.5-7-4"/><circle cx="6" cy="19.5" r="1.5"/><path d="M11 10l2 1.2"/></svg>
+                </span>
                 <p>Awaiting calculation&hellip;</p>
             </div>
 
             <div id="results-container" hidden>
                 <div id="alert-container" class="alert-box" hidden>
-                    <strong>&#9888; Observation Warnings</strong>
+                    <strong>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Observation Warnings
+                    </strong>
                     <ul id="warning-list"></ul>
                 </div>
 
@@ -308,6 +338,8 @@
                         <div class="metric-value"><span id="res-sat-time">&mdash;</span> <span class="unit">sec</span></div>
                     </div>
                 </div>
+
+                <div id="plot-area" class="plot-container" hidden></div>
             </div>
         </section>
     </div>

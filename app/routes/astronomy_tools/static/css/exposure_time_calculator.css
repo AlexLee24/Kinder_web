@@ -3,6 +3,17 @@
  * (section, input, button[type=submit], ul/li, ...) don't leak onto the shared
  * navbar / site chrome that shares this page. */
 
+@font-face {
+    font-family: 'Inter';
+    src: url('../fonts/Inter_24pt-Regular.ttf') format('truetype');
+    font-weight: 400;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('../fonts/Inter_24pt-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+}
+
 :root {
     --etc-primary: var(--kw-accent, #C5A059);
     --etc-bg-dark: #0a0a12;
@@ -124,6 +135,16 @@ body {
     outline: none;
     border-color: var(--etc-border-focus);
     box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.2);
+}
+
+.etc-page select:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.etc-page select.preset-error {
+    border-color: rgba(255, 107, 107, 0.4);
+    color: #ff9b9b;
 }
 
 .etc-page button[type="submit"] {
@@ -254,7 +275,7 @@ body {
     border: 1px dashed var(--etc-border);
     border-radius: 12px;
 }
-.placeholder-box .icon { font-size: 2.5rem; display: block; margin-bottom: 10px; opacity: 0.5; }
+.placeholder-box .icon { display: block; margin: 0 auto 10px; opacity: 0.5; width: 40px; }
 
 .alert-box {
     background: rgba(239, 68, 68, 0.1);
@@ -265,7 +286,31 @@ body {
     margin-bottom: 25px;
     font-size: 0.9rem;
 }
+.alert-box strong { display: flex; align-items: center; gap: 6px; }
 .alert-box ul { margin: 10px 0 0 20px !important; list-style: disc !important; }
+
+.etc-page label.etc-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--etc-text-main);
+    font-size: 0.9rem;
+}
+.etc-checkbox-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--etc-primary);
+}
+
+.plot-container {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--etc-border);
+    border-radius: 12px;
+    padding: 10px;
+    margin-top: 10px;
+    min-height: 320px;
+}
 
 .result-hero-card {
     background: linear-gradient(145deg, rgba(197, 160, 89, 0.08) 0%, rgba(0, 0, 0, 0.4) 100%);

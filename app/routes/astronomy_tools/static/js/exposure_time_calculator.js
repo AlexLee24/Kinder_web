@@ -20,16 +20,33 @@ class UIController {
     async loadPresets() {
         try {
             const response = await fetch(PRESETS_URL);
-            if (!response.ok) throw new Error('Failed to load hardware presets');
+            if (!response.ok) throw new Error('HTTP ' + response.status);
             this.presets = await response.json();
 
             this.populateSelect('telescope-template', this.presets.telescopes, 'telescopes');
             this.populateSelect('camera-template', this.presets.cameras, 'cameras');
             this.populateSelect('filter-template', this.presets.filters, 'filters');
         } catch (error) {
-            console.error(error);
-            console.warn('Preset load failed — backend may not be running, or presets.json is missing.');
+            console.error('Preset load failed:', error);
+            this.showPresetLoadError();
         }
+    }
+
+    // Presets are a convenience, not a requirement — every field already carries a
+    // sensible default value, so on failure we just surface a clear message and
+    // reveal the editable fields instead of leaving the dropdown stuck on "Loading…".
+    showPresetLoadError() {
+        ['telescope-template', 'camera-template', 'filter-template'].forEach((id) => {
+            const select = document.getElementById(id);
+            select.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = 'CUSTOM';
+            opt.textContent = 'Presets unavailable — using defaults below';
+            select.appendChild(opt);
+            select.disabled = true;
+            select.classList.add('preset-error');
+            this.toggleCustomDetails(select);
+        });
     }
 
     populateSelect(elementId, presetCategory, categoryName) {
@@ -72,11 +89,13 @@ class UIController {
         });
 
         document.getElementById('target-brightness-type').addEventListener('change', (e) => this.toggleBrightnessUI(e.target.value));
+        document.getElementById('sed-type').addEventListener('change', (e) => this.toggleSedUI(e.target.value));
         document.getElementById('calc-mode-type').addEventListener('change', (e) => this.toggleCalcStrategyUI(e.target.value));
     }
 
     initUI() {
         this.toggleBrightnessUI(document.getElementById('target-brightness-type').value);
+        this.toggleSedUI(document.getElementById('sed-type').value);
         this.toggleCalcStrategyUI(document.getElementById('calc-mode-type').value);
     }
 
@@ -111,6 +130,10 @@ class UIController {
         document.getElementById('group-target-mag').hidden = !['vega_mag', 'ab_mag'].includes(type);
         document.getElementById('group-zero-point-flux').hidden = (type !== 'vega_mag');
         document.getElementById('group-flux-value').hidden = !['jansky_flux', 'wavelength_flux'].includes(type);
+    }
+
+    toggleSedUI(type) {
+        document.getElementById('group-temperature').hidden = (type !== 'Temp');
     }
 
     toggleCalcStrategyUI(type) {
@@ -206,11 +229,12 @@ class CastorAPI {
 // 4. Result Renderer
 // ==========================================
 class ResultRenderer {
-    static render(data) {
+    static render(data, isArrayMode) {
         document.getElementById('results-placeholder').hidden = true;
         document.getElementById('results-container').hidden = false;
 
         this._renderWarnings(data.flags.warnings, data.flags.is_saturated);
+        document.getElementById('plot-area').hidden = !isArrayMode;
 
         document.getElementById('res-source-rate').textContent = this._fmt(data.budget.source_count_rate, 3);
         document.getElementById('res-sky-rate').textContent = this._fmt(data.budget.sky_count_rate, 4);
@@ -387,7 +411,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const payload = PayloadBuilder.build();
             const resultData = await CastorAPI.calculate(payload);
-            ResultRenderer.render(resultData);
+            const isArrayMode = document.getElementById('toggle-array-mode').checked;
+            ResultRenderer.render(resultData, isArrayMode);
         } catch (error) {
             showFormError(error.message);
         } finally {
