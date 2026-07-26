@@ -1,0 +1,194 @@
+/* Exposure Time Calculator (CASTOR) — page-specific layout on top of astronomy_tools.css */
+
+.etc-layout {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 30px;
+    width: 90%;
+    max-width: 90%;
+    margin: 0 auto 60px;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .etc-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.etc-form {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.etc-results {
+    position: sticky;
+    top: 100px;
+}
+
+.etc-field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+@media (max-width: 600px) {
+    .etc-field-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Collapsible sub-sections (native details/summary) */
+.etc-details {
+    margin-top: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0 15px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.etc-details[open] {
+    padding-bottom: 15px;
+}
+
+.etc-details summary {
+    cursor: pointer;
+    padding: 12px 0;
+    font-weight: 500;
+    color: var(--primary-color);
+    list-style: none;
+}
+
+.etc-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.etc-details summary::before {
+    content: '▸';
+    display: inline-block;
+    margin-right: 8px;
+    transition: transform 0.2s ease;
+}
+
+.etc-details[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.etc-error {
+    margin-top: 12px;
+    padding: 12px 15px;
+    border-radius: 8px;
+    background: rgba(255, 107, 107, 0.12);
+    border: 1px solid rgba(255, 107, 107, 0.4);
+    color: #ff9b9b;
+    font-size: 0.9rem;
+}
+
+/* ── Results panel ── */
+.etc-results-panel {
+    max-height: calc(100vh - 130px);
+    overflow-y: auto;
+}
+
+.etc-warnings {
+    background: rgba(255, 190, 60, 0.1);
+    border: 1px solid rgba(255, 190, 60, 0.4);
+    border-radius: 8px;
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    color: #ffd27a;
+    font-size: 0.9rem;
+}
+
+.etc-warnings strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #ffcf66;
+}
+
+.etc-warnings ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.etc-hero {
+    text-align: center;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 25px 15px;
+    margin-bottom: 20px;
+}
+
+.etc-hero-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.etc-hero-value {
+    color: var(--primary-color);
+    font-size: 2.4rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.etc-hero-desc {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 8px;
+}
+
+.etc-section-label {
+    margin: 20px 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--primary-color);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.etc-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.etc-metrics-grid-1 {
+    grid-template-columns: 1fr;
+}
+
+.etc-metric-card {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.etc-metric-card-warn {
+    border-left-color: #ff9b9b;
+}
+
+.etc-metric-label {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-bottom: 4px;
+}
+
+.etc-metric-value {
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+.etc-metric-value .etc-unit {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.8rem;
+}
+
