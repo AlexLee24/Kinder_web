@@ -17,6 +17,9 @@ load_dotenv(os.path.join(current_dir, '..', 'kinder.env'))
 # Setup path
 sys.path.append(os.path.join(current_dir, "modules"))
 sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
+# CASTOR (Exposure Time Calculator engine) is a git clone of a separate repo, not vendored code —
+# update it with `git -C app/modules/CASTOR pull`. See app/modules/CASTOR/README.md.
+sys.path.append(os.path.join(current_dir, "modules", "CASTOR", "src"))
 
 # Setup daily log file BEFORE other imports so all output is captured
 from modules.log_setup import setup_logging
