@@ -1,82 +1,177 @@
-/* Exposure Time Calculator (CASTOR) — page-specific layout on top of astronomy_tools.css */
+/* Exposure Time Calculator (CASTOR) — ported from CASTOR's own src/castorGUI/frontend
+ * (glassmorphism stepper UI), scoped under .etc-page so bare element selectors
+ * (section, input, button[type=submit], ul/li, ...) don't leak onto the shared
+ * navbar / site chrome that shares this page. */
 
-.etc-layout {
+:root {
+    --etc-primary: var(--kw-accent, #C5A059);
+    --etc-bg-dark: #0a0a12;
+    --etc-panel-bg: rgba(20, 20, 30, 0.6);
+    --etc-card-bg: rgba(255, 255, 255, 0.03);
+    --etc-border: rgba(255, 255, 255, 0.1);
+    --etc-border-focus: rgba(197, 160, 89, 0.5);
+    --etc-text-main: #f3f4f6;
+    --etc-text-muted: #9ca3af;
+    --etc-danger: #ef4444;
+}
+
+html { background-color: #000; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: radial-gradient(circle at top right, #1a1a2e, var(--etc-bg-dark), #000);
+    background-attachment: fixed;
+    color: var(--etc-text-main);
+    margin: 0;
+    min-height: 100vh;
+}
+
+/* ── Page grid (was on <body> in the original desktop GUI; moved to a wrapper
+   so it coexists with the site's fixed navbar) ── */
+.etc-page {
+    box-sizing: border-box;
+    padding: 40px 20px;
+    padding-top: 160px;
     display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: 30px;
-    width: 90%;
-    max-width: 90%;
-    margin: 0 auto 60px;
-    align-items: start;
+    max-width: 1400px;
+    margin: 0 auto;
+    gap: 40px;
+    grid-template-columns: 1fr 1.2fr;
+    grid-template-areas:
+        "header header"
+        "main results";
 }
 
-@media (max-width: 1024px) {
-    .etc-layout {
-        grid-template-columns: 1fr;
-    }
+.etc-header {
+    grid-area: header;
+    text-align: center;
+    margin-bottom: 20px;
 }
+.etc-header h1 { font-weight: 300; color: var(--etc-primary); margin: 0 0 10px; letter-spacing: 2px; }
+.etc-header p { color: var(--etc-text-muted); font-style: italic; margin: 0; }
 
-.etc-form {
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-}
+.etc-main { grid-area: main; }
 
-.etc-results {
+#castor-form { display: flex; flex-direction: column; gap: 25px; }
+
+.etc-page #section-results {
+    grid-area: results;
     position: sticky;
-    top: 100px;
+    top: 90px;
+    align-self: start;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
 }
 
-.etc-field-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 15px;
+.etc-page hr { display: none; }
+
+/* ── Cards ── */
+.etc-page section {
+    background: var(--etc-panel-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--etc-border);
+    border-radius: 16px;
+    padding: 25px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
-@media (max-width: 600px) {
-    .etc-field-grid {
-        grid-template-columns: 1fr;
-    }
+.etc-page section h2 {
+    font-size: 1.2rem;
+    color: #fff;
+    margin: 0 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--etc-border);
 }
 
-/* Collapsible sub-sections (native details/summary) */
-.etc-details {
-    margin-top: 15px;
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 0 15px;
-    background: rgba(0, 0, 0, 0.15);
+.etc-page h4 {
+    color: var(--etc-primary);
+    font-size: 0.95rem;
+    margin: 20px 0 12px;
 }
 
-.etc-details[open] {
-    padding-bottom: 15px;
+/* ── Forms ── */
+.etc-page p, .etc-page ul { margin: 0 0 15px; padding: 0; list-style: none; }
+.etc-page li { margin-bottom: 12px; }
+
+.etc-page .inline-group { display: flex; align-items: center; gap: 8px; margin-bottom: 15px; }
+.etc-page .inline-group input { flex: 1; min-width: 0; }
+.etc-page .inline-group label { margin: 0; white-space: nowrap; }
+
+.etc-page label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--etc-text-muted);
+    margin-bottom: 6px;
 }
 
-.etc-details summary {
+.etc-page input[type="number"],
+.etc-page input[type="text"],
+.etc-page input[type="datetime-local"],
+.etc-page select {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--etc-border);
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+
+.etc-page input:focus, .etc-page select:focus {
+    outline: none;
+    border-color: var(--etc-border-focus);
+    box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.2);
+}
+
+.etc-page button[type="submit"] {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--etc-primary), #8e7340);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
     cursor: pointer;
-    padding: 12px 0;
-    font-weight: 500;
-    color: var(--primary-color);
-    list-style: none;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.etc-page button[type="submit"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(197, 160, 89, 0.4);
 }
 
-.etc-details summary::-webkit-details-marker {
-    display: none;
+/* ── Custom hardware detail blocks ── */
+.custom-details {
+    background: var(--etc-card-bg);
+    border: 1px solid var(--etc-border);
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 10px;
+}
+.custom-details.hidden-detail { display: none; }
+.custom-details h4 {
+    margin: 0 0 12px;
+    color: var(--etc-primary);
+    font-size: 0.95rem;
+    border-bottom: 1px dashed var(--etc-border);
+    padding-bottom: 8px;
 }
 
-.etc-details summary::before {
-    content: '▸';
-    display: inline-block;
-    margin-right: 8px;
-    transition: transform 0.2s ease;
-}
+.dynamic-group[hidden] { display: none; }
 
-.etc-details[open] summary::before {
-    transform: rotate(90deg);
+.etc-hint {
+    color: var(--etc-text-muted);
+    font-size: 0.8rem;
+    font-style: italic;
 }
 
 .etc-error {
-    margin-top: 12px;
+    margin-top: 15px;
     padding: 12px 15px;
     border-radius: 8px;
     background: rgba(255, 107, 107, 0.12);
@@ -85,110 +180,137 @@
     font-size: 0.9rem;
 }
 
-/* ── Results panel ── */
-.etc-results-panel {
-    max-height: calc(100vh - 130px);
-    overflow-y: auto;
+/* ── Stepper ── */
+.etc-page .stepper-indicator {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 30px;
+    position: relative;
+    padding: 0 10px;
 }
-
-.etc-warnings {
-    background: rgba(255, 190, 60, 0.1);
-    border: 1px solid rgba(255, 190, 60, 0.4);
-    border-radius: 8px;
-    padding: 12px 15px;
-    margin-bottom: 20px;
-    color: #ffd27a;
-    font-size: 0.9rem;
+.etc-page .stepper-indicator::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--etc-border);
+    z-index: 1;
+    transform: translateY(-50%);
 }
-
-.etc-warnings strong {
-    display: block;
-    margin-bottom: 6px;
-    color: #ffcf66;
-}
-
-.etc-warnings ul {
-    margin: 0;
-    padding-left: 18px;
-}
-
-.etc-hero {
-    text-align: center;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    padding: 25px 15px;
-    margin-bottom: 20px;
-}
-
-.etc-hero-label {
-    color: var(--text-muted);
+.etc-page .stepper-indicator .step {
+    position: relative;
+    z-index: 2;
+    background: var(--etc-bg-dark);
+    padding: 8px 16px;
+    border-radius: 20px;
     font-size: 0.85rem;
+    color: var(--etc-text-muted);
+    border: 2px solid var(--etc-border);
+    transition: all 0.3s ease;
+}
+.etc-page .stepper-indicator .step.active {
+    color: #fff;
+    border-color: var(--etc-primary);
+    background: rgba(197, 160, 89, 0.2);
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.4);
+}
+.etc-page .stepper-indicator .step.completed {
+    color: var(--etc-primary);
+    border-color: var(--etc-primary);
+    background: var(--etc-bg-dark);
+}
+
+.etc-page .stepper-actions { display: flex; justify-content: space-between; margin-top: 20px; gap: 15px; }
+.etc-page .stepper-actions button {
+    flex: 1;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    border: none;
 }
 
-.etc-hero-value {
-    color: var(--primary-color);
-    font-size: 2.4rem;
-    font-weight: 600;
-    line-height: 1.2;
-}
+.etc-page .btn-secondary { background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid var(--etc-border); }
+.etc-page .btn-secondary:hover { background: rgba(255, 255, 255, 0.1); }
 
-.etc-hero-desc {
-    color: var(--text-muted);
+.etc-page .btn-primary { background: rgba(197, 160, 89, 0.2); color: var(--etc-primary); border: 1px solid var(--etc-primary); }
+.etc-page .btn-primary:hover { background: var(--etc-primary); color: #fff; box-shadow: 0 4px 15px rgba(197, 160, 89, 0.3); }
+
+.etc-page .btn-submit { background: linear-gradient(135deg, var(--etc-primary), #8e7340); color: #fff; border: none; }
+.etc-page .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(197, 160, 89, 0.4); }
+
+/* ── Results ── */
+.placeholder-box {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--etc-text-muted);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px dashed var(--etc-border);
+    border-radius: 12px;
+}
+.placeholder-box .icon { font-size: 2.5rem; display: block; margin-bottom: 10px; opacity: 0.5; }
+
+.alert-box {
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 4px solid var(--etc-danger);
+    color: #fca5a5;
+    padding: 15px 20px;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 25px;
     font-size: 0.9rem;
-    margin-top: 8px;
 }
+.alert-box ul { margin: 10px 0 0 20px !important; list-style: disc !important; }
+
+.result-hero-card {
+    background: linear-gradient(145deg, rgba(197, 160, 89, 0.08) 0%, rgba(0, 0, 0, 0.4) 100%);
+    border: 1px solid rgba(197, 160, 89, 0.3);
+    border-radius: 12px;
+    padding: 30px 20px;
+    text-align: center;
+    margin-bottom: 25px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+.result-hero-card h3 { color: var(--etc-text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 10px; }
+.hero-value { font-size: 3rem; font-weight: 700; color: var(--etc-primary); text-shadow: 0 0 20px rgba(197, 160, 89, 0.3); margin-bottom: 5px; }
+.hero-desc { color: var(--etc-text-muted); font-size: 0.9rem; }
 
 .etc-section-label {
     margin: 20px 0 10px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--primary-color);
+    border-bottom: 1px solid var(--etc-border);
+    color: var(--etc-primary);
     font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-.etc-metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    margin-bottom: 20px;
+.metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px; }
+.metrics-grid-1 { grid-template-columns: 1fr; }
+.metric-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--etc-border);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    transition: transform 0.2s ease, border-color 0.2s ease;
 }
+.metric-card:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.2); }
+.metric-card-warn { border-color: rgba(255, 107, 107, 0.3); }
+.metric-label { font-size: 0.75rem; color: var(--etc-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.metric-value { font-size: 1.3rem; font-weight: 600; color: #fff; }
+.metric-value .unit { font-size: 0.8rem; font-weight: 400; color: #888; }
 
-.etc-metrics-grid-1 {
-    grid-template-columns: 1fr;
+@media (max-width: 960px) {
+    .etc-page {
+        grid-template-columns: 1fr;
+        grid-template-areas: "header" "main" "results";
+        padding-top: 130px;
+    }
+    .etc-page #section-results { position: static; }
 }
-
-.etc-metric-card {
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 10px;
-    padding: 12px 14px;
-    border-left: 3px solid var(--primary-color);
-}
-
-.etc-metric-card-warn {
-    border-left-color: #ff9b9b;
-}
-
-.etc-metric-label {
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    margin-bottom: 4px;
-}
-
-.etc-metric-value {
-    color: #fff;
-    font-weight: 600;
-    font-size: 1.05rem;
-}
-
-.etc-metric-value .etc-unit {
-    color: var(--text-muted);
-    font-weight: 400;
-    font-size: 0.8rem;
-}
-

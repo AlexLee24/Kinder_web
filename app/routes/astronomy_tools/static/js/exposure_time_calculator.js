@@ -1,220 +1,397 @@
-/* Exposure Time Calculator (CASTOR engine) — form wiring, API call, results rendering.
- * Form inputs are named with dotted paths matching CASTOR's ObservationRequest schema
- * exactly (e.g. name="instrument.telescope.primary_mirror_diameter"), so the payload
- * is built generically by walking the form — no per-field mapping code to keep in sync. */
-(function () {
-    'use strict';
+/* Exposure Time Calculator (CASTOR engine) — ported from CASTOR's own
+ * src/castorGUI/frontend/js/script.js, adapted to call this site's routes.
+ * Form inputs are named with dotted paths matching CASTOR's ObservationRequest
+ * schema exactly (e.g. name="instrument.telescope.primary_mirror_diameter"),
+ * so the payload is built generically by walking the form. */
 
-    var API_URL = '/api/exposure_time_calculator';
-    var PRESETS_URL = '/api/exposure_time_calculator/presets';
+var API_URL = '/api/exposure_time_calculator';
+var PRESETS_URL = '/api/exposure_time_calculator/presets';
 
-    function $(id) { return document.getElementById(id); }
-
-    // ── Generic dotted-path payload builder ─────────────────────────
-    function setNestedValue(obj, pathParts, value) {
-        var current = obj;
-        for (var i = 0; i < pathParts.length - 1; i++) {
-            var part = pathParts[i];
-            if (!current[part]) current[part] = {};
-            current = current[part];
-        }
-        current[pathParts[pathParts.length - 1]] = value;
+// ==========================================
+// 1. UI State Controller
+// ==========================================
+class UIController {
+    constructor() {
+        this.presets = null;
+        this.bindEvents();
+        this.initUI();
     }
 
-    function parseFieldValue(el) {
+    async loadPresets() {
+        try {
+            const response = await fetch(PRESETS_URL);
+            if (!response.ok) throw new Error('Failed to load hardware presets');
+            this.presets = await response.json();
+
+            this.populateSelect('telescope-template', this.presets.telescopes, 'telescopes');
+            this.populateSelect('camera-template', this.presets.cameras, 'cameras');
+            this.populateSelect('filter-template', this.presets.filters, 'filters');
+        } catch (error) {
+            console.error(error);
+            console.warn('Preset load failed — backend may not be running, or presets.json is missing.');
+        }
+    }
+
+    populateSelect(elementId, presetCategory, categoryName) {
+        const select = document.getElementById(elementId);
+        select.innerHTML = '';
+
+        for (const key in presetCategory) {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = key.replace(/_/g, ' ');
+            select.appendChild(option);
+        }
+
+        const customOption = document.createElement('option');
+        customOption.value = 'CUSTOM';
+        customOption.textContent = 'Custom Parameters';
+        select.appendChild(customOption);
+
+        if (Object.keys(presetCategory).length > 0) {
+            const firstKey = Object.keys(presetCategory)[0];
+            select.value = firstKey;
+            this.applyPreset(categoryName, firstKey);
+        }
+
+        this.toggleCustomDetails(select);
+    }
+
+    bindEvents() {
+        document.getElementById('telescope-template').addEventListener('change', (e) => {
+            this.applyPreset('telescopes', e.target.value);
+            this.toggleCustomDetails(e.target);
+        });
+        document.getElementById('camera-template').addEventListener('change', (e) => {
+            this.applyPreset('cameras', e.target.value);
+            this.toggleCustomDetails(e.target);
+        });
+        document.getElementById('filter-template').addEventListener('change', (e) => {
+            this.applyPreset('filters', e.target.value);
+            this.toggleCustomDetails(e.target);
+        });
+
+        document.getElementById('target-brightness-type').addEventListener('change', (e) => this.toggleBrightnessUI(e.target.value));
+        document.getElementById('calc-mode-type').addEventListener('change', (e) => this.toggleCalcStrategyUI(e.target.value));
+    }
+
+    initUI() {
+        this.toggleBrightnessUI(document.getElementById('target-brightness-type').value);
+        this.toggleCalcStrategyUI(document.getElementById('calc-mode-type').value);
+    }
+
+    applyPreset(category, templateName) {
+        if (templateName === 'CUSTOM') return;
+        if (!this.presets || !this.presets[category]) return;
+
+        const presetData = this.presets[category][templateName];
+        if (!presetData) return;
+
+        for (const [inputName, value] of Object.entries(presetData)) {
+            const inputElement = document.querySelector(`input[name="${inputName}"]`);
+            if (inputElement && value !== null) {
+                inputElement.value = value;
+                inputElement.style.transition = 'background-color 0.3s';
+                inputElement.style.backgroundColor = 'rgba(197, 160, 89, 0.3)';
+                setTimeout(() => inputElement.style.backgroundColor = '', 400);
+            }
+        }
+    }
+
+    toggleCustomDetails(selectElement) {
+        const customDetailsDiv = selectElement.closest('.instrument-group').querySelector('.custom-details');
+        if (selectElement.value === 'CUSTOM') {
+            customDetailsDiv.classList.remove('hidden-detail');
+        } else {
+            customDetailsDiv.classList.add('hidden-detail');
+        }
+    }
+
+    toggleBrightnessUI(type) {
+        document.getElementById('group-target-mag').hidden = !['vega_mag', 'ab_mag'].includes(type);
+        document.getElementById('group-zero-point-flux').hidden = (type !== 'vega_mag');
+        document.getElementById('group-flux-value').hidden = !['jansky_flux', 'wavelength_flux'].includes(type);
+    }
+
+    toggleCalcStrategyUI(type) {
+        document.getElementById('group-solve-snr').hidden = (type !== 'solve_snr');
+        document.getElementById('group-solve-time').hidden = (type !== 'solve_time');
+    }
+
+    setLoadingState(isLoading) {
+        const btn = document.getElementById('btn-submit');
+        if (isLoading) {
+            btn.disabled = true;
+            btn.textContent = 'Calculating...';
+            btn.style.opacity = '0.7';
+            btn.style.cursor = 'not-allowed';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Run Simulation';
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        }
+    }
+}
+
+// ==========================================
+// 2. Payload Builder — generic dotted-path walker
+// ==========================================
+class PayloadBuilder {
+    static build() {
+        const payload = {};
+        const formElements = document.getElementById('castor-form').elements;
+
+        for (let el of formElements) {
+            if (!el.name) continue;
+
+            // Skip fields belonging to a currently-hidden dynamic group (e.g. the
+            // brightness-type field not selected, or the calc-mode not selected).
+            if (el.closest('.dynamic-group[hidden]')) continue;
+
+            const value = this._parseValue(el);
+            if (value === null || value === '') continue;
+
+            this._setNestedValue(payload, el.name.split('.'), value);
+        }
+
+        // Convert the local wall-clock datetime-local input to standard UTC ISO 8601.
+        if (payload.environment && payload.environment.observing_time_utc) {
+            const localTimeString = payload.environment.observing_time_utc;
+            const dateObj = new Date(localTimeString);
+            payload.environment.observing_time_utc = dateObj.toISOString();
+        }
+
+        return payload;
+    }
+
+    static _parseValue(el) {
         if (el.type === 'number') {
             return el.value === '' ? null : parseFloat(el.value);
-        }
-        if (el.type === 'datetime-local') {
-            return el.value === '' ? null : new Date(el.value).toISOString();
         }
         return el.value;
     }
 
-    function buildRequest() {
-        var payload = {};
-        var elements = $('etc-form').elements;
-        for (var i = 0; i < elements.length; i++) {
-            var el = elements[i];
-            if (!el.name) continue;
-            // Skip fields belonging to a currently-hidden dynamic group (e.g. the
-            // brightness-type field not selected, or the calc-mode not selected).
-            if (el.closest('.etc-dyn[hidden]')) continue;
-
-            var value = parseFieldValue(el);
-            if (value === null || value === '') continue;
-
-            setNestedValue(payload, el.name.split('.'), value);
+    static _setNestedValue(obj, pathArray, value) {
+        let current = obj;
+        for (let i = 0; i < pathArray.length - 1; i++) {
+            const part = pathArray[i];
+            if (!current[part]) current[part] = {};
+            current = current[part];
         }
-        return payload;
+        current[pathArray[pathArray.length - 1]] = value;
     }
+}
 
-    // ── Hardware presets ─────────────────────────────────────────────
-    function applyPreset(presetData) {
-        Object.keys(presetData).forEach(function (dottedName) {
-            var el = document.querySelector('[name="' + dottedName + '"]');
-            if (el) el.value = presetData[dottedName];
+// ==========================================
+// 3. API Client
+// ==========================================
+class CastorAPI {
+    static async calculate(payload) {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
-    }
 
-    function populatePresetSelect(selectEl, presetCategory) {
-        selectEl.innerHTML = '';
-        Object.keys(presetCategory).forEach(function (key) {
-            var opt = document.createElement('option');
-            opt.value = key;
-            opt.textContent = key.replace(/_/g, ' ');
-            selectEl.appendChild(opt);
-        });
-        var firstKey = Object.keys(presetCategory)[0];
-        if (firstKey) {
-            selectEl.value = firstKey;
-            applyPreset(presetCategory[firstKey]);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Calculation failed');
         }
+        return data;
+    }
+}
+
+// ==========================================
+// 4. Result Renderer
+// ==========================================
+class ResultRenderer {
+    static render(data) {
+        document.getElementById('results-placeholder').hidden = true;
+        document.getElementById('results-container').hidden = false;
+
+        this._renderWarnings(data.flags.warnings, data.flags.is_saturated);
+
+        document.getElementById('res-source-rate').textContent = this._fmt(data.budget.source_count_rate, 3);
+        document.getElementById('res-sky-rate').textContent = this._fmt(data.budget.sky_count_rate, 4);
+        document.getElementById('res-peak-rate').textContent = this._fmt(data.budget.peak_pixel_rate, 4);
+        document.getElementById('res-single-snr').textContent = this._fmt(data.core.single_snr, 2);
+
+        document.getElementById('res-total-fwhm').textContent = this._fmt(data.diagnostics.total_fwhm, 2);
+        document.getElementById('res-pixel-scale').textContent = this._fmt(data.diagnostics.pixel_scale, 3);
+        document.getElementById('res-eff-area').textContent = this._fmt(data.diagnostics.effective_area, 3);
+        document.getElementById('res-throughput').textContent = this._fmt(data.diagnostics.total_throughput * 100, 1);
+        document.getElementById('res-enclosed-flux').textContent = this._fmt(data.diagnostics.enclosed_flux_fraction * 100, 1);
+        document.getElementById('res-num-pixels').textContent = this._fmt(data.diagnostics.num_pixels_aperture, 1);
+
+        document.getElementById('res-sat-time').textContent = this._fmt(data.core.saturation_time_limit, 2);
+
+        this._renderPrimary(data);
     }
 
-    function loadPresets() {
-        fetch(PRESETS_URL).then(function (res) {
-            if (!res.ok) throw new Error('Failed to load presets');
-            return res.json();
-        }).then(function (presets) {
-            populatePresetSelect($('preset-telescope'), presets.telescopes || {});
-            populatePresetSelect($('preset-camera'), presets.cameras || {});
-            populatePresetSelect($('preset-filter'), presets.filters || {});
-
-            $('preset-telescope').addEventListener('change', function (e) {
-                applyPreset(presets.telescopes[e.target.value]);
-            });
-            $('preset-camera').addEventListener('change', function (e) {
-                applyPreset(presets.cameras[e.target.value]);
-            });
-            $('preset-filter').addEventListener('change', function (e) {
-                applyPreset(presets.filters[e.target.value]);
-            });
-        }).catch(function (err) {
-            console.warn('Preset load failed:', err);
-        });
-    }
-
-    // ── Progressive-disclosure toggles ──────────────────────────────
-    function toggleBrightnessUI(type) {
-        $('grp-target-mag').hidden = !['vega_mag', 'ab_mag'].includes(type);
-        $('grp-zero-point').hidden = (type !== 'vega_mag');
-        $('grp-flux-value').hidden = !['jansky_flux', 'wavelength_flux'].includes(type);
-    }
-    $('f-tgt-bright-type').addEventListener('change', function (e) { toggleBrightnessUI(e.target.value); });
-    toggleBrightnessUI($('f-tgt-bright-type').value);
-
-    function toggleCalcModeUI(type) {
-        $('grp-num-exposures').hidden = (type !== 'solve_snr');
-        $('grp-target-snr').hidden = (type !== 'solve_time');
-    }
-    $('f-opt-mode').addEventListener('change', function (e) { toggleCalcModeUI(e.target.value); });
-    toggleCalcModeUI($('f-opt-mode').value);
-
-    // ── Results rendering ────────────────────────────────────────────
-    function fmt(v, digits) {
+    static _fmt(v, digits) {
         if (v === null || v === undefined || isNaN(v)) return '--';
         return Number(v).toLocaleString(undefined, { maximumFractionDigits: digits === undefined ? 3 : digits });
     }
 
-    function escapeHtml(s) {
-        var d = document.createElement('div');
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    function renderResults(data) {
-        $('etc-placeholder').hidden = true;
-        $('etc-results-body').hidden = false;
-
-        var warnBox = $('etc-warnings');
-        var warnings = (data.flags.warnings || []).slice();
-        if (data.flags.is_saturated) {
-            warnings.unshift('Warning: single exposure time exceeds the saturation limit (full well capacity reached).');
-        }
-        if (warnings.length) {
-            warnBox.hidden = false;
-            warnBox.innerHTML = '<strong>Observation Warnings</strong><ul>' +
-                warnings.map(function (w) { return '<li>' + escapeHtml(w) + '</li>'; }).join('') +
-                '</ul>';
-        } else {
-            warnBox.hidden = true;
-            warnBox.innerHTML = '';
-        }
+    static _renderPrimary(data) {
+        const labelEl = document.getElementById('primary-result-label');
+        const valueEl = document.getElementById('primary-result-value');
+        const descEl = document.getElementById('primary-result-desc');
 
         if (data.core.required_exposures === null || data.core.required_exposures === undefined) {
-            $('etc-hero-label').textContent = 'Signal-to-Noise Ratio';
-            $('etc-hero-value').textContent = fmt(data.core.total_snr, 2);
-            $('etc-hero-desc').textContent = 'Calculated from the given number of exposures.';
+            labelEl.textContent = 'Signal-to-Noise Ratio (SNR)';
+            valueEl.textContent = this._fmt(data.core.total_snr, 2);
+            descEl.textContent = 'Calculated from the given number of exposures.';
         } else {
-            $('etc-hero-label').textContent = 'Required Exposures';
-            $('etc-hero-value').textContent = data.core.required_exposures + ' frames';
-            $('etc-hero-desc').textContent = 'Total SNR achieved: ' + fmt(data.core.total_snr, 2);
+            labelEl.textContent = 'Required Exposures';
+            valueEl.textContent = `${data.core.required_exposures} frames`;
+            descEl.textContent = `Total SNR achieved: ${this._fmt(data.core.total_snr, 2)}`;
+        }
+    }
+
+    static _renderWarnings(warnings, isSaturated) {
+        const alertContainer = document.getElementById('alert-container');
+        const warningList = document.getElementById('warning-list');
+        warningList.innerHTML = '';
+
+        let hasWarning = false;
+
+        if (isSaturated) {
+            hasWarning = true;
+            const li = document.createElement('li');
+            li.textContent = 'Warning: single exposure time exceeds the saturation limit (full well capacity reached).';
+            warningList.appendChild(li);
         }
 
-        $('res-source-rate').textContent = fmt(data.budget.source_count_rate, 3);
-        $('res-sky-rate').textContent = fmt(data.budget.sky_count_rate, 4);
-        $('res-peak-rate').textContent = fmt(data.budget.peak_pixel_rate, 4);
-        $('res-single-snr').textContent = fmt(data.core.single_snr, 2);
+        if (warnings && warnings.length > 0) {
+            hasWarning = true;
+            warnings.forEach(w => {
+                const li = document.createElement('li');
+                li.textContent = w;
+                warningList.appendChild(li);
+            });
+        }
 
-        $('res-total-fwhm').textContent = fmt(data.diagnostics.total_fwhm, 2);
-        $('res-pixel-scale').textContent = fmt(data.diagnostics.pixel_scale, 3);
-        $('res-eff-area').textContent = fmt(data.diagnostics.effective_area, 3);
-        $('res-throughput').textContent = fmt(data.diagnostics.total_throughput * 100, 1);
-        $('res-enclosed-flux').textContent = fmt(data.diagnostics.enclosed_flux_fraction * 100, 1);
-        $('res-num-pixels').textContent = fmt(data.diagnostics.num_pixels_aperture, 1);
+        alertContainer.hidden = !hasWarning;
+    }
+}
 
-        $('res-sat-time').textContent = fmt(data.core.saturation_time_limit, 2);
+// ==========================================
+// 5. Stepper Controller
+// ==========================================
+class StepperController {
+    constructor() {
+        this.currentStep = 0;
+        this.steps = Array.from(document.querySelectorAll('.step-content'));
+        this.indicators = document.querySelectorAll('.stepper-indicator .step');
+
+        this.btnNext = document.getElementById('btn-next');
+        this.btnPrev = document.getElementById('btn-prev');
+        this.btnSubmit = document.getElementById('btn-submit');
+
+        this.bindEvents();
+        this.updateUI();
     }
 
-    function showFormError(message) {
-        var box = $('etc-form-error');
-        box.textContent = message;
-        box.hidden = false;
-    }
-    function clearFormError() {
-        var box = $('etc-form-error');
-        box.hidden = true;
-        box.textContent = '';
+    bindEvents() {
+        this.btnNext.addEventListener('click', () => this.nextStep());
+        this.btnPrev.addEventListener('click', () => this.prevStep());
     }
 
-    // ── Submit handler ───────────────────────────────────────────────
-    $('etc-form').addEventListener('submit', function (e) {
+    nextStep() {
+        const currentSection = this.steps[this.currentStep];
+        const inputs = currentSection.querySelectorAll('input, select');
+
+        let isValid = true;
+        for (let input of inputs) {
+            if (input.closest('.dynamic-group[hidden]') || input.closest('.hidden-detail')) {
+                continue;
+            }
+            if (!input.checkValidity()) {
+                input.reportValidity();
+                isValid = false;
+                break;
+            }
+        }
+
+        if (!isValid) return;
+
+        if (this.currentStep < this.steps.length - 1) {
+            this.currentStep++;
+            this.updateUI();
+        }
+    }
+
+    prevStep() {
+        if (this.currentStep > 0) {
+            this.currentStep--;
+            this.updateUI();
+        }
+    }
+
+    updateUI() {
+        this.steps.forEach((step, index) => {
+            step.hidden = (index !== this.currentStep);
+        });
+
+        this.indicators.forEach((ind, index) => {
+            if (index === this.currentStep) {
+                ind.classList.add('active');
+                ind.classList.remove('completed');
+            } else if (index < this.currentStep) {
+                ind.classList.remove('active');
+                ind.classList.add('completed');
+            } else {
+                ind.classList.remove('active', 'completed');
+            }
+        });
+
+        this.btnPrev.hidden = (this.currentStep === 0);
+
+        if (this.currentStep === this.steps.length - 1) {
+            this.btnNext.hidden = true;
+            this.btnSubmit.hidden = false;
+        } else {
+            this.btnNext.hidden = false;
+            this.btnSubmit.hidden = true;
+        }
+    }
+}
+
+// ==========================================
+// Main entry point
+// ==========================================
+function showFormError(message) {
+    const box = document.getElementById('etc-form-error');
+    box.textContent = message;
+    box.hidden = false;
+}
+function clearFormError() {
+    const box = document.getElementById('etc-form-error');
+    box.hidden = true;
+    box.textContent = '';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const ui = new UIController();
+    await ui.loadPresets();
+
+    const stepper = new StepperController();
+
+    document.getElementById('castor-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         clearFormError();
+        ui.setLoadingState(true);
 
-        var payload;
         try {
-            payload = buildRequest();
-        } catch (err) {
-            showFormError('Could not build request: ' + err.message);
-            return;
+            const payload = PayloadBuilder.build();
+            const resultData = await CastorAPI.calculate(payload);
+            ResultRenderer.render(resultData);
+        } catch (error) {
+            showFormError(error.message);
+        } finally {
+            ui.setLoadingState(false);
         }
-
-        var btn = $('etc-submit-btn');
-        btn.disabled = true;
-        btn.textContent = 'Calculating…';
-
-        fetch(API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-            .then(function (res) {
-                return res.json().then(function (data) {
-                    if (!res.ok) throw new Error(data.error || 'Calculation failed');
-                    return data;
-                });
-            })
-            .then(renderResults)
-            .catch(function (err) {
-                showFormError(err.message);
-            })
-            .finally(function () {
-                btn.disabled = false;
-                btn.textContent = 'Run Calculation';
-            });
     });
-
-    loadPresets();
-})();
+});
