@@ -99,9 +99,13 @@ class DailyFileHandler(logging.Handler):
             self.handleError(record)
 
     def handleError(self, record):
-        # Write to real stderr to break any recursion chain
+        # Write to real stderr to break any recursion chain. Include the
+        # actual exception traceback — without it, emit() failures are
+        # unactionable (all you see is which record failed, not why).
         try:
-            sys.__stderr__.write(f'[LoggingError] {record}\n')
+            import traceback
+            sys.__stderr__.write(f'[LoggingError] failed to write record: {record.getMessage()!r}\n')
+            traceback.print_exc(file=sys.__stderr__)
         except Exception:
             pass
 

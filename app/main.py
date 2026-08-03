@@ -51,6 +51,11 @@ def _enforce_allowed_host():
     # domain (e.g. direct-IP access) — the Host header is attacker-controlled
     # and must not be trusted for routing/redirect decisions.
     if request.host != _ALLOWED_HOST:
+        logging.getLogger('app').warning(
+            "Rejected request: Host header %r != configured APP_BASE_URL host %r "
+            "(set APP_BASE_URL in kinder.env to match how the site is accessed)",
+            request.host, _ALLOWED_HOST,
+        )
         abort(404)
 
 # Check database connection on startup
