@@ -9,6 +9,7 @@ Schema layout:
 
 import logging
 import os
+import time
 import psycopg2
 from psycopg2 import pool
 from contextlib import contextmanager
@@ -43,6 +44,7 @@ def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
             host=DB_HOST, port=int(DB_PORT),
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
+            connect_timeout=5,
             # ── Server-side safety timeouts ───────────────────────────────
             # Kill any connection that sits idle-in-transaction for >5 min,
             # and any individual statement that runs >2 min.
@@ -225,6 +227,7 @@ def check_db_connection() -> bool:
             host=DB_HOST, port=int(DB_PORT),
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
+            connect_timeout=5,
         )
         conn.close()
         logger.info("Connected to Kinder DB at %s:%s", DB_HOST, DB_PORT)
@@ -232,6 +235,33 @@ def check_db_connection() -> bool:
     except Exception as e:
         logger.error("Kinder DB connection failed: %s", e)
         return False
+
+
+# Cached connectivity flag so pages (e.g. the "DB offline" home banner) don't
+# pay a fresh connect_timeout on every request while the DB is down.
+_STATUS_CACHE_SECONDS = 15
+_status_cache = {"available": True, "checked_at": 0.0}
+
+
+def is_db_available(force: bool = False) -> bool:
+    """Return the last-known DB availability, re-checking at most once every
+    _STATUS_CACHE_SECONDS. Logs (and therefore prints, via the stdout→log
+    redirect) whenever the status flips so outages/recoveries are traceable."""
+    now = time.monotonic()
+    if not force and (now - _status_cache["checked_at"]) < _STATUS_CACHE_SECONDS:
+        return _status_cache["available"]
+
+    was_available = _status_cache["available"]
+    available = check_db_connection()
+    _status_cache["available"] = available
+    _status_cache["checked_at"] = now
+
+    if available and not was_available:
+        logger.info("Kinder DB connection restored (%s:%s).", DB_HOST, DB_PORT)
+    elif not available and was_available:
+        logger.error("Kinder DB connection lost (%s:%s) — home page will show 'DB offline'.", DB_HOST, DB_PORT)
+
+    return available
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +277,7 @@ def _ensure_extra_tables():
             host=DB_HOST, port=int(DB_PORT),
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
+            connect_timeout=5,
         )
         cur = conn.cursor()
 

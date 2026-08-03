@@ -10,6 +10,11 @@
     {% include '_favicon.html' %}
 </head>
 <body>
+    {% if db_offline %}
+    <div class="db-offline-banner" role="alert">
+        DB OFFLINE — the database connection is currently unavailable. Some pages/features may not work.
+    </div>
+    {% endif %}
     <!-- Minimal floating top bar (no navbar) -->
     <div class="home-top-bar">
         <!-- <a href="/" class="home-wordmark">

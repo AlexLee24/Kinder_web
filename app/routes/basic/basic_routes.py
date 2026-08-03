@@ -7,6 +7,8 @@ from flask import Blueprint
 from werkzeug.utils import secure_filename
 from PIL import Image
 
+from modules.database import is_db_available
+
 basic_bp = Blueprint('basic', __name__, template_folder='templates', static_folder='static')
 
 SLIDESHOW_DIR = os.path.join(os.path.dirname(__file__), 'slideshow')
@@ -73,7 +75,7 @@ def get_slideshow():
 
 @basic_bp.route('/')
 def home():
-    return render_template('home.html', current_path='/')
+    return render_template('home.html', current_path='/', db_offline=not is_db_available())
 
 @basic_bp.route('/login')
 def login():
