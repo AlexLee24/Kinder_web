@@ -9,6 +9,9 @@
     <meta name="description" content="GREAT Lab Daily Trigger">
     {% include '_favicon.html' %}
     <meta name="x-api-key" content="{{ api_key }}">
+    <meta name="x-user-display-name" content="{{ user_display_name }}">
+    <meta name="x-user-email" content="{{ user_email }}">
+    <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
     <style>
         /* Center log section content */
         .pa-obs-log-section { text-align: center; }
@@ -157,6 +160,186 @@
 
             <!-- ── Main content ── -->
             <div class="dt-main">
+
+                <!-- Trigger Checklist & Script Section -->
+                <div class="private-section pa-trigger-section">
+                    <h3>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        Daily Trigger
+                    </h3>
+
+                    <div id="trigger-grid" class="pa-trigger-grid">
+                        <!-- Checklist column -->
+                        <div class="pa-trigger-col pa-trigger-checklist-col">
+                            <div class="pa-trigger-col-head">
+                                <span>Pre-Trigger Checklist</span>
+                                <span id="trigger-checklist-progress" class="pa-trigger-progress">0 / 9</span>
+                            </div>
+
+                            <div id="trigger-checklist" class="pa-checklist-groups">
+                                <div class="pa-checklist-group">
+                                    <div class="pa-checklist-group-title">A. New Objects</div>
+                                    <ul class="pa-checklist">
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="new-atlas">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>a.</strong> Check ATLAS Object</span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="new-tns">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>b.</strong> Check TNS AstroNotes</span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="new-detect">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>c.</strong> Check group message and DETECT results</span>
+                                            </label>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div class="pa-checklist-group">
+                                    <div class="pa-checklist-group-title">B. Follow-up Objects</div>
+                                    <ul class="pa-checklist">
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="followup-urgent">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>a.</strong> <span class="pa-priority-tag urgent">Urgent</span> Kilonova candidate</span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item pa-checklist-item-wrap">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="followup-high">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text">
+                                                    <strong>b.</strong> <span class="pa-priority-tag high">High</span>
+                                                    <ul class="pa-checklist-sublist">
+                                                        <li>Nearby transient</li>
+                                                        <li>Gravitational Lens Supernova candidate</li>
+                                                        <li>SLSN candidate</li>
+                                                        <li>EP follow-up</li>
+                                                    </ul>
+                                                </span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="followup-normal">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>c.</strong> <span class="pa-priority-tag normal">Normal</span> ATLAS Fast track, Other</span>
+                                            </label>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <div class="pa-checklist-group">
+                                    <div class="pa-checklist-group-title">C. Target List &amp; Notes</div>
+                                    <ul class="pa-checklist">
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="target-sync">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>a.</strong> Check that every target to be observed tonight is turned ON in the SLT and LOT Targets lists below, and everything else is turned OFF</span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="note-greatlab">
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text"><strong>b.</strong> Make sure every target has a "Note for GREATLab" so everyone knows what the target is and why it's being observed</span>
+                                            </label>
+                                        </li>
+                                        <li class="pa-checklist-item pa-checklist-item-wrap">
+                                            <label>
+                                                <input type="checkbox" class="pa-checklist-checkbox" data-item="note-staff" id="cb-note-staff" disabled>
+                                                <span class="pa-checklist-box" aria-hidden="true">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </span>
+                                                <span class="pa-checklist-text">
+                                                    <strong>c.</strong> Check that the Note is filled in for staff, and that every <span class="pa-priority-tag urgent">Urgent</span> target's Note states when observation should start.
+                                                    <div class="pa-checklist-action-row">
+                                                        <button type="button" class="pa-btn-checklist-action" onclick="checkUrgentTargetNotes(event)">Check Urgent Notes</button>
+                                                        <span id="urgent-note-check-status" class="pa-checklist-check-status"></span>
+                                                    </div>
+                                                </span>
+                                            </label>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div id="trigger-checklist-hint" class="pa-checklist-hint">Complete all items above to unlock script generation.</div>
+                        </div>
+
+                        <!-- Script generation + send column -->
+                        <div id="trigger-script-col" class="pa-trigger-col pa-trigger-script-col locked">
+                            <div class="pa-trigger-col-head">
+                                <span>Trigger Script Message</span>
+                                <div class="pa-script-tele-tabs">
+                                    <button type="button" id="script-tab-SLT" class="pa-script-tele-tab active" onclick="switchScriptTelescope('SLT')">SLT</button>
+                                    <button type="button" id="script-tab-LOT" class="pa-script-tele-tab" onclick="switchScriptTelescope('LOT')">LOT</button>
+                                </div>
+                                <button type="button" id="btn-generate-script" class="pa-btn-log-action" onclick="generateTriggerScriptMessage()" disabled title="Complete the checklist first">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                                    Generate
+                                </button>
+                            </div>
+
+                            <div class="pa-script-body">
+                                <textarea id="trigger-script-preview" class="pa-script-textarea" readonly
+                                    placeholder="Click &quot;Generate&quot; to build the trigger script message from the current target list..."></textarea>
+
+                                <div id="script-vis-panel" class="pa-script-vis-panel" onclick="openScriptVisImageModal()" title="Click to enlarge">
+                                    <div class="pa-script-vis-title">Visibility <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></div>
+                                    <div id="script-vis-plot" class="pa-script-vis-plot">
+                                        <div class="pa-script-vis-empty">Generate a script to preview visibility.</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pa-trigger-send-row">
+                                <div id="trigger-sent-status" class="pa-sent-status">
+                                    <span class="pa-sent-chip" data-telescope="SLT" title="Not sent yet today">SLT: not sent</span>
+                                    <span class="pa-sent-chip" data-telescope="LOT" title="Not sent yet today">LOT: not sent</span>
+                                </div>
+                                <div class="pa-trigger-send-actions">
+                                    <button type="button" id="btn-copy-script" class="pa-btn-log-action" onclick="copyTriggerScriptMessage()">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                        Copy
+                                    </button>
+                                    <button type="button" id="btn-send-script" class="pa-btn-send-trigger" onclick="startSendTriggerFlow()">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                        Send Message
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="trigger-send-status" class="pa-trigger-send-status"></div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="private-section pa-obs-section">
                     <div class="dt-obs-topbar">
@@ -577,6 +760,62 @@
                         <!-- JS generated target toggles -->
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Visibility Image Lightbox (enlarges the static JPG that goes out with the trigger) -->
+    <div id="scriptVisImageModal" class="pa-modal-overlay" onclick="if(event.target===this) closeScriptVisImageModal()">
+        <div class="pa-modal-box" style="max-width: 92vw; width: auto; padding: 1rem; background: #0b0d10;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <button type="button" onclick="closeScriptVisImageModal()" class="pa-btn-cancel" style="padding: 5px 14px;">Close</button>
+            </div>
+            <img id="script-vis-img-large" src="" alt="Visibility plot" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; border-radius: 6px;">
+        </div>
+    </div>
+
+    <!-- Send flow — step 1: confirm account -->
+    <div id="sendStep1Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+        <div class="pa-modal-box" style="max-width: 440px;">
+            <h3 style="margin-top:0;">Step 1 of 3 — Confirm Account</h3>
+            <p class="pa-send-modal-text">You're currently logged in as:</p>
+            <div class="pa-send-account-box">
+                <div id="send-confirm-name" class="pa-send-account-name">—</div>
+                <div id="send-confirm-email" class="pa-send-account-email">—</div>
+            </div>
+            <p class="pa-send-modal-text">Are you the person triggering <strong id="send-confirm-telescope">SLT</strong> tonight?</p>
+            <div class="pa-modal-footer">
+                <button type="button" onclick="cancelSendTriggerFlow()" class="pa-btn-cancel">Cancel</button>
+                <button type="button" onclick="advanceSendTriggerFlow(1)" class="pa-btn-save">Yes, that's me</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send flow — step 2: review telescope / targets / plot -->
+    <div id="sendStep2Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+        <div class="pa-modal-box" style="max-width: 640px;">
+            <h3 style="margin-top:0;">Step 2 of 3 — Review Before Sending</h3>
+            <p class="pa-send-modal-text">Telescope: <strong id="send-review-telescope">SLT</strong></p>
+            <p class="pa-send-modal-text">Targets: <span id="send-review-targets">—</span></p>
+            <div class="pa-send-review-img-wrap">
+                <img id="send-review-img" src="" alt="Visibility plot">
+            </div>
+            <p class="pa-send-modal-text" style="opacity:0.65; font-size:0.8rem;">Double-check the telescope, target list, and plot above are correct.</p>
+            <div class="pa-modal-footer">
+                <button type="button" onclick="cancelSendTriggerFlow()" class="pa-btn-cancel">Cancel</button>
+                <button type="button" onclick="advanceSendTriggerFlow(2)" class="pa-btn-save">Looks correct</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send flow — step 3: final confirmation -->
+    <div id="sendStep3Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+        <div class="pa-modal-box" style="max-width: 440px;">
+            <h3 style="margin-top:0;">Step 3 of 3 — Send?</h3>
+            <p class="pa-send-modal-text">This will post the script message and plot to the <strong id="send-confirm-channel">Slack</strong> channel right now. This cannot be undone.</p>
+            <div class="pa-modal-footer">
+                <button type="button" onclick="cancelSendTriggerFlow()" class="pa-btn-cancel">Cancel</button>
+                <button type="button" id="send-final-confirm-btn" onclick="advanceSendTriggerFlow(3)" class="pa-btn-send-trigger" style="justify-content:center;">Send Now</button>
             </div>
         </div>
     </div>

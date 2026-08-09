@@ -755,12 +755,20 @@ def visibility_data():
                 'name': name,
                 'ra': ra,
                 'dec': dec,
+                'ra_deg': float(ephem_target._ra) * 180.0 / np.pi,
                 'altitudes': alts,
                 'azimuths': azs,
                 'transit_time_utc': transit_str,
                 'transit_time_local': transit_local_str,
                 'moon_separation': moon_sep
             })
+
+        # Order targets by RA (ascending) and number them accordingly, so the
+        # plot legend/labels and the target list stay in a consistent order.
+        targets_data.sort(key=lambda t: t['ra_deg'])
+        for i, t in enumerate(targets_data):
+            t['number'] = i + 1
+            del t['ra_deg']
 
         return jsonify({
             'success': True,
@@ -797,6 +805,23 @@ def generate_script_route():
         script = process_observation_request(data)
         return jsonify({'success': True, 'script': script})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@astronomy_tools_bp.route('/astronomy_tools/generate_trigger_script', methods=['POST'])
+def generate_trigger_script_route():
+    """Build the Daily Trigger ACP script message (trigger_script.py format)."""
+    try:
+        data = request.get_json() or {}
+        telescope = data.get('telescope', 'SLT')
+        targets = data.get('targets', [])
+        if not isinstance(targets, list) or not targets:
+            return jsonify({'success': False, 'error': 'No targets provided'}), 400
+
+        from modules import trigger_script
+        script = trigger_script.generate_full_script(targets, telescope)
+        return jsonify({'success': True, 'script': script})
+    except Exception as e:
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===============================================================================

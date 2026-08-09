@@ -217,6 +217,528 @@ body::before {
 }
 
 /* ----------------------------------------------------------------
+   Trigger Checklist Section
+   ---------------------------------------------------------------- */
+.pa-trigger-section {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto 1.5rem;
+}
+
+.pa-trigger-grid {
+    display: grid;
+    /* Checklist gets the majority of the space until it's fully checked. */
+    grid-template-columns: 7fr 3fr;
+    gap: 1.5rem;
+    align-items: stretch;
+    transition: grid-template-columns 0.35s ease;
+}
+
+.pa-trigger-grid.is-complete {
+    /* Once the checklist is done, hand the space over to the script column. */
+    grid-template-columns: 3fr 7fr;
+}
+
+.pa-trigger-col {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--pa-border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Script column is greyed out and non-interactive until the checklist is done. */
+.pa-trigger-script-col.locked {
+    opacity: 0.4;
+    pointer-events: none;
+    position: relative;
+    filter: grayscale(0.6);
+    transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+.pa-trigger-script-col.locked::after {
+    content: 'Complete the checklist to unlock';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 10px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.pa-trigger-col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    color: #cfd6dd;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.pa-trigger-progress {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--pa-accent);
+    background: rgba(77, 184, 255, 0.1);
+    border: 1px solid rgba(77, 184, 255, 0.25);
+    border-radius: 12px;
+    padding: 0.15rem 0.65rem;
+}
+
+/* Checklist */
+.pa-checklist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.pa-checklist-item label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    padding: 0.55rem 0.7rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.pa-checklist-item label:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Items with a longer, multi-line description (e.g. "High" priority group) */
+.pa-checklist-item-wrap label {
+    align-items: flex-start;
+}
+
+.pa-checklist-item-wrap .pa-checklist-box {
+    margin-top: 2px;
+}
+
+.pa-checklist-sublist {
+    list-style: disc;
+    margin: 0.4rem 0 0 1.1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Inline action row (e.g. the "Check Urgent Notes" validation button) */
+.pa-checklist-action-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.pa-btn-checklist-action {
+    padding: 0.3rem 0.8rem;
+    background: transparent;
+    color: var(--pa-accent);
+    border: 1px solid rgba(77, 184, 255, 0.4);
+    border-radius: 14px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pa-btn-checklist-action:hover {
+    background: rgba(77, 184, 255, 0.12);
+}
+
+.pa-checklist-check-status {
+    font-size: 0.78rem;
+    color: var(--pa-text-muted);
+}
+
+.pa-checklist-check-status.ok { color: #69db7c; }
+.pa-checklist-check-status.error { color: #ff6b6b; }
+
+.pa-checklist-checkbox {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.pa-checklist-box {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    border: 1.5px solid rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: transparent;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.pa-checklist-checkbox:checked + .pa-checklist-box {
+    background: var(--pa-accent);
+    border-color: var(--pa-accent);
+    color: #05141d;
+}
+
+.pa-checklist-checkbox:focus-visible + .pa-checklist-box {
+    outline: 2px solid rgba(77, 184, 255, 0.6);
+    outline-offset: 2px;
+}
+
+.pa-checklist-text {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.85);
+    transition: color 0.15s ease;
+}
+
+.pa-checklist-checkbox:checked ~ .pa-checklist-text {
+    color: var(--pa-text-muted);
+    text-decoration: line-through;
+}
+
+.pa-checklist-item.done label {
+    border-color: rgba(77, 184, 255, 0.2);
+}
+
+/* Checklist groups (A. New Objects / B. Follow-up Objects) */
+.pa-checklist-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.pa-checklist-group-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--pa-accent);
+    margin-bottom: 0.5rem;
+}
+
+.pa-priority-tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 0.1rem 0.45rem;
+    border-radius: 10px;
+    margin-right: 6px;
+    vertical-align: 1px;
+}
+
+.pa-priority-tag.urgent {
+    background: rgba(255, 77, 77, 0.18);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 107, 107, 0.35);
+}
+
+.pa-priority-tag.high {
+    background: rgba(255, 159, 67, 0.18);
+    color: #ffa94d;
+    border: 1px solid rgba(255, 169, 77, 0.35);
+}
+
+.pa-priority-tag.normal {
+    background: rgba(77, 184, 255, 0.14);
+    color: var(--pa-accent);
+    border: 1px solid rgba(77, 184, 255, 0.3);
+}
+
+.pa-checklist-hint {
+    margin-top: 0.9rem;
+    font-size: 0.78rem;
+    text-align: center;
+    color: #ffa94d;
+    transition: color 0.2s ease;
+}
+
+.pa-checklist-hint.complete {
+    color: #69db7c;
+}
+
+.pa-btn-log-action:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    color: var(--pa-text-muted);
+    border-color: var(--pa-border);
+}
+
+.pa-btn-log-action:disabled:hover {
+    background: #1c1f24;
+    color: var(--pa-text-muted);
+}
+
+/* Telescope switcher in the script column header */
+.pa-script-tele-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.pa-script-tele-tab {
+    padding: 0.25rem 0.7rem;
+    background: transparent;
+    border: 1px solid var(--pa-border);
+    color: var(--pa-text-muted);
+    border-radius: 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pa-script-tele-tab.active {
+    background: var(--pa-accent);
+    color: #000;
+    border-color: var(--pa-accent);
+}
+
+/* Script preview + send controls */
+.pa-script-body {
+    display: flex;
+    gap: 1rem;
+    flex: 1;
+    min-height: 180px;
+    margin-bottom: 1rem;
+}
+
+.pa-script-textarea {
+    flex: 1.6;
+    min-height: 0;
+    width: 100%;
+    resize: vertical;
+    background: var(--pa-input-bg);
+    border: 1px solid var(--pa-border);
+    border-radius: 8px;
+    color: #d6e4ff;
+    font-family: 'SFMono-Regular', Consolas, Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    padding: 0.85rem;
+    box-sizing: border-box;
+}
+
+.pa-script-textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+    font-family: var(--kw-font-system, inherit);
+}
+
+/* Visibility preview panel (right side of the script column) */
+.pa-script-vis-panel {
+    flex: 1;
+    min-width: 170px;
+    background: var(--pa-input-bg);
+    border: 1px solid var(--pa-border);
+    border-radius: 8px;
+    padding: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pa-script-vis-panel:hover {
+    border-color: rgba(77, 184, 255, 0.4);
+    background: rgba(77, 184, 255, 0.04);
+}
+
+.pa-script-vis-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--pa-text-muted);
+    margin-bottom: 0.4rem;
+}
+
+.pa-script-vis-plot {
+    flex: 1;
+    min-height: 120px;
+}
+
+.pa-script-vis-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 4px;
+    display: block;
+}
+
+.pa-script-vis-empty {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--pa-text-muted);
+    padding: 0.5rem;
+}
+
+@media (max-width: 900px) {
+    .pa-script-body {
+        flex-direction: column;
+    }
+
+    .pa-script-vis-panel {
+        min-height: 160px;
+    }
+}
+
+.pa-trigger-send-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.pa-trigger-send-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.pa-trigger-send-row .pa-input {
+    flex: 1;
+    min-width: 140px;
+}
+
+.pa-trigger-send-row .pa-btn-log-action {
+    margin-right: 0;
+}
+
+/* Left side of the send row: today's SLT/LOT send status */
+.pa-sent-status {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pa-sent-chip {
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 0.3rem 0.7rem;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--pa-border);
+    color: var(--pa-text-muted);
+    white-space: nowrap;
+}
+
+.pa-sent-chip.sent {
+    background: rgba(105, 219, 124, 0.12);
+    border-color: rgba(105, 219, 124, 0.4);
+    color: #69db7c;
+}
+
+/* Send-flow confirmation modals (account / review / final) */
+.pa-send-modal-text {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.pa-send-account-box {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--pa-border);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.pa-send-account-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.pa-send-account-email {
+    font-size: 0.8rem;
+    color: var(--pa-text-muted);
+    margin-top: 2px;
+}
+
+.pa-send-review-img-wrap {
+    background: var(--pa-input-bg);
+    border: 1px solid var(--pa-border);
+    border-radius: 8px;
+    padding: 0.5rem;
+    margin: 0.6rem 0;
+    max-height: 45vh;
+    overflow: auto;
+}
+
+.pa-send-review-img-wrap img {
+    width: 100%;
+    display: block;
+    border-radius: 4px;
+}
+
+.pa-btn-send-trigger {
+    padding: 0.5rem 1.1rem;
+    background: linear-gradient(135deg, var(--pa-accent), var(--pa-accent-dark));
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.pa-btn-send-trigger:hover {
+    filter: brightness(1.1);
+}
+
+.pa-btn-send-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.pa-trigger-send-status {
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    min-height: 1.1rem;
+    color: var(--pa-text-muted);
+}
+
+.pa-trigger-send-status.ok { color: #69db7c; }
+.pa-trigger-send-status.error { color: #ff6b6b; }
+.pa-trigger-send-status.pending { color: #ffa94d; }
+
+@media (max-width: 900px) {
+    .pa-trigger-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ----------------------------------------------------------------
    Observation Target Section
    ---------------------------------------------------------------- */
 .pa-obs-section {

@@ -61,6 +61,8 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log("Private Area loaded.");
     loadTargets();
     initObservationLog();
+    initTriggerChecklist();
+    loadSentStatus();
 
     // Close search dropdown when clicking outside
     document.addEventListener('click', function(e) {
@@ -792,7 +794,7 @@ async function loadAstroInfoForTargets() {
         data.targets.forEach(function(td) {
             var ids = nameToIds[td.name] || [];
             ids.forEach(function(id) {
-                fillAstroInfo(id, td, data.twilight_local);
+                fillAstroInfo(id, td, data.times_local);
             });
         });
     } catch (e) {
@@ -800,7 +802,7 @@ async function loadAstroInfoForTargets() {
     }
 }
 
-function fillAstroInfo(targetId, td, twilightLocal) {
+function fillAstroInfo(targetId, td, timesLocal) {
     var astroRow = document.getElementById('astro-row-' + targetId);
     var miniPlot = document.getElementById('mini-vp-' + targetId);
     if (!astroRow && !miniPlot) return;
@@ -824,7 +826,7 @@ function fillAstroInfo(targetId, td, twilightLocal) {
     }
 
     if (miniPlot && td.altitudes && td.altitudes.length) {
-        miniPlot.innerHTML = drawMiniVisibilitySVG(td.altitudes, twilightLocal);
+        miniPlot.innerHTML = drawMiniVisibilitySVG(td.altitudes, timesLocal, td.transit_time_local);
     }
 }
 
@@ -835,34 +837,58 @@ function moonSepColor(sep) {
     return '#69db7c';
 }
 
-function drawMiniVisibilitySVG(altitudes, twilightLocal) {
-    var W = 120, H = 34;
+function drawMiniVisibilitySVG(altitudes, timesLocal) {
+    var W = 124, PLOT_H = 30, AXIS_H = 11, H = PLOT_H + AXIS_H;
     var N = altitudes.length;
     if (!N) return '';
 
-    // Y coordinate for given altitude
-    function yFor(a) { return H - Math.max(0, Math.min(a, 90)) / 90 * H; }
+    // Y coordinate for a given altitude, within the plot area only (axis strip excluded).
+    function yFor(a) { return PLOT_H - Math.max(0, Math.min(a, 90)) / 90 * PLOT_H; }
 
-    // Build a two-color polyline: above 30° vs below
-    var above = [], below = [];
+    // Build above/below-30° tracks as independent path subpaths, one per
+    // contiguous run. A single <polyline> per color (the old approach) joins
+    // ALL points of that color with straight lines regardless of gaps — so a
+    // brief dip below 30° (and back above) drew a spurious chord straight
+    // across the dip. Starting a new "M" subpath at each color change avoids
+    // that, while still sharing the exact crossing point so the two colors
+    // visually meet at the 30° line instead of leaving a gap.
+    var aboveD = '', belowD = '';
     var prevAbove = null;
     for (var i = 0; i < N; i++) {
         var x = (i / (N - 1)) * W;
         var y = yFor(altitudes[i]);
         var isAbove = altitudes[i] >= 30;
-        if (isAbove) { above.push(x + ',' + y); if (prevAbove === false) above.push(x + ',' + y); }
-        else { below.push(x + ',' + y); if (prevAbove === true) below.push(x + ',' + y); }
+        var newRun = isAbove !== prevAbove;
+        var point = x.toFixed(2) + ',' + y.toFixed(2) + ' ';
+
+        if (isAbove) {
+            aboveD += (newRun ? 'M' : 'L') + point;
+            if (newRun && prevAbove !== null) belowD += 'L' + point;
+        } else {
+            belowD += (newRun ? 'M' : 'L') + point;
+            if (newRun && prevAbove !== null) aboveD += 'L' + point;
+        }
         prevAbove = isAbove;
     }
 
     var h30 = yFor(30);
     var h0 = yFor(0);
 
+    var startLabel = (timesLocal && timesLocal[0]) ? timesLocal[0].slice(11, 16) : '';
+    var endLabel = (timesLocal && timesLocal[timesLocal.length - 1]) ? timesLocal[timesLocal.length - 1].slice(11, 16) : '';
+
     return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block; overflow:visible;">' +
+        // Horizon (0°) and 30° threshold guide lines
         '<line x1="0" y1="' + h0 + '" x2="' + W + '" y2="' + h0 + '" stroke="rgba(255,255,255,0.08)" stroke-width="0.8"/>' +
-        '<line x1="0" y1="' + h30 + '" x2="' + W + '" y2="' + h30 + '" stroke="rgba(255,255,255,0.15)" stroke-width="0.8" stroke-dasharray="2,2"/>' +
-        (below.length > 1 ? '<polyline points="' + below.join(' ') + '" fill="none" stroke="rgba(255,100,100,0.5)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
-        (above.length > 1 ? '<polyline points="' + above.join(' ') + '" fill="none" stroke="rgba(77,184,255,0.85)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
+        '<line x1="0" y1="' + h30 + '" x2="' + W + '" y2="' + h30 + '" stroke="rgba(255,100,100,0.35)" stroke-width="0.8" stroke-dasharray="2,2"/>' +
+        '<text x="' + (W - 2) + '" y="' + (h30 - 2) + '" text-anchor="end" font-size="6.5" fill="rgba(255,140,140,0.75)">30°</text>' +
+        // Altitude track, colored red below 30° / blue above
+        (belowD ? '<path d="' + belowD + '" fill="none" stroke="rgba(255,100,100,0.5)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
+        (aboveD ? '<path d="' + aboveD + '" fill="none" stroke="rgba(77,184,255,0.85)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
+        // Time axis: separator + start/end local time labels
+        '<line x1="0" y1="' + PLOT_H + '" x2="' + W + '" y2="' + PLOT_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="0.6"/>' +
+        (startLabel ? '<text x="0" y="' + (H - 1.5) + '" text-anchor="start" font-size="6.5" fill="rgba(255,255,255,0.4)">' + startLabel + '</text>' : '') +
+        (endLabel ? '<text x="' + W + '" y="' + (H - 1.5) + '" text-anchor="end" font-size="6.5" fill="rgba(255,255,255,0.4)">' + endLabel + '</text>' : '') +
         '</svg>';
 }
 
@@ -2182,8 +2208,8 @@ function closeVisibilityPlot() {
     Plotly.purge('vp-plot-area'); // Clear Plotly internal state completely to ensure re-render works next time
 }
 
-async function openVisibilityPlot() {
-    const activeTelescope = document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT';
+async function openVisibilityPlot(forcedTelescope) {
+    const activeTelescope = forcedTelescope || (document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT');
     document.getElementById('vp-tab-name').textContent = activeTelescope;
     document.getElementById('visibilityPlotModal').style.display = 'flex';
     
@@ -2459,5 +2485,439 @@ function renderVisibilityPlot() {
 
     const config = { responsive: true, displayModeBar: false };
     Plotly.react('vp-plot-area', traces, layout, config);
+}
+
+// =========================================================================
+// TRIGGER CHECKLIST & SCRIPT MESSAGE
+// Appearance/interaction only for now — script generation and message
+// sending are wired to the backend in a later pass.
+// =========================================================================
+
+function initTriggerChecklist() {
+    const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
+    if (!checkboxes.length) return;
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', () => {
+            cb.closest('.pa-checklist-item').classList.toggle('done', cb.checked);
+            updateTriggerChecklistProgress();
+        });
+    });
+    updateTriggerChecklistProgress();
+}
+
+// Item C.c — verify every active Urgent-priority target has a Note filled in
+// (the Note is where staff are expected to record when observation should start).
+function checkUrgentTargetNotes(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const checkbox = document.getElementById('cb-note-staff');
+    const statusEl = document.getElementById('urgent-note-check-status');
+    if (!checkbox || !statusEl) return;
+
+    const urgentTargets = (allTargetsCache || []).filter(t => {
+        const priority = ((t.priority || '') + '').trim().toLowerCase();
+        return priority === 'urgent' && t.is_active !== false && !t.is_discontinued;
+    });
+
+    const missing = urgentTargets.filter(t => !(t.plan && t.plan.trim()));
+    const allOk = missing.length === 0;
+
+    checkbox.checked = allOk;
+    checkbox.closest('.pa-checklist-item').classList.toggle('done', allOk);
+
+    if (urgentTargets.length === 0) {
+        statusEl.textContent = 'No active Urgent targets right now — nothing to check.';
+        statusEl.className = 'pa-checklist-check-status ok';
+    } else if (allOk) {
+        statusEl.textContent = `All ${urgentTargets.length} Urgent target(s) have a Note.`;
+        statusEl.className = 'pa-checklist-check-status ok';
+    } else {
+        statusEl.textContent = `Missing Note on Urgent target(s): ${missing.map(t => t.name).join(', ')}`;
+        statusEl.className = 'pa-checklist-check-status error';
+    }
+
+    updateTriggerChecklistProgress();
+}
+
+function updateTriggerChecklistProgress() {
+    const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
+    const total = checkboxes.length;
+    const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
+    const allDone = total > 0 && done === total;
+
+    const progressEl = document.getElementById('trigger-checklist-progress');
+    if (progressEl) progressEl.textContent = `${done} / ${total}`;
+
+    const hintEl = document.getElementById('trigger-checklist-hint');
+    if (hintEl) {
+        hintEl.classList.toggle('complete', allDone);
+        hintEl.textContent = allDone
+            ? 'Checklist complete — you can now generate the script.'
+            : 'Complete all items above to unlock script generation.';
+    }
+
+    const generateBtn = document.getElementById('btn-generate-script');
+    if (generateBtn) {
+        generateBtn.disabled = !allDone;
+        generateBtn.title = allDone ? '' : 'Complete the checklist first';
+    }
+
+    const gridEl = document.getElementById('trigger-grid');
+    if (gridEl) gridEl.classList.toggle('is-complete', allDone);
+
+    const scriptColEl = document.getElementById('trigger-script-col');
+    if (scriptColEl) scriptColEl.classList.toggle('locked', !allDone);
+}
+
+let scriptTelescope = 'SLT';
+let lastGeneratedGreeting = '';
+let lastGeneratedScriptBody = '';
+let lastGeneratedTargets = [];
+
+function switchScriptTelescope(telescope) {
+    scriptTelescope = telescope;
+    const sltTab = document.getElementById('script-tab-SLT');
+    const lotTab = document.getElementById('script-tab-LOT');
+    if (sltTab) sltTab.classList.toggle('active', telescope === 'SLT');
+    if (lotTab) lotTab.classList.toggle('active', telescope === 'LOT');
+
+    // Stale script/plot from the other telescope shouldn't linger.
+    const textarea = document.getElementById('trigger-script-preview');
+    if (textarea) textarea.value = '';
+    lastGeneratedGreeting = '';
+    lastGeneratedScriptBody = '';
+    lastGeneratedTargets = [];
+    setTriggerSendStatus('', '');
+    resetScriptVisibilityPreview();
+}
+
+function _scriptTargetPriorityRank(priority) {
+    const p = (priority || '').toString().trim().toLowerCase();
+    if (p.includes('urgent')) return 0;
+    if (p.includes('high')) return 1;
+    if (p.includes('normal')) return 2;
+    return 9;
+}
+
+async function generateTriggerScriptMessage() {
+    const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
+    const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
+    if (done < checkboxes.length) {
+        setTriggerSendStatus('Complete the checklist first before generating the script.', 'error');
+        return;
+    }
+
+    const textarea = document.getElementById('trigger-script-preview');
+    if (!textarea) return;
+
+    const targets = (allTargetsCache || [])
+        .filter(t => t.telescope === scriptTelescope && t.is_active !== false && !t.is_discontinued)
+        .sort((a, b) => {
+            const rankDiff = _scriptTargetPriorityRank(a.priority) - _scriptTargetPriorityRank(b.priority);
+            if (rankDiff !== 0) return rankDiff;
+            return (a.name || '').localeCompare(b.name || '');
+        });
+
+    if (targets.length === 0) {
+        textarea.value = '';
+        setTriggerSendStatus(`No active ${scriptTelescope} targets to generate a script for.`, 'error');
+        return;
+    }
+
+    const generateBtn = document.getElementById('btn-generate-script');
+    if (generateBtn) generateBtn.disabled = true;
+    setTriggerSendStatus('Generating script...', 'pending');
+
+    // Payload matches app/modules/trigger_script.py's generate_script() params.
+    // priority_message is sourced from "Note for GREATLab" — that's the field
+    // meant to tell everyone what the target is and why it's being observed.
+    const payloadTargets = targets.map(t => {
+        const useAutoExp = !!t.auto_exposure;
+        const item = {
+            name: t.name,
+            ra: t.ra,
+            dec: t.dec,
+            mag: t.mag || '',
+            priority: t.priority || 'Normal',
+            priority_message: t.note_gl || '',
+            repeat: t.repeat_count || 0,
+            auto_exp: useAutoExp,
+            program: t.program || ''
+        };
+        if (!useAutoExp && Array.isArray(t.filters) && t.filters.length) {
+            item.filter_input = t.filters.map(f => f.filter).join(',');
+            item.exp_time = t.filters.map(f => f.exp).join(',');
+            item.count = t.filters.map(f => f.count).join(',');
+        }
+        return item;
+    });
+
+    try {
+        const resp = await _apiFetch('/astronomy_tools/generate_trigger_script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({
+                telescope: scriptTelescope,
+                targets: payloadTargets
+            })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            setTriggerSendStatus(data.error || 'Failed to generate script.', 'error');
+            return;
+        }
+
+        const greeting =
+            `您好，若天氣允許使用 ${scriptTelescope}，以下是今日的觀測目標:\n` +
+            `If the weather permits to use ${scriptTelescope}, here are today's observation targets:\n\n`;
+        textarea.value = greeting + data.script;
+
+        // Kept separately (rather than re-parsed from the textarea) so the Slack
+        // message can wrap just the ACP script in a code block while the copy/paste
+        // preview stays plain — pasting into ACP shouldn't include markdown fences.
+        lastGeneratedGreeting = greeting;
+        lastGeneratedScriptBody = data.script;
+        lastGeneratedTargets = payloadTargets;
+
+        const targetNames = targets.map(t => t.name).join(', ');
+        setTriggerSendStatus(`Script generated for ${targets.length} ${scriptTelescope} target(s): ${targetNames}.`, 'ok');
+        renderScriptVisibilityImage(targets);
+    } catch (e) {
+        setTriggerSendStatus('Network error while generating script.', 'error');
+    } finally {
+        if (generateBtn) generateBtn.disabled = false;
+    }
+}
+
+let scriptVisPlotUrl = null;
+
+function resetScriptVisibilityPreview() {
+    scriptVisPlotUrl = null;
+    const container = document.getElementById('script-vis-plot');
+    if (container) container.innerHTML = '<div class="pa-script-vis-empty">Generate a script to preview visibility.</div>';
+}
+
+// Renders the same static JPG (via /generate_plot, i.e. obsplan.plot_night_observing_tracks)
+// that would be sent out alongside the trigger message — not a separate interactive chart.
+async function renderScriptVisibilityImage(targets) {
+    const container = document.getElementById('script-vis-plot');
+    if (!container) return;
+
+    const plotTargets = (targets || []).filter(t => t.ra && t.dec);
+    if (plotTargets.length === 0) {
+        scriptVisPlotUrl = null;
+        container.innerHTML = '<div class="pa-script-vis-empty">No targets with valid RA/Dec to plot.</div>';
+        return;
+    }
+
+    container.innerHTML = '<div class="pa-script-vis-empty">Rendering visibility plot…</div>';
+
+    const now = new Date();
+    if (now.getHours() < 12) now.setDate(now.getDate() - 1);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    try {
+        const resp = await _apiFetch('/generate_plot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({
+                date: dateStr,
+                telescope: scriptTelescope,
+                location: '120:52:21 23:28:10 2862',
+                timezone: '8',
+                targets: plotTargets.map(t => ({ object_name: t.name, ra: t.ra, dec: t.dec }))
+            })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            scriptVisPlotUrl = null;
+            container.innerHTML = `<div class="pa-script-vis-empty">${data.error || 'Could not render plot.'}</div>`;
+            return;
+        }
+
+        scriptVisPlotUrl = data.plot_url;
+        container.innerHTML = `<img src="${scriptVisPlotUrl}" alt="Visibility plot" class="pa-script-vis-img">`;
+    } catch (e) {
+        scriptVisPlotUrl = null;
+        container.innerHTML = '<div class="pa-script-vis-empty">Network error.</div>';
+    }
+}
+
+function openScriptVisImageModal() {
+    if (!scriptVisPlotUrl) return;
+    document.getElementById('script-vis-img-large').src = scriptVisPlotUrl;
+    document.getElementById('scriptVisImageModal').style.display = 'flex';
+}
+
+function closeScriptVisImageModal() {
+    document.getElementById('scriptVisImageModal').style.display = 'none';
+}
+
+function copyTriggerScriptMessage() {
+    const textarea = document.getElementById('trigger-script-preview');
+    if (!textarea || !textarea.value.trim()) {
+        setTriggerSendStatus('Nothing to copy yet — generate a script first.', 'error');
+        return;
+    }
+    navigator.clipboard.writeText(textarea.value)
+        .then(() => setTriggerSendStatus('Copied to clipboard.', 'ok'))
+        .catch(() => setTriggerSendStatus('Copy failed — select and copy manually.', 'error'));
+}
+
+function setTriggerSendStatus(message, kind) {
+    const statusEl = document.getElementById('trigger-send-status');
+    if (!statusEl) return;
+    statusEl.textContent = message;
+    statusEl.className = 'pa-trigger-send-status' + (kind ? ' ' + kind : '');
+}
+
+// =========================================================================
+// SEND FLOW — three sequential confirmations before anything posts to Slack:
+//   1) confirm the logged-in account is the one triggering
+//   2) review telescope / target list / plot
+//   3) final "are you sure" before the irreversible Slack post
+// =========================================================================
+
+const _USER_DISPLAY_NAME = (document.querySelector('meta[name="x-user-display-name"]') || {}).content || '';
+const _USER_EMAIL = (document.querySelector('meta[name="x-user-email"]') || {}).content || '';
+const _APP_DEBUG = (document.querySelector('meta[name="x-app-debug"]') || {}).content === 'true';
+const _SLACK_CHANNEL_LABEL = _APP_DEBUG ? 'Test' : 'Control Room';
+
+let _sendFlowState = null;
+
+function startSendTriggerFlow() {
+    if (!lastGeneratedScriptBody.trim()) {
+        setTriggerSendStatus('Generate a script first before sending.', 'error');
+        return;
+    }
+
+    _sendFlowState = {
+        telescope: scriptTelescope,
+        // The ACP script goes out fenced as a Slack code block; the greeting stays plain text.
+        message: lastGeneratedGreeting + '```\n' + lastGeneratedScriptBody + '\n```',
+        plotUrl: scriptVisPlotUrl,
+        targets: lastGeneratedTargets,
+        targetNames: lastGeneratedTargets.map(t => t.name)
+    };
+
+    document.getElementById('send-confirm-name').textContent = _USER_DISPLAY_NAME || '(unknown)';
+    document.getElementById('send-confirm-email').textContent = _USER_EMAIL || '';
+    document.getElementById('send-confirm-telescope').textContent = scriptTelescope;
+
+    document.getElementById('sendStep1Modal').style.display = 'flex';
+}
+
+function advanceSendTriggerFlow(fromStep) {
+    if (!_sendFlowState) return;
+
+    if (fromStep === 1) {
+        document.getElementById('sendStep1Modal').style.display = 'none';
+
+        document.getElementById('send-review-telescope').textContent = _sendFlowState.telescope;
+        document.getElementById('send-review-targets').textContent =
+            _sendFlowState.targetNames.length ? _sendFlowState.targetNames.join(', ') : '(none)';
+        const reviewImg = document.getElementById('send-review-img');
+        const reviewImgWrap = reviewImg.closest('.pa-send-review-img-wrap');
+        if (_sendFlowState.plotUrl) {
+            reviewImg.src = _sendFlowState.plotUrl;
+            reviewImgWrap.style.display = '';
+        } else {
+            reviewImgWrap.style.display = 'none';
+        }
+
+        document.getElementById('sendStep2Modal').style.display = 'flex';
+        return;
+    }
+
+    if (fromStep === 2) {
+        document.getElementById('sendStep2Modal').style.display = 'none';
+        document.getElementById('send-confirm-channel').textContent =
+            `${_SLACK_CHANNEL_LABEL} Slack channel` + (_sendFlowState.telescope ? ` (${_sendFlowState.telescope})` : '');
+        document.getElementById('sendStep3Modal').style.display = 'flex';
+        return;
+    }
+
+    if (fromStep === 3) {
+        _finalizeSendTrigger();
+    }
+}
+
+function cancelSendTriggerFlow() {
+    ['sendStep1Modal', 'sendStep2Modal', 'sendStep3Modal'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    _sendFlowState = null;
+}
+
+async function _finalizeSendTrigger() {
+    const state = _sendFlowState;
+    const confirmBtn = document.getElementById('send-final-confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
+    setTriggerSendStatus('Sending to Slack...', 'pending');
+
+    try {
+        const resp = await _apiFetch('/daily_trigger/send_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({
+                telescope: state.telescope,
+                script: state.message,
+                plot_url: state.plotUrl,
+                targets: state.targets
+            })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            setTriggerSendStatus(data.error || 'Failed to send.', 'error');
+            return;
+        }
+        let msg = `Sent to Slack for ${state.telescope}.`;
+        if (data.log_warnings && data.log_warnings.length) {
+            msg += ` (Observation Log warnings: ${data.log_warnings.join('; ')})`;
+        }
+        setTriggerSendStatus(msg, 'ok');
+        renderSentStatus(data.status);
+    } catch (e) {
+        setTriggerSendStatus('Network error while sending.', 'error');
+    } finally {
+        if (confirmBtn) confirmBtn.disabled = false;
+        document.getElementById('sendStep3Modal').style.display = 'none';
+        _sendFlowState = null;
+    }
+}
+
+function renderSentStatus(status) {
+    if (!status) return;
+    ['SLT', 'LOT'].forEach(tel => {
+        const chip = document.querySelector(`.pa-sent-chip[data-telescope="${tel}"]`);
+        if (!chip) return;
+        const info = status[tel];
+        if (info) {
+            chip.classList.add('sent');
+            chip.textContent = `${tel}: sent by ${info.sent_by} at ${(info.sent_at || '').slice(11, 16)}`;
+            chip.title = `${info.sent_by} — ${info.sent_at} (Asia/Taipei)`;
+        } else {
+            chip.classList.remove('sent');
+            chip.textContent = `${tel}: not sent`;
+            chip.title = 'Not sent yet today';
+        }
+    });
+}
+
+async function loadSentStatus() {
+    try {
+        const resp = await _apiFetch('/daily_trigger/send_status');
+        const data = await resp.json();
+        if (data.success) renderSentStatus(data.status);
+    } catch (e) {
+        console.error('Could not load trigger send status:', e);
+    }
 }
 

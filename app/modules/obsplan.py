@@ -121,12 +121,28 @@ def create_ephem_target(namestring, RA, DEC, decimal_format='deg'):
     Returns:
         ephem.FixedBody: Target object with RA and DEC initialized.
     """
-    # Convert RA and DEC from degrees to radians if not provided as strings
-    if type(RA) not in [str, np.str_] and 'deg' in decimal_format.lower():
-        RA = float(RA) * np.pi / 180
-    if type(DEC) not in [str, np.str_] and 'deg' in decimal_format.lower():
-        DEC = float(DEC) * np.pi / 180
-    
+    # Convert RA and DEC from decimal degrees to radians before handing them to
+    # ephem. A bare (colon-free) numeric *string* needs the same treatment as a
+    # numeric type here: ephem.hours()/degrees() parse a colon-free string as
+    # already being in the class's native unit (hours for RA, degrees for DEC)
+    # rather than degrees, so an unconverted decimal-degree RA string like
+    # "159.6998" would silently be read as 159.6998 *hours* — badly wrong.
+    is_degrees = 'deg' in decimal_format.lower()
+
+    def _to_radians_if_bare_decimal(value):
+        if type(value) in [str, np.str_]:
+            stripped = value.strip()
+            if ':' in stripped:
+                return value  # already sexagesimal — ephem parses this correctly as-is
+            try:
+                return float(stripped) * np.pi / 180 if is_degrees else float(stripped)
+            except ValueError:
+                return value
+        return float(value) * np.pi / 180 if is_degrees else value
+
+    RA = _to_radians_if_bare_decimal(RA)
+    DEC = _to_radians_if_bare_decimal(DEC)
+
     ephemobj = ephem.FixedBody()  # Create a blank FixedBody object
     ephemobj.name = namestring 
     # Set RA and DEC using ephem.hours and ephem.degrees conversion
@@ -726,7 +742,11 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
         raise Exception('plot_observing_tracks(): obsend is earlier than obsstart!')
     if np.ndim(target_list) == 0:
         target_list = [target_list]
-    
+
+    # Sort targets by RA (ascending) so the legend/list order and the target
+    # numbering below are consistent regardless of the order they were passed in.
+    target_list = sorted(target_list, key=lambda t: float(t._ra))
+
     fig1 = plt.figure(1, figsize=figsize)
     axin = fig1.add_subplot(111)
     
@@ -770,12 +790,29 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
             except Exception as e:
                 print(f"{target.name}, {transit_time_str}, Error：{e}")'''
 
-        label_str = f"{target.name} (RA: {target._ra}, DEC: {target._dec})"
+        target_number = i + 1
+        label_str = f"{target_number}. {target.name} (RA: {target._ra}, DEC: {target._dec})"
         if simpletracks == True:
-            axin.plot(times_utc, alts, lw=1.5, label=label_str, zorder=5)
+            line, = axin.plot(times_utc, alts, lw=1.5, label=label_str, zorder=5)
+            number_color = line.get_color()
         else:
             colortrack = axin.scatter(times_utc, alts, c=azs, label=label_str,
                                       lw=0, s=10, cmap=azcmap, zorder=5)
+            number_color = 'k'
+
+        # Mark the target's number on the curve once every hour (while above the horizon),
+        # instead of just once, so it stays readable as you scan across a long track.
+        hour_cursor = times_utc[0].replace(minute=0, second=0, microsecond=0)
+        if hour_cursor < times_utc[0]:
+            hour_cursor += timedelta(hours=1)
+        while hour_cursor <= times_utc[-1]:
+            idx = min(range(len(times_utc)), key=lambda k: abs((times_utc[k] - hour_cursor).total_seconds()))
+            if alts[idx] > 0:
+                axin.annotate(str(target_number), xy=(times_utc[idx], alts[idx]),
+                              xytext=(0, 6), textcoords='offset points',
+                              ha='center', va='bottom', fontsize=8, fontweight='bold',
+                              color=number_color, zorder=6)
+            hour_cursor += timedelta(hours=1)
 
     if simpletracks == False:
         fig1.colorbar(colortrack, ax=axin, pad=0.12).set_label('Azimuth [deg]')

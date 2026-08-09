@@ -33,3 +33,4 @@ Pillow
 
 # Other
 apscheduler
+slack_sdk

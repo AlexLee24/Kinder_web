@@ -497,10 +497,11 @@
             });
         }
 
-        // Target tracks
-        const targetRows = document.querySelectorAll('.target-row');
+        // Target tracks — data.targets is already ordered by RA (ascending) and
+        // numbered by the backend; color/number are assigned by that same order
+        // so the legend, the plotted curve, and the details panel stay in sync.
         data.targets.forEach((t, i) => {
-            const color = targetRows[i] ? targetRows[i].dataset.color : TARGET_COLORS[i % TARGET_COLORS.length];
+            const color = TARGET_COLORS[i % TARGET_COLORS.length];
             const moonSepStr = t.moon_separation != null ? t.moon_separation.toFixed(1) + '°' : '--';
             const hoverTexts = t.altitudes.map((alt, j) => {
                 const am = alt > 0 ? (1 / Math.sin(alt * Math.PI / 180)).toFixed(2) : '--';
@@ -508,11 +509,22 @@
             });
             traces.push({
                 x: times, y: t.altitudes,
-                mode: 'lines', name: t.name,
+                mode: 'lines', name: `${t.number}. ${t.name}`,
                 line: { color: color, width: 2.5 },
                 text: hoverTexts,
                 hovertemplate: '%{text}<extra></extra>'
             });
+
+            // Mark the target's number on the curve, at its highest (transit) point.
+            const peakIdx = t.altitudes.reduce((best, alt, j) => alt > t.altitudes[best] ? j : best, 0);
+            if (t.altitudes[peakIdx] > 0) {
+                annotations.push({
+                    x: times[peakIdx], y: t.altitudes[peakIdx],
+                    text: `<b>${t.number}</b>`, showarrow: false,
+                    yshift: 12, font: { size: 11, color: color },
+                    bgcolor: 'rgba(0,0,0,0.35)'
+                });
+            }
         });
 
         // 30° airmass=2 guideline
@@ -665,7 +677,7 @@
                     <div class="target-detail-row">
                         <span class="target-detail-color" style="background:${color}"></span>
                         <div class="target-detail-info">
-                            <strong>${t.name}</strong>
+                            <strong>${t.number}. ${t.name}</strong>
                             <span>Transit: ${t.transit_time_utc || 'N/A'} (UTC) | ${t.transit_time_local || 'N/A'} (Local)</span>
                             <span>Max Alt: ${maxAlt.toFixed(1)}° | Moon Sep: ${t.moon_separation != null ? t.moon_separation + '°' : 'N/A'}</span>
                         </div>

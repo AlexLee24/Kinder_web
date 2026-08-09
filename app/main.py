@@ -42,7 +42,17 @@ app.config['SESSION_COOKIE_SECURE'] = not config.DEBUG
 
 from urllib.parse import urlparse
 
-_ALLOWED_HOST = urlparse(config.APP_BASE_URL).netloc
+_ALLOWED_HOSTS = {urlparse(config.APP_BASE_URL).netloc}
+
+if config.DEBUG:
+    # In local dev the site is usually reached via 127.0.0.1/localhost rather
+    # than the public APP_BASE_URL domain — allow those too so the Host check
+    # doesn't block local testing.
+    _ALLOWED_HOSTS.update({
+        f'{config.HOST}:{config.PORT}',
+        f'localhost:{config.PORT}',
+        f'127.0.0.1:{config.PORT}',
+    })
 
 
 @app.before_request
@@ -50,11 +60,11 @@ def _enforce_allowed_host():
     # Reject requests whose Host header doesn't match the configured public
     # domain (e.g. direct-IP access) — the Host header is attacker-controlled
     # and must not be trusted for routing/redirect decisions.
-    if request.host != _ALLOWED_HOST:
+    if request.host not in _ALLOWED_HOSTS:
         logging.getLogger('app').warning(
-            "Rejected request: Host header %r != configured APP_BASE_URL host %r "
+            "Rejected request: Host header %r not in allowed hosts %r "
             "(set APP_BASE_URL in kinder.env to match how the site is accessed)",
-            request.host, _ALLOWED_HOST,
+            request.host, _ALLOWED_HOSTS,
         )
         abort(404)
 
@@ -292,6 +302,8 @@ else:
 # ===============================================================================
 
 if __name__ == '__main__':
+    print(f" * Local:   http://{config.HOST}:{config.PORT}")
+    print(f" * Public:  {config.APP_BASE_URL}")
     app.run(
         host=config.HOST,
         port=config.PORT,
