@@ -1307,6 +1307,61 @@ body::before {
     cursor: pointer;
 }
 
+/* Copy-to-telescope button + dropdown menu (Actions column) */
+.pa-copy-wrap {
+    position: relative;
+    display: inline-block;
+}
+
+.pa-btn-copy {
+    padding: 0.3rem 0.6rem;
+    background: transparent;
+    color: var(--pa-accent);
+    border: 1px solid var(--pa-accent);
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+}
+
+.pa-btn-copy:hover {
+    background: rgba(77, 184, 255, 0.1);
+}
+
+.pa-copy-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 50;
+    background: var(--pa-modal-bg);
+    border: 1px solid var(--pa-border);
+    border-radius: 6px;
+    padding: 4px;
+    min-width: 110px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.pa-copy-menu.open {
+    display: block;
+}
+
+.pa-copy-menu-item {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.pa-copy-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
 .pa-btn-cancel {
     padding: 0.6rem 1.5rem;
     background: transparent;

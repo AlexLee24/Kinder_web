@@ -1021,6 +1021,13 @@ function renderTable(telescope, targets) {
                 activeToggle +
                 '<button onclick="editTarget(' + t.id + ')" class="pa-btn-edit">Edit</button>' +
                 '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-remove">Remove</button>' +
+                '<div class="pa-copy-wrap">' +
+                    '<button onclick="toggleCopyMenu(event, ' + t.id + ')" class="pa-btn-copy" title="Copy this target to another telescope">' +
+                        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+                        ' Copy' +
+                    '</button>' +
+                    '<div class="pa-copy-menu" id="copy-menu-' + t.id + '"></div>' +
+                '</div>' +
             '</td>';
         tableBody.appendChild(tr);
     });
@@ -1073,6 +1080,50 @@ async function editTarget(id) {
 
     toggleTelescopeUI(t.telescope);
     renderFilterRows();
+}
+
+const ALL_TELESCOPES = ['SLT', 'LOT'];
+
+function closeAllCopyMenus() {
+    document.querySelectorAll('.pa-copy-menu.open').forEach(function(m) { m.classList.remove('open'); });
+}
+// Close the dropdown when clicking anywhere else on the page.
+document.addEventListener('click', closeAllCopyMenus);
+
+function toggleCopyMenu(event, id) {
+    event.stopPropagation();
+    const menu = document.getElementById('copy-menu-' + id);
+    if (!menu) return;
+    const wasOpen = menu.classList.contains('open');
+    closeAllCopyMenus();
+    if (wasOpen) return;
+
+    const t = allTargetsCache.find(function(x) { return x.id === id; });
+    if (!t) return;
+
+    const destinations = ALL_TELESCOPES.filter(function(tel) { return tel !== t.telescope; });
+    menu.innerHTML = destinations.map(function(tel) {
+        return '<div class="pa-copy-menu-item" onclick="copyTargetToTelescope(event, ' + id + ', \'' + tel + '\')">Copy to ' + tel + '</div>';
+    }).join('');
+    menu.classList.add('open');
+}
+
+function copyTargetToTelescope(event, id, destTelescope) {
+    if (event) event.stopPropagation();
+    closeAllCopyMenus();
+
+    const t = allTargetsCache.find(function(x) { return x.id === id; });
+    if (!t) { alert('Target not found'); return; }
+
+    // Opens the same Add/Edit modal used for a brand-new target, just pre-filled
+    // with name + RA/Dec from the source — everything else (priority, filters,
+    // notes, program) is left for the user to fill in for the destination telescope.
+    openTargetModal(destTelescope);
+    editingTargetId = null;
+    document.getElementById('obs-name').value = t.name || '';
+    document.getElementById('obs-ra').value = t.ra || '';
+    document.getElementById('obs-dec').value = t.dec || '';
+    checkTargetNameHint(t.name || '');
 }
 
 async function deleteTarget(id) {
