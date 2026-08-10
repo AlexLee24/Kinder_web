@@ -2858,8 +2858,10 @@ function startSendTriggerFlow() {
 
     _sendFlowState = {
         telescope: scriptTelescope,
-        // The ACP script goes out fenced as a Slack code block; the greeting stays plain text.
-        message: lastGeneratedGreeting + '```\n' + lastGeneratedScriptBody + '\n```',
+        // Greeting is the Slack message text; the ACP script goes out as a .txt
+        // attachment (not inline) since it's meant to be downloaded/copied as-is.
+        greeting: lastGeneratedGreeting,
+        scriptBody: lastGeneratedScriptBody,
         plotUrl: scriptVisPlotUrl,
         targets: lastGeneratedTargets,
         targetNames: lastGeneratedTargets.map(t => t.name)
@@ -2927,8 +2929,8 @@ async function _finalizeSendTrigger() {
             headers: { 'Content-Type': 'application/json' },
             body: _apiStringify({
                 telescope: state.telescope,
-                script: state.message,
-                plot_url: state.plotUrl,
+                greeting: state.greeting,
+                script: state.scriptBody,
                 targets: state.targets
             })
         });

@@ -60,9 +60,11 @@ def mark_sent(telescope, sent_by):
     return status
 
 
-def send_to_slack(message, image_path=None):
-    """Posts the trigger message (and optionally an image) to the Control Room
-    channel, or the test channel when DEBUG is enabled."""
+def send_to_slack(greeting, script_body, image_path=None):
+    """Posts the trigger message to the Control Room channel (or the test
+    channel when DEBUG is enabled): `greeting` as the message text, the ACP
+    script as a .txt attachment, and the visibility plot (if any) — all as
+    ONE Slack message, not separate posts."""
     token = os.environ.get('SLACK_BOT_TOKEN', '')
     if not token:
         raise RuntimeError('SLACK_BOT_TOKEN is not configured.')
@@ -76,9 +78,27 @@ def send_to_slack(message, image_path=None):
         raise RuntimeError('Slack channel is not configured for this environment.')
 
     client = WebClient(token=token)
+
+    import tempfile
+    txt_path = None
     try:
-        client.chat_postMessage(channel=channel, text=message)
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tf:
+            tf.write(script_body)
+            txt_path = tf.name
+
+        # snippet_type='text' tells Slack to render this inline as an expandable
+        # text preview rather than a plain "download this file" card.
+        file_uploads = [{'file': txt_path, 'filename': 'trigger_script.txt', 'title': 'Trigger Script',
+                          'snippet_type': 'text'}]
         if image_path and os.path.isfile(image_path):
-            client.files_upload_v2(channel=channel, file=image_path)
+            file_uploads.append({'file': image_path, 'filename': 'visibility_plot.jpg', 'title': 'Visibility Plot'})
+
+        client.files_upload_v2(channel=channel, initial_comment=greeting, file_uploads=file_uploads)
     except SlackApiError as e:
         raise RuntimeError(f"Slack send failed: {e.response['error']}")
+    finally:
+        if txt_path:
+            try:
+                os.unlink(txt_path)
+            except OSError:
+                pass
