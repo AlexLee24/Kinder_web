@@ -200,7 +200,10 @@ def generate_full_script(targets, telescope):
             exp_time=t.get('exp_time'),
             count=t.get('count'),
         ))
-    return TARGET_SEPARATOR.join(parts)
+    # Each target block (and TARGET_SEPARATOR) ends in trailing blank lines meant
+    # to separate it from the next one — but after the very last target there's
+    # nothing left to separate from, so trim the dangling newlines off the end.
+    return TARGET_SEPARATOR.join(parts).rstrip('\n')
 
 
 # generate image

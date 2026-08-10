@@ -2632,8 +2632,9 @@ async function generateTriggerScriptMessage() {
     setTriggerSendStatus('Generating script...', 'pending');
 
     // Payload matches app/modules/trigger_script.py's generate_script() params.
-    // priority_message is sourced from "Note for GREATLab" — that's the field
-    // meant to tell everyone what the target is and why it's being observed.
+    // priority_message is sourced from the plain "Note" (staff-facing) field.
+    // "Note for GREATLab" must never appear in the script — it's web-page-only,
+    // shown to people browsing the target list, not to whoever reads the trigger.
     const payloadTargets = targets.map(t => {
         const useAutoExp = !!t.auto_exposure;
         const item = {
@@ -2642,7 +2643,7 @@ async function generateTriggerScriptMessage() {
             dec: t.dec,
             mag: t.mag || '',
             priority: t.priority || 'Normal',
-            priority_message: t.note_gl || '',
+            priority_message: t.plan || '',
             repeat: t.repeat_count || 0,
             auto_exp: useAutoExp,
             program: t.program || ''
@@ -2794,6 +2795,13 @@ let _sendFlowState = null;
 function startSendTriggerFlow() {
     if (!lastGeneratedScriptBody.trim()) {
         setTriggerSendStatus('Generate a script first before sending.', 'error');
+        return;
+    }
+    // renderScriptVisibilityImage() runs async right after generation and can
+    // still be mid-render (it's a real matplotlib plot, not instant) — sending
+    // before it finishes would silently post the message with no plot attached.
+    if (!scriptVisPlotUrl) {
+        setTriggerSendStatus('Visibility plot is still rendering — wait a moment and try again.', 'error');
         return;
     }
 
