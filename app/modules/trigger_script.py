@@ -83,6 +83,18 @@ def generate_script(name, ra, dec, mag, priority, priority_message, is_lot="Fals
     telescope = "LOT" if is_lot == "True" else "SLT"
     priority_message = priority_message or ""
     print(f"Telescope: {telescope}")
+
+    # ACP only accepts sexagesimal (H:M:S / D:M:S) coordinates. Targets are stored
+    # (and returned by the API) as decimal degrees, so normalize through ephem
+    # here rather than trusting whatever format the caller happened to pass in —
+    # create_ephem_target() already handles both decimal-degree and sexagesimal
+    # strings correctly.
+    try:
+        _coord_target = obs.create_ephem_target(name, ra, dec)
+        ra = str(_coord_target._ra)
+        dec = str(_coord_target._dec)
+    except Exception as e:
+        return f";= {name}: could not parse coordinates (RA={ra}, DEC={dec}): {e} =\n\n"
     if auto_exp:
         exposure_times = exposure_time(mag)
         if exposure_times == "Invalid magnitude":
