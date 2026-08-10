@@ -12,7 +12,7 @@ CREATE SCHEMA IF NOT EXISTS obs;
 CREATE TABLE obs.targets (
     target_id   SERIAL PRIMARY KEY,
     active      BOOL NOT NULL DEFAULT TRUE,
-    name        TEXT NOT NULL UNIQUE,   -- TNS name, no prefix, e.g. 2026A
+    name        TEXT NOT NULL,          -- TNS name, no prefix, e.g. 2026A
     mag         DOUBLE PRECISION,
     ra          DOUBLE PRECISION NOT NULL,
     dec         DOUBLE PRECISION NOT NULL,
@@ -26,7 +26,8 @@ CREATE TABLE obs.targets (
     repeat      INT NOT NULL DEFAULT 0,
     plan        TEXT,                   -- plan note to staff
     note        TEXT,                   -- note to group
-    create_by   INT REFERENCES auth.users(usr_id) ON DELETE SET NULL
+    create_by   INT REFERENCES auth.users(usr_id) ON DELETE SET NULL,
+    UNIQUE (name, telescope)  -- same target may be queued on both SLT and LOT
 );
 
 CREATE INDEX obs_targets_active_tel_idx  ON obs.targets (active, telescope);
