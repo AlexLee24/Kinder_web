@@ -117,10 +117,10 @@ def _slack_upload_and_share(client, channel, file_path, filename, title, thread_
 
 
 def send_to_slack(greeting, script_body, image_path=None):
-    """Posts the trigger message to the Control Room channel (or the test
-    channel when DEBUG is enabled): `greeting` via chat.postMessage, then the
-    ACP script (.txt) and the visibility plot as follow-up file shares
-    threaded under that message, so they still read as one conversation."""
+    """Posts three separate, independent top-level messages to the Control Room
+    channel (or the test channel when DEBUG is enabled) — not a thread/reply:
+    1) the greeting via chat.postMessage, 2) the ACP script as a .txt share,
+    3) the visibility plot as an image share."""
     token = os.environ.get('SLACK_BOT_TOKEN', '')
     if not token:
         raise RuntimeError('SLACK_BOT_TOKEN is not configured.')
@@ -141,18 +141,16 @@ def send_to_slack(greeting, script_body, image_path=None):
     try:
         post_resp = client.chat_postMessage(channel=channel, text=greeting)
         _log_slack_response('greeting post', post_resp)
-        thread_ts = post_resp.get('ts')
 
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tf:
             tf.write(script_body)
             txt_path = tf.name
 
         _slack_upload_and_share(client, channel, txt_path, 'trigger_script.txt', 'Trigger Script',
-                                thread_ts=thread_ts, snippet_type='text')
+                                snippet_type='text')
 
         if image_path and os.path.isfile(image_path):
-            _slack_upload_and_share(client, channel, image_path, 'visibility_plot.jpg', 'Visibility Plot',
-                                    thread_ts=thread_ts)
+            _slack_upload_and_share(client, channel, image_path, 'visibility_plot.jpg', 'Visibility Plot')
     except SlackApiError as e:
         raise RuntimeError(f"Slack send failed: {e.response['error']}")
     except requests.RequestException as e:
