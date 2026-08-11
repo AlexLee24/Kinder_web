@@ -646,7 +646,10 @@ def daily_trigger_send_status():
     if 'user' not in session or not can_access_page('daily_trigger'):
         return jsonify({'error': 'Forbidden'}), 403
     from modules.trigger_send import get_send_status
-    return jsonify({'success': True, 'status': get_send_status()})
+    status = get_send_status()
+    logger.info('daily_trigger_send_status: requested_by=%s status=%s',
+                session['user'].get('email'), status)
+    return jsonify({'success': True, 'status': status})
 
 
 @private_area_bp.route('/daily_trigger/send_message', methods=['POST'])
@@ -656,15 +659,24 @@ def daily_trigger_send_message():
     if not can_access_page('daily_trigger'):
         return jsonify({'success': False, 'error': 'Access denied.'}), 403
 
+    requester = session['user'].get('email') or session['user'].get('name') or 'unknown'
+
     data = request.get_json(silent=True) or {}
     telescope = str(data.get('telescope', '')).strip().upper()
     greeting = str(data.get('greeting', ''))
     script = str(data.get('script', ''))
     targets = data.get('targets') or []
+    target_names = [t.get('name') for t in targets if isinstance(t, dict)]
+
+    logger.info('daily_trigger_send_message: request by=%s telescope=%s targets=%s '
+                'greeting_chars=%d script_chars=%d',
+                requester, telescope, target_names, len(greeting), len(script))
 
     if telescope not in ('SLT', 'LOT'):
+        logger.warning('daily_trigger_send_message: rejected — invalid telescope %r (by=%s)', telescope, requester)
         return jsonify({'success': False, 'error': 'Invalid telescope'}), 400
     if not script.strip():
+        logger.warning('daily_trigger_send_message: rejected — empty script (by=%s telescope=%s)', requester, telescope)
         return jsonify({'success': False, 'error': 'Script message is empty'}), 400
 
     # Render the visibility plot fresh, right now, from the exact target list
@@ -675,27 +687,32 @@ def daily_trigger_send_message():
     # confirmation steps could evict it before Send actually fires, silently
     # sending the message with no plot attached.
     image_path = _render_trigger_visibility_image(telescope, targets)
+    logger.info('daily_trigger_send_message: visibility image=%s', image_path or '(none)')
 
     try:
         from modules.trigger_send import send_to_slack, mark_sent
         send_to_slack(greeting, script, image_path=image_path)
+        logger.info('daily_trigger_send_message: Slack send call completed by=%s telescope=%s', requester, telescope)
     except Exception as e:
-        logger.exception('daily_trigger_send_message: Slack send failed')
+        logger.exception('daily_trigger_send_message: Slack send failed by=%s telescope=%s', requester, telescope)
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         if image_path:
             try:
                 os.unlink(image_path)
-            except OSError:
-                pass
+                logger.info('daily_trigger_send_message: cleaned up temp image %s', image_path)
+            except OSError as e:
+                logger.warning('daily_trigger_send_message: could not delete temp image %s: %s', image_path, e)
 
     sent_by = session['user'].get('name') or session['user'].get('email') or 'unknown'
     status = mark_sent(telescope, sent_by)
+    logger.info('daily_trigger_send_message: marked sent telescope=%s by=%s status=%s', telescope, sent_by, status)
 
     # Best-effort: record each triggered target in the Observation Log. A failure
     # here shouldn't be reported as a failed send — the Slack message already went
     # out — so problems are collected as warnings instead of aborting the request.
     log_warnings = _log_triggered_targets(telescope, targets, sent_by)
+    logger.info('daily_trigger_send_message: observation log warnings=%s', log_warnings or '(none)')
 
     return jsonify({'success': True, 'status': status, 'log_warnings': log_warnings})
 
@@ -710,16 +727,21 @@ def _render_trigger_visibility_image(telescope, targets):
     from modules import obsplan as obs
     from modules.trigger_send import _trigger_day_key
 
+    logger.info('render_trigger_visibility_image: start telescope=%s target_count=%d', telescope, len(targets))
+
     target_list = []
     for t in targets:
         ra, dec = t.get('ra'), t.get('dec')
         if not ra or not dec:
+            logger.warning('render_trigger_visibility_image: %s has no RA/Dec, skipping in plot', t.get('name'))
             continue
         try:
             target_list.append(obs.create_ephem_target(t.get('name') or 'Target', ra, dec))
         except Exception:
-            logger.warning('daily_trigger send: could not parse coords for %s', t.get('name'))
+            logger.warning('render_trigger_visibility_image: could not parse coords for %s (RA=%r DEC=%r)',
+                           t.get('name'), ra, dec, exc_info=True)
     if not target_list:
+        logger.warning('render_trigger_visibility_image: no plottable targets for telescope=%s — sending without a plot', telescope)
         return None
 
     try:
@@ -738,9 +760,13 @@ def _render_trigger_visibility_image(telescope, targets):
             simpletracks=True, toptime='local', timezone='calculate',
             n_steps=500, savepath=tf.name
         )
+        size = os.path.getsize(tf.name) if os.path.isfile(tf.name) else -1
+        logger.info('render_trigger_visibility_image: rendered %s (%d bytes) for telescope=%s, %d target(s) plotted',
+                    tf.name, size, telescope, len(target_list))
         return tf.name
     except Exception:
-        logger.exception('daily_trigger_send_message: visibility plot render failed')
+        logger.exception('render_trigger_visibility_image: render failed telescope=%s target_count=%d',
+                         telescope, len(target_list))
         return None
 
 
@@ -751,10 +777,16 @@ def _log_triggered_targets(telescope, targets, sent_by):
 
     obs_date = _trigger_day_key()
     warnings = []
+    succeeded = []
+    skipped = []
+
+    logger.info('log_triggered_targets: start telescope=%s obs_date=%s sent_by=%s target_count=%d',
+                telescope, obs_date, sent_by, len(targets))
 
     for t in targets:
         name = str(t.get('name') or '').strip()
         if not name:
+            logger.warning('log_triggered_targets: skipping target with no name: %r', t)
             continue
 
         try:
@@ -763,6 +795,9 @@ def _log_triggered_targets(telescope, targets, sent_by):
                 if not isinstance(exp_map, dict):
                     # Invalid/too-faint magnitude — that target's script block was
                     # just a comment, nothing was actually scheduled to trigger.
+                    logger.warning('log_triggered_targets: %s skipped — invalid/too-faint mag %r (auto-exp result: %r)',
+                                   name, t.get('mag'), exp_map)
+                    skipped.append(name)
                     continue
                 filter_list = [
                     {'filter': fname, 'exp': int(spec.split('sec*')[0]), 'count': int(spec.split('sec*')[1])}
@@ -789,12 +824,19 @@ def _log_triggered_targets(telescope, targets, sent_by):
                 repeat_count=int(t.get('repeat') or 0),
                 program=t.get('program') or None,
             )
-            if not ok:
+            if ok:
+                logger.info('log_triggered_targets: %s logged ok (priority=%s filters=%s)',
+                            name, t.get('priority'), filter_list)
+                succeeded.append(name)
+            else:
+                logger.warning('log_triggered_targets: upsert_observation_log returned falsy for %s', name)
                 warnings.append(f'{name}: failed to save log entry')
         except Exception as e:
-            logger.exception('daily_trigger_send_message: log entry failed for %s', name)
+            logger.exception('log_triggered_targets: failed for %s', name)
             warnings.append(f'{name}: {e}')
 
+    logger.info('log_triggered_targets: done telescope=%s succeeded=%s skipped=%s warnings=%s',
+                telescope, succeeded, skipped, warnings)
     return warnings
 
 @private_area_bp.route('/greatlab_info')

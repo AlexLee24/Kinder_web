@@ -5,6 +5,7 @@ import os
 import re
 import io
 import json
+import logging
 import traceback
 import base64
 import ephem
@@ -39,6 +40,8 @@ from modules.observation_script import get_followup_targets_json, process_observ
 from flask import Blueprint
 astronomy_tools_bp = Blueprint('astronomy_tools', __name__, template_folder='templates', static_folder='static')
 """Register astronomy tools routes with the Flask app"""
+
+logger = logging.getLogger(__name__)
 
 # ── Public API rate limiter ────────────────────────────────────────────────────
 _rl_lock  = threading.Lock()
@@ -810,18 +813,24 @@ def generate_script_route():
 @astronomy_tools_bp.route('/astronomy_tools/generate_trigger_script', methods=['POST'])
 def generate_trigger_script_route():
     """Build the Daily Trigger ACP script message (trigger_script.py format)."""
-    try:
-        data = request.get_json() or {}
-        telescope = data.get('telescope', 'SLT')
-        targets = data.get('targets', [])
-        if not isinstance(targets, list) or not targets:
-            return jsonify({'success': False, 'error': 'No targets provided'}), 400
+    data = request.get_json() or {}
+    telescope = data.get('telescope', 'SLT')
+    targets = data.get('targets', [])
+    target_names = [t.get('name') for t in targets if isinstance(t, dict)]
+    logger.info('generate_trigger_script: telescope=%s targets=%s', telescope, target_names)
 
+    if not isinstance(targets, list) or not targets:
+        logger.warning('generate_trigger_script: rejected — no targets provided (telescope=%s)', telescope)
+        return jsonify({'success': False, 'error': 'No targets provided'}), 400
+
+    try:
         from modules import trigger_script
         script = trigger_script.generate_full_script(targets, telescope)
+        logger.info('generate_trigger_script: ok telescope=%s targets=%d script_chars=%d',
+                    telescope, len(targets), len(script))
         return jsonify({'success': True, 'script': script})
     except Exception as e:
-        traceback.print_exc()
+        logger.exception('generate_trigger_script: failed telescope=%s targets=%s', telescope, target_names)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===============================================================================
