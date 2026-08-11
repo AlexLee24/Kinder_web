@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 import pytz
+import requests
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -76,13 +77,48 @@ def _log_slack_response(step, resp):
         logger.info('trigger_send: %s response (could not introspect)', step)
 
 
+def _slack_upload_and_share(client, channel, file_path, filename, title, thread_ts=None, initial_comment=None,
+                            snippet_type=None):
+    """Drives Slack's 3-step external upload flow explicitly (get an upload URL,
+    PUT the bytes, then completeUploadExternal with channel_id set), instead of
+    the files_upload_v2 convenience wrapper.
+
+    Why: files_upload_v2 was returning ok=True for the upload, but the returned
+    file object had channels=[] / groups=[] / ims=[] — meaning Slack accepted
+    and stored the file but never actually shared it into the channel, so
+    nothing appeared even though the API call "succeeded". Calling
+    files_completeUploadExternal ourselves guarantees channel_id is passed to
+    the step that actually posts the file into the channel."""
+    file_size = os.path.getsize(file_path)
+
+    url_kwargs = {'filename': filename, 'length': file_size}
+    if snippet_type:
+        url_kwargs['snippet_type'] = snippet_type
+    url_resp = client.files_getUploadURLExternal(**url_kwargs)
+    logger.info('trigger_send: got upload URL for %s (file_id=%s)', filename, url_resp.get('file_id'))
+    upload_url = url_resp['upload_url']
+    file_id = url_resp['file_id']
+
+    with open(file_path, 'rb') as f:
+        put_resp = requests.post(upload_url, files={'file': (filename, f)}, timeout=30)
+    put_resp.raise_for_status()
+    logger.info('trigger_send: uploaded bytes for %s (file_id=%s, %d bytes, http_status=%d)',
+                filename, file_id, file_size, put_resp.status_code)
+
+    complete_kwargs = {'files': [{'id': file_id, 'title': title}], 'channel_id': channel}
+    if thread_ts:
+        complete_kwargs['thread_ts'] = thread_ts
+    if initial_comment:
+        complete_kwargs['initial_comment'] = initial_comment
+
+    complete_resp = client.files_completeUploadExternal(**complete_kwargs)
+    _log_slack_response(f'{filename} completeUploadExternal', complete_resp)
+    return complete_resp
+
+
 def send_to_slack(greeting, script_body, image_path=None):
     """Posts the trigger message to the Control Room channel (or the test
-    channel when DEBUG is enabled): `greeting` via chat.postMessage (the plain
-    text post that was already proven reliable before the .txt-attachment
-    change — relying on files_upload_v2's initial_comment to carry the text
-    instead turned out to silently not deliver, likely a scope/permission gap
-    between plain chat:write and the file-upload-and-share flow), then the
+    channel when DEBUG is enabled): `greeting` via chat.postMessage, then the
     ACP script (.txt) and the visibility plot as follow-up file shares
     threaded under that message, so they still read as one conversation."""
     token = os.environ.get('SLACK_BOT_TOKEN', '')
@@ -111,23 +147,16 @@ def send_to_slack(greeting, script_body, image_path=None):
             tf.write(script_body)
             txt_path = tf.name
 
-        # snippet_type='text' tells Slack to render this inline as an expandable
-        # text preview rather than a plain "download this file" card.
-        resp1 = client.files_upload_v2(
-            channel=channel, thread_ts=thread_ts,
-            file=txt_path, filename='trigger_script.txt', title='Trigger Script',
-            snippet_type='text',
-        )
-        _log_slack_response('script upload', resp1)
+        _slack_upload_and_share(client, channel, txt_path, 'trigger_script.txt', 'Trigger Script',
+                                thread_ts=thread_ts, snippet_type='text')
 
         if image_path and os.path.isfile(image_path):
-            resp2 = client.files_upload_v2(
-                channel=channel, thread_ts=thread_ts, file=image_path,
-                filename='visibility_plot.jpg', title='Visibility Plot',
-            )
-            _log_slack_response('plot upload', resp2)
+            _slack_upload_and_share(client, channel, image_path, 'visibility_plot.jpg', 'Visibility Plot',
+                                    thread_ts=thread_ts)
     except SlackApiError as e:
         raise RuntimeError(f"Slack send failed: {e.response['error']}")
+    except requests.RequestException as e:
+        raise RuntimeError(f"Slack file upload (HTTP) failed: {e}")
     finally:
         if txt_path:
             try:
