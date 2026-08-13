@@ -30,18 +30,19 @@ def _trigger_day_key(now=None):
 
 
 def get_send_status():
-    """Returns {'day': ..., 'SLT': {...} or None, 'LOT': {...} or None}.
-    Automatically resets (returns None entries) once the trigger day rolls over —
-    no cron job needed, the reset just happens lazily on next read/write."""
+    """Returns {'day': ..., 'SLT': {...} or None, 'LOT:R01': {...}, ...}.
+    LOT programs are stored as separate keys like 'LOT:R01', 'LOT:R07'.
+    Automatically resets once the trigger day rolls over."""
     day_key = _trigger_day_key()
-    status = {'day': day_key, 'SLT': None, 'LOT': None}
+    status = {'day': day_key, 'SLT': None}
     if os.path.isfile(_STATUS_PATH):
         try:
             with open(_STATUS_PATH, 'r', encoding='utf-8') as f:
                 stored = json.load(f)
             if stored.get('day') == day_key:
-                status['SLT'] = stored.get('SLT')
-                status['LOT'] = stored.get('LOT')
+                for k, v in stored.items():
+                    if k != 'day':
+                        status[k] = v
             else:
                 logger.info('trigger_send: status reset — stored day=%s, current trigger day=%s',
                             stored.get('day'), day_key)
@@ -50,18 +51,19 @@ def get_send_status():
     return status
 
 
-def mark_sent(telescope, sent_by):
+def mark_sent(telescope, sent_by, program=''):
     if telescope not in ('SLT', 'LOT'):
         raise ValueError(f'Invalid telescope: {telescope}')
     os.makedirs(_STATUS_DIR, exist_ok=True)
     status = get_send_status()
-    status[telescope] = {
+    key = f'{telescope}:{program}' if telescope == 'LOT' and program else telescope
+    status[key] = {
         'sent_by': sent_by,
         'sent_at': datetime.now(_TAIPEI).strftime('%Y-%m-%d %H:%M:%S'),
     }
     with open(_STATUS_PATH, 'w', encoding='utf-8') as f:
         json.dump(status, f, indent=2)
-    logger.info('trigger_send: mark_sent telescope=%s sent_by=%s -> %s', telescope, sent_by, status[telescope])
+    logger.info('trigger_send: mark_sent key=%s sent_by=%s -> %s', key, sent_by, status[key])
     return status
 
 

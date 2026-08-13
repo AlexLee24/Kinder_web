@@ -748,7 +748,8 @@ async function loadTargets() {
         const data = await response.json();
         if (data.success) {
             allTargetsCache = data.targets;
-            
+            _rebuildSentChips();
+
             // Ensure first programmatic sort triggers 'desc' order
             sortDirections['SLT_priority'] = 'asc';
             sortDirections['LOT_priority'] = 'asc';
@@ -1039,25 +1040,27 @@ function renderTable(telescope, targets) {
                 '<div class="pa-action-cell">' +
                     '<div class="pa-action-row-top">' +
                         activeToggle +
-                        '<span class="pa-action-toggle-label">' + (t.is_active !== false ? 'Active' : 'Inactive') + '</span>' +
                         '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-icon-remove" title="Remove target">' +
                             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
                         '</button>' +
                     '</div>' +
-                    '<div class="pa-action-row-mid">' +
-                        '<button onclick="editTarget(' + t.id + ')" class="pa-btn-edit">Edit</button>' +
+                    '<div class="pa-action-row-btns">' +
+                        '<button onclick="editTarget(' + t.id + ')" class="pa-btn-action" title="Edit target">' +
+                            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+                            ' Edit' +
+                        '</button>' +
                         '<div class="pa-copy-wrap">' +
-                            '<button onclick="toggleCopyMenu(event, ' + t.id + ')" class="pa-btn-copy" title="Copy this target to another telescope">' +
-                                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+                            '<button onclick="toggleCopyMenu(event, ' + t.id + ')" class="pa-btn-action" title="Copy to another telescope">' +
+                                '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
                                 ' Copy' +
                             '</button>' +
                             '<div class="pa-copy-menu" id="copy-menu-' + t.id + '"></div>' +
                         '</div>' +
+                        '<button onclick="openSingleTriggerModal(' + t.id + ')" class="pa-btn-action pa-btn-action--trigger" title="Trigger this target">' +
+                            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>' +
+                            ' Trigger' +
+                        '</button>' +
                     '</div>' +
-                    '<button onclick="openSingleTriggerModal(' + t.id + ')" class="pa-btn-single-trigger" title="Trigger just this target">' +
-                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>' +
-                        ' Trigger' +
-                    '</button>' +
                 '</div>' +
             '</td>';
         tableBody.appendChild(tr);
@@ -1089,7 +1092,7 @@ async function editTarget(id) {
         try {
             const resp = await _apiFetch('/api/targets');
             const data = await resp.json();
-            if (data.success) allTargetsCache = data.targets;
+            if (data.success) { allTargetsCache = data.targets; _rebuildSentChips(); }
         } catch (e) { console.error(e); return; }
     }
 
@@ -1453,6 +1456,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
 
             if (dataTargets && dataTargets.success && Array.isArray(dataTargets.targets)) {
                 allTargetsCache = dataTargets.targets;
+                _rebuildSentChips();
                 logTargets = dataTargets.targets;
             } else {
                 logTargets = allTargetsCache;
@@ -2670,6 +2674,7 @@ function updateTriggerChecklistProgress() {
 }
 
 let scriptTelescope = 'SLT';
+let scriptProgram = '';
 let lastGeneratedGreeting = '';
 let lastGeneratedScriptBody = '';
 let lastGeneratedTargets = [];
@@ -2681,7 +2686,58 @@ function switchScriptTelescope(telescope) {
     if (sltTab) sltTab.classList.toggle('active', telescope === 'SLT');
     if (lotTab) lotTab.classList.toggle('active', telescope === 'LOT');
 
-    // Stale script/plot from the other telescope shouldn't linger.
+    const programSelect = document.getElementById('script-program-select');
+    if (programSelect) {
+        if (telescope === 'LOT') {
+            _populateScriptProgramSelect();
+            programSelect.style.display = '';
+        } else {
+            programSelect.style.display = 'none';
+            scriptProgram = '';
+        }
+    }
+
+    const textarea = document.getElementById('trigger-script-preview');
+    if (textarea) textarea.value = '';
+    lastGeneratedGreeting = '';
+    lastGeneratedScriptBody = '';
+    lastGeneratedTargets = [];
+    setTriggerSendStatus('', '');
+    resetScriptVisibilityPreview();
+}
+
+function _populateScriptProgramSelect() {
+    const select = document.getElementById('script-program-select');
+    if (!select) return;
+    const programs = _getLotPrograms();
+    const prev = select.value;
+    select.innerHTML = '';
+    programs.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        select.appendChild(opt);
+    });
+    if (programs.includes(prev)) {
+        select.value = prev;
+        scriptProgram = prev;
+    } else {
+        select.value = programs[0] || '';
+        scriptProgram = programs[0] || '';
+    }
+}
+
+function _getLotPrograms() {
+    return [...new Set(
+        (allTargetsCache || [])
+            .filter(t => t.telescope === 'LOT' && t.is_active !== false && !t.is_discontinued && t.program)
+            .map(t => t.program)
+    )].sort();
+}
+
+function onScriptProgramChange() {
+    const select = document.getElementById('script-program-select');
+    scriptProgram = select ? select.value : '';
     const textarea = document.getElementById('trigger-script-preview');
     if (textarea) textarea.value = '';
     lastGeneratedGreeting = '';
@@ -2736,16 +2792,21 @@ async function generateTriggerScriptMessage() {
     if (!textarea) return;
 
     const targets = (allTargetsCache || [])
-        .filter(t => t.telescope === scriptTelescope && t.is_active !== false && !t.is_discontinued)
+        .filter(t => {
+            if (t.telescope !== scriptTelescope || t.is_active === false || t.is_discontinued) return false;
+            if (scriptTelescope === 'LOT' && scriptProgram) return t.program === scriptProgram;
+            return true;
+        })
         .sort((a, b) => {
             const rankDiff = _scriptTargetPriorityRank(a.priority) - _scriptTargetPriorityRank(b.priority);
             if (rankDiff !== 0) return rankDiff;
             return (a.name || '').localeCompare(b.name || '');
         });
 
+    const scopeLabel = scriptProgram ? `${scriptTelescope} ${scriptProgram}` : scriptTelescope;
     if (targets.length === 0) {
         textarea.value = '';
-        setTriggerSendStatus(`No active ${scriptTelescope} targets to generate a script for.`, 'error');
+        setTriggerSendStatus(`No active ${scopeLabel} targets to generate a script for.`, 'error');
         return;
     }
 
@@ -2774,9 +2835,13 @@ async function generateTriggerScriptMessage() {
             return;
         }
 
-        const greeting =
-            `您好，若天氣允許使用 ${scriptTelescope}，以下是今日的觀測目標:\n` +
-            `If the weather permits to use ${scriptTelescope}, here are today's observation targets:\n\n`;
+        const greetingZh = scriptProgram
+            ? `您好，若天氣允許使用 ${scriptTelescope}，以下是 "${scriptProgram}" 今日的觀測目標:`
+            : `您好，若天氣允許使用 ${scriptTelescope}，以下是今日的觀測目標:`;
+        const greetingEn = scriptProgram
+            ? `If the weather permits to use ${scriptTelescope}, here are today's "${scriptProgram}" observation targets:`
+            : `If the weather permits to use ${scriptTelescope}, here are today's observation targets:`;
+        const greeting = greetingZh + '\n' + greetingEn + '\n\n';
         textarea.value = greeting + data.script;
 
         // Kept separately (rather than re-parsed from the textarea) so the Slack
@@ -2787,7 +2852,7 @@ async function generateTriggerScriptMessage() {
         lastGeneratedTargets = payloadTargets;
 
         const targetNames = targets.map(t => t.name).join(', ');
-        setTriggerSendStatus(`Script generated for ${targets.length} ${scriptTelescope} target(s): ${targetNames}.`, 'ok');
+        setTriggerSendStatus(`Script generated for ${targets.length} ${scopeLabel} target(s): ${targetNames}.`, 'ok');
         renderScriptVisibilityImage(targets);
     } catch (e) {
         setTriggerSendStatus('Network error while generating script.', 'error');
@@ -2908,10 +2973,10 @@ function startSendTriggerFlow() {
         return;
     }
 
+    const sendScopeLabel = scriptProgram ? `${scriptTelescope} (${scriptProgram})` : scriptTelescope;
     _sendFlowState = {
         telescope: scriptTelescope,
-        // Greeting is the Slack message text; the ACP script goes out as a .txt
-        // attachment (not inline) since it's meant to be downloaded/copied as-is.
+        program: scriptProgram,
         greeting: lastGeneratedGreeting,
         scriptBody: lastGeneratedScriptBody,
         plotUrl: scriptVisPlotUrl,
@@ -2921,7 +2986,7 @@ function startSendTriggerFlow() {
 
     document.getElementById('send-confirm-name').textContent = _USER_DISPLAY_NAME || '(unknown)';
     document.getElementById('send-confirm-email').textContent = _USER_EMAIL || '';
-    document.getElementById('send-confirm-telescope').textContent = scriptTelescope;
+    document.getElementById('send-confirm-telescope').textContent = sendScopeLabel;
 
     document.getElementById('sendStep1Modal').style.display = 'flex';
 }
@@ -2932,7 +2997,10 @@ function advanceSendTriggerFlow(fromStep) {
     if (fromStep === 1) {
         document.getElementById('sendStep1Modal').style.display = 'none';
 
-        document.getElementById('send-review-telescope').textContent = _sendFlowState.telescope;
+        const reviewScope = _sendFlowState.program
+            ? `${_sendFlowState.telescope} (${_sendFlowState.program})`
+            : _sendFlowState.telescope;
+        document.getElementById('send-review-telescope').textContent = reviewScope;
         document.getElementById('send-review-targets').textContent =
             _sendFlowState.targetNames.length ? _sendFlowState.targetNames.join(', ') : '(none)';
         const reviewImg = document.getElementById('send-review-img');
@@ -2950,8 +3018,11 @@ function advanceSendTriggerFlow(fromStep) {
 
     if (fromStep === 2) {
         document.getElementById('sendStep2Modal').style.display = 'none';
+        const step3Scope = _sendFlowState.program
+            ? `${_sendFlowState.telescope} (${_sendFlowState.program})`
+            : _sendFlowState.telescope;
         document.getElementById('send-confirm-channel').textContent =
-            `${_SLACK_CHANNEL_LABEL} Slack channel` + (_sendFlowState.telescope ? ` (${_sendFlowState.telescope})` : '');
+            `${_SLACK_CHANNEL_LABEL} Slack channel` + (step3Scope ? ` (${step3Scope})` : '');
         document.getElementById('sendStep3Modal').style.display = 'flex';
         return;
     }
@@ -2981,6 +3052,7 @@ async function _finalizeSendTrigger() {
             headers: { 'Content-Type': 'application/json' },
             body: _apiStringify({
                 telescope: state.telescope,
+                program: state.program || '',
                 greeting: state.greeting,
                 script: state.scriptBody,
                 targets: state.targets
@@ -2991,7 +3063,8 @@ async function _finalizeSendTrigger() {
             setTriggerSendStatus(data.error || 'Failed to send.', 'error');
             return;
         }
-        let msg = `Sent to Slack for ${state.telescope}.`;
+        const sentLabel = state.program ? `${state.telescope} (${state.program})` : state.telescope;
+        let msg = `Sent to Slack for ${sentLabel}.`;
         if (data.log_warnings && data.log_warnings.length) {
             msg += ` (Observation Log warnings: ${data.log_warnings.join('; ')})`;
         }
@@ -3006,19 +3079,57 @@ async function _finalizeSendTrigger() {
     }
 }
 
+let _lastSentStatus = null;
+
+function _rebuildSentChips() {
+    const container = document.getElementById('trigger-sent-status');
+    if (!container) return;
+    container.querySelectorAll('.pa-sent-chip[data-telescope="LOT"]').forEach(el => el.remove());
+
+    const programs = _getLotPrograms();
+    const sltChip = container.querySelector('.pa-sent-chip[data-telescope="SLT"]');
+    programs.forEach(p => {
+        const chip = document.createElement('span');
+        chip.className = 'pa-sent-chip';
+        chip.dataset.telescope = 'LOT';
+        chip.dataset.program = p;
+        chip.title = 'Not sent yet today';
+        chip.textContent = `LOT ${p}: not sent`;
+        container.appendChild(chip);
+    });
+    if (_lastSentStatus) renderSentStatus(_lastSentStatus);
+}
+
 function renderSentStatus(status) {
     if (!status) return;
-    ['SLT', 'LOT'].forEach(tel => {
-        const chip = document.querySelector(`.pa-sent-chip[data-telescope="${tel}"]`);
-        if (!chip) return;
-        const info = status[tel];
+    _lastSentStatus = status;
+
+    const sltChip = document.querySelector('.pa-sent-chip[data-telescope="SLT"]');
+    if (sltChip) {
+        const info = status['SLT'];
+        if (info) {
+            sltChip.classList.add('sent');
+            sltChip.textContent = `SLT: sent by ${info.sent_by} at ${(info.sent_at || '').slice(11, 16)}`;
+            sltChip.title = `${info.sent_by} — ${info.sent_at} (Asia/Taipei)`;
+        } else {
+            sltChip.classList.remove('sent');
+            sltChip.textContent = 'SLT: not sent';
+            sltChip.title = 'Not sent yet today';
+        }
+    }
+
+    document.querySelectorAll('.pa-sent-chip[data-telescope="LOT"]').forEach(chip => {
+        const program = chip.dataset.program || '';
+        const key = program ? `LOT:${program}` : 'LOT';
+        const info = status[key];
+        const label = program ? `LOT ${program}` : 'LOT';
         if (info) {
             chip.classList.add('sent');
-            chip.textContent = `${tel}: sent by ${info.sent_by} at ${(info.sent_at || '').slice(11, 16)}`;
+            chip.textContent = `${label}: sent by ${info.sent_by} at ${(info.sent_at || '').slice(11, 16)}`;
             chip.title = `${info.sent_by} — ${info.sent_at} (Asia/Taipei)`;
         } else {
             chip.classList.remove('sent');
-            chip.textContent = `${tel}: not sent`;
+            chip.textContent = `${label}: not sent`;
             chip.title = 'Not sent yet today';
         }
     });

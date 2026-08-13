@@ -301,6 +301,8 @@
                                     <button type="button" id="script-tab-SLT" class="pa-script-tele-tab active" onclick="switchScriptTelescope('SLT')">SLT</button>
                                     <button type="button" id="script-tab-LOT" class="pa-script-tele-tab" onclick="switchScriptTelescope('LOT')">LOT</button>
                                 </div>
+                                <select id="script-program-select" class="pa-script-program-select" style="display:none;" onchange="onScriptProgramChange()">
+                                </select>
                                 <button type="button" id="btn-generate-script" class="pa-btn-log-action" onclick="generateTriggerScriptMessage()" disabled title="Complete the checklist first">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
                                     Generate
@@ -322,7 +324,6 @@
                             <div class="pa-trigger-send-row">
                                 <div id="trigger-sent-status" class="pa-sent-status">
                                     <span class="pa-sent-chip" data-telescope="SLT" title="Not sent yet today">SLT: not sent</span>
-                                    <span class="pa-sent-chip" data-telescope="LOT" title="Not sent yet today">LOT: not sent</span>
                                 </div>
                                 <div class="pa-trigger-send-actions">
                                     <button type="button" id="btn-copy-script" class="pa-btn-log-action" onclick="copyTriggerScriptMessage()">

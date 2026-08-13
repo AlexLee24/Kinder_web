@@ -663,18 +663,16 @@ def daily_trigger_send_message():
 
     data = request.get_json(silent=True) or {}
     telescope = str(data.get('telescope', '')).strip().upper()
+    program = str(data.get('program', '')).strip()
     greeting = str(data.get('greeting', ''))
     script = str(data.get('script', ''))
     targets = data.get('targets') or []
     target_names = [t.get('name') for t in targets if isinstance(t, dict)]
-    # Single-target ad-hoc triggers (from the Target list's "Trigger" button) send
-    # for real but must NOT flip the SLT/LOT "sent tonight" checklist-gated status
-    # — that status specifically tracks whether the full nightly script went out.
     should_mark_sent = bool(data.get('mark_sent', True))
 
-    logger.info('daily_trigger_send_message: request by=%s telescope=%s targets=%s '
+    logger.info('daily_trigger_send_message: request by=%s telescope=%s program=%s targets=%s '
                 'greeting_chars=%d script_chars=%d mark_sent=%s',
-                requester, telescope, target_names, len(greeting), len(script), should_mark_sent)
+                requester, telescope, program, target_names, len(greeting), len(script), should_mark_sent)
 
     if telescope not in ('SLT', 'LOT'):
         logger.warning('daily_trigger_send_message: rejected — invalid telescope %r (by=%s)', telescope, requester)
@@ -710,8 +708,8 @@ def daily_trigger_send_message():
 
     sent_by = session['user'].get('name') or session['user'].get('email') or 'unknown'
     if should_mark_sent:
-        status = mark_sent(telescope, sent_by)
-        logger.info('daily_trigger_send_message: marked sent telescope=%s by=%s status=%s', telescope, sent_by, status)
+        status = mark_sent(telescope, sent_by, program=program)
+        logger.info('daily_trigger_send_message: marked sent telescope=%s program=%s by=%s status=%s', telescope, program, sent_by, status)
     else:
         from modules.trigger_send import get_send_status
         status = get_send_status()

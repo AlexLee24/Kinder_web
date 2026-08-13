@@ -521,6 +521,22 @@ body::before {
     border-color: var(--pa-accent);
 }
 
+.pa-script-program-select {
+    padding: 0.25rem 0.5rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--pa-border);
+    color: var(--pa-text-muted);
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+}
+.pa-script-program-select:focus {
+    border-color: var(--pa-accent);
+    color: var(--pa-text);
+}
+
 /* Script preview + send controls */
 .pa-script-body {
     display: flex;
@@ -1296,102 +1312,40 @@ body::before {
     gap: 8px;
 }
 
-.pa-btn-edit {
-    padding: 0.3rem 0.6rem;
-    background: var(--pa-accent);
-    color: #000;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-right: 4px;
-    font-weight: 500;
-}
-
-.pa-btn-remove {
-    padding: 0.3rem 0.6rem;
-    background: #ff4d4d;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-/* Copy-to-telescope button + dropdown menu (Actions column) */
+/* Copy-to-telescope dropdown wrapper (Actions column) */
 .pa-copy-wrap {
     position: relative;
     display: inline-block;
 }
 
-.pa-btn-copy {
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    color: var(--pa-accent);
-    border: 1px solid var(--pa-accent);
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 4px;
-}
-
-.pa-btn-copy:hover {
-    background: rgba(77, 184, 255, 0.1);
-}
-
-.pa-btn-single-trigger {
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    color: #ffa94d;
-    border: 1px solid #ffa94d;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 4px;
-}
-
-.pa-btn-single-trigger:hover {
-    background: rgba(255, 169, 77, 0.12);
-}
-
 /* ----------------------------------------------------------------
    Action Cell Layout (inside target table Actions column)
+   Row 1: toggle switch + delete icon
+   Row 2: Edit | Copy | Trigger  (grouped pill)
    ---------------------------------------------------------------- */
 .pa-action-cell {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
+    gap: 6px;
+    align-items: center;
 }
 
 .pa-action-row-top {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-}
-
-.pa-action-toggle-label {
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.6);
-    white-space: nowrap;
+    gap: 4px;
 }
 
 .pa-btn-icon-remove {
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.25);
     cursor: pointer;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-left: auto;
     transition: color 0.15s, background 0.15s;
 }
 
@@ -1400,10 +1354,44 @@ body::before {
     background: rgba(255, 107, 107, 0.12);
 }
 
-.pa-action-row-mid {
+.pa-action-row-btns {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 2px;
+}
+
+.pa-btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 8px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.72rem;
+    font-weight: 500;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+}
+
+.pa-btn-action:hover {
+    color: var(--pa-accent);
+    background: rgba(77, 184, 255, 0.1);
+}
+
+.pa-btn-action--trigger {
+    color: rgba(255, 169, 77, 0.6);
+}
+
+.pa-btn-action--trigger:hover {
+    color: #ffa94d;
+    background: rgba(255, 169, 77, 0.12);
 }
 
 .pa-copy-menu {
@@ -2177,27 +2165,7 @@ body::before {
 
     /* Action cell in card layout */
     .pa-action-cell {
-        width: 100%;
-        align-items: stretch;
-    }
-
-    .pa-action-row-mid {
-        justify-content: center;
-        gap: 8px;
-    }
-
-    .pa-action-row-mid .pa-btn-edit,
-    .pa-action-row-mid .pa-btn-copy {
-        flex: 1;
-        text-align: center;
-        justify-content: center;
-        padding: 0.45rem 0.6rem;
-    }
-
-    .pa-action-cell > .pa-btn-single-trigger {
-        width: 100%;
-        justify-content: center;
-        padding: 0.45rem 0.6rem;
+        align-items: center;
     }
 
     /* Prevent horizontal overflow on mobile */
