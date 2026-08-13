@@ -124,12 +124,11 @@ _TARGET_SELECT = (
 
 def _target_to_dict(row) -> dict:
     d = dict(row)
-    # obs.targets stores exposure seconds in plan_count and repeats in plan_time.
     filters = d.pop('plan_filter', None) or []
     counts = d.pop('plan_count', None) or []
     times = d.pop('plan_time', None) or []
     d['filters'] = [
-        {'filter': f, 'count': t, 'time': c, 'exp': c}
+        {'filter': f, 'count': c, 'exp': t}
         for f, c, t in zip(filters, counts, times)
     ]
     d['created_by'] = d.pop('created_by_email', None)
@@ -186,12 +185,12 @@ def save_observation_target(name: str, ra: float, dec: float,
     for f in (filters or []):
         if isinstance(f, dict):
             plan_filter.append(f.get('filter', ''))
-            plan_count.append(int(f.get('exp', f.get('time', 60)) or 60))
-            plan_time.append(int(f.get('count', 1) or 1))
+            plan_count.append(int(f.get('count', 1) or 1))
+            plan_time.append(int(f.get('exp', f.get('time', 60)) or 60))
         else:
             plan_filter.append(str(f))
-            plan_count.append(60)
-            plan_time.append(1)
+            plan_count.append(1)
+            plan_time.append(60)
 
     try:
         ra = _parse_ra_deg(ra)
@@ -248,10 +247,10 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         for f in kwargs.pop('filters') or []:
             if isinstance(f, dict):
                 plan_filter.append(f.get('filter', ''))
-                plan_count.append(int(f.get('exp', f.get('time', 60)) or 60))
-                plan_time.append(int(f.get('count', 1) or 1))
+                plan_count.append(int(f.get('count', 1) or 1))
+                plan_time.append(int(f.get('exp', f.get('time', 60)) or 60))
             else:
-                plan_filter.append(str(f)); plan_count.append(60); plan_time.append(1)
+                plan_filter.append(str(f)); plan_count.append(1); plan_time.append(60)
         sets += ['plan_filter=%s', 'plan_count=%s', 'plan_time=%s']
         params += [plan_filter, plan_count, plan_time]
 
@@ -346,13 +345,12 @@ _LOG_SELECT = (
 
 def _log_to_dict(row) -> dict:
     d = dict(row)
-    # obs.logs stores exposure seconds in *_count and repeats in *_time.
     for prefix in ('trigger', 'observed'):
         filters = d.pop(f'{prefix}_filter', None) or []
         counts  = d.pop(f'{prefix}_count', None) or []
         times   = d.pop(f'{prefix}_time', None) or []
         rebuilt_filters = [
-            {'filter': f, 'count': t, 'time': c, 'exp': c}
+            {'filter': f, 'count': c, 'exp': t}
             for f, c, t in zip(filters, counts, times)
         ]
         d[f'{prefix}_filters'] = rebuilt_filters
@@ -493,10 +491,10 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
         for item in (fl or []):
             if isinstance(item, dict):
                 f_list.append(item.get('filter', ''))
-                c_list.append(int(item.get('exp', item.get('time', 0)) or 0))
-                t_list.append(int(item.get('count', 1) or 1))
+                c_list.append(int(item.get('count', 1) or 1))
+                t_list.append(int(item.get('exp', item.get('time', 0)) or 0))
             else:
-                f_list.append(str(item)); c_list.append(0); t_list.append(1)
+                f_list.append(str(item)); c_list.append(1); t_list.append(0)
         return f_list, c_list, t_list
 
     if isinstance(target_id_or_name, int):

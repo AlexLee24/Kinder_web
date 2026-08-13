@@ -324,6 +324,18 @@ function openTargetModal(telescope) {
     if (hint) { hint.textContent = ''; hint.className = 'pa-name-hint'; }
     // Clear auto-exp badge
     _setAutoExpBadge(false);
+    _resetTargetModalChrome();
+}
+
+// Restores the modal's default "add/edit" title & submit label — call before
+// entering single-target Trigger mode overrides them, so a later plain
+// Add/Edit never inherits stale "Confirm & Trigger Target" wording.
+function _resetTargetModalChrome() {
+    pendingSingleTrigger = false;
+    var title = document.getElementById('target-modal-title');
+    var label = document.getElementById('target-modal-submit-label');
+    if (title) title.textContent = 'New Target';
+    if (label) label.textContent = 'Save Target';
 }
 
 // Real-time name hint as user types
@@ -358,6 +370,7 @@ function closeTargetModal() {
     const dd = document.getElementById('search-results-dropdown');
     if (dd) dd.style.display = 'none';
     editingTargetId = null;
+    _resetTargetModalChrome();
 }
 
 function toggleTelescopeUI(telescope) {
@@ -623,8 +636,13 @@ async function addObservationTarget(event) {
         });
         const resData = await response.json();
         if (resData.success) {
+            const wasSingleTrigger = pendingSingleTrigger;
+            const savedId = resData.id || editingTargetId;
             loadTargets();
-            closeTargetModal();
+            closeTargetModal(); // also resets pendingSingleTrigger — wasSingleTrigger already captured above
+            if (wasSingleTrigger) {
+                startSingleTargetTriggerFlow(targetData, savedId);
+            }
         } else {
             alert('Failed to save target: ' + resData.error);
         }
@@ -1018,15 +1036,28 @@ function renderTable(telescope, targets) {
             '<td class="pa-td-note">' + (t.plan || '-') + '</td>' +
             '<td class="pa-td-note-gl">' + (t.note_gl || '-') + '</td>' +
             '<td class="pa-td-actions">' +
-                activeToggle +
-                '<button onclick="editTarget(' + t.id + ')" class="pa-btn-edit">Edit</button>' +
-                '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-remove">Remove</button>' +
-                '<div class="pa-copy-wrap">' +
-                    '<button onclick="toggleCopyMenu(event, ' + t.id + ')" class="pa-btn-copy" title="Copy this target to another telescope">' +
-                        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
-                        ' Copy' +
+                '<div class="pa-action-cell">' +
+                    '<div class="pa-action-row-top">' +
+                        activeToggle +
+                        '<span class="pa-action-toggle-label">' + (t.is_active !== false ? 'Active' : 'Inactive') + '</span>' +
+                        '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-icon-remove" title="Remove target">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
+                        '</button>' +
+                    '</div>' +
+                    '<div class="pa-action-row-mid">' +
+                        '<button onclick="editTarget(' + t.id + ')" class="pa-btn-edit">Edit</button>' +
+                        '<div class="pa-copy-wrap">' +
+                            '<button onclick="toggleCopyMenu(event, ' + t.id + ')" class="pa-btn-copy" title="Copy this target to another telescope">' +
+                                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+                                ' Copy' +
+                            '</button>' +
+                            '<div class="pa-copy-menu" id="copy-menu-' + t.id + '"></div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button onclick="openSingleTriggerModal(' + t.id + ')" class="pa-btn-single-trigger" title="Trigger just this target">' +
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>' +
+                        ' Trigger' +
                     '</button>' +
-                    '<div class="pa-copy-menu" id="copy-menu-' + t.id + '"></div>' +
                 '</div>' +
             '</td>';
         tableBody.appendChild(tr);
@@ -1035,9 +1066,24 @@ function renderTable(telescope, targets) {
 
 // ===================== Edit Target =====================
 let editingTargetId = null;
+let pendingSingleTrigger = false;
+
+// Opens the existing Edit modal, but in "confirm & trigger" mode: after Save,
+// instead of just closing, it moves straight into generating + sending a
+// script for just this one target.
+function openSingleTriggerModal(id) {
+    editTarget(id).then(function() {
+        pendingSingleTrigger = true;
+        var title = document.getElementById('target-modal-title');
+        var label = document.getElementById('target-modal-submit-label');
+        if (title) title.textContent = 'Confirm & Trigger Target';
+        if (label) label.textContent = 'Next: Generate Script';
+    });
+}
 let allTargetsCache = [];
 
 async function editTarget(id) {
+    _resetTargetModalChrome();
     // Find target from cache or re-fetch
     if (allTargetsCache.length === 0) {
         try {
@@ -2653,6 +2699,31 @@ function _scriptTargetPriorityRank(priority) {
     return 9;
 }
 
+// Maps a target (allTargetsCache entry, or the raw form data just saved from
+// the target modal — both use the same field names) into the payload shape
+// expected by /astronomy_tools/generate_trigger_script. Shared by the full
+// nightly script flow and the single-target "Trigger" quick-action.
+function _buildScriptPayloadTarget(t) {
+    const useAutoExp = !!t.auto_exposure;
+    const item = {
+        name: t.name,
+        ra: t.ra,
+        dec: t.dec,
+        mag: t.mag || '',
+        priority: t.priority || 'Normal',
+        priority_message: t.plan || '',
+        repeat: t.repeat_count || 0,
+        auto_exp: useAutoExp,
+        program: t.program || ''
+    };
+    if (!useAutoExp && Array.isArray(t.filters) && t.filters.length) {
+        item.filter_input = t.filters.map(f => f.filter).join(',');
+        item.exp_time = t.filters.map(f => f.exp).join(',');
+        item.count = t.filters.map(f => f.count).join(',');
+    }
+    return item;
+}
+
 async function generateTriggerScriptMessage() {
     const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
     const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
@@ -2686,26 +2757,7 @@ async function generateTriggerScriptMessage() {
     // priority_message is sourced from the plain "Note" (staff-facing) field.
     // "Note for GREATLab" must never appear in the script — it's web-page-only,
     // shown to people browsing the target list, not to whoever reads the trigger.
-    const payloadTargets = targets.map(t => {
-        const useAutoExp = !!t.auto_exposure;
-        const item = {
-            name: t.name,
-            ra: t.ra,
-            dec: t.dec,
-            mag: t.mag || '',
-            priority: t.priority || 'Normal',
-            priority_message: t.plan || '',
-            repeat: t.repeat_count || 0,
-            auto_exp: useAutoExp,
-            program: t.program || ''
-        };
-        if (!useAutoExp && Array.isArray(t.filters) && t.filters.length) {
-            item.filter_input = t.filters.map(f => f.filter).join(',');
-            item.exp_time = t.filters.map(f => f.exp).join(',');
-            item.count = t.filters.map(f => f.count).join(',');
-        }
-        return item;
-    });
+    const payloadTargets = targets.map(_buildScriptPayloadTarget);
 
     try {
         const resp = await _apiFetch('/astronomy_tools/generate_trigger_script', {
@@ -2979,6 +3031,134 @@ async function loadSentStatus() {
         if (data.success) renderSentStatus(data.status);
     } catch (e) {
         console.error('Could not load trigger send status:', e);
+    }
+}
+
+// =========================================================================
+// SINGLE-TARGET TRIGGER — "Trigger" button on a Target list row.
+// Bypasses the nightly checklist (that's for the full-list send) and skips
+// straight to: confirm/edit fields (the modal that just closed) → generate
+// the script for this one target → one confirmation → send. Does NOT flip
+// the SLT/LOT "sent tonight" chip — that's reserved for the full nightly send.
+// =========================================================================
+
+let _singleTriggerState = null;
+
+async function startSingleTargetTriggerFlow(targetData, targetId) {
+    const statusEl = document.getElementById('single-trigger-status');
+    const modal = document.getElementById('singleTriggerConfirmModal');
+    document.getElementById('single-trigger-target-name').textContent = targetData.name || 'Target';
+    document.getElementById('single-trigger-telescope').textContent = targetData.telescope;
+    document.getElementById('single-trigger-script-preview').value = 'Generating script...';
+    document.getElementById('single-trigger-img-wrap').style.display = 'none';
+    if (statusEl) { statusEl.textContent = ''; statusEl.className = 'pa-trigger-send-status'; }
+    modal.style.display = 'flex';
+
+    const payloadTarget = _buildScriptPayloadTarget(targetData);
+
+    try {
+        const resp = await _apiFetch('/astronomy_tools/generate_trigger_script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({ telescope: targetData.telescope, targets: [payloadTarget] })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            document.getElementById('single-trigger-script-preview').value = '';
+            if (statusEl) { statusEl.textContent = data.error || 'Failed to generate script.'; statusEl.className = 'pa-trigger-send-status error'; }
+            return;
+        }
+
+        const greeting =
+            `您好，若天氣允許使用 ${targetData.telescope}，以下是今日的觀測目標:\n` +
+            `If the weather permits to use ${targetData.telescope}, here are today's observation targets:\n\n`;
+        document.getElementById('single-trigger-script-preview').value = greeting + data.script;
+
+        _singleTriggerState = {
+            telescope: targetData.telescope,
+            greeting: greeting,
+            scriptBody: data.script,
+            targets: [payloadTarget]
+        };
+
+        renderSingleTriggerVisibilityImage(payloadTarget, targetData.telescope);
+    } catch (e) {
+        document.getElementById('single-trigger-script-preview').value = '';
+        if (statusEl) { statusEl.textContent = 'Network error while generating script.'; statusEl.className = 'pa-trigger-send-status error'; }
+    }
+}
+
+async function renderSingleTriggerVisibilityImage(payloadTarget, telescope) {
+    const wrap = document.getElementById('single-trigger-img-wrap');
+    const img = document.getElementById('single-trigger-img');
+    if (!payloadTarget.ra || !payloadTarget.dec) return;
+
+    const now = new Date();
+    if (now.getHours() < 12) now.setDate(now.getDate() - 1);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    try {
+        const resp = await _apiFetch('/generate_plot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({
+                date: dateStr,
+                telescope: telescope,
+                location: '120:52:21 23:28:10 2862',
+                timezone: '8',
+                targets: [{ object_name: payloadTarget.name, ra: payloadTarget.ra, dec: payloadTarget.dec }]
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            img.src = data.plot_url;
+            wrap.style.display = '';
+        }
+    } catch (e) {
+        // Non-fatal — the script text is still there to review/send without a plot preview.
+        console.error('Single-trigger visibility plot failed:', e);
+    }
+}
+
+function cancelSingleTriggerFlow() {
+    document.getElementById('singleTriggerConfirmModal').style.display = 'none';
+    _singleTriggerState = null;
+}
+
+async function confirmSingleTriggerSend() {
+    if (!_singleTriggerState) return;
+    const state = _singleTriggerState;
+    const statusEl = document.getElementById('single-trigger-status');
+    const sendBtn = document.getElementById('single-trigger-send-btn');
+    if (sendBtn) sendBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Sending to Slack...'; statusEl.className = 'pa-trigger-send-status pending'; }
+
+    try {
+        const resp = await _apiFetch('/daily_trigger/send_message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({
+                telescope: state.telescope,
+                greeting: state.greeting,
+                script: state.scriptBody,
+                targets: state.targets,
+                mark_sent: false
+            })
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            if (statusEl) { statusEl.textContent = data.error || 'Failed to send.'; statusEl.className = 'pa-trigger-send-status error'; }
+            return;
+        }
+        if (statusEl) { statusEl.textContent = 'Sent to Slack.'; statusEl.className = 'pa-trigger-send-status ok'; }
+        setTimeout(cancelSingleTriggerFlow, 1200);
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = 'Network error while sending.'; statusEl.className = 'pa-trigger-send-status error'; }
+    } finally {
+        if (sendBtn) sendBtn.disabled = false;
     }
 }
 

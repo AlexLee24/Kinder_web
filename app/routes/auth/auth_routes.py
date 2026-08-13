@@ -133,6 +133,7 @@ def google_callback():
             if session_picture and session_picture.startswith('data:image'):
                 session_picture = user_info.get('picture') # fallback to google picture for cookie
             
+            session.permanent = True
             session['user'] = {
                 'email': user_email,
                 'name': display_name,
@@ -143,7 +144,7 @@ def google_callback():
                 'groups': user_groups,
                 'api_key': existing_user_data.get('api_key') if existing_user_data else None
             }
-            
+
             flash_message = 'Welcome Administrator!' if is_admin else f'Welcome {display_name}!'
             flash(flash_message, 'success')
             
@@ -201,6 +202,7 @@ def admin_login():
         admin_email = config.ADMIN_LOCAL_EMAIL
         admin_data = get_user(admin_email)
 
+        session.permanent = True
         if admin_data:
             user_groups = admin_data.get('groups', [])
             is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', admin_email)

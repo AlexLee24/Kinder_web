@@ -21,8 +21,8 @@ CREATE TABLE obs.targets (
     priority    TEXT NOT NULL DEFAULT 'Normal'
                     CHECK (priority IN ('Urgent', 'High', 'Normal', 'Filler')),
     plan_filter TEXT[]  NOT NULL DEFAULT '{}',  -- {rp, gp}
-    plan_count  INT[]   NOT NULL DEFAULT '{}',  -- seconds per filter
-    plan_time   INT[]   NOT NULL DEFAULT '{}',  -- minutes per filter
+    plan_count  INT[]   NOT NULL DEFAULT '{}',  -- repeat count per filter
+    plan_time   INT[]   NOT NULL DEFAULT '{}',  -- exposure seconds per filter
     repeat      INT NOT NULL DEFAULT 0,
     plan        TEXT,                   -- plan note to staff
     note        TEXT,                   -- note to group
@@ -50,11 +50,11 @@ CREATE TABLE obs.logs (
     trigger         BOOL NOT NULL DEFAULT FALSE,
     observed        BOOL NOT NULL DEFAULT FALSE,
     trigger_filter  TEXT[] NOT NULL DEFAULT '{}',
-    trigger_count   INT[]  NOT NULL DEFAULT '{}',   -- seconds
-    trigger_time    INT[]  NOT NULL DEFAULT '{}',   -- minutes
+    trigger_count   INT[]  NOT NULL DEFAULT '{}',   -- repeat count
+    trigger_time    INT[]  NOT NULL DEFAULT '{}',   -- exposure seconds
     observed_filter TEXT[] NOT NULL DEFAULT '{}',
-    observed_count  INT[]  NOT NULL DEFAULT '{}',   -- seconds
-    observed_time   INT[]  NOT NULL DEFAULT '{}'    -- minutes
+    observed_count  INT[]  NOT NULL DEFAULT '{}',   -- repeat count
+    observed_time   INT[]  NOT NULL DEFAULT '{}'    -- exposure seconds
 );
 
 CREATE INDEX obs_logs_target_date_idx ON obs.logs (target_id, date);

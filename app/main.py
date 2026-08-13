@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import logging
+from datetime import timedelta
 from werkzeug.routing import BaseConverter
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -39,6 +40,7 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 # Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so only
 # enforce it outside of DEBUG (production sits behind an HTTPS-terminating proxy).
 app.config['SESSION_COOKIE_SECURE'] = not config.DEBUG
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 from urllib.parse import urlparse
 
@@ -304,6 +306,9 @@ else:
 if __name__ == '__main__':
     print(f" * Local:   http://{config.HOST}:{config.PORT}")
     print(f" * Public:  {config.APP_BASE_URL}")
+
+    time.sleep(3)
+
     app.run(
         host=config.HOST,
         port=config.PORT,

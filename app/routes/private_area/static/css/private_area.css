@@ -308,6 +308,7 @@ body::before {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
     cursor: pointer;
     padding: 0.55rem 0.7rem;
     border-radius: 8px;
@@ -366,8 +367,12 @@ body::before {
 }
 
 .pa-checklist-check-status {
+    flex: 1;
+    min-width: 0;
     font-size: 0.78rem;
     color: var(--pa-text-muted);
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .pa-checklist-check-status.ok { color: #69db7c; }
@@ -405,9 +410,13 @@ body::before {
 }
 
 .pa-checklist-text {
+    flex: 1;
+    min-width: 0;
     font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.85);
     transition: color 0.15s ease;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .pa-checklist-checkbox:checked ~ .pa-checklist-text {
@@ -1331,6 +1340,72 @@ body::before {
     background: rgba(77, 184, 255, 0.1);
 }
 
+.pa-btn-single-trigger {
+    padding: 0.3rem 0.6rem;
+    background: transparent;
+    color: #ffa94d;
+    border: 1px solid #ffa94d;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+}
+
+.pa-btn-single-trigger:hover {
+    background: rgba(255, 169, 77, 0.12);
+}
+
+/* ----------------------------------------------------------------
+   Action Cell Layout (inside target table Actions column)
+   ---------------------------------------------------------------- */
+.pa-action-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.pa-action-row-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.pa-action-toggle-label {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+}
+
+.pa-btn-icon-remove {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    transition: color 0.15s, background 0.15s;
+}
+
+.pa-btn-icon-remove:hover {
+    color: #ff6b6b;
+    background: rgba(255, 107, 107, 0.12);
+}
+
+.pa-action-row-mid {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .pa-copy-menu {
     display: none;
     position: absolute;
@@ -1687,6 +1762,10 @@ body::before {
    Responsive — mobile (≤ 768px)
    ---------------------------------------------------------------- */
 @media screen and (max-width: 768px) {
+    html, body {
+        overflow-x: hidden;
+    }
+
     .private-section {
         padding: 1rem 0.5rem;
         max-width: 98%;
@@ -1992,7 +2071,6 @@ body::before {
 @media (max-width: 1200px) {
     .dt-sidebar { width: 340px; }
 }
-}
 
 @media (max-width: 900px) {
     .dt-layout {
@@ -2006,4 +2084,126 @@ body::before {
     }
     .dt-widget-card iframe { height: 280px; }
     .dt-widget-calendar iframe { height: 400px; }
+
+    /* ============================================================
+       Trigger Checklist & Script — mobile treatment, mirroring the
+       Targets-table mobile pattern above: stacked sections, full-width
+       tappable buttons in a 2-col grid, so this is usable one-handed
+       if you ever need to Send from a phone.
+       ============================================================ */
+    .pa-trigger-section { padding: 1rem 0.75rem; }
+
+    .pa-trigger-col { padding: 1rem 0.85rem; }
+
+    .pa-trigger-col-head {
+        flex-wrap: wrap;
+        row-gap: 10px;
+    }
+
+    .pa-trigger-col-head > span:first-child {
+        width: 100%;
+        text-align: center;
+    }
+
+    .pa-script-tele-tabs { margin: 0 auto 0 0; }
+
+    #btn-generate-script {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .pa-checklist-sublist { margin-left: 0.8rem; }
+
+    /* Larger tap targets on the checkbox row itself */
+    .pa-checklist-item label { padding: 0.7rem 0.7rem; }
+
+    .pa-script-textarea { min-height: 220px; }
+    .pa-script-vis-panel { min-height: 200px; }
+
+    /* Send row: chips centered above, actions become a full-width 2-col grid
+       (same treatment as .pa-obs-actions for the Targets section) */
+    .pa-trigger-send-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .pa-sent-status { justify-content: center; }
+
+    .pa-trigger-send-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .pa-trigger-send-actions button {
+        width: 100%;
+        justify-content: center;
+        margin: 0;
+        height: 46px;
+    }
+
+    .pa-btn-send-trigger { grid-column: span 2; }
+
+    /* Copy-to-telescope dropdown: anchor to the right so it can't run off
+       the edge of a narrow viewport */
+    .pa-copy-menu { left: auto; right: 0; }
+
+    /* Send-flow confirmation modals (account / review / final) */
+    #sendStep1Modal .pa-modal-box,
+    #sendStep2Modal .pa-modal-box,
+    #sendStep3Modal .pa-modal-box,
+    #scriptVisImageModal .pa-modal-box {
+        padding: 1.1rem;
+        width: 94%;
+    }
+
+    #sendStep1Modal .pa-modal-footer,
+    #sendStep2Modal .pa-modal-footer,
+    #sendStep3Modal .pa-modal-footer {
+        flex-direction: column-reverse;
+        gap: 10px;
+    }
+
+    #sendStep1Modal .pa-modal-footer button,
+    #sendStep2Modal .pa-modal-footer button,
+    #sendStep3Modal .pa-modal-footer button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .pa-send-review-img-wrap { max-height: 35vh; }
+
+    /* Action cell in card layout */
+    .pa-action-cell {
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .pa-action-row-mid {
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .pa-action-row-mid .pa-btn-edit,
+    .pa-action-row-mid .pa-btn-copy {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+        padding: 0.45rem 0.6rem;
+    }
+
+    .pa-action-cell > .pa-btn-single-trigger {
+        width: 100%;
+        justify-content: center;
+        padding: 0.45rem 0.6rem;
+    }
+
+    /* Prevent horizontal overflow on mobile */
+    .dt-layout,
+    .dt-main {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
 }

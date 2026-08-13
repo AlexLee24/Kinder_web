@@ -667,10 +667,14 @@ def daily_trigger_send_message():
     script = str(data.get('script', ''))
     targets = data.get('targets') or []
     target_names = [t.get('name') for t in targets if isinstance(t, dict)]
+    # Single-target ad-hoc triggers (from the Target list's "Trigger" button) send
+    # for real but must NOT flip the SLT/LOT "sent tonight" checklist-gated status
+    # — that status specifically tracks whether the full nightly script went out.
+    should_mark_sent = bool(data.get('mark_sent', True))
 
     logger.info('daily_trigger_send_message: request by=%s telescope=%s targets=%s '
-                'greeting_chars=%d script_chars=%d',
-                requester, telescope, target_names, len(greeting), len(script))
+                'greeting_chars=%d script_chars=%d mark_sent=%s',
+                requester, telescope, target_names, len(greeting), len(script), should_mark_sent)
 
     if telescope not in ('SLT', 'LOT'):
         logger.warning('daily_trigger_send_message: rejected — invalid telescope %r (by=%s)', telescope, requester)
@@ -705,8 +709,13 @@ def daily_trigger_send_message():
                 logger.warning('daily_trigger_send_message: could not delete temp image %s: %s', image_path, e)
 
     sent_by = session['user'].get('name') or session['user'].get('email') or 'unknown'
-    status = mark_sent(telescope, sent_by)
-    logger.info('daily_trigger_send_message: marked sent telescope=%s by=%s status=%s', telescope, sent_by, status)
+    if should_mark_sent:
+        status = mark_sent(telescope, sent_by)
+        logger.info('daily_trigger_send_message: marked sent telescope=%s by=%s status=%s', telescope, sent_by, status)
+    else:
+        from modules.trigger_send import get_send_status
+        status = get_send_status()
+        logger.info('daily_trigger_send_message: single-target send, not marking telescope status (current=%s)', status)
 
     # Best-effort: record each triggered target in the Observation Log. A failure
     # here shouldn't be reported as a failed send — the Slack message already went

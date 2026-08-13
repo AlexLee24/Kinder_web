@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Daily Trigger - Kinder</title>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     {% include '_favicon.html' %}
@@ -517,7 +516,7 @@
                 <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">GREAT Lab Calendar</h3>
                 <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
             </div>
-            <iframe src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no" style="width:100%;height:min(780px,75vh);border:none;display:block;"></iframe>
+            <iframe data-lazy-src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no" style="width:100%;height:min(780px,75vh);border:none;display:block;"></iframe>
         </div>
     </div>
 
@@ -528,7 +527,7 @@
                 <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Weather · Lulin Observatory</h3>
                 <button type="button" onclick="document.getElementById('weatherModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
             </div>
-            <iframe src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;flex:1;border:none;display:block;min-height:0;"></iframe>
+            <iframe data-lazy-src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;flex:1;border:none;display:block;min-height:0;"></iframe>
             <div style="text-align:right;padding-top:6px;font-size:0.75rem;opacity:0.45;flex-shrink:0;">
                 <!-- DO NOT REMOVE THIS LINK -->
                 <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener noreferrer" style="color:#fff;text-decoration:none;">meteoblue</a>
@@ -539,8 +538,8 @@
     <!-- New Target Modal -->
     <div id="targetModal" class="pa-modal-overlay">
         <div class="pa-modal-box">
-            <h3>New Target</h3>
-            
+            <h3 id="target-modal-title">New Target</h3>
+
             <form id="add-target-form" onsubmit="addObservationTarget(event)">
                 <!-- Row 1: Target Name / Magnitude -->
                 <div class="pa-form-row two-col" style="grid-template-columns: 3fr 1fr;">
@@ -642,13 +641,13 @@
                     <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
                     <button type="submit" class="pa-btn-save">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        Save Target
+                        <span id="target-modal-submit-label">Save Target</span>
                     </button>
                 </div>
             </form>
         </div>
     </div>
-    
+
     <!-- Log Modal (Add/Edit) -->
     <div id="logModal" class="pa-modal-overlay">
         <div class="pa-modal-box">
@@ -820,10 +819,25 @@
         </div>
     </div>
 
-<!-- Required JS file -->
+    <!-- Single-target Trigger — script preview + send confirmation -->
+    <div id="singleTriggerConfirmModal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSingleTriggerFlow()">
+        <div class="pa-modal-box" style="max-width: 640px;">
+            <h3 style="margin-top:0;">Trigger <span id="single-trigger-target-name">Target</span></h3>
+            <p class="pa-send-modal-text">Script for <strong id="single-trigger-telescope">SLT</strong>:</p>
+            <textarea id="single-trigger-script-preview" class="pa-script-textarea" readonly style="min-height:160px;"></textarea>
+            <div class="pa-send-review-img-wrap" id="single-trigger-img-wrap" style="display:none;">
+                <img id="single-trigger-img" src="" alt="Visibility plot">
+            </div>
+            <div id="single-trigger-status" class="pa-trigger-send-status"></div>
+            <div class="pa-modal-footer">
+                <button type="button" onclick="cancelSingleTriggerFlow()" class="pa-btn-cancel">Cancel</button>
+                <button type="button" id="single-trigger-send-btn" onclick="confirmSingleTriggerSend()" class="pa-btn-send-trigger" style="justify-content:center;">Send Now</button>
+            </div>
+        </div>
+    </div>
 
-
-
+<!-- Plotly loaded async to avoid blocking initial render -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
     <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
     <!-- Global scroll-to-top button -->
     <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
@@ -845,6 +859,27 @@
             window.addEventListener('scroll', updateBtn);
             // init
             updateBtn();
+        })();
+    </script>
+    <script>
+        // Lazy-load modal iframes: only set src when the modal becomes visible
+        (function() {
+            var modals = ['calendarModal', 'weatherModal'];
+            modals.forEach(function(id) {
+                var modal = document.getElementById(id);
+                if (!modal) return;
+                var observer = new MutationObserver(function() {
+                    if (modal.style.display === 'flex') {
+                        var iframes = modal.querySelectorAll('iframe[data-lazy-src]');
+                        iframes.forEach(function(iframe) {
+                            iframe.src = iframe.getAttribute('data-lazy-src');
+                            iframe.removeAttribute('data-lazy-src');
+                        });
+                        observer.disconnect();
+                    }
+                });
+                observer.observe(modal, { attributes: true, attributeFilter: ['style'] });
+            });
         })();
     </script>
     <script>
