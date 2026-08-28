@@ -988,10 +988,16 @@
             if (entry && entry.environment) { applyFragment('environment', entry.environment); }
         }
 
-        var rig = (profile.telescopes || {})[el('select-telescope').value];
+        var telescopeId = el('select-telescope').value;
+        var rig = (profile.telescopes || {})[telescopeId];
         if (rig) {
             applyFragment('instrument.telescope', rig.telescope);
-            if (entry && entry.telescope) { applyFragment('instrument.telescope', entry.telescope); }
+            /* The filter's telescope fragment is keyed by telescope, because a band's
+               throughput is measured on one rig and says nothing about the other. Reading
+               it as a flat fragment names no field that exists, so it applies silently as
+               nothing and the rig's own default stands in for a measurement. */
+            var measured = ((entry && entry.telescope) || {})[telescopeId];
+            if (measured) { applyFragment('instrument.telescope', measured); }
         }
     }
 
