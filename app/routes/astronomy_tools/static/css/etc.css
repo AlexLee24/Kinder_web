@@ -1,0 +1,556 @@
+/* ============================================================================
+   CASTOR ETC — stylesheet for the shared etc_body.html partial.
+
+   Every value here is scoped under .castor-etc, so dropping this file into a
+   host page can't restyle anything outside the calculator.
+
+   Tokens are declared as `var(--kw-*, <fallback>)`: mounted inside Kinder the
+   host's _theme.css already defines --kw-accent, --kw-border, --kw-space-* and
+   friends, so the calculator inherits the site's theme; standalone (or on any
+   host without those variables) the fallbacks kick in and it renders
+   identically on its own. The fallbacks are the same numbers as
+   castorGUI/constant.py's Design tokens — keep the two in step.
+============================================================================ */
+
+.castor-etc {
+    /* ── Brand ─────────────────────────────────────────────────────────── */
+    --etc-accent:        var(--kw-accent, #C5A059);
+    --etc-accent-hover:  var(--kw-accent-hover, #d4b06a);
+    --etc-moon:          #6FA8DC;   /* Design.MOON — second series in the chart */
+    --etc-sun:           #8F8FA8;   /* third series — context, so dimmer than the other two */
+
+    /* ── Surfaces ──────────────────────────────────────────────────────── */
+    --etc-panel-bg:      var(--kw-glass-bg, rgba(20, 20, 30, 0.60));
+    --etc-surface-1:     #14141E;
+    /* One step brighter than the cards: a dialog floating above them has to read as
+       nearer the viewer, and matching their surface makes it look flat instead. */
+    --etc-surface-2:     #1c1c28;
+    --etc-border-color:  var(--kw-border, rgba(255, 255, 255, 0.10));
+    --etc-border-width:  2px;
+
+    /* ── Text ──────────────────────────────────────────────────────────── */
+    --etc-text-main:     var(--kw-text-primary, #e5e7eb);
+    --etc-text-muted:    var(--kw-text-muted, #9ca3af);
+
+    /* ── Status ────────────────────────────────────────────────────────── */
+    --etc-error:         var(--kw-color-danger, #f87171);
+    --etc-error-bg:      #2a1414;
+    --etc-warning:       var(--kw-color-warning, #fbbf24);
+    --etc-warning-bg:    #2a2114;
+
+    /* ── Spacing (4px baseline scale) ──────────────────────────────────── */
+    --etc-gap-main:      32px;  /* between the two panels */
+    --etc-gap-field:     8px;   /* fields within a group */
+    --etc-gap-group:     24px;  /* between sections */
+    --etc-gap-card:      16px;  /* metric-card grid gutter */
+    --etc-pad-panel:     24px;
+    --etc-pad-card:      24px;
+
+    /* ── Radii ─────────────────────────────────────────────────────────── */
+    --etc-radius-base:   6px;   /* small nested elements */
+    --etc-radius-card:   16px;  /* the two outer "big surface" cards */
+
+    /* How tall the two panels stand. Viewport-relative so the results stay on
+       screen while the form is edited, but how much sits above the calculator
+       is the host's business — standalone has only the body padding, Kinder
+       also has its nav bar. Hosts override this one line rather than patching
+       the rule below. */
+    --etc-shell-height:  clamp(560px, calc(100vh - 96px), 1080px);
+
+    color: var(--etc-text-main);
+    font-size: 13px;
+    line-height: 1.45;
+    box-sizing: border-box;
+}
+
+.castor-etc *,
+.castor-etc *::before,
+.castor-etc *::after { box-sizing: inherit; }
+
+/* ============================================================================
+   Shell — two glass cards side by side, the results given slightly more width
+   than the form that feeds them.
+============================================================================ */
+.castor-etc .etc-shell {
+    display: grid;
+    grid-template-columns: 10fr 12fr;
+    gap: var(--etc-gap-main);
+    align-items: stretch;
+    /* Each panel scrolls internally rather than the page growing without bound,
+       which is what makes the results stay visible while editing the form —
+       the whole point of the two-panel layout. */
+    height: var(--etc-shell-height);
+}
+
+.castor-etc .etc-panel {
+    background: var(--etc-panel-bg);
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-card);
+    padding: var(--etc-pad-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* ============================================================================
+   Tab bar (+ LOAD / SAVE)
+============================================================================ */
+.castor-etc .etc-tabbar {
+    display: flex;
+    align-items: center;
+    gap: var(--etc-gap-field);
+    margin-bottom: 16px;
+}
+/* The tab strip absorbs any shortage of width — it can shrink and, at the very
+   narrow end, scroll sideways. Letting the row wrap instead pushed LOAD/SAVE
+   onto a second line, which read as a stray pair of buttons under the tabs. */
+.castor-etc .etc-tabs {
+    display: flex;
+    align-items: center;
+    gap: var(--etc-gap-field);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.castor-etc .etc-tabs::-webkit-scrollbar { display: none; }
+.castor-etc .etc-tabbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--etc-gap-field);
+    flex: 0 0 auto;
+}
+
+.castor-etc .etc-tab {
+    appearance: none;
+    background: transparent;
+    border: var(--etc-border-width) solid transparent;
+    border-radius: var(--etc-radius-base);
+    padding: 8px 12px;
+    color: var(--etc-text-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+.castor-etc .etc-tab:hover { color: var(--etc-text-main); }
+.castor-etc .etc-tab.is-active {
+    color: var(--etc-accent);
+    border-color: var(--etc-border-color);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.castor-etc .etc-action {
+    appearance: none;
+    background: transparent;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    min-width: 40px;
+    height: 30px;
+    padding: 0 10px;
+    color: var(--etc-text-muted);
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.castor-etc .etc-action:hover {
+    color: var(--etc-accent);
+    border-color: var(--etc-accent);
+}
+
+/* ============================================================================
+   Form frame — the inner bordered box inside the left card (LeftPanel's
+   inner_content: its own border, the small radius, and its own padding).
+============================================================================ */
+.castor-etc .etc-form-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    padding: var(--etc-pad-panel);
+    overflow-y: auto;
+}
+
+.castor-etc .etc-tabpanel { display: block; }
+.castor-etc .etc-tabpanel[hidden] { display: none; }
+
+/* ============================================================================
+   Fields
+============================================================================ */
+.castor-etc .etc-section-title {
+    margin: 0 0 var(--etc-gap-field);
+    color: var(--etc-accent);
+    font-size: 14px;
+    font-weight: 700;
+}
+.castor-etc .etc-tabpanel .etc-section-title:not(:first-child) { margin-top: var(--etc-gap-field); }
+
+.castor-etc .etc-divider {
+    margin: var(--etc-gap-group) 0;
+    border: 0;
+    border-top: 1px solid var(--etc-border-color);
+}
+
+.castor-etc .etc-field {
+    display: block;
+    margin-bottom: var(--etc-gap-field);
+}
+.castor-etc .etc-field-label {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--etc-text-muted);
+    font-size: 12px;
+}
+.castor-etc .etc-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--etc-gap-field);
+}
+
+.castor-etc .etc-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    padding: 0 10px;
+    background: rgba(255, 255, 255, 0.02);
+    transition: border-color 0.15s ease;
+}
+.castor-etc .etc-input-wrap:focus-within { border-color: var(--etc-accent); }
+
+.castor-etc .etc-input-wrap input {
+    flex: 1 1 auto;
+    min-width: 0;
+    appearance: none;
+    background: transparent;
+    border: 0;
+    outline: none;
+    padding: 9px 0;
+    color: var(--etc-text-main);
+    font: inherit;
+    font-size: 13px;
+}
+/* The unit lives outside the input, so the spinner arrows would overlap it. */
+.castor-etc .etc-input-wrap input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+.castor-etc .etc-input-wrap input::-webkit-outer-spin-button,
+.castor-etc .etc-input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.castor-etc .etc-input-wrap input::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
+
+.castor-etc .etc-unit {
+    flex: 0 0 auto;
+    color: var(--etc-text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.castor-etc select {
+    display: block;
+    width: 100%;
+    appearance: none;
+    background-color: var(--etc-surface-1);
+    background-image: linear-gradient(45deg, transparent 50%, var(--etc-text-muted) 50%),
+                      linear-gradient(135deg, var(--etc-text-muted) 50%, transparent 50%);
+    background-position: right 15px center, right 10px center;
+    background-size: 5px 5px, 5px 5px;
+    background-repeat: no-repeat;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    padding: 9px 32px 9px 10px;
+    color: var(--etc-text-main);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.castor-etc select:focus { outline: none; border-color: var(--etc-accent); }
+.castor-etc select.is-error { border-color: var(--etc-error); color: var(--etc-error); }
+
+/* Read-only digest of what the two selectors above just applied, so the common
+   case doesn't need a scroll through the detail fields to confirm it. */
+.castor-etc .etc-specs {
+    margin: 0 0 var(--etc-gap-field);
+    padding: var(--etc-gap-field);
+    background: var(--etc-surface-1);
+    border-radius: var(--etc-radius-base);
+    color: var(--etc-text-muted);
+    font-size: 11px;
+    line-height: 1.6;
+    white-space: pre-line;
+}
+.castor-etc .etc-specs:empty { display: none; }
+
+/* Disclosure for the raw hardware numbers. Native <details> rather than a
+   JS-driven panel: it is keyboard-operable and findable by the browser's own
+   in-page search for free, and the inputs inside stay in the form while closed. */
+/* Sits directly under the selector it belongs to, so the spacing is the tighter
+   within-a-group step rather than the between-sections one. */
+.castor-etc .etc-details { margin: -2px 0 var(--etc-gap-group); }
+.castor-etc .etc-details-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    color: var(--etc-text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    list-style: none;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.castor-etc .etc-details-summary::-webkit-details-marker { display: none; }
+.castor-etc .etc-details-summary::before {
+    content: "";
+    flex: 0 0 auto;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transition: transform 0.15s ease;
+}
+.castor-etc .etc-details[open] > .etc-details-summary::before { transform: rotate(90deg); }
+.castor-etc .etc-details-summary:hover,
+.castor-etc .etc-details[open] > .etc-details-summary {
+    color: var(--etc-accent);
+    border-color: var(--etc-accent);
+}
+.castor-etc .etc-details-summary:focus-visible { outline: 2px solid var(--etc-accent); outline-offset: 2px; }
+.castor-etc .etc-details-body { padding: var(--etc-gap-field) 0 0 var(--etc-gap-field); }
+/* The section headings inside each panel would only repeat its summary. */
+.castor-etc .etc-details-body > .etc-section-title,
+.castor-etc .etc-details-body > .etc-divider { display: none; }
+
+.castor-etc .dynamic-group[hidden],
+.castor-etc .time-group[hidden] { display: none; }
+
+/* ============================================================================
+   Switch — a small toggle plus a separate label. Sized deliberately: the
+   control should read as secondary to the text next to it, not tower over it.
+============================================================================ */
+.castor-etc .etc-switch-row {
+    display: flex;
+    align-items: center;
+    gap: var(--etc-gap-field);
+    margin-bottom: var(--etc-gap-field);
+    cursor: pointer;
+    user-select: none;
+}
+.castor-etc .etc-switch-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.castor-etc .etc-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 18px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.14);
+    transition: background-color 0.15s ease;
+}
+.castor-etc .etc-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    transition: transform 0.15s ease;
+}
+.castor-etc .etc-switch-input:checked + .etc-switch { background: var(--etc-accent); }
+.castor-etc .etc-switch-input:checked + .etc-switch::after { transform: translateX(16px); }
+.castor-etc .etc-switch-input:focus-visible + .etc-switch { outline: 2px solid var(--etc-accent-hover); outline-offset: 2px; }
+.castor-etc .etc-switch-label { color: var(--etc-text-muted); font-size: 12px; }
+
+/* ============================================================================
+   Results panel
+============================================================================ */
+.castor-etc .etc-results-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--etc-gap-group);
+}
+
+.castor-etc .etc-hero { text-align: center; }
+.castor-etc .etc-hero-label {
+    color: var(--etc-text-muted);
+    font-size: 14px;
+    font-weight: 700;
+}
+.castor-etc .etc-hero-value {
+    margin: 4px 0;
+    color: var(--etc-accent);
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+.castor-etc .etc-hero-desc { color: var(--etc-text-muted); font-size: 12px; }
+
+/* Full-width, like every other section here: these can hold several lines at
+   once (the single-point and batch calculations share one warning box). */
+.castor-etc .etc-alert {
+    border-radius: var(--etc-radius-base);
+    padding: var(--etc-gap-field);
+    font-size: 12px;
+}
+.castor-etc .etc-alert[hidden] { display: none; }
+.castor-etc .etc-alert-text { display: block; white-space: pre-wrap; }
+.castor-etc .etc-alert-error { background: var(--etc-error-bg); color: var(--etc-error); user-select: text; }
+.castor-etc .etc-alert-warning { background: var(--etc-warning-bg); color: var(--etc-warning); }
+
+.castor-etc .etc-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--etc-gap-card);
+}
+.castor-etc .etc-metric {
+    flex: 0 0 auto;
+    width: 160px;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    padding: var(--etc-gap-field);
+}
+.castor-etc .etc-metric-label { color: var(--etc-text-muted); font-size: 11px; }
+.castor-etc .etc-metric-value {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: 4px;
+    color: var(--etc-text-main);
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Section titles inside the results column are direct flex children, so the
+   gap already spaces them — cancel the field-oriented margin. */
+.castor-etc .etc-results-scroll > .etc-section-title { margin-bottom: 0; }
+
+/* Ticking "Sweep time range" changes what the reader came for. In single mode the
+   hero number is the answer and the panel is ordered around it; in sweep mode the
+   answer is the chart, and leaving it at the bottom of five card groups meant
+   scrolling past a screenful of single-instant detail to reach the thing you just
+   asked for. The container is already a flex column, so this is pure order — the
+   nodes never move, which matters because relocating a Plotly graph in the DOM
+   costs a resize and a redraw. Alerts stay above everything either way. */
+.castor-etc .etc-results-scroll.is-sweep > .etc-observing-window { order: -1; }
+.castor-etc .etc-results-scroll.is-sweep > .etc-alert { order: -2; }
+/* The hero keeps the top in both modes. Promoting the chart over it put the headline
+   figure below the fold, and the answer to "how good is this" is still a number — the
+   chart says when, not how good. Chart second, ahead of the card groups. */
+.castor-etc .etc-results-scroll.is-sweep > .etc-hero { order: -3; }
+
+/* Sweeping retires the figures that move with the target. Showing a chart of SNR
+   against time and then a card reading one instant's SNR underneath it asks the
+   reader to work out which is the answer; the chart is, and the card was only ever
+   the shape the panel had before there was a chart. What is left are the constants,
+   which no chart improves. */
+.castor-etc .etc-results-scroll.is-sweep > [data-time-varying] { display: none; }
+
+.castor-etc .etc-observing-window { display: flex; flex-direction: column; gap: var(--etc-gap-group); }
+.castor-etc .etc-observing-window[hidden] { display: none; }
+.castor-etc .etc-chart { width: 100%; min-height: 420px; }
+.castor-etc .etc-chart-status {
+    margin: 0;
+    color: var(--etc-text-muted);
+    font-size: 12px;
+    text-align: center;
+}
+.castor-etc .etc-chart-status[hidden] { display: none; }
+
+/* ============================================================================
+   SAVE / LOAD dialog
+============================================================================ */
+.castor-etc .etc-dialog {
+    width: min(680px, calc(100vw - 64px));
+    max-height: calc(100vh - 96px);
+    margin: auto;
+    padding: var(--etc-pad-card);
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-card);
+    background: var(--etc-surface-2);
+    color: var(--etc-text-main);
+    font-size: 13px;
+}
+.castor-etc .etc-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+
+.castor-etc .etc-dialog-title {
+    margin: 0 0 4px;
+    color: var(--etc-accent);
+    font-size: 14px;
+    font-weight: 700;
+}
+.castor-etc .etc-dialog-hint {
+    margin: 0 0 var(--etc-gap-field);
+    color: var(--etc-text-muted);
+    font-size: 12px;
+}
+
+.castor-etc .etc-dialog-text {
+    display: block;
+    width: 100%;
+    height: min(46vh, 380px);
+    resize: vertical;
+    padding: 10px;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--etc-text-main);
+    /* Monospace on purpose: this is the request as it will be sent, and lining the
+       numbers up is what makes it readable rather than merely present. */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    tab-size: 2;
+    white-space: pre;
+    overflow: auto;
+}
+.castor-etc .etc-dialog-text:focus { outline: none; border-color: var(--etc-accent); }
+
+.castor-etc .etc-dialog .etc-alert { margin-top: var(--etc-gap-field); }
+
+.castor-etc .etc-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--etc-gap-field);
+    margin-top: var(--etc-gap-group);
+}
+.castor-etc .etc-dialog-actions .etc-action { height: 34px; font-size: 12px; }
+.castor-etc .etc-dialog-actions .etc-action-primary {
+    color: var(--etc-accent);
+    border-color: var(--etc-accent);
+}
+.castor-etc .etc-dialog-actions .etc-action-ghost { border-color: transparent; }
+
+/* ============================================================================
+   Responsive — below the two-column threshold the panels stack and each grows
+   to its natural height instead of scrolling in a short fixed box.
+============================================================================ */
+@media (max-width: 1024px) {
+    .castor-etc .etc-shell {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    .castor-etc .etc-form-frame,
+    .castor-etc .etc-results-scroll { overflow-y: visible; }
+    .castor-etc .etc-hero-value { font-size: 44px; }
+}
+
+@media (max-width: 560px) {
+    .castor-etc .etc-field-row { grid-template-columns: 1fr; }
+    .castor-etc .etc-metric { width: 100%; }
+}

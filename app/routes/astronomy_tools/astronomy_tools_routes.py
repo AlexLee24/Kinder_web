@@ -290,9 +290,26 @@ def telescope_simulator():
 # ===============================================================================
 # EXPOSURE TIME CALCULATOR (CASTOR engine)
 # ===============================================================================
+_CASTOR_ETC_BODY_PATH = os.path.join(
+    os.path.dirname(__file__), 'templates', 'castor_etc_body.html'
+)
+
 @astronomy_tools_bp.route('/exposure_time_calculator')
 def exposure_time_calculator():
-    return render_template('exposure_time_calculator.html', current_path='/exposure_time_calculator')
+    # castor_etc_body.html is copied verbatim from CASTOR's src/castorGUI/frontend.
+    # It is deliberately read as raw text and injected with `| safe` rather than
+    # `{% include %}`d: one of its HTML comments contains a literal example
+    # `{% include 'castor_etc_body.html' %}` line, which Jinja would execute if it
+    # parsed the file — recursing into the file itself. Injecting raw text mirrors how
+    # CASTOR's own server.py mounts the partial, and keeps the file byte-for-byte
+    # identical to the engine repo's copy.
+    with open(_CASTOR_ETC_BODY_PATH, encoding='utf-8') as f:
+        castor_etc_body = f.read()
+    return render_template(
+        'exposure_time_calculator.html',
+        current_path='/exposure_time_calculator',
+        castor_etc_body=castor_etc_body,
+    )
 
 _CASTOR_PRESETS_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), '..', '..', 'modules', 'CASTOR', 'src', 'castorGUI', 'data', 'presets.json'

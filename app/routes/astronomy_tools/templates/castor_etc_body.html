@@ -1,0 +1,661 @@
+<!-- ============================================================================
+     CASTOR ETC — shared body partial.
+
+     Pure HTML on purpose: no <html>/<head>/<body> wrapper, no Jinja syntax, no
+     framework-specific attributes. Both hosts include this same file:
+
+       Kinder (Flask/Jinja)  {% include 'castor_etc_body.html' %}
+       CASTOR (standalone)   server.py substitutes it into index.html
+
+     No page title in here: like the page background and outer padding, that
+     belongs to whatever is framing the calculator — Kinder already has its own
+     nav bar and heading above this content area.
+
+     See frontend/README.md. Every <input name="..."> is a dotted path matching
+     castor.schema's nested shape exactly, so
+     js/etc.js can build the request payload by walking the form generically
+     rather than naming each field twice.
+============================================================================ -->
+<div class="castor-etc" id="castor-etc">
+
+    <div class="etc-shell">
+
+        <!-- ══════════════════════════════════════════════════════════════
+             LEFT: input form. Four freely-switchable tabs (not a gated
+             wizard) — every edit recalculates the right side immediately.
+        ══════════════════════════════════════════════════════════════ -->
+        <section class="etc-panel etc-panel-form">
+            <div class="etc-tabbar">
+                <div class="etc-tabs" role="tablist" aria-label="Request sections">
+                    <button type="button" class="etc-tab is-active" data-tab="instrument" role="tab" aria-selected="true">Instrument</button>
+                    <button type="button" class="etc-tab" data-tab="target" role="tab" aria-selected="false">Target</button>
+                    <button type="button" class="etc-tab" data-tab="environment" role="tab" aria-selected="false">Environment</button>
+                    <button type="button" class="etc-tab" data-tab="options" role="tab" aria-selected="false">Options</button>
+                </div>
+                <div class="etc-tabbar-actions">
+                    <button type="button" class="etc-action" id="btn-load" title="Load a saved request (JSON)">LOAD</button>
+                    <button type="button" class="etc-action" id="btn-save" title="Save the current request (JSON)">SAVE</button>
+                    <input type="file" id="load-file-input" accept="application/json,.json" hidden>
+                </div>
+            </div>
+
+            <div class="etc-form-frame">
+                <form id="castor-form" autocomplete="off">
+
+                    <!-- ══ Instrument ══ -->
+                    <div class="etc-tabpanel is-active" data-panel="instrument" role="tabpanel">
+                        <!-- Site first: it is what narrows the telescope and camera lists
+                             below it, and it fills in the site's coordinates and sky at the
+                             same time. Telescope, camera and filter stay independent because
+                             cameras get moved between telescopes and the band changes
+                             between exposures. None of these carry a name attribute, so none
+                             of them reach the request payload.
+
+                             Each selector owns the disclosure directly beneath it, holding
+                             exactly the fields that selector writes. One shared panel at the
+                             bottom meant setting the telescope to Custom revealed the camera
+                             and filter numbers too, and put the fields being asked for a
+                             screen away from the control that asked for them. -->
+                        <h3 class="etc-section-title">Observing Setup</h3>
+
+                        <label class="etc-field">
+                            <span class="etc-field-label">Site</span>
+                            <select id="select-profile"><option value="">Loading&hellip;</option></select>
+                        </label>
+                        <!-- Filled from the chosen profile's `caveat`, and hidden when it
+                             has none. A profile whose numbers cannot carry a real
+                             observation has to say so next to the control that picked it;
+                             provenance.py is the full record, but it is in the repository
+                             and this is where the choice is actually made. -->
+                        <p class="etc-alert etc-alert-warning" id="profile-caveat" hidden></p>
+
+                        <label class="etc-field">
+                            <span class="etc-field-label">Telescope</span>
+                            <select id="select-telescope"></select>
+                        </label>
+                        <details class="etc-details" data-details="telescope">
+                            <summary class="etc-details-summary">Telescope parameters</summary>
+                            <div class="etc-details-body">
+                                <label class="etc-field">
+                                <span class="etc-field-label">Primary Mirror Diameter</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.telescope.primary_mirror_diameter" value="1.0" step="any" min="0.001" required>
+                                <span class="etc-unit">m</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Secondary Mirror Diameter</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.telescope.secondary_mirror_diameter" value="0.3" step="any" min="0" required>
+                                <span class="etc-unit">m</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Focal Length</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.telescope.focal_length" value="8.0" step="any" min="0.001" required>
+                                <span class="etc-unit">m</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Optical Throughput</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.telescope.optical_throughput" value="85" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
+                            </div>
+                        </details>
+
+                        <label class="etc-field">
+                            <span class="etc-field-label">Camera</span>
+                            <select id="select-camera"></select>
+                        </label>
+                        <details class="etc-details" data-details="camera">
+                            <summary class="etc-details-summary">Camera parameters</summary>
+                            <div class="etc-details-body">
+                                <label class="etc-field">
+                                <span class="etc-field-label">Pixel Pitch</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.pixel_pitch" value="15.0" step="any" min="0.001" required>
+                                <span class="etc-unit">&micro;m</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Quantum Efficiency</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.quantum_efficiency" value="85" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Dark Current Rate</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.dark_current_rate" value="0.01" step="any" min="0" required>
+                                <span class="etc-unit">e-/s/pix</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Readout Noise</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.readout_noise" value="5.0" step="any" min="0" required>
+                                <span class="etc-unit">e-/pix</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Full Well Capacity</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.full_well_capacity" value="100000" step="any" min="0.001" required>
+                                <span class="etc-unit">e-</span>
+                                </span>
+                                </label>
+                            </div>
+                        </details>
+
+                        <label class="etc-field">
+                            <span class="etc-field-label">Filter</span>
+                            <select id="select-filter"></select>
+                        </label>
+                        <details class="etc-details" data-details="filter">
+                            <summary class="etc-details-summary">Filter parameters</summary>
+                            <div class="etc-details-body">
+                                <label class="etc-field">
+                                <span class="etc-field-label">Central Wavelength</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.optic_filter.central_wavelength" value="550.0" step="any" min="0.001" required>
+                                <span class="etc-unit">nm</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Filter Bandwidth</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.optic_filter.filter_bandwidth" value="89.0" step="any" min="0.001" required>
+                                <span class="etc-unit">nm</span>
+                                </span>
+                                </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Filter Transmission</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.optic_filter.filter_transmission" value="90" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
+                            </div>
+                        </details>
+
+                        <p class="etc-specs" id="specs-card"></p>
+
+                        <details class="etc-details" data-details="system">
+                            <summary class="etc-details-summary">System</summary>
+                            <div class="etc-details-body">
+                                <label class="etc-field">
+                                <span class="etc-field-label">Throughput Correction</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.throughput_correction" value="100" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- ══ Target ══ -->
+                    <div class="etc-tabpanel" data-panel="target" role="tabpanel" hidden>
+                        <h3 class="etc-section-title">Coordinates (J2000, decimal degrees)</h3>
+                        <!-- One coordinate, not two settings: a pair that is always read
+                             and edited together sits on one row, like the FWHM pairs on the
+                             Environment tab. -->
+                        <!-- The default target is SN 2025wny ("SN Winny"), image A: the
+                             strongly lensed superluminous supernova at z=2.01 that Lulin's
+                             own LOT resolved into its separate lensed images on 2025-09-29
+                             (HOLISMOKES XIX, arXiv:2510.21694; LOT data via the DETECT
+                             programme).
+
+                             It is the default because it is the one target that agrees with
+                             every other default on the page. The hardware selectors open on
+                             LOT 1 m + Sophia + Sloan r', the observing time below is pinned
+                             to that night, and the r-band AB 19.6 here is what LOT actually
+                             measured for image A - so the calculator boots on a real
+                             measurement it can reproduce, not on placeholder numbers.
+
+                             Images B and C came in at AB 21.3 and 21.5. Both are worth
+                             typing in: at the default 120 s they land near SNR 10, which is
+                             the "is this exposure long enough" question the tool exists to
+                             answer. -->
+                        <div class="etc-field-row">
+                            <label class="etc-field">
+                                <span class="etc-field-label">Right Ascension</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.ra" value="109.1437" step="any" min="0" max="359.9999" required>
+                                    <span class="etc-unit">deg</span>
+                                </span>
+                            </label>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Declination</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.dec" value="38.3523" step="any" min="-90" max="90" required>
+                                    <span class="etc-unit">deg</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Morphology</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Morphology</span>
+                            <select name="target.morphology.type">
+                                <option value="point">Point Source (e.g., Star)</option>
+                                <option value="extended">Extended Source (e.g., Galaxy)</option>
+                            </select>
+                        </label>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Brightness</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Brightness System</span>
+                            <select name="target.brightness.type" id="select-brightness-type">
+                                <option value="vega_mag">Vega Magnitude</option>
+                                <option value="ab_mag" selected>AB Magnitude</option>
+                                <option value="jansky_flux">Jansky Flux (Jy)</option>
+                                <option value="wavelength_flux">Wavelength Flux (erg/s/cm&sup2;/&Aring;)</option>
+                            </select>
+                        </label>
+                        <!-- Only the branch matching the selected discriminator is submitted:
+                             the payload builder skips inputs inside a hidden .dynamic-group,
+                             because castor.schema is strict and rejects extra fields. -->
+                        <div class="dynamic-group" data-brightness="vega_mag ab_mag">
+                            <label class="etc-field">
+                                <span class="etc-field-label" id="label-target-mag">Apparent Magnitude</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.brightness.target_mag" value="19.6" step="any">
+                                    <span class="etc-unit">mag</span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="dynamic-group" data-brightness="vega_mag">
+                            <!-- Band-specific, so it tracks the filter rather than the target:
+                                 2.805e-9 is the zero point at the default Sloan r' (623 nm).
+                                 The 3.63e-9 this used to ship is the Johnson V value, which
+                                 read a target 30% fainter than it is on a form whose default
+                                 filter is not V. Change the filter and this wants changing
+                                 with it - it is the one brightness field that is a property
+                                 of the instrument, not of the source. -->
+                            <label class="etc-field">
+                                <span class="etc-field-label">Zero Point Flux</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.brightness.zero_point_flux" value="2.805e-9" step="any">
+                                    <span class="etc-unit">erg/s/cm&sup2;/&Aring;</span>
+                                </span>
+                            </label>
+                        </div>
+                        <!-- castor.schema names the Jansky and the wavelength-flux field
+                             flux_value alike, so one input serves both and the unit label
+                             swaps. That makes a single stored default ambiguous: 5.248e-5 Jy
+                             and 4.054e-17 erg/s/cm2/A are the same brightness twelve orders
+                             of magnitude apart. The value below is the Jansky one - Jansky is
+                             the first of the two in the selector - and syncConditionalFields
+                             converts it when the system changes, so whichever you land on is
+                             still image A at AB 19.6. -->
+                        <div class="dynamic-group" data-brightness="jansky_flux wavelength_flux" hidden>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Flux Density</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.brightness.flux_value" value="5.248e-5" step="any">
+                                    <span class="etc-unit" id="unit-flux-value">Jy</span>
+                                </span>
+                            </label>
+                        </div>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Spectral Energy Distribution (SED)</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">SED Model</span>
+                            <select name="target.sed.type" id="select-sed-type">
+                                <option value="flat">Flat Spectrum</option>
+                            </select>
+                        </label>
+                        <!-- Blackbody is hidden rather than offered, because choosing it could
+                             only ever fail. schema.TempSED declares nothing but its own tag, so
+                             the temperature field below was rejected as an extra input and the
+                             whole request 400'd the moment the group unhid itself.
+
+                             The engine does not read target.sed at all yet — calculator's
+                             _unify_flux branches on target.brightness and never looks at the
+                             SED — so flat is not one model among two, it is the only behaviour
+                             there is, and the selector above says so honestly.
+
+                             Restoring this means three things, not one: give TempSED a
+                             temperature_k field, make the engine actually integrate a blackbody
+                             across the band, and only then put the option and this group back.
+                        <option value="Temp">Blackbody (Temperature)</option>
+                        <div class="dynamic-group" data-sed="Temp" hidden>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Blackbody Temperature</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="target.sed.temperature_k" value="5800" step="any" min="0">
+                                    <span class="etc-unit">K</span>
+                                </span>
+                            </label>
+                        </div>
+                        -->
+                    </div>
+
+                    <!-- ══ Environment ══ -->
+                    <div class="etc-tabpanel" data-panel="environment" role="tabpanel" hidden>
+                        <h3 class="etc-section-title">Spatial Spreading (FWHM, arcsec)</h3>
+                        <div class="etc-field-row">
+                            <label class="etc-field">
+                                <span class="etc-field-label">Seeing</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="environment.seeing_fwhm" value="1.5" step="any" min="0.001" required>
+                                </span>
+                            </label>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Diffraction</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="environment.diffraction_fwhm" value="0.2" step="any" min="0.001" required>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="etc-field-row">
+                            <label class="etc-field">
+                                <span class="etc-field-label">Optical</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="environment.optical_fwhm" value="0.1" step="any" min="0.001" required>
+                                </span>
+                            </label>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Tracking</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="environment.tracking_fwhm" value="0.1" step="any" min="0.001" required>
+                                </span>
+                            </label>
+                        </div>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Atmosphere &amp; Background</h3>
+                        <!-- Renamed from "Auto sky background", which claimed too much: it
+                             reads as though the sky brightness gets derived for you and the
+                             field below stops mattering. Nothing is derived - mu_dark is
+                             required either way and is always the baseline. All this adds is
+                             moonlight. -->
+                        <label class="etc-switch-row" title="Adds scattered moonlight (Krisciunas &amp; Schaefer 1991) on top of the mu_dark baseline below, from the Moon's phase, its separation from the target, and both altitudes at the observing time you set. mu_dark is never derived: with this off the sky is exactly mu_dark, and with it on and the Moon below the horizon it adds nothing. Single-instant results only - a time sweep always includes moonlight, whatever this is set to.">
+                            <input type="checkbox" class="etc-switch-input" name="environment.auto_calc_background">
+                            <span class="etc-switch" aria-hidden="true"></span>
+                            <span class="etc-switch-label">Add moonlight to sky background</span>
+                        </label>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Dark Sky Brightness (mu_dark, baseline)</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.mu_dark" value="21.0" step="any" required>
+                                <span class="etc-unit">mag/arcsec&sup2;</span>
+                            </span>
+                        </label>
+                        <!-- Not a field anyone fills in - it is a preset-only pass-through. A
+                             handful of Lulin's filters carry it (see presets.json's comment on
+                             the split it depends on) and applyFragment fills it same as any
+                             other; PayloadBuilder skips it whenever it's left empty, which is
+                             every profile that has never had this measured. -->
+                        <input type="number" name="environment.zodiacal_share" step="any" min="0" max="0.999" hidden>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Extinction Coefficient</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.extinction_coeff" value="0.15" step="any" min="0" required>
+                                <span class="etc-unit">mag/airmass</span>
+                            </span>
+                        </label>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Observatory Location</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Latitude</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.location.latitude_deg" value="23.47" step="any" min="-90" max="90" required>
+                                <span class="etc-unit">deg</span>
+                            </span>
+                        </label>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Longitude</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.location.longitude_deg" value="120.87" step="any" min="-180" max="180" required>
+                                <span class="etc-unit">deg</span>
+                            </span>
+                        </label>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Elevation</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.location.elevation_m" value="2862" step="any" required>
+                                <span class="etc-unit">m</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <!-- ══ Options ══ -->
+                    <div class="etc-tabpanel" data-panel="options" role="tabpanel" hidden>
+                        <h3 class="etc-section-title">Base Configuration</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Aperture Factor (k_ap)</span>
+                            <span class="etc-input-wrap">
+                                <!-- Photometric aperture radius, in units of the total FWHM. 0.85 is
+                                     near the worst-case-optimal choice across brightness regimes: a
+                                     Gaussian on background peaks at 0.67 when the sky dominates and
+                                     around 1.0 when the star does, and 0.85 stays within 5% of both.
+                                     The old 1.5 enclosed 99.8% of the star but three times the sky
+                                     with it, costing 36% of the SNR on a faint target — which is the
+                                     case anyone runs a calculator for. See validation/test_eso.py. -->
+                                <input type="number" name="options.aperture_factor" value="0.85" step="any" min="0.001" required
+                                       title="Photometric aperture radius as a multiple of the total FWHM. 0.85 keeps within 5% of the best achievable SNR whether the target or the sky dominates; 1.5 collects nearly all the star but pays three times the sky for it.">
+                            </span>
+                        </label>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Single Exposure Time</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="options.single_exp_time" value="120" step="any" min="0.001" required>
+                                <span class="etc-unit">s</span>
+                            </span>
+                        </label>
+
+                        <hr class="etc-divider">
+
+                        <h3 class="etc-section-title">Observation Strategy</h3>
+                        <label class="etc-field">
+                            <span class="etc-field-label">Calculation Goal</span>
+                            <select name="options.type" id="select-options-type">
+                                <option value="solve_snr">Solve for SNR (given exposures)</option>
+                                <option value="solve_time">Solve for Exposures (given target SNR)</option>
+                            </select>
+                        </label>
+                        <div class="dynamic-group" data-options="solve_snr">
+                            <label class="etc-field">
+                                <span class="etc-field-label">Number of Exposures</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="options.num_exposures" value="1" step="1" min="1">
+                                </span>
+                            </label>
+                        </div>
+                        <div class="dynamic-group" data-options="solve_time" hidden>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Target SNR</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="options.target_snr" value="10.0" step="any" min="0.001">
+                                </span>
+                            </label>
+                        </div>
+
+                        <hr class="etc-divider">
+
+                        <!-- "When" lives here rather than on the Environment tab: it isn't a
+                             fixed site characteristic, it's the other half of "what are you
+                             asking" — same shape as the solve_snr/solve_time choice above.
+                             See docs/gui_architecture.md. -->
+                        <h3 class="etc-section-title">When</h3>
+                        <label class="etc-switch-row" title="Compute across a start/end/step time range instead of a single instant">
+                            <input type="checkbox" class="etc-switch-input" id="toggle-batch">
+                            <span class="etc-switch" aria-hidden="true"></span>
+                            <span class="etc-switch-label">Sweep time range</span>
+                        </label>
+                        <!-- Deliberately NOT .dynamic-group: this field is always submitted,
+                             because the single-point run continues under the sweep and still
+                             needs an instant. It stays hidden while sweeping because nothing
+                             on screen reports that instant any more — the time-varying figures
+                             are the chart's job, and what survives from the single-point
+                             response is the constants, which are the same at any instant. -->
+                        <div class="time-group" data-when="single">
+                            <label class="etc-field">
+                                <span class="etc-field-label">Observation Time (local)</span>
+                                <span class="etc-input-wrap">
+                                    <input type="datetime-local" name="environment.observing_time_utc" required>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="time-group" data-when="batch" hidden>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Start Time (local)</span>
+                                <span class="etc-input-wrap">
+                                    <input type="datetime-local" name="batch.start_time_utc">
+                                </span>
+                            </label>
+                            <label class="etc-field">
+                                <span class="etc-field-label">End Time (local)</span>
+                                <span class="etc-input-wrap">
+                                    <input type="datetime-local" name="batch.end_time_utc">
+                                </span>
+                            </label>
+                            <label class="etc-field">
+                                <span class="etc-field-label">Time Step</span>
+                                <span class="etc-input-wrap">
+                                    <input type="number" name="batch.time_step_minutes" value="15" step="any" min="0.001">
+                                    <span class="etc-unit">min</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+        </section>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             RIGHT: live results. No buttons — a pure render target, same
+             contract as rightPanel.py.
+        ══════════════════════════════════════════════════════════════ -->
+        <section class="etc-panel etc-panel-results">
+            <div class="etc-results-scroll">
+
+                <div class="etc-hero">
+                    <div class="etc-hero-label" id="hero-label">Primary Result</div>
+                    <div class="etc-hero-value" id="hero-value">&mdash;</div>
+                    <div class="etc-hero-desc" id="hero-desc">Waiting for input&hellip;</div>
+                </div>
+
+                <div class="etc-alert etc-alert-error" id="error-box" hidden>
+                    <span class="etc-alert-text" id="error-text"></span>
+                </div>
+                <!-- One warning box, fed by both the single-point and the batch
+                     calculation (see etc.js's refreshWarnings). -->
+                <div class="etc-alert etc-alert-warning" id="warning-box" hidden>
+                    <span class="etc-alert-text" id="warning-text"></span>
+                </div>
+
+                <!-- Hidden while sweeping: every figure in here moves with the target, and the
+                     chart already plots it against time. See etc.css. -->
+                <h3 class="etc-section-title" data-time-varying>Signal &amp; Noise Budget</h3>
+                <div class="etc-metrics" data-time-varying>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Source Rate</div>
+                        <div class="etc-metric-value"><span id="res-source-rate">&mdash;</span><span class="etc-unit">e-/s</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Sky Background</div>
+                        <div class="etc-metric-value"><span id="res-sky-rate">&mdash;</span><span class="etc-unit">e-/s/pix</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Peak Pixel Rate</div>
+                        <div class="etc-metric-value"><span id="res-peak-rate">&mdash;</span><span class="etc-unit">e-/s/pix</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Single Exp. SNR</div>
+                        <div class="etc-metric-value"><span id="res-single-snr">&mdash;</span></div>
+                    </div>
+                </div>
+
+                <!-- Stays in both modes: FWHM, pixel scale, effective area, throughput, enclosed
+                     flux and aperture pixels are all functions of fixed inputs, so they do not
+                     move with time and there is nothing for the chart to say about them. -->
+                <h3 class="etc-section-title">Physical Diagnostics</h3>
+                <div class="etc-metrics">
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Total FWHM</div>
+                        <div class="etc-metric-value"><span id="res-total-fwhm">&mdash;</span><span class="etc-unit">arcsec</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Pixel Scale</div>
+                        <div class="etc-metric-value"><span id="res-pixel-scale">&mdash;</span><span class="etc-unit">&quot;/pix</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Effective Area</div>
+                        <div class="etc-metric-value"><span id="res-eff-area">&mdash;</span><span class="etc-unit">m&sup2;</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">System Throughput</div>
+                        <div class="etc-metric-value"><span id="res-throughput">&mdash;</span><span class="etc-unit">%</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Enclosed Flux</div>
+                        <div class="etc-metric-value"><span id="res-enclosed-flux">&mdash;</span><span class="etc-unit">%</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Aperture Pixels</div>
+                        <div class="etc-metric-value"><span id="res-num-pixels">&mdash;</span><span class="etc-unit">px</span></div>
+                    </div>
+                </div>
+
+                <!-- Hidden while sweeping: every figure in here moves with the target, and the
+                     chart already plots it against time. See etc.css. -->
+                <h3 class="etc-section-title" data-time-varying>Observation Limits</h3>
+                <div class="etc-metrics" data-time-varying>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Saturation Time Limit</div>
+                        <div class="etc-metric-value"><span id="res-sat-time">&mdash;</span><span class="etc-unit">s</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label">Optimal Exposure Time</div>
+                        <div class="etc-metric-value"><span id="res-optimal-time">&mdash;</span><span class="etc-unit">s</span></div>
+                    </div>
+                </div>
+
+                <!-- Revealed only while the Options tab's "Sweep time range" is on. -->
+                <section class="etc-observing-window" id="observing-window" hidden>
+                    <h3 class="etc-section-title">Observing Window</h3>
+                    <div class="etc-chart" id="etc-chart"></div>
+                    <p class="etc-chart-status" id="chart-status"></p>
+                </section>
+
+            </div>
+        </section>
+
+    </div>
+
+    <!-- SAVE/LOAD both go through the same box, showing the request as text. A file is
+         the secondary route rather than the only one: the JSON is small and worth
+         reading, pasting it into a script or a message is the common way to share a
+         setup, and a sandboxed iframe can block downloads and file pickers outright
+         while a textarea always works. Routing a chosen file through the same box also
+         means nothing is ever applied before it has been seen.
+
+         Native <dialog>: focus trapping, Escape and the top layer come with it. -->
+    <dialog class="etc-dialog" id="json-dialog" aria-labelledby="json-dialog-title">
+        <h3 class="etc-dialog-title" id="json-dialog-title"></h3>
+        <p class="etc-dialog-hint" id="json-dialog-hint"></p>
+        <textarea class="etc-dialog-text" id="json-dialog-text" spellcheck="false" wrap="off"></textarea>
+        <div class="etc-alert etc-alert-error" id="json-dialog-error" hidden>
+            <span class="etc-alert-text" id="json-dialog-error-text"></span>
+        </div>
+        <div class="etc-dialog-actions" id="json-dialog-actions"></div>
+    </dialog>
+</div>
