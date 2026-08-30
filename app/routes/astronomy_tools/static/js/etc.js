@@ -253,6 +253,7 @@
         el('res-throughput').textContent = fmt(diag.total_throughput * 100, 1);
         el('res-enclosed-flux').textContent = fmt(diag.enclosed_flux_fraction * 100, 1);
         el('res-num-pixels').textContent = fmt(diag.num_pixels_aperture, 1);
+        el('res-num-pixels-sky').textContent = fmt(diag.num_pixels_sky_estimate, 1);
 
         el('res-sat-time').textContent = fmt(core.saturation_time_limit, 2);
         el('res-optimal-time').textContent = fmt(core.optimal_exposure_time, 2);

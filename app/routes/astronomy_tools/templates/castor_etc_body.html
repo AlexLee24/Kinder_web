@@ -437,21 +437,11 @@
 
                     <!-- ══ Options ══ -->
                     <div class="etc-tabpanel" data-panel="options" role="tabpanel" hidden>
-                        <h3 class="etc-section-title">Base Configuration</h3>
-                        <label class="etc-field">
-                            <span class="etc-field-label">Aperture Factor (k_ap)</span>
-                            <span class="etc-input-wrap">
-                                <!-- Photometric aperture radius, in units of the total FWHM. 0.85 is
-                                     near the worst-case-optimal choice across brightness regimes: a
-                                     Gaussian on background peaks at 0.67 when the sky dominates and
-                                     around 1.0 when the star does, and 0.85 stays within 5% of both.
-                                     The old 1.5 enclosed 99.8% of the star but three times the sky
-                                     with it, costing 36% of the SNR on a faint target — which is the
-                                     case anyone runs a calculator for. See validation/test_eso.py. -->
-                                <input type="number" name="options.aperture_factor" value="0.85" step="any" min="0.001" required
-                                       title="Photometric aperture radius as a multiple of the total FWHM. 0.85 keeps within 5% of the best achievable SNR whether the target or the sky dominates; 1.5 collects nearly all the star but pays three times the sky for it.">
-                            </span>
-                        </label>
+                        <!-- Three groups, in the order the questions actually get asked:
+                             how long you are spending, when, and only then how the
+                             measurement is extracted from what lands. The last is the one
+                             nobody should have to answer, so it is folded away. -->
+                        <h3 class="etc-section-title">Exposure Strategy</h3>
                         <label class="etc-field">
                             <span class="etc-field-label">Single Exposure Time</span>
                             <span class="etc-input-wrap">
@@ -459,10 +449,6 @@
                                 <span class="etc-unit">s</span>
                             </span>
                         </label>
-
-                        <hr class="etc-divider">
-
-                        <h3 class="etc-section-title">Observation Strategy</h3>
                         <label class="etc-field">
                             <span class="etc-field-label">Calculation Goal</span>
                             <select name="options.type" id="select-options-type">
@@ -534,6 +520,57 @@
                                 </span>
                             </label>
                         </div>
+
+                        <hr class="etc-divider">
+
+                        <!-- Folded by default, and the fields inside stay in the form while it
+                             is closed — these are not optional, they are just nobody's first
+                             question. They describe how the measurement is pulled out of the
+                             frame rather than what the frame contains, and the defaults are
+                             the ones the validation ran against. -->
+                        <details class="etc-details" data-details="photometry">
+                            <summary class="etc-details-summary">Photometry — aperture and sky annulus</summary>
+                            <div class="etc-details-body">
+                                <label class="etc-field">
+                                    <span class="etc-field-label">Aperture Factor (k_ap)</span>
+                                    <span class="etc-input-wrap">
+                                        <!-- Photometric aperture radius, in units of the total FWHM. 0.85 is
+                                             near the worst-case-optimal choice across brightness regimes: a
+                                             Gaussian on background peaks at 0.67 when the sky dominates and
+                                             around 1.0 when the star does, and 0.85 stays within 5% of both.
+                                             The old 1.5 enclosed 99.8% of the star but three times the sky
+                                             with it, costing 36% of the SNR on a faint target — which is the
+                                             case anyone runs a calculator for. See validation/test_eso.py.
+                                             Note that 0.85 is optimal in photons only: measured on real
+                                             frames, an aperture that tight tracks the seeing so closely that
+                                             extraction systematics dominate well before the photon limit. -->
+                                        <input type="number" name="options.aperture_factor" value="0.85" step="any" min="0.001" required
+                                               title="Photometric aperture radius as a multiple of the total FWHM. 0.85 keeps within 5% of the best achievable SNR whether the target or the sky dominates; 1.5 collects nearly all the star but pays three times the sky for it.">
+                                    </span>
+                                </label>
+                                <!-- The sky taken out of the aperture is measured in this annulus, and
+                                     one number is subtracted from every aperture pixel at once, so the
+                                     measurement's own error is spread over all of them. Leaving these
+                                     blank tells the engine the sky is known exactly; nothing is, and on
+                                     a wide aperture the difference reaches 13%. See ATBD 4.3.2. -->
+                                <label class="etc-field">
+                                    <span class="etc-field-label">Sky Annulus (k_in – k_out)</span>
+                                    <span class="etc-input-wrap etc-input-pair">
+                                        <input type="number" name="options.sky_annulus.inner_factor" value="3" step="any" min="0.001" required
+                                               title="Inner radius of the sky annulus, as a multiple of the total FWHM. Keep it clear of the PSF wings.">
+                                        <input type="number" name="options.sky_annulus.outer_factor" value="5" step="any" min="0.001" required
+                                               title="Outer radius of the sky annulus, as a multiple of the total FWHM. A wider annulus measures the sky better and costs less SNR.">
+                                    </span>
+                                </label>
+                                <label class="etc-field">
+                                    <span class="etc-field-label">Sky Estimator</span>
+                                    <select name="options.sky_annulus.estimator">
+                                        <option value="median">Median (rejects neighbours, costs π/2)</option>
+                                        <option value="mean">Mean</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </details>
                     </div>
 
                 </form>
@@ -612,6 +649,10 @@
                     <div class="etc-metric">
                         <div class="etc-metric-label">Aperture Pixels</div>
                         <div class="etc-metric-value"><span id="res-num-pixels">&mdash;</span><span class="etc-unit">px</span></div>
+                    </div>
+                    <div class="etc-metric">
+                        <div class="etc-metric-label" title="Pixel-equivalent noise cost of estimating the sky in the annulus. Read it against Aperture Pixels: that ratio is how much the sky estimate adds to the background variance.">Sky Estimate Cost</div>
+                        <div class="etc-metric-value"><span id="res-num-pixels-sky">&mdash;</span><span class="etc-unit">px</span></div>
                     </div>
                 </div>
 
