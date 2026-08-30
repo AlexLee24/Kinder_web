@@ -22,6 +22,17 @@ sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
 # update it with `git -C app/modules/CASTOR pull`. See app/modules/CASTOR/README.md.
 sys.path.append(os.path.join(current_dir, "modules", "CASTOR", "src"))
 
+# CASTOR's moon.py builds astropy Time/AltAz frames for every calculation, which by
+# default triggers astropy to try downloading fresh Earth-orientation (IERS) data from
+# datacenter.iers.org on first use. On a server with no/unreliable outbound internet
+# this makes every single ETC calculation eat a network timeout before it even starts,
+# and repeats on every request once the on-disk IERS cache is stale — set once here,
+# at process start, rather than left to astropy's per-call default. The bundled IERS
+# table this falls back to is off by at most ~1 arcsec, negligible for airmass/moon
+# geometry at the precision this tool needs.
+from astropy.utils import iers
+iers.conf.auto_download = False
+
 # Setup daily log file BEFORE other imports so all output is captured
 from modules.log_setup import setup_logging
 setup_logging(os.path.join(current_dir, 'log'))

@@ -711,12 +711,42 @@
         };
     }
 
-    var scheduleSingle = makeRunner(SINGLE_DEBOUNCE_MS, buildSingleRequest, CONFIG.apiUrl, renderSingle);
-    var scheduleBatch = makeRunner(BATCH_DEBOUNCE_MS, buildBatchRequest, CONFIG.batchUrl, renderBatch);
+    // ── Execute-button loading state — Kinder-specific ──────────────────────
+    // recalculate() can kick off one or two in-flight requests (single-point,
+    // plus batch when sweeping); the button stays disabled and shows a spinner
+    // until every one of them has called back, not just the first.
+    var pendingRequests = 0;
+    var executeBtn = el('btn-execute');
+    var executeLabel = el('btn-execute-label');
+
+    function beginRequest() {
+        pendingRequests++;
+        executeBtn.disabled = true;
+        executeBtn.classList.add('is-loading');
+        executeLabel.textContent = 'RUNNING…';
+    }
+    function endRequest() {
+        pendingRequests = Math.max(0, pendingRequests - 1);
+        if (pendingRequests === 0) {
+            executeBtn.disabled = false;
+            executeBtn.classList.remove('is-loading');
+            executeLabel.textContent = 'EXECUTE';
+        }
+    }
+
+    var scheduleSingle = makeRunner(SINGLE_DEBOUNCE_MS, buildSingleRequest, CONFIG.apiUrl, function (data, error) {
+        renderSingle(data, error);
+        endRequest();
+    });
+    var scheduleBatch = makeRunner(BATCH_DEBOUNCE_MS, buildBatchRequest, CONFIG.batchUrl, function (data, error) {
+        renderBatch(data, error);
+        endRequest();
+    });
 
     function recalculate() {
         // The single-point result is always computed — the sweep is an addition on
         // top of it, not an alternate mode.
+        beginRequest();
         scheduleSingle();
 
         if (!el('toggle-batch').checked) {
@@ -734,6 +764,7 @@
         // Promotes the chart to the top of the results panel — see etc.css.
         resultsScroll.classList.add('is-sweep');
         setChartStatus('Calculating…');
+        beginRequest();
         scheduleBatch();
     }
 

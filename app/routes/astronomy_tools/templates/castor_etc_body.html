@@ -39,7 +39,10 @@
                          click before any request is sent, and the results panel starts on its
                          markup default (—) rather than a computed result. See etc.js's
                          "EXECUTE — Kinder-specific" comment block for the other half of this. -->
-                    <button type="button" class="etc-action etc-action-primary" id="btn-execute" title="Run the calculation">EXECUTE</button>
+                    <button type="button" class="etc-action etc-action-primary" id="btn-execute" title="Run the calculation">
+                        <span class="etc-execute-spinner" aria-hidden="true"></span>
+                        <span id="btn-execute-label">EXECUTE</span>
+                    </button>
                     <button type="button" class="etc-action" id="btn-load" title="Load a saved request (JSON)">LOAD</button>
                     <button type="button" class="etc-action" id="btn-save" title="Save the current request (JSON)">SAVE</button>
                     <input type="file" id="load-file-input" accept="application/json,.json" hidden>

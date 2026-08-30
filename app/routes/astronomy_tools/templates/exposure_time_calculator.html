@@ -102,6 +102,35 @@
             background: var(--kw-accent, #C5A059) !important;
             color: #14141e !important;
         }
+        .etc-page .etc-action-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .etc-page .etc-action-primary:disabled {
+            cursor: wait;
+            opacity: 0.75;
+        }
+        .etc-page .etc-action-primary:disabled:hover {
+            background: transparent !important;
+            color: var(--kw-accent, #C5A059) !important;
+        }
+        .etc-execute-spinner {
+            display: none;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            flex-shrink: 0;
+        }
+        .etc-action-primary.is-loading .etc-execute-spinner {
+            display: inline-block;
+            animation: etc-spin 0.7s linear infinite;
+        }
+        @keyframes etc-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
     {% include '_favicon.html' %}
 </head>
