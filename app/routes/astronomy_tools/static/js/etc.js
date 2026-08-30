@@ -1070,7 +1070,6 @@
                     revealDetails(panel);
                 }
                 renderSpecs();
-                recalculate();
             });
             bindCustomReselect(select, panel);
         }
@@ -1096,7 +1095,6 @@
 
             profileSelect.addEventListener('change', function () {
                 applyProfile(profileSelect.value);
-                recalculate();
             });
             profileSelect.addEventListener('click', function () {
                 if (!profileSelect.value) { CATALOGUES.forEach(function (c) { revealDetails(c.panel); }); }
@@ -1115,7 +1113,6 @@
             if (firstProfile) {
                 profileSelect.value = firstProfile;
                 applyProfile(firstProfile);
-                recalculate();
             } else {
                 renderSpecs();
             }
@@ -1334,7 +1331,6 @@
         CATALOGUES.forEach(function (cat) { revealDetails(cat.panel); });
         renderSpecs();
         syncConditionalFields();
-        recalculate();
     }
 
     // ========================================================================
@@ -1377,13 +1373,16 @@
     form.addEventListener('input', function () {
         syncConditionalFields();
         renderSpecs();
-        recalculate();
     });
     form.addEventListener('change', function () {
         syncConditionalFields();
-        recalculate();
     });
 
-    // One calculation up front so the results panel isn't empty on first paint.
-    recalculate();
+    // ── EXECUTE — Kinder-specific ───────────────────────────────────────────
+    // Upstream CASTOR recalculates live on every input/change event and once
+    // more on load, so the results panel is never empty. Kinder instead waits
+    // for an explicit click: recalculate() only ever runs from here, and the
+    // results panel starts on its markup default (—) — see the matching
+    // comment on #btn-execute in etc_body.html.
+    el('btn-execute').addEventListener('click', recalculate);
 })();

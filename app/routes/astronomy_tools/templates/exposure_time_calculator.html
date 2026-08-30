@@ -89,6 +89,19 @@
             height: 14px;
             background: var(--kw-border, rgba(255, 255, 255, 0.15));
         }
+
+        /* Styling for #btn-execute (the manual-run button, a Kinder-specific
+           addition to castor_etc_body.html — see the comment there). Kept here
+           rather than in etc.css so the CASTOR stylesheet stays untouched. */
+        .etc-page .etc-action-primary {
+            color: var(--kw-accent, #C5A059) !important;
+            border-color: var(--kw-accent, #C5A059) !important;
+            font-weight: 700;
+        }
+        .etc-page .etc-action-primary:hover {
+            background: var(--kw-accent, #C5A059) !important;
+            color: #14141e !important;
+        }
     </style>
     {% include '_favicon.html' %}
 </head>
