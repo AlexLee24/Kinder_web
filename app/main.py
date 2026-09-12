@@ -33,6 +33,17 @@ sys.path.append(os.path.join(current_dir, "modules", "CASTOR", "src"))
 from astropy.utils import iers
 iers.conf.auto_download = False
 
+# Direct consequence of the line above, not a separate problem: every date astropy is
+# asked about now falls outside the bundled (frozen) IERS table's valid range, since it
+# stops being updated the moment downloads are off. astropy warns once per calculation
+# forever, so silence just this one — it already says the precision cost (~1 arcsec),
+# which is the trade-off this file deliberately made two lines up.
+import warnings
+from astropy.utils.exceptions import AstropyWarning
+warnings.filterwarnings(
+    'ignore', message='Tried to get polar motions.*', category=AstropyWarning
+)
+
 # Setup daily log file BEFORE other imports so all output is captured
 from modules.log_setup import setup_logging
 setup_logging(os.path.join(current_dir, 'log'))

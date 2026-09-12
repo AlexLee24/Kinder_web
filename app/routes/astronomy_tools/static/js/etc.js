@@ -26,6 +26,11 @@
     var SINGLE_DEBOUNCE_MS = 250;
     var BATCH_DEBOUNCE_MS = 500;
 
+    // How long a single-point request may be in flight before the "Updating…" cue
+    // appears. Long enough that a fast response never flashes it, short enough that a
+    // slow one shows feedback before the wait reads as a freeze.
+    var BUSY_GRACE_MS = 200;
+
     var root = document.getElementById('castor-etc');
     var form = document.getElementById('castor-form');
     if (!root || !form) { return; }
@@ -681,7 +686,20 @@
     // Scheduling — debounce + cancel-the-predecessor
     // ========================================================================
 
-    function makeRunner(delay, buildBody, url, onResult) {
+    /* Shows the "Updating…" cue while a single-point request is outstanding, but only
+       once it has been outstanding for BUSY_GRACE_MS — the common fast response settles
+       first and never flashes it. Cleared the instant a result or an error lands. */
+    var busyGraceTimer = null;
+    function setSingleBusy(active) {
+        clearTimeout(busyGraceTimer);
+        if (active) {
+            busyGraceTimer = setTimeout(function () { el('results-busy').hidden = false; }, BUSY_GRACE_MS);
+        } else {
+            el('results-busy').hidden = true;
+        }
+    }
+
+    function makeRunner(delay, buildBody, url, onResult, onBusy) {
         var timer = null;
         var controller = null;
 
@@ -700,12 +718,18 @@
                     return;
                 }
 
+                if (onBusy) { onBusy(true); }
                 postJSON(url, body, mine.signal).then(function (data) {
                     if (mine.signal.aborted) { return; }
                     onResult(data, null);
                 }).catch(function (err) {
                     if (err.name === 'AbortError') { return; }
                     onResult(null, err.message);
+                }).then(function () {
+                    // Clear busy only for the request that is still current. A superseded
+                    // one was aborted by its successor, which has already turned the cue
+                    // back on — clearing it here would hide the wait that is still running.
+                    if (onBusy && !mine.signal.aborted) { onBusy(false); }
                 });
             }, delay);
         };
@@ -714,7 +738,10 @@
     // ── Execute-button loading state — Kinder-specific ──────────────────────
     // recalculate() can kick off one or two in-flight requests (single-point,
     // plus batch when sweeping); the button stays disabled and shows a spinner
-    // until every one of them has called back, not just the first.
+    // until every one of them has called back, not just the first. Layered on
+    // top of upstream's own setSingleBusy (the "Updating…" hero cue) rather
+    // than replacing it — the two indicate different things (this is the
+    // click-to-run gate; that is per-request progress) and don't conflict.
     var pendingRequests = 0;
     var executeBtn = el('btn-execute');
     var executeLabel = el('btn-execute-label');
@@ -737,7 +764,7 @@
     var scheduleSingle = makeRunner(SINGLE_DEBOUNCE_MS, buildSingleRequest, CONFIG.apiUrl, function (data, error) {
         renderSingle(data, error);
         endRequest();
-    });
+    }, setSingleBusy);
     var scheduleBatch = makeRunner(BATCH_DEBOUNCE_MS, buildBatchRequest, CONFIG.batchUrl, function (data, error) {
         renderBatch(data, error);
         endRequest();
@@ -774,6 +801,7 @@
 
     function initTabs() {
         var tabs = root.querySelectorAll('.etc-tab');
+        var tabsBar = root.querySelector('.etc-tabs');
         Array.prototype.forEach.call(tabs, function (tab) {
             tab.addEventListener('click', function () {
                 Array.prototype.forEach.call(tabs, function (other) {
@@ -784,8 +812,29 @@
                 Array.prototype.forEach.call(root.querySelectorAll('.etc-tabpanel'), function (panel) {
                     panel.hidden = panel.dataset.panel !== tab.dataset.tab;
                 });
+                // Only matters once the bar has scrolled a tab partway out of view
+                // (see the wheel handler below); a no-op otherwise.
+                tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
             });
         });
+
+        /* The bar is overflow-x:auto with its scrollbar hidden (etc.css), which a
+           trackpad's horizontal swipe or a shift+wheel drives fine — but a plain
+           vertical-wheel mouse has no gesture for it and there is no visible scrollbar
+           to drag, so on that hardware alone the tabs past the edge are simply stuck.
+           Remap vertical wheel input onto scrollLeft to cover that case too, same as a
+           horizontally-scrolling row anywhere else on the web. Guarded on there being
+           somewhere to scroll and on the vertical delta actually dominating, so this
+           never fights a trackpad's own horizontal scroll or swallows a genuine page
+           scroll once the bar is already at its edge. */
+        if (tabsBar) {
+            tabsBar.addEventListener('wheel', function (event) {
+                if (tabsBar.scrollWidth <= tabsBar.clientWidth) { return; }
+                if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) { return; }
+                tabsBar.scrollLeft += event.deltaY;
+                event.preventDefault();
+            }, { passive: false });
+        }
     }
 
     function syncGroups(attribute, selected) {
@@ -891,8 +940,25 @@
         return out;
     }
 
-    function applyFragment(section, fragment) {
+    /* resetMissing is for a catalogue entry's own section (instrument.telescope,
+       .camera, .optic_filter): those are self-contained specs, so a field one
+       sibling entry carries and another does not -- e.g. background_flatness_fraction,
+       measured for one camera and not yet for its neighbours -- must fall back to
+       the field's own declared default, not silently keep whatever the previous
+       selection left sitting in the input. Left off (the default) for the
+       environment section, where a fragment is deliberately partial by design --
+       see applyBand above, which already handles its own staleness by re-applying
+       the base fragment before layering a band's override on top. */
+    function applyFragment(section, fragment, resetMissing) {
         var flat = flattenFragment(section, fragment || {}, {});
+        if (resetMissing) {
+            var prefix = section + '.';
+            Array.prototype.forEach.call(form.elements, function (input) {
+                if (!input.name || input.name.indexOf(prefix) !== 0) { return; }
+                if (Object.prototype.hasOwnProperty.call(flat, input.name)) { return; }
+                input.value = input.defaultValue;
+            });
+        }
         Object.keys(flat).forEach(function (path) {
             var input = form.elements[path];
             if (!input) { return; }
@@ -1068,7 +1134,7 @@
             var first = Object.keys(entries)[0];
             if (first) {
                 select.value = first;
-                applyFragment(cat.section, entries[first][cat.key]);
+                applyFragment(cat.section, entries[first][cat.key], true);
                 if (cat.kind === 'filters') { applyBand(entries[first]); }
                 collapseDetails(cat.panel);
             } else {
@@ -1094,7 +1160,7 @@
             select.addEventListener('change', function () {
                 var preset = catalogue(kind)[select.value];
                 if (preset) {
-                    applyFragment(section, preset[key]);
+                    applyFragment(section, preset[key], true);
                     if (kind === 'filters') { applyBand(preset); }
                     collapseDetails(panel);
                 } else {

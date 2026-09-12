@@ -411,6 +411,35 @@
 }
 .castor-etc .etc-hero-desc { color: var(--etc-text-muted); font-size: 12px; }
 
+/* In-flight cue for the single-point recalculation. Inline-flex so it centres in
+   the hero like the text above it, and deliberately quiet — it confirms the request
+   is running, it is not itself a result. */
+.castor-etc .etc-hero-busy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    color: var(--etc-text-muted);
+    font-size: 11px;
+}
+.castor-etc .etc-hero-busy[hidden] { display: none; }
+.castor-etc .etc-hero-busy-dot {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--etc-accent);
+    animation: etc-busy-pulse 1s ease-in-out infinite;
+}
+@keyframes etc-busy-pulse {
+    0%, 100% { opacity: 0.25; }
+    50%      { opacity: 1; }
+}
+/* A pulsing dot is decoration; readers who ask for less motion still get the text. */
+@media (prefers-reduced-motion: reduce) {
+    .castor-etc .etc-hero-busy-dot { animation: none; opacity: 0.8; }
+}
+
 /* Full-width, like every other section here: these can hold several lines at
    once (the single-point and batch calculations share one warning box). */
 .castor-etc .etc-alert {

@@ -159,6 +159,13 @@
                                 <span class="etc-unit">e-</span>
                                 </span>
                                 </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Background Flatness</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.background_flatness_fraction" value="0" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
                             </div>
                         </details>
 
@@ -356,34 +363,45 @@
                     <!-- ══ Environment ══ -->
                     <div class="etc-tabpanel" data-panel="environment" role="tabpanel" hidden>
                         <h3 class="etc-section-title">Spatial Spreading (FWHM, arcsec)</h3>
-                        <div class="etc-field-row">
-                            <label class="etc-field">
-                                <span class="etc-field-label">Seeing</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.seeing_fwhm" value="1.5" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                            <label class="etc-field">
-                                <span class="etc-field-label">Diffraction</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.diffraction_fwhm" value="0.2" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                        </div>
-                        <div class="etc-field-row">
-                            <label class="etc-field">
-                                <span class="etc-field-label">Optical</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.optical_fwhm" value="0.1" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                            <label class="etc-field">
-                                <span class="etc-field-label">Tracking</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.tracking_fwhm" value="0.1" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                        </div>
+                        <!-- Seeing is the one component anyone actually sets per run — it
+                             describes the night, and nothing else on the page fills it in for
+                             you (see specs-card's "reference only, not applied" note on the
+                             site's median seeing). Diffraction/optical/tracking are fixed
+                             telescope characteristics no preset ever touches; asking every
+                             user to type all four the way the schema needs them internally
+                             mistook the engine's shape for the form's. They stay real,
+                             required inputs — just folded, like Photometry below. -->
+                        <label class="etc-field">
+                            <span class="etc-field-label">Seeing</span>
+                            <span class="etc-input-wrap">
+                                <input type="number" name="environment.seeing_fwhm" value="1.5" step="any" min="0.001" required>
+                            </span>
+                        </label>
+                        <details class="etc-details" data-details="fwhm">
+                            <summary class="etc-details-summary">Advanced — PSF components (diffraction, optical, tracking)</summary>
+                            <div class="etc-details-body">
+                                <div class="etc-field-row">
+                                    <label class="etc-field">
+                                        <span class="etc-field-label">Diffraction</span>
+                                        <span class="etc-input-wrap">
+                                            <input type="number" name="environment.diffraction_fwhm" value="0.2" step="any" min="0.001" required>
+                                        </span>
+                                    </label>
+                                    <label class="etc-field">
+                                        <span class="etc-field-label">Optical</span>
+                                        <span class="etc-input-wrap">
+                                            <input type="number" name="environment.optical_fwhm" value="0.1" step="any" min="0.001" required>
+                                        </span>
+                                    </label>
+                                </div>
+                                <label class="etc-field">
+                                    <span class="etc-field-label">Tracking</span>
+                                    <span class="etc-input-wrap">
+                                        <input type="number" name="environment.tracking_fwhm" value="0.1" step="any" min="0.001" required>
+                                    </span>
+                                </label>
+                            </div>
+                        </details>
 
                         <hr class="etc-divider">
 
@@ -555,7 +573,7 @@
                                              frames, an aperture that tight tracks the seeing so closely that
                                              extraction systematics dominate well before the photon limit. -->
                                         <input type="number" name="options.aperture_factor" value="0.85" step="any" min="0.001" required
-                                               title="Photometric aperture radius as a multiple of the total FWHM. 0.85 keeps within 5% of the best achievable SNR whether the target or the sky dominates; 1.5 collects nearly all the star but pays three times the sky for it.">
+                                               title="Photometric aperture radius as a multiple of the total FWHM. 0.85 is photon-optimal but needs a stable PSF or aperture correction; for simple aperture photometry, enter the larger aperture your reduction will actually use.">
                                     </span>
                                 </label>
                                 <!-- The sky taken out of the aperture is measured in this annulus, and
@@ -598,6 +616,14 @@
                     <div class="etc-hero-label" id="hero-label">Primary Result</div>
                     <div class="etc-hero-value" id="hero-value">&mdash;</div>
                     <div class="etc-hero-desc" id="hero-desc">Waiting for input&hellip;</div>
+                    <!-- Shown only while a recalculation is in flight past a short grace
+                         period (see etc.js's setSingleBusy): on a slow network the panel
+                         would otherwise sit on the last result with no sign anything is
+                         happening, which reads as a freeze. role="status" lets a screen
+                         reader hear it without stealing focus. -->
+                    <div class="etc-hero-busy" id="results-busy" role="status" aria-live="polite" hidden>
+                        <span class="etc-hero-busy-dot" aria-hidden="true"></span>Updating&hellip;
+                    </div>
                 </div>
 
                 <div class="etc-alert etc-alert-error" id="error-box" hidden>
