@@ -252,7 +252,7 @@ function _formatAbsMag(value, sep) {
 }
 
 const _TAG_CLASS = {
-    'Luminous': 'tag-hot', 'SLSN?': 'tag-hot', 'Too-bright': 'tag-hot', 'glSN?': 'tag-hot',
+    'Luminous': 'tag-hot', 'SLSN?': 'tag-hot', 'Too-bright': 'tag-hot', 'glSN?': 'tag-hot', 'Kilonova?': 'tag-hot',
     'Nuclear': 'tag-cool', 'TDE?': 'tag-cool', 'Lens': 'tag-cool', 'Passive-host': 'tag-cool', 'Host-z': 'tag-cool',
     'Galactic': 'tag-veto', 'AGN': 'tag-veto', 'Classified': 'tag-veto', 'Star?': 'tag-veto',
 };

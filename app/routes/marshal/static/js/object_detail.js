@@ -298,7 +298,7 @@ function _detectVerdictHtml(screen) {
     const badge = hs === 'confirmed' ? '<span style="color:#46ffaf; border:1px solid rgba(70,255,175,0.5); border-radius:5px; padding:1px 7px; font-weight:700;">● Confirmed host</span>'
                 : hs === 'review'    ? '<span style="color:#ffd93d; border:1px solid rgba(255,217,61,0.55); border-radius:5px; padding:1px 7px; font-weight:700;">? Needs judgement</span>'
                 :                      '<span style="color:#b0b5b0; border:1px solid rgba(138,143,138,0.45); border-radius:5px; padding:1px 7px; font-weight:700;">○ No host</span>';
-    const hot = ['Luminous', 'SLSN?', 'Too-bright', 'glSN?'], veto = ['Galactic', 'AGN', 'Classified', 'Star?'];
+    const hot = ['Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?'], veto = ['Galactic', 'AGN', 'Classified', 'Star?'];
     const tags = (screen.tags || []).map(t => {
         const c = hot.includes(t) ? '#ff8080' : veto.includes(t) ? '#999' : t === 'Ambiguous' || t === 'z-conflict' || t === 'Host-z?' ? '#ffd93d' : '#a8c0ff';
         return `<span style="color:${c}; border:1px solid ${c}55; border-radius:4px; padding:0 5px; font-size:0.85em; margin-right:3px;">${t}</span>`;
@@ -311,17 +311,31 @@ function _detectVerdictHtml(screen) {
     else if (hs === 'review' && screen.tentative_host) line = `nearest galaxy just outside the limit (d_DLR ${Number(screen.tentative_d_dlr).toFixed(2)}) — decide on the DETECT page`;
     else if (hs === 'review') line = 'ambiguous or conflicting host — decide on the DETECT page';
     if (screen.host_user === true) line += ` · host chosen by ${screen.host_user_by || 'a reviewer'}`;
+    let kn = '';
+    if (screen.decline_rate != null) {
+        kn = `fades ${Number(screen.decline_rate).toFixed(2)} mag/day in ${screen.decline_filter || '?'} over ${Number(screen.decline_days).toFixed(1)} d after the peak`
+            + (screen.decline_significant ? '' : ' <span style="color:#888">(not significant)</span>')
+            + (screen.kn_model_n ? ` · ${screen.kn_model_in}/${screen.kn_model_n} g/r/i points inside the POSSIS kilonova envelope` : '');
+    }
     return `<div style="border-left:3px solid ${hs === 'confirmed' ? '#46ffaf' : hs === 'review' ? '#ffd93d' : '#666'}; padding:4px 8px; margin-bottom:6px; color:#ccc; line-height:1.5;">
         <div>${badge} <span style="color:#fff; font-weight:700; margin-left:6px;">score ${screen.score}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${screen.run_date || ''}</span></div>
         <div>${[am, z].filter(Boolean).join(' · ')}</div>
         ${line ? `<div style="color:#aaa; font-size:0.92em;">${line}</div>` : ''}
+        ${kn ? `<div style="color:${(screen.tags || []).includes('Kilonova?') ? '#ff8080' : '#aaa'}; font-size:0.92em;">${kn}</div>` : ''}
         ${tags ? `<div style="margin-top:2px;">${tags}</div>` : ''}
     </div>`;
 }
 
+let _knAutoShown = false;   // the KN overlay is switched on once when DETECT tagged the object Kilonova?
+
 function renderDetectData(results, screen) {
     _detectResultsCache = results;
     if (screen !== undefined) _detectScreenCache = screen;
+    if (!_knAutoShown && _detectScreenCache && (_detectScreenCache.tags || []).includes('Kilonova?')
+            && !_knModelActive && document.getElementById('knModelBtn')) {
+        _knAutoShown = true;
+        toggleKnModel();            // re-applied by the light-curve loader if the plot is not up yet
+    }
     if (_detectTabMode === 'chart') return; // Don't overwrite chart view
     const detectBody = document.getElementById('detectBody');
     if (!detectBody) return;

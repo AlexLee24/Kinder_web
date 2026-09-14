@@ -473,6 +473,23 @@ def load_object_meta(names: list[str]) -> dict[str, dict]:
                 (list(set(wanted.values())),),
             )
             by_bare = {r["name"]: dict(r) for r in cur.fetchall()}
+            # The measured light curve (no limits, no mag-99 junk) for the decline-rate test.
+            by_obj = {r["obj_id"]: r for r in by_bare.values() if r.get("obj_id") is not None}
+            for r in by_obj.values():
+                r["photometry"] = []
+            if by_obj:
+                cur.execute(
+                    """
+                    SELECT obj_id, "MJD" AS mjd, mag, mag_err, filter
+                    FROM transient.photometry
+                    WHERE obj_id = ANY(%s) AND mag BETWEEN 5 AND 30 AND (mag_err IS NULL OR mag_err > 0)
+                    ORDER BY obj_id, "MJD"
+                    """,
+                    (list(by_obj),),
+                )
+                for r in cur.fetchall():
+                    by_obj[r["obj_id"]]["photometry"].append(
+                        {"mjd": r["mjd"], "mag": r["mag"], "mag_err": r["mag_err"], "filter": r["filter"]})
     finally:
         conn.close()
     return {n: by_bare[b] for n, b in wanted.items() if b in by_bare}

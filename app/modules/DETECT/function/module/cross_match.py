@@ -260,7 +260,12 @@ def _projected_offset_kpc(sep_arcsec, redshift) -> float | None:
 D_MAX_BY_TYPE = {'SER': 4.0, 'DEV': 4.0, 'COMP': 4.0, 'EXP': 8.0, 'REX': 8.0}
 D_MAX_DEFAULT = 4.0
 D_MAX_QSO = 1.0                   # a QSO spectrum only "hosts" a nuclear transient; no tentative band
-LENS_SEARCH_RADIUS_ARCSEC = 5.0   # cat.lens cone; lensed images lie within an Einstein radius
+# Redrock ZWARN bits. A spectrum with any bit outside ZWARN_SOFT set is not a
+# usable redshift (147k cat.desi rows carry the failed-fit value z = 0.93275 with
+# NODATA/POORDATA set) and can never be a host; SMALL_DELTA_CHI2 / LITTLE_COVERAGE
+# alone keep the row eligible but send the object to review.
+ZWARN_SOFT = 0x2 | 0x4            # LITTLE_COVERAGE, SMALL_DELTA_CHI2
+LENS_SEARCH_RADIUS_ARCSEC = 10.0  # cat.lens cone: an Einstein radius plus the ~5" position precision of some catalogues (HOLISMOKES II lists positions to 1 s / 1"; SN 2025wny sits 6" from its entry)
 TENTATIVE_FACTOR = 2.0            # D_max < d_DLR <= 2·D_max -> "Host-z?", not a host
 AMBIGUOUS_RATIO = 1.5             # second-best d_DLR within this factor of the best
 
@@ -307,13 +312,22 @@ def _apply_host_rule(target_ra: float, target_dec: float, upload_rows: list[dict
     def _row_z(uid):
         return _safe_float(rows_by_uid[uid].get('candidate_redshift'))
 
+    def _zwarn(uid) -> int:
+        try:
+            return int((rows_by_uid[uid].get('match_data') or {}).get('zwarn') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _z_usable(uid) -> bool:
+        return (_zwarn(uid) & ~ZWARN_SOFT) == 0
+
     # ── galaxies: one entry per Tractor model that has a d_DLR ────────────
     galaxies: dict[tuple, dict] = {}
     for analysis in analyzed:
         uid = analysis.get('crossmatch_uid')
         d = _safe_float(analysis.get('d_dlr'))
-        if uid not in rows_by_uid or d is None:
-            continue
+        if uid not in rows_by_uid or d is None or not _z_usable(uid):
+            continue                                   # a failed redshift fit is not a host
         g = galaxies.setdefault(_galaxy_key(analysis), {'uids': [], 'd_dlr': d, 'analysis': analysis})
         g['uids'].append(uid)
 
@@ -342,17 +356,24 @@ def _apply_host_rule(target_ra: float, target_dec: float, upload_rows: list[dict
                 big, small = (gi, gj) if a_i >= a_j else (gj, gi)
                 big['uids'] = big['uids'] + small['uids']
                 big['d_dlr'] = min(big['d_dlr'], small['d_dlr'])
+                big['is_parent'] = big.get('is_parent', False) or a_i != a_j   # a real galaxy + its shred, not a tie
                 merged_into[id(small)] = id(big)
     members = [g for g in members if id(g) not in merged_into]
     members.sort(key=lambda g: g['d_dlr'])
 
-    def _preferred_uid(uids: list[str]) -> str:
-        """Which row of one galaxy is *the* host row (see docstring)."""
+    def _preferred_uid(uids: list[str], parent_analysis: dict | None = None) -> str:
+        """Which row of one galaxy is *the* host row (see docstring). When shreds were
+        merged, rows on the parent model (the one the shreds fell inside) come first:
+        the galaxy, not a fibre on one of its arms, is what the reviewer should see."""
+        parent_key = _galaxy_key(parent_analysis) if parent_analysis and parent_analysis.get('ra') is not None else None
+
         def key(u):
             row = rows_by_uid[u]
             md = row.get('match_data') or {}
             analysis = analyzed_by_uid.get(u, {})
+            on_parent = parent_key is not None and analysis.get('ra') is not None and _galaxy_key(analysis) == parent_key
             return (
+                parent_key is not None and not on_parent,
                 row.get('catalog_name') != 'DESI',
                 str(md.get('spectype') or 'GALAXY') != 'GALAXY',
                 analysis.get('ls_match_type') != 'direct',
@@ -374,7 +395,7 @@ def _apply_host_rule(target_ra: float, target_dec: float, upload_rows: list[dict
     if members:
         best = members[0]
         host_group = best['uids']
-        unique_host_uid = _preferred_uid(host_group)
+        unique_host_uid = _preferred_uid(host_group, best['analysis'] if best.get('is_parent') else None)
         if len(members) > 1 and members[1]['d_dlr'] <= AMBIGUOUS_RATIO * max(best['d_dlr'], 1e-6):
             ambiguous = True
             names = ", ".join(f"{rows_by_uid[g['uids'][0]].get('candidate_name')} d_DLR={g['d_dlr']:.2f} z={g['z']}"
@@ -413,6 +434,8 @@ def _apply_host_rule(target_ra: float, target_dec: float, upload_rows: list[dict
         md['ambiguous_host'] = bool(ambiguous and uid in host_group)
         md['shares_host_galaxy'] = bool(uid in host_group and not final_is_host)
         md['host_z_conflict'] = uid in conflict_uids
+        md['z_reliable'] = _z_usable(uid)                 # False: ZWARN says the fit failed
+        md['z_uncertain'] = bool(_zwarn(uid) & ZWARN_SOFT)  # small Δχ² / little coverage
         # No LS photometry = not a primary target on a Tractor source: a secondary
         # or ToO fibre, possibly on the transient itself (separation ~ 0).
         md['ls_photometry'] = md.get('morphtype') is not None

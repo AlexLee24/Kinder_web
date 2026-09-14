@@ -28,17 +28,21 @@
     {%- endmacro %}
 
     {% macro tag_chip(tag) -%}
-        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?')
+        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?')
                 else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z')
                 else 'tag-veto' if tag in ('Galactic', 'AGN', 'Classified', 'Star?')
                 else 'tag-warn' %}
         {% set tip = {
             'Luminous': 'M ≤ −20', 'SLSN?': 'M ≤ −21', 'Too-bright': 'z ≥ 0.15 and ≥ 1 mag brighter than an SN Ia peak',
-            'glSN?': 'Too-bright in a passive host or on a lens: lensed-SN candidate', 'Nuclear': 'within 1″ of the host centre',
+            'glSN?': 'Too-bright in a passive host or on a lens: lensed-SN candidate',
+            'Kilonova?': 'faint (M > −17) and fading ≥ 0.5 mag/day after the brightest detection — check the light curve against the KN model on the object page',
+            'Nuclear': 'within 1″ of the host centre',
             'TDE?': 'nuclear, host not an AGN, not Galactic', 'Lens': 'lens-catalogue match', 'Passive-host': 'sSFR < 1e-11 or de Vaucouleurs host',
             'Host-z': 'spectroscopic host redshift', 'Galactic': 'TNS type is CV / variable / nova / …', 'AGN': 'known AGN (TNS type, or nuclear in a DESI AGN)',
             'Classified': 'TNS already has a spectral type: low priority', 'Star?': 'a DESI stellar spectrum within 1.5″',
             'z-conflict': 'two spectra on the host galaxy disagree in z', 'Ambiguous': 'a second galaxy is nearly as close (d_DLR ratio < 1.5)',
+            'z-warn': 'the host redshift has a redrock warning (small Δχ² / little coverage): may be wrong',
+            'Unphysical-M': 'M ≤ −23: no transient is this bright, the spectroscopic host is probably a background galaxy on the line of sight',
             'Host-z?': 'nearest galaxy is just outside the host limit',
         }.get(tag, '') %}
         <span class="tag-chip {{ cls }}" title="{{ tip }}">{{ tag }}</span>
@@ -309,6 +313,12 @@
                             <span class="fact-l">z</span>
                             <span class="fact-v">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}<span class="fact-sub">{{ 'DESI host' if sc.z_source == 'desi_host' else 'TNS' if sc.z_source == 'tns' else 'candidate #1' if t.hypothetical else (sc.z_source or '') }}</span>{% else %}—{% endif %}</span>
                         </div>
+                        {% if sc.decline_rate is not none %}
+                        <div class="fact {% if 'Kilonova?' in sc.tags %}fact-hot{% endif %}">
+                            <span class="fact-l">fade</span>
+                            <span class="fact-v">{{ "%.2f"|format(sc.decline_rate) }} mag/d<span class="fact-sub">{{ sc.decline_filter or '' }} · {{ "%.1f"|format(sc.decline_days) }} d after peak{% if sc.kn_model_n %} · {{ sc.kn_model_in }}/{{ sc.kn_model_n }} in KN envelope{% endif %}</span></span>
+                        </div>
+                        {% endif %}
                         {% if sc.d_dlr is not none %}
                         <div class="fact">
                             <span class="fact-l">d_DLR</span>

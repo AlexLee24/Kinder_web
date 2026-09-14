@@ -65,6 +65,8 @@ Thumbs.db
 
 OLD/
 data/
+# DETECT package data (the kilonova grid), unlike its runtime data/ dir
+!app/modules/DETECT/function/data/
 app/modules/download_phot.py
 Cross_match_data/
 import_cross_match.py

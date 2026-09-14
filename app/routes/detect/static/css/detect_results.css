@@ -1306,3 +1306,5 @@ kbd {
 }
 .stat-old .stat-n { color: #777; }
 .unmatched-old summary { color: #999; }
+
+.fact-hot .fact-v { color: #ff8080; }

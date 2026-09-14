@@ -678,7 +678,8 @@ _STATUS_NORM = {'Follow-up': 'followup', 'Finish': 'finished', 'Inbox': 'object'
 _SCREEN_KEYS = ('score', 'host_status', 'tags', 'abs_mag', 'abs_mag_band', 'abs_mag_source', 'abs_mag_discovery',
                 'peak_mag', 'peak_filter', 'peak_mjd', 'peak_source', 'n_phot', 'z', 'z_source', 'd_dlr',
                 'center_sep_arcsec', 'offset_kpc', 'host', 'host_user', 'host_user_by', 'morph', 'mass_cg',
-                'sfr_cg', 'known_galactic', 'known_agn', 'tns_type', 'lens_match', 'star_sep', 'run_date')
+                'sfr_cg', 'known_galactic', 'known_agn', 'tns_type', 'lens_match', 'star_sep',
+                'decline_rate', 'decline_filter', 'decline_days', 'kn_model_in', 'kn_model_n', 'run_date')
 
 
 def _screen_public(s: dict | None) -> dict:
@@ -719,6 +720,11 @@ def _screen_public(s: dict | None) -> dict:
         'tns_type': f.get('tns_type'),
         'lens_match': f.get('lens_match') or 0,
         'star_sep': _safe_float(f.get('desi_star_within_arcsec')),
+        'decline_rate': _safe_float(f.get('decline_rate')),
+        'decline_filter': f.get('decline_filter'),
+        'decline_days': _safe_float(f.get('decline_days')),
+        'kn_model_in': f.get('kn_model_in'),
+        'kn_model_n': f.get('kn_model_n'),
         'run_date': s.get('run_date'),
     }
 

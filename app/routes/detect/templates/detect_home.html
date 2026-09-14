@@ -16,7 +16,7 @@
         {% else %}<span class="hs-badge hs-none">○ No host</span>{% endif %}
     {%- endmacro %}
     {% macro tag_chip(tag) -%}
-        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?')
+        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?')
                 else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z')
                 else 'tag-veto' if tag in ('Galactic', 'AGN', 'Classified', 'Star?')
                 else 'tag-warn' %}
@@ -156,7 +156,7 @@
                     <div class="flow-num">3</div>
                     <div class="flow-body">
                         <div class="flow-title">HEALPix cross-match</div>
-                        <div class="flow-sum">Cone search in <code>cat.desi</code> (30″) and <code>cat.lens</code> (5″), 8–20 ms each.</div>
+                        <div class="flow-sum">Cone search in <code>cat.desi</code> (30″) and <code>cat.lens</code> (10″), 8–20 ms each.</div>
                         <details><summary>details</summary>
                             <ul>
                                 <li>NESTED, NSIDE 8192 (26″ pixels); <code>query_disc(inclusive)</code> → B-tree on <code>healpix_8192</code> → exact separation cut. Bounding-box fallback with 1/cos δ and RA wrap.</li>
@@ -176,6 +176,7 @@
                                 <li>Each candidate → a Tractor model: LS DR10 TAP match ≤ 3″ (direct) or ≤ 10″ (fallback), else the catalogue's own shape. R₅₀ floor 0.5″.</li>
                                 <li>Tentative band up to 2× the limit; shreds merged when Δz ≤ 0.001 and one centre lies inside the other's R₂₅.</li>
                                 <li>A model whose only spectrum is a QSO is a quasar, not a galaxy with outskirts: it hosts a transient only when nuclear (d_DLR ≤ 1), never tentatively.</li>
+                                <li>A failed redshift fit (redrock ZWARN NODATA / POORDATA / …; 147 k rows carry the junk value z = 0.93275) is never a host; a small-Δχ² warning keeps the host but sends it to review (<em>z-warn</em>).</li>
                                 <li>Host = the member with the smallest d_DLR; row preference DESI › Lens, GALAXY › QSO, direct › fallback, LS photometry › bare fibre, then nearest.</li>
                                 <li>Runner-up within 1.5× → <em>ambiguous</em>; two spectra on one model with different z → <em>z-conflict</em>. Both keep the host but ask for a person.</li>
                                 <li>Calibrated on 4 474 TNS-classified SNe with DESI hosts: completeness 92.5 % (86 % at z &lt; 0.03, ≥ 95 % above z ≈ 0.06), wrong host 0.4 %, a host invented where none exists 6.7 %; the R₅₀ floor (0–2″) moves completeness by &lt; 1 %.</li>
@@ -194,7 +195,8 @@
                                 <li>Planck 2018 flat ΛCDM (H₀ = 67.4, Ω<sub>m</sub> = 0.315), SFD98 × SF11 extinction — the same <code>calculator.py</code> everywhere.</li>
                                 <li>m = the brightest real detection in the DB light curve (limits and mag 99 excluded), else the TNS discovery mag; both versions are stored.</li>
                                 <li>z = the DESI host, else the TNS classification redshift.</li>
-                                <li>Vetoes (score): Galactic −10 · AGN −10 · Classified −6 · Star? −3. Interest: host +3 (+2 if unclassified) · Luminous +3 · SLSN? +1 · TDE? +2 · Too-bright +3 · Lens +2 · glSN? +3 (+2 passive host).</li>
+                                <li>Vetoes (score): Galactic −10 · AGN −10 · Classified −6 · Star? −3. Interest: host +3 (+2 if unclassified) · Luminous +3 · SLSN? +1 · TDE? +2 · Too-bright +3 · Lens +2 · glSN? +3 (+2 passive host) · Kilonova? +3.</li>
+                                <li>Kilonova? = peak M &gt; −17 and a post-peak decline ≥ 0.5 mag/day on the DB light curve (least-squares slope over the 10 days after the brightest detection, last point &gt; 2σ fainter, limits ignored), nothing known against it; the g/r/i points are also counted against the POSSIS envelope (Coughlin+2020) as a consistency check.</li>
                             </ul>
                         </details>
                     </div>
@@ -240,10 +242,11 @@
                     <dt>{{ tag_chip('Luminous') }} {{ tag_chip('SLSN?') }}</dt><dd>M ≤ −20 · M ≤ −21</dd>
                     <dt>{{ tag_chip('Too-bright') }}</dt><dd>z ≥ 0.15 and ≥ 1 mag brighter than an SN Ia peak</dd>
                     <dt>{{ tag_chip('glSN?') }}</dt><dd>Too-bright in a passive host or on a lens</dd>
+                    <dt>{{ tag_chip('Kilonova?') }}</dt><dd>M &gt; −17 and the light curve fades ≥ 0.5 mag/day after its brightest point (significant, within 10 d); the object page overlays the POSSIS kilonova grid</dd>
                     <dt>{{ tag_chip('Nuclear') }} {{ tag_chip('TDE?') }}</dt><dd>within 1″ of the centre · and the host is not an AGN</dd>
                     <dt>{{ tag_chip('Lens') }} {{ tag_chip('Passive-host') }}</dt><dd>lens-catalogue match · sSFR &lt; 10⁻¹¹ or de Vaucouleurs</dd>
                     <dt>{{ tag_chip('Galactic') }} {{ tag_chip('AGN') }} {{ tag_chip('Classified') }} {{ tag_chip('Star?') }}</dt><dd>known from TNS / DESI — low priority, never hidden</dd>
-                    <dt>{{ tag_chip('Ambiguous') }} {{ tag_chip('z-conflict') }} {{ tag_chip('Host-z?') }}</dt><dd>why the host needs judgement</dd>
+                    <dt>{{ tag_chip('Ambiguous') }} {{ tag_chip('z-conflict') }} {{ tag_chip('z-warn') }} {{ tag_chip('Host-z?') }}</dt><dd>why the host needs judgement</dd>
                 </dl>
             </div>
             <div class="section-card legend-card">

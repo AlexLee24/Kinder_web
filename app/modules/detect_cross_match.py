@@ -357,6 +357,9 @@ def get_detect_screen_for_target(target_name):
                 d['tentative_host'] = f.get('tentative_host')
                 d['tentative_d_dlr'] = f.get('tentative_d_dlr')
                 d['morph'] = f.get('morphtype')
+                for k in ('decline_rate', 'decline_filter', 'decline_days', 'decline_significant',
+                          'kn_model_n', 'kn_model_in', 'kn_model_frac', 'kn_candidate'):
+                    d[k] = f.get(k)
                 d.pop('flags', None)
                 return d
     except Exception as e:

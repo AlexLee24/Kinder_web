@@ -7,6 +7,7 @@ The pipeline's purpose is a fast first look at every new TNS source:
 * is it something we already know is not a target?                  -> known Galactic / known AGN / classified
 * is it unusual enough for a large-telescope spectrum?              -> luminous, TDE-like, too bright for its z
 * could it be a lensed SN?                                          -> Lens catalogue + "too bright" + passive host
+* could it be a kilonova?                                           -> faint and fading fast, checked against POSSIS
 
 Everything here is a *flag with a reason*; nothing is dropped. The score just
 orders the queue for a human. Thresholds live at the top of the file.
@@ -15,6 +16,7 @@ orders the queue for a human. Thresholds live at the top of the file.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 from function.module.calculator import apm_to_abm, get_extinction, cosmo, normalize_filter_name
 
@@ -28,6 +30,20 @@ IA_PEAK_ABS_MAG = -19.3           # SN Ia peak, B-ish; used for the "too bright"
 TOO_BRIGHT_MARGIN = 1.0           # mag brighter than Ia peak
 TOO_BRIGHT_MIN_Z = 0.15           # below this, "too bright" is just a luminous SN, not lensing
 PASSIVE_SSFR = 1e-11              # sfr_cg / mass_cg below this -> passive host (lens-like)
+UNPHYSICAL_ABS_MAG = -23.0        # brighter than any SN: the host z is a background galaxy along the line of sight
+
+# Kilonova-like: faint AND fading fast. The decline is measured on the DB light curve
+# after the brightest detection; the POSSIS grid (Coughlin+2020, the same file the
+# marshal overlays) is only a consistency check, never a requirement.
+KN_ABS_MAG_FAINT = -17.0          # peak M fainter than this (M > -17)
+KN_DECLINE_RATE = 0.5             # mag / day after the peak
+KN_DECLINE_WINDOW_DAYS = 10.0     # only detections this soon after the peak count
+KN_DECLINE_MIN_DAYS = 0.5         # the last post-peak point must be at least this far from the peak
+KN_DECLINE_SIGMA = 2.0            # the fade must exceed this many sigma of the two magnitudes
+KN_DEFAULT_MAG_ERR = 0.1          # when a detection carries no error
+KN_MODEL_TOL = 0.5                # mag beyond the POSSIS min/max envelope still counts as consistent
+KN_MODEL_FILE = Path(__file__).resolve().parents[1] / "data" / "kn_lc_mag.txt"
+KN_MODEL_FILTERS = {"g": "g", "r": "r", "i": "i", "cyan": "g", "orange": "r", "c": "g", "o": "r", "w": "r", "wide": "r"}
 
 # TNS classification strings that end the discussion (case-insensitive substrings).
 GALACTIC_TYPES = ("cv", "varstar", "nova", "m dwarf", "yso", "wr", "microlensing")
@@ -36,8 +52,8 @@ AGN_TYPES = ("agn", "qso", "blazar", "nls1")
 # Tags DETECT owns in transient.objects.tag; re-derived every run, never touching other tags.
 DETECT_TAG_VOCAB = [
     "Host-confirmed", "Host-review", "Host-none", "Host-z?", "Ambiguous",
-    "Host-z", "Nuclear", "Luminous", "SLSN?", "TDE?", "glSN?", "Too-bright",
-    "Lens", "Passive-host", "Galactic", "AGN", "Star?", "Classified", "z-conflict",
+    "Host-z", "Nuclear", "Luminous", "SLSN?", "TDE?", "glSN?", "Too-bright", "Kilonova?",
+    "Lens", "Passive-host", "Galactic", "AGN", "Star?", "Classified", "z-conflict", "z-warn", "Unphysical-M",
 ]
 
 # Host association outcome, one of three, written to detect_screen.host_status
@@ -56,7 +72,7 @@ def host_status_for(host_row, inside_galaxies: int, upload_rows=()) -> str:
         md = host_row.get("match_data") or {}
         if md.get("host_user"):                       # a person chose it on the marshal
             return "confirmed"
-        return "review" if (md.get("host_z_conflict") or md.get("ambiguous_host")) else "confirmed"
+        return "review" if (md.get("host_z_conflict") or md.get("ambiguous_host") or md.get("z_uncertain")) else "confirmed"
     if any((r.get("match_data") or {}).get("host_user") is False for r in upload_rows or ()):
         return "none"                                  # a person said "no host"
     if inside_galaxies >= 2:
@@ -119,6 +135,119 @@ def absolute_magnitude(app_mag, z, ra, dec, filter_raw) -> dict:
     }
 
 
+# ---- light-curve shape: decline rate and the kilonova envelope --------------
+
+
+def light_curve_decline(points, window=KN_DECLINE_WINDOW_DAYS, min_days=KN_DECLINE_MIN_DAYS) -> dict:
+    """Post-peak decline rate (mag/day, positive = fading) per filter, from measured
+    detections only (limits carry mag_err 0 and are dropped).
+
+    Per filter the brightest detection is the peak; the rate is the least-squares
+    slope through the peak and every detection within `window` days after it.
+    The reported filter is the steepest one whose fade is significant (the last
+    point is fainter than the peak by more than KN_DECLINE_SIGMA sigma); if none is,
+    the steepest of all, marked not significant.
+    """
+    by_filter: dict[str, list] = {}
+    for p in points or ():
+        t, m = _f(p.get("mjd")), _f(p.get("mag"))
+        e = _f(p.get("mag_err"))
+        if t is None or m is None or (e is not None and e <= 0):
+            continue
+        by_filter.setdefault(_filter_name(p.get("filter")), []).append((t, m, e if e else KN_DEFAULT_MAG_ERR))
+    per: dict[str, dict] = {}
+    for band, pts in by_filter.items():
+        pts.sort()
+        t0, m0, e0 = min(pts, key=lambda q: q[1])
+        post = [q for q in pts if t0 < q[0] <= t0 + window]
+        if not post or post[-1][0] - t0 < min_days:
+            continue
+        xs = [t0] + [q[0] for q in post]
+        ys = [m0] + [q[1] for q in post]
+        tm, mm = sum(xs) / len(xs), sum(ys) / len(ys)
+        sxx = sum((x - tm) ** 2 for x in xs)
+        rate = sum((x - tm) * (y - mm) for x, y in zip(xs, ys)) / sxx if sxx > 0 else 0.0
+        t1, m1, e1 = post[-1]
+        per[band] = {"rate": round(rate, 3), "n_post": len(post), "days": round(t1 - t0, 2),
+                     "peak_mjd": t0, "peak_mag": m0,
+                     "significant": (m1 - m0) > KN_DECLINE_SIGMA * math.sqrt(e0 ** 2 + e1 ** 2)}
+    out = {"decline_rate": None, "decline_filter": None, "decline_n_post": 0, "decline_days": None,
+           "decline_significant": False, "decline_per_filter": per}
+    if per:
+        sig = {b: v for b, v in per.items() if v["significant"]} or per
+        band = max(sig, key=lambda b: sig[b]["rate"])
+        v = per[band]
+        out.update({"decline_rate": v["rate"], "decline_filter": band, "decline_n_post": v["n_post"],
+                    "decline_days": v["days"], "decline_significant": v["significant"]})
+    return out
+
+
+_KN_MODEL: dict | None = None
+
+
+def kn_model_envelope() -> dict:
+    """{filter: (time, min, max)} from the POSSIS summary file (time in days, absolute mag)."""
+    global _KN_MODEL
+    if _KN_MODEL is None:
+        model: dict = {}
+        band = None
+        try:
+            for line in KN_MODEL_FILE.read_text().splitlines():
+                line = line.strip()
+                if line.startswith("# Filter:"):
+                    band = line.split(":", 1)[1].strip().split("::")[-1]
+                    model[band] = ([], [], [])
+                elif line and not line.startswith("#") and band:
+                    parts = line.split()
+                    if len(parts) == 4:
+                        t, mn, _, mx = map(float, parts)
+                        model[band][0].append(t); model[band][1].append(mn); model[band][2].append(mx)
+        except OSError:
+            pass
+        _KN_MODEL = model
+    return _KN_MODEL
+
+
+def _interp(xs, ys, x):
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    for i in range(1, len(xs)):
+        if x <= xs[i]:
+            w = (x - xs[i - 1]) / (xs[i] - xs[i - 1])
+            return ys[i - 1] + w * (ys[i] - ys[i - 1])
+    return ys[-1]
+
+
+def kn_model_check(points, z, ra, dec, peak_mjd, tol=KN_MODEL_TOL) -> dict:
+    """How many g/r/i detections in the 10 days after `peak_mjd` fall inside the POSSIS
+    min/max absolute-magnitude envelope (± tol), with the model peak aligned to the
+    observed one. Sparse data give small n; the fraction is informative, not decisive."""
+    model = kn_model_envelope()
+    n = n_in = 0
+    pk = _f(peak_mjd)
+    if not model or pk is None or _f(z) is None:
+        return {"kn_model_n": 0, "kn_model_in": 0, "kn_model_frac": None}
+    for p in points or ():
+        band = KN_MODEL_FILTERS.get(_filter_name(p.get("filter")))
+        t, e = _f(p.get("mjd")), _f(p.get("mag_err"))
+        if band not in model or t is None or (e is not None and e <= 0):
+            continue
+        ts, mn, mx = model[band]
+        t_peak_model = ts[mn.index(min(mn))]
+        phase = t - pk + t_peak_model
+        if not (0 < phase <= ts[-1]):
+            continue
+        M = absolute_magnitude(p.get("mag"), z, ra, dec, p.get("filter")).get("abs_mag")
+        if M is None:
+            continue
+        n += 1
+        if _interp(ts, mn, phase) - tol <= M <= _interp(ts, mx, phase) + tol:
+            n_in += 1
+    return {"kn_model_n": n, "kn_model_in": n_in, "kn_model_frac": round(n_in / n, 2) if n else None}
+
+
 # ---- the screen ------------------------------------------------------------
 
 
@@ -155,6 +284,8 @@ def screen_target(*, name, ra, dec, obj_meta, host_row, upload_rows, star_hits,
         score += 1
     if host_row is not None and md.get("ambiguous_host"):
         tags.append("Ambiguous")
+    if host_row is not None and md.get("z_uncertain"):
+        tags.append("z-warn")                          # redrock SMALL_DELTA_CHI2 / LITTLE_COVERAGE on the host
 
     tns_type = (obj_meta or {}).get("type")
     lens_rows = [r for r in upload_rows if str(r.get("catalog_name", "")).lower().startswith("lens")]
@@ -200,6 +331,16 @@ def screen_target(*, name, ra, dec, obj_meta, host_row, upload_rows, star_hits,
         flags.update(disc)
         flags["abs_mag_source"] = "discovery" if disc.get("abs_mag") is not None else None
     abs_mag = flags.get("abs_mag")
+
+    # A transient cannot be this luminous: the spectroscopic "host" is almost certainly a
+    # background galaxy overlapping the true one (the 2020-2024 re-check found 16 such cases,
+    # all with z > 0.36 and M < -23). Keep the host, but a person must look.
+    flags["unphysical_abs_mag"] = bool(abs_mag is not None and abs_mag <= UNPHYSICAL_ABS_MAG and host_row is not None)
+    if flags["unphysical_abs_mag"]:
+        tags.append("Unphysical-M")
+        if flags["host_status"] == "confirmed":
+            flags["host_status"] = "review"
+            tags[tags.index("Host-confirmed")] = "Host-review"
 
     # -- vetoes (known things) --------------------------------------------------------------
     galactic = _type_matches(tns_type, GALACTIC_TYPES)
@@ -250,6 +391,20 @@ def screen_target(*, name, ra, dec, obj_meta, host_row, upload_rows, star_hits,
     if too_bright:
         score += 3
         tags.append("Too-bright")
+
+    # -- kilonova-like: faint peak and a fast fade, nothing known against it ---------------
+    decline = light_curve_decline(meta.get("photometry"))
+    flags.update({k: v for k, v in decline.items() if k != "decline_per_filter"})
+    flags["fast_decline"] = bool(decline["decline_rate"] is not None and decline["decline_significant"]
+                                 and decline["decline_rate"] >= KN_DECLINE_RATE)
+    flags["kn_faint"] = bool(abs_mag is not None and abs_mag > KN_ABS_MAG_FAINT)
+    kn = flags["fast_decline"] and flags["kn_faint"] and not (galactic or known_agn or classified or star_hits)
+    flags["kn_candidate"] = kn
+    if kn:
+        flags.update(kn_model_check(meta.get("photometry"), z, ra, dec,
+                                    (decline["decline_per_filter"].get(decline["decline_filter"]) or {}).get("peak_mjd")))
+        score += 3
+        tags.append("Kilonova?")
 
     mass, sfr = _f(md.get("mass_cg")), _f(md.get("sfr_cg"))
     passive = (mass is not None and mass > 0 and sfr is not None and sfr / mass < PASSIVE_SSFR) \
