@@ -151,6 +151,31 @@
                     </div>
                 </div>
 
+                <!-- DETECT pipeline -->
+                <div class="settings-panel" style="margin-top:24px;">
+                    <div class="settings-panel-header" style="justify-content:space-between;">
+                        <span style="display:flex;align-items:center;gap:8px;">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="1" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="23"></line><line x1="1" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="23" y2="12"></line></svg>
+                            DETECT Pipeline
+                            <span id="detectEnabledBadge" class="dt-badge"></span>
+                        </span>
+                        <span id="detectStatusUpdated" style="font-size:0.75rem;color:var(--muted);font-weight:300;"></span>
+                    </div>
+                    <p class="settings-desc">Cross-match → host rule v1 → screening → finder, embedded from <code>app/modules/DETECT</code>. Runs after every TNS import, daily on Follow-up objects, and from the object page's Run button.</p>
+                    <div id="detectStatusGrid" class="dt-grid">
+                        <div style="color:var(--muted);font-size:0.83rem;padding:4px;">Loading…</div>
+                    </div>
+                    <div class="settings-row" style="flex-wrap:wrap; gap:8px; align-items:center; margin-top:14px;">
+                        <button id="detectRunFuBtn" class="btn btn-primary" onclick="runDetect('followups')" title="Re-screen every Follow-up object now">Re-screen Follow-ups</button>
+                        <button id="detectRunRecentBtn" class="btn btn-primary" onclick="runDetect('recent')" title="Objects TNS touched in the last 2 hours">Run on recent (2 h)</button>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <input type="text" id="detectRunNames" placeholder="2026abdm, 2026abnn" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem; width:220px;">
+                            <button id="detectRunNamesBtn" class="btn btn-primary" onclick="runDetect('names')">Run on objects</button>
+                        </div>
+                        <span id="detectRunStatus" class="settings-status"></span>
+                    </div>
+                </div>
+
                 <!-- Scheduled Jobs -->
                 <div class="settings-panel" style="margin-top:24px;">
                     <div class="settings-panel-header" style="justify-content:space-between;">

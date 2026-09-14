@@ -742,16 +742,18 @@ def tns_download_hourly():
         _tns_task_status['running'] = True
         _tns_task_status['message'] = 'Running...'
         try:
-            from modules.TNS_object_fetch import download_TNS_api_hr, addin_database, auto_snoozed, SAVE_DIR
+            from modules.auto_tns_download import download_TNS_api_hr, addin_database, auto_snoozed, SAVE_DIR, _run_detect_after_import
             hr = f"{datetime.now(timezone.utc).hour:02d}"
             logger.info('[TNS Manual] hourly task started by admin, hr=%s', hr)
             if download_TNS_api_hr(hr):
                 work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
                 logger.info('[TNS Manual] hourly download ok, importing CSV: %s', work_csv)
-                addin_database(str(work_csv))
+                if addin_database(str(work_csv)):
+                    _tns_task_status['message'] = 'Import done, running DETECT...'
+                    _run_detect_after_import(new_only=False, label='TNS-hourly (manual)')
                 logger.info('[TNS Manual] hourly import done, running auto_snoozed')
                 auto_snoozed(datetime.now(timezone.utc))
-                _tns_task_status['message'] = f'Hourly download (hr={hr}) + import + snooze done.'
+                _tns_task_status['message'] = f'Hourly download (hr={hr}) + import + DETECT + snooze done.'
                 logger.info('[TNS Manual] hourly task completed, hr=%s', hr)
             else:
                 _tns_task_status['message'] = f'Download failed for hr={hr}.'
@@ -783,7 +785,7 @@ def tns_download_daily():
         _tns_task_status['running'] = True
         _tns_task_status['message'] = 'Running...'
         try:
-            from modules.TNS_object_fetch import download_TNS_api, addin_database, auto_snoozed, SAVE_DIR
+            from modules.auto_tns_download import download_TNS_api, addin_database, auto_snoozed, SAVE_DIR, _run_detect_after_import
             if date_str:
                 try:
                     dt = datetime.strptime(date_str, '%Y-%m-%d')
@@ -797,10 +799,12 @@ def tns_download_daily():
             if download_TNS_api(dt.year, dt.month, dt.day):
                 work_csv = SAVE_DIR / 'tns_public_objects_WORK.csv'
                 logger.info('[TNS Manual] daily download ok, importing CSV: %s', work_csv)
-                addin_database(str(work_csv))
+                if addin_database(str(work_csv)):
+                    _tns_task_status['message'] = 'Import done, running DETECT on new objects...'
+                    _run_detect_after_import(new_only=True, label='TNS-daily (manual)')
                 logger.info('[TNS Manual] daily import done, running auto_snoozed')
                 auto_snoozed(datetime.now(timezone.utc))
-                _tns_task_status['message'] = f'Daily download ({dt.date()}) + import + snooze done.'
+                _tns_task_status['message'] = f'Daily download ({dt.date()}) + import + DETECT + snooze done.'
                 logger.info('[TNS Manual] daily task completed, date=%s', dt.date())
             else:
                 _tns_task_status['message'] = f'Download failed for {dt.date()}.'
@@ -829,7 +833,7 @@ def tns_auto_snooze():
         _tns_task_status['running'] = True
         _tns_task_status['message'] = 'Running...'
         try:
-            from modules.TNS_object_fetch import auto_snoozed
+            from modules.auto_tns_download import auto_snoozed
             logger.info('[TNS Manual] auto-snooze started by admin')
             auto_snoozed(datetime.now(timezone.utc))
             _tns_task_status['message'] = 'Auto-snooze completed.'
@@ -852,6 +856,79 @@ def tns_task_status():
 
 
 # ===============================================================================
+# DETECT (embedded pipeline) STATUS + MANUAL RUNS
+# ===============================================================================
+
+_detect_manual = {'running': False, 'message': ''}
+
+
+@admin_bp.route('/admin/detect-status')
+def detect_status():
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    from modules import detect_pipeline, job_status as _js
+    st = detect_pipeline.status()
+    # completed runs from any worker (this process only knows its own)
+    st['recent_jobs'] = {k: v for k, v in _js.get_all().items() if k.startswith('detect_')}
+    st['manual'] = dict(_detect_manual)
+    return jsonify(st)
+
+
+@admin_bp.route('/admin/detect-run', methods=['POST'])
+def detect_run():
+    """kind: 'followups' | 'recent' (hours) | 'names' (comma / space separated)."""
+    if 'user' not in session or not session['user'].get('is_admin'):
+        return jsonify({'error': 'Access denied'}), 403
+    from modules import detect_pipeline
+    if not detect_pipeline.ENABLED:
+        return jsonify({'success': False, 'message': 'DETECT is disabled in this instance (DETECT_IN_WEB=0)'}), 503
+    if _detect_manual['running'] or detect_pipeline.is_running():
+        return jsonify({'success': False, 'message': 'A DETECT run is already in progress'}), 409
+
+    import re as _re
+    import threading
+    data = request.get_json(silent=True) or {}
+    kind = (data.get('kind') or '').strip()
+    names = [n for n in _re.split(r'[\s,;]+', str(data.get('names') or '')) if n]
+    try:
+        hours = float(data.get('hours') or 2)
+    except (TypeError, ValueError):
+        hours = 2.0
+    if kind == 'names' and not names:
+        return jsonify({'success': False, 'message': 'Give at least one object name'}), 400
+    if kind not in ('followups', 'recent', 'names'):
+        return jsonify({'success': False, 'message': 'Unknown run kind'}), 400
+
+    def _run():
+        _detect_manual['running'] = True
+        _detect_manual['message'] = 'Running...'
+        try:
+            if kind == 'followups':
+                counts = detect_pipeline.run_followups()
+            elif kind == 'recent':
+                counts = detect_pipeline.run_recent(hours)
+            else:
+                counts = detect_pipeline.run_for_names(names, label='manual')
+            try:
+                from routes.detect.detect_routes import _soft_invalidate_page_cache
+                _soft_invalidate_page_cache()
+            except Exception:
+                pass
+            _detect_manual['message'] = 'Done: ' + ', '.join(f'{k} {v}' for k, v in (counts or {}).items())
+            logger.info('[DETECT Manual] %s by admin: %s', kind, counts)
+        except Exception as e:
+            logger.exception('[DETECT Manual] %s failed: %s', kind, e)
+            _detect_manual['message'] = f'Error: {e}'
+        finally:
+            _detect_manual['running'] = False
+
+    threading.Thread(target=_run, daemon=True, name='detect_manual').start()
+    what = {'followups': 'Follow-up re-screen', 'recent': f'objects TNS touched in the last {hours:g} h',
+            'names': f'{len(names)} object(s)'}[kind]
+    return jsonify({'success': True, 'message': f'DETECT started: {what}'})
+
+
+# ===============================================================================
 # SCHEDULED JOBS STATUS
 # ===============================================================================
 
@@ -865,6 +942,7 @@ _SCHEDULED_JOBS = {
     'db_monitor':                   ('DB Health Monitor',         'Every 10 min',     'interval', {'minutes': 10}),
     'db_recycle':                   ('DB Connection Recycle',     'Every 30 min',     'interval', {'minutes': 30}),
     'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min',     'interval', {'minutes': 30}),
+    'daily_detect_followups':       ('DETECT: Follow-up re-screen', 'Daily 04:00 UTC', 'cron',     {'hour': 4,  'minute': 0}),
 }
 
 

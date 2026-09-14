@@ -305,7 +305,7 @@ if _acquired_bg_lock:
         if _detect_pipeline.ENABLED:
             # DETECT re-screens every Follow-up object once a day (M from the latest light
             # curve, host against the latest catalogue); hourly runs hang off the TNS import.
-            _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=11, minute=0, id='daily_detect_followups')
+            _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=4, minute=0, id='daily_detect_followups')  # after the 03:30 UTC photometry fetch
     _scheduler.start()
     if not config.DEBUG:
         _tracked('daily_backup', run_daily_backup)()

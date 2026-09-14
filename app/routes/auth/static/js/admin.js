@@ -1678,7 +1678,8 @@ let _jobsPollTimer = null;
 function _startJobsPolling() {
     if (_jobsPollTimer) return;
     _loadScheduledJobs();
-    _jobsPollTimer = setInterval(_loadScheduledJobs, 15000);
+    _loadDetectStatus();
+    _jobsPollTimer = setInterval(() => { _loadScheduledJobs(); _loadDetectStatus(); }, 15000);
 }
 
 function _stopJobsPolling() {
@@ -1686,6 +1687,118 @@ function _stopJobsPolling() {
         clearInterval(_jobsPollTimer);
         _jobsPollTimer = null;
     }
+}
+
+// ============================================================
+// DETECT PIPELINE — status panel + manual runs
+// ============================================================
+async function _loadDetectStatus() {
+    try {
+        const res = await fetch('/admin/detect-status');
+        if (!res.ok) return;
+        _renderDetectStatus(await res.json());
+        const el = document.getElementById('detectStatusUpdated');
+        if (el) el.textContent = 'Updated ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    } catch (e) { /* ignore */ }
+}
+
+function _countsText(c) {
+    if (!c) return '';
+    return ['confirmed', 'review', 'none'].filter(k => c[k] != null).map(k => `${c[k]} ${k}`).join(' · ');
+}
+
+function _renderDetectStatus(st) {
+    const badge = document.getElementById('detectEnabledBadge');
+    if (badge) {
+        badge.textContent = st.enabled ? (st.code_present ? 'ENABLED' : 'CODE MISSING') : 'DISABLED';
+        badge.className = 'dt-badge ' + (st.enabled && st.code_present ? 'on' : 'off');
+    }
+    const grid = document.getElementById('detectStatusGrid');
+    if (!grid) return;
+    const db = st.db || {};
+    const run = st.running;
+    // most recent completed run across workers (job_status) or this process
+    let last = st.last;
+    const jobs = st.recent_jobs || {};
+    Object.keys(jobs).forEach(k => {
+        const r = jobs[k];
+        if (r.finished_at && (!last || !last.finished_at || r.finished_at > last.finished_at))
+            last = { label: k.replace(/^detect_/, '').replace(/_/g, ' '), finished_at: r.finished_at, status: r.status, message: r.message };
+    });
+    const cards = [];
+    cards.push(`<div class="dt-card ${run ? 'live' : ''}">
+        <div class="dt-label">Now</div>
+        <div class="dt-value">${run ? `<span class="sj-state running"><span class="sj-dot"></span>${run.label}</span>` : 'Idle'}</div>
+        <div class="dt-sub">${run ? `${run.objects != null ? run.objects + ' objects · ' : ''}since ${_timeAgo(run.started_at)}` : (st.manual && st.manual.running ? 'manual run queued' : 'waiting for the next TNS import')}</div>
+    </div>`);
+    cards.push(`<div class="dt-card ${last && last.status === 'error' ? 'warn' : ''}">
+        <div class="dt-label">Last run (this server)</div>
+        <div class="dt-value">${last ? `${last.status === 'success' ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">✗</span>'} ${last.label}` : '—'}</div>
+        <div class="dt-sub">${last ? `${_timeAgo(last.finished_at)}${last.seconds ? ' · ' + last.seconds + ' s' : ''}${last.counts ? ' · ' + _countsText(last.counts) : (last.message ? ' · ' + last.message : '')}` : 'nothing yet since start-up'}</div>
+    </div>`);
+    cards.push(`<div class="dt-card ${db.last_run && (Date.now() - new Date(db.last_run).getTime()) > 6 * 3600e3 ? 'warn' : ''}">
+        <div class="dt-label">Latest screening in DB</div>
+        <div class="dt-value">${db.last_run ? _timeAgo(db.last_run) : (db.error ? '<span class="dt-bad">DB error</span>' : '—')}</div>
+        <div class="dt-sub">${db.last_run ? `${_fmtJobTime(db.last_run)} · any DETECT instance` : (db.error || '')}</div>
+    </div>`);
+    cards.push(`<div class="dt-card">
+        <div class="dt-label">Last 24 h</div>
+        <div class="dt-value">${db.screened_24h != null ? db.screened_24h + ' screened' : '—'}</div>
+        <div class="dt-sub">${db.screened_24h != null ? `<span class="dt-ok">${db.confirmed_24h} confirmed</span> · <span class="dt-gold">${db.review_24h} review</span> · ${db.none_24h} none${db.history_rows_24h != null ? ' · ' + db.history_rows_24h + ' history rows' : ''}` : ''}</div>
+    </div>`);
+    cards.push(`<div class="dt-card ${db.pending_review > 0 ? 'live' : ''}">
+        <div class="dt-label">Waiting for a person</div>
+        <div class="dt-value">${db.pending_review != null ? db.pending_review : '—'}</div>
+        <div class="dt-sub">Inbox objects with a host verdict (7 d) · <a href="/detect" style="color:var(--gold);">review page</a> · ${db.followups != null ? db.followups + ' in Follow-up' : ''}</div>
+    </div>`);
+    cards.push(`<div class="dt-card ${db.legacy_rows_24h > 0 ? 'warn' : ''}">
+        <div class="dt-label">Other writers</div>
+        <div class="dt-value">${db.legacy_rows_24h > 0 ? `<span class="dt-bad">${db.legacy_rows_24h} legacy rows</span>` : '<span class="dt-ok">none</span>'}</div>
+        <div class="dt-sub">${db.legacy_rows_24h > 0 ? 'cross_matches rows without rule v1 data in 24 h — an old DETECT is still running somewhere' : 'no cross_matches without rule v1 data in 24 h'}</div>
+    </div>`);
+    cards.push(`<div class="dt-card ${st.sfd_maps ? '' : 'warn'}">
+        <div class="dt-label">Code &amp; data</div>
+        <div class="dt-value">${st.version && st.version.synced ? 'synced ' + st.version.synced.slice(0, 10) : (st.code_present ? 'present' : '<span class="dt-bad">missing</span>')}</div>
+        <div class="dt-sub">SFD dust maps ${st.sfd_maps ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">missing (fetched on first use)</span>'} · <span title="${st.data_dir || ''}">data dir</span></div>
+    </div>`);
+    grid.innerHTML = cards.join('');
+}
+
+const _DETECT_BTNS = ['detectRunFuBtn', 'detectRunRecentBtn', 'detectRunNamesBtn'];
+function _detectSetBtns(disabled) { _DETECT_BTNS.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; }); }
+
+function _detectPoll() {
+    const statusEl = document.getElementById('detectRunStatus');
+    const poll = setInterval(() => {
+        fetch('/admin/detect-status').then(r => r.json()).then(st => {
+            _renderDetectStatus(st);
+            const m = st.manual || {};
+            if (!m.running) {
+                clearInterval(poll);
+                _detectSetBtns(false);
+                const ok = !/^Error/.test(m.message || '');
+                statusEl.innerHTML = `<span style="color:${ok ? '#98c379' : '#e06c75'};">${ok ? ICONS.check + ' ' : ''}${m.message || 'Done'}</span>`;
+            } else {
+                statusEl.textContent = m.message || 'Running...';
+            }
+        }).catch(() => { clearInterval(poll); _detectSetBtns(false); });
+    }, 3000);
+}
+
+function runDetect(kind) {
+    const statusEl = document.getElementById('detectRunStatus');
+    const body = { kind };
+    if (kind === 'names') body.names = (document.getElementById('detectRunNames').value || '').trim();
+    if (kind === 'recent') body.hours = 2;
+    _detectSetBtns(true);
+    statusEl.textContent = 'Starting...';
+    fetch('/admin/detect-run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) { showNotification(data.message, 'success'); _detectPoll(); }
+            else { _detectSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + (data.message || 'Failed') + '</span>'; showNotification(data.message || 'Failed', 'error'); }
+        })
+        .catch(e => { _detectSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
 
 async function _loadScheduledJobs() {
