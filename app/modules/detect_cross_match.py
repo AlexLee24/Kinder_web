@@ -192,7 +192,8 @@ def comprehensive_lens_match_single(ra, dec, search_radius=LENS_SEARCH_RADIUS_AR
     return matched_data
 
 def run_all_detect(target_name, ra, dec):
-    """Run all cross-matches for the target and store results."""
+    """Legacy per-object runner (nearest-neighbour, no host rule). Superseded by
+    modules.detect_pipeline (the embedded DETECT); kept for the __main__ smoke test."""
     # Run algorithms
     desi = desi_cross_match_single(ra, dec, search_radius=30)
     
@@ -329,6 +330,39 @@ def save_detect_results(target_name, results):
                 conn.commit()
     except Exception as e:
         print(f"Error saving detect results: {e}")
+
+def get_detect_screen_for_target(target_name):
+    """DETECT's verdict for one object (transient.detect_screen), or None."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT s.score, s.host_status, s.tags, s.flags, s.z, s.z_source, s.abs_mag, s.abs_mag_band, "
+                    "s.abs_mag_source, s.abs_mag_discovery, s.peak_mag, s.peak_filter, s.peak_mjd, "
+                    "s.center_sep_arcsec, s.d_dlr, s.offset_kpc, s.host_targetid, s.run_date "
+                    "FROM transient.detect_screen s JOIN transient.objects o ON o.obj_id = s.obj_id "
+                    "WHERE o.name = %s",
+                    (target_name,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                d = dict(row)
+                d['run_date'] = d['run_date'].strftime('%Y-%m-%d %H:%M') if d.get('run_date') else None
+                d['tags'] = [t for t in (d.get('tags') or []) if not str(t).startswith('Host-')]
+                f = d.get('flags') or {}
+                d['host'] = f.get('host')
+                d['host_user'] = f.get('host_user')
+                d['host_user_by'] = f.get('host_user_by')
+                d['tentative_host'] = f.get('tentative_host')
+                d['tentative_d_dlr'] = f.get('tentative_d_dlr')
+                d['morph'] = f.get('morphtype')
+                d.pop('flags', None)
+                return d
+    except Exception as e:
+        print(f"Error getting detect screen: {e}")
+        return None
+
 
 def get_detect_results_for_target(target_name):
     """Retrieve DETECT cross-match results from transient.cross_matches."""

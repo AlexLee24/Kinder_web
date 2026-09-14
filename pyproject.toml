@@ -1,0 +1,53 @@
+[project]
+name = "kinder-web"
+version = "0.1.0"
+description = "Kinder transient web platform (Flask)"
+readme = "README.md"
+# CASTOR (app/modules/CASTOR, imported via sys.path) requires >=3.12.
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "flask",
+    "werkzeug",
+    "authlib",
+    "python-dotenv",
+    # Database
+    "psycopg2-binary",
+    # Astronomy
+    "astropy>=8.0.0",  # CASTOR pins >=8
+    "astroquery",
+    "ephem",
+    "dustmaps",
+    "healpy",          # app/modules/DETECT: HEALPix cone search
+    "pytz",
+    "timezonefinder",
+    # Data & computation
+    "numpy",
+    "scipy",           # astronomy_tools_routes: scipy.ndimage
+    "pandas",
+    "matplotlib",
+    "plotly",
+    "pydantic>=2",
+    # Web scraping & HTTP
+    "requests",
+    "beautifulsoup4",
+    "playwright",
+    "tqdm",
+    # External data sources
+    "alerce",          # download_phot: ZTF photometry
+    "gcn-kafka",       # GCN_alert: Kafka consumer
+    # Image processing
+    "pillow",
+    # Other
+    "apscheduler",
+    "slack-sdk",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+# Application, not a library: no build backend, uv manages only the venv.
+[tool.uv]
+package = false

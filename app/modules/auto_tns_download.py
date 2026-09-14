@@ -13,10 +13,12 @@ from psycopg2 import extras
 
 try:
     from modules.database import get_db_connection
-    from modules.database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
+    from modules.database.transient import (log_download_attempt, update_download_log, sync_kinder_ids,
+                                            log_tns_update_batch, _tns_name_to_kinder_id)
 except ImportError:
     from database import get_db_connection
-    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids, log_tns_update_batch
+    from database.transient import (log_download_attempt, update_download_log, sync_kinder_ids,
+                                    log_tns_update_batch, _tns_name_to_kinder_id)
 
 # ---- Paths ----
 _module_dir = os.path.dirname(os.path.abspath(__file__))
@@ -175,6 +177,53 @@ def download_TNS_api_with_fallback(year, month, day, debug=False):
     return False
 
 
+_UPDATE_SQL = '''
+    UPDATE transient.objects SET
+        name_prefix = COALESCE(%s, name_prefix),
+        name = COALESCE(%s, name),
+        ra = COALESCE(%s, ra),
+        dec = COALESCE(%s, dec),
+        redshift = COALESCE(%s, redshift),
+        type = COALESCE(%s, type),
+        report_group = COALESCE(%s, report_group),
+        source_group = COALESCE(%s, source_group),
+        discovery_date = COALESCE(%s, discovery_date),
+        discovery_mag = COALESCE(%s, discovery_mag),
+        discovery_filter = COALESCE(%s, discovery_filter),
+        reporters = COALESCE(%s, reporters),
+        received_date = COALESCE(%s, received_date),
+        internal_name = COALESCE(%s, internal_name),
+        discovery_ADS = COALESCE(%s, discovery_ADS),
+        class_ADS = COALESCE(%s, class_ADS),
+        creation_date = COALESCE(%s, creation_date),
+        last_phot_date = COALESCE(%s, last_phot_date),
+        status = CASE WHEN status = 'Snoozed' AND %s > COALESCE(last_modified_date, 0) THEN 'Inbox' ELSE status END,
+        last_modified_date = GREATEST(COALESCE(%s, 0), COALESCE(last_modified_date, 0))
+    WHERE obj_id = %s
+'''
+
+_INSERT_SQL = '''
+    INSERT INTO transient.objects (
+        obj_id, kinder_id, name_prefix, name, ra, dec, redshift,
+        type, report_group, source_group,
+        discovery_date, discovery_mag, discovery_filter,
+        reporters, received_date, internal_name,
+        discovery_ADS, class_ADS, creation_date,
+        last_phot_date, last_modified_date, status, tag
+    ) VALUES (
+        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+        %s,%s,%s,%s,%s,%s,%s,%s,'Inbox','{}'::text[]
+    ) ON CONFLICT DO NOTHING
+'''
+
+# Names touched by the most recent addin_database() call, for the DETECT run that follows it.
+_last_import = {'new': [], 'updated': [], 'woke': []}
+
+
+def last_import_names(new_only=False) -> list:
+    return list(_last_import['new'] if new_only else (_last_import['new'] + _last_import['updated']))
+
+
 def addin_database(filepath, debug=False, fetch_phot_for_new=False):
     """Import CSV into transient.objects + seed transient.photometry with discovery point.
 
@@ -200,6 +249,8 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
     update_audit_batch = []
     phot_batch   = []   # (name, mjd, mag, filter, source_group)
     new_object_names = []   # names of objects newly inserted this run
+    updated_names = []      # names of existing objects touched by this file
+    woke_names = []         # Snoozed objects a newer TNS lastmodified put back in Inbox
 
     try:
         with get_db_connection() as conn:
@@ -247,7 +298,7 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                     # Query by name only
                     cursor.execute(
                         "SELECT obj_id, last_modified_date, type, redshift, report_group, source_group, internal_name, "
-                        "discovery_mag, last_phot_date "
+                        "discovery_mag, last_phot_date, status "
                         "FROM transient.objects WHERE name = %s",
                         (r.get('name'),)
                     )
@@ -267,6 +318,7 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                             old_internal_name,
                             old_discovery_mag,
                             old_last_phot_date,
+                            existing_status,
                         ) = existing
 
                         changed_fields = []
@@ -296,7 +348,7 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                             csv_source_group,
                             csv_discoverydate,
                             r.get('discoverymag'),
-                            r.get('discmagfilter'),
+                            r.get('filter') or r.get('discmagfilter'),   # the filter *name*, as DETECT stores it
                             csv_reporters,
                             csv_time_received,
                             csv_internal_names,
@@ -305,8 +357,13 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                             csv_creationdate,
                             csv_last_phot_date,
                             new_lm_mjd,
+                            new_lm_mjd,
                             existing_obj_id,
                         ))
+                        updated_names.append(obj_name)
+                        if existing_status == 'Snoozed' and new_lm_mjd is not None and new_lm_mjd > (existing_lm or 0):
+                            changed_fields = ['woke: Snoozed -> Inbox'] + changed_fields
+                            woke_names.append(obj_name)
                         if changed_fields:
                             update_audit_batch.append((
                                 int(r.get('objid')),
@@ -317,38 +374,17 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                         updated_count += 1
 
                         if len(update_batch) >= BATCH_SIZE:
-                            extras.execute_batch(cursor, '''
-                                UPDATE transient.objects SET
-                                    name_prefix = %s,
-                                    name = COALESCE(%s, name),
-                                    ra = COALESCE(%s, ra),
-                                    dec = COALESCE(%s, dec),
-                                    redshift = COALESCE(%s, redshift),
-                                    type = %s,
-                                    report_group = COALESCE(%s, report_group),
-                                    source_group = COALESCE(%s, source_group),
-                                    discovery_date = COALESCE(%s, discovery_date),
-                                    discovery_mag = COALESCE(%s, discovery_mag),
-                                    discovery_filter = COALESCE(%s, discovery_filter),
-                                    reporters = COALESCE(%s, reporters),
-                                    received_date = COALESCE(%s, received_date),
-                                    internal_name = COALESCE(%s, internal_name),
-                                    discovery_ADS = COALESCE(%s, discovery_ADS),
-                                    class_ADS = COALESCE(%s, class_ADS),
-                                    creation_date = COALESCE(%s, creation_date),
-                                    last_phot_date = COALESCE(%s, last_phot_date),
-                                    last_modified_date = %s,
-                                    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
-                                WHERE obj_id = %s
-                            ''', update_batch, page_size=BATCH_SIZE)
+                            extras.execute_batch(cursor, _UPDATE_SQL, update_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
                                 logger.debug("Committed %d updates", len(update_batch))
                             update_batch = []
 
                     else:
+                        kinder_id = _tns_name_to_kinder_id(obj_name)
                         insert_batch.append((
-                            r.get('objid'),
+                            kinder_id or r.get('objid'),
+                            kinder_id,
                             r.get('name_prefix'),
                             r.get('name'),
                             r.get('ra'),
@@ -359,7 +395,7 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                             csv_source_group,
                             csv_discoverydate,
                             r.get('discoverymag'),
-                            r.get('discmagfilter'),
+                            r.get('filter') or r.get('discmagfilter'),
                             csv_reporters,
                             csv_time_received,
                             csv_internal_names,
@@ -381,19 +417,7 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
                         ))
 
                         if len(insert_batch) >= BATCH_SIZE:
-                            extras.execute_batch(cursor, '''
-                                INSERT INTO transient.objects (
-                                    obj_id, name_prefix, name, ra, dec, redshift,
-                                    type, report_group, source_group,
-                                    discovery_date, discovery_mag, discovery_filter,
-                                    reporters, received_date, internal_name,
-                                    discovery_ADS, class_ADS, creation_date,
-                                    last_phot_date, last_modified_date, status, tag
-                                ) VALUES (
-                                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                                    %s,%s,%s,%s,%s,%s,%s,%s,'Inbox','{}'::text[]
-                                ) ON CONFLICT DO NOTHING
-                            ''', insert_batch, page_size=BATCH_SIZE)
+                            extras.execute_batch(cursor, _INSERT_SQL, insert_batch, page_size=BATCH_SIZE)
                             conn.commit()
                             if debug:
                                 logger.debug("Committed %d inserts", len(insert_batch))
@@ -416,45 +440,10 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
 
             # ---- Flush remaining objects ----
             if update_batch:
-                extras.execute_batch(cursor, '''
-                    UPDATE transient.objects SET
-                        name_prefix = %s,
-                        name = COALESCE(%s, name),
-                        ra = COALESCE(%s, ra),
-                        dec = COALESCE(%s, dec),
-                        redshift = COALESCE(%s, redshift),
-                        type = %s,
-                        report_group = COALESCE(%s, report_group),
-                        source_group = COALESCE(%s, source_group),
-                        discovery_date = COALESCE(%s, discovery_date),
-                        discovery_mag = COALESCE(%s, discovery_mag),
-                        discovery_filter = COALESCE(%s, discovery_filter),
-                        reporters = COALESCE(%s, reporters),
-                        received_date = COALESCE(%s, received_date),
-                        internal_name = COALESCE(%s, internal_name),
-                        discovery_ADS = COALESCE(%s, discovery_ADS),
-                        class_ADS = COALESCE(%s, class_ADS),
-                        creation_date = COALESCE(%s, creation_date),
-                        last_phot_date = COALESCE(%s, last_phot_date),
-                        last_modified_date = %s,
-                        status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END
-                    WHERE obj_id = %s
-                ''', update_batch, page_size=BATCH_SIZE)
+                extras.execute_batch(cursor, _UPDATE_SQL, update_batch, page_size=BATCH_SIZE)
 
             if insert_batch:
-                extras.execute_batch(cursor, '''
-                    INSERT INTO transient.objects (
-                        obj_id, name_prefix, name, ra, dec, redshift,
-                        type, report_group, source_group,
-                        discovery_date, discovery_mag, discovery_filter,
-                        reporters, received_date, internal_name,
-                        discovery_ADS, class_ADS, creation_date,
-                        last_phot_date, last_modified_date, status, tag
-                    ) VALUES (
-                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                        %s,%s,%s,%s,%s,%s,%s,%s,'Inbox','{}'::text[]
-                    ) ON CONFLICT DO NOTHING
-                ''', insert_batch, page_size=BATCH_SIZE)
+                extras.execute_batch(cursor, _INSERT_SQL, insert_batch, page_size=BATCH_SIZE)
 
             conn.commit()
 
@@ -510,8 +499,9 @@ def addin_database(filepath, debug=False, fetch_phot_for_new=False):
 
             cursor.close()
 
-        logger.info("Import done: %d new, %d updated, %d skipped",
-                    imported_count, updated_count, skipped_count)
+        logger.info("Import done: %d new, %d updated, %d skipped, %d woke from Snoozed",
+                    imported_count, updated_count, skipped_count, len(woke_names))
+        _last_import['new'], _last_import['updated'], _last_import['woke'] = new_object_names, updated_names, woke_names
         update_download_log(log_id, 'completed',
                             records_imported=imported_count,
                             records_updated=updated_count)
@@ -604,6 +594,27 @@ def auto_snoozed(time_now_utc, debug=False):
         return False
 
 
+def _run_detect_after_import(new_only: bool, label: str) -> None:
+    """The embedded DETECT pipeline on what the import just wrote (see modules/detect_pipeline)."""
+    try:
+        from modules import detect_pipeline
+    except ImportError:
+        import detect_pipeline
+    names = last_import_names(new_only=new_only)
+    if not detect_pipeline.ENABLED or not names:
+        return
+    try:
+        logger.info("DETECT after %s import: %d objects", label, len(names))
+        detect_pipeline.run_for_names(names, label=label)
+        try:
+            from routes.detect.detect_routes import _soft_invalidate_page_cache
+            _soft_invalidate_page_cache()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.exception("DETECT after %s import failed: %s", label, e)
+
+
 def main():
     logger.info("Bot started at %s", datetime.now(timezone.utc))
 
@@ -616,7 +627,9 @@ def main():
                 logger.info("Hourly task at %s", now)
                 if download_TNS_api_hr(f"{now.hour:02d}", debug=True):
                     # Newly added hourly objects get an immediate light-curve fetch.
-                    addin_database(work_csv, debug=True, fetch_phot_for_new=True)
+                    if addin_database(work_csv, debug=True, fetch_phot_for_new=True):
+                        # cross-match + host rule + screening for everything this hour touched
+                        _run_detect_after_import(new_only=False, label="TNS-hourly")
                     auto_snoozed(now, debug=True)
                 if now.hour == 0:
                     auto_snoozed(now, debug=True)
@@ -630,7 +643,10 @@ def main():
                     target_day = now - timedelta(days=day_offset)
                     logger.info("Daily task target day: %s", target_day.date())
                     if download_TNS_api_with_fallback(target_day.year, target_day.month, target_day.day, debug=True):
-                        addin_database(work_csv, debug=True)
+                        if addin_database(work_csv, debug=True):
+                            # the daily file mostly repeats the hourly ones: only objects
+                            # the hourly imports missed need a DETECT run here
+                            _run_detect_after_import(new_only=True, label="TNS-daily")
                         auto_snoozed(now, debug=True)
                     else:
                         logger.warning("Daily task download failed for %s", target_day.date())

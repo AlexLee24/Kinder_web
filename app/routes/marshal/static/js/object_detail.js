@@ -252,7 +252,7 @@ function forceDetectRun() {
         })
         .then(data => {
             if (data.success) {
-                renderDetectData(data.results);
+                renderDetectData(data.results, data.screen);
                 // Auto-update chart image if generated server-side
                 if (data.detect_image_id) {
                     _detectImageId = data.detect_image_id;
@@ -277,7 +277,7 @@ function forceDetectRun() {
                 })
                 .then(d => {
                     if (d && d.success && Array.isArray(d.results) && d.results.length > 0) {
-                        renderDetectData(d.results);
+                        renderDetectData(d.results, d.screen);
                     } else {
                         const msg = (err && err.message) ? err.message : 'Network error running cross-match';
                         detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${msg}</div>`;
@@ -290,18 +290,49 @@ function forceDetectRun() {
         });
 }
 
-function renderDetectData(results) {
+// DETECT's verdict (transient.detect_screen): the same three host states, score,
+// tags and peak M the review page shows — rendered above the candidate list.
+function _detectVerdictHtml(screen) {
+    if (!screen) return '';
+    const hs = screen.host_status || 'none';
+    const badge = hs === 'confirmed' ? '<span style="color:#46ffaf; border:1px solid rgba(70,255,175,0.5); border-radius:5px; padding:1px 7px; font-weight:700;">● Confirmed host</span>'
+                : hs === 'review'    ? '<span style="color:#ffd93d; border:1px solid rgba(255,217,61,0.55); border-radius:5px; padding:1px 7px; font-weight:700;">? Needs judgement</span>'
+                :                      '<span style="color:#b0b5b0; border:1px solid rgba(138,143,138,0.45); border-radius:5px; padding:1px 7px; font-weight:700;">○ No host</span>';
+    const hot = ['Luminous', 'SLSN?', 'Too-bright', 'glSN?'], veto = ['Galactic', 'AGN', 'Classified', 'Star?'];
+    const tags = (screen.tags || []).map(t => {
+        const c = hot.includes(t) ? '#ff8080' : veto.includes(t) ? '#999' : t === 'Ambiguous' || t === 'z-conflict' || t === 'Host-z?' ? '#ffd93d' : '#a8c0ff';
+        return `<span style="color:${c}; border:1px solid ${c}55; border-radius:4px; padding:0 5px; font-size:0.85em; margin-right:3px;">${t}</span>`;
+    }).join('');
+    const am = screen.abs_mag != null ? `M = <b style="color:${screen.abs_mag <= -20 ? '#ff7070' : screen.abs_mag <= -18 ? '#46ffaf' : '#ddd'}">${Number(screen.abs_mag).toFixed(2)}</b>`
+        + (screen.abs_mag_source === 'peak' ? ` <span style="color:#888">(${screen.abs_mag_band || ''} peak ${Number(screen.peak_mag).toFixed(2)})</span>` : ' <span style="color:#888">(discovery mag)</span>') : '';
+    const z = screen.z != null ? `z = ${Number(screen.z).toFixed(4)}<span style="color:#888"> ${screen.z_source === 'desi_host' ? 'DESI host' : screen.z_source || ''}</span>` : '';
+    let line = '';
+    if (hs === 'confirmed' && screen.d_dlr != null) line = `host ${screen.morph || ''} d_DLR ${Number(screen.d_dlr).toFixed(2)}, ${Number(screen.center_sep_arcsec).toFixed(1)}″ from the centre${screen.offset_kpc != null ? ', ' + Number(screen.offset_kpc).toFixed(1) + ' kpc' : ''}`;
+    else if (hs === 'review' && screen.tentative_host) line = `nearest galaxy just outside the limit (d_DLR ${Number(screen.tentative_d_dlr).toFixed(2)}) — decide on the DETECT page`;
+    else if (hs === 'review') line = 'ambiguous or conflicting host — decide on the DETECT page';
+    if (screen.host_user === true) line += ` · host chosen by ${screen.host_user_by || 'a reviewer'}`;
+    return `<div style="border-left:3px solid ${hs === 'confirmed' ? '#46ffaf' : hs === 'review' ? '#ffd93d' : '#666'}; padding:4px 8px; margin-bottom:6px; color:#ccc; line-height:1.5;">
+        <div>${badge} <span style="color:#fff; font-weight:700; margin-left:6px;">score ${screen.score}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${screen.run_date || ''}</span></div>
+        <div>${[am, z].filter(Boolean).join(' · ')}</div>
+        ${line ? `<div style="color:#aaa; font-size:0.92em;">${line}</div>` : ''}
+        ${tags ? `<div style="margin-top:2px;">${tags}</div>` : ''}
+    </div>`;
+}
+
+function renderDetectData(results, screen) {
     _detectResultsCache = results;
+    if (screen !== undefined) _detectScreenCache = screen;
     if (_detectTabMode === 'chart') return; // Don't overwrite chart view
     const detectBody = document.getElementById('detectBody');
     if (!detectBody) return;
-    
+
+    const verdict = _detectVerdictHtml(_detectScreenCache);
     if (!results || results.length === 0) {
-        detectBody.innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:100%; color:#888;">No matches found</div>';
+        detectBody.innerHTML = verdict + '<div style="display:flex; justify-content:center; align-items:center; height:100%; color:#888;">No matches found</div>';
         return;
     }
 
-    let html = '<ul style="list-style:none; padding:0; margin:0;">';
+    let html = verdict + '<ul style="list-style:none; padding:0; margin:0;">';
     results.forEach(res => {
         let sep = parseFloat(res.separation_arcsec).toFixed(2);
         let catalog = res.catalog_name;
@@ -341,6 +372,19 @@ function renderDetectData(results) {
             extraInfo += ` | coords=(${parseFloat(mRa).toFixed(4)}, ${parseFloat(mDec).toFixed(4)})`;
         }
         
+        if (has(mdata, 'host_rule')) {
+            const rule = mdata.host_user === true ? 'HOST · chosen by ' + (mdata.host_user_by || 'a reviewer')
+                       : res.is_host ? 'HOST · rule v1'
+                       : mdata.shares_host_galaxy ? 'part of the host'
+                       : mdata.host_member ? `member #${mdata.host_rank || ''}`
+                       : mdata.host_tentative ? 'tentative'
+                       : (mdata.d_dlr != null ? 'outside' : 'no model');
+            const col = res.is_host ? '#46ffaf' : mdata.host_tentative ? '#ffd93d' : '#888';
+            extraInfo += ` | <span style="color:${col}; font-weight:700;">${rule}</span>`;
+            if (has(mdata, 'd_dlr')) extraInfo += ` | d_DLR=${parseFloat(mdata.d_dlr).toFixed(2)}${has(mdata, 'd_dlr_max') ? '/' + mdata.d_dlr_max : ''}`;
+            if (has(mdata, 'spectype')) extraInfo += ` | ${mdata.spectype}`;
+            if (has(mdata, 'tractor_type')) extraInfo += ` ${mdata.tractor_type}`;
+        }
         if (has(mdata, 'priority_tag')) {
             extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${mdata.priority_tag.replace(/_/g, ' ')}</span>`;
         } else if (has(mdata, 'type') && catalog.includes('DESI')) {
@@ -387,7 +431,7 @@ function loadDetectData() {
         })
         .then(data => {
             if (data.success) {
-                renderDetectData(data.results);
+                renderDetectData(data.results, data.screen);
                 if (data.detect_image_id) {
                     _detectImageId = data.detect_image_id;
                     if (_detectTabMode === 'chart') _renderDetectChartView();
@@ -409,6 +453,7 @@ function loadDetectData() {
 
 let _detectTabMode = 'data';   // 'data' | 'chart'
 let _detectResultsCache = [];
+let _detectScreenCache = null;
 let _detectImageId = null;
 
 function switchDetectTab(mode) {
@@ -422,7 +467,7 @@ function switchDetectTab(mode) {
         tabChart.style.cssText += mode === 'chart' ? onStyle : offStyle;
     }
     if (mode === 'data') {
-        renderDetectData(_detectResultsCache);
+        renderDetectData(_detectResultsCache, _detectScreenCache);
     } else {
         _renderDetectChartView();
     }

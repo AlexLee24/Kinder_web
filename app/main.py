@@ -21,6 +21,11 @@ sys.path.append(os.path.join(current_dir, "modules", "DETECT_pipe", "modules"))
 # CASTOR (Exposure Time Calculator engine) is a git clone of a separate repo, not vendored code —
 # update it with `git -C app/modules/CASTOR pull`. See app/modules/CASTOR/README.md.
 sys.path.append(os.path.join(current_dir, "modules", "CASTOR", "src"))
+# DETECT (TNS cross-match / host rule / screening pipeline): an embedded copy of its
+# `function/` package, refreshed with scripts/sync_detect.sh — see app/modules/DETECT/README.md.
+# It keeps finder images and the SFD dust maps under DETECT_DATA_DIR (git-ignored).
+sys.path.append(os.path.join(current_dir, "modules", "DETECT"))
+os.environ.setdefault("DETECT_DATA_DIR", os.path.join(current_dir, "modules", "DETECT", "data"))
 
 # CASTOR's moon.py builds astropy Time/AltAz frames for every calculation, which by
 # default triggers astropy to try downloading fresh Earth-orientation (IERS) data from
@@ -252,6 +257,7 @@ from modules.backup import run_daily_backup
 from modules.phot_scheduler import fetch_inbox_photometry, update_target_mags, retire_stale_followups
 # from modules.GCN_alert import start_gcn_listener  # reserved for future use
 from modules.auto_tns_download import start_auto_tns_downloader
+from modules import detect_pipeline as _detect_pipeline
 from modules.tns_gap_filler import start_gap_filler
 from modules.db_monitor import check_and_alert as _db_check_and_alert
 from modules.database import recycle_idle_connections as _db_recycle
@@ -296,6 +302,10 @@ if _acquired_bg_lock:
         _scheduler.add_job(_tracked('db_monitor', _db_check_and_alert),                       'interval', minutes=10,   id='db_monitor')
         _scheduler.add_job(_tracked('db_recycle', _db_recycle),                               'interval', minutes=30,   id='db_recycle')
         _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm')
+        if _detect_pipeline.ENABLED:
+            # DETECT re-screens every Follow-up object once a day (M from the latest light
+            # curve, host against the latest catalogue); hourly runs hang off the TNS import.
+            _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=11, minute=0, id='daily_detect_followups')
     _scheduler.start()
     if not config.DEBUG:
         _tracked('daily_backup', run_daily_backup)()

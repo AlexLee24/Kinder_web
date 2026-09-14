@@ -1,0 +1,27 @@
+# DETECT pipeline — Python 3.12 (uv env: ~/uv-envs/kinder)
+# Versions are the ones the pipeline currently runs against.
+
+# core pipeline
+numpy>=2.0
+pandas>=2.2
+astropy>=6.0
+healpy>=1.17          # HEALPix cone search (function/database/healpix_index.py)
+scipy>=1.12           # Sérsic R25 scale (gammaincinv)
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+requests>=2.31
+matplotlib>=3.8
+Pillow>=10.0
+tqdm>=4.66
+pyfiglet>=1.0
+
+# cross-match against VizieR (Lens_cross_match.lens_cross_match_online — not on the scheduled path)
+astroquery>=0.4.7
+
+# photometry_download.py only (manual workflow)
+alerce>=2.0
+playwright>=1.40      # then: playwright install chromium
+dustmaps>=1.0         # module/calculator.py
+
+# tests
+pytest>=8.0

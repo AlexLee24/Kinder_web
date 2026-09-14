@@ -3,18 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DETECT Results — {{ selected_date }} · Kinder</title>
+    <title>DETECT Review — {{ selected_date }} · Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
     {% include '_favicon.html' %}
-    <!-- ── 效能修正：加入 defer，避免 3.5MB 的 Plotly 阻塞網頁初次渲染 ── -->
+    <!-- Plotly deferred: 3.5 MB must not block first paint -->
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" defer></script>
 </head>
-<body>
+{% set can_edit = session.user and session.user.is_admin %}
+<body data-can-edit="{{ 'true' if can_edit else 'false' }}">
     {% macro render_abs_mag(value, sep=None) -%}
         {% if value is not none %}
             {% set am = value|float %}
-            {% if am < -20 %}
+            {% if am <= -20 %}
                 <span class="absmag-chip absmag-verybright" {% if sep is not none and sep|float >= 10 %}style="opacity:0.7"{% endif %}>{{ "%.2f"|format(am) }}</span>
             {% elif am <= -18 %}
                 <span class="absmag-chip absmag-peak">{{ "%.2f"|format(am) }}</span>
@@ -23,7 +24,42 @@
             {% else %}
                 <span class="absmag-chip absmag-dim">{{ "%.2f"|format(am) }}</span>
             {% endif %}
-        {% else %}—{% endif %}
+        {% else %}<span class="absmag-none">—</span>{% endif %}
+    {%- endmacro %}
+
+    {% macro tag_chip(tag) -%}
+        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?')
+                else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z')
+                else 'tag-veto' if tag in ('Galactic', 'AGN', 'Classified', 'Star?')
+                else 'tag-warn' %}
+        {% set tip = {
+            'Luminous': 'M ≤ −20', 'SLSN?': 'M ≤ −21', 'Too-bright': 'z ≥ 0.15 and ≥ 1 mag brighter than an SN Ia peak',
+            'glSN?': 'Too-bright in a passive host or on a lens: lensed-SN candidate', 'Nuclear': 'within 1″ of the host centre',
+            'TDE?': 'nuclear, host not an AGN, not Galactic', 'Lens': 'lens-catalogue match', 'Passive-host': 'sSFR < 1e-11 or de Vaucouleurs host',
+            'Host-z': 'spectroscopic host redshift', 'Galactic': 'TNS type is CV / variable / nova / …', 'AGN': 'known AGN (TNS type, or nuclear in a DESI AGN)',
+            'Classified': 'TNS already has a spectral type: low priority', 'Star?': 'a DESI stellar spectrum within 1.5″',
+            'z-conflict': 'two spectra on the host galaxy disagree in z', 'Ambiguous': 'a second galaxy is nearly as close (d_DLR ratio < 1.5)',
+            'Host-z?': 'nearest galaxy is just outside the host limit',
+        }.get(tag, '') %}
+        <span class="tag-chip {{ cls }}" title="{{ tip }}">{{ tag }}</span>
+    {%- endmacro %}
+
+    {% macro status_badge(obj_status, has_host) -%}
+        {% if obj_status in ('finished', 'snoozed') %}
+            {% if has_host %}<span class="badge-checked">✓ Done</span>{% else %}<span class="badge-nohost">✗ No host</span>{% endif %}
+        {% elif obj_status == 'followup' %}<span class="badge-followup">⬤ Follow-up</span>
+        {% else %}<span class="badge-unreviewed">Pending</span>{% endif %}
+    {%- endmacro %}
+
+    {% macro wake_chip(note) -%}
+        {% if note %}<span class="wake-chip" title="A newer TNS report woke this object from Snoozed ({{ note.source }}, {{ note.at }})">↩ back: TNS updated {{ note.at }}{% if note.fields %} · {{ note.fields|join(', ') }}{% endif %}</span>{% endif %}
+    {%- endmacro %}
+
+    {% macro host_badge(host_status) -%}
+        {% if host_status == 'confirmed' %}<span class="hs-badge hs-confirmed" title="One galaxy contains the transient; nothing to argue about">● Confirmed host</span>
+        {% elif host_status == 'review' %}<span class="hs-badge hs-review" title="The rule could not settle it: ambiguous, conflicting z, or just outside the limit">? Needs judgement</span>
+        {% elif host_status == 'unscreened' %}<span class="hs-badge hs-none" title="Cross-matched by the marshal's own run; DETECT has not screened it">· Not screened</span>
+        {% else %}<span class="hs-badge hs-none" title="No spectroscopic galaxy contains the transient">○ No host</span>{% endif %}
     {%- endmacro %}
 
     {% include '_navbar.html' %}
@@ -32,8 +68,9 @@
 
         <div class="detect-page-header">
             <div class="detect-title-group">
-                <h1 class="detect-page-title">DETECT</h1>
+                <h1 class="detect-page-title"><a href="{{ url_for('detect.detect_results') }}" title="DETECT home">DETECT</a></h1>
                 <span class="detect-page-date">{{ selected_date }}</span>
+                {% if counts.last_run %}<span class="detect-page-run" title="Latest DETECT run that touched this day">run {{ counts.last_run }}</span>{% endif %}
             </div>
             <div class="detect-header-controls">
                 <div class="date-selector">
@@ -49,13 +86,38 @@
                     Follow-up Tracker
                     <span class="tracker-count-badge" id="trackerCountBadge">…</span>
                 </button>
+                <button class="help-toggle-btn" id="helpToggleBtn" onclick="toggleGuide()" title="How to review (?)">? How to review</button>
+            </div>
+        </div>
+
+        <!-- ── How to review ──────────────────────────────────────────── -->
+        <div class="review-guide" id="reviewGuide">
+            <div class="guide-step">
+                <span class="guide-num">1</span>
+                <div><strong>Read DETECT's verdict</strong><br>
+                    <span class="hs-badge hs-confirmed">● Confirmed host</span> one galaxy, nothing to argue ·
+                    <span class="hs-badge hs-review">? Needs judgement</span> ambiguous / conflicting z / just outside ·
+                    <span class="hs-badge hs-none">○ No host</span> nothing contains it</div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">2</span>
+                <div><strong>Look at the LS DR10 image and the light curve.</strong><br>
+                    Green ellipse = the host model (R₅₀), dotted = shreds of it; d_DLR is the distance in units of the galaxy's own radius.
+                    M is from the brightest point in the light curve (or the discovery mag).</div>
+            </div>
+            <div class="guide-step">
+                <span class="guide-num">3</span>
+                <div><strong>Decide with one key.</strong><br>
+                    <kbd>F</kbd> Follow-up (accepts the host) · <kbd>D</kbd> Done, host accepted · <kbd>N</kbd> No host · <kbd>R</kbd> Reopen ·
+                    <em>Set host</em> on any row to change the galaxy · <kbd>←</kbd><kbd>→</kbd> move · <kbd>U</kbd> next pending · <kbd>?</kbd> this help.
+                    Your host choice survives DETECT's daily re-run.</div>
             </div>
         </div>
 
         <div class="followup-tracker-panel" id="followupTrackerPanel">
             <div class="tracker-panel-header">
                 <div class="tracker-panel-title">
-                    Follow-up &amp; Abs Mag Tracker
+                    Follow-up Tracker
                     <span class="tracker-panel-subtitle" id="trackerSubtitle">loading…</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
@@ -73,17 +135,30 @@
         <div class="content-area">
             {% if results %}
 
+            <!-- ── Day at a glance ────────────────────────────────────── -->
+            <div class="day-stats" id="dayStats">
+                <div class="stat"><span class="stat-n">{{ counts.screened }}</span><span class="stat-l">screened</span></div>
+                <div class="stat"><span class="stat-n">{{ counts.targets }}</span><span class="stat-l">with candidates</span></div>
+                <div class="stat stat-pending"><span class="stat-n" id="statPending">{{ counts.pending }}</span><span class="stat-l">pending</span></div>
+                <div class="stat stat-review"><span class="stat-n">{{ counts.review }}</span><span class="stat-l">need judgement</span></div>
+                <div class="stat stat-confirmed"><span class="stat-n">{{ counts.confirmed }}</span><span class="stat-l">confirmed host</span></div>
+                <div class="stat stat-none"><span class="stat-n">{{ counts.nohost }}</span><span class="stat-l">no host</span></div>
+                <div class="stat stat-followup"><span class="stat-n" id="statFollowup">{{ counts.followup }}</span><span class="stat-l">follow-up</span></div>
+                <div class="stat stat-done"><span class="stat-n" id="statDone">{{ counts.done }}</span><span class="stat-l">done</span></div>
+                {% if counts.old %}<div class="stat stat-old" title="Old reports TNS edited; listed at the bottom"><span class="stat-n">{{ counts.old }}</span><span class="stat-l">old edits</span></div>{% endif %}
+            </div>
+
             <div class="results-section-hdr">
-                <h2 class="results-section-title">Today's Matches</h2>
+                <h2 class="results-section-title">Review queue</h2>
                 <div class="results-section-meta">
-                    <span class="results-count-badge">{{ results | length }} targets</span>
-                    <span class="unreviewed-count-badge" id="unreviewedCountBadge" style="display:none;"></span>
                     <div class="table-filter-bar">
                         <button class="tbl-filter-btn active" data-filter="all" onclick="filterSummary(this,'all')">All</button>
-                        <button class="tbl-filter-btn tbl-filter-unreviewed" data-filter="unreviewed" onclick="filterSummary(this,'unreviewed')">Unreviewed</button>
+                        <button class="tbl-filter-btn tbl-filter-unreviewed" data-filter="pending" onclick="filterSummary(this,'pending')">Pending</button>
+                        <button class="tbl-filter-btn tbl-filter-review" data-filter="review" onclick="filterSummary(this,'review')">Needs judgement</button>
+                        <button class="tbl-filter-btn tbl-filter-confirmed" data-filter="confirmed" onclick="filterSummary(this,'confirmed')">Confirmed host</button>
+                        <button class="tbl-filter-btn" data-filter="nohost" onclick="filterSummary(this,'nohost')">No host</button>
                         <button class="tbl-filter-btn" data-filter="followup" onclick="filterSummary(this,'followup')">Follow-up</button>
-                        <button class="tbl-filter-btn" data-filter="host" onclick="filterSummary(this,'host')">Has Host</button>
-                        <button class="tbl-filter-btn" data-filter="nohost" onclick="filterSummary(this,'nohost')">No Host</button>
+                        <button class="tbl-filter-btn" data-filter="done" onclick="filterSummary(this,'done')">Done</button>
                     </div>
                 </div>
             </div>
@@ -92,100 +167,66 @@
                 <table class="results-table" id="summaryTable">
                     <thead>
                         <tr>
-                            {% if session.user and session.user.is_admin %}
-                            <th style="width:44px;">★</th>
-                            {% endif %}
+                            {% if can_edit %}<th style="width:44px;">★</th>{% endif %}
                             <th>Object</th>
                             <th>Type</th>
+                            <th title="DETECT priority score: higher = more worth a spectrum">Score</th>
                             <th>Host</th>
-                            <th>Coords</th>
-                            <th>Match (Catalog)</th>
-                            <th>Sep (")</th>
-                            <th>Z</th>
-                            <th>Abs Mag</th>
+                            <th>DETECT's verdict</th>
+                            <th>Tags</th>
+                            <th>z</th>
+                            <th title="Absolute magnitude from the brightest light-curve point">M</th>
                             <th>Status</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for result in summary_results %}
-                        {% set is_done = result.obj_status in ('finished', 'snoozed') %}
-                        <tr id="summary-row-{{ result.target_name }}"
+                        {% for t in results %}
+                        {% set sc = t.screen or {} %}
+                        <tr id="summary-row-{{ t.target_name }}"
                             data-card-index="{{ loop.index0 }}"
-                            data-status="{{ result.obj_status }}"
-                            data-has-host="{{ 'true' if result.target_is_host else 'false' }}"
+                            data-status="{{ t.obj_status }}"
+                            data-host-status="{{ t.host_status }}"
+                            data-has-host="{{ 'true' if t.target_is_host else 'false' }}"
                             onclick="jumpToCard({{ loop.index0 }})"
-                            class="{% if result.obj_status == 'object' %}row-unreviewed{% endif %}"
-                            style="cursor:pointer;" title="Jump to card">
+                            class="row-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}row-unreviewed{% endif %}"
+                            title="Open card">
 
-                            {% if session.user and session.user.is_admin %}
+                            {% if can_edit %}
                             <td onclick="event.stopPropagation()" style="text-align:center;">
-                                <span class="flag-btn {% if result.is_flagged %}active{% endif %}"
-                                      onclick="toggleFlag('{{ result.flag_id }}', this)">★</span>
+                                <span class="flag-btn {% if t.is_flagged %}active{% endif %}" onclick="toggleFlag('{{ t.flag_id }}', this)">★</span>
                             </td>
                             {% endif %}
 
-                            <td>
-                                <a href="/object/{{ result.target_name }}" class="obj-name-link" onclick="event.stopPropagation()">
-                                    {{ result.target_name }}
-                                </a>
-                            </td>
+                            <td><a href="/object/{{ t.target_name }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a></td>
 
                             <td style="text-align:center;">
-                                {% if result.tns_info and result.tns_info.type %}
-                                    <span class="badge-type">{{ result.tns_info.type }}</span>
-                                {% else %}
-                                    <span class="badge-type-unclassified">Unclassified</span>
-                                {% endif %}
+                                {% if t.tns_info and t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>
+                                {% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}
                             </td>
 
-                            <td id="host-cell-{{ result.target_name }}" style="text-align:center;">
-                                {% if result.target_is_host %}
-                                    <span class="badge-host" title="Host confirmed">✓ HOST</span>
-                                {% else %}
-                                    <span style="color:#444;">—</span>
-                                {% endif %}
-                            </td>
+                            <td style="text-align:center;"><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
 
-                            <td class="td-coords">
-                                {{ "%.3f"|format(result.tns_info.ra|float) if result.tns_info.ra != 'N/A' else '—' }},
-                                {{ "%.3f"|format(result.tns_info.dec|float) if result.tns_info.dec != 'N/A' else '—' }}
-                            </td>
+                            <td id="host-cell-{{ t.target_name }}" style="white-space:nowrap;">{{ host_badge(t.host_status) }}</td>
 
-                            <td><span class="badge">{{ result.catalog_name }}</span></td>
+                            <td class="td-verdict">{{ t.verdict.headline }}{% if t.wake_note %}<br>{{ wake_chip(t.wake_note) }}{% endif %}</td>
 
-                            <td>{{ "%.2f"|format(result.separation_arcsec) }}</td>
+                            <td class="td-tags">{% for tag in sc.tags or [] %}{{ tag_chip(tag) }}{% endfor %}</td>
 
-                            <td>
-                                {% if result.z is not none %}{{ "%.4f"|format(result.z) }}{% else %}—{% endif %}
-                            </td>
+                            <td class="{% if t.hypothetical %}td-hypo{% endif %}" {% if t.hypothetical %}title="No host: this is candidate #1's z"{% endif %}>{% if t.z is not none %}{{ "%.4f"|format(t.z) }}{% if sc.z_source == 'tns' %}<span class="z-src" title="TNS classification redshift">tns</span>{% elif t.hypothetical %}<span class="z-src">if host</span>{% endif %}{% else %}—{% endif %}</td>
 
-                            <td class="td-absmag">{{ render_abs_mag(result.abs_mag, result.separation_arcsec) }}</td>
+                            <td class="td-absmag {% if t.hypothetical %}td-hypo{% endif %}" {% if t.hypothetical %}title="No host: M if candidate #1 were the host"{% endif %}>{{ render_abs_mag(t.abs_mag) }}</td>
 
-                            <td id="status-cell-{{ result.target_name }}" style="text-align:center;">
-                                {% if is_done %}
-                                    {% if result.target_is_host %}
-                                        <span class="badge-checked">✓ Checked</span>
-                                    {% else %}
-                                        <span class="badge-nohost">✗ No Host</span>
-                                    {% endif %}
-                                {% elif result.obj_status == 'followup' %}
-                                    <span class="badge-followup">⬤ Follow-up</span>
-                                {% else %}
-                                    <span class="badge-unreviewed">Review</span>
-                                {% endif %}
-                            </td>
+                            <td id="status-cell-{{ t.target_name }}" style="text-align:center;">{{ status_badge(t.obj_status, t.target_is_host) }}</td>
 
-                            <td onclick="event.stopPropagation()">
-                                <a href="#cardNavBar" class="btn-details" onclick="jumpToCard({{ loop.index0 }})">→</a>
-                            </td>
+                            <td onclick="event.stopPropagation()"><a href="#cardNavBar" class="btn-details" onclick="jumpToCard({{ loop.index0 }})">→</a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
 
-            <h2 class="section-hdr-cards">Detailed View</h2>
+            <h2 class="section-hdr-cards">Cards</h2>
             <div class="card-nav-bar" id="cardNavBar">
                 <button class="card-nav-btn" id="prevCardBtn" onclick="prevCard()" title="← arrow key">← Prev</button>
                 <div class="card-nav-center">
@@ -197,86 +238,101 @@
                     <span class="card-nav-obj-name" id="cardNavObjName"></span>
                 </div>
                 <button class="card-nav-btn card-nav-next-unreviewed" id="nextUnreviewedBtn"
-                        onclick="nextUnreviewed()" title="Jump to next unreviewed object">
-                    Next Unreviewed →
+                        onclick="nextUnreviewed()" title="Jump to next pending object (U)">
+                    Next pending →
                 </button>
                 <button class="card-nav-btn" id="nextCardBtn" onclick="nextCard()" title="→ arrow key">Next →</button>
-                <button class="card-nav-refresh-btn" onclick="refreshPage()" title="Reload page (preserves position)">↺</button>
+                <button class="card-nav-refresh-btn" onclick="refreshPage()" title="Reload page">↺</button>
             </div>
 
             <div id="cardStage">
-            {% for result in results %}
-            {% set card_done = result.obj_status in ('finished', 'snoozed') %}
-            <div class="target-card {% if result.obj_status == 'object' %}card-unreviewed{% endif %}"
+            {% for t in results %}
+            {% set sc = t.screen or {} %}
+            {% set hm = t.host_match %}
+            <div class="target-card card-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}card-unreviewed{% endif %}"
                  id="card-{{ loop.index0 }}" data-index="{{ loop.index0 }}"
-                 data-status="{{ result.obj_status }}"
+                 data-name="{{ t.target_name }}"
+                 data-status="{{ t.obj_status }}"
+                 data-host-status="{{ t.host_status }}"
+                 data-host-match-id="{{ t.host_match_id or '' }}"
+                 data-host-z="{{ hm.z if hm and hm.z is not none else '' }}"
+                 data-host-pinned="{{ 'true' if t.host_pinned else 'false' }}"
+                 data-host-rejected="{{ 'true' if t.host_rejected else 'false' }}"
+                 data-verdict-kind="{{ t.verdict.kind }}"
                  {% if not loop.first %}style="display:none"{% endif %}>
 
                 <div class="card-header-bar">
                     <div class="card-header-info">
                         <h3 class="card-obj-title">
-                            <a href="/object/{{ result.target_name }}" target="_blank" rel="noopener noreferrer">
-                                {{ result.target_name }}
-                                <span class="card-extlink">↗</span>
+                            <a href="/object/{{ t.target_name }}" target="_blank" rel="noopener noreferrer">
+                                {{ t.target_name }}<span class="card-extlink">↗</span>
                             </a>
+                            <span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}" title="DETECT priority score">score {{ t.score }}</span>
+                            {% if t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}
                         </h3>
                         <div class="card-meta-line">
-                            <span><strong>Discovery:</strong> {{ result.tns_info.discoverydate or '—' }}</span>
-                            <span><strong>Coords:</strong> {{ result.tns_info.ra }}, {{ result.tns_info.dec }}</span>
-                            <span><strong>Type:</strong>
-                                {% if result.tns_info.type %}
-                                    <span class="badge-type">{{ result.tns_info.type }}</span>
-                                {% else %}
-                                    <span class="badge-type-unclassified">Unclassified</span>
-                                {% endif %}
-                            </span>
-                            {% if result.tns_info.internal_names %}
-                            <span><strong>Internal:</strong> {{ result.tns_info.internal_names }}</span>
-                            {% endif %}
-                            {% if result.best_match.z is not none %}
-                            <span><strong>z =</strong> {{ "%.4f"|format(result.best_match.z) }}</span>
-                            {% endif %}
-                            {% if result.best_match.abs_mag is not none %}
-                            <span class="card-absmag-inline">
-                                <strong>M =</strong>
-                                {{ render_abs_mag(result.best_match.abs_mag) }}
-                            </span>
-                            {% endif %}
+                            <span><strong>Discovery</strong> {{ t.tns_info.discoverydate or '—' }}</span>
+                            <span><strong>Coords</strong> {{ t.tns_info.ra }}, {{ t.tns_info.dec }}</span>
+                            {% if t.tns_info.internal_names %}<span><strong>Internal</strong> {{ t.tns_info.internal_names }}</span>{% endif %}
+                            {% if t.tns_info.tns_z is not none %}<span><strong>TNS z</strong> {{ "%.4f"|format(t.tns_info.tns_z) }}</span>{% endif %}
+                            {% if sc.run_date %}<span><strong>DETECT run</strong> {{ sc.run_date }}</span>{% endif %}
+                            {% if t.wake_note %}<span>{{ wake_chip(t.wake_note) }}</span>{% endif %}
                         </div>
                     </div>
                     <div class="card-header-actions">
-                        <div id="card-status-{{ result.target_name }}" class="card-status-badge">
-                            {% if card_done %}
-                                {% if result.target_is_host %}
-                                    <span class="badge-checked">✓ Checked</span>
-                                {% else %}
-                                    <span class="badge-nohost">✗ No Host</span>
-                                {% endif %}
-                            {% elif result.obj_status == 'followup' %}
-                                <span class="badge-followup">⬤ Follow-up</span>
-                            {% else %}
-                                <span class="badge-unreviewed">! Needs Review</span>
-                            {% endif %}
-                        </div>
-                        {% if session.user and session.user.is_admin %}
-                        <div class="card-action-buttons">
-                            {% if card_done and not result.target_is_host %}
-                                <button class="btn-action btn-remove" onclick="unmarkNoHost('{{ result.target_name }}')" title="Undo no-host decision">Remove</button>
-                            {% elif not card_done and not result.target_is_host %}
-                                <button class="btn-action btn-nohost {% if result.obj_status == 'object' %}btn-prominent{% endif %}"
-                                        onclick="markNoHost('{{ result.target_name }}')"
-                                        title="Mark target as having no host">No Host</button>
-                            {% endif %}
-                        </div>
-                        {% endif %}
+                        <div id="card-status-{{ t.target_name }}" class="card-status-badge">{{ status_badge(t.obj_status, t.target_is_host) }}</div>
                     </div>
                 </div>
 
+                <!-- ── DETECT's verdict ─────────────────────────────── -->
+                <div class="verdict-band verdict-{{ t.verdict.kind }}" id="verdict-{{ t.target_name }}">
+                    <div class="verdict-main">
+                        <div class="verdict-badge">{{ host_badge(t.host_status) }}</div>
+                        <div class="verdict-text">
+                            <div class="verdict-headline">{{ t.verdict.headline }}</div>
+                            <div class="verdict-hint" id="verdict-hint-{{ t.target_name }}">{{ t.verdict.hint }}</div>
+                        </div>
+                    </div>
+                    <div class="verdict-facts">
+                        <div class="fact {% if t.hypothetical %}fact-hypo{% endif %}">
+                            <span class="fact-l">{% if t.hypothetical %}M if #1 were the host{% else %}M{% endif %}</span>
+                            <span class="fact-v">{{ render_abs_mag(t.abs_mag) }}
+                                {% if sc.abs_mag is not none %}
+                                <span class="fact-sub">{{ sc.abs_mag_band or '' }}
+                                    {% if sc.abs_mag_source == 'peak' %}· peak {{ "%.2f"|format(sc.peak_mag) }} {{ sc.peak_filter or '' }}{% if sc.peak_source %} ({{ sc.peak_source }}){% endif %}{% if sc.abs_mag_discovery is not none %} · discovery {{ "%.2f"|format(sc.abs_mag_discovery) }}{% endif %}
+                                    {% elif sc.abs_mag_source == 'discovery' %}· from discovery mag (no light curve){% endif %}
+                                </span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="fact {% if t.hypothetical %}fact-hypo{% endif %}">
+                            <span class="fact-l">z</span>
+                            <span class="fact-v">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}<span class="fact-sub">{{ 'DESI host' if sc.z_source == 'desi_host' else 'TNS' if sc.z_source == 'tns' else 'candidate #1' if t.hypothetical else (sc.z_source or '') }}</span>{% else %}—{% endif %}</span>
+                        </div>
+                        {% if sc.d_dlr is not none %}
+                        <div class="fact">
+                            <span class="fact-l">d_DLR</span>
+                            <span class="fact-v">{{ "%.2f"|format(sc.d_dlr) }}<span class="fact-sub">{{ "%.1f"|format(sc.center_sep_arcsec) }}″{% if sc.offset_kpc is not none %} · {{ "%.1f"|format(sc.offset_kpc) }} kpc{% endif %}</span></span>
+                        </div>
+                        {% endif %}
+                        {% if hm and hm.rule %}
+                        <div class="fact">
+                            <span class="fact-l">Host</span>
+                            <span class="fact-v">{{ hm.rule.spectype or '—' }}<span class="fact-sub">{{ hm.rule.morph or '' }}{% if hm.rule.logmass %} · log M* {{ hm.rule.logmass }}{% endif %}{% if hm.rule.w1w2 is not none %} · W1−W2 {{ "%.2f"|format(hm.rule.w1w2) }}{% endif %}{% if hm.rule.fibre_only %} · fibre only{% endif %}</span></span>
+                        </div>
+                        {% endif %}
+                        <div class="fact fact-tags">{% for tag in sc.tags or [] %}{{ tag_chip(tag) }}{% else %}<span class="fact-sub">no tags</span>{% endfor %}</div>
+                    </div>
+                </div>
+
+                <!-- ── What to do (rendered by JS from the card's data-*) ── -->
+                <div class="action-bar" id="actions-{{ t.target_name }}"></div>
+
                 <div class="card-body-grid">
                     <div class="card-image-col">
-                        <div class="card-section-label">DESI Finder</div>
-                        <img {% if loop.first %}src{% else %}data-src{% endif %}="{{ url_for('detect.detect_image', target_name=result.target_name) }}"
-                             alt="DESI {{ result.target_name }}"
+                        <div class="card-section-label">LS DR10 · host model</div>
+                        <img {% if loop.first %}src{% else %}data-src{% endif %}="{{ url_for('detect.detect_image', target_name=t.target_name) }}"
+                             alt="LS DR10 {{ t.target_name }}"
                              class="card-finder-img lazy-img"
                              onclick="openImgModal(this)"
                              onerror="this.parentElement.innerHTML='<div class=\'card-img-missing\'>Image unavailable</div>'">
@@ -284,85 +340,59 @@
                     <div class="card-plot-col">
                         <div class="card-section-label">Photometry</div>
                         <div class="card-lc-actions">
-                            <button class="btn-action" onclick="fetchCardLightcurve('{{ result.target_name }}', {{ loop.index0 }})">Fetch LC</button>
-                            <button class="btn-action" onclick="refreshCardLightcurve('{{ result.target_name }}', {{ loop.index0 }})">Refresh LC</button>
+                            <button class="btn-action" onclick="fetchCardLightcurve('{{ t.target_name }}', {{ loop.index0 }})">Fetch LC</button>
+                            <button class="btn-action" onclick="refreshCardLightcurve('{{ t.target_name }}', {{ loop.index0 }})">Refresh LC</button>
                             <span class="card-lc-status" id="lc-status-{{ loop.index0 }}"></span>
                         </div>
-                        <div class="plotly-chart"
-                             id="plotly-card-{{ loop.index0 }}"
-                             data-target-name="{{ result.target_name }}"
-                             style="width:100%; height:360px;"></div>
+                        <div class="plotly-chart" id="plotly-card-{{ loop.index0 }}" data-target-name="{{ t.target_name }}" style="width:100%; height:360px;"></div>
                     </div>
                 </div>
 
-                <div class="card-section-label" style="margin-top:20px;">Catalog Matches</div>
+                <div class="card-section-label" style="margin-top:20px;">Candidates within the search radius · rule v1 (DLR)</div>
                 <div class="card-matches-wrap">
                     <table class="results-table match-detail-table">
                         <thead>
                             <tr>
+                                <th>Rule</th>
                                 <th>Source</th>
-                                <th>ID</th>
-                                <th>Coords</th>
-                                <th>Sep (")</th>
-                                <th>Z</th>
-                                <th>Abs Mag</th>
-                                <th>Score</th>
+                                <th>Spectrum</th>
+                                <th>z</th>
+                                <th title="Angular distance transient → catalogue position">Sep (″)</th>
+                                <th title="Distance in units of the galaxy's directional light radius; member if ≤ limit">d_DLR / limit</th>
+                                <th title="Absolute magnitude if this were the host">M(z)</th>
+                                <th>Galaxy</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for match in result.matches %}
-                            {% set md = match.get('match_data') or {} %}
-                            <tr data-match-id="{{ match.id or '' }}"
-                                data-match-z="{{ match.z if match.z is not none else '' }}"
-                                data-match-catalog="{{ match.catalog_name or '' }}"
-                                data-target-name="{{ result.target_name }}"
-                                data-is-host="{{ 'true' if match.is_host else 'false' }}">
-                                <td>{{ match.catalog_name }}</td>
-                                <td>
-                                    {% set match_id = md.get('id', match.get('id')) %}
-                                    {{ "%d"|format(match_id|int) if match_id else '—' }}
+                            {% for m in t.matches %}
+                            {% set r = m.rule %}
+                            {% set md = m.match_data or {} %}
+                            <tr class="match-{{ r.kind }}"
+                                data-match-id="{{ m.id or '' }}"
+                                data-match-z="{{ m.z if m.z is not none else '' }}"
+                                data-match-catalog="{{ m.catalog_name or '' }}"
+                                data-target-name="{{ t.target_name }}"
+                                data-is-host="{{ 'true' if m.is_host else 'false' }}"
+                                data-rule-kind="{{ r.kind }}"
+                                data-rule-rank="{{ r.rank or '' }}"
+                                data-host-user="{{ 'true' if r.host_user is true else 'false' if r.host_user is false else '' }}"
+                                data-host-user-by="{{ r.host_user_by or '' }}">
+                                <td class="td-rule"><span class="rule-chip rule-{{ r.kind }}">{{ r.label }}</span>
+                                    {% if r.ambiguous and m.is_host %}<span class="rule-note" title="Runner-up is within 1.5× in d_DLR">ambiguous</span>{% endif %}
+                                    {% if r.z_conflict %}<span class="rule-note" title="Another spectrum on this galaxy model has a different z">z-conflict</span>{% endif %}
                                 </td>
-                                <td class="td-coords">
-                                    {% set mr = match.get('match_ra') or md.get('ra') or md.get('_RAJ2000') %}
-                                    {% set md2 = match.get('match_dec') or md.get('dec') or md.get('_DEJ2000') %}
-                                    {% if mr and md2 %}{{ "%.4f"|format(mr|float) }}, {{ "%.4f"|format(md2|float) }}
-                                    {% else %}—{% endif %}
+                                <td><span class="badge">{{ m.catalog_name }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}</td>
+                                <td class="td-spec">{{ r.spectype or '—' }}{% if r.survey %}<span class="fact-sub">{{ r.survey }}/{{ r.program }}{% if r.zwarn %} · zwarn {{ r.zwarn }}{% endif %}</span>{% endif %}
+                                    {% if md.get('grade') or md.get('Grade') %}<span class="fact-sub">grade {{ md.get('grade') or md.get('Grade') }}</span>{% endif %}
+                                    {% if md.get('lens_probability') or md.get('LENS_PROBABILITY') %}<span class="fact-sub">P(lens) {{ "%.2f"|format((md.get('lens_probability') or md.get('LENS_PROBABILITY'))|float) }}</span>{% endif %}
                                 </td>
-                                <td>{{ "%.2f"|format(match.separation_arcsec) }}</td>
-                                <td>{% if match.z is not none %}{{ "%.4f"|format(match.z) }}{% else %}—{% endif %}</td>
-                                <td class="td-absmag">{{ render_abs_mag(match.abs_mag, match.separation_arcsec) }}</td>
-                                <td>
-                                    {% if 'Hsu' in match.catalog_name %}Grade: {{ md.get('Grade', '—') }}
-                                    {% elif 'Karp' in match.catalog_name %}
-                                        {% set lp = md.get('LENS_PROBABILITY') %}
-                                        Prob: {{ "%.3f"|format(lp|float) if lp else '—' }}
-                                    {% else %}—{% endif %}
-                                </td>
-                                <td style="white-space:nowrap;">
-                                    {% if match.is_host %}
-                                        <span class="badge-host">✓ HOST</span>
-                                        {% if session.user and session.user.is_admin %}
-                                        <button class="btn-action btn-remove" onclick="unsetHost('{{ result.target_name }}')" title="Clear host">Remove</button>
-                                        {% if not card_done %}
-                                        <button class="btn-action btn-checked" onclick="markChecked('{{ result.target_name }}')" title="Host confirmed, no follow-up needed">Check ✓</button>
-                                        {% endif %}
-                                        {% endif %}
-                                    {% elif card_done and result.target_is_host %}
-                                        <span style="color:#333;">—</span>
-                                    {% elif card_done and not result.target_is_host %}
-                                        <span style="color:#444;">—</span>
-                                    {% else %}
-                                        {% if session.user and session.user.is_admin %}
-                                        {% if result.target_is_host %}
-                                            <button class="btn-action btn-set-host" disabled title="Another match is already the host">Set Host</button>
-                                        {% else %}
-                                            <button class="btn-action btn-set-host {% if result.obj_status == 'object' %}btn-prominent{% endif %}"
-                                                    onclick="setHost('{{ match.id }}', '{{ result.target_name }}', '{{ match.z }}', '{{ match.catalog_name }}')">Set Host</button>
-                                        {% endif %}
-                                        {% endif %}
-                                    {% endif %}
-                                </td>
+                                <td>{% if m.z is not none %}{{ "%.4f"|format(m.z) }}{% else %}—{% endif %}</td>
+                                <td>{{ "%.2f"|format(m.separation_arcsec or 0) }}</td>
+                                <td class="td-dlr">{% if r.d_dlr is not none %}<span class="{{ 'dlr-in' if r.kind in ('host','member','shred') else 'dlr-tent' if r.kind == 'tentative' else 'dlr-out' }}">{{ "%.2f"|format(r.d_dlr) }}</span>{% if r.d_dlr_max %} / {{ "%g"|format(r.d_dlr_max) }}{% endif %}{% if r.center_sep is not none %}<span class="fact-sub">{{ "%.1f"|format(r.center_sep) }}″ to centre</span>{% endif %}{% else %}—{% endif %}</td>
+                                <td class="td-absmag">{{ render_abs_mag(m.abs_mag, m.separation_arcsec) }}</td>
+                                <td class="td-galaxy">{% if r.morph %}{{ r.morph }}{% endif %}{% if r.logmass %} · log M* {{ r.logmass }}{% endif %}{% if r.mag_r is not none %} · r {{ "%.1f"|format(r.mag_r) }}{% endif %}{% if r.w1w2 is not none %} · W1−W2 {{ "%.2f"|format(r.w1w2) }}{% if r.wise_agn %} <span class="rule-note">WISE AGN</span>{% endif %}{% endif %}{% if r.fibre_only %} <span class="rule-note" title="Secondary / ToO fibre without Legacy Survey photometry: may be a spectrum of the transient itself">fibre only</span>{% endif %}{% if r.shape_source and r.shape_source != 'dr10_tap' %}<span class="fact-sub">shape: {{ r.shape_source }}</span>{% endif %}</td>
+                                <td class="td-match-action" style="white-space:nowrap;"></td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -374,15 +404,80 @@
 
             {% else %}
             <div class="no-results">
-                <p>No detection results found for {{ selected_date }}.</p>
+                <p>No cross-match candidates on {{ selected_date }}.</p>
             </div>
             {% endif %}
-        </div></div><button id="backToTopBtn" title="Back to top">
+
+            {% if none_list %}
+            <details class="unmatched-section" {% if not results %}open{% endif %}>
+                <summary>
+                    <span class="hs-badge hs-none">○ No host</span>
+                    Screened, nothing within the search radius — <strong>{{ none_list|length }}</strong> objects (discovered in the last {{ unmatched_recent_days }} days) · no decision needed
+                </summary>
+                <div class="summary-table-wrap" style="margin-top:12px;">
+                    <table class="results-table unmatched-table">
+                        <thead>
+                            <tr><th>Object</th><th>Type</th><th>Discovery</th><th>Score</th><th>Tags</th><th>z (TNS)</th><th>M</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for n in none_list %}
+                            <tr>
+                                <td><a href="/object/{{ n.target_name }}" class="obj-name-link">{{ n.target_name }}</a></td>
+                                <td>{% if n.type %}<span class="badge-type">{{ n.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}</td>
+                                <td class="td-date">{{ n.discoverydate }}</td>
+                                <td style="text-align:center;"><span class="score-chip score-{{ 'hi' if n.score >= 7 else 'mid' if n.score >= 3 else 'lo' if n.score >= 0 else 'neg' }}">{{ n.score }}</span></td>
+                                <td class="td-tags">{% for tag in n.tags %}{{ tag_chip(tag) }}{% endfor %}</td>
+                                <td>{% if n.z is not none %}{{ "%.4f"|format(n.z) }}{% else %}—{% endif %}</td>
+                                <td class="td-absmag">{{ render_abs_mag(n.abs_mag) }}</td>
+                                <td style="text-align:center;">{{ status_badge(n.obj_status, false) }}{% if n.wake_note %}<br>{{ wake_chip(n.wake_note) }}{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+            {% endif %}
+
+            {% if old_list %}
+            <details class="unmatched-section unmatched-old">
+                <summary>
+                    <span class="hs-badge hs-none">○ No host</span>
+                    Old reports TNS edited this day — <strong>{{ old_list|length }}</strong> objects discovered more than {{ unmatched_recent_days }} days ago (re-imported because TNS changed something, not new transients)
+                </summary>
+                <div class="summary-table-wrap" style="margin-top:12px;">
+                    <table class="results-table unmatched-table">
+                        <thead>
+                            <tr><th>Object</th><th>Type</th><th>Discovery</th><th>Score</th><th>Tags</th><th>z (TNS)</th><th>M</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for n in old_list %}
+                            <tr>
+                                <td><a href="/object/{{ n.target_name }}" class="obj-name-link">{{ n.target_name }}</a></td>
+                                <td>{% if n.type %}<span class="badge-type">{{ n.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}</td>
+                                <td class="td-date">{{ n.discoverydate }}</td>
+                                <td style="text-align:center;"><span class="score-chip score-{{ 'hi' if n.score >= 7 else 'mid' if n.score >= 3 else 'lo' if n.score >= 0 else 'neg' }}">{{ n.score }}</span></td>
+                                <td class="td-tags">{% for tag in n.tags %}{{ tag_chip(tag) }}{% endfor %}</td>
+                                <td>{% if n.z is not none %}{{ "%.4f"|format(n.z) }}{% else %}—{% endif %}</td>
+                                <td class="td-absmag">{{ render_abs_mag(n.abs_mag) }}</td>
+                                <td style="text-align:center;">{{ status_badge(n.obj_status, false) }}{% if n.wake_note %}<br>{{ wake_chip(n.wake_note) }}{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+            {% endif %}
+        </div>
+    </div>
+
+    <button id="backToTopBtn" title="Back to top">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 15l-6-6-6 6"/>
         </svg>
     </button>
+
+    <div id="toast" class="toast" hidden></div>
 
     <div id="imgModal" onclick="closeImgModal()" style="
         display:none; position:fixed; inset:0; z-index:2000;

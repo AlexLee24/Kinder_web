@@ -10,21 +10,70 @@
 <body>
     {% include '_navbar.html' %}
 
+    {% macro host_badge(hs) -%}
+        {% if hs == 'confirmed' %}<span class="hs-badge hs-confirmed">● Confirmed host</span>
+        {% elif hs == 'review' %}<span class="hs-badge hs-review">? Needs judgement</span>
+        {% else %}<span class="hs-badge hs-none">○ No host</span>{% endif %}
+    {%- endmacro %}
+    {% macro tag_chip(tag) -%}
+        {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?')
+                else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z')
+                else 'tag-veto' if tag in ('Galactic', 'AGN', 'Classified', 'Star?')
+                else 'tag-warn' %}
+        <span class="tag-chip {{ cls }}">{{ tag }}</span>
+    {%- endmacro %}
+
     <div class="detect-home-container">
         <h1 class="main-title">DETECT</h1>
         <p class="sub-title">Daily Transient Event Cross-matching Tool</p>
+        <p class="lead">
+            Every TNS report is screened against DESI's spectroscopic galaxies: <em>is it in a galaxy with a known
+            redshift, how luminous is it, and is it worth a large-telescope spectrum?</em>
+            The pipeline decides what it can and hands the rest to a person on the
+            <a href="{{ url_for('detect.detect_results', detect_results=latest_date) if latest_date else '#' }}">review page</a>.
+        </p>
 
+        <!-- ── Latest run + results ─────────────────────────────── -->
         <div class="content-wrapper">
-            <!-- Pipeline diagram -->
-            <div class="section-card pipeline-section">
-                <h2>Pipeline</h2>
-                <div class="pipeline-image-container">
-                    <img src="{{ url_for('static', filename='photo/DETECT.png') }}" alt="DETECT Pipeline Flow" class="pipeline-img">
-                    <div class="pipeline-credit">Created with Xmind</div>
+            <div class="section-card overview-section">
+                <h2>Latest run</h2>
+                {% if overview and overview.last_run %}
+                {% set c = overview.counts %}
+                <div class="overview-when">{{ overview.last_run }}<span class="overview-sub">
+                    {{ c.total }} objects screened</span></div>
+                <div class="overview-stats">
+                    <a class="ov-stat ov-review" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                        <span class="ov-n">{{ c.review or 0 }}</span><span class="ov-l">need judgement</span></a>
+                    <a class="ov-stat ov-confirmed" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                        <span class="ov-n">{{ c.confirmed or 0 }}</span><span class="ov-l">confirmed host</span></a>
+                    <a class="ov-stat ov-none" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                        <span class="ov-n">{{ c.none or 0 }}</span><span class="ov-l">no host</span></a>
+                    <a class="ov-stat ov-pending" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                        <span class="ov-n">{{ overview.pending }}</span><span class="ov-l">waiting for a person</span></a>
                 </div>
+                {% if overview.top %}
+                <div class="overview-top-title">Highest priority right now</div>
+                <table class="overview-top">
+                    <thead><tr><th>Object</th><th>Score</th><th>Host</th><th>M</th><th>z</th><th>Tags</th></tr></thead>
+                    <tbody>
+                    {% for t in overview.top %}
+                    <tr>
+                        <td><a href="/object/{{ t.name }}" class="ov-link">{{ t.name }}</a></td>
+                        <td><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
+                        <td>{{ host_badge(t.host_status) }}</td>
+                        <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>
+                        <td class="num">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}{% else %}—{% endif %}</td>
+                        <td class="tags">{% for tag in t.tags if not tag.startswith('Host-') %}{{ tag_chip(tag) }}{% endfor %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+                {% else %}
+                <p class="overview-empty">No DETECT run recorded yet.</p>
+                {% endif %}
             </div>
 
-            <!-- Results -->
             <div class="section-card results-section">
                 <h2>Results</h2>
                 <div class="results-links">
@@ -35,12 +84,19 @@
                    class="result-link newest {% if newest.count == 0 %}no-match{% endif %} {% if newest.has_lens %}lens-match{% endif %}"
                    {% if newest.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                     <span class="newest-label">Latest · {{ newest.date }}</span>
-                    <span class="count-badge">{{ newest.count }} targets matched</span>
+                    <span class="count-badge">{{ newest.count }} with candidates{% if newest.screen %} · {{ newest.screen.total }} screened{% endif %}</span>
+                    {% if newest.screen %}
+                    <span class="count-split">
+                        <span class="hs-badge hs-review">{{ newest.screen.review }}</span>
+                        <span class="hs-badge hs-confirmed">{{ newest.screen.confirmed }}</span>
+                        <span class="hs-badge hs-none">{{ newest.screen.none }}</span>
+                    </span>
+                    {% endif %}
                     {% if newest.has_lens %}<span class="lens-badge">LENS MATCH!</span>{% endif %}
                 </a>
 
                 {% if daily_counts|length > 1 %}
-                <div class="archive-title">Recent Archives</div>
+                <div class="archive-title">Recent</div>
                 <div class="archive-grid">
                     {% for item in daily_counts[1:9] %}
                     <a href="{{ url_for('detect.detect_results', detect_results=item.date) if item.count > 0 else '#' }}"
@@ -56,9 +112,7 @@
 
                 {% if daily_counts|length > 9 %}
                 <div class="archive-btn-container">
-                    <a href="{{ url_for('detect.detect_archives') }}" class="all-archives-btn">
-                        All Archives
-                    </a>
+                    <a href="{{ url_for('detect.detect_archives') }}" class="all-archives-btn">All Archives</a>
                 </div>
                 {% endif %}
 
@@ -66,6 +120,142 @@
                 <span class="result-link disabled">No Results Available</span>
                 {% endif %}
                 </div>
+            </div>
+        </div>
+
+        <!-- ── Pipeline ─────────────────────────────────────────── -->
+        <div class="section-card pipeline-section">
+            <h2>Pipeline</h2>
+            <p class="pipeline-intro">Runs every hour on the hourly TNS file and once a day on the daily file plus every Follow-up object — as the DETECT daemon, and embedded in this site right after its own TNS import (same code, <code>app/modules/DETECT</code>). One run, seven steps:</p>
+
+            <ol class="flow">
+                <li class="flow-step">
+                    <div class="flow-num">1</div>
+                    <div class="flow-body">
+                        <div class="flow-title">TNS ingest</div>
+                        <div class="flow-sum">TNS reports land in <code>transient.objects</code> by an update-only-if-newer rule, whichever importer gets there first.</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li>DETECT's daemon and this site's hourly downloader both import; both follow the same contract: a field is only overwritten by a non-empty value, <em>lastmodified</em> never goes backwards, new objects get <code>obj_id = kinder_id</code>.</li>
+                                <li>Full-column upsert keyed by name: coordinates, type, discovery mag &amp; filter (by name, numeric TNS ids resolved), reporters, groups, last-modified.</li>
+                                <li>New objects get <code>obj_id = kinder_id</code>; the discovery point is seeded into <code>transient.photometry</code>.</li>
+                                <li>Snoozed objects wake up (→ Inbox) only when TNS's <em>lastmodified</em> is newer than what we hold; the wake-up is logged, and the review page says why the object is back.</li>
+                                <li>Bulk path (COPY + UPDATE + INSERT) for backfills ≥ 5 000 rows.</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">2</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Targets</div>
+                        <div class="flow-sum">The run's new TNS reports, and — daily — every object in <em>Follow-up</em>, so their light curves and M keep updating.</div>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">3</div>
+                    <div class="flow-body">
+                        <div class="flow-title">HEALPix cross-match</div>
+                        <div class="flow-sum">Cone search in <code>cat.desi</code> (30″) and <code>cat.lens</code> (5″), 8–20 ms each.</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li>NESTED, NSIDE 8192 (26″ pixels); <code>query_disc(inclusive)</code> → B-tree on <code>healpix_8192</code> → exact separation cut. Bounding-box fallback with 1/cos δ and RA wrap.</li>
+                                <li><code>cat.desi</code>: DESI DR1 (22.2 M, <code>zcat_primary</code>) + 22 k EDR-only targets (<code>data_release='edr'</code>), joined to LS DR10 Tractor shapes (R₅₀, e1/e2 → a, b, PA), WISE, stellar mass / SFR and AGN VACs. STAR spectra are kept aside as a “Star?” check.</li>
+                                <li><code>cat.lens</code>: Hsu, Karpenka and the merged lens catalogue.</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">4</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Host rule v1 · DLR</div>
+                        <div class="flow-sum">d_DLR = offset from the galaxy centre in units of its own radius in that direction. Member if ≤ 4 (SER/DEV/COMP) or ≤ 8 (EXP/REX).</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li>Each candidate → a Tractor model: LS DR10 TAP match ≤ 3″ (direct) or ≤ 10″ (fallback), else the catalogue's own shape. R₅₀ floor 0.5″.</li>
+                                <li>Tentative band up to 2× the limit; shreds merged when Δz ≤ 0.001 and one centre lies inside the other's R₂₅.</li>
+                                <li>A model whose only spectrum is a QSO is a quasar, not a galaxy with outskirts: it hosts a transient only when nuclear (d_DLR ≤ 1), never tentatively.</li>
+                                <li>Host = the member with the smallest d_DLR; row preference DESI › Lens, GALAXY › QSO, direct › fallback, LS photometry › bare fibre, then nearest.</li>
+                                <li>Runner-up within 1.5× → <em>ambiguous</em>; two spectra on one model with different z → <em>z-conflict</em>. Both keep the host but ask for a person.</li>
+                                <li>Calibrated on 4 474 TNS-classified SNe with DESI hosts: completeness 92.5 % (86 % at z &lt; 0.03, ≥ 95 % above z ≈ 0.06), wrong host 0.4 %, a host invented where none exists 6.7 %; the R₅₀ floor (0–2″) moves completeness by &lt; 1 %.</li>
+                                <li>A host chosen or rejected by a reviewer on this site is pinned and overrides the rule on later runs.</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">5</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Screening &amp; score</div>
+                        <div class="flow-sum">M = m − μ(z) − 2.5 log(1+z) − A<sub>λ</sub>; known Galactic / AGN / classified objects sink, luminous, nuclear or too-bright ones rise.</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li>Planck 2018 flat ΛCDM (H₀ = 67.4, Ω<sub>m</sub> = 0.315), SFD98 × SF11 extinction — the same <code>calculator.py</code> everywhere.</li>
+                                <li>m = the brightest real detection in the DB light curve (limits and mag 99 excluded), else the TNS discovery mag; both versions are stored.</li>
+                                <li>z = the DESI host, else the TNS classification redshift.</li>
+                                <li>Vetoes (score): Galactic −10 · AGN −10 · Classified −6 · Star? −3. Interest: host +3 (+2 if unclassified) · Luminous +3 · SLSN? +1 · TDE? +2 · Too-bright +3 · Lens +2 · glSN? +3 (+2 passive host).</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">6</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Image &amp; upload</div>
+                        <div class="flow-sum">LS DR10 cutout with the host ellipse, then everything into the Kinder DB.</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li><code>transient.cross_matches</code>: one row per candidate, <code>is_host</code>, the rule's numbers in <code>match_data</code>.</li>
+                                <li><code>transient.detect_screen</code>: the verdict — host_status, score, tags, M (peak and discovery), z, d_DLR, offset.</li>
+                                <li><code>transient.target_images</code>: the finder; <code>objects.tag</code>: DETECT's tags (yours are left alone); <code>objects.brightest_mag / brightest_abs_mag</code>.</li>
+                                <li>Object <em>status</em> is never touched by the pipeline.</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step flow-human">
+                    <div class="flow-num">7</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Review on Kinder</div>
+                        <div class="flow-sum">A person reads the verdict, looks at the image, presses one key. <a href="{{ url_for('detect.detect_results', detect_results=latest_date) if latest_date else '#' }}">Open the queue →</a></div>
+                    </div>
+                </li>
+            </ol>
+        </div>
+
+        <!-- ── How to read it ───────────────────────────────────── -->
+        <div class="content-wrapper legend-wrapper">
+            <div class="section-card legend-card">
+                <h2>Host status</h2>
+                <dl class="legend">
+                    <dt>{{ host_badge('confirmed') }}</dt><dd>One galaxy contains the transient and nothing argues against it. Accept it with <kbd>F</kbd> or <kbd>D</kbd>.</dd>
+                    <dt>{{ host_badge('review') }}</dt><dd>Ambiguous (a second galaxy nearly as close), conflicting z on the host, or the nearest galaxy is just outside the limit. Look, then set the host or say no.</dd>
+                    <dt>{{ host_badge('none') }}</dt><dd>No spectroscopic galaxy contains it. Usually nothing to do.</dd>
+                </dl>
+            </div>
+            <div class="section-card legend-card">
+                <h2>Tags</h2>
+                <dl class="legend legend-tags">
+                    <dt>{{ tag_chip('Luminous') }} {{ tag_chip('SLSN?') }}</dt><dd>M ≤ −20 · M ≤ −21</dd>
+                    <dt>{{ tag_chip('Too-bright') }}</dt><dd>z ≥ 0.15 and ≥ 1 mag brighter than an SN Ia peak</dd>
+                    <dt>{{ tag_chip('glSN?') }}</dt><dd>Too-bright in a passive host or on a lens</dd>
+                    <dt>{{ tag_chip('Nuclear') }} {{ tag_chip('TDE?') }}</dt><dd>within 1″ of the centre · and the host is not an AGN</dd>
+                    <dt>{{ tag_chip('Lens') }} {{ tag_chip('Passive-host') }}</dt><dd>lens-catalogue match · sSFR &lt; 10⁻¹¹ or de Vaucouleurs</dd>
+                    <dt>{{ tag_chip('Galactic') }} {{ tag_chip('AGN') }} {{ tag_chip('Classified') }} {{ tag_chip('Star?') }}</dt><dd>known from TNS / DESI — low priority, never hidden</dd>
+                    <dt>{{ tag_chip('Ambiguous') }} {{ tag_chip('z-conflict') }} {{ tag_chip('Host-z?') }}</dt><dd>why the host needs judgement</dd>
+                </dl>
+            </div>
+            <div class="section-card legend-card">
+                <h2>Decisions</h2>
+                <dl class="legend legend-keys">
+                    <dt><kbd>F</kbd></dt><dd><strong>Follow-up</strong> — accepts the host; DETECT re-screens it daily.</dd>
+                    <dt><kbd>D</kbd></dt><dd><strong>Done</strong> — host accepted, nothing more to do.</dd>
+                    <dt><kbd>N</kbd></dt><dd><strong>No host</strong> — every candidate rejected.</dd>
+                    <dt><kbd>R</kbd></dt><dd><strong>Reopen</strong> — withdraw your decision.</dd>
+                    <dt><em>Set host</em></dt><dd>on any candidate row to change the galaxy; it stays yours on re-runs.</dd>
+                    <dt><kbd>←</kbd><kbd>→</kbd> <kbd>U</kbd></dt><dd>move · next pending</dd>
+                </dl>
             </div>
         </div>
     </div>
