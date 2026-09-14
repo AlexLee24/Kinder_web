@@ -41,6 +41,7 @@ dependencies = [
     # Other
     "apscheduler",
     "slack-sdk",
+    "gunicorn>=26.2.0",
 ]
 
 [dependency-groups]
