@@ -6,13 +6,16 @@ app/blueprints/private_area/tutorials/.env
 # ---- runtime data (never commit) ----------------------------------------------
 app/data/
 app/log/
-app/vendor/DETECT/data/
+app/vendor/
 app/blueprints/planners/ov_plot/*
 app/blueprints/basic/gallery_uploads/
 app/blueprints/private_area/data/
 app/blueprints/private_area/tutorials/*
 app/blueprints/web_api/static/
 *.bsp
+app/routes/planners/ov_plot
+app/routes/private_area
+
 
 # ---- private module not published with the repo ---------------------------------
 app/services/photometry/download_phot.py
@@ -90,3 +93,5 @@ tests/smoke_baseline.json
 tests/*.json
 tests/tools/*.json
 docs/baseline/*.json
+
+
