@@ -1,0 +1,217 @@
+/* ================================================================
+   _theme.css — Kinder Web design system (tokens + shared components)
+   Loaded on every page (by _navbar.html, and directly by home.html).
+   Direction: dark "observatory" surfaces, Apple HIG ergonomics
+   (system type, 4/8pt rhythm, 44pt targets, one prominent action per view,
+   visible focus, reduced-motion support). Change a token here → site-wide.
+   ================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=TASA+Explorer:wght@300;400;500;600;700&display=swap');
+
+:root {
+    color-scheme: dark;
+
+    /* ── Type ────────────────────────────────────────────────── */
+    --kw-font-sans:   "TASA Explorer", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    --kw-font-system: var(--kw-font-sans);
+    --kw-font-mono:   ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --kw-text-xs:   0.75rem;   /* 12 */
+    --kw-text-sm:   0.875rem;  /* 14 */
+    --kw-text-md:   1rem;      /* 16 */
+    --kw-text-lg:   1.125rem;  /* 18 */
+    --kw-text-xl:   1.375rem;  /* 22 */
+    --kw-text-2xl:  1.75rem;   /* 28 */
+    --kw-text-3xl:  2.5rem;    /* 40 */
+
+    /* ── Accent / brand (gold = primary action, blue = links/info) ─ */
+    --kw-accent:          #D4B06A;
+    --kw-accent-hover:    #E2C384;
+    --kw-accent-dark:     #A8843F;
+    --kw-accent-contrast: #1A1408;
+    --kw-accent-dim:      rgba(212, 176, 106, 0.18);
+    --kw-accent-border:   rgba(212, 176, 106, 0.35);
+    --kw-accent-gradient:    linear-gradient(135deg, #E2C384, #B8934A);
+    --kw-secondary-gradient: linear-gradient(135deg, #5E9BFF, #3B6FE0);
+    --kw-link:            #6DA9FF;
+
+    /* ── Semantic (Apple system colors, dark variants) ───────── */
+    --kw-color-success: #30D158;
+    --kw-color-warning: #FFD60A;
+    --kw-color-info:    #64D2FF;
+    --kw-color-danger:  #FF453A;
+    --kw-color-blue:    #0A84FF;
+    --kw-color-orange:  #FF9F0A;
+    --kw-color-purple:  #BF5AF2;
+
+    /* ── Text ────────────────────────────────────────────────── */
+    --kw-text-primary:   #F2F2F7;
+    --kw-text-white:     #FFFFFF;
+    --kw-text-secondary: rgba(235, 235, 245, 0.72);
+    --kw-text-muted:     rgba(235, 235, 245, 0.55);
+
+    /* ── Surfaces ────────────────────────────────────────────── */
+    --kw-bg:             #0B0D14;
+    --kw-bg-elevated:    #14171F;
+    --kw-surface:        rgba(255, 255, 255, 0.06);
+    --kw-surface-hover:  rgba(255, 255, 255, 0.10);
+    --kw-glass-bg:       rgba(18, 20, 28, 0.72);
+    --kw-glass-bg-light: rgba(255, 255, 255, 0.08);
+    --kw-glass-border:   rgba(255, 255, 255, 0.14);
+    --kw-glass-shadow:   0 10px 40px rgba(0, 0, 0, 0.45);
+    --kw-bg-overlay:     rgba(255, 255, 255, 0.05);
+    --kw-scrim:          rgba(0, 0, 0, 0.6);
+
+    /* ── Borders ─────────────────────────────────────────────── */
+    --kw-border:     rgba(255, 255, 255, 0.10);
+    --kw-border-med: rgba(255, 255, 255, 0.18);
+    --kw-focus-ring: 0 0 0 3px rgba(109, 169, 255, 0.55);
+
+    /* ── Spacing (4/8pt rhythm) ──────────────────────────────── */
+    --kw-space-xs:  4px;
+    --kw-space-sm:  8px;
+    --kw-space-md:  12px;
+    --kw-space-lg:  16px;
+    --kw-space-xl:  24px;
+    --kw-space-2xl: 32px;
+    --kw-space-3xl: 48px;
+
+    /* ── Radius ──────────────────────────────────────────────── */
+    --kw-radius-sm:  8px;
+    --kw-radius-md:  12px;
+    --kw-radius-lg:  16px;
+    --kw-radius-xl:  22px;
+    --kw-radius-2xl: 28px;
+    --kw-radius-pill: 999px;
+
+    /* ── Motion ──────────────────────────────────────────────── */
+    --kw-ease:            cubic-bezier(0.2, 0.8, 0.2, 1);
+    --kw-transition:      all 0.18s var(--kw-ease);
+    --kw-transition-fast: 0.15s var(--kw-ease);
+    --kw-transition-slow: 0.35s var(--kw-ease);
+
+    /* ── Elevation ───────────────────────────────────────────── */
+    --kw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --kw-shadow:    0 4px 20px rgba(0, 0, 0, 0.35);
+    --kw-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+    /* ── Controls ────────────────────────────────────────────── */
+    --kw-control-h:    40px;   /* comfortable default */
+    --kw-control-h-sm: 32px;
+    --kw-target-min:   44px;   /* HIG minimum hit region */
+    --kw-nav-h:        60px;
+}
+
+/* Fluid base: 14px → 16px */
+html {
+    font-size: clamp(14px, calc(12.5px + 0.25vw), 16px);
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: var(--kw-font-sans);
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.5;
+    accent-color: var(--kw-accent);
+}
+
+::selection { background: var(--kw-accent-dim); color: var(--kw-text-white); }
+
+/* ── Base control ergonomics (zero-specificity so page CSS still wins) ── */
+:where(button, [type="button"], [type="submit"], [type="reset"], .btn) {
+    font-family: inherit;
+    font-size: var(--kw-text-sm);
+    font-weight: 600;
+    line-height: 1;
+    min-height: var(--kw-control-h-sm);
+    padding: 8px 14px;
+    border-radius: var(--kw-radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: var(--kw-transition);
+    user-select: none;
+}
+:where(button:has(> svg:only-child), button:has(> svg:only-child + span:empty)) { padding: 0; }  /* icon-only buttons keep their own box */
+:where(button, [type="button"], [type="submit"], .btn):disabled,
+:where(button, [type="button"], [type="submit"], .btn)[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+:where(a) { color: var(--kw-link); }
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea) {
+    font-family: inherit;
+    font-size: var(--kw-text-sm);
+    color: var(--kw-text-primary);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--kw-border-med);
+    border-radius: var(--kw-radius-sm);
+    padding: 8px 12px;
+    min-height: var(--kw-control-h-sm);
+    transition: border-color var(--kw-transition-fast), box-shadow var(--kw-transition-fast), background var(--kw-transition-fast);
+}
+:where(input, select, textarea)::placeholder { color: var(--kw-text-muted); }
+:where(input, select, textarea):focus {
+    outline: none;
+    border-color: var(--kw-link);
+    box-shadow: var(--kw-focus-ring);
+    background: rgba(255, 255, 255, 0.08);
+}
+:where(button, a, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow: var(--kw-focus-ring);
+}
+:where(button, .btn):not(:disabled):active { transform: scale(0.98); }
+:where(table) { border-collapse: collapse; }
+:where(th) { font-weight: 600; color: var(--kw-text-secondary); font-size: var(--kw-text-xs); letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* ── Shared button roles (used across pages: .btn-primary etc.) ── */
+.btn, .btn-modern {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--kw-control-h);
+    padding: 10px 18px;
+    border-radius: var(--kw-radius-md);
+    font-weight: 600;
+    background: var(--kw-surface);
+    color: var(--kw-text-primary);
+    border: 1px solid var(--kw-border-med);
+}
+.btn:hover, .btn-modern:hover { background: var(--kw-surface-hover); border-color: rgba(255, 255, 255, 0.28); }
+.btn-primary, .btn-approve, .btn-api {
+    background: var(--kw-accent) !important;
+    color: var(--kw-accent-contrast) !important;
+    border-color: transparent !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.btn-primary:hover, .btn-approve:hover, .btn-api:hover { background: var(--kw-accent-hover) !important; }
+.btn-secondary, .btn-ghost, .btn-api-secondary, .pa-btn-cancel, .home-btn-secondary {
+    background: var(--kw-surface);
+    color: var(--kw-text-primary);
+    border: 1px solid var(--kw-border-med);
+}
+.btn-secondary:hover, .btn-ghost:hover, .btn-api-secondary:hover, .pa-btn-cancel:hover { background: var(--kw-surface-hover); }
+.btn-danger, .btn-reject, .delete-btn, .home-delete-btn {
+    background: rgba(255, 69, 58, 0.14) !important;
+    color: #FF6B61 !important;
+    border: 1px solid rgba(255, 69, 58, 0.35) !important;
+}
+.btn-danger:hover, .btn-reject:hover, .delete-btn:hover, .home-delete-btn:hover { background: rgba(255, 69, 58, 0.24) !important; }
+.btn-warning { background: rgba(255, 214, 10, 0.14); color: #FFD60A; border: 1px solid rgba(255, 214, 10, 0.35); }
+
+/* ── Scrollbars (WebKit) ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); background-clip: padding-box; }
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

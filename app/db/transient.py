@@ -1,0 +1,2421 @@
+"""transient schema — objects, photometry, spectroscopy, cross_matches,
+target_images, download_logs, object_views, comments, pin/flag operations.
+
+All SQL targets the 'Kinder' database transient schema.
+Return values use backward-compatible column aliases matching legacy tns_objects.
+"""
+
+import json
+import logging
+import os
+import re as _re
+import time as _time
+from datetime import datetime, timezone
+
+from psycopg2 import extras
+
+from . import get_db_connection, OBJECT_COMPAT_COLS
+
+logger = logging.getLogger(__name__)
+
+_marshal_stats_cache = {'expires_at': 0.0, 'value': None}
+
+
+def _ensure_cross_matches_flag_column(cur, conn=None):
+    try:
+        cur.execute(
+            "ALTER TABLE transient.cross_matches "
+            "ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
+        )
+        if conn is not None:
+            conn.commit()
+    except Exception as e:
+        if conn is not None:
+            conn.rollback()
+        logger.error("_ensure_cross_matches_flag_column: %s", e)
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_obj_id(cur, name: str) -> int | None:
+    """Return obj_id for a given object name (bare name without prefix)."""
+    cur.execute(
+        "SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1",
+        (name,)
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _resolve_obj_id_with_prefix(cur, name: str) -> int | None:
+    """Return obj_id for name, handling optional AT/SN/… prefix in a single query."""
+    m = _re.match(r'^(?:AT|SN|FRB|TDE|EP)(.+)$', name)
+    bare = m.group(1) if m else None
+    if bare:
+        cur.execute(
+            "SELECT obj_id FROM transient.objects WHERE name = %s OR name = %s LIMIT 1",
+            (name, bare)
+        )
+    else:
+        cur.execute(
+            "SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1",
+            (name,)
+        )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _mjd_update(cur, obj_id: int, mjd: float):
+    """Update last_phot_date when new MJD is later.
+    Also un-snooze the object if it was Snoozed — new photometry means
+    the object is active again and should return to Inbox."""
+    cur.execute(
+        "UPDATE transient.objects "
+        "SET last_phot_date = %s, "
+        "    status = CASE WHEN status = 'Snoozed' THEN 'Inbox' ELSE status END "
+        "WHERE obj_id = %s AND (last_phot_date IS NULL OR last_phot_date < %s)",
+        (mjd, obj_id, mjd)
+    )
+
+
+def _clean_spectrum_source_name(raw: str | None) -> str:
+    text = str(raw or '').strip()
+    if not text:
+        return ''
+    text = _re.sub(r'[/\\]+', '-', text)
+    text = _re.sub(r'[^0-9A-Za-z ._()+\-]+', ' ', text)
+    text = _re.sub(r'\s+', ' ', text).strip(' ._-')
+    return text[:80]
+
+
+def _infer_spectrum_source_name(original_filename: str | None) -> str:
+    if not original_filename:
+        return ''
+    stem = os.path.splitext(os.path.basename(str(original_filename)))[0]
+    tokens = [tok for tok in _re.split(r'[^0-9A-Za-z]+', stem) if tok]
+    if not tokens:
+        return ''
+    letters = _re.sub(r'[^A-Za-z]+', '', tokens[0])
+    if 2 <= len(letters) <= 10:
+        return _clean_spectrum_source_name(letters.upper())
+    return ''
+
+
+def _build_utc_datetime(year: int, month: int, day: int,
+                        hour: int = 0, minute: int = 0, second: int = 0) -> datetime | None:
+    try:
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _extract_spectrum_datetime(original_filename: str | None) -> datetime | None:
+    if not original_filename:
+        return None
+    stem = os.path.splitext(os.path.basename(str(original_filename)))[0]
+    patterns = [
+        (r'(?<!\d)(20\d{2})(\d{2})(\d{2})[T_\-]?(\d{2})(\d{2})(\d{2})(?!\d)', True),
+        (r'(?<!\d)(20\d{2})[-_](\d{2})[-_](\d{2})[T_\-](\d{2})[-_](\d{2})[-_](\d{2})(?!\d)', True),
+        (r'(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)', False),
+        (r'(?<!\d)(20\d{2})[-_](\d{2})[-_](\d{2})(?!\d)', False),
+    ]
+    for pattern, has_time in patterns:
+        match = _re.search(pattern, stem)
+        if not match:
+            continue
+        year, month, day = map(int, match.group(1, 2, 3))
+        if has_time:
+            hour, minute, second = map(int, match.group(4, 5, 6))
+            dt = _build_utc_datetime(year, month, day, hour, minute, second)
+        else:
+            dt = _build_utc_datetime(year, month, day)
+        if dt is not None:
+            return dt
+    return None
+
+
+def _parse_manual_observation_date(observation_date: str | None) -> datetime | None:
+    text = str(observation_date or '').strip()
+    if not text:
+        return None
+    # Accept date input (YYYY-MM-DD) and ISO datetime strings by taking date part.
+    if 'T' in text:
+        text = text.split('T', 1)[0].strip()
+    if ' ' in text:
+        text = text.split(' ', 1)[0].strip()
+    match = _re.match(r'^(\d{4})-(\d{2})-(\d{2})$', text)
+    if not match:
+        return None
+    year, month, day = map(int, match.groups())
+    return _build_utc_datetime(year, month, day)
+
+
+def _datetime_to_mjd(dt: datetime) -> float:
+    return dt.timestamp() / 86400.0 + 40587.0
+
+
+def _current_utc_mjd() -> float:
+    return _datetime_to_mjd(datetime.now(timezone.utc))
+
+
+def _phase_from_stored_value(value) -> float | None:
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    return val if 0.0 < val < 1000.0 else None
+
+
+def _format_spectrum_observation_label(mjd) -> str:
+    phase = _phase_from_stored_value(mjd)
+    if phase is not None:
+        return ''
+    try:
+        mjd_val = float(mjd)
+    except (TypeError, ValueError):
+        return ''
+    if mjd_val <= 1.0:
+        return ''
+    dt = datetime.fromtimestamp((mjd_val - 40587.0) * 86400.0, tz=timezone.utc)
+    if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+        return dt.strftime('%Y-%m-%d')
+    return dt.strftime('%Y-%m-%d %H:%M UTC')
+
+
+def _legacy_spectrum_source_label(source: str | None) -> str:
+    text = str(source or '').strip()
+    if not text:
+        return ''
+    dt = _extract_spectrum_datetime(text)
+    return _format_spectrum_observation_label(_datetime_to_mjd(dt)) if dt else ''
+
+
+def _build_spectrum_id(source: str | None, mjd) -> str:
+    source_name = _clean_spectrum_source_name(source) or 'Unknown'
+    try:
+        mjd_val = float(mjd)
+    except (TypeError, ValueError):
+        mjd_val = 0.0
+    return f'{source_name}@@{mjd_val:.6f}'
+
+
+def _parse_spectrum_id(spectrum_id: str | None) -> tuple[str, float | None]:
+    raw = str(spectrum_id or '').strip()
+    if '@@' not in raw:
+        return raw, None
+    source_name, mjd_text = raw.rsplit('@@', 1)
+    try:
+        return source_name, float(mjd_text)
+    except (TypeError, ValueError):
+        return source_name, None
+
+
+def _build_spectrum_label(source: str | None, mjd) -> str:
+    source_name = _clean_spectrum_source_name(source)
+    legacy_label = _legacy_spectrum_source_label(source_name)
+    obs_label = _format_spectrum_observation_label(mjd) or legacy_label
+    display_source = '' if legacy_label else source_name
+    if display_source and obs_label:
+        return f'{display_source} - {obs_label}'
+    if display_source:
+        return display_source
+    if obs_label:
+        return obs_label
+    return 'Spectrum'
+
+
+def _resolve_spectrum_source_and_mjd(
+    telescope=None,
+    spectrum_id=None,
+    original_filename=None,
+    phase=None,
+    observation_date=None,
+):
+    parsed_source, parsed_mjd = _parse_spectrum_id(spectrum_id)
+    source_name = (
+        _clean_spectrum_source_name(telescope)
+        or _clean_spectrum_source_name(parsed_source)
+        or _infer_spectrum_source_name(original_filename)
+        or 'Unknown'
+    )
+
+    if parsed_mjd is not None and parsed_mjd > 1.0:
+        mjd = parsed_mjd
+    else:
+        manual_dt = _parse_manual_observation_date(observation_date)
+        if manual_dt is not None:
+            mjd = _datetime_to_mjd(manual_dt)
+        else:
+            observed_dt = _extract_spectrum_datetime(original_filename)
+            if observed_dt is not None:
+                mjd = _datetime_to_mjd(observed_dt)
+            else:
+                phase_val = _phase_from_stored_value(phase)
+                mjd = phase_val if phase_val is not None else _current_utc_mjd()
+
+    return source_name, float(mjd)
+
+
+# ---------------------------------------------------------------------------
+# Kinder ID helpers  (year * 1_000_000 + letter_rank)
+# ---------------------------------------------------------------------------
+
+_KINDER_NAME_RE = _re.compile(r'^(\d{4})([a-z]+)$')
+
+
+def _tns_name_to_kinder_id(name: str) -> int | None:
+    """Convert TNS name → internal kinder_id.
+
+    Examples:
+      '2024ggi' → 2024_004923   (rank of 'ggi': 7*676+7*26+9 = 4923)
+      '2026zzzz' → 2026_475254  (rank of 'zzzz': 26+676+17576+456976)
+    Formula: year * 1_000_000 + sum((ord(c)-96) * 26^i
+                                    for i,c in enumerate(reversed(suffix)))
+    """
+    m = _KINDER_NAME_RE.match(name)
+    if not m:
+        return None
+    year   = int(m.group(1))
+    suffix = m.group(2)
+    rank   = sum((ord(c) - 96) * (26 ** i) for i, c in enumerate(reversed(suffix)))
+    return year * 1_000_000 + rank
+
+
+def sync_kinder_ids() -> int:
+    """Compute and write kinder_id for all rows where it is NULL.
+    Handles both lowercase multi-letter ('2026aa') and uppercase single-letter ('2026A') names.
+    Returns the number of rows updated.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT obj_id, name FROM transient.objects "
+                "WHERE kinder_id IS NULL AND name ~ '^[0-9]{4}[a-zA-Z]+$'"
+            )
+            updates = []
+            for obj_id, name in cur.fetchall():
+                # _tns_name_to_kinder_id uses lowercase-only regex; handle uppercase here
+                kid = _tns_name_to_kinder_id(name) or _tns_name_to_kinder_id(name.lower())
+                if kid is not None:
+                    updates.append((kid, obj_id))
+            if updates:
+                extras.execute_batch(
+                    cur,
+                    "UPDATE transient.objects SET kinder_id = %s WHERE obj_id = %s",
+                    updates,
+                    page_size=1000,
+                )
+                conn.commit()
+            return len(updates)
+    except Exception as e:
+        logger.error("sync_kinder_ids: %s", e)
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Download logs
+# ---------------------------------------------------------------------------
+
+def log_download_attempt(hour_utc: str = '', filename: str = '') -> int | None:
+    """Insert a new download log entry; return log_id."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO transient.download_logs (download_date, obj_import, obj_update, status, filename) "
+                "VALUES (now(), 0, 0, 'In Progress', %s) RETURNING log_id",
+                (filename,)
+            )
+            log_id = cur.fetchone()[0]
+            conn.commit()
+            return log_id
+    except Exception as e:
+        logger.error("log_download_attempt: %s", e)
+        return None
+
+
+def update_download_log(log_id: int, status: str,
+                        records_imported: int = 0,
+                        records_updated: int = 0,
+                        error_message: str | None = None):
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.download_logs "
+                "SET status=%s, obj_import=%s, obj_update=%s, error_message=%s "
+                "WHERE log_id=%s",
+                (status, records_imported, records_updated, error_message, log_id)
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("update_download_log: %s", e)
+
+
+def _ensure_tns_update_audit_table(cur):
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS transient.tns_update_audit ("
+        "audit_id BIGSERIAL PRIMARY KEY, "
+        "obj_id BIGINT NOT NULL, "
+        "name TEXT NOT NULL, "
+        "changed_fields TEXT[] NOT NULL DEFAULT '{}', "
+        "source TEXT NOT NULL DEFAULT 'tns_sync', "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+        ")"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tns_update_audit_updated_at "
+        "ON transient.tns_update_audit(updated_at DESC)"
+    )
+
+
+def log_tns_update_batch(rows: list[tuple[int, str, list[str], str]]):
+    """rows: (obj_id, name, changed_fields, source)."""
+    if not rows:
+        return
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_tns_update_audit_table(cur)
+            extras.execute_batch(
+                cur,
+                "INSERT INTO transient.tns_update_audit (obj_id, name, changed_fields, source) "
+                "VALUES (%s, %s, %s, %s)",
+                rows,
+                page_size=1000,
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("log_tns_update_batch: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# TNSObjectDB — photometry, spectroscopy, comments, object views
+# ---------------------------------------------------------------------------
+
+class TNSObjectDB:
+
+    @staticmethod
+    def add_photometry_point(object_name: str, mjd: float,
+                             magnitude=None, magnitude_error=None,
+                             filter_name=None, telescope=None) -> int | None:
+        # Reject clearly invalid magnitudes (negative apparent mag is unphysical)
+        if magnitude is not None:
+            try:
+                if float(magnitude) < 0:
+                    logger.debug("add_photometry_point: skipping negative mag %.3f for %s", magnitude, object_name)
+                    return None
+            except (TypeError, ValueError):
+                pass
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                logger.debug("add_photometry_point: no obj_id for %s", object_name)
+                cur.close()
+                return None
+            cur.execute(
+                "INSERT INTO transient.photometry "
+                "(obj_id, name, \"MJD\", mag, mag_err, filter, source) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT ON CONSTRAINT phot_uniq DO NOTHING "
+                "RETURNING phot_id",
+                (obj_id, object_name, mjd, magnitude, magnitude_error,
+                 filter_name, telescope)
+            )
+            row = cur.fetchone()
+            phot_id = row[0] if row else None
+            if phot_id:
+                _mjd_update(cur, obj_id, mjd)
+            conn.commit()
+        return phot_id
+
+    @staticmethod
+    def add_photometry_batch(object_name: str, points: list) -> int:
+        if not points:
+            return 0
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return 0
+            inserted = 0
+            max_mjd = None
+            for p in points:
+                mag = p.get('magnitude')
+                # Skip negative apparent magnitudes
+                if mag is not None:
+                    try:
+                        if float(mag) < 0:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                cur.execute(
+                    "INSERT INTO transient.photometry "
+                    "(obj_id, name, \"MJD\", mag, mag_err, filter, source) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT ON CONSTRAINT phot_uniq DO NOTHING "
+                    "RETURNING phot_id",
+                    (obj_id, object_name, p['mjd'],
+                     p.get('magnitude'), p.get('magnitude_error'),
+                     p.get('filter'),
+                     p.get('telescope', p.get('source', 'Unknown')))
+                )
+                if cur.fetchone():
+                    inserted += 1
+                    if max_mjd is None or p['mjd'] > max_mjd:
+                        max_mjd = p['mjd']
+            if max_mjd is not None:
+                _mjd_update(cur, obj_id, max_mjd)
+            conn.commit()
+        return inserted
+
+    @staticmethod
+    def add_photometry_bulk(photometry_data):
+        """Bulk insert: list of (object_name, mjd, magnitude, mag_err, filter, telescope)."""
+        if not photometry_data:
+            return
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            # Resolve names to obj_ids in bulk
+            names = list({row[0] for row in photometry_data})
+            cur.execute(
+                "SELECT name, obj_id FROM transient.objects WHERE name = ANY(%s)",
+                (names,)
+            )
+            name_map = {r[0]: r[1] for r in cur.fetchall()}
+            rows = []
+            max_mjd_by_oid: dict = {}
+            for row in photometry_data:
+                oid = name_map.get(row[0])
+                if oid:
+                    mag = row[2]
+                    # Skip negative apparent magnitudes
+                    if mag is not None:
+                        try:
+                            if float(mag) < 0:
+                                continue
+                        except (TypeError, ValueError):
+                            pass
+                    mjd = row[1]
+                    rows.append((oid, row[0], mjd, mag, row[3], row[4], row[5]))
+                    if oid not in max_mjd_by_oid or mjd > max_mjd_by_oid[oid]:
+                        max_mjd_by_oid[oid] = mjd
+            if rows:
+                extras.execute_batch(
+                    cur,
+                    "INSERT INTO transient.photometry "
+                    "(obj_id, name, \"MJD\", mag, mag_err, filter, source) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT ON CONSTRAINT phot_uniq DO NOTHING",
+                    rows,
+                    page_size=1000
+                )
+                # Update last_phot_date and un-snooze for each affected object
+                for oid, max_mjd in max_mjd_by_oid.items():
+                    _mjd_update(cur, oid, max_mjd)
+            conn.commit()
+
+    @staticmethod
+    def sync_last_photometry_date(object_name: str):
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return
+            cur.execute(
+                "SELECT MAX(\"MJD\") FROM transient.photometry WHERE obj_id = %s",
+                (obj_id,)
+            )
+            max_mjd = cur.fetchone()[0]
+            cur.execute(
+                "UPDATE transient.objects SET last_phot_date = %s WHERE obj_id = %s",
+                (max_mjd, obj_id)
+            )
+            conn.commit()
+
+    @staticmethod
+    def get_photometry(object_name: str) -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return []
+            cur.execute(
+                'SELECT phot_id AS id, name AS object_name, "MJD" AS mjd, '
+                'mag AS magnitude, mag_err AS magnitude_error, filter, source AS telescope '
+                'FROM transient.photometry WHERE obj_id = %s '
+                'AND (mag IS NULL OR mag >= 0) '
+                'ORDER BY "MJD" ASC',
+                (obj_id,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    @staticmethod
+    def delete_photometry_point(point_id: int) -> bool:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM transient.photometry WHERE phot_id = %s", (point_id,))
+            deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
+
+    @staticmethod
+    def add_spectrum_data(object_name: str, wavelength_data, intensity_data,
+                          phase=None, telescope=None, spectrum_id=None,
+                          original_filename=None, observation_date=None):
+        """Store spectroscopy with source=telescope/instrument and MJD=observation epoch."""
+        source_tag, mjd = _resolve_spectrum_source_and_mjd(
+            telescope=telescope,
+            spectrum_id=spectrum_id,
+            original_filename=original_filename,
+            phase=phase,
+            observation_date=observation_date,
+        )
+        spectrum_id = _build_spectrum_id(source_tag, mjd)
+        rows = [
+            (None, object_name, mjd, wl, inten, source_tag)
+            for wl, inten in zip(wavelength_data, intensity_data)
+        ]
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return spectrum_id
+            entries = [(obj_id, object_name, mjd, wl, inten, source_tag) for _, name, mjd, wl, inten, src in rows]
+            extras.execute_batch(
+                cur,
+                "INSERT INTO transient.spectroscopy "
+                "(obj_id, name, \"MJD\", wavelength, intensity, source) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                entries,
+                page_size=1000
+            )
+            conn.commit()
+        return spectrum_id
+
+    @staticmethod
+    def get_spectroscopy(object_name: str) -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return []
+            cur.execute(
+                'SELECT spec_id AS id, name AS object_name, "MJD" AS observation_mjd, '
+                'wavelength, intensity, source AS source_name '
+                'FROM transient.spectroscopy '
+                'WHERE obj_id = %s ORDER BY source, wavelength',
+                (obj_id,)
+            )
+            rows = []
+            for row in cur.fetchall():
+                item = dict(row)
+                source_name = item.pop('source_name', '')
+                observation_mjd = item.get('observation_mjd')
+                item['telescope'] = source_name or 'Unknown'
+                item['phase'] = _phase_from_stored_value(observation_mjd)
+                item['spectrum_id'] = _build_spectrum_id(source_name, observation_mjd)
+                item['spectrum_label'] = _build_spectrum_label(source_name, observation_mjd)
+                item['observation_date_label'] = _format_spectrum_observation_label(observation_mjd)
+                rows.append(item)
+            return rows
+
+    @staticmethod
+    def get_spectrum_list(object_name: str) -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return []
+            cur.execute(
+                'SELECT source AS source_name, "MJD" AS observation_mjd, '
+                'MIN(wavelength) AS min_wavelength, MAX(wavelength) AS max_wavelength, '
+                'COUNT(*) AS point_count, MIN(spec_id) AS observation_row_id '
+                'FROM transient.spectroscopy '
+                'WHERE obj_id = %s '
+                'GROUP BY source, "MJD" '
+                'ORDER BY "MJD" DESC NULLS LAST, MIN(spec_id) DESC',
+                (obj_id,)
+            )
+            rows = []
+            for row in cur.fetchall():
+                item = dict(row)
+                source_name = item.pop('source_name', '')
+                observation_mjd = item.get('observation_mjd')
+                item['telescope'] = source_name or 'Unknown'
+                item['phase'] = _phase_from_stored_value(observation_mjd)
+                item['spectrum_id'] = _build_spectrum_id(source_name, observation_mjd)
+                item['spectrum_label'] = _build_spectrum_label(source_name, observation_mjd)
+                item['observation_date_label'] = _format_spectrum_observation_label(observation_mjd)
+                rows.append(item)
+            return rows
+
+    @staticmethod
+    def delete_spectrum(spectrum_id: str) -> bool:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
+            if observation_mjd is None:
+                cur.execute(
+                    "DELETE FROM transient.spectroscopy WHERE source = %s",
+                    (source_name,)
+                )
+            else:
+                cur.execute(
+                    'DELETE FROM transient.spectroscopy WHERE source = %s AND ABS("MJD" - %s) < 1e-6',
+                    (source_name, observation_mjd)
+                )
+            deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
+
+    @staticmethod
+    def get_object_details(object_name: str) -> dict | None:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT name, ra, dec AS declination, "
+                "CASE WHEN discovery_date IS NOT NULL THEN "
+                "     to_char(TIMESTAMP '1858-11-17' + discovery_date * INTERVAL '1 day', "
+                "             'YYYY-MM-DD HH24:MI:SS') END AS discoverydate, "
+                "COALESCE(internal_name,'') || "
+                "  CASE WHEN other_name IS NOT NULL THEN ', '||other_name ELSE '' END AS internal_names, "
+                "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter, "
+                "status "
+                "FROM transient.objects WHERE name = %s",
+                (object_name,)
+            )
+            row = cur.fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def add_comment(object_name: str, user_email: str, user_name: str,
+                    user_picture: str, content: str) -> int | None:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            # Look up usr_id from email
+            cur.execute("SELECT usr_id FROM auth.users WHERE email = %s", (user_email,))
+            row = cur.fetchone()
+            usr_id = row[0] if row else None
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return None
+            cur.execute(
+                "INSERT INTO transient.comments (obj_id, name, usr_id, comment) "
+                "VALUES (%s,%s,%s,%s) RETURNING comment_id",
+                (obj_id, object_name, usr_id, content)
+            )
+            cid = cur.fetchone()[0]
+            conn.commit()
+        return cid
+
+    @staticmethod
+    def get_comments(object_name: str) -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT c.comment_id AS id, c.name AS object_name, "
+                "u.email AS user_email, u.name AS user_name, "
+                "u.picture_url AS user_picture, "
+                "c.comment AS content, c.comment_time AS created_at "
+                "FROM transient.comments c "
+                "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
+                "WHERE c.name = %s ORDER BY c.comment_time ASC",
+                (object_name,)
+            )
+            out = []
+            for r in cur.fetchall():
+                d = dict(r)
+                if d.get('created_at'):
+                    d['created_at'] = d['created_at'].isoformat()
+                out.append(d)
+        return out
+
+    @staticmethod
+    def get_recent_comments(limit: int = 5) -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT c.comment_id AS id, c.name AS object_name, "
+                "u.email AS user_email, u.name AS user_name, "
+                "u.picture_url AS user_picture, c.comment AS content, "
+                "c.comment_time AS created_at, "
+                "o.name_prefix, o.type, "
+                "COALESCE(o.internal_name,'') AS internal_names, "
+                "array_to_string(o.tag,', ') AS tags "
+                "FROM transient.comments c "
+                "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
+                "LEFT JOIN transient.objects o ON c.obj_id = o.obj_id "
+                "ORDER BY c.comment_time DESC LIMIT %s",
+                (limit,)
+            )
+            out = []
+            for r in cur.fetchall():
+                d = dict(r)
+                if d.get('created_at'):
+                    d['created_at'] = d['created_at'].isoformat()
+                out.append(d)
+        return out
+
+    @staticmethod
+    def get_recent_tns_updates(limit: int = 20) -> tuple[list[dict], bool]:
+        """回傳 (updates, is_fallback)。
+        - 只顯示 2 天內的變更
+        - classified（type / name_prefix 變動）排最上面
+        - is_fallback=True 代表 audit 表無近期資料，改用最近修改物件替代。"""
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            _ensure_tns_update_audit_table(cur)
+
+            # 先從 audit table 撈 2 天內的記錄
+            # classified（type 或 name_prefix 有變動）排最前
+            cur.execute(
+                "SELECT a.obj_id, a.name AS object_name, a.changed_fields, a.updated_at, a.source, "
+                "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                "CASE WHEN 'type' = ANY(a.changed_fields) OR 'name_prefix' = ANY(a.changed_fields) "
+                "     THEN 0 ELSE 1 END AS sort_priority "
+                "FROM transient.tns_update_audit a "
+                "LEFT JOIN transient.objects o ON a.obj_id = o.obj_id "
+                "WHERE a.updated_at >= NOW() - INTERVAL '2 days' "
+                "ORDER BY sort_priority ASC, a.updated_at DESC "
+                "LIMIT %s",
+                (limit,)
+            )
+            rows = cur.fetchall()
+            is_fallback = False
+
+            # 2 天內沒有 audit 記錄 → fallback：顯示 2 天內最近修改的物件
+            if not rows:
+                is_fallback = True
+                cur.execute(
+                    "SELECT o.obj_id, o.name AS object_name, "
+                    "'{}'::text[] AS changed_fields, "
+                    "(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day')::timestamptz AS updated_at, "
+                    "'tns_sync' AS source, "
+                    "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                    "CASE WHEN o.name_prefix = 'SN' THEN 0 ELSE 1 END AS sort_priority "
+                    "FROM transient.objects o "
+                    "WHERE o.last_modified_date IS NOT NULL "
+                    "  AND (TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day') "
+                    "      >= NOW() - INTERVAL '2 days' "
+                    "ORDER BY sort_priority ASC, o.last_modified_date DESC "
+                    "LIMIT %s",
+                    (limit,)
+                )
+                rows = cur.fetchall()
+
+                # 2 天內也沒有任何物件 → 放寬到最近修改的前 N 筆
+                if not rows:
+                    cur.execute(
+                        "SELECT o.obj_id, o.name AS object_name, "
+                        "'{}'::text[] AS changed_fields, "
+                        "(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day')::timestamptz AS updated_at, "
+                        "'tns_sync' AS source, "
+                        "o.name_prefix, o.type, array_to_string(o.tag,', ') AS tags, "
+                        "CASE WHEN o.name_prefix = 'SN' THEN 0 ELSE 1 END AS sort_priority "
+                        "FROM transient.objects o "
+                        "WHERE o.last_modified_date IS NOT NULL "
+                        "ORDER BY sort_priority ASC, o.last_modified_date DESC "
+                        "LIMIT %s",
+                        (limit,)
+                    )
+                    rows = cur.fetchall()
+
+            out = []
+            for r in rows:
+                d = dict(r)
+                if d.get('updated_at'):
+                    d['updated_at'] = d['updated_at'].isoformat()
+                if d.get('changed_fields') is None:
+                    d['changed_fields'] = []
+                # 標記是否為 classified（type / name_prefix 有變動）
+                d['is_classified'] = (
+                    'type' in d['changed_fields'] or
+                    'name_prefix' in d['changed_fields'] or
+                    (is_fallback and d.get('name_prefix') == 'SN')
+                )
+                # 標記是否為 new_add（新增物件）
+                d['is_new_add'] = (
+                    not d['is_classified'] and (
+                        'new_add' in d['changed_fields'] or
+                        (is_fallback and d.get('name_prefix') != 'SN')
+                    )
+                )
+                d.pop('sort_priority', None)
+                out.append(d)
+        return out, is_fallback
+
+    @staticmethod
+    def get_comment_by_id(comment_id: int) -> dict | None:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT c.comment_id AS id, c.name AS object_name, "
+                "u.email AS user_email, u.name AS user_name, "
+                "u.picture_url AS user_picture, "
+                "c.comment AS content, c.comment_time AS created_at "
+                "FROM transient.comments c "
+                "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
+                "WHERE c.comment_id = %s",
+                (comment_id,)
+            )
+            row = cur.fetchone()
+        if row:
+            d = dict(row)
+            if d.get('created_at'):
+                d['created_at'] = d['created_at'].isoformat()
+            return d
+        return None
+
+    @staticmethod
+    def delete_comment(comment_id: int) -> bool:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM transient.comments WHERE comment_id = %s", (comment_id,))
+            deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
+
+    @staticmethod
+    def update_comment(comment_id: int, content: str) -> bool:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.comments SET comment = %s WHERE comment_id = %s",
+                (content, comment_id)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    @staticmethod
+    def log_object_view(object_name: str, user_email: str | None = None):
+        m = _re.match(r'^(?:AT|SN)(\d.+)$', object_name)
+        canonical = m.group(1) if m else object_name
+        try:
+            with get_db_connection() as conn:
+                cur = conn.cursor()
+                obj_id = _resolve_obj_id(cur, canonical)
+                if obj_id is None:
+                    return
+                # usr_id lookup
+                usr_id = None
+                if user_email:
+                    cur.execute("SELECT usr_id FROM auth.users WHERE email=%s", (user_email,))
+                    r = cur.fetchone()
+                    usr_id = r[0] if r else None
+                # Detail row
+                cur.execute(
+                    "INSERT INTO transient.object_views_detail (obj_id, name, usr_id) "
+                    "VALUES (%s,%s,%s)",
+                    (obj_id, canonical, usr_id)
+                )
+                # Aggregated counter
+                cur.execute(
+                    "INSERT INTO transient.object_views (obj_id, name, counts, last_view) "
+                    "VALUES (%s,%s,1,now()) "
+                    "ON CONFLICT (obj_id) DO UPDATE "
+                    "SET counts = transient.object_views.counts + 1, last_view = now()",
+                    (obj_id, canonical)
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error("log_object_view %s: %s", canonical, e)
+
+    @staticmethod
+    def get_top_viewed_objects(days: int = 30, limit: int = 5,
+                               mode: str = '30days') -> list[dict]:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            if mode == 'all':
+                cur.execute(
+                    "SELECT v.name AS object_name, v.counts AS view_count, "
+                    "COALESCE(o.type,'Unknown') AS object_type, "
+                    "o.name_prefix, COALESCE(o.internal_name,'') AS internal_names, "
+                    "array_to_string(o.tag,', ') AS tags "
+                    "FROM transient.object_views v "
+                    "LEFT JOIN transient.objects o ON v.obj_id = o.obj_id "
+                    "ORDER BY v.counts DESC LIMIT %s",
+                    (limit,)
+                )
+            else:
+                cur.execute(
+                    "WITH recent AS ("
+                    "  SELECT obj_id, COUNT(*) AS view_count "
+                    "  FROM transient.object_views_detail "
+                    "  WHERE view_time >= now() - (%s || ' days')::interval "
+                    "  GROUP BY obj_id ORDER BY view_count DESC LIMIT %s"
+                    ") "
+                    "SELECT r.view_count, d.name AS object_name, "
+                    "COALESCE(o.type,'Unknown') AS object_type, "
+                    "o.name_prefix, COALESCE(o.internal_name,'') AS internal_names, "
+                    "array_to_string(o.tag,', ') AS tags "
+                    "FROM recent r "
+                    "JOIN transient.object_views d ON r.obj_id = d.obj_id "
+                    "LEFT JOIN transient.objects o ON r.obj_id = o.obj_id "
+                    "ORDER BY r.view_count DESC",
+                    (days, limit)
+                )
+            return [dict(r) for r in cur.fetchall()]
+
+
+# Singleton used by routes
+tns_object_db = TNSObjectDB()
+
+
+# ---------------------------------------------------------------------------
+# Object query functions (Marshal / API)
+# ---------------------------------------------------------------------------
+
+def _build_where(params, search_term='', object_type='', tag=None,
+                 date_from=None, date_to=None,
+                 app_mag_min=None, app_mag_max=None,
+                 redshift_min=None, redshift_max=None, discoverer=None,
+                 brightest_mag_min=None, brightest_mag_max=None,
+                 brightest_abs_mag_min=None, brightest_abs_mag_max=None):
+    """Build WHERE clause and params list for transient.objects queries."""
+    clauses = ['1=1']
+
+    if search_term:
+        pat = f'%{search_term}%'
+        clauses.append(
+            "(o.name ILIKE %s OR o.name_prefix || o.name ILIKE %s "
+            " OR o.internal_name ILIKE %s OR o.other_name ILIKE %s)"
+        )
+        params.extend([pat, pat, pat, pat])
+
+    if object_type:
+        types = [t.strip() for t in object_type.split(',') if t.strip()]
+        if types:
+            conds = []
+            for t in types:
+                if t == 'AT':
+                    conds.append("o.name_prefix = 'AT'")
+                elif t == 'Classified':
+                    conds.append("o.name_prefix != 'AT'")
+                else:
+                    conds.append("o.type = %s")
+                    params.append(t)
+            if conds:
+                clauses.append(f"({' OR '.join(conds)})")
+
+    # Status / tag filter
+    if tag:
+        status_map = {
+            'object':   "o.status = 'Inbox'",
+            'followup': "o.status = 'Follow-up'",
+            'finished': "o.status = 'Finish'",
+            'snoozed':  "o.status = 'Snoozed'",
+        }
+        if tag in status_map:
+            clauses.append(status_map[tag])
+        elif tag == 'flag':
+            clauses.append(
+                "EXISTS (SELECT 1 FROM transient.cross_matches c "
+                "WHERE c.obj_id = o.obj_id AND c.status = 'Flagged')"
+            )
+
+    # Date filter on discovery_date (MJD) — accept both ISO strings and MJD floats
+    if date_from:
+        clauses.append(
+            "o.discovery_date >= (DATE %s - DATE '1858-11-17')"
+        )
+        params.append(date_from)
+    if date_to:
+        clauses.append(
+            "o.discovery_date <= (DATE %s - DATE '1858-11-17') + 1"
+        )
+        params.append(date_to)
+
+    if app_mag_min is not None:
+        clauses.append("o.discovery_mag >= %s"); params.append(app_mag_min)
+    if app_mag_max is not None:
+        clauses.append("o.discovery_mag <= %s"); params.append(app_mag_max)
+    if redshift_min is not None:
+        clauses.append("o.redshift >= %s"); params.append(redshift_min)
+    if redshift_max is not None:
+        clauses.append("o.redshift <= %s"); params.append(redshift_max)
+    if discoverer:
+        dpat = f'%{discoverer}%'
+        clauses.append(
+            "(o.source_group ILIKE %s OR o.report_group ILIKE %s "
+            "OR array_to_string(o.reporters,',') ILIKE %s)"
+        )
+        params.extend([dpat, dpat, dpat])
+    if brightest_mag_min is not None:
+        clauses.append("o.brightest_mag >= %s"); params.append(brightest_mag_min)
+    if brightest_mag_max is not None:
+        clauses.append("o.brightest_mag <= %s"); params.append(brightest_mag_max)
+    if brightest_abs_mag_min is not None:
+        clauses.append("o.brightest_abs_mag >= %s"); params.append(brightest_abs_mag_min)
+    if brightest_abs_mag_max is not None:
+        clauses.append("o.brightest_abs_mag <= %s"); params.append(brightest_abs_mag_max)
+
+    return ' AND '.join(clauses)
+
+
+def get_objects_count(object_type=None, search_term='', tag=None,
+                      date_from=None, date_to=None,
+                      app_mag_min=None, app_mag_max=None,
+                      redshift_min=None, redshift_max=None,
+                      discoverer=None,
+                      brightest_mag_min=None, brightest_mag_max=None,
+                      brightest_abs_mag_min=None, brightest_abs_mag_max=None) -> int:
+    params = []
+    where = _build_where(
+        params, search_term=search_term, object_type=object_type or '',
+        tag=tag, date_from=date_from, date_to=date_to,
+        app_mag_min=app_mag_min, app_mag_max=app_mag_max,
+        redshift_min=redshift_min, redshift_max=redshift_max,
+        discoverer=discoverer,
+        brightest_mag_min=brightest_mag_min, brightest_mag_max=brightest_mag_max,
+        brightest_abs_mag_min=brightest_abs_mag_min,
+        brightest_abs_mag_max=brightest_abs_mag_max,
+    )
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM transient.objects o WHERE {where}", params)
+        return cur.fetchone()[0]
+
+
+def get_tag_statistics() -> dict:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        stats = {}
+        for label, status in [('object', 'Inbox'), ('followup', 'Follow-up'),
+                               ('finished', 'Finish'), ('snoozed', 'Snoozed')]:
+            cur.execute(
+                "SELECT COUNT(*) FROM transient.objects WHERE status = %s", (status,)
+            )
+            stats[label] = cur.fetchone()[0]
+    return stats
+
+
+def get_tns_statistics() -> dict:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                COUNT(*)                                                          AS total,
+                (SELECT COUNT(DISTINCT obj_id) FROM transient.photometry)         AS with_photometry,
+                COUNT(*) FILTER (WHERE type IS NOT NULL AND type != '')           AS classified,
+                COUNT(*) FILTER (WHERE redshift IS NOT NULL)                      AS with_redshift,
+                COUNT(*) FILTER (WHERE status = 'Follow-up')                      AS follow,
+                COUNT(*) FILTER (WHERE status = 'Finish')                         AS finished,
+                COUNT(*) FILTER (WHERE status = 'Snoozed')                        AS snoozed
+            FROM transient.objects
+            """
+        )
+        row = cur.fetchone()
+    return {
+        'total':            row[0] or 0,
+        'with_photometry':  row[1] or 0,
+        'classified':       row[2] or 0,
+        'with_redshift':    row[3] or 0,
+        'follow':           row[4] or 0,
+        'finished':         row[5] or 0,
+        'snoozed':          row[6] or 0,
+    }
+
+
+def get_marshal_overview_stats(cache_ttl: int = 30) -> dict:
+    now = _time.monotonic()
+    cached = _marshal_stats_cache.get('value')
+    if cached is not None and now < _marshal_stats_cache['expires_at']:
+        return dict(cached)
+
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.DictCursor)
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS total_count,
+                COUNT(*) FILTER (WHERE name_prefix = 'AT') AS at_count,
+                COUNT(*) FILTER (WHERE type IS NOT NULL AND type != '') AS typed_count,
+                COUNT(*) FILTER (WHERE redshift IS NOT NULL) AS with_redshift,
+                COUNT(*) FILTER (WHERE status = 'Inbox') AS inbox_count,
+                COUNT(*) FILTER (WHERE status = 'Follow-up') AS followup_count,
+                COUNT(*) FILTER (WHERE status = 'Finish') AS finished_count,
+                COUNT(*) FILTER (WHERE status = 'Snoozed') AS snoozed_count,
+                COUNT(*) FILTER (WHERE tag @> ARRAY['flag']) AS flag_count
+            FROM transient.objects
+            """
+        )
+        object_stats = dict(cur.fetchone())
+
+        cur.execute("SELECT COUNT(DISTINCT obj_id) AS with_photometry FROM transient.photometry")
+        with_photometry = cur.fetchone()[0]
+
+        stats = {
+            'total_count': object_stats['total_count'] or 0,
+            'at_count': object_stats['at_count'] or 0,
+            'classified_count': (object_stats['total_count'] or 0) - (object_stats['at_count'] or 0),
+            'inbox_count': object_stats['inbox_count'] or 0,
+            'followup_count': object_stats['followup_count'] or 0,
+            'finished_count': object_stats['finished_count'] or 0,
+            'snoozed_count': object_stats['snoozed_count'] or 0,
+            'flag_count': object_stats['flag_count'] or 0,
+            'tns_stats': {
+                'total': object_stats['total_count'] or 0,
+                'with_photometry': with_photometry or 0,
+                'classified': object_stats['typed_count'] or 0,
+                'with_redshift': object_stats['with_redshift'] or 0,
+                'follow': object_stats['followup_count'] or 0,
+                'finished': object_stats['finished_count'] or 0,
+                'snoozed': object_stats['snoozed_count'] or 0,
+            },
+        }
+
+    _marshal_stats_cache['value'] = dict(stats)
+    _marshal_stats_cache['expires_at'] = now + max(cache_ttl, 0)
+    return dict(stats)
+
+
+def search_tns_objects(search_term='', object_type='', limit=100, offset=0,
+                       sort_by='discoverydate', sort_order='desc',
+                       date_from=None, date_to=None,
+                       mag_min=None, mag_max=None,
+                       app_mag_min=None, app_mag_max=None,
+                       redshift_min=None, redshift_max=None,
+                       discoverer=None, tag=None,
+                       brightest_mag_min=None, brightest_mag_max=None,
+                       brightest_abs_mag_min=None,
+                       brightest_abs_mag_max=None) -> list[dict]:
+    params = []
+    where = _build_where(
+        params, search_term=search_term, object_type=object_type,
+        tag=tag, date_from=date_from, date_to=date_to,
+        app_mag_min=app_mag_min if app_mag_min is not None else mag_min,
+        app_mag_max=app_mag_max if app_mag_max is not None else mag_max,
+        redshift_min=redshift_min, redshift_max=redshift_max,
+        discoverer=discoverer,
+        brightest_mag_min=brightest_mag_min, brightest_mag_max=brightest_mag_max,
+        brightest_abs_mag_min=brightest_abs_mag_min,
+        brightest_abs_mag_max=brightest_abs_mag_max,
+    )
+
+    # Sort column mapping (old name → new transient.objects column)
+    sort_map = {
+        'discoverydate':        'o.discovery_date',
+        'lastmodified':         'o.last_modified_date',
+        'discoverymag':         'o.discovery_mag',
+        'name':                 'o.name',
+        'time_received':        'o.received_date',
+        'last_photometry_date': 'o.last_phot_date',
+        'brightest_mag':        'o.brightest_mag',
+        'brightest_abs_mag':    'o.brightest_abs_mag',
+        'redshift':             'o.redshift',
+    }
+    sort_col = sort_map.get(sort_by, 'o.discovery_date')
+    direction = 'ASC' if sort_order.lower() == 'asc' else 'DESC'
+
+    if sort_by == 'last_photometry_date':
+        order_clause = (
+            f"ORDER BY COALESCE(o.last_phot_date, o.last_modified_date) "
+            f"{direction} NULLS LAST"
+        )
+    else:
+        order_clause = f"ORDER BY {sort_col} {direction} NULLS LAST"
+
+    params.extend([limit, offset])
+    query = (
+        f"SELECT {OBJECT_COMPAT_COLS} "
+        f"FROM transient.objects o "
+        f"WHERE {where} "
+        f"{order_clause} "
+        f"LIMIT %s OFFSET %s"
+    )
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.DictCursor)
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_filtered_stats(search_term='', object_type='', tag=None,
+                       date_from=None, date_to=None,
+                       app_mag_min=None, app_mag_max=None,
+                       redshift_min=None, redshift_max=None,
+                       discoverer=None) -> dict:
+    base_params = []
+    where = _build_where(
+        base_params, search_term=search_term, object_type=object_type,
+        tag=tag, date_from=date_from, date_to=date_to,
+        app_mag_min=app_mag_min, app_mag_max=app_mag_max,
+        redshift_min=redshift_min, redshift_max=redshift_max,
+        discoverer=discoverer,
+    )
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT
+                COUNT(*)                                              AS total,
+                COUNT(*) FILTER (WHERE o.status = 'Inbox')           AS object,
+                COUNT(*) FILTER (WHERE o.status = 'Follow-up')       AS followup,
+                COUNT(*) FILTER (WHERE o.status = 'Finish')          AS finished,
+                COUNT(*) FILTER (WHERE o.status = 'Snoozed')         AS snoozed
+            FROM transient.objects o WHERE {where}
+            """,
+            base_params
+        )
+        row = cur.fetchone()
+    return {
+        'total':    row[0] or 0,
+        'object':   row[1] or 0,
+        'followup': row[2] or 0,
+        'finished': row[3] or 0,
+        'snoozed':  row[4] or 0,
+    }
+
+
+def get_distinct_classifications() -> list[str]:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT type FROM transient.objects "
+            "WHERE type IS NOT NULL AND type != '' ORDER BY type"
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Status / flags
+# ---------------------------------------------------------------------------
+
+# Status values: 'Inbox', 'Snoozed', 'Follow-up'. 'Finish' was retired in 2026-09 — anything a
+# caller still labels 'finished' is stored as 'Snoozed'.
+_STATUS_MAP = {
+    'snoozed':  'Snoozed',
+    'finished': 'Snoozed',
+    'followup': 'Follow-up',
+    'object':   'Inbox',
+    'clear':    'Inbox',
+    # also accept new-style directly
+    'Snoozed':  'Snoozed',
+    'Finish':   'Snoozed',
+    'Follow-up': 'Follow-up',
+    'Inbox':    'Inbox',
+}
+
+
+def update_object_status(object_name: str, status: str) -> bool:
+    new_status = _STATUS_MAP.get(status)
+    if new_status is None:
+        return False
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects SET status = %s "
+                "WHERE name = %s OR name ILIKE %s "
+                "OR (COALESCE(name_prefix,'') || name) ILIKE %s",
+                (new_status, object_name, object_name, object_name)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("update_object_status: %s", e)
+        return False
+
+
+def update_object_activity(objid, activity_type=None):
+    """No-op; kept for backward compat."""
+    return True
+
+
+def get_auto_snooze_stats() -> dict:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Snoozed'")
+        s = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM transient.objects WHERE status = 'Finish'")
+        f = cur.fetchone()[0]
+    return {'snoozed_count': s, 'finished_count': f}
+
+
+# ---------------------------------------------------------------------------
+# Cross-match functions
+# ---------------------------------------------------------------------------
+
+def get_daily_match_counts() -> list[dict]:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                WITH dates AS (
+                    SELECT generate_series(
+                        (SELECT MIN(updated_date::date) FROM transient.cross_matches),
+                        (SELECT MAX(updated_date::date) FROM transient.cross_matches),
+                        '1 day'::interval
+                    )::date AS date
+                )
+                SELECT d.date,
+                       COUNT(DISTINCT c.obj_id) AS unique_targets,
+                       COALESCE(BOOL_OR(c.catalog LIKE 'Lens_%'), FALSE) AS has_lens
+                FROM dates d
+                LEFT JOIN transient.cross_matches c ON d.date = c.updated_date::date
+                GROUP BY d.date ORDER BY d.date DESC
+            """)
+            return [
+                {'date': r['date'].strftime('%Y-%m-%d'),
+                 'count': r['unique_targets'],
+                 'has_lens': r['has_lens']}
+                for r in cur.fetchall()
+            ]
+    except Exception as e:
+        logger.error("get_daily_match_counts: %s", e)
+        return []
+
+
+def get_available_dates() -> list[str]:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT DISTINCT updated_date::date AS d "
+                "FROM transient.cross_matches ORDER BY d DESC"
+            )
+            return [r[0].strftime('%Y-%m-%d') for r in cur.fetchall()]
+    except Exception as e:
+        logger.error("get_available_dates: %s", e)
+        return []
+
+
+def get_cross_match_results(limit: int = 1000, date: str | None = None) -> list:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            _ensure_cross_matches_flag_column(cur, conn)
+            # Map new column names back to old names expected by routes
+            query = (
+                "SELECT match_id AS id, name AS target_name, catalog AS catalog_name, "
+                "separation AS separation_arcsec, is_host, updated_date AS created_at, "
+                "status, flag, redshift AS z, "
+                "match_data, match_ra, match_dec "
+                "FROM transient.cross_matches"
+            )
+            params = []
+            if date:
+                query += " WHERE updated_date::date = %s"
+                params.append(date)
+            query += " ORDER BY updated_date DESC"
+            if limit and not date:
+                query += " LIMIT %s"
+                params.append(limit)
+            cur.execute(query, params)
+            return cur.fetchall()
+    except Exception as e:
+        logger.error("get_cross_match_results: %s", e)
+        return []
+
+
+def get_photometry_batch(names: list) -> dict:
+    """Return all photometry for multiple objects in one query. Returns {name: [points]}."""
+    if not names:
+        return {}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                'SELECT o.name, p.phot_id AS id, p."MJD" AS mjd, '
+                'p.mag AS magnitude, p.mag_err AS magnitude_error, p.filter, p.source AS telescope '
+                'FROM transient.photometry p '
+                'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                'WHERE o.name = ANY(%s) AND (p.mag IS NULL OR p.mag >= 0) '
+                'ORDER BY o.name, p."MJD" ASC',
+                (list(names),)
+            )
+            result: dict = {}
+            for row in cur.fetchall():
+                d = dict(row)
+                n = d.pop('name')
+                result.setdefault(n, []).append(d)
+            return result
+    except Exception as e:
+        logger.error("get_photometry_batch: %s", e)
+        return {}
+
+
+def get_object_details_batch(names: list) -> dict:
+    """Return object details for multiple names in one query. Returns {name: details}."""
+    if not names:
+        return {}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT name, ra, dec AS declination, "
+                "CASE WHEN discovery_date IS NOT NULL THEN "
+                "     to_char(TIMESTAMP '1858-11-17' + discovery_date * INTERVAL '1 day', "
+                "             'YYYY-MM-DD HH24:MI:SS') END AS discoverydate, "
+                "COALESCE(internal_name,'') || "
+                "  CASE WHEN other_name IS NOT NULL THEN ', '||other_name ELSE '' END AS internal_names, "
+                "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter, status "
+                "FROM transient.objects WHERE name = ANY(%s)",
+                (list(names),)
+            )
+            return {row['name']: dict(row) for row in cur.fetchall()}
+    except Exception as e:
+        logger.error("get_object_details_batch: %s", e)
+        return {}
+
+
+def get_latest_photometry_for_names(names: list) -> dict:
+    """Return latest valid photometry point per object. Returns {name: {magnitude, filter, mjd}}."""
+    if not names:
+        return {}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                'SELECT DISTINCT ON (o.name) '
+                '    o.name, p.mag AS magnitude, p.filter, p."MJD" AS mjd '
+                'FROM transient.photometry p '
+                'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                'WHERE o.name = ANY(%s) AND p.mag IS NOT NULL AND p.mag >= 0 '
+                'ORDER BY o.name, p."MJD" DESC',
+                (list(names),)
+            )
+            return {row['name']: dict(row) for row in cur.fetchall()}
+    except Exception as e:
+        logger.error("get_latest_photometry_for_names: %s", e)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# DETECT — Combined single-connection helpers  (Marshal-style)
+# ---------------------------------------------------------------------------
+
+_detect_metadata_cache: dict = {'expires_at': 0.0, 'value': None}
+
+
+def get_detect_metadata(cache_ttl: int = 120) -> dict:
+    """Return available_dates + daily_counts in a single DB connection.
+
+    Results are cached for *cache_ttl* seconds (default 120 s) to avoid
+    redundant queries every home-page or archives request.
+    Returns {'available_dates': [...], 'daily_counts': [...]}.
+    """
+    now = _time.monotonic()
+    cached = _detect_metadata_cache.get('value')
+    if cached is not None and now < _detect_metadata_cache['expires_at']:
+        return dict(cached)
+
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT DISTINCT updated_date::date AS d "
+                "FROM transient.cross_matches ORDER BY d DESC"
+            )
+            available_dates = [r[0].strftime('%Y-%m-%d') for r in cur.fetchall()]
+
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                WITH dates AS (
+                    SELECT generate_series(
+                        (SELECT MIN(updated_date::date) FROM transient.cross_matches),
+                        (SELECT MAX(updated_date::date) FROM transient.cross_matches),
+                        '1 day'::interval
+                    )::date AS date
+                )
+                SELECT d.date,
+                       COUNT(DISTINCT c.obj_id) AS unique_targets,
+                       COALESCE(BOOL_OR(c.catalog LIKE 'Lens_%'), FALSE) AS has_lens
+                FROM dates d
+                LEFT JOIN transient.cross_matches c ON d.date = c.updated_date::date
+                GROUP BY d.date ORDER BY d.date DESC
+            """)
+            daily_counts = [
+                {'date': r['date'].strftime('%Y-%m-%d'),
+                 'count': r['unique_targets'],
+                 'has_lens': r['has_lens']}
+                for r in cur.fetchall()
+            ]
+
+            # DETECT screening (transient.detect_screen) keeps one row per object,
+            # stamped with its latest run: counts are exact for the newest day and
+            # decay for older ones as Follow-up objects are re-run.
+            screen_counts: dict = {}
+            try:
+                cur.execute("""
+                    SELECT run_date::date AS d, host_status, COUNT(*) AS n,
+                           MAX(run_date) AS last_run
+                    FROM transient.detect_screen
+                    GROUP BY 1, 2
+                """)
+                for r in cur.fetchall():
+                    day = r['d'].strftime('%Y-%m-%d')
+                    entry = screen_counts.setdefault(day, {'confirmed': 0, 'review': 0, 'none': 0,
+                                                           'total': 0, 'last_run': None})
+                    entry[r['host_status'] or 'none'] = r['n']
+                    entry['total'] += r['n']
+                    if entry['last_run'] is None or r['last_run'] > entry['last_run']:
+                        entry['last_run'] = r['last_run']
+                for entry in screen_counts.values():
+                    if entry['last_run'] is not None:
+                        entry['last_run'] = entry['last_run'].strftime('%Y-%m-%d %H:%M %Z')
+            except Exception as e:                       # table absent on a fresh DB
+                logger.warning('get_detect_metadata: detect_screen unavailable: %s', e)
+                conn.rollback()
+            for dc in daily_counts:
+                dc['screen'] = screen_counts.get(dc['date'])
+
+        result = {'available_dates': available_dates, 'daily_counts': daily_counts,
+                  'screen_counts': screen_counts}
+        _detect_metadata_cache['value'] = result
+        _detect_metadata_cache['expires_at'] = now + cache_ttl
+        return dict(result)
+    except Exception as e:
+        logger.error('get_detect_metadata: %s', e)
+        return {'available_dates': [], 'daily_counts': []}
+
+
+def get_detect_page_data(date: str) -> dict:
+    """Fetch cross-match results, object details, and latest photometry for
+    *date* in a **single** DB connection (3 sequential queries on 1 conn).
+
+    Returns {'results': [...], 'details_batch': {...}, 'latest_phot': {...}}
+    or {} on error.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT match_id AS id, name AS target_name, catalog AS catalog_name, "
+                "separation AS separation_arcsec, is_host, updated_date AS created_at, "
+                "status, flag, redshift AS z, match_data, match_ra, match_dec "
+                "FROM transient.cross_matches WHERE updated_date::date = %s "
+                "ORDER BY updated_date DESC",
+                (date,)
+            )
+            results = list(cur.fetchall())
+
+            all_names = list({r['target_name'] for r in results if r.get('target_name')})
+
+            details_batch: dict = {}
+            latest_phot: dict = {}
+            if all_names:
+                cur = conn.cursor(cursor_factory=extras.DictCursor)
+                cur.execute(
+                    "SELECT name, ra, dec AS declination, "
+                    "CASE WHEN discovery_date IS NOT NULL THEN "
+                    "     to_char(TIMESTAMP '1858-11-17' + discovery_date * INTERVAL '1 day', "
+                    "             'YYYY-MM-DD HH24:MI:SS') END AS discoverydate, "
+                    "COALESCE(internal_name,'') || "
+                    "  CASE WHEN other_name IS NOT NULL THEN ', '||other_name ELSE '' END AS internal_names, "
+                    "type, redshift, discovery_mag AS discoverymag, discovery_filter AS filter, status "
+                    "FROM transient.objects WHERE name = ANY(%s)",
+                    (all_names,)
+                )
+                details_batch = {row['name']: dict(row) for row in cur.fetchall()}
+
+                cur = conn.cursor(cursor_factory=extras.DictCursor)
+                cur.execute(
+                    'SELECT DISTINCT ON (o.name) '
+                    '    o.name, p.mag AS magnitude, p.filter, p."MJD" AS mjd '
+                    'FROM transient.photometry p '
+                    'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                    'WHERE o.name = ANY(%s) AND p.mag IS NOT NULL AND p.mag >= 0 '
+                    'ORDER BY o.name, p."MJD" DESC',
+                    (all_names,)
+                )
+                latest_phot = {row['name']: dict(row) for row in cur.fetchall()}
+
+            # DETECT's verdict per object (host status, score, tags, peak abs mag),
+            # plus the objects it screened that day that matched nothing.
+            screen_batch: dict = {}
+            screen_only: list = []
+            try:
+                cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+                if all_names:
+                    cur.execute(_DETECT_SCREEN_SELECT + " WHERE s.name = ANY(%s)", (all_names,))
+                    screen_batch = {r['name']: _screen_row(r) for r in cur.fetchall()}
+                cur.execute(
+                    _DETECT_SCREEN_SELECT + " WHERE s.run_date::date = %s AND NOT (s.name = ANY(%s)) "
+                    "ORDER BY s.score DESC, s.name",
+                    (date, all_names or [''])
+                )
+                screen_only = [_screen_row(r) for r in cur.fetchall()]
+            except Exception as e:
+                logger.warning('get_detect_page_data(%s): detect_screen unavailable: %s', date, e)
+                conn.rollback()
+
+            # Why a resolved object is back in the queue: the latest TNS-update audit
+            # row that woke it (written by DETECT's ingest and the marshal's importer).
+            wake_notes: dict = {}
+            try:
+                names_all = all_names + [r['name'] for r in screen_only if r.get('name')]
+                if names_all:
+                    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+                    cur.execute("""
+                        SELECT DISTINCT ON (name) name, changed_fields, source, updated_at
+                        FROM transient.tns_update_audit
+                        WHERE name = ANY(%s) AND updated_at > now() - interval '30 days'
+                          AND EXISTS (SELECT 1 FROM unnest(changed_fields) f WHERE f LIKE 'woke:%%')
+                        ORDER BY name, updated_at DESC
+                    """, (names_all,))
+                    for r in cur.fetchall():
+                        fields = [f for f in (r['changed_fields'] or []) if not str(f).startswith('woke')]
+                        wake_notes[r['name']] = {
+                            'at': r['updated_at'].strftime('%Y-%m-%d'),
+                            'fields': fields, 'source': r['source'],
+                        }
+            except Exception as e:
+                logger.warning('get_detect_page_data(%s): wake notes unavailable: %s', date, e)
+                conn.rollback()
+
+            return {
+                'results': results,
+                'details_batch': details_batch,
+                'latest_phot': latest_phot,
+                'screen_batch': screen_batch,
+                'screen_only': screen_only,
+                'wake_notes': wake_notes,
+            }
+    except Exception as e:
+        logger.error('get_detect_page_data(%s): %s', date, e)
+        return {}
+
+
+_DETECT_SCREEN_SELECT = """
+    SELECT s.obj_id, s.name, s.score, s.host_status, s.tags, s.flags, s.host_targetid,
+           s.z, s.z_source, s.abs_mag, s.abs_mag_band, s.abs_mag_source, s.abs_mag_discovery,
+           s.peak_mag, s.peak_filter, s.peak_mjd, s.center_sep_arcsec, s.d_dlr, s.offset_kpc,
+           s.run_date, o.type AS tns_type, o.status AS obj_status, o.ra, o.dec, o.redshift AS tns_z,
+           CASE WHEN o.discovery_date IS NOT NULL THEN
+                to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD') END
+                AS discoverydate
+    FROM transient.detect_screen s
+    JOIN transient.objects o ON o.obj_id = s.obj_id
+"""
+
+
+def _screen_row(r) -> dict:
+    d = dict(r)
+    if isinstance(d.get('flags'), str):
+        try:
+            d['flags'] = json.loads(d['flags'])
+        except Exception:
+            d['flags'] = {}
+    d['flags'] = d.get('flags') or {}
+    d['tags'] = list(d.get('tags') or [])
+    if d.get('run_date') is not None:
+        d['run_date'] = d['run_date'].strftime('%Y-%m-%d %H:%M')
+    return d
+
+
+def get_detect_overview(cache_ttl: int = 60) -> dict:
+    """Latest DETECT run at a glance for the DETECT home page: when it ran, how
+    the objects split by host status, what is still waiting for a person, and
+    the highest-scoring objects."""
+    now = _time.monotonic()
+    cached = _detect_overview_cache.get('value')
+    if cached is not None and now < _detect_overview_cache['expires_at']:
+        return dict(cached)
+    result = {'last_run': None, 'run_day': None, 'counts': {}, 'pending': 0, 'top': []}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("SELECT MAX(run_date) AS last_run FROM transient.detect_screen")
+            last_run = (cur.fetchone() or {}).get('last_run')
+            if last_run is not None:
+                result['last_run'] = last_run.strftime('%Y-%m-%d %H:%M %Z')
+                result['run_day'] = last_run.strftime('%Y-%m-%d')
+                cur.execute("""
+                    SELECT s.host_status, COUNT(*) AS n,
+                           COUNT(*) FILTER (WHERE o.status = 'Inbox') AS pending
+                    FROM transient.detect_screen s JOIN transient.objects o ON o.obj_id = s.obj_id
+                    WHERE s.run_date::date = %s::date
+                    GROUP BY 1
+                """, (last_run,))
+                for r in cur.fetchall():
+                    result['counts'][r['host_status'] or 'none'] = r['n']
+                    if (r['host_status'] or 'none') != 'none':
+                        result['pending'] += r['pending']
+                result['counts']['total'] = sum(v for k, v in result['counts'].items() if k != 'total')
+                cur.execute(_DETECT_SCREEN_SELECT + """
+                    WHERE s.run_date::date = %s::date AND s.host_status <> 'none'
+                    ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
+                """, (last_run,))
+                result['top'] = [_screen_row(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.warning('get_detect_overview: %s', e)
+    _detect_overview_cache['value'] = result
+    _detect_overview_cache['expires_at'] = now + cache_ttl
+    return dict(result)
+
+
+_detect_overview_cache: dict = {'expires_at': 0.0, 'value': None}
+
+
+def get_detect_lc_data(target_name: str) -> dict:
+    """Return object details + full photometry for *target_name* in a
+    **single** DB connection (2 sequential queries on 1 conn).
+
+    Returns {'details': {...}, 'photometry': [...]} or {} on error.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT name, ra, dec AS declination, redshift, "
+                "discovery_mag AS discoverymag, discovery_filter AS filter, status "
+                "FROM transient.objects WHERE name = %s",
+                (target_name,)
+            )
+            row = cur.fetchone()
+            details = dict(row) if row else {}
+
+            cur.execute(
+                'SELECT p.phot_id AS id, p."MJD" AS mjd, '
+                'p.mag AS magnitude, p.mag_err AS magnitude_error, p.filter, p.source AS telescope '
+                'FROM transient.photometry p '
+                'JOIN transient.objects o ON o.obj_id = p.obj_id '
+                'WHERE o.name = %s AND (p.mag IS NULL OR p.mag >= 0) '
+                'ORDER BY p."MJD" ASC',
+                (target_name,)
+            )
+            photometry = [dict(r) for r in cur.fetchall()]
+
+        return {'details': details, 'photometry': photometry}
+    except Exception as e:
+        logger.error('get_detect_lc_data(%s): %s', target_name, e)
+        return {}
+
+
+def get_followup_objects_for_tracking() -> list:
+    """Return all Follow-up objects with their host cross-match info for abs mag tracking."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute("""
+                SELECT
+                    o.name,
+                    o.ra,
+                    o.dec AS declination,
+                    o.redshift,
+                    o.discovery_mag AS discoverymag,
+                    o.discovery_filter AS disc_filter,
+                    o.status,
+                    CASE WHEN o.discovery_date IS NOT NULL THEN
+                         to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day',
+                                 'YYYY-MM-DD') END AS discoverydate,
+                    c.catalog AS catalog_name,
+                    c.separation AS separation_arcsec,
+                    c.redshift AS match_z,
+                    c.updated_date AS cross_match_date,
+                    s.score AS detect_score,
+                    s.host_status AS detect_host_status,
+                    s.tags AS detect_tags,
+                    s.abs_mag AS detect_abs_mag,
+                    s.abs_mag_band AS detect_abs_mag_band,
+                    s.abs_mag_source AS detect_abs_mag_source,
+                    s.run_date AS detect_run_date
+                FROM transient.objects o
+                LEFT JOIN transient.cross_matches c
+                    ON c.obj_id = o.obj_id AND c.is_host = TRUE
+                LEFT JOIN transient.detect_screen s ON s.obj_id = o.obj_id
+                WHERE o.status = 'Follow-up'
+                ORDER BY o.name
+            """)
+            result = []
+            for row in cur.fetchall():
+                d = dict(row)
+                if d.get('cross_match_date'):
+                    d['cross_match_date'] = str(d['cross_match_date'])
+                if d.get('detect_run_date'):
+                    d['detect_run_date'] = d['detect_run_date'].strftime('%Y-%m-%d')
+                d['detect_tags'] = list(d.get('detect_tags') or [])
+                result.append(d)
+            return result
+    except Exception as e:
+        logger.error("get_followup_objects_for_tracking: %s", e)
+        return []
+
+
+def update_cross_match_flag(result_id: int, flag_value: bool) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+            cur.execute(
+                "UPDATE transient.cross_matches SET flag = %s WHERE match_id = %s",
+                (flag_value, result_id)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("update_cross_match_flag: %s", e)
+        return False
+
+
+def get_flagged_objects() -> list[list]:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+            cur.execute(
+                "SELECT DISTINCT o.name_prefix, o.name, o.ra, o.dec, "
+                "CASE WHEN o.discovery_date IS NOT NULL THEN "
+                "     to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', "
+                "             'YYYY-MM-DD HH24:MI:SS') END, "
+                "COALESCE(o.internal_name,'') "
+                "FROM transient.objects o "
+                "JOIN transient.cross_matches c ON c.obj_id = o.obj_id "
+                "WHERE c.flag = TRUE"
+            )
+            return [list(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.error("get_flagged_objects: %s", e)
+        return []
+
+
+def save_flag_objects(flag_list: list):
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+            count = 0
+            for item in flag_list:
+                if len(item) < 2:
+                    continue
+                name = item[1]
+                cur.execute(
+                    "SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1",
+                    (name,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    continue
+                obj_id = row[0]
+                cur.execute(
+                    "SELECT match_id FROM transient.cross_matches WHERE obj_id = %s LIMIT 1",
+                    (obj_id,)
+                )
+                if cur.fetchone():
+                    cur.execute(
+                        "UPDATE transient.cross_matches SET flag = TRUE WHERE obj_id = %s",
+                        (obj_id,)
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO transient.cross_matches "
+                        "(obj_id, name, catalog, separation, is_host, flag) "
+                        "VALUES (%s,%s,'FLAGGED_LIST',0,FALSE,TRUE)",
+                        (obj_id, name)
+                    )
+                count += 1
+            conn.commit()
+            logger.info("save_flag_objects: processed %d", count)
+    except Exception as e:
+        logger.error("save_flag_objects: %s", e)
+
+
+def save_cross_match_results(results_list: list):
+    """Save DETECT pipeline cross-match results.
+
+    Each item: {target_name, catalog_name, match_data dict, separation_arcsec,
+                is_host bool, flag bool (optional)}
+    """
+    if not results_list:
+        return
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            # Bulk name→obj_id lookup
+            names = list({r['target_name'] for r in results_list})
+            cur.execute(
+                "SELECT name, obj_id FROM transient.objects WHERE name = ANY(%s)",
+                (names,)
+            )
+            name_map = {r[0]: r[1] for r in cur.fetchall()}
+
+            for r in results_list:
+                obj_id = name_map.get(r['target_name'])
+                if obj_id is None:
+                    continue
+                md = r.get('match_data') or {}
+                z = md.get('z') if isinstance(md, dict) else None
+                cur.execute(
+                    "INSERT INTO transient.cross_matches "
+                    "(obj_id, name, catalog, separation, redshift, is_host, updated_date) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,now())",
+                    (obj_id, r['target_name'],
+                     r.get('catalog_name', ''),
+                     r.get('separation_arcsec'),
+                     z,
+                     bool(r.get('is_host', False)))
+                )
+            conn.commit()
+    except Exception as e:
+        logger.error("save_cross_match_results: %s", e)
+
+
+def get_object_flag_status(object_name: str) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+            cur.execute(
+                "SELECT EXISTS("
+                "  SELECT 1 FROM transient.cross_matches c "
+                "  JOIN transient.objects o ON c.obj_id = o.obj_id "
+                "  WHERE o.name = %s AND c.flag = TRUE"
+                ")",
+                (object_name,)
+            )
+            return cur.fetchone()[0]
+    except Exception as e:
+        logger.error("get_object_flag_status: %s", e)
+        return False
+
+
+def update_object_flag_by_name(object_name: str, flag_value: bool) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            _ensure_cross_matches_flag_column(cur, conn)
+            cur.execute(
+                "UPDATE transient.cross_matches SET flag = %s "
+                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
+                (flag_value, object_name)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("update_object_flag_by_name: %s", e)
+        return False
+
+
+def _host_decision_json(value: bool | None, user_email: str | None) -> str:
+    """match_data fragment DETECT reads back on its daily Follow-up re-run:
+    host_user true = a person chose this row, false = a person rejected it."""
+    return json.dumps({
+        'host_user': value,
+        'host_user_by': user_email,
+        'host_user_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    })
+
+
+_SCREEN_STATUS_SQL = (
+    "UPDATE transient.detect_screen SET host_status = %s "
+    "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)"
+)
+
+
+def _set_screen_host_status(cur, target_name: str, status: str) -> None:
+    """Keep detect_screen.host_status in step with a reviewer's decision so the DETECT
+    home page (which reads detect_screen) agrees with the review page until the next run."""
+    try:
+        cur.execute(_SCREEN_STATUS_SQL, (status, target_name))
+    except Exception as e:  # table/column missing on an old DB: not fatal
+        logger.debug("_set_screen_host_status skipped: %s", e)
+
+
+def set_cross_match_host(match_id: int, target_name: str, user_email: str | None = None) -> bool:
+    """A person picks *match_id* as the host: every other candidate is marked
+    rejected, the chosen one pinned, so DETECT keeps the choice on re-runs."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.cross_matches SET is_host = FALSE, "
+                "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
+                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
+                (_host_decision_json(False, user_email), target_name)
+            )
+            cur.execute(
+                "UPDATE transient.cross_matches SET is_host = TRUE, "
+                "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
+                "WHERE match_id = %s",
+                (_host_decision_json(True, user_email), match_id)
+            )
+            _set_screen_host_status(cur, target_name, 'confirmed')
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("set_cross_match_host: %s", e)
+        return False
+
+
+def unset_cross_match_host(target_name: str) -> bool:
+    """Hand the host question back to the pipeline: clear is_host and the
+    person's decision on every candidate."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.cross_matches SET is_host = FALSE, "
+                "match_data = match_data - 'host_user' - 'host_user_by' - 'host_user_at' "
+                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
+                (target_name,)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("unset_cross_match_host: %s", e)
+        return False
+
+
+def release_cross_match_host(target_name: str) -> bool:
+    """Reopen: drop the person's decision on every candidate but leave is_host as
+    it stands, so the card keeps showing the rule's host until DETECT re-runs."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.cross_matches SET "
+                "match_data = match_data - 'host_user' - 'host_user_by' - 'host_user_at' "
+                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1) "
+                "  AND match_data ? 'host_user'",
+                (target_name,)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("release_cross_match_host: %s", e)
+        return False
+
+
+def reject_cross_match_hosts(target_name: str, user_email: str | None = None) -> bool:
+    """A person decided none of the candidates is the host."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.cross_matches SET is_host = FALSE, "
+                "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
+                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
+                (_host_decision_json(False, user_email), target_name)
+            )
+            _set_screen_host_status(cur, target_name, 'none')
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("reject_cross_match_hosts: %s", e)
+        return False
+
+
+def sync_host_redshifts() -> int:
+    """For every cross_match row where is_host=TRUE, write its redshift back
+    into transient.objects.redshift (only when a valid numeric redshift exists).
+    Returns the number of objects updated."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects o "
+                "SET redshift = NULLIF(BTRIM(c.redshift::text), '')::numeric "
+                "FROM transient.cross_matches c "
+                "WHERE c.obj_id = o.obj_id "
+                "  AND c.is_host = TRUE "
+                "  AND NULLIF(BTRIM(c.redshift::text), '') IS NOT NULL "
+                "  AND NULLIF(BTRIM(c.redshift::text), '') ~ '^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)$'"
+            )
+            updated = cur.rowcount
+            conn.commit()
+        logger.info("sync_host_redshifts: updated %d objects", updated)
+        return updated
+    except Exception as e:
+        logger.error("sync_host_redshifts: %s", e)
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Target images
+# ---------------------------------------------------------------------------
+
+def save_target_image(target_name: str, image_data: bytes) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, target_name)
+            if obj_id is None:
+                return False
+            cur.execute(
+                "SELECT image_id FROM transient.target_images WHERE obj_id = %s LIMIT 1",
+                (obj_id,)
+            )
+            if cur.fetchone():
+                cur.execute(
+                    "UPDATE transient.target_images SET image_data = %s WHERE obj_id = %s",
+                    (image_data, obj_id)
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO transient.target_images (obj_id, name, image_data, source) "
+                    "VALUES (%s,%s,%s,'DESI')",
+                    (obj_id, target_name, image_data)
+                )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("save_target_image %s: %s", target_name, e)
+        return False
+
+
+def get_target_image(target_name: str) -> bytes | None:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT ti.image_data "
+                "FROM transient.target_images ti "
+                "JOIN transient.objects o ON ti.obj_id = o.obj_id "
+                "WHERE o.name = %s LIMIT 1",
+                (target_name,)
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as e:
+        logger.error("get_target_image %s: %s", target_name, e)
+        return None
+
+
+def save_detect_image(target_name: str, source_label: str, image_data: bytes) -> int | None:
+    """Save a DETECT finder-chart image. One row per (obj_id, source_label); updates if exists.
+    Returns the image_id on success, None on failure.
+    """
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, target_name)
+            if obj_id is None:
+                return None
+            cur.execute(
+                "SELECT image_id FROM transient.target_images "
+                "WHERE obj_id = %s AND source = %s LIMIT 1",
+                (obj_id, source_label)
+            )
+            existing = cur.fetchone()
+            if existing:
+                cur.execute(
+                    "UPDATE transient.target_images SET image_data = %s "
+                    "WHERE image_id = %s RETURNING image_id",
+                    (image_data, existing[0])
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO transient.target_images (obj_id, name, image_data, source) "
+                    "VALUES (%s, %s, %s, %s) RETURNING image_id",
+                    (obj_id, target_name, image_data, source_label)
+                )
+            row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("save_detect_image %s/%s: %s", target_name, source_label, e)
+        return None
+
+
+def get_detect_images(target_name: str) -> list:
+    """Return list of {image_id, source} for the target's DETECT images (source='detect_combined' only)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT ti.image_id, ti.source "
+                "FROM transient.target_images ti "
+                "JOIN transient.objects o ON ti.obj_id = o.obj_id "
+                "WHERE o.name = %s AND ti.source IN ('DESI', 'detect_combined') "
+                "ORDER BY (ti.source = 'DESI') DESC, ti.image_id DESC LIMIT 1",
+                (target_name,)
+            )
+            rows = cur.fetchall()
+            return [{'image_id': r[0], 'source': r[1]} for r in rows]
+    except Exception as e:
+        logger.error("get_detect_images %s: %s", target_name, e)
+        return []
+
+
+def get_detect_image_by_id(image_id: int) -> bytes | None:
+    """Return raw image bytes by image_id."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT image_data FROM transient.target_images WHERE image_id = %s",
+                (image_id,)
+            )
+            row = cur.fetchone()
+            return bytes(row[0]) if row else None
+    except Exception as e:
+        logger.error("get_detect_image_by_id %s: %s", image_id, e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Redshift + absolute magnitude
+# ---------------------------------------------------------------------------
+
+def set_object_redshift(target_name: str, z: float) -> bool:
+    """Write the host's redshift to the object, nothing else. DETECT owns
+    brightest_mag / brightest_abs_mag (its own cosmology + extinction), so this
+    deliberately does not trigger the marshal's abs-mag recalculation."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects SET redshift = %s WHERE name = %s OR name ILIKE %s",
+                (float(z), target_name, target_name)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        logger.error("set_object_redshift %s: %s", target_name, e)
+        return False
+
+
+def update_tns_redshift(target_name: str, redshift_str: str) -> bool:
+    try:
+        # Extract numeric value
+        match = _re.search(r'[-+]?\d*\.?\d+', str(redshift_str))
+        if not match:
+            return False
+        z = float(match.group())
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects SET redshift = %s "
+                "WHERE name = %s OR name ILIKE %s",
+                (z, target_name, target_name)
+            )
+            conn.commit()
+        # Trigger abs mag recalc
+        try:
+            update_object_abs_mag(target_name)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        logger.error("update_tns_redshift %s: %s", target_name, e)
+        return False
+
+
+def update_object_abs_mag(target_name: str) -> bool:
+    """objects.brightest_mag / brightest_abs_mag from the light curve, computed exactly
+    as DETECT's screening does (brightest real detection, DETECT cosmology, SFD
+    extinction, K = 2.5 log10(1+z)) so the two never disagree."""
+    logger.debug("update_object_abs_mag called for %s", target_name)
+    try:
+        from function.module.screening import absolute_magnitude
+    except ImportError:
+        logger.error("update_object_abs_mag: DETECT (app/modules/DETECT) is not importable")
+        return False
+
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.DictCursor)
+            cur.execute(
+                "SELECT obj_id, name, name_prefix, redshift, ra, dec, discovery_filter, discovery_mag "
+                "FROM transient.objects "
+                "WHERE name = %s OR name ILIKE %s "
+                "OR (COALESCE(name_prefix,'') || name) ILIKE %s LIMIT 1",
+                (target_name, target_name, target_name)
+            )
+            obj = cur.fetchone()
+            if not obj:
+                return False
+            obj = dict(obj)
+            obj_id = obj['obj_id']
+
+            # brightest real detection: limits carry mag_err = 0, junk carries mag 99
+            cur.execute(
+                "SELECT mag, filter FROM transient.photometry "
+                "WHERE obj_id = %s AND mag BETWEEN 5 AND 30 AND (mag_err IS NULL OR mag_err > 0) "
+                "ORDER BY mag ASC LIMIT 1",
+                (obj_id,)
+            )
+            row = cur.fetchone()
+            if row is not None:
+                brightest_mag, brightest_filter = float(row['mag']), row['filter']
+            elif obj.get('discovery_mag') is not None:
+                brightest_mag, brightest_filter = float(obj['discovery_mag']), obj.get('discovery_filter')
+            else:
+                return False
+
+            cur.execute(
+                "UPDATE transient.objects SET brightest_mag = %s WHERE obj_id = %s",
+                (brightest_mag, obj_id)
+            )
+            conn.commit()
+
+            z = obj.get('redshift')
+            if z is None or float(z) <= 0 or obj.get('ra') is None or obj.get('dec') is None:
+                return False
+            result = absolute_magnitude(brightest_mag, float(z), obj['ra'], obj['dec'], brightest_filter or 'r')
+            if result.get('abs_mag') is not None:
+                cur.execute(
+                    "UPDATE transient.objects SET brightest_abs_mag = %s WHERE obj_id = %s",
+                    (result['abs_mag'], obj_id)
+                )
+                conn.commit()
+                return True
+    except Exception as e:
+        logger.error("update_object_abs_mag %s: %s", target_name, e)
+    return False
+
+
+def get_object_pin_status(object_name: str) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT pin FROM transient.objects "
+                "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                (object_name, object_name)
+            )
+            row = cur.fetchone()
+            return bool(row and row[0])
+    except Exception as e:
+        logger.error("get_object_pin_status: %s", e)
+        return False
+
+
+def toggle_object_pin(object_name: str) -> bool:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE transient.objects "
+                "SET pin = NOT pin "
+                "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s "
+                "RETURNING pin",
+                (object_name, object_name)
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return bool(row and row[0])
+    except Exception as e:
+        logger.error("toggle_object_pin: %s", e)
+        return False
+
+
+def get_pinned_objects(limit: int = 20) -> list[dict]:
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT o.name, o.name_prefix, o.type, "
+                "COALESCE(o.internal_name,'') AS internal_names, "
+                "array_to_string(o.tag,', ') AS tags, "
+                "COALESCE(v.counts, 0) AS view_count "
+                "FROM transient.objects o "
+                "LEFT JOIN transient.object_views v ON v.obj_id = o.obj_id "
+                "WHERE o.pin = TRUE "
+                "ORDER BY view_count DESC LIMIT %s",
+                (limit,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.error("get_pinned_objects: %s", e)
+        return []

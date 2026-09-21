@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinder · Kilonova Finder</title>
+    <meta name="description" content="Kinder - Kilonova Finder">
+    <meta name="author" content="GREAT Lab, Institute of Astronomy, National Central University, Taiwan">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body class="home-page">
+    {% if db_offline %}
+    <div class="db-offline-banner" role="alert">
+        Database offline — the connection is currently unavailable. Some pages may not work.
+    </div>
+    {% endif %}
+
+    {% set _member = session.user and session.user.get('is_great_lab_member') %}
+
+    {% include '_navbar.html' %}
+
+    <!-- Hero -->
+    <section class="main-banner">
+        <div class="hero-title">
+            <p class="hero-eyebrow">GREAT Lab · National Central University</p>
+            <div class="hero-logo-row">
+                <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="" aria-hidden="true" class="home-logo">
+                <h1><span class="kl">K</span><span class="kl">i</span><span class="kl">n</span><span class="kl">d</span><span class="kl">e</span><span class="kl">r</span></h1>
+            </div>
+            <h2>Kilonova Finder</h2>
+            <p class="hero-lead">Transient marshal, host screening and observation planning for the Lulin telescopes.</p>
+            <div class="hero-actions">
+                <a href="{{ url_for('marshal.marshal') }}" class="home-btn home-btn-primary">Open Marshal</a>
+                {% if _member %}
+                <a href="{{ url_for('detect.detect_results') }}" class="home-btn home-btn-secondary">DETECT Review</a>
+                {% else %}
+                <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="home-btn home-btn-secondary">Plan Tonight</a>
+                {% endif %}
+            </div>
+        </div>
+        <a href="#quick-access" class="hero-scroll" aria-label="Scroll to content">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </a>
+    </section>
+
+    <!-- Quick access -->
+    <section class="home-section" id="quick-access">
+        <div class="home-section-header">
+            <h2>Quick access</h2>
+            <p>Everything you use most, one click away.</p>
+        </div>
+        <div class="home-cards">
+            <a href="{{ url_for('marshal.marshal') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h6"/></svg></span>
+                <span class="home-card-title">Marshal</span>
+                <span class="home-card-desc">Browse every TNS transient, filter by status, pin and tag follow-ups.</span>
+            </a>
+            <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8a4 4 0 1 0 0 8"/></svg></span>
+                <span class="home-card-title">Visibility Plot</span>
+                <span class="home-card-desc">Altitude tracks, twilight and moon for any target from Lulin.</span>
+            </a>
+            <a href="{{ url_for('astronomy_tools.finding_chart') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6M8 11h6"/></svg></span>
+                <span class="home-card-title">Finding Chart</span>
+                <span class="home-card-desc">Survey cut-outs with compass, scale bar and comparison stars.</span>
+            </a>
+            <a href="{{ url_for('astronomy_tools.exposure_time_calculator') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                <span class="home-card-title">Exposure Time</span>
+                <span class="home-card-desc">CASTOR-powered SNR and exposure calculator for LOT and SLT.</span>
+            </a>
+            <a href="{{ url_for('astronomy_tools.lc_plotter') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 16l5-6 4 3 7-8"/></svg></span>
+                <span class="home-card-title">LC Plotter</span>
+                <span class="home-card-desc">Plot and share light curves with extinction and K-corrections.</span>
+            </a>
+            {% if _member %}
+            <a href="{{ url_for('detect.detect_results') }}" class="home-card home-card-accent">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                <span class="home-card-title">DETECT</span>
+                <span class="home-card-desc">Review host candidates and screening scores for new transients.</span>
+            </a>
+            <a href="{{ url_for('private_area.daily_trigger') }}" class="home-card home-card-accent">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>
+                <span class="home-card-title">Daily Trigger</span>
+                <span class="home-card-desc">Build tonight's target list and send the script to Slack.</span>
+            </a>
+            {% else %}
+            <a href="{{ url_for('astronomy_tools.telescope_simulator') }}" class="home-card">
+                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l12-9"/><path d="M13 5l6 4-3 5-6-4z"/><path d="M4 21h6"/></svg></span>
+                <span class="home-card-title">Telescope Simulator</span>
+                <span class="home-card-desc">Explore the sky with an Aladin Lite field-of-view overlay.</span>
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Gallery -->
+    <section class="home-section home-gallery-section">
+        <div class="home-section-header home-gallery-header">
+            <div>
+                <h2 class="home-gallery-title">Gallery</h2>
+                <p class="home-gallery-subtitle">Astronomy images from GREAT Lab and the Lulin telescopes.</p>
+            </div>
+            {% if session.user and session.user.is_admin %}
+            <div class="home-admin-actions">
+                <button class="home-btn home-btn-primary home-upload-btn" id="homeUploadBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    Upload Image
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        <div class="home-gallery-container">
+            <div class="home-gallery-grid" id="homeGalleryGrid">
+                <div class="home-gallery-loading">Loading gallery…</div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="home-footer">
+        <div class="home-footer-inner">
+            <div class="bottom-bar-left">
+                <span class="institution">Institute of Astronomy, National Central University</span>
+                <a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer" class="lab-link">GREAT Lab</a>
+            </div>
+            <div class="bottom-bar-center photo-credit-line">Background: Milky Way over Lulin Observatory · Photo by Wang, Tong</div>
+            <div class="bottom-bar-right">
+                <a href="https://github.com/AlexLee24/Kinder_web" target="_blank" rel="noopener noreferrer" class="link-item">GitHub</a>
+                <span class="contact-inline">
+                    <a id="obfuscated-email" href="#" class="email" data-user="kinder" data-domain="astro.ncu.edu.tw">kinder [at] astro.ncu.edu.tw</a>
+                </span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Lightbox -->
+    <div class="home-lightbox" id="homeLightbox" hidden>
+        <div class="home-lightbox-backdrop" id="homeLightboxBackdrop"></div>
+        <div class="home-lightbox-content">
+            <button class="home-lightbox-close" id="homeLightboxClose" aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <button class="home-lightbox-nav home-lightbox-prev" id="homeLightboxPrev" aria-label="Previous">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div class="home-lightbox-img-wrap">
+                <img class="home-lightbox-img" id="homeLightboxImg" src="" alt="" />
+            </div>
+            <div class="home-lightbox-info">
+                <h3 class="home-lightbox-title" id="homeLightboxTitle"></h3>
+                <p class="home-lightbox-caption" id="homeLightboxCaption"></p>
+                <p class="home-lightbox-author" id="homeLightboxAuthor"></p>
+                {% if session.user and session.user.is_admin %}
+                <div class="home-admin-controls">
+                    <button class="home-btn home-btn-secondary home-action-btn home-edit-btn" id="homeLightboxEdit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Edit
+                    </button>
+                    <button class="home-btn home-delete-btn" id="homeLightboxDelete">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Delete
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            <button class="home-lightbox-nav home-lightbox-next" id="homeLightboxNext" aria-label="Next">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div class="home-lightbox-dock">
+                <div class="home-dock-items" id="homeDockItems"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="home-edit-modal home-modal" id="homeEditModal" hidden>
+        <div class="home-edit-modal-backdrop home-modal-backdrop" id="homeEditModalBackdrop"></div>
+        <div class="home-edit-modal-content home-modal-content" role="dialog" aria-modal="true" aria-labelledby="homeEditTitleHeading">
+            <div class="home-edit-modal-header home-modal-header">
+                <h2 id="homeEditTitleHeading">Edit Image</h2>
+                <button class="home-edit-modal-close home-modal-close" id="homeEditModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <form id="homeEditForm" class="home-edit-form">
+                <div class="home-edit-form-group home-form-group">
+                    <label for="homeEditTitle" class="home-form-label">Title *</label>
+                    <input type="text" id="homeEditTitle" name="title" required maxlength="100" />
+                </div>
+                <div class="home-edit-form-group home-form-group">
+                    <label for="homeEditDescription" class="home-form-label">Description</label>
+                    <textarea id="homeEditDescription" name="description" maxlength="500" rows="3"></textarea>
+                </div>
+                <div class="home-edit-form-group home-form-group">
+                    <label for="homeEditPhotographer" class="home-form-label">Photographer</label>
+                    <input type="text" id="homeEditPhotographer" name="photographer" maxlength="50" />
+                </div>
+                <div class="home-edit-form-group home-form-group">
+                    <label for="homeEditSpan" class="home-form-label">Display Size</label>
+                    <select id="homeEditSpan" name="span">
+                        <option value="col-span-1 row-span-1">Normal (1x1)</option>
+                        <option value="col-span-2 row-span-1">Wide (2x1)</option>
+                        <option value="col-span-1 row-span-2">Tall (1x2)</option>
+                        <option value="col-span-2 row-span-2">Feature (2x2)</option>
+                    </select>
+                </div>
+                <div class="home-edit-form-actions home-form-actions">
+                    <button type="button" class="home-btn home-btn-secondary home-edit-btn-cancel" id="homeEditCancel">Cancel</button>
+                    <button type="submit" class="home-btn home-btn-primary home-edit-btn-save" id="homeEditSave">
+                        <span id="homeEditSaveText">Save Changes</span>
+                        <span id="homeEditSaveSpinner" style="display: none;">
+                            <svg class="home-spinner" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                        </span>
+                    </button>
+                </div>
+            </form>
+            <div id="homeEditError" class="home-edit-error home-message home-message-error" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="home-upload-modal home-modal" id="homeUploadModal" hidden>
+        <div class="home-upload-modal-backdrop home-modal-backdrop" id="homeUploadModalBackdrop"></div>
+        <div class="home-upload-modal-content home-modal-content" role="dialog" aria-modal="true" aria-labelledby="homeUploadHeading">
+            <div class="home-upload-modal-header home-modal-header">
+                <h2 id="homeUploadHeading">Upload Gallery Image</h2>
+                <button class="home-upload-modal-close home-modal-close" id="homeUploadModalClose" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <form id="homeUploadForm" class="home-upload-form" enctype="multipart/form-data">
+                <div class="home-form-group">
+                    <label class="home-form-label">Image File *</label>
+                    <div class="home-upload-zone" id="homeUploadZone">
+                        <svg class="home-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <p class="home-upload-text"><span class="home-upload-browse">Choose a file</span> or drag and drop</p>
+                        <p class="home-upload-hint">PNG, JPG, GIF or WebP up to 10 MB</p>
+                        <input type="file" id="homeImageFile" name="image" accept="image/*" required hidden />
+                    </div>
+                    <div id="homeImagePreview" class="home-image-preview" style="display: none;">
+                        <img id="homePreviewImg" src="" alt="Preview" />
+                        <button type="button" class="home-remove-btn" id="homeRemovePreview" aria-label="Remove image">×</button>
+                    </div>
+                </div>
+                <div class="home-form-group">
+                    <label for="homeUploadTitle" class="home-form-label">Title *</label>
+                    <input type="text" id="homeUploadTitle" name="title" placeholder="e.g., Milky Way over Lulin Observatory" required maxlength="100" />
+                </div>
+                <div class="home-form-group">
+                    <label for="homeUploadDescription" class="home-form-label">Description</label>
+                    <textarea id="homeUploadDescription" name="description" placeholder="Add details about this image…" maxlength="500" rows="4"></textarea>
+                </div>
+                <div class="home-form-group">
+                    <label for="homeUploadPhotographer" class="home-form-label">Photographer</label>
+                    <input type="text" id="homeUploadPhotographer" name="photographer" placeholder="Your name or credit" maxlength="50" />
+                </div>
+                <div class="home-form-group">
+                    <label for="homeUploadSpan" class="home-form-label">Display Size</label>
+                    <select id="homeUploadSpan" name="span">
+                        <option value="col-span-1 row-span-1">Normal (1x1)</option>
+                        <option value="col-span-2 row-span-1">Wide (2x1)</option>
+                        <option value="col-span-1 row-span-2">Tall (1x2)</option>
+                        <option value="col-span-2 row-span-2">Feature (2x2)</option>
+                    </select>
+                </div>
+                <div class="home-form-actions">
+                    <button type="button" class="home-btn home-btn-secondary" id="homeUploadCancel">Cancel</button>
+                    <button type="submit" class="home-btn home-btn-primary" id="homeSubmitBtn">
+                        <span id="homeSubmitText">Upload Image</span>
+                        <span id="homeSubmitSpinner" style="display: none;">
+                            <svg class="home-spinner" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                        </span>
+                    </button>
+                </div>
+            </form>
+            <div id="homeSuccessMessage" class="home-message home-message-success" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <p>Image uploaded successfully!</p>
+            </div>
+            <div id="homeErrorMessage" class="home-message home-message-error" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <p id="homeErrorText"></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/home.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/home_gallery.js') }}"></script>
+</body>
+</html>

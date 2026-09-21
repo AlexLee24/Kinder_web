@@ -1,0 +1,178 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='css/_theme.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
+{% include '_favicon.html' %}
+{% set _p = current_path or '' %}
+{% set _tools = ['/astronomy_tools', '/telescope_simulator', '/mount_3d', '/mount_torque', '/lc_plotter', '/exposure_time_calculator', '/games'] %}
+{% set _planners = ['/observation_planner', '/interactive_planner', '/finding_chart'] %}
+{% set _private = ['/detect', '/detect/archives', '/daily_trigger', '/epessto_support', '/documents', '/greatlab_info'] %}
+<header id="kw-navbar" class="kw-header">
+    <div class="kw-header-inner">
+        <div class="kw-header-content">
+            <a href="/" class="kw-logo" aria-label="Kinder home">
+                <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="" aria-hidden="true">
+                <span>Kinder</span>
+            </a>
+
+            <button class="hamburger-menu" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span><span></span><span></span>
+            </button>
+
+            <nav class="main-nav" aria-label="Primary">
+                <ul class="nav-left">
+                    <li><a href="{{ url_for('marshal.marshal') }}" class="{{ 'active' if _p == '/marshal' }}">Marshal</a></li>
+
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle {{ 'active' if _p in _tools }}" aria-haspopup="true">
+                            Tools <span class="dropdown-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="{{ url_for('astronomy_tools.astronomy_tools') }}" class="{{ 'active' if _p == '/astronomy_tools' }}">Astronomy Tools</a></li>
+                            <li><a href="{{ url_for('astronomy_tools.telescope_simulator') }}" class="{{ 'active' if _p == '/telescope_simulator' }}">Telescope Simulator</a></li>
+                            <li><a href="{{ url_for('astronomy_tools.lc_plotter') }}" class="{{ 'active' if _p == '/lc_plotter' }}">LC Plotter</a></li>
+                            <li><a href="{{ url_for('astronomy_tools.exposure_time_calculator') }}" class="{{ 'active' if _p == '/exposure_time_calculator' }}">Exposure Time Calculator</a></li>
+                            <li><a href="{{ url_for('games.games') }}" class="{{ 'active' if _p == '/games' }}">Games</a></li>
+                        </ul>
+                    </li>
+
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle {{ 'active' if _p in _planners }}" aria-haspopup="true">
+                            Planners <span class="dropdown-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="{{ 'active' if _p == '/interactive_planner' }}">Visibility Plot</a></li>
+                            <li><a href="{{ url_for('astronomy_tools.finding_chart') }}" class="{{ 'active' if _p == '/finding_chart' }}">Finding Chart</a></li>
+                        </ul>
+                    </li>
+
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle" aria-haspopup="true">
+                            About <span class="dropdown-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="https://sites.google.com/view/great-lab/home?authuser=0" target="_blank" rel="noopener noreferrer">About GREAT Lab</a></li>
+                            <li><a href="https://www.lulin.ncu.edu.tw/weather/" target="_blank" rel="noopener noreferrer">NCU Lulin Observatory</a></li>
+                        </ul>
+                    </li>
+
+                    {% if session.user and session.user.get('is_great_lab_member') %}
+                    <li class="dropdown">
+                        <a href="#" class="dropdown-toggle {{ 'active' if _p in _private }}" aria-haspopup="true">
+                            Private <span class="dropdown-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+                        </a>
+                        <ul class="dropdown-content">
+                            <li><a href="{{ url_for('detect.detect_results') }}" class="{{ 'active' if _p.startswith('/detect') }}">DETECT</a></li>
+                            <li><a href="{{ url_for('private_area.daily_trigger') }}" class="{{ 'active' if _p == '/daily_trigger' }}">Daily Trigger</a></li>
+                            <li><a href="{{ url_for('private_area.epessto_support_page') }}" class="{{ 'active' if _p == '/epessto_support' }}">ePessto++ Support Team</a></li>
+                            <li><a href="{{ url_for('private_area.documents_list') }}" class="{{ 'active' if _p.startswith('/documents') }}">Documents</a></li>
+                            <li><a href="{{ url_for('private_area.greatlab_info') }}" class="{{ 'active' if _p == '/greatlab_info' }}">Lab Info</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                <ul class="nav-right">
+                    {% if session.user %}
+                        {% if session.user.is_admin %}
+                        <li class="dropdown">
+                            <a href="#" class="dropdown-toggle manage-btn" title="Admin tools" aria-haspopup="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                <span>Manage</span>
+                            </a>
+                            <ul class="dropdown-content dropdown-align-right">
+                                <li><a href="{{ url_for('admin.admin_panel') }}" class="{{ 'active' if _p == '/admin' }}">Admin Panel</a></li>
+                                <li><a href="{{ url_for('web_log.log_viewer') }}" class="{{ 'active' if _p == '/admin/log' }}">Web Log</a></li>
+                                <li><a href="{{ url_for('database_status.database_status_page') }}" class="{{ 'active' if _p == '/admin/database' }}">DB Status</a></li>
+                            </ul>
+                        </li>
+                        {% endif %}
+                        <li class="dropdown">
+                            <a href="#" class="user-menu dropdown-toggle" aria-haspopup="true">
+                                <img src="{{ g.current_user.picture if g.current_user and g.current_user.picture else session.user.picture }}" alt="" class="user-avatar">
+                                <span class="user-name">{{ session.user.name }}</span>
+                                {% if session.user.get('role', 'guest') == 'guest' and not session.user.get('is_admin') %}<span class="user-badge">Guest</span>{% endif %}
+                            </a>
+                            <ul class="dropdown-content dropdown-align-right">
+                                <li><a href="{{ url_for('basic.profile') }}">Profile</a></li>
+                                <li><a href="{{ url_for('auth.logout') }}">Log Out</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li><a href="{{ url_for('basic.login') }}" class="login-button">Log In</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+</header>
+<div class="kw-header-spacer" aria-hidden="true"></div>
+
+<!-- Flash Messages -->
+<div class="flash-message-container" aria-live="polite">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div id="flash-message">
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+</div>
+<!-- Flash Messages End -->
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const hamburger = document.querySelector('.hamburger-menu');
+        const mainNav = document.querySelector('.main-nav');
+
+        function closeMenu() {
+            hamburger.classList.remove('active');
+            mainNav.classList.remove('active');
+            hamburger.setAttribute('aria-expanded', 'false');
+        }
+
+        if (hamburger && mainNav) {
+            hamburger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const open = hamburger.classList.toggle('active');
+                mainNav.classList.toggle('active', open);
+                hamburger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            });
+            document.addEventListener('click', function(e) {
+                if (mainNav.classList.contains('active') && !mainNav.contains(e.target) && !hamburger.contains(e.target)) {
+                    closeMenu();
+                }
+            });
+            document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeMenu(); });
+        }
+
+        // Dropdowns: hover on desktop, tap-to-toggle on narrow screens
+        document.querySelectorAll('.dropdown').forEach(dropdown => {
+            const toggle = dropdown.querySelector('a.dropdown-toggle') || dropdown.querySelector('a');
+            const dropdownContent = dropdown.querySelector('.dropdown-content');
+            if (!toggle || !dropdownContent) return;
+            toggle.addEventListener('click', function(e) {
+                if (toggle.getAttribute('href') === '#') e.preventDefault();
+                if (window.innerWidth <= 900) {
+                    const isActive = dropdown.classList.contains('mobile-active');
+                    document.querySelectorAll('.dropdown').forEach(d => { if (d !== dropdown) d.classList.remove('mobile-active'); });
+                    dropdown.classList.toggle('mobile-active', !isActive);
+                }
+            });
+            dropdownContent.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+        });
+    });
+
+    setTimeout(function() {
+        const flashMessage = document.getElementById("flash-message");
+        if (flashMessage) { flashMessage.style.opacity = '0'; setTimeout(() => flashMessage.style.display = 'none', 300); }
+    }, 3500);
+
+    (function() {
+        const header = document.querySelector('header.kw-header');
+        if (!header) return;
+        const onScroll = () => header.classList.toggle('scrolled', window.scrollY > 8);
+        onScroll();
+        window.addEventListener('scroll', onScroll, { passive: true });
+    })();
+</script>
