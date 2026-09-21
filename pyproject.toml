@@ -47,8 +47,25 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
+    "ruff",
 ]
 
 # Application, not a library: no build backend, uv manages only the venv.
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "live_db: hits the real Kinder database (needs kinder.env and network access)",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["app/vendor", "app/services/photometry/download_phot.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E501", "E731", "E741"]

@@ -1,37 +1,30 @@
-# Web framework
+# Generated from pyproject.toml (source of truth). Use `uv sync` when possible;
+# this file exists for plain-pip deployments only.
 flask
 werkzeug
 authlib
 python-dotenv
-
-# Database
 psycopg2-binary
-
-# Astronomy
-astropy
+astropy>=8.0.0
 astroquery
 ephem
 dustmaps
+healpy
 pytz
 timezonefinder
-
-# Data & computation
 numpy
+scipy
 pandas
 matplotlib
 plotly
-pydantic
-
-# Web scraping & HTTP
+pydantic>=2
 requests
 beautifulsoup4
 playwright
 tqdm
-
-# Image processing
-Pillow
-
-# Other
+alerce
+gcn-kafka
+pillow
 apscheduler
-slack_sdk
-healpy
+slack-sdk
+gunicorn>=26.2.0

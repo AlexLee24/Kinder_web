@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Copy the DETECT pipeline (its `function/` package) into app/modules/DETECT so the
+# Copy the DETECT pipeline (its `function/` package) into app/vendor/DETECT so the
 # web app runs the same cross-match / host rule / screening code as the daemon.
 #
 #   scripts/sync_detect.sh [/path/to/DETECT]      (default: ../../DETECT next to this repo)
 #
-# Once DETECT lives on GitHub this becomes a `git clone` like app/modules/CASTOR.
+# Once DETECT lives on GitHub this becomes a `git clone` like app/vendor/CASTOR.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${1:-/Volumes/Mac_mini/Lab_Macmini/DETECT}"
-DST="$HERE/app/modules/DETECT"
+DST="$HERE/app/vendor/DETECT"
 
 [ -d "$SRC/function" ] || { echo "no DETECT checkout at $SRC" >&2; exit 1; }
 mkdir -p "$DST"

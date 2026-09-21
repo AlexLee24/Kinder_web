@@ -1,21 +1,43 @@
+# ---- secrets / local config --------------------------------------------------
 .env
 kinder.env
-app/routes/private_area/tutorials/*
-app/routes/planners/ov_plot/*
-.DS_Store
-Thumbs.db
+app/blueprints/private_area/tutorials/.env
 
-test.py
-upload_tns_maual.py
-upload_tns/
-app/tns_data/
+# ---- runtime data (never commit) ----------------------------------------------
 app/data/
-app/static/ov_plot
-app/main_copy.py
-app/main_old.py
-test/
+app/log/
+app/vendor/DETECT/data/
+app/blueprints/planners/ov_plot/*
+app/blueprints/basic/gallery_uploads/
+app/blueprints/private_area/data/
+app/blueprints/private_area/tutorials/*
+app/blueprints/web_api/static/
+*.bsp
 
-# Python
+# ---- private module not published with the repo ---------------------------------
+app/services/photometry/download_phot.py
+
+# ---- vendored: CASTOR is a separate git clone (see app/vendor/README.md) ---------
+app/vendor/CASTOR/
+
+# ---- one-off scripts kept locally at the project root -----------------------------
+/test_*.py
+/test_*.md
+/test_*.sql
+/test_photo/
+/test/
+/temp_work/
+/migrate_kinder_web.py
+/migrate_data.py
+/upload_tns_maual.py
+/upload_tns/
+/Cross_match_data/
+/import_cross_match.py
+/DETECT_tools/
+/OLD/
+/data/
+
+# ---- Python -------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -36,57 +58,35 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.ruff_cache/
 
-# Virtual Environment
+# ---- virtual environments ----------------------------------------------------
+.venv/
 venv/
 env/
 ENV/
 
-# IDE
+# ---- IDE / OS ----------------------------------------------------------------
 .vscode/
 .idea/
+/.claude/
 *.swp
 *.swo
-
-# Logs
-*.log
-
-# Database
-*.db
-*.sqlite3
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Google Cloud
+# ---- logs / local databases --------------------------------------------------
+*.log
+*.db
+*.sqlite3
+
+# ---- Google Drive temp files ---------------------------------------------------
 .tmp.drivedownload
 .tmp.driveupload
 
-OLD/
-data/
-# DETECT package data (the kilonova grid), unlike its runtime data/ dir
-!app/modules/DETECT/function/data/
-app/modules/download_phot.py
-Cross_match_data/
-import_cross_match.py
-app/modules/DETECT_pipe/modules/
-app/modules/CASTOR/
-*.bsp
-migrate_data.py
-test*.py
-.github/
-
-app/log
-app/log/
-app/log/*
-test_photo/
-test*
-DETECT_tools/
-temp_work/
-migrate_kinder_web.py
-/.claude/
-app/modules/_spectral_lines_cache.json
-/app/routes/basic/gallery_uploads/
-.venv/
-app/modules/DETECT/data/
+# ---- test/baseline outputs derived from the live database (contain real emails/IDs) ----
+tests/smoke_baseline.json
+tests/*.json
+tests/tools/*.json
+docs/baseline/*.json
