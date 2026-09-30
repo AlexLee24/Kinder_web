@@ -1,7 +1,13 @@
 import os
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime, timedelta
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX
+    fcntl = None
 
 import pytz
 import requests
@@ -30,40 +36,78 @@ def _trigger_day_key(now=None):
     return now.strftime('%Y-%m-%d')
 
 
+@contextmanager
+def _status_lock(exclusive=True):
+    """flock on a side file so read-modify-write of the status file is serialised
+    across gunicorn workers (a no-op where fcntl is unavailable)."""
+    os.makedirs(_STATUS_DIR, exist_ok=True)
+    with open(_STATUS_PATH + '.lock', 'a+') as fh:
+        if fcntl is not None:
+            fcntl.flock(fh, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def _read_status(day_key):
+    """Read the status file for *day_key*. Raises JSONDecodeError / OSError."""
+    status = {'day': day_key, 'SLT': None}
+    if os.path.isfile(_STATUS_PATH):
+        with open(_STATUS_PATH, 'r', encoding='utf-8') as f:
+            stored = json.load(f)
+        if stored.get('day') == day_key:
+            for k, v in stored.items():
+                if k != 'day':
+                    status[k] = v
+        else:
+            logger.info('trigger_send: status reset — stored day=%s, current trigger day=%s',
+                        stored.get('day'), day_key)
+    return status
+
+
 def get_send_status():
     """Returns {'day': ..., 'SLT': {...} or None, 'LOT:R01': {...}, ...}.
     LOT programs are stored as separate keys like 'LOT:R01', 'LOT:R07'.
     Automatically resets once the trigger day rolls over."""
     day_key = _trigger_day_key()
-    status = {'day': day_key, 'SLT': None}
-    if os.path.isfile(_STATUS_PATH):
+    try:
+        return _read_status(day_key)
+    except (json.JSONDecodeError, OSError) as e:
+        # Most likely caught a writer mid-update: retry once under the lock rather
+        # than silently reporting "not sent".
+        logger.info('trigger_send: status read failed (%s), retrying under lock', e)
+    with _status_lock(exclusive=False):
         try:
-            with open(_STATUS_PATH, 'r', encoding='utf-8') as f:
-                stored = json.load(f)
-            if stored.get('day') == day_key:
-                for k, v in stored.items():
-                    if k != 'day':
-                        status[k] = v
-            else:
-                logger.info('trigger_send: status reset — stored day=%s, current trigger day=%s',
-                            stored.get('day'), day_key)
+            return _read_status(day_key)
         except (json.JSONDecodeError, OSError) as e:
-            logger.warning('trigger_send: could not read status file %s: %s', _STATUS_PATH, e)
-    return status
+            # Genuinely unreadable (writes are atomic now, so not a torn read). Log it
+            # loudly; the next mark_sent rewrites the file.
+            logger.error('trigger_send: could not read status file %s: %s', _STATUS_PATH, e)
+            return {'day': day_key, 'SLT': None}
 
 
 def mark_sent(telescope, sent_by, program=''):
     if telescope not in ('SLT', 'LOT'):
         raise ValueError(f'Invalid telescope: {telescope}')
     os.makedirs(_STATUS_DIR, exist_ok=True)
-    status = get_send_status()
     key = f'{telescope}:{program}' if telescope == 'LOT' and program else telescope
-    status[key] = {
-        'sent_by': sent_by,
-        'sent_at': datetime.now(_TAIPEI).strftime('%Y-%m-%d %H:%M:%S'),
-    }
-    with open(_STATUS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(status, f, indent=2)
+    with _status_lock(exclusive=True):
+        day_key = _trigger_day_key()
+        try:
+            status = _read_status(day_key)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning('trigger_send: could not read status file %s: %s', _STATUS_PATH, e)
+            status = {'day': day_key, 'SLT': None}
+        status[key] = {
+            'sent_by': sent_by,
+            'sent_at': datetime.now(_TAIPEI).strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        tmp = f'{_STATUS_PATH}.{os.getpid()}.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(status, f, indent=2)
+        os.replace(tmp, _STATUS_PATH)
     logger.info('trigger_send: mark_sent key=%s sent_by=%s -> %s', key, sent_by, status[key])
     return status
 
@@ -155,9 +199,9 @@ def send_to_slack(greeting, script_body, image_path=None):
         if image_path and os.path.isfile(image_path):
             _slack_upload_and_share(client, channel, image_path, 'visibility_plot.jpg', 'Visibility Plot')
     except SlackApiError as e:
-        raise RuntimeError(f"Slack send failed: {e.response['error']}")
+        raise RuntimeError(f"Slack send failed: {e.response['error']}") from e
     except requests.RequestException as e:
-        raise RuntimeError(f"Slack file upload (HTTP) failed: {e}")
+        raise RuntimeError(f"Slack file upload (HTTP) failed: {e}") from e
     finally:
         if txt_path:
             try:

@@ -12,7 +12,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 from . import astronomy_tools_bp
-from .helpers import _PLANNERS_OV_PLOT_DIR
+from .helpers import _PLANNERS_OV_PLOT_DIR, _client_ip, _rate_ok_burst
+
+# Public endpoints: bound the work per request and per client.
+_MAX_PLOT_TARGETS = 50
+_MAX_VISIBILITY_TARGETS = 200
+_PLOT_RATE_BURST, _PLOT_RATE_WINDOW = 5, 10.0
+_VIS_RATE_BURST, _VIS_RATE_WINDOW = 10, 10.0
 
 
 @astronomy_tools_bp.route('/observation_planner')
@@ -30,7 +36,7 @@ def enforce_max_files(folder, max_files):
             all_items = os.listdir(folder)
             files = [os.path.join(folder, f) for f in all_items 
                     if os.path.isfile(os.path.join(folder, f))]
-        except OSError as e:
+        except OSError:
             return
         
         if len(files) > max_files:
@@ -66,6 +72,8 @@ def parse_coordinate(coord_str):
 
 @astronomy_tools_bp.route("/generate_plot", methods=["POST"])
 def generate_plot():
+    if not _rate_ok_burst(_client_ip(), 'generate_plot', _PLOT_RATE_BURST, _PLOT_RATE_WINDOW):
+        return jsonify({'error': 'Too many requests; please wait a few seconds.'}), 429
     try:
         target_list = []
         plot_folder = _PLANNERS_OV_PLOT_DIR
@@ -76,8 +84,8 @@ def generate_plot():
         except Exception as e:
             return jsonify({'error': f'Failed to prepare plot folder: {str(e)}'}), 500
         
-        data = request.get_json()
-        if not data:
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
             return jsonify({'error': 'No data provided'}), 400
         
         date = data.get("date")
@@ -92,6 +100,8 @@ def generate_plot():
             return jsonify({'error': 'Location is required'}), 400
         if not targets or not isinstance(targets, list):
             return jsonify({'error': 'Targets list is required'}), 400
+        if len(targets) > _MAX_PLOT_TARGETS:
+            return jsonify({'error': f'Too many targets (max {_MAX_PLOT_TARGETS})'}), 400
         if not timezone:
             return jsonify({'error': 'Timezone is required'}), 400
         
@@ -211,9 +221,11 @@ def visibility_data():
     Compute visibility data for targets and return JSON for client-side plotting.
     Returns altitude/azimuth arrays, sun/moon tracks, twilight times, etc.
     """
+    if not _rate_ok_burst(_client_ip(), 'visibility_data', _VIS_RATE_BURST, _VIS_RATE_WINDOW):
+        return jsonify({'error': 'Too many requests; please wait a few seconds.'}), 429
     try:
-        data = request.get_json()
-        if not data:
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
             return jsonify({'error': 'No data provided'}), 400
 
         date = data.get('date')
@@ -221,7 +233,14 @@ def visibility_data():
         timezone_offset = data.get('timezone')
         targets = data.get('targets', [])
         observer_name = data.get('telescope', 'Observer')
-        n_steps = min(int(data.get('n_steps', 300)), 500)
+        try:
+            n_steps = max(10, min(int(data.get('n_steps', 300)), 500))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid n_steps'}), 400
+        if not isinstance(targets, list):
+            return jsonify({'error': 'targets must be a list'}), 400
+        if len(targets) > _MAX_VISIBILITY_TARGETS:
+            return jsonify({'error': f'Too many targets (max {_MAX_VISIBILITY_TARGETS})'}), 400
 
         if not date or not location or timezone_offset is None:
             return jsonify({'error': 'date, location, timezone are required'}), 400
@@ -524,5 +543,5 @@ def target_autocomplete():
                 'internal_names': str(r.get('internal_names', '') or ''),
             })
         return jsonify(out)
-    except Exception as e:
+    except Exception:
         return jsonify([])

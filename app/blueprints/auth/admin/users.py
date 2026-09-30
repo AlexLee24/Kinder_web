@@ -64,6 +64,9 @@ def handle_group_request(action):
     req = get_group_request(email, group_name)
     if not req:
         return jsonify({'error': 'Request not found'}), 404
+    if req.get('status') != 'request':
+        # Only pending requests can be approved/rejected (don't touch memberships).
+        return jsonify({'error': 'No pending request for this user and group'}), 400
 
     if action == 'approve':
         if update_group_request_status(email, group_name, 'joined'):

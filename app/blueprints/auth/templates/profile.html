@@ -142,11 +142,11 @@
                                     </div>
                                     <div class="group-actions">
                                         {% if group.is_member %}
-                                            <button class="btn-api btn-api-secondary" onclick="leaveGroup('{{ group.name }}')">Leave</button>
+                                            <button class="btn-api btn-api-secondary" onclick='leaveGroup({{ group.name|tojson }})'>Leave</button>
                                         {% elif group.request_status == 'request' %}
                                             <button class="btn-api btn-api-secondary" disabled>Pending...</button>
                                         {% else %}
-                                            <button class="btn-api btn-api-warning" onclick="askToJoinGroup('{{ group.name }}')">Join</button>
+                                            <button class="btn-api btn-api-warning" onclick='askToJoinGroup({{ group.name|tojson }})'>Join</button>
                                         {% endif %}
                                     </div>
                                 </div>

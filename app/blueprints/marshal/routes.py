@@ -1,11 +1,16 @@
 """
 Marshal routes for the Kinder web application.
 """
+import logging
+
 from flask import render_template, session, flash, request, jsonify
 
+from app.core.auth import is_non_guest
 from app.db.transient import (
     get_marshal_overview_stats, search_tns_objects
 )
+
+logger = logging.getLogger(__name__)
 
 
 from flask import Blueprint
@@ -17,7 +22,6 @@ marshal_bp = Blueprint('marshal', __name__, template_folder='templates', static_
 # ===============================================================================
 @marshal_bp.route('/marshal')
 def marshal():
-    from flask import session
     user = session.get('user', {})
     role = user.get('role', 'guest') if user else 'guest'
     is_admin = user.get('is_admin', False) if user else False
@@ -67,7 +71,7 @@ def marshal():
                     'updated': row[2] or 0,
                     'errors': row[4] if sync_status == 'failed' else None,
                 }
-        except Exception as e:
+        except Exception:
             pass
         
         # Smart loading strategy for large datasets
@@ -95,7 +99,10 @@ def marshal():
                 raw_objects = search_tns_objects(
                     limit=initial_limit, 
                     sort_by='discoverydate', 
-                    sort_order='desc'
+                    sort_order='desc',
+                    apply_permissions=True,
+                    viewer_email=user.get('email') if user else None,
+                    viewer_is_admin=is_admin,
                 )
                 
                 for obj in raw_objects:
@@ -103,7 +110,7 @@ def marshal():
                         obj['tag'] = 'object'
                     initial_objects.append(obj)
                 
-            except Exception as e:
+            except Exception:
                 # Fallback to API mode if initial loading fails
                 initial_objects = []
                 use_api_mode = True
@@ -125,7 +132,7 @@ def marshal():
                              initial_limit=initial_limit,
                              visibility=visibility)
         
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         flash('Error loading transient data.', 'error')
@@ -148,39 +155,65 @@ def marshal():
 
 @marshal_bp.route('/api/marshal/recent-comments')
 def get_marshal_recent_comments():
+    if not is_non_guest():
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
     try:
         from app.db.transient import TNSObjectDB
-        comments = TNSObjectDB.get_recent_comments(limit=5)
+        user = session['user']
+        comments = TNSObjectDB.get_recent_comments(
+            limit=5,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         # Add formatted date snippet and trim content
         for c in comments:
-            if len(c['content']) > 50:
-                c['content'] = c['content'][:47] + '...'
+            c.pop('user_email', None)
+            content = c.get('content') or ''
+            if len(content) > 50:
+                content = content[:47] + '...'
+            c['content'] = content
         return jsonify({'success': True, 'comments': comments})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("recent-comments error: %s", e)
+        return jsonify({'success': False, 'error': 'Failed to load comments'}), 500
 
 
 @marshal_bp.route('/api/marshal/recent-tns-updates')
 def get_marshal_recent_tns_updates():
     try:
         from app.db.transient import TNSObjectDB
-        updates, is_fallback = TNSObjectDB.get_recent_tns_updates(limit=6)
+        user = session.get('user') or {}
+        updates, is_fallback = TNSObjectDB.get_recent_tns_updates(
+            limit=6,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({'success': True, 'updates': updates, 'is_fallback': is_fallback})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("marshal widget error: %s", e)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @marshal_bp.route('/api/marshal/top-viewed')
 def get_marshal_top_viewed():
     try:
         from app.db.transient import TNSObjectDB
         mode = request.args.get('mode', '30days')
-        targets = TNSObjectDB.get_top_viewed_objects(days=30, limit=5, mode=mode)
+        user = session.get('user') or {}
+        targets = TNSObjectDB.get_top_viewed_objects(
+            days=30, limit=5, mode=mode,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({
             'success': True, 
             'targets': targets
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("marshal widget error: %s", e)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @marshal_bp.route('/api/marshal/pinned-objects')
 def get_marshal_pinned_objects():
@@ -188,7 +221,14 @@ def get_marshal_pinned_objects():
         return jsonify({'success': True, 'objects': []})
     try:
         from app.db.transient import get_pinned_objects
-        objects = get_pinned_objects(limit=20)
+        user = session['user']
+        objects = get_pinned_objects(
+            limit=20,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({'success': True, 'objects': objects})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error("marshal widget error: %s", e)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500

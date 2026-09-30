@@ -21,6 +21,9 @@ from .helpers import (
 )
 
 
+_MAX_DOC_IMAGE_BYTES = 10 * 1024 * 1024
+
+
 @private_area_bp.route('/documents')
 def documents_list():
     if 'user' not in session:
@@ -42,9 +45,15 @@ def documents_list():
                 md_files.append({"filename": f, "title": name.replace('_', ' ').title()})
     
     metadata = get_documents_metadata()
+    if not isinstance(metadata, dict):
+        metadata = {}
     pinned = metadata.get('pinned', [])
     order = metadata.get('order', [])
-    
+    if not isinstance(pinned, list):
+        pinned = []
+    if not isinstance(order, list):
+        order = []
+
     for f in md_files:
         f['is_pinned'] = f['filename'] in pinned
         try:
@@ -101,15 +110,28 @@ def document_view(filename):
 
 @private_area_bp.route('/api/documents/metadata', methods=['POST'])
 def api_documents_metadata():
+    # Pin/reorder: document viewers only; non-admins only while editing is enabled
+    # (matches the drag/pin controls shown in documents.html).
+    if not can_view_documents():
+        return jsonify({'error': 'Forbidden'}), 403
     if not is_admin_user() and not documents_editable():
         return jsonify({'error': 'Forbidden'}), 403
-        
-    data = request.json
-    if not data:
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not data:
         return jsonify({'error': 'Invalid request'}), 400
-        
+
+    for key in ('pinned', 'order'):
+        if key in data:
+            val = data[key]
+            if (not isinstance(val, list) or len(val) > 5000
+                    or not all(isinstance(x, str) and len(x) <= 255 for x in val)):
+                return jsonify({'error': f'{key} must be a list of filenames'}), 400
+
     metadata = get_documents_metadata()
-    
+    if not isinstance(metadata, dict):
+        metadata = {'pinned': [], 'order': []}
+
     if 'pinned' in data:
         metadata['pinned'] = data['pinned']
     if 'order' in data:
@@ -228,6 +250,8 @@ def api_documents_upload_image():
         return jsonify({'error': 'Missing image file'}), 400
 
     image = request.files['image']
+    if request.content_length and request.content_length > _MAX_DOC_IMAGE_BYTES:
+        return jsonify({'error': 'Image too large (max 10 MB)'}), 413
     raw_name = secure_filename(image.filename or '')
     ext = os.path.splitext(raw_name)[1].lower()
     if ext not in allowed_image_ext:
@@ -237,7 +261,11 @@ def api_documents_upload_image():
     os.makedirs(images_dir, exist_ok=True)
     image_name = f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     image_path = os.path.join(images_dir, image_name)
-    image.save(image_path)
+    data = image.stream.read(_MAX_DOC_IMAGE_BYTES + 1)
+    if len(data) > _MAX_DOC_IMAGE_BYTES:
+        return jsonify({'error': 'Image too large (max 10 MB)'}), 413
+    with open(image_path, 'wb') as out:
+        out.write(data)
 
     static_path = f"/tutorials/images/{image_name}"
     return jsonify({
@@ -249,6 +277,8 @@ def api_documents_upload_image():
 @private_area_bp.route('/tutorials/images/<path:filename>')
 def serve_tutorial_image(filename):
     """Serve images stored in private_area/tutorials/images/."""
+    if not can_view_documents():
+        abort(403)
     if '..' in filename or filename.startswith('/'):
         abort(400)
     from flask import send_from_directory

@@ -241,7 +241,7 @@ function forceDetectRun() {
         </div>
     `;
 
-    return fetch(`/api/object/${detectName}/detect_cross_match?force=true&_ts=${Date.now()}`, { cache: 'no-store' })
+    return fetch(`/api/object/${detectName}/detect_cross_match?_ts=${Date.now()}`, { method: 'POST', cache: 'no-store' })
         .then(async response => {
             const ct = response.headers.get('content-type') || '';
             if (!ct.includes('application/json')) {
@@ -261,7 +261,7 @@ function forceDetectRun() {
                     if (_detectTabMode === 'chart') _renderDetectChartView();
                 }
             } else {
-                detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${data.error || 'Failed to run cross-match'}</div>`;
+                detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">Error: ${escapeHtml(data.error || 'Failed to run cross-match')}</div>`;
             }
         })
         .catch(err => {
@@ -281,12 +281,12 @@ function forceDetectRun() {
                         renderDetectData(d.results, d.screen);
                     } else {
                         const msg = (err && err.message) ? err.message : 'Network error running cross-match';
-                        detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${msg}</div>`;
+                        detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${escapeHtml(msg)}</div>`;
                     }
                 })
                 .catch(() => {
                     const msg = (err && err.message) ? err.message : 'Network error running cross-match';
-                    detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${msg}</div>`;
+                    detectBody.innerHTML = `<div style="color:#ff6b6b; padding:10px;">${escapeHtml(msg)}</div>`;
                 });
         });
 }
@@ -302,24 +302,24 @@ function _detectVerdictHtml(screen) {
     const hot = ['Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?'], veto = ['Galactic', 'AGN', 'Classified', 'Star?'];
     const tags = (screen.tags || []).map(t => {
         const c = hot.includes(t) ? '#ff8080' : veto.includes(t) ? '#999' : t === 'Ambiguous' || t === 'z-conflict' || t === 'Host-z?' ? '#ffd93d' : '#a8c0ff';
-        return `<span style="color:${c}; border:1px solid ${c}55; border-radius:4px; padding:0 5px; font-size:0.85em; margin-right:3px;">${t}</span>`;
+        return `<span style="color:${c}; border:1px solid ${c}55; border-radius:4px; padding:0 5px; font-size:0.85em; margin-right:3px;">${escapeHtml(t)}</span>`;
     }).join('');
     const am = screen.abs_mag != null ? `M = <b style="color:${screen.abs_mag <= -20 ? '#ff7070' : screen.abs_mag <= -18 ? '#46ffaf' : '#ddd'}">${Number(screen.abs_mag).toFixed(2)}</b>`
-        + (screen.abs_mag_source === 'peak' ? ` <span style="color:#888">(${screen.abs_mag_band || ''} peak ${Number(screen.peak_mag).toFixed(2)})</span>` : ' <span style="color:#888">(discovery mag)</span>') : '';
-    const z = screen.z != null ? `z = ${Number(screen.z).toFixed(4)}<span style="color:#888"> ${screen.z_source === 'desi_host' ? 'DESI host' : screen.z_source || ''}</span>` : '';
+        + (screen.abs_mag_source === 'peak' ? ` <span style="color:#888">(${escapeHtml(screen.abs_mag_band || '')} peak ${Number(screen.peak_mag).toFixed(2)})</span>` : ' <span style="color:#888">(discovery mag)</span>') : '';
+    const z = screen.z != null ? `z = ${Number(screen.z).toFixed(4)}<span style="color:#888"> ${screen.z_source === 'desi_host' ? 'DESI host' : escapeHtml(screen.z_source || '')}</span>` : '';
     let line = '';
-    if (hs === 'confirmed' && screen.d_dlr != null) line = `host ${screen.morph || ''} d_DLR ${Number(screen.d_dlr).toFixed(2)}, ${Number(screen.center_sep_arcsec).toFixed(1)}″ from the centre${screen.offset_kpc != null ? ', ' + Number(screen.offset_kpc).toFixed(1) + ' kpc' : ''}`;
+    if (hs === 'confirmed' && screen.d_dlr != null) line = `host ${escapeHtml(screen.morph || '')} d_DLR ${Number(screen.d_dlr).toFixed(2)}, ${Number(screen.center_sep_arcsec).toFixed(1)}″ from the centre${screen.offset_kpc != null ? ', ' + Number(screen.offset_kpc).toFixed(1) + ' kpc' : ''}`;
     else if (hs === 'review' && screen.tentative_host) line = `nearest galaxy just outside the limit (d_DLR ${Number(screen.tentative_d_dlr).toFixed(2)}) — decide on the DETECT page`;
     else if (hs === 'review') line = 'ambiguous or conflicting host — decide on the DETECT page';
-    if (screen.host_user === true) line += ` · host chosen by ${screen.host_user_by || 'a reviewer'}`;
+    if (screen.host_user === true) line += ` · host chosen by ${escapeHtml(screen.host_user_by || 'a reviewer')}`;
     let kn = '';
     if (screen.decline_rate != null) {
-        kn = `fades ${Number(screen.decline_rate).toFixed(2)} mag/day in ${screen.decline_filter || '?'} over ${Number(screen.decline_days).toFixed(1)} d after the peak`
+        kn = `fades ${Number(screen.decline_rate).toFixed(2)} mag/day in ${escapeHtml(screen.decline_filter || '?')} over ${Number(screen.decline_days).toFixed(1)} d after the peak`
             + (screen.decline_significant ? '' : ' <span style="color:#888">(not significant)</span>')
-            + (screen.kn_model_n ? ` · ${screen.kn_model_in}/${screen.kn_model_n} g/r/i points inside the POSSIS kilonova envelope` : '');
+            + (screen.kn_model_n ? ` · ${escapeHtml(screen.kn_model_in)}/${escapeHtml(screen.kn_model_n)} g/r/i points inside the POSSIS kilonova envelope` : '');
     }
     return `<div style="border-left:3px solid ${hs === 'confirmed' ? '#46ffaf' : hs === 'review' ? '#ffd93d' : '#666'}; padding:4px 8px; margin-bottom:6px; color:#ccc; line-height:1.5;">
-        <div>${badge} <span style="color:#fff; font-weight:700; margin-left:6px;">score ${screen.score}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${screen.run_date || ''}</span></div>
+        <div>${badge} <span style="color:#fff; font-weight:700; margin-left:6px;">score ${escapeHtml(screen.score)}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${escapeHtml(screen.run_date || '')}</span></div>
         <div>${[am, z].filter(Boolean).join(' · ')}</div>
         ${line ? `<div style="color:#aaa; font-size:0.92em;">${line}</div>` : ''}
         ${kn ? `<div style="color:${(screen.tags || []).includes('Kilonova?') ? '#ff8080' : '#aaa'}; font-size:0.92em;">${kn}</div>` : ''}
@@ -350,7 +350,7 @@ function renderDetectData(results, screen) {
     let html = verdict + '<ul style="list-style:none; padding:0; margin:0;">';
     results.forEach(res => {
         let sep = parseFloat(res.separation_arcsec).toFixed(2);
-        let catalog = res.catalog_name;
+        let catalog = String(res.catalog_name || '');
         let mdata = {};
         try {
             mdata = typeof res.match_data === 'string' ? JSON.parse(res.match_data) : (res.match_data || {});
@@ -376,7 +376,7 @@ function renderDetectData(results, screen) {
         }
 
         if (has(mdata, 'z_source')) extraInfo += ` | z_src=${parseFloat(mdata.z_source).toFixed(3)}`;
-        if (has(mdata, 'grade')) extraInfo += ` | grade=${mdata.grade}`;
+        if (has(mdata, 'grade')) extraInfo += ` | grade=${escapeHtml(mdata.grade)}`;
         if (has(mdata, 'lens_probability')) extraInfo += ` | prob=${parseFloat(mdata.lens_probability).toFixed(3)}`;
         if (has(mdata, 'rein')) extraInfo += ` | rein_E=${parseFloat(mdata.rein).toFixed(2)}"`;
 
@@ -388,30 +388,30 @@ function renderDetectData(results, screen) {
         }
         
         if (has(mdata, 'host_rule')) {
-            const rule = mdata.host_user === true ? 'HOST · chosen by ' + (mdata.host_user_by || 'a reviewer')
+            const rule = mdata.host_user === true ? 'HOST · chosen by ' + escapeHtml(mdata.host_user_by || 'a reviewer')
                        : res.is_host ? 'HOST · rule v1'
                        : mdata.shares_host_galaxy ? 'part of the host'
-                       : mdata.host_member ? `member #${mdata.host_rank || ''}`
+                       : mdata.host_member ? `member #${escapeHtml(mdata.host_rank || '')}`
                        : mdata.host_tentative ? 'tentative'
                        : (mdata.d_dlr != null ? 'outside' : 'no model');
             const col = res.is_host ? '#46ffaf' : mdata.host_tentative ? '#ffd93d' : '#888';
             extraInfo += ` | <span style="color:${col}; font-weight:700;">${rule}</span>`;
-            if (has(mdata, 'd_dlr')) extraInfo += ` | d_DLR=${parseFloat(mdata.d_dlr).toFixed(2)}${has(mdata, 'd_dlr_max') ? '/' + mdata.d_dlr_max : ''}`;
-            if (has(mdata, 'spectype')) extraInfo += ` | ${mdata.spectype}`;
-            if (has(mdata, 'tractor_type')) extraInfo += ` ${mdata.tractor_type}`;
+            if (has(mdata, 'd_dlr')) extraInfo += ` | d_DLR=${parseFloat(mdata.d_dlr).toFixed(2)}${has(mdata, 'd_dlr_max') ? '/' + escapeHtml(mdata.d_dlr_max) : ''}`;
+            if (has(mdata, 'spectype')) extraInfo += ` | ${escapeHtml(mdata.spectype)}`;
+            if (has(mdata, 'tractor_type')) extraInfo += ` ${escapeHtml(mdata.tractor_type)}`;
         }
         if (has(mdata, 'priority_tag')) {
-            extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${mdata.priority_tag.replace(/_/g, ' ')}</span>`;
+            extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${escapeHtml(String(mdata.priority_tag).replace(/_/g, ' '))}</span>`;
         } else if (has(mdata, 'type') && catalog.includes('DESI')) {
-            extraInfo += ` | type=${mdata.type}`;
+            extraInfo += ` | type=${escapeHtml(mdata.type)}`;
         } else if (has(mdata, 'type') && catalog.includes('LENS_CATALOGUE')) {
-            extraInfo += ` | flag=${mdata.type}`;
+            extraInfo += ` | flag=${escapeHtml(mdata.type)}`;
         }
 
         html += `
             <li style="border-bottom: 1px solid rgba(255,255,255,0.1); padding: 8px 0; font-size: 0.9em;">
-                <div style="font-weight:bold; color:#00f5d4;">${catalog.replace(/_/g, ' ')}</div>
-                <div style="color:#ccc;">Sep: ${sep}" ${extraInfo}</div>
+                <div style="font-weight:bold; color:#00f5d4;">${escapeHtml(catalog.replace(/_/g, ' '))}</div>
+                <div style="color:#ccc;">Sep: ${escapeHtml(sep)}" ${extraInfo}</div>
             </li>
         `;
     });
@@ -445,6 +445,10 @@ function loadDetectData() {
             return response.json();
         })
         .then(data => {
+            if (data.success && data.never_run) {
+                // DETECT has never looked at this object: run it now (POST-only run path).
+                return forceDetectRun();
+            }
             if (data.success) {
                 renderDetectData(data.results, data.screen);
                 if (data.detect_image_id) {
@@ -453,13 +457,13 @@ function loadDetectData() {
                     if (_detectTabMode === 'chart') _renderDetectChartView();
                 }
             } else {
-                detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${data.error || 'Failed to analyze'}</div>`;
+                detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${escapeHtml(data.error || 'Failed to analyze')}</div>`;
             }
         })
         .catch(err => {
             console.error('DETECT Error:', err);
             const msg = (err && err.message) ? err.message : 'Error running DETECT';
-            detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${msg}</div>`;
+            detectBody.innerHTML = `<div style="color:var(--danger-color); padding:10px;">${escapeHtml(msg)}</div>`;
         });
 }
 
@@ -527,7 +531,7 @@ function _renderDetectChartView() {
         return;
     }
     if (_detectImageId) {
-        detectBody.innerHTML = `<img src="/detect_image_by_id/${_detectImageId}"
+        detectBody.innerHTML = `<img src="/detect_image_by_id/${encodeURIComponent(_detectImageId)}"
             alt="Finder chart"
             style="max-width:100%; border-radius:6px; display:block; margin:0 auto;" />`;
     } else {
@@ -575,7 +579,7 @@ function generateDetectImages() {
                 _detectImageId = data.images[0].image_id;
                 _renderDetectChartView();
             } else {
-                if (detectBody) detectBody.innerHTML = `<div style="color:#ff6b6b; padding:20px; text-align:center;">${data.error || 'Generation failed'}</div>`;
+                if (detectBody) detectBody.innerHTML = `<div style="color:#ff6b6b; padding:20px; text-align:center;">${escapeHtml(data.error || 'Generation failed')}</div>`;
             }
         })
         .catch(err => {
@@ -648,7 +652,7 @@ function showImageError(message) {
         errorDiv.className = 'image-error';
         errorDiv.innerHTML = `
             <span class="error-icon">${ICONS.error}</span>
-            <span>${message}</span>
+            <span>${escapeHtml(message)}</span>
         `;
         
         const existingError = locationImageContainer.querySelector('.image-error');
@@ -684,7 +688,7 @@ function renderCustomTags(tags) {
     const parts = tags.split(',').map(s => s.trim()).filter(Boolean);
     container.innerHTML = parts.map(t => {
         const cls = t.toUpperCase().startsWith('EP') ? 'custom-tag ep' : 'custom-tag';
-        return `<span class="${cls}">${t}</span>`;
+        return `<span class="${cls}">${escapeHtml(t)}</span>`;
     }).join('');
 }
 
@@ -1252,7 +1256,7 @@ function loadPhotometryPlot() {
                             // Only append if not already appended (could be from template but it's empty)
                             let currentVal = peakValue.innerText.trim().split(' ')[0];
                             if (currentVal !== '--' && currentVal !== '') {
-                                peakValue.innerHTML = `${currentVal} <span style="font-size:0.9em; color:#aaa;">at MJD ${parseFloat(brightestPt.mjd).toFixed(2)} (${brightestPt.filter})</span>`;
+                                peakValue.innerHTML = `${escapeHtml(currentVal)} <span style="font-size:0.9em; color:#aaa;">at MJD ${parseFloat(brightestPt.mjd).toFixed(2)} (${escapeHtml(brightestPt.filter)})</span>`;
                             }
                         }
                     }
@@ -1336,7 +1340,7 @@ function loadPhotometryPlot() {
                         photometryContainer.innerHTML = `
                             <div class="no-data">
                                 <span class="no-data-icon">${ICONS.noData}</span>
-                                <span class="no-data-text">${plotData.message || 'No photometry data available'}</span>
+                                <span class="no-data-text">${escapeHtml(plotData.message || 'No photometry data available')}</span>
                             </div>
                         `;
                     }
@@ -1908,9 +1912,9 @@ function _buildEditFilterDropdowns() {
     if (!telSel || !filtSel) return;
 
     telSel.innerHTML = '<option value="">All</option>' +
-        telescopes.map(t => `<option value="${t}">${t}</option>`).join('');
+        telescopes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
     filtSel.innerHTML = '<option value="">All</option>' +
-        filters.map(f => `<option value="${f}">${f}</option>`).join('');
+        filters.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
 }
 
 function populatePhotometryTable() {
@@ -1962,19 +1966,19 @@ function populatePhotometryTable() {
 
         row.innerHTML = `
             <td style="padding:6px 10px;">
-                <input type="checkbox" class="edit-row-cb" data-id="${point.id}" data-index="${index}"
+                <input type="checkbox" class="edit-row-cb" data-id="${escapeHtml(point.id)}" data-index="${index}"
                        ${isSelected ? 'checked' : ''}
                        onchange="toggleEditRowSelect(this)"
                        style="width:14px; height:14px; cursor:pointer;">
             </td>
-            <td>${point.mjd}</td>
-            <td>${isUpperLimit ? '>' : ''}${point.magnitude}</td>
-            <td>${point.magnitude_error || 'N/A'}</td>
-            <td>${point.filter || 'N/A'}</td>
-            <td>${point.telescope || 'Unknown'}</td>
+            <td>${escapeHtml(point.mjd)}</td>
+            <td>${isUpperLimit ? '&gt;' : ''}${escapeHtml(point.magnitude)}</td>
+            <td>${escapeHtml(point.magnitude_error || 'N/A')}</td>
+            <td>${escapeHtml(point.filter || 'N/A')}</td>
+            <td>${escapeHtml(point.telescope || 'Unknown')}</td>
             <td>
                 <button class="btn-small ${isMarked ? 'btn-secondary' : 'btn-danger'}"
-                        onclick="markForDeletion(${index}, ${point.id})"
+                        onclick="markForDeletion(${index}, ${Number(point.id)})"
                         title="${isMarked ? 'Undo deletion' : 'Delete this point'}">
                     <span class="btn-icon">${isMarked ? ICONS.undo : ICONS.delete}</span>
                 </button>
@@ -2215,14 +2219,14 @@ async function addPhotometryPoint() {
             });
         } else {
             if (errorDiv && errorText) {
-                errorText.innerHTML = result.error || 'Failed to add photometry point';
+                errorText.textContent = result.error || 'Failed to add photometry point';
                 errorDiv.style.display = 'flex';
             }
         }
     } catch (error) {
         console.error('Error adding photometry point:', error);
         if (errorDiv && errorText) {
-            errorText.innerHTML = 'Network error: ' + error.message;
+            errorText.textContent = 'Network error: ' + error.message;
             errorDiv.style.display = 'flex';
         }
     }
@@ -2922,7 +2926,7 @@ function loadSpectrumPlot() {
                         spectrumContainer.innerHTML = `
                             <div class="no-data">
                                 <span class="no-data-icon">${ICONS.noData}</span>
-                                <span class="no-data-text">${data.message || 'No spectrum data available'}</span>
+                                <span class="no-data-text">${escapeHtml(data.message || 'No spectrum data available')}</span>
                             </div>
                         `;
                     }
@@ -3000,7 +3004,7 @@ function openDownloadModal() {
         telescopes.forEach(t => {
             const lbl = document.createElement('label');
             lbl.style.cssText = 'display:flex; align-items:center; gap:5px; cursor:pointer; color:rgba(255,255,255,0.8); font-size:0.82rem; background:rgba(255,255,255,0.06); padding:3px 9px; border-radius:4px;';
-            lbl.innerHTML = `<input type="checkbox" checked data-dl="telescope" value="${t}" style="width:13px; height:13px;"> ${t}`;
+            lbl.innerHTML = `<input type="checkbox" checked data-dl="telescope" value="${escapeHtml(t)}" style="width:13px; height:13px;"> ${escapeHtml(t)}`;
             telList.appendChild(lbl);
         });
     }
@@ -3012,7 +3016,7 @@ function openDownloadModal() {
         filters.forEach(f => {
             const lbl = document.createElement('label');
             lbl.style.cssText = 'display:flex; align-items:center; gap:5px; cursor:pointer; color:rgba(255,255,255,0.8); font-size:0.82rem; background:rgba(255,255,255,0.06); padding:3px 9px; border-radius:4px;';
-            lbl.innerHTML = `<input type="checkbox" checked data-dl="filter" value="${f}" style="width:13px; height:13px;"> ${f}`;
+            lbl.innerHTML = `<input type="checkbox" checked data-dl="filter" value="${escapeHtml(f)}" style="width:13px; height:13px;"> ${escapeHtml(f)}`;
             fltList.appendChild(lbl);
         });
     }
@@ -3078,7 +3082,7 @@ async function downloadCurrentSpectrum() {
 
         const selectedLabel = target?.spectrum_label || target?.telescope || target?.spectrum_id || 'spectrum';
         const a = document.createElement('a');
-        a.href = `/api/spectrum/${encodeURIComponent(spectrumId)}/download`;
+        a.href = `/api/spectrum/${encodeURIComponent(spectrumId)}/download?object=${encodeURIComponent(cleanObjectName)}`;
         a.download = `${cleanObjectName}_spec_${selectedLabel.replace(/[^\w\-]+/g, '_')}.dat`;
         document.body.appendChild(a);
         a.click();
@@ -3662,7 +3666,7 @@ function showUploadError(msg) {
     const errorDiv = document.getElementById('uploadError');
     const errorText = document.getElementById('errorText');
     if (errorDiv) { errorDiv.style.display = 'flex'; }
-    if (errorText) errorText.innerHTML = typeof msg === 'string' ? msg : msg.join('<br>');
+    if (errorText) errorText.innerHTML = typeof msg === 'string' ? escapeHtml(msg) : msg.map(escapeHtml).join('<br>');
 }
 
 function removeSelectedFile() {
@@ -3758,7 +3762,7 @@ function showPreview(data, errors) {
     if (errors.length > 0 && errorDiv) {
         errorDiv.style.display = 'flex';
         const errorText = document.getElementById('errorText');
-        if (errorText) errorText.innerHTML = errors.slice(0, 10).join('<br>') + (errors.length > 10 ? `<br>...and ${errors.length - 10} more` : '');
+        if (errorText) errorText.innerHTML = errors.slice(0, 10).map(escapeHtml).join('<br>') + (errors.length > 10 ? `<br>...and ${errors.length - 10} more` : '');
     } else if (errorDiv) {
         errorDiv.style.display = 'none';
     }
@@ -3785,9 +3789,9 @@ function showPreview(data, errors) {
             <td>${point.mjd.toFixed(3)}</td>
             <td>${point.isUpperLimit ? '>' : ''}${point.magnitude ? point.magnitude.toFixed(3) : 'N/A'}</td>
             <td>${point.magnitude_error ? point.magnitude_error.toFixed(3) : 'N/A'}</td>
-            <td>${point.filter}</td>
-            <td>${point.telescope}</td>
-            <td class="${statusClass}">${point.statusText}</td>
+            <td>${escapeHtml(point.filter)}</td>
+            <td>${escapeHtml(point.telescope)}</td>
+            <td class="${statusClass}">${escapeHtml(point.statusText)}</td>
         `;
         
         tableBody.appendChild(row);
@@ -3891,7 +3895,7 @@ function showNotification(message, type = 'info') {
     notification.innerHTML = `
         <div style="display: flex; align-items: center; gap: 12px;">
             <span style="font-size: 18px; display: flex; align-items: center;">${type === 'success' ? ICONS.success : type === 'error' ? ICONS.error : type === 'warning' ? ICONS.warning : ICONS.info}</span>
-            <span>${message}</span>
+            <span>${escapeHtml(message)}</span>
         </div>
     `;
     
@@ -4080,12 +4084,13 @@ function createCommentElement(comment) {
     const canEdit = isAdmin || (currentUserEmail && comment.user_email === currentUserEmail);
     
     // Create avatar
-    const avatarContent = comment.user_picture ? 
-        `<img src="${comment.user_picture}" alt="${comment.user_name}" referrerpolicy="no-referrer" onerror='this.parentNode.classList.add("no-image"); this.outerHTML=\`${ICONS.user}\`;'>` :
+    const pictureUrl = safeUrl(comment.user_picture);
+    const avatarContent = pictureUrl ?
+        `<img src="${escapeHtml(pictureUrl)}" alt="${escapeHtml(comment.user_name)}" referrerpolicy="no-referrer" onerror='this.parentNode.classList.add("no-image"); this.outerHTML=\`${ICONS.user}\`;'>` :
         ICONS.user;
     
     commentDiv.innerHTML = `
-        <div class="comment-avatar ${!comment.user_picture ? 'no-image' : ''}">
+        <div class="comment-avatar ${!pictureUrl ? 'no-image' : ''}">
             ${avatarContent}
         </div>
         <div class="comment-content">
@@ -4093,27 +4098,27 @@ function createCommentElement(comment) {
                 <span class="comment-author">${escapeHtml(comment.user_name)}</span>
                 <span class="comment-time">${utcTimeStr}</span>
             </div>
-            <div class="comment-text" id="comment-text-${comment.id}">${escapeHtml(comment.content).replace(/\\n/g, '<br>')}</div>
-            <div class="comment-edit-box" id="comment-edit-box-${comment.id}" style="display:none; margin-top:8px;">
-                <textarea id="comment-edit-textarea-${comment.id}" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:8px; resize:vertical; font-family:inherit;">${escapeHtml(comment.content)}</textarea>
+            <div class="comment-text" id="comment-text-${Number(comment.id)}">${escapeHtml(comment.content).replace(/\\n/g, '<br>')}</div>
+            <div class="comment-edit-box" id="comment-edit-box-${Number(comment.id)}" style="display:none; margin-top:8px;">
+                <textarea id="comment-edit-textarea-${Number(comment.id)}" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:8px; resize:vertical; font-family:inherit;">${escapeHtml(comment.content)}</textarea>
                 <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; border:none;" onclick="cancelEditComment(${comment.id})">Cancel</button>
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; background:#00f5d4; color:#000; border:none;" onclick="saveEditComment(${comment.id})">Save</button>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; border:none;" onclick="cancelEditComment(${Number(comment.id)})">Cancel</button>
+                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; background:#00f5d4; color:#000; border:none;" onclick="saveEditComment(${Number(comment.id)})">Save</button>
                 </div>
             </div>
         </div>
         ${canEdit ? `
         <div class="comment-actions">
-            <button class="comment-action-btn" onclick="startEditComment(${comment.id})" title="Edit comment">
+            <button class="comment-action-btn" onclick="startEditComment(${Number(comment.id)})" title="Edit comment">
                 ${ICONS.edit}
             </button>
-            <button class="comment-delete-btn" onclick="deleteComment(${comment.id})" title="Delete comment">
+            <button class="comment-delete-btn" onclick="deleteComment(${Number(comment.id)})" title="Delete comment">
                 ${ICONS.delete}
             </button>
         </div>
         ` : (isAdmin ? `
         <div class="comment-actions">
-            <button class="comment-delete-btn" onclick="deleteComment(${comment.id})" title="Delete comment">
+            <button class="comment-delete-btn" onclick="deleteComment(${Number(comment.id)})" title="Delete comment">
                 ${ICONS.delete}
             </button>
         </div>
@@ -4389,7 +4394,7 @@ function showCommentsError(message) {
         errorDiv.className = 'comments-error';
         errorDiv.innerHTML = `
             <div class="comments-error-icon">${ICONS.error}</div>
-            <div class="comments-error-text">${message}</div>
+            <div class="comments-error-text">${escapeHtml(message)}</div>
         `;
         
         // Remove existing error if any
@@ -4677,7 +4682,7 @@ function submitEditObject() {
                 `;
                 overlay.innerHTML = `
                     <div style="background: #28a745; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                        <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${fullObjectName}" updated successfully!
+                        <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${escapeHtml(fullObjectName)}" updated successfully!
                     </div>
                     <div style="font-size: 16px;">
                         Refreshing page to show updated data...
@@ -4721,7 +4726,7 @@ function showEditResult(type, title, message) {
         resultDiv.className = `edit-result ${type}`;
         
         iconDiv.innerHTML = type === 'success' ? ICONS.success : ICONS.error;
-        textDiv.innerHTML = `<strong>${title}</strong><br>${message}`;
+        textDiv.innerHTML = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(message)}`;
     }
 }
 
@@ -4788,7 +4793,7 @@ function deleteObjects() {
     `;
     overlay.innerHTML = `
         <div style="background: #dc3545; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-            <span style="display: inline-block; margin-right: 10px;">${ICONS.delete}</span> Deleting object "${fullObjectName}"...
+            <span style="display: inline-block; margin-right: 10px;">${ICONS.delete}</span> Deleting object "${escapeHtml(fullObjectName)}"...
         </div>
         <div style="font-size: 16px; margin-bottom: 20px;">
             Please wait while we remove all data...
@@ -4814,7 +4819,7 @@ function deleteObjects() {
             // Update overlay to show success
             overlay.innerHTML = `
                 <div style="background: #28a745; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                    <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${fullObjectName}" deleted successfully!
+                    <span style="display: inline-block; margin-right: 10px;">${ICONS.success}</span> Object "${escapeHtml(fullObjectName)}" deleted successfully!
                 </div>
                 <div style="font-size: 16px; margin-bottom: 20px;">
                     Redirecting to Marshal page...
@@ -4871,10 +4876,30 @@ document.addEventListener('keydown', function(event) {
 });
 
 function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// A JS string literal that is safe inside an inline <script> (srcdoc iframes).
+function jsStringLiteral(value) {
+    return JSON.stringify(String(value === null || value === undefined ? '' : value))
+        .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+        .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
+// Only http(s), inline images and same-site relative URLs may go into src/href.
+function safeUrl(url) {
+    if (url === null || url === undefined) return '';
+    const u = String(url).trim();
+    if (/^https?:\/\//i.test(u) || /^data:image\//i.test(u)) return u;
+    if (u.startsWith('/') && !u.startsWith('//')) return u;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(u) && !u.startsWith('//')) return u;  // relative path
+    return '';
 }
 
 // Aladin Lite variables and functions
@@ -4929,8 +4954,8 @@ function initializeAladin() {
         window.onload = function() {
             A.init.then(() => {
                 aladinInstance = A.aladin('#aladin-lite', {
-                    survey: '${currentSurvey}',
-                    fov: ${currentFOV},
+                    survey: ${jsStringLiteral(currentSurvey)},
+                    fov: ${Number(currentFOV)},
                     target: '${ra} ${dec}',
                     cooFrame: 'ICRS',
                     showReticle: true,
@@ -4962,7 +4987,7 @@ function initializeAladin() {
                     shape: 'cross'
                 });
                 
-                cat.addSources([A.source(${ra}, ${dec}, {name: '${targetName}'})]);
+                cat.addSources([A.source(${ra}, ${dec}, {name: ${jsStringLiteral(targetName)}})]);
                 aladinInstance.addCatalog(cat);
 
                 // Notify parent that setup is done
@@ -5085,7 +5110,7 @@ function showAladinError(message) {
     if (loadingElement) {
         loadingElement.innerHTML = `
             <div class="error-icon">${ICONS.warning}</div>
-            <span>${message}</span>
+            <span>${escapeHtml(message)}</span>
         `;
         loadingElement.style.display = 'flex';
     }
@@ -5274,7 +5299,7 @@ function loadPermissions() {
                     data.permissions.forEach(perm => {
                         const item = document.createElement('div');
                         item.style.marginBottom = '2px';
-                        item.innerHTML = `• ${perm.group_name}`;
+                        item.textContent = `• ${perm.group_name}`;
                         listDiv.appendChild(item);
                     });
                 }
@@ -5605,12 +5630,12 @@ function _permGetVis(perm, isTNS) {
 
 function _permChipsHtml(type, src, groups) {
     return (groups || []).map(g =>
-        `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" onclick="removePermGroup('${type}','${escapeHtml(src)}','${escapeHtml(g)}')">&times;</span></span>`
+        `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" data-type="${escapeHtml(type)}" data-src="${escapeHtml(src)}" data-group="${escapeHtml(g)}" onclick="removePermGroup(this.dataset.type, this.dataset.src, this.dataset.group)">&times;</span></span>`
     ).join('');
 }
 
 function _permGroupSelectHtml(type, src) {
-    return `<select class="perm-add-group-select" onchange="addPermGroup('${type}','${escapeHtml(src)}',this)">
+    return `<select class="perm-add-group-select" data-type="${escapeHtml(type)}" data-src="${escapeHtml(src)}" onchange="addPermGroup(this.dataset.type, this.dataset.src, this)">
         <option value="">+ group</option>
         ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
     </select>`;
@@ -5643,7 +5668,8 @@ function renderPermTable() {
 
         const pills = _PERM_OPTS.map(o =>
             `<button class="perm-pill ${o.cls}${vis === o.val ? ' active' : ''}"
-                onclick="onPermVisChange('${_permCurrentTab}','${escapeHtml(src)}','${o.val}')"
+                data-type="${escapeHtml(_permCurrentTab)}" data-src="${escapeHtml(src)}" data-val="${escapeHtml(o.val)}"
+                onclick="onPermVisChange(this.dataset.type, this.dataset.src, this.dataset.val)"
                 title="${o.val === 'public' ? 'Visible to everyone including non-logged visitors' :
                          o.val === 'all'    ? 'Visible to all logged-in members' :
                          o.val === 'groups' ? 'Restricted to selected groups only' :
@@ -6040,16 +6066,16 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
         ? ` · <span style="color:#f59e0b; font-size:0.75rem;" title="Loaded from database cache">cached ${new Date(_nedSearchedAt).toLocaleString()}</span>`
         : ` · <span style="color:#4ade80; font-size:0.75rem;">live from NED</span>`;
     const _hostNote = _nedCurrentHostName
-        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${_nedCurrentHostName}</span>`
+        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${escapeHtml(_nedCurrentHostName)}</span>`
         : '';
     countEl.innerHTML = (sources.length
-        ? `${sources.length} NED object(s) within ${radiusArcsec}"`
-        : `No NED objects found within ${radiusArcsec}"`) + _cacheNote + _hostNote;
+        ? `${sources.length} NED object(s) within ${escapeHtml(radiusArcsec)}"`
+        : `No NED objects found within ${escapeHtml(radiusArcsec)}"`) + _cacheNote + _hostNote;
 
     // Build table
     tbody.innerHTML = '';
     if (!nedData || nedData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#666;">No NED objects found within ${radiusArcsec}"</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" style="padding:20px; text-align:center; color:#666;">No NED objects found within ${escapeHtml(radiusArcsec)}"</td></tr>`;
     } else {
         nedData.forEach((obj, i) => {
             const z   = obj.redshift != null ? parseFloat(obj.redshift) : null;
@@ -6061,13 +6087,13 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
             tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.06); cursor:default; transition:background 0.1s;';
             tr.innerHTML = `
                 <td style="padding:5px 8px; color:#555;">${i + 1}</td>
-                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${obj.objname || '—'}${isCurrentHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
-                <td style="padding:5px 8px;">${obj.type || '—'}</td>
+                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${escapeHtml(obj.objname || '—')}${isCurrentHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
+                <td style="padding:5px 8px;">${escapeHtml(obj.type || '—')}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right;">${z != null ? z.toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right;">${cz}</td>
-                <td style="padding:5px 8px; color:#aaa;">${obj.redshift_type || '—'}</td>
+                <td style="padding:5px 8px; color:#aaa;">${escapeHtml(obj.redshift_type || '—')}</td>
                 <td style="padding:4px 8px; text-align:center; white-space:nowrap;">
                     ${isCurrentHost
                         ? `<button class="ned-host-btn" onclick="unsetNEDHost(${i}, this)" title="Unset current host" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(248,113,113,0.6); border-radius:6px; background:rgba(248,113,113,0.08); color:#f87171; cursor:pointer;">Unset Host</button>`
@@ -6112,7 +6138,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     const old = document.getElementById('ned-aladin-iframe');
     if (old) old.remove();
 
-    const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '').replace(/'/g, "\\'");
+    const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '');
     const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
 
     const html = `<!DOCTYPE html>
@@ -6127,13 +6153,13 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
 </head><body>
 <div id="al"></div>
 <script>
-  const T_RA = ${ra}, T_DEC = ${dec};
+  const T_RA = ${Number(ra)}, T_DEC = ${Number(dec)};
   let al, nedCat;
 
   A.init.then(function() {
     al = A.aladin('#al', {
-      survey: '${currentSurvey}',
-      fov: ${fov},
+      survey: ${jsStringLiteral(currentSurvey)},
+      fov: ${Number(fov)},
       target: T_RA + ' ' + T_DEC,
       cooFrame: 'ICRS',
       showReticle: false,
@@ -6156,7 +6182,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
 
     // Target marker
     var tCat = A.catalog({name:'Target', color:'#ff4444', sourceSize:16, shape:'cross'});
-    tCat.addSources([A.source(T_RA, T_DEC, {name:'${targetName}', idx:-1})]);
+    tCat.addSources([A.source(T_RA, T_DEC, {name:${jsStringLiteral(targetName)}, idx:-1})]);
     al.addCatalog(tCat);
 
     // Register hover events

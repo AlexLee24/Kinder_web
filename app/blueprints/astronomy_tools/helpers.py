@@ -1,39 +1,32 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — helpers (split from astronomy_tools_routes.py)."""
 import os
 import re
-import time
-import threading
 import matplotlib
 from flask import request
+
+from app.core import rate_limit
 
 
 matplotlib.use('Agg')
 
-# ── Public API rate limiter ────────────────────────────────────────────────────
-_rl_lock  = threading.Lock()
-
-_rl_store = {}   # {(ip, endpoint_key): last_allowed_timestamp}
-
+# ── Public API rate limiter (shared across worker processes) ───────────────────
 _RL_INTERVAL = 1.0  # seconds
 
 def _client_ip():
-    return (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+    # ProxyFix (configured app-wide) already resolves the real client into remote_addr;
+    # never trust the raw X-Forwarded-For header, which the client can spoof.
+    return request.remote_addr or ''
 
 def _rate_ok(ip, key, interval=None):
     """Return True and record the timestamp if the request is allowed.
     interval overrides _RL_INTERVAL for this specific call."""
-    limit = interval if interval is not None else _RL_INTERVAL
-    now = time.monotonic()
-    k = (ip, key)
-    with _rl_lock:
-        if now - _rl_store.get(k, 0) < limit:
-            return False
-        _rl_store[k] = now
-        if len(_rl_store) > 20000:
-            cutoff = now - 120
-            for old in [x for x, t in list(_rl_store.items()) if t < cutoff]:
-                _rl_store.pop(old, None)
-        return True
+    window = interval if interval is not None else _RL_INTERVAL
+    return rate_limit.allow(f'astro:{key}:{ip}', 1, window)
+
+def _rate_ok_burst(ip, key, burst, interval):
+    """Allow up to `burst` requests per `interval` seconds for (ip, key), so pages
+    that fire a few requests at once aren't rejected."""
+    return rate_limit.allow(f'astro:{key}:{ip}', burst, interval)
 
 from app.paths import BLUEPRINTS_DIR, CASTOR_SRC, SHARED_PLOTS_DIR
 

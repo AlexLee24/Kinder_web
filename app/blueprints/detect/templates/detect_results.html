@@ -204,7 +204,7 @@
 
                             {% if can_edit %}
                             <td onclick="event.stopPropagation()" style="text-align:center;">
-                                <span class="flag-btn {% if t.is_flagged %}active{% endif %}" onclick="toggleFlag('{{ t.flag_id }}', this)">★</span>
+                                <span class="flag-btn {% if t.is_flagged %}active{% endif %}" data-flag-id="{{ t.flag_id }}" onclick="toggleFlag(this.dataset.flagId, this)">★</span>
                             </td>
                             {% endif %}
 
@@ -356,8 +356,8 @@
                     <div class="card-plot-col">
                         <div class="card-section-label">Photometry</div>
                         <div class="card-lc-actions">
-                            <button class="btn-action" onclick="fetchCardLightcurve('{{ t.target_name }}', {{ loop.index0 }})">Fetch LC</button>
-                            <button class="btn-action" onclick="refreshCardLightcurve('{{ t.target_name }}', {{ loop.index0 }})">Refresh LC</button>
+                            <button class="btn-action" data-target="{{ t.target_name }}" onclick="fetchCardLightcurve(this.dataset.target, {{ loop.index0 }})">Fetch LC</button>
+                            <button class="btn-action" data-target="{{ t.target_name }}" onclick="refreshCardLightcurve(this.dataset.target, {{ loop.index0 }})">Refresh LC</button>
                             <span class="card-lc-status" id="lc-status-{{ loop.index0 }}"></span>
                         </div>
                         <div class="plotly-chart" id="plotly-card-{{ loop.index0 }}" data-target-name="{{ t.target_name }}" style="width:100%; height:360px;"></div>

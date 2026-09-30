@@ -25,12 +25,14 @@ def convert_ra_decimal_to_hms(ra_decimal):
     ra_decimal = ra_decimal % 360
     
     hours_total = ra_decimal / 15
-    hours = int(hours_total)
-    minutes_total = (hours_total - hours) * 60
-    minutes = int(minutes_total)
-    seconds = (minutes_total - minutes) * 60
-    
-    ra_hms_calc = f"{hours:02d}:{minutes:02d}:{seconds:05.2f}"
+    # Round once to the display precision (0.01 s) and split with carry, so values
+    # such as 29.9999958 deg become 02:00:00.00 rather than 01:59:60.00.
+    total_cs = int(round(hours_total * 3600 * 100)) % (24 * 3600 * 100)
+    total_s, cs = divmod(total_cs, 100)
+    hours, rem = divmod(total_s, 3600)
+    minutes, secs = divmod(rem, 60)
+
+    ra_hms_calc = f"{hours:02d}:{minutes:02d}:{secs:02d}.{cs:02d}"
     
     return {
         'ra_hms': ra_hms_calc,
@@ -70,16 +72,16 @@ def convert_dec_decimal_to_dms(dec_decimal):
     if not (-90 <= dec_decimal <= 90):
         raise ValueError('Declination must be between -90 and +90 degrees')
     
-    is_negative = dec_decimal < 0
-    abs_decimal = abs(dec_decimal)
-    
-    degrees = int(abs_decimal)
-    minutes_total = (abs_decimal - degrees) * 60
-    minutes = int(minutes_total)
-    seconds = (minutes_total - minutes) * 60
-    
+    # Round the absolute value once to 0.01 arcsec, then split with carry; the sign is
+    # kept separately so -0.x deg still renders as "-00:..".
+    total_cs = int(round(abs(dec_decimal) * 3600 * 100))
+    is_negative = dec_decimal < 0 and total_cs > 0
+    total_s, cs = divmod(total_cs, 100)
+    degrees, rem = divmod(total_s, 3600)
+    minutes, secs = divmod(rem, 60)
+
     sign = '-' if is_negative else '+'
-    dec_dms_calc = f"{sign}{degrees:02d}:{minutes:02d}:{seconds:05.2f}"
+    dec_dms_calc = f"{sign}{degrees:02d}:{minutes:02d}:{secs:02d}.{cs:02d}"
     
     return {
         'dec_dms': dec_dms_calc,

@@ -12,6 +12,24 @@ let availableLogMonths = [];
 let searchTimeout = null;
 let targetCoordDisplayMode = 'sexagesimal';
 
+// Escape any server/user-derived value before inserting it into HTML.
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) and same-site relative URLs in href/src; anything else becomes '#'.
+function safeUrl(value) {
+    const url = String(value == null ? '' : value).trim();
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/') && !url.startsWith('//')) return url;
+    return '#';
+}
+
 // Read api key injected by server
 const _API_KEY = (document.querySelector('meta[name="x-api-key"]') || {}).content || '';
 
@@ -180,12 +198,12 @@ function searchTarget(query) {
                     // Row 2: [InternalName]   [DEC]
                     item.innerHTML =
                         '<div class="pa-search-item-main">' +
-                            '<span class="pa-search-item-name">' + obj.prefix + obj.name + '</span>' +
-                            '<span class="pa-search-item-type">' + typeStr + '</span>' +
+                            '<span class="pa-search-item-name">' + escapeHtml((obj.prefix || '') + (obj.name || '')) + '</span>' +
+                            '<span class="pa-search-item-type">' + escapeHtml(typeStr) + '</span>' +
                             (magStr ? '<span class="pa-search-item-mag">mag&nbsp;' + magStr + '</span>' : '') +
                         '</div>' +
                         '<span class="pa-search-item-ra">' + raDeg + '</span>' +
-                        '<span class="pa-search-item-internal">' + internalStr + '</span>' +
+                        '<span class="pa-search-item-internal">' + escapeHtml(internalStr) + '</span>' +
                         '<span class="pa-search-item-dec">' + decDeg + '</span>';
 
                     item.onclick = () => selectSearchResult(obj);
@@ -523,17 +541,17 @@ function renderFilterRows() {
                 '<option value="zp" ' + (row.filter === 'zp' ? 'selected' : '') + '>zp</option>' +
                 '<option value="custom" ' + (dropdownValue === 'custom' ? 'selected' : '') + '>Custom...</option>' +
             '</select>' +
-            '<input type="text" value="' + (!isPredefined ? row.filter : '') + '" placeholder="Custom Filter" style="display:' + customDisplay + '; margin-top: 5px; width: 100%;" onchange="updateFilterRow(' + idx + ', \'filter\', this.value)">' +
+            '<input type="text" value="' + escapeHtml(!isPredefined ? row.filter : '') + '" placeholder="Custom Filter" style="display:' + customDisplay + '; margin-top: 5px; width: 100%;" onchange="updateFilterRow(' + idx + ', \'filter\', this.value)">' +
             '</div>';
 
         rowHtml += '<div class="pa-field filter-exp">' +
             '<span class="pa-field-label">Exp (sec)</span>' +
-            '<input type="number" value="' + row.exp + '" min="0" onchange="updateFilterRow(' + idx + ', \'exp\', parseInt(this.value)||0)">' +
+            '<input type="number" value="' + escapeHtml(row.exp) + '" min="0" onchange="updateFilterRow(' + idx + ', \'exp\', parseInt(this.value)||0)">' +
             '</div>';
 
         rowHtml += '<div class="pa-field filter-count">' +
             '<span class="pa-field-label">Count</span>' +
-            '<input type="number" value="' + row.count + '" min="1" onchange="updateFilterRow(' + idx + ', \'count\', parseInt(this.value)||1)">' +
+            '<input type="number" value="' + escapeHtml(row.count) + '" min="1" onchange="updateFilterRow(' + idx + ', \'count\', parseInt(this.value)||1)">' +
             '</div>';
 
         rowHtml += '<div class="pa-filter-subtotal">= ' + (row.exp * row.count) + 's</div>';
@@ -931,10 +949,10 @@ function renderObjectNameLink(name, label) {
     const displayLabel = label || name || '-';
 
     if (!routeName) {
-        return '<span style="vertical-align:middle;">' + displayLabel + '</span>';
+        return '<span style="vertical-align:middle;">' + escapeHtml(displayLabel) + '</span>';
     }
 
-    return '<a href="/object/' + encodeURIComponent(routeName) + '" target="_blank" rel="noopener noreferrer" style="vertical-align:middle; color: inherit; text-decoration: none;">' + displayLabel + '</a>';
+    return '<a href="/object/' + encodeURIComponent(routeName) + '" target="_blank" rel="noopener noreferrer" style="vertical-align:middle; color: inherit; text-decoration: none;">' + escapeHtml(displayLabel) + '</a>';
 }
 
 function renderTable(telescope, targets) {
@@ -984,25 +1002,25 @@ function renderTable(telescope, targets) {
                     bgStyle = 'linear-gradient(to bottom, #a52a2a, #580101)';
                 }
                 
-                let badge = '<span style="background: ' + bgStyle + '; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; color: #fff; min-width: 25px; text-align: center; display: inline-block; font-family: monospace; border: 1px solid rgba(0,0,0,0.1); text-shadow: 0 1px 1px rgba(0,0,0,0.3);">' + f.filter + '</span>';
+                let badge = '<span style="background: ' + bgStyle + '; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; color: #fff; min-width: 25px; text-align: center; display: inline-block; font-family: monospace; border: 1px solid rgba(0,0,0,0.1); text-shadow: 0 1px 1px rgba(0,0,0,0.3);">' + escapeHtml(f.filter) + '</span>';
                 
-                filterExpHTML += '<div style="display: flex; align-items: center; white-space: nowrap; font-size: 0.85rem;"><span style="display: inline-block; width: 35px; text-align: center;">' + badge + '</span> <span style="margin-left: 8px; color: #aaa; font-family: monospace;">' + f.exp + 's &times; ' + f.count + '</span></div>';
+                filterExpHTML += '<div style="display: flex; align-items: center; white-space: nowrap; font-size: 0.85rem;"><span style="display: inline-block; width: 35px; text-align: center;">' + badge + '</span> <span style="margin-left: 8px; color: #aaa; font-family: monospace;">' + escapeHtml(f.exp) + 's &times; ' + escapeHtml(f.count) + '</span></div>';
             });
             filterExpHTML += '</div>';
         }
 
         let programBadge = '';
         if (t.telescope === 'LOT' && t.program) {
-            programBadge = '<span class="pa-program-badge">' + t.program + '</span>';
+            programBadge = '<span class="pa-program-badge">' + escapeHtml(t.program) + '</span>';
         }
         let magDisplay = '';
         if (t.mag) {
-            magDisplay = '<span class="pa-mag-display">[Mag: ' + t.mag + ']</span>';
+            magDisplay = '<span class="pa-mag-display">[Mag: ' + escapeHtml(t.mag) + ']</span>';
         }
 
         let repeatInfo = '';
         if (t.repeat_count > 0) {
-            repeatInfo = '<br>(repeat: ' + t.repeat_count + ')';
+            repeatInfo = '<br>(repeat: ' + escapeHtml(t.repeat_count) + ')';
         }
 
         let activeToggle = '<label class="pa-action-switch" title="Toggle API visibility">' +
@@ -1030,12 +1048,12 @@ function renderTable(telescope, targets) {
                 '<div class="pa-mini-plot" id="mini-vp-' + t.id + '"></div>' +
             '</div>' +
             '</td>' +
-            '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + coordDisplay.ra + ' <br> ' + coordDisplay.dec + '</td>' +
-            '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + t.priority + repeatInfo + '</td>' +
+            '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + escapeHtml(coordDisplay.ra) + ' <br> ' + escapeHtml(coordDisplay.dec) + '</td>' +
+            '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</td>' +
             '<td class="pa-td-filter-exp">' + filterExpHTML + '</td>' +
             '<td class="pa-td-total-exp">' + totalExp + ' s</td>' +
-            '<td class="pa-td-note">' + (t.plan || '-') + '</td>' +
-            '<td class="pa-td-note-gl">' + (t.note_gl || '-') + '</td>' +
+            '<td class="pa-td-note">' + escapeHtml(t.plan || '-') + '</td>' +
+            '<td class="pa-td-note-gl">' + escapeHtml(t.note_gl || '-') + '</td>' +
             '<td class="pa-td-actions">' +
                 '<div class="pa-action-cell">' +
                     '<div class="pa-action-row-top">' +
@@ -1681,7 +1699,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
         else if (fStr === 'rp' || fStr === 'r') bg = 'linear-gradient(to bottom, #ffb74d, #f53500)';
         else if (fStr === 'ip' || fStr === 'i') bg = 'linear-gradient(to bottom, #ef5350, #a52a2a)';
         else if (fStr === 'zp' || fStr === 'z') bg = 'linear-gradient(to bottom, #a52a2a, #580101)';
-        return `<span style="background:${bg};padding:1px 5px;border-radius:3px;font-size:11px;color:#fff;font-family:monospace;border:1px solid rgba(0,0,0,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.3);">${filterName}</span>`;
+        return `<span style="background:${bg};padding:1px 5px;border-radius:3px;font-size:11px;color:#fff;font-family:monospace;border:1px solid rgba(0,0,0,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.3);">${escapeHtml(filterName)}</span>`;
     };
 
     // Function to render rows
@@ -1735,14 +1753,14 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                             if (isCalib) {
                                 // Show a small grey single-letter badge: B for BIAS, D for DARK
                                 const letter = (tNameUpper === 'BIAS') ? 'B' : (tNameUpper === 'DARK' ? 'D' : ((String(f.filter||'')||'').charAt(0) || '?').toUpperCase());
-                                badge = `<span style="background:#9e9e9e;padding:1px 6px;border-radius:3px;font-size:11px;color:#fff;font-family:monospace;border:1px solid rgba(0,0,0,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.3);">${letter}</span>`;
+                                badge = `<span style="background:#9e9e9e;padding:1px 6px;border-radius:3px;font-size:11px;color:#fff;font-family:monospace;border:1px solid rgba(0,0,0,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.3);">${escapeHtml(letter)}</span>`;
                             } else {
                                 badge = filterBadgeHTML(f.filter || '?');
                             }
                             const expCount = [f.exp ? `${f.exp}s` : '', f.count ? `×${f.count}` : ''].filter(Boolean).join(' ');
                             return `<div style="display:flex;align-items:center;white-space:nowrap;font-size:0.82rem;">` +
                                    `<span style="display:inline-block;width:32px;text-align:center;">${badge}</span>` +
-                                   `<span style="margin-left:6px;color:#aaa;font-family:monospace;">${expCount}</span>` +
+                                   `<span style="margin-left:6px;color:#aaa;font-family:monospace;">${escapeHtml(expCount)}</span>` +
                                    `</div>`;
                         }).join('');
                         return `<div style="display:flex;flex-direction:column;gap:3px;margin-top:3px;">${rows}</div>`;
@@ -1777,10 +1795,10 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                         let color = '#aaa';
                         if (p.toLowerCase() === 'urgent') color = '#ef5350';
                         else if (p.toLowerCase() === 'high') color = '#ff9f43';
-                        return `<span style="color:${color};font-weight:600;font-size:12px;">${display}</span>`;
+                        return `<span style="color:${color};font-weight:600;font-size:12px;">${escapeHtml(display)}</span>`;
                     })();
                     const repeatBadge = (log.repeat_count > 0)
-                        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(77,184,255,0.15);border:1px solid rgba(77,184,255,0.35);border-radius:4px;padding:3px 8px;color:#4db8ff;font-weight:600;margin-left:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4db8ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span style="font-size:14px;">x ${log.repeat_count}</span></span>`
+                        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(77,184,255,0.15);border:1px solid rgba(77,184,255,0.35);border-radius:4px;padding:3px 8px;color:#4db8ff;font-weight:600;margin-left:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4db8ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span style="font-size:14px;">x ${escapeHtml(log.repeat_count)}</span></span>`
                         : '';
                     
                     const userDisplay = (() => {
@@ -1797,19 +1815,19 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                             displayName = fullName.split(' ')[0]; // Extract just the first word
 
                             if (mb.picture) {
-                                return `<img src="${mb.picture}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;" title="${fullName}"><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${displayName}</span>`;
+                                return `<img src="${escapeHtml(safeUrl(mb.picture))}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;" title="${escapeHtml(fullName)}"><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${escapeHtml(displayName)}</span>`;
                             } else {
                                 // Fallback to an initial-based avatar or simple text if picture is null
                                 const intl = (displayName || '?').charAt(0).toUpperCase();
-                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#4db8ff;color:#fff;font-size:12px;font-weight:bold;flex-shrink:0;" title="${fullName}">${intl}</span><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${displayName}</span>`;
+                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#4db8ff;color:#fff;font-size:12px;font-weight:bold;flex-shrink:0;" title="${escapeHtml(fullName)}">${escapeHtml(intl)}</span><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${escapeHtml(displayName)}</span>`;
                             }
                         }
-                        return displayName;
+                        return escapeHtml(displayName);
                     })();
-                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
 
                     dateCells += `
-                        <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
+                        <td data-cell-date="${d.dateStr}" data-target-name="${escapeHtml(t.name || '')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell" style="width:100%;display:flex;flex-direction:column;gap:5px;">
 
                                 <!-- Row 1: Avatar + Name + Edit -->
@@ -1839,9 +1857,9 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                         </td>
                     `;
                 } else {
-                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
-                        <td data-cell-date="${d.dateStr}" data-target-name="${(t.name || '').replace(/\"/g, '&quot;')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
+                        <td data-cell-date="${d.dateStr}" data-target-name="${escapeHtml(t.name || '')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell" style="width:100%;display:flex;flex-direction:column;gap:5px;">
 
                                 <!-- Row 1: — + Edit -->
@@ -1970,7 +1988,7 @@ function fetchMembers() {
                     const name = m.name || email;
                     membersMap[name] = m;
                     membersMap[email] = m;
-                    if (selectUser) selectUser.innerHTML += `<option value="${name}">${name}</option>`;
+                    if (selectUser) selectUser.innerHTML += `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`;
                 });
             }
             return data;
@@ -2033,17 +2051,17 @@ function renderLogFilterRows(type) {
                     `<option value="zp" ${row.filter === 'zp' ? 'selected' : ''}>zp</option>` +
                     `<option value="custom" ${dropdownValue === 'custom' ? 'selected' : ''}>Custom...</option>` +
                 `</select>` +
-                `<input type="text" value="${!isPredefined ? row.filter : ''}" placeholder="Custom Filter" style="display:${customDisplay}; margin-top: 5px; width: 100%;" onchange="updateLogFilterRow('${type}', ${idx}, 'filter', this.value)">` +
+                `<input type="text" value="${escapeHtml(!isPredefined ? row.filter : '')}" placeholder="Custom Filter" style="display:${customDisplay}; margin-top: 5px; width: 100%;" onchange="updateLogFilterRow('${type}', ${idx}, 'filter', this.value)">` +
             `</div>` +
             `<div class="pa-field filter-exp">` +
                 `<span class="pa-field-label">Exp (sec)</span>` +
-                `<input type="number" value="${row.exp}" min="0" onchange="updateLogFilterRow('${type}', ${idx}, 'exp', parseInt(this.value)||0)">` +
+                `<input type="number" value="${escapeHtml(row.exp)}" min="0" onchange="updateLogFilterRow('${type}', ${idx}, 'exp', parseInt(this.value)||0)">` +
             `</div>` +
             `<div class="pa-field filter-count">` +
                 `<span class="pa-field-label">Count</span>` +
-                `<input type="number" value="${row.count}" min="1" onchange="updateLogFilterRow('${type}', ${idx}, 'count', parseInt(this.value)||1)">` +
+                `<input type="number" value="${escapeHtml(row.count)}" min="1" onchange="updateLogFilterRow('${type}', ${idx}, 'count', parseInt(this.value)||1)">` +
             `</div>` +
-            `<div class="pa-filter-subtotal">= ${row.exp * row.count}s</div>` +
+            `<div class="pa-filter-subtotal">= ${escapeHtml(row.exp * row.count)}s</div>` +
             `<button type="button" onclick="removeLogFilterRow('${type}', ${idx})" class="pa-btn-remove-filter">` +
                 `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>` +
             `</button>`;
@@ -2377,7 +2395,7 @@ async function openVisibilityPlot(forcedTelescope) {
         } else {
             console.error('API Error:', data.error);
             if (loadingEl) loadingEl.style.display = 'none';
-            document.getElementById('vp-plot-area').innerHTML = `<div style="color:#f44336; text-align:center; padding-top: 50px;">Error: ${data.error}</div>`;
+            document.getElementById('vp-plot-area').innerHTML = `<div style="color:#f44336; text-align:center; padding-top: 50px;">Error: ${escapeHtml(data.error)}</div>`;
         }
     } catch (e) {
         console.error('Network error:', e);
@@ -2407,7 +2425,7 @@ function renderVisibilityToggleList() {
             <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 4px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${color}; opacity: ${isActive ? '1' : '0.3'};" id="vp-color-${i}"></div>
-                    <span style="color: ${isActive ? '#eee' : '#666'}; font-size: 13px;" id="vp-label-${i}">${t.name}</span>
+                    <span style="color: ${isActive ? '#eee' : '#666'}; font-size: 13px;" id="vp-label-${i}">${escapeHtml(t.name)}</span>
                 </div>
                 <input type="checkbox" ${isActive ? 'checked' : ''} 
                        onchange="toggleVPTraceAndDB(${i}, this.checked, ${cacheTarget ? cacheTarget.id : 'null'})" 
@@ -2907,12 +2925,12 @@ async function renderScriptVisibilityImage(targets) {
         const data = await resp.json();
         if (!data.success) {
             scriptVisPlotUrl = null;
-            container.innerHTML = `<div class="pa-script-vis-empty">${data.error || 'Could not render plot.'}</div>`;
+            container.innerHTML = `<div class="pa-script-vis-empty">${escapeHtml(data.error || 'Could not render plot.')}</div>`;
             return;
         }
 
         scriptVisPlotUrl = data.plot_url;
-        container.innerHTML = `<img src="${scriptVisPlotUrl}" alt="Visibility plot" class="pa-script-vis-img">`;
+        container.innerHTML = `<img src="${escapeHtml(safeUrl(scriptVisPlotUrl))}" alt="Visibility plot" class="pa-script-vis-img">`;
     } catch (e) {
         scriptVisPlotUrl = null;
         container.innerHTML = '<div class="pa-script-vis-empty">Network error.</div>';

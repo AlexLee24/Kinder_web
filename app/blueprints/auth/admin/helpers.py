@@ -1,4 +1,6 @@
 """Admin panel actions — helpers (split from admin_routes.py)."""
+import threading
+
 from flask import session
 from app.db.auth import get_users
 
@@ -20,6 +22,30 @@ _tns_task_status = {'running': False, 'message': ''}
 # ===============================================================================
 
 _detect_manual = {'running': False, 'message': ''}
+
+# Guards the check-and-set of the 'running' flags above so two concurrent
+# requests can't both start a background task.
+_task_lock = threading.Lock()
+
+
+def _claim_task(status: dict) -> bool:
+    """Atomically mark *status* as running. False if it already was."""
+    with _task_lock:
+        if status['running']:
+            return False
+        status['running'] = True
+        status['message'] = 'Running...'
+        return True
+
+
+def _start_claimed_task(status: dict, target, **thread_kwargs) -> None:
+    """Start *target* in a daemon thread; release the claim if the start fails.
+    *target* must reset ``status['running']`` in its own ``finally``."""
+    try:
+        threading.Thread(target=target, daemon=True, **thread_kwargs).start()
+    except Exception:
+        status['running'] = False
+        raise
 
 # ===============================================================================
 # SCHEDULED JOBS STATUS

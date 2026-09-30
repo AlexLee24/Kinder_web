@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from datetime import datetime, timedelta
 
 # Obsplan
@@ -9,6 +10,26 @@ import ephem
 import matplotlib
 
 matplotlib.use('Agg')
+
+
+# ACP scripts are line-oriented: a newline inside user text would end a ";" comment and
+# let the rest be parsed as directives, so comment text is flattened to one line and
+# target names are restricted to a safe character set.
+_TARGET_NAME_BAD_CHARS = re.compile(r'[^A-Za-z0-9 _\-+.()/]')
+
+
+def _one_line(text):
+    """Comment-safe text: CR/LF (and other line breaks) replaced by spaces."""
+    if text is None:
+        return ""
+    return re.sub(r'[\r\n\v\f\u2028\u2029\x85]+', ' ', str(text))
+
+
+def _safe_target_name(name):
+    """Whitelist target-name characters for the ACP target line; others become '_'."""
+    if name is None:
+        return name
+    return _TARGET_NAME_BAD_CHARS.sub('_', str(name).strip())
 
 
 # ========================= Function ========================================
@@ -81,7 +102,8 @@ def check_filter_LOT(filter):
 def generate_script(name, ra, dec, mag, priority, priority_message, is_lot="False", Repeat=0, auto_exp=True,
                     filter_input=None, exp_time=None, count=None):
     telescope = "LOT" if is_lot == "True" else "SLT"
-    priority_message = priority_message or ""
+    priority_message = _one_line(priority_message or "")
+    name = _safe_target_name(name)
     print(f"Telescope: {telescope}")
 
     # ACP only accepts sexagesimal (H:M:S / D:M:S) coordinates. Targets are stored
@@ -162,7 +184,7 @@ def generate_script(name, ra, dec, mag, priority, priority_message, is_lot="Fals
                    f"#FILTER {all_filters}\n"
                    f"#INTERVAL {all_exp_times}\n"
                    f"#COUNT {all_count}\n"
-                   f";= mag: {mag} mag =\n"
+                   f";= mag: {_one_line(mag)} mag =\n"
                    f"{name}\t{ra}\t{dec}\n"
                    )
 
@@ -172,7 +194,7 @@ def generate_script(name, ra, dec, mag, priority, priority_message, is_lot="Fals
     if priority == "None":
         priority_script = f";= {name} {telescope}_Normal_priority {priority_message} =\n\n"
     else:
-        priority_script = f";= {name} {telescope}_{priority}_priority {priority_message} =\n\n"
+        priority_script = f";= {name} {telescope}_{_one_line(priority)}_priority {priority_message} =\n\n"
 
     # ACP Script
     if Repeat > 0:

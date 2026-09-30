@@ -17,6 +17,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 os.environ.setdefault("DETECT_IN_WEB", "1")
+# create_app() refuses to start without a real SECRET_KEY outside of tests.
+os.environ.setdefault("TESTING", "1")
+os.environ.setdefault("SECRET_KEY", "pytest-only-secret-key-not-for-production")
+# The Host check only admits APP_BASE_URL (or local hosts in DEBUG); without a kinder.env
+# point it at the test BASE_URL below.
+os.environ.setdefault("APP_BASE_URL", "http://localhost:8000")
 
 BASE_URL = "http://localhost:8000"  # must be one of the allowed hosts (DEBUG) or APP_BASE_URL
 

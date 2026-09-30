@@ -2,12 +2,12 @@
 import urllib.parse
 from flask import session, request, jsonify
 from app.db.transient import TNSObjectDB
-from app.db.auth import check_object_access
 import logging
 from app.core.auth import admin_required, login_required
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
+from .helpers import non_guest_required, can_access_object
 
 
 # ===============================================================================
@@ -22,8 +22,8 @@ def get_object_comments(object_name):
         object_name = urllib.parse.unquote(object_name)
         
         # Check permissions
-        user_email = session['user'].get('email', '')
-        if not check_object_access(object_name, user_email):
+        user_email = session['user'].get('email')
+        if not can_access_object(object_name, user_email):
             return jsonify({
                 'success': True,
                 'comments': [],
@@ -44,13 +44,16 @@ def get_object_comments(object_name):
         return jsonify({'error': 'Failed to get comments'}), 500
 
 @objects_bp.route('/api/object/<object_name>/comments', methods=['POST'])
-@login_required(error='Access denied', status=403)
+@non_guest_required
 def add_object_comment(object_name):
     
     try:
         object_name = urllib.parse.unquote(object_name)
-        data = request.get_json()
-        content = data.get('content', '').strip()
+        data = request.get_json(silent=True) or {}
+        content = data.get('content', '') if isinstance(data, dict) else ''
+        if not isinstance(content, str):
+            return jsonify({'error': 'Comment content must be a string'}), 400
+        content = content.strip()
         
         if not content:
             return jsonify({'error': 'Comment content is required'}), 400
@@ -59,14 +62,19 @@ def add_object_comment(object_name):
             return jsonify({'error': 'Comment is too long (maximum 1000 characters)'}), 400
         
         user = session['user']
+        if not can_access_object(object_name, user.get('email')):
+            return jsonify({'error': 'Access denied'}), 403
+
         # Use PostgreSQL database for comments
         comment_id = TNSObjectDB.add_comment(
             object_name=object_name,
             user_email=user['email'],
-            user_name=user['name'],
+            user_name=user.get('name', ''),
             user_picture=user.get('picture', ''),
             content=content
         )
+        if comment_id is None:
+            return jsonify({'error': 'Object not found'}), 404
         
         return jsonify({
             'success': True,
@@ -113,8 +121,11 @@ def update_comment(comment_id):
         if not session['user'].get('is_admin') and session['user'].get('email') != comment['user_email']:
             return jsonify({'error': 'Access denied: You can only edit your own comments'}), 403
             
-        data = request.get_json()
-        content = data.get('content', '').strip()
+        data = request.get_json(silent=True) or {}
+        content = data.get('content', '') if isinstance(data, dict) else ''
+        if not isinstance(content, str):
+            return jsonify({'error': 'Comment content must be a string'}), 400
+        content = content.strip()
         
         if not content:
             return jsonify({'error': 'Comment content is required'}), 400

@@ -5,9 +5,11 @@
 ``before_request``
     1. ``enforce_allowed_host`` – reject requests whose Host header is not the configured
        public domain (or the local dev hosts when DEBUG).
-    2. ``refresh_user_session`` – sync ``session['user']`` / ``g.current_user`` from the DB.
-    3. ``mark_request_start`` – timing for the access log.
-    4. ``block_pipe_in_api_params`` – ``/api/`` requests may not contain ``|`` anywhere.
+    2. ``check_same_origin`` – CSRF guard: state-changing requests carrying an
+       ``Origin`` (or, failing that, ``Referer``) header from another host get 403.
+    3. ``refresh_user_session`` – sync ``session['user']`` / ``g.current_user`` from the DB.
+    4. ``mark_request_start`` – timing for the access log.
+    5. ``block_pipe_in_api_params`` – ``/api/`` requests may not contain ``|`` anywhere.
 
 ``after_request``
     - cross-origin isolation headers
@@ -15,6 +17,7 @@
 
 ``errorhandler``
     - ``ParamOutOfRangeError`` -> ``{"error": ...}`` 400
+    - 413 (upload over ``MAX_CONTENT_LENGTH``) -> JSON for ``/api/`` paths
 """
 import logging
 import os
@@ -46,6 +49,27 @@ def allowed_hosts() -> set:
     return hosts
 
 
+_STATE_CHANGING_METHODS = frozenset({'POST', 'PUT', 'PATCH', 'DELETE'})
+
+
+def _is_cross_origin_request() -> bool:
+    """True if a state-changing request names an origin other than this host.
+
+    Browsers send ``Origin`` on cross-site POSTs (and ``Referer`` in most other
+    cases), so a mismatch means a forged cross-site request. Requests with
+    neither header (API-key clients, curl, scripts) are allowed through.
+    """
+    source = request.headers.get('Origin') or request.headers.get('Referer')
+    if not source:
+        return False
+    try:
+        netloc = urlparse(source).netloc
+    except ValueError:
+        return True
+    # 'Origin: null' (sandboxed iframes, data: URLs) has no netloc -> reject.
+    return netloc.lower() != (request.host or '').lower()
+
+
 def _contains_pipe(value):
     if isinstance(value, str):
         return '|' in value
@@ -71,6 +95,19 @@ def register_hooks(app) -> None:
                 request.host, _allowed,
             )
             abort(404)
+
+    @app.before_request
+    def check_same_origin():
+        if request.method in _STATE_CHANGING_METHODS and _is_cross_origin_request():
+            logging.getLogger('app').warning(
+                "Rejected cross-origin %s %s (Origin=%r Referer=%r Host=%r)",
+                request.method, request.path, request.headers.get('Origin'),
+                request.headers.get('Referer'), request.host,
+            )
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Cross-origin request rejected'}), 403
+            abort(403)
+        return None
 
     # Registered globally so g.current_user (including DB picture) is available on
     # every request regardless of which blueprint handles it.
@@ -104,6 +141,16 @@ def register_hooks(app) -> None:
     @app.errorhandler(ParamOutOfRangeError)
     def handle_param_out_of_range(exc):
         return jsonify({'error': str(exc)}), 400
+
+    @app.errorhandler(413)
+    def handle_request_too_large(exc):
+        if request.path.startswith('/api/'):
+            limit = app.config.get('MAX_CONTENT_LENGTH')
+            msg = 'Request body too large'
+            if limit:
+                msg += f' (limit {limit // (1024 * 1024)} MB)'
+            return jsonify({'error': msg}), 413
+        return exc
 
     @app.after_request
     def add_isolation_headers(response):

@@ -345,6 +345,23 @@
         let originalData = [];
         let linkData = [];
 
+        function escapeHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // Only allow http(s) and same-site relative/anchor URLs; anything else becomes '#'.
+        function safeUrl(value) {
+            const url = String(value == null ? '' : value).trim();
+            if (/^https?:\/\//i.test(url)) return url;
+            if (url.startsWith('#') || (url.startsWith('/') && !url.startsWith('//'))) return url;
+            return '#';
+        }
+
         // Fetch data on load
         async function fetchLinks() {
             try {
@@ -375,7 +392,7 @@
                 if (isEditing) {
                     titleHtml = `
                         <div class="info-section-title" style="display:flex;">
-                            <input class="edit-input" type="text" value="${section.title}" onchange="updateSection(${sIndex}, this.value)" style="flex:1;">
+                            <input class="edit-input" type="text" value="${escapeHtml(section.title)}" onchange="updateSection(${sIndex}, this.value)" style="flex:1;">
                             <button class="delete-btn delete-section-btn" onclick="deleteSection(${sIndex})" title="Delete Section">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6L18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                             </button>
@@ -385,7 +402,7 @@
                     titleHtml = `
                         <div class="info-section-title">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
-                            ${section.title}
+                            ${escapeHtml(section.title)}
                         </div>
                     `;
                 }
@@ -402,14 +419,14 @@
                     if (isEditing) {
                         cardDiv.innerHTML = `
                             <div class="info-card-header" style="display:flex;">
-                                <input class="edit-input" type="text" value="${card.title}" onchange="updateCard(${sIndex}, ${cIndex}, this.value)" style="flex:1;">
+                                <input class="edit-input" type="text" value="${escapeHtml(card.title)}" onchange="updateCard(${sIndex}, ${cIndex}, this.value)" style="flex:1;">
                                 <button class="delete-btn" onclick="deleteCard(${sIndex}, ${cIndex})" title="Delete Card">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                 </button>
                             </div>
                         `;
                     } else {
-                        cardDiv.innerHTML = `<div class="info-card-header">${card.title}</div>`;
+                        cardDiv.innerHTML = `<div class="info-card-header">${escapeHtml(card.title)}</div>`;
                     }
 
                     const ul = document.createElement('ul');
@@ -422,20 +439,20 @@
                             li.innerHTML = `
                                 <div style="display:flex; flex-direction:column; gap:4px; padding-bottom:8px;">
                                     <div style="display:flex; gap:4px;">
-                                        <input class="edit-input" type="text" placeholder="Title" value="${link.title || ''}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'title', this.value)" style="flex:1;">
+                                        <input class="edit-input" type="text" placeholder="Title" value="${escapeHtml(link.title)}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'title', this.value)" style="flex:1;">
                                         <button class="delete-btn" onclick="deleteLink(${sIndex}, ${cIndex}, ${lIndex})" style="color:#ff5555; background:none; border:none; cursor:pointer;" title="Delete Link">X</button>
                                     </div>
-                                    <input class="edit-input" type="text" placeholder="URL" value="${link.url || ''}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'url', this.value)">
-                                    <input class="edit-input" type="text" placeholder="Description (Optional)" value="${link.desc || ''}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'desc', this.value)">
+                                    <input class="edit-input" type="text" placeholder="URL" value="${escapeHtml(link.url)}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'url', this.value)">
+                                    <input class="edit-input" type="text" placeholder="Description (Optional)" value="${escapeHtml(link.desc)}" onchange="updateLink(${sIndex}, ${cIndex}, ${lIndex}, 'desc', this.value)">
                                 </div>
                             `;
                         } else {
                             li.innerHTML = `
-                                <a href="${link.url}" target="_blank" rel="noopener noreferrer">
+                                <a href="${escapeHtml(safeUrl(link.url))}" target="_blank" rel="noopener noreferrer">
                                     <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                                     <div>
-                                        ${link.title}
-                                        ${link.desc ? `<div class="info-link-desc">${link.desc}</div>` : ''}
+                                        ${escapeHtml(link.title)}
+                                        ${link.desc ? `<div class="info-link-desc">${escapeHtml(link.desc)}</div>` : ''}
                                     </div>
                                 </a>
                             `;

@@ -62,6 +62,15 @@ def run_daily_backup(force=False):
     if not pg_dump:
         raise FileNotFoundError('pg_dump not found. Please install PostgreSQL client tools.')
 
+    # Remove partial dumps left behind by a crash / kill mid-dump.
+    for stale in glob.glob(os.path.join(BACKUP_DIR, '*.part')):
+        try:
+            os.remove(stale)
+            logger.info('Removed stale partial backup: %s', os.path.basename(stale))
+        except OSError as e:
+            logger.error('Failed to remove stale partial backup %s: %s', stale, e)
+
+    failures = []
     for db in DATABASES:
         filename = f"{db}_backup_{date_str}.sql"
         filepath = os.path.join(BACKUP_DIR, filename)
@@ -69,6 +78,10 @@ def run_daily_backup(force=False):
         if os.path.exists(filepath) and not force:
             logger.info('%s already exists, skipping.', filename)
             continue
+
+        # Dump to a .part file and rename on success, so a failed/killed dump never
+        # leaves a truncated file that later runs would treat as "already exists".
+        partpath = filepath + '.part'
 
         env = os.environ.copy()
         env['PGPASSWORD'] = PG_PASSWORD
@@ -81,7 +94,7 @@ def run_daily_backup(force=False):
                     '-p', PG_PORT,
                     '-U', PG_USER,
                     '-F', 'p',          # plain SQL
-                    '-f', filepath,
+                    '-f', partpath,
                     db
                 ],
                 env=env,
@@ -90,18 +103,24 @@ def run_daily_backup(force=False):
                 timeout=300
             )
             if result.returncode == 0:
+                os.replace(partpath, filepath)
                 size = os.path.getsize(filepath)
                 logger.info('%s saved (%d KB)', filename, size // 1024)
             else:
                 logger.error('ERROR dumping %s: %s', db, result.stderr.strip())
-                if os.path.exists(filepath):
-                    os.remove(filepath)
+                failures.append(f"{db}: {result.stderr.strip()[:150] or f'exit {result.returncode}'}")
+                if os.path.exists(partpath):
+                    os.remove(partpath)
         except Exception as e:
             logger.error('Exception dumping %s: %s', db, e)
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            failures.append(f"{db}: {e}")
+            if os.path.exists(partpath):
+                os.remove(partpath)
 
     _prune_old_backups()
+    if failures:
+        # Raise so the scheduler's _tracked wrapper records the job as failed.
+        raise RuntimeError('Backup failed for ' + '; '.join(failures))
 
 
 def _prune_old_backups():

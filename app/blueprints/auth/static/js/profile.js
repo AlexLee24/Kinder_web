@@ -62,8 +62,8 @@ async function updateName(event) {
         return;
     }
     
-    if (newName.length > 100) {
-        showNotification('Name is too long (maximum 100 characters)', 'error');
+    if (newName.length > 80) {
+        showNotification('Name is too long (maximum 80 characters)', 'error');
         return;
     }
     

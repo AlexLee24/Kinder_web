@@ -24,7 +24,7 @@ def get_int_arg(name, default=None, min_val=DEFAULT_MIN, max_val=DEFAULT_MAX):
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise ParamOutOfRangeError(name, raw, min_val, max_val)
+        raise ParamOutOfRangeError(name, raw, min_val, max_val) from None
     if value < min_val or value > max_val:
         raise ParamOutOfRangeError(name, value, min_val, max_val)
     return value
@@ -37,7 +37,7 @@ def get_float_arg(name, default=None, min_val=DEFAULT_MIN, max_val=DEFAULT_MAX):
     try:
         value = float(raw)
     except (TypeError, ValueError):
-        raise ParamOutOfRangeError(name, raw, min_val, max_val)
+        raise ParamOutOfRangeError(name, raw, min_val, max_val) from None
     if math.isnan(value) or math.isinf(value):
         raise ParamOutOfRangeError(name, raw, min_val, max_val)
     if value < min_val or value > max_val:

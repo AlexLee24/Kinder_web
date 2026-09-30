@@ -7,6 +7,7 @@ as JSON. Cache TTL is 30 days — atomic wavelengths don't change.
 
 import json
 import logging
+import os
 import threading
 import time
 
@@ -221,12 +222,22 @@ def _build_cache() -> list[dict]:
         time.sleep(0.5)   # polite rate-limiting for NIST servers
 
     all_lines.sort(key=lambda l: l['w'])
+    if not all_lines:
+        # NIST unreachable (or every query failed): don't cache an empty list for 30 days.
+        logger.warning('Spectral lines build returned 0 lines; cache not written')
+        return all_lines
     payload = {'built_at': time.time(), 'count': len(all_lines), 'lines': all_lines}
+    tmp_path = _CACHE_PATH.with_name(f'{_CACHE_PATH.name}.{os.getpid()}.tmp')
     try:
-        _CACHE_PATH.write_text(json.dumps(payload, separators=(',', ':')))
+        tmp_path.write_text(json.dumps(payload, separators=(',', ':')))
+        os.replace(tmp_path, _CACHE_PATH)   # atomic: readers never see a half-written file
         logger.info('Spectral lines cache built: %d lines → %s', len(all_lines), _CACHE_PATH.name)
     except Exception as exc:
         logger.error('Failed to write spectral lines cache: %s', exc)
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
     return all_lines
 
 
@@ -239,7 +250,8 @@ def _load_cache() -> list[dict] | None:
         if age > _CACHE_TTL:
             logger.info('Spectral lines cache expired (%.0f h old)', age / 3600)
             return None
-        return payload.get('lines')
+        # An empty cache (written by older code) counts as missing so it gets rebuilt.
+        return payload.get('lines') or None
     except Exception as exc:
         logger.warning('Spectral lines cache unreadable: %s', exc)
         return None
@@ -255,8 +267,10 @@ def get_spectral_lines() -> list[dict]:
 
 
 def warm_cache_async() -> None:
-    """Start background NIST fetch if not already running."""
+    """Start background NIST fetch if not already running and the cache is not fresh."""
     global _build_thread
+    if _load_cache() is not None:
+        return   # fresh cache on disk — nothing to do
     with _build_lock:
         if _build_thread is not None and _build_thread.is_alive():
             return

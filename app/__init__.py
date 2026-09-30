@@ -31,10 +31,35 @@ matplotlib.use('Agg')  # headless server; must run before any pyplot import
 from astropy.utils import iers
 iers.conf.auto_download = False
 
+import os
+import sys
 from datetime import timedelta
 
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+
+def _running_under_tests() -> bool:
+    return (
+        'pytest' in sys.modules
+        or os.getenv('TESTING', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    )
+
+
+def _resolve_secret_key(secret_key: str) -> str:
+    """Refuse to start with a missing / placeholder SECRET_KEY (sessions would be
+    forgeable). Under tests a throwaway random key is used instead."""
+    from app.config import INSECURE_SECRET_KEYS
+    if secret_key and secret_key not in INSECURE_SECRET_KEYS:
+        return secret_key
+    if _running_under_tests():
+        import secrets
+        return secrets.token_hex(32)
+    raise RuntimeError(
+        'SECRET_KEY is missing or set to the insecure placeholder. '
+        'Set a long random SECRET_KEY in kinder.env '
+        '(e.g. python -c "import secrets; print(secrets.token_hex(32))").'
+    )
 
 
 def create_app(start_jobs: bool = True) -> Flask:
@@ -57,8 +82,17 @@ def create_app(start_jobs: bool = True) -> Flask:
     from app.blueprints import register_blueprints
 
     app = Flask(__name__, static_folder=None)  # templates come from each blueprint; /static is a custom route
-    app.secret_key = config.SECRET_KEY
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+    app.secret_key = _resolve_secret_key(config.SECRET_KEY)
+    # x_for=1: request.remote_addr is the real client IP (one trusted reverse proxy),
+    # needed for per-IP rate limiting and logging.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    # Upper bound on request bodies (uploads); larger requests get a 413.
+    try:
+        _max_mb = int(os.getenv('MAX_CONTENT_LENGTH_MB', '64'))
+    except ValueError:
+        _max_mb = 64
+    app.config['MAX_CONTENT_LENGTH'] = _max_mb * 1024 * 1024
 
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     # Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so only
