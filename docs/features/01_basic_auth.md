@@ -310,6 +310,24 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 2. 帳密符合 → session 設為 `ADMIN_LOCAL_EMAIL` 管理員 → flash `Welcome Administrator!` → `/`。
 3. 不符 → flash `Invalid admin credentials.` → `/login`。
 
+### B2. 帳號密碼登入（管理員建立的帳號，無自行註冊）
+
+- **建立**：只有管理員能在 Admin → Users → `Add User` 填寫密碼（`POST /admin/add-user`），
+  或在使用者列按 `Set password` / `Reset password`（`POST /admin/set-password`）、
+  `Remove password`（`POST /admin/clear-password`）。沒有任何公開註冊路由。
+- **登入**：`/login` 的「Sign in with email & password」→ `POST /login/password`（email 不分大小寫）。
+  錯誤一律顯示 `Invalid email or password.`，帳號不存在、沒設密碼、密碼錯誤的回應與耗時相同（防帳號列舉）。
+- **首次登入強制改密碼**：管理員設密碼時預設勾選「Require a new password」→ 登入後只能進
+  `GET/POST /account/password`，其他頁面導回該頁、API 回 403（只限用密碼登入的 session，Google 登入不受影響）。
+- **改密碼**：`/account/password` 需輸入目前密碼；個人資料頁有連結。
+- **安全機制**
+  - 密碼以 werkzeug scrypt（含 salt）雜湊存於 `auth.users.password_hash`；雜湊從不被選入 user dict / session / JSON。
+  - 規則：10–128 字元、前後不可有空白、不可過於單調、不可包含 email 帳號名稱。
+  - 暴力破解：同帳號 15 分鐘內失敗 5 次、同 IP 15 分鐘內失敗 10 次即暫停（計數跨 gunicorn worker 共用）。
+  - 改密碼或管理員重設時 `auth.users.session_version` +1，該帳號其他裝置的 session 立即失效。
+  - 一般 admin 不能設定其他 admin / super admin 的密碼（可冒用身分），只有 super admin 可以；自己的可以。
+  - 登入時重建 session（防 session fixation），跨站 POST 由同源檢查擋下；log 不記錄密碼。
+
 ### C. 登出
 
 任一頁使用者選單 `Logout` → `GET /logout` → `session.clear()` → flash `You have been logged out.` → `/`。

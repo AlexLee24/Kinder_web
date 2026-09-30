@@ -30,6 +30,22 @@
             </a>
             <p class="login-hint">New accounts start as guests; an admin upgrades your role.</p>
 
+            <details class="admin-login-section" open>
+                <summary>Sign in with email &amp; password</summary>
+                <form action="{{ url_for('auth.password_login') }}" method="POST" class="admin-login-form">
+                    <label class="field">
+                        <span>Email</span>
+                        <input type="email" name="email" class="admin-input" required maxlength="254" autocomplete="username" spellcheck="false">
+                    </label>
+                    <label class="field">
+                        <span>Password</span>
+                        <input type="password" name="password" class="admin-input" required maxlength="128" autocomplete="current-password">
+                    </label>
+                    <button type="submit" class="admin-login-btn">Log In</button>
+                </form>
+                <p class="login-hint">Password accounts are created by an administrator; there is no self sign-up.</p>
+            </details>
+
             <details class="admin-login-section">
                 <summary>Direct access (local admin)</summary>
                 <form action="{{ url_for('auth.admin_login') }}" method="POST" class="admin-login-form" autocomplete="off">

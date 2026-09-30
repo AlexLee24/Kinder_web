@@ -59,7 +59,30 @@ def refresh_user_session():
             session.clear()
         return
 
+    # Password reset / change bumps session_version: older sessions end here.
+    db_version = int(user_data.get('session_version') or 0)
+    session_version = session['user'].get('session_version')
+    if session_version is None:
+        session['user']['session_version'] = db_version   # pre-existing session: adopt
+        session.modified = True
+    elif int(session_version) != db_version:
+        logger.info("refresh_user_session: session of %s revoked (password changed/reset)", user_email)
+        session.clear()
+        return _session_revoked_response()
+
     g.current_user = user_data
+
+    # Sync the forced-password-change flag (set when an admin creates/resets a password)
+    must_change = bool(user_data.get('must_change_password')) and bool(user_data.get('has_password'))
+    if session['user'].get('must_change_password') != must_change:
+        session['user']['must_change_password'] = must_change
+        session.modified = True
+    # Only sessions that signed in with the temporary password are held back;
+    # a Google sign-in of the same account is already strongly authenticated.
+    if must_change and session['user'].get('auth_method') == 'password':
+        blocked = _enforce_password_change()
+        if blocked is not None:
+            return blocked
 
     # Sync is_admin
     current_is_admin = user_data.get('is_admin', False)
@@ -94,6 +117,27 @@ def refresh_user_session():
     if session_picture.startswith('data:image'):
         session['user']['picture'] = ''
         session.modified = True
+
+
+# Endpoints still reachable while a password change is pending.
+_PASSWORD_CHANGE_ALLOWED = {'auth.change_password', 'auth.logout', 'static', 'basic.login'}
+
+
+def _enforce_password_change():
+    """Until an admin-issued password is replaced, only the change-password page works."""
+    endpoint = request.endpoint or ''
+    if endpoint in _PASSWORD_CHANGE_ALLOWED or endpoint.endswith('.static'):
+        return None
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({'error': 'Password change required'}), 403
+    return redirect(url_for('auth.change_password'))
+
+
+def _session_revoked_response():
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({'error': 'Session expired, please log in again'}), 401
+    flash('Your session has ended because your password was changed. Please log in again.', 'info')
+    return redirect(url_for('basic.login'))
 
 
 def update_user_session_groups(user_email):

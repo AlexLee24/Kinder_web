@@ -4,13 +4,14 @@ Authentication routes (Google OAuth, login, logout)
 import hmac
 import logging
 import re
-from flask import session, flash, redirect, url_for, request, jsonify
+from flask import session, flash, redirect, url_for, request, jsonify, render_template
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
-from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation
+from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation, get_password_hash, get_login_email, set_password_hash
 from app.config import config
 from app.core import rate_limit
+from app.core.passwords import MIN_LENGTH as PASSWORD_MIN_LENGTH, password_problem, hash_password, verify_password
 
 from flask import Blueprint
 auth_bp = Blueprint('auth', __name__, template_folder='templates', static_folder='static')
@@ -198,30 +199,162 @@ def admin_login():
 
     rate_limit.clear(f'admin_login_fail:{client_ip}')
 
-    next_url = session.pop('next_url', None)
-    session.clear()  # fresh session on privilege change
-    session.permanent = True
-    user_groups = admin_data.get('groups', [])
-    is_admin = bool(admin_data.get('is_admin', False))
-    session_picture = admin_data.get('picture')
-    if session_picture and session_picture.startswith('data:image'):
-        session_picture = None
-    session['user'] = {
-        'email': admin_email,
-        'name': admin_data.get('name') or 'Admin',
-        'picture': session_picture,
-        'is_admin': is_admin,
-        'role': admin_data.get('role', 'guest'),
-        'is_great_lab_member': 'GREAT_Lab' in user_groups or is_admin,
-        'groups': user_groups,
-        'api_key': admin_data.get('api_key')
-    }
+    next_url = _safe_next(session.get('next_url'))
+    _start_user_session(admin_data)   # fresh session on privilege change
+    session['user']['auth_method'] = 'local_admin'
+    session['user']['must_change_password'] = False
     update_user(admin_email, last_login=datetime.now().isoformat())
 
-    flash('Welcome Administrator!' if is_admin else f"Welcome {session['user']['name']}!", 'success')
-    if next_url and next_url.startswith('/') and not next_url.startswith('//'):
-        return redirect(next_url)
-    return redirect(url_for('basic.home'))
+    flash('Welcome Administrator!' if session['user']['is_admin'] else f"Welcome {session['user']['name']}!", 'success')
+    return redirect(next_url or url_for('basic.home'))
+
+
+# ---------------------------------------------------------------------------
+# Password login for admin-created accounts (no self-registration)
+# ---------------------------------------------------------------------------
+_PW_IP_MAX_FAILURES = 10          # per client IP
+_PW_ACCOUNT_MAX_FAILURES = 5      # per account (slows targeted guessing)
+_PW_WINDOW_S = 15 * 60
+_PW_GENERIC_ERROR = 'Invalid email or password.'
+
+
+def _safe_next(next_url):
+    """Only same-site relative paths are allowed as post-login redirects."""
+    if next_url and next_url.startswith('/') and not next_url.startswith('//') and '\\' not in next_url:
+        return next_url
+    return None
+
+
+def _start_user_session(user_data: dict) -> None:
+    """Replace the session with a fresh one for *user_data* (a get_user() dict)."""
+    session.clear()   # new session on login: no fixation, no leftovers
+    session.permanent = True
+    user_groups = user_data.get('groups', [])
+    is_admin = bool(user_data.get('is_admin', False))
+    picture = user_data.get('picture')
+    if picture and picture.startswith('data:image'):
+        picture = None   # keep base64 out of the 4 KB cookie
+    session['user'] = {
+        'email': user_data['email'],
+        'name': user_data.get('name') or user_data['email'].split('@')[0],
+        'picture': picture,
+        'is_admin': is_admin,
+        'role': user_data.get('role', 'guest'),
+        'is_great_lab_member': 'GREAT_Lab' in user_groups or is_admin,
+        'groups': user_groups,
+        'api_key': user_data.get('api_key'),
+        'auth_method': 'password',
+        'session_version': int(user_data.get('session_version') or 0),
+        'must_change_password': bool(user_data.get('must_change_password')),
+    }
+
+
+@auth_bp.route('/login/password', methods=['POST'])
+def password_login():
+    email = (request.form.get('email') or '').strip()[:254]
+    password = request.form.get('password') or ''
+    client_ip = request.remote_addr or 'unknown'
+    ip_key = f'pw_login_fail_ip:{client_ip}'
+    acct_key = f'pw_login_fail_acct:{email.lower()}'
+
+    if (rate_limit.count(ip_key, _PW_WINDOW_S) >= _PW_IP_MAX_FAILURES
+            or (email and rate_limit.count(acct_key, _PW_WINDOW_S) >= _PW_ACCOUNT_MAX_FAILURES)):
+        logger.warning('Password login throttled (ip=%s)', client_ip)
+        flash('Too many failed attempts. Please try again in 15 minutes.', 'error')
+        return redirect(url_for('basic.login'))
+
+    try:
+        stored_hash = get_password_hash(email) if email else None
+    except Exception as exc:
+        logger.error('Password login: lookup failed: %s', exc)
+        flash('Login is temporarily unavailable. Please try again later.', 'error')
+        return redirect(url_for('basic.login'))
+
+    # verify_password always does one hash check, so unknown accounts and
+    # accounts without a password fail in the same time as a wrong password.
+    if not verify_password(stored_hash, password):
+        rate_limit.hit(ip_key)
+        if email:
+            rate_limit.hit(acct_key)
+        logger.warning('Failed password login from %s', client_ip)
+        flash(_PW_GENERIC_ERROR, 'error')
+        return redirect(url_for('basic.login'))
+
+    canonical_email = get_login_email(email)
+    user_data = get_user(canonical_email) if canonical_email else None
+    if not user_data:
+        flash(_PW_GENERIC_ERROR, 'error')
+        return redirect(url_for('basic.login'))
+
+    rate_limit.clear(acct_key)
+    next_url = _safe_next(session.get('next_url'))
+    _start_user_session(user_data)
+    update_user(canonical_email, last_login=datetime.now().isoformat())
+    logger.info('Password login: %s from %s', canonical_email, client_ip)
+
+    if user_data.get('must_change_password'):
+        flash('Please set a new password before continuing.', 'warning')
+        return redirect(url_for('auth.change_password'))
+    flash(f"Welcome {session['user']['name']}!", 'success')
+    return redirect(next_url or url_for('basic.home'))
+
+
+@auth_bp.route('/account/password', methods=['GET', 'POST'])
+def change_password():
+    """Change your own password (password accounts only). Requires the current one."""
+    if 'user' not in session:
+        return redirect(url_for('basic.login'))
+    email = session['user']['email']
+    try:
+        stored_hash = get_password_hash(email)
+    except Exception as exc:
+        logger.error('change_password lookup failed: %s', exc)
+        flash('Password change is temporarily unavailable.', 'error')
+        return redirect(url_for('basic.profile'))
+    if not stored_hash:
+        flash('Your account signs in with Google and has no password.', 'info')
+        return redirect(url_for('basic.profile'))
+
+    forced = bool(session['user'].get('must_change_password'))
+    if request.method == 'GET':
+        return render_template('change_password.html', forced=forced,
+                               min_length=PASSWORD_MIN_LENGTH, current_path='/account/password')
+
+    current = request.form.get('current_password') or ''
+    new = request.form.get('new_password') or ''
+    confirm = request.form.get('confirm_password') or ''
+    fail_key = f'pw_change_fail:{email.lower()}'
+
+    if rate_limit.count(fail_key, _PW_WINDOW_S) >= _PW_ACCOUNT_MAX_FAILURES:
+        flash('Too many failed attempts. Please try again in 15 minutes.', 'error')
+        return redirect(url_for('auth.change_password'))
+    if not verify_password(stored_hash, current):
+        rate_limit.hit(fail_key)
+        flash('Current password is incorrect.', 'error')
+        return redirect(url_for('auth.change_password'))
+    if new != confirm:
+        flash('The new passwords do not match.', 'error')
+        return redirect(url_for('auth.change_password'))
+    problem = password_problem(new, email)
+    if problem:
+        flash(problem, 'error')
+        return redirect(url_for('auth.change_password'))
+    if verify_password(stored_hash, new):
+        flash('The new password must be different from the current one.', 'error')
+        return redirect(url_for('auth.change_password'))
+
+    new_version = set_password_hash(email, hash_password(new), must_change=False)
+    if new_version is None:
+        flash('Could not update the password. Please try again.', 'error')
+        return redirect(url_for('auth.change_password'))
+    rate_limit.clear(fail_key)
+    # Other sessions of this account are now invalid; keep this one.
+    session['user']['session_version'] = new_version
+    session['user']['must_change_password'] = False
+    session.modified = True
+    logger.info('Password changed by %s', email)
+    flash('Password updated.', 'success')
+    return redirect(url_for('basic.profile'))
 
 
 _PROFILE_NAME_MAX = 80

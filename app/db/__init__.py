@@ -327,6 +327,16 @@ def _ensure_extra_tables():
             except Exception as exc:
                 logger.warning("_ensure_extra_tables: statement failed: %s", exc)
 
+        # auth.users — password login for admin-created accounts.
+        # password_hash: werkzeug scrypt hash (NULL = no password login).
+        # session_version: bumped on password change/reset to log out old sessions.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS password_hash TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS "
+             "must_change_password BOOLEAN NOT NULL DEFAULT FALSE")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS "
+             "session_version INTEGER NOT NULL DEFAULT 0")
+
         # auth.invitations — invitation tokens for new user sign-up
         _run("""
             CREATE TABLE IF NOT EXISTS auth.invitations (
