@@ -781,11 +781,19 @@ class TNSObjectDB:
         return out
 
     @staticmethod
-    def get_recent_tns_updates(limit: int = 20) -> tuple[list[dict], bool]:
+    def get_recent_tns_updates(limit: int = 20, apply_permissions: bool = False,
+                               viewer_email: str | None = None,
+                               viewer_is_admin: bool = False) -> tuple[list[dict], bool]:
         """回傳 (updates, is_fallback)。
+        - ``apply_permissions``：只回傳 viewer 可開啟的物件（同 ``_build_where``）
         - 只顯示 2 天內的變更
         - classified（type / name_prefix 變動）排最上面
         - is_fallback=True 代表 audit 表無近期資料，改用最近修改物件替代。"""
+        perm_params = []
+        perm = ' '
+        if apply_permissions and not viewer_is_admin:
+            perm = ' AND ' + _permission_clause(perm_params, viewer_email) + ' '
+
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.DictCursor)
             _ensure_tns_update_audit_table(cur)
@@ -800,9 +808,10 @@ class TNSObjectDB:
                 "FROM transient.tns_update_audit a "
                 "LEFT JOIN transient.objects o ON a.obj_id = o.obj_id "
                 "WHERE a.updated_at >= NOW() - INTERVAL '2 days' "
+                + perm +
                 "ORDER BY sort_priority ASC, a.updated_at DESC "
                 "LIMIT %s",
-                (limit,)
+                perm_params + [limit]
             )
             rows = cur.fetchall()
             is_fallback = False
@@ -821,9 +830,10 @@ class TNSObjectDB:
                     "WHERE o.last_modified_date IS NOT NULL "
                     "  AND (TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day') "
                     "      >= NOW() - INTERVAL '2 days' "
+                    + perm +
                     "ORDER BY sort_priority ASC, o.last_modified_date DESC "
                     "LIMIT %s",
-                    (limit,)
+                    perm_params + [limit]
                 )
                 rows = cur.fetchall()
 
@@ -838,9 +848,10 @@ class TNSObjectDB:
                         "CASE WHEN o.name_prefix = 'SN' THEN 0 ELSE 1 END AS sort_priority "
                         "FROM transient.objects o "
                         "WHERE o.last_modified_date IS NOT NULL "
+                        + perm +
                         "ORDER BY sort_priority ASC, o.last_modified_date DESC "
                         "LIMIT %s",
-                        (limit,)
+                        perm_params + [limit]
                     )
                     rows = cur.fetchall()
 
@@ -947,7 +958,15 @@ class TNSObjectDB:
 
     @staticmethod
     def get_top_viewed_objects(days: int = 30, limit: int = 5,
-                               mode: str = '30days') -> list[dict]:
+                               mode: str = '30days', apply_permissions: bool = False,
+                               viewer_email: str | None = None,
+                               viewer_is_admin: bool = False) -> list[dict]:
+        """Most viewed objects.  With ``apply_permissions`` objects the viewer
+        cannot open are left out before the limit is applied."""
+        params = []
+        perm = ''
+        if apply_permissions and not viewer_is_admin:
+            perm = 'WHERE ' + _permission_clause(params, viewer_email) + ' '
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.DictCursor)
             if mode == 'all':
@@ -958,16 +977,19 @@ class TNSObjectDB:
                     "array_to_string(o.tag,', ') AS tags "
                     "FROM transient.object_views v "
                     "LEFT JOIN transient.objects o ON v.obj_id = o.obj_id "
+                    + perm +
                     "ORDER BY v.counts DESC LIMIT %s",
-                    (limit,)
+                    params + [limit]
                 )
             else:
                 cur.execute(
                     "WITH recent AS ("
-                    "  SELECT obj_id, COUNT(*) AS view_count "
-                    "  FROM transient.object_views_detail "
-                    "  WHERE view_time >= now() - (%s || ' days')::interval "
-                    "  GROUP BY obj_id ORDER BY view_count DESC LIMIT %s"
+                    "  SELECT d.obj_id, COUNT(*) AS view_count "
+                    "  FROM transient.object_views_detail d "
+                    "  JOIN transient.objects o ON d.obj_id = o.obj_id "
+                    "  WHERE d.view_time >= now() - (%s || ' days')::interval "
+                    + (perm.replace('WHERE ', 'AND ', 1) if perm else '') +
+                    "  GROUP BY d.obj_id ORDER BY view_count DESC LIMIT %s"
                     ") "
                     "SELECT r.view_count, d.name AS object_name, "
                     "COALESCE(o.type,'Unknown') AS object_type, "
@@ -977,7 +999,7 @@ class TNSObjectDB:
                     "JOIN transient.object_views d ON r.obj_id = d.obj_id "
                     "LEFT JOIN transient.objects o ON r.obj_id = o.obj_id "
                     "ORDER BY r.view_count DESC",
-                    (days, limit)
+                    [days] + params + [limit]
                 )
             return [dict(r) for r in cur.fetchall()]
 
@@ -989,6 +1011,22 @@ tns_object_db = TNSObjectDB()
 # ---------------------------------------------------------------------------
 # Object query functions (Marshal / API)
 # ---------------------------------------------------------------------------
+
+def _permission_clause(params, viewer_email=None):
+    """SQL condition on alias ``o`` (transient.objects) keeping only objects a
+    non-admin viewer may open; appends its params.  Mirrors check_object_access."""
+    if not viewer_email:
+        return "o.permission = 'public'"
+    params.append(viewer_email)
+    return (
+        "(o.permission IN ('public', 'login') OR ("
+        " o.permission = 'groups' AND EXISTS ("
+        "  SELECT 1 FROM auth.usr_group ug "
+        "  JOIN auth.users u ON ug.usr_id = u.usr_id "
+        "  WHERE u.email = %s AND ug.status = 'joined' "
+        "    AND ug.group_id = ANY(o.groups))))"
+    )
+
 
 def _build_where(params, search_term='', object_type='', tag=None,
                  date_from=None, date_to=None,
@@ -1007,18 +1045,7 @@ def _build_where(params, search_term='', object_type='', tag=None,
     clauses = ['1=1']
 
     if apply_permissions and not viewer_is_admin:
-        if not viewer_email:
-            clauses.append("o.permission = 'public'")
-        else:
-            clauses.append(
-                "(o.permission IN ('public', 'login') OR ("
-                " o.permission = 'groups' AND EXISTS ("
-                "  SELECT 1 FROM auth.usr_group ug "
-                "  JOIN auth.users u ON ug.usr_id = u.usr_id "
-                "  WHERE u.email = %s AND ug.status = 'joined' "
-                "    AND ug.group_id = ANY(o.groups))))"
-            )
-            params.append(viewer_email)
+        clauses.append(_permission_clause(params, viewer_email))
 
     if search_term:
         pat = f'%{search_term}%'
@@ -2468,7 +2495,13 @@ def toggle_object_pin(object_name: str) -> bool:
         return False
 
 
-def get_pinned_objects(limit: int = 20) -> list[dict]:
+def get_pinned_objects(limit: int = 20, apply_permissions: bool = False,
+                       viewer_email: str | None = None,
+                       viewer_is_admin: bool = False) -> list[dict]:
+    params = []
+    perm = ''
+    if apply_permissions and not viewer_is_admin:
+        perm = 'AND ' + _permission_clause(params, viewer_email) + ' '
     try:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -2480,8 +2513,9 @@ def get_pinned_objects(limit: int = 20) -> list[dict]:
                 "FROM transient.objects o "
                 "LEFT JOIN transient.object_views v ON v.obj_id = o.obj_id "
                 "WHERE o.pin = TRUE "
+                + perm +
                 "ORDER BY view_count DESC LIMIT %s",
-                (limit,)
+                params + [limit]
             )
             return [dict(r) for r in cur.fetchall()]
     except Exception as e:

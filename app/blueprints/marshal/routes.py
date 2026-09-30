@@ -183,7 +183,13 @@ def get_marshal_recent_comments():
 def get_marshal_recent_tns_updates():
     try:
         from app.db.transient import TNSObjectDB
-        updates, is_fallback = TNSObjectDB.get_recent_tns_updates(limit=6)
+        user = session.get('user') or {}
+        updates, is_fallback = TNSObjectDB.get_recent_tns_updates(
+            limit=6,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({'success': True, 'updates': updates, 'is_fallback': is_fallback})
     except Exception as e:
         logger.error("marshal widget error: %s", e)
@@ -194,7 +200,13 @@ def get_marshal_top_viewed():
     try:
         from app.db.transient import TNSObjectDB
         mode = request.args.get('mode', '30days')
-        targets = TNSObjectDB.get_top_viewed_objects(days=30, limit=5, mode=mode)
+        user = session.get('user') or {}
+        targets = TNSObjectDB.get_top_viewed_objects(
+            days=30, limit=5, mode=mode,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({
             'success': True, 
             'targets': targets
@@ -209,7 +221,13 @@ def get_marshal_pinned_objects():
         return jsonify({'success': True, 'objects': []})
     try:
         from app.db.transient import get_pinned_objects
-        objects = get_pinned_objects(limit=20)
+        user = session['user']
+        objects = get_pinned_objects(
+            limit=20,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         return jsonify({'success': True, 'objects': objects})
     except Exception as e:
         logger.error("marshal widget error: %s", e)

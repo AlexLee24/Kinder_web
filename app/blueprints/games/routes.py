@@ -6,12 +6,12 @@ import fcntl
 import os
 import json
 import threading
-import time
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, session
 
 games_bp = Blueprint('games', __name__, template_folder='templates', static_folder='static')
 
+from app.core import rate_limit
 from app.paths import DATA_DIR
 # NOTE: before the 2026-09 refactor this resolved to <repo>/data/ (a directory that did not
 # exist), so the leaderboard was never persisted; it now lives with the other runtime data.
@@ -28,8 +28,6 @@ _MAX_LEADERBOARD_RECORDS = 1000
 _MAX_ATTEMPTS = 100
 _MAX_NAME_LEN = 100
 _SUBMIT_INTERVAL_SECS = 5.0
-_submit_rl_lock = threading.Lock()
-_submit_last = {}  # {ip: monotonic timestamp of last accepted submit}
 
 
 class _LeaderboardUnreadable(Exception):
@@ -77,16 +75,7 @@ def _write_leaderboard(records):
 
 
 def _submit_rate_ok(ip):
-    now = time.monotonic()
-    with _submit_rl_lock:
-        if now - _submit_last.get(ip, 0) < _SUBMIT_INTERVAL_SECS:
-            return False
-        _submit_last[ip] = now
-        if len(_submit_last) > 10000:
-            cutoff = now - _SUBMIT_INTERVAL_SECS
-            for k in [k for k, t in _submit_last.items() if t < cutoff]:
-                _submit_last.pop(k, None)
-        return True
+    return rate_limit.allow(f'games_submit:{ip}', 1, _SUBMIT_INTERVAL_SECS)
 
 
 @games_bp.route('/api/games/leaderboard', methods=['GET'])

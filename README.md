@@ -32,6 +32,8 @@ write every log line to the terminal as well as `app/log/<date>.log`.
   **and** `ADMIN_LOCAL_EMAIL` are all set, and that email has a row in `auth.users`.
 - Scheduled jobs run in **UTC**.
 - `MAX_CONTENT_LENGTH_MB` (default 64) caps request bodies.
+- Rate limits are shared by all gunicorn workers on the host through a small SQLite file
+  (`app/data/rate_limit.sqlite3`, override with `RATE_LIMIT_DB`).
 - With `open_registration` off (admin panel), new Google accounts need a pending invitation.
 
 ## Where things are

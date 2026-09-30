@@ -4,15 +4,13 @@ Authentication routes (Google OAuth, login, logout)
 import hmac
 import logging
 import re
-import threading
-import time
-from collections import defaultdict, deque
 from flask import session, flash, redirect, url_for, request, jsonify
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation
 from app.config import config
+from app.core import rate_limit
 
 from flask import Blueprint
 auth_bp = Blueprint('auth', __name__, template_folder='templates', static_folder='static')
@@ -145,30 +143,17 @@ def logout():
     return redirect(url_for('basic.home'))
 
 
-# Per-IP failed-login throttle for the local admin login (in-memory, per worker).
+# Per-IP failed-login throttle for the local admin login (shared across workers).
 _ADMIN_LOGIN_MAX_FAILURES = 5
 _ADMIN_LOGIN_WINDOW_S = 5 * 60
-_admin_login_failures: dict[str, deque] = defaultdict(deque)
-_admin_login_lock = threading.Lock()
 
 
 def _admin_login_blocked(ip: str) -> bool:
-    now = time.monotonic()
-    with _admin_login_lock:
-        q = _admin_login_failures.get(ip)
-        if not q:
-            return False
-        while q and now - q[0] > _ADMIN_LOGIN_WINDOW_S:
-            q.popleft()
-        if not q:
-            _admin_login_failures.pop(ip, None)
-            return False
-        return len(q) >= _ADMIN_LOGIN_MAX_FAILURES
+    return rate_limit.count(f'admin_login_fail:{ip}', _ADMIN_LOGIN_WINDOW_S) >= _ADMIN_LOGIN_MAX_FAILURES
 
 
 def _admin_login_record_failure(ip: str) -> None:
-    with _admin_login_lock:
-        _admin_login_failures[ip].append(time.monotonic())
+    rate_limit.hit(f'admin_login_fail:{ip}')
 
 
 @auth_bp.route('/admin-login', methods=['POST'])
@@ -211,8 +196,7 @@ def admin_login():
         flash('Admin account not found in the database.', 'error')
         return redirect(url_for('basic.login'))
 
-    with _admin_login_lock:
-        _admin_login_failures.pop(client_ip, None)
+    rate_limit.clear(f'admin_login_fail:{client_ip}')
 
     next_url = session.pop('next_url', None)
     session.clear()  # fresh session on privilege change
