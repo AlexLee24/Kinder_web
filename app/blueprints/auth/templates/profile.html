@@ -75,6 +75,13 @@
                                 </div>
                                 {% endif %}
                                 
+                                {% if user_data and user_data.has_password %}
+                                <div class="info-item" style="grid-column: 1 / -1;">
+                                    <span class="info-label">Password login:</span>
+                                    <span class="info-value"><a href="{{ url_for('auth.change_password') }}">Change password</a></span>
+                                </div>
+                                {% endif %}
+
                                 <!-- API KEY SECTION -->
                                 {% if session.user.get('role') != 'guest' %}
                                 <div class="info-item api-key-section" style="grid-column: 1 / -1; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">

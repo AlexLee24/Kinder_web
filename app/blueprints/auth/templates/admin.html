@@ -326,6 +326,17 @@
                                             <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
                                         </select>
                                     </div>
+                                    <div class="row-actions" style="gap:6px;flex-wrap:wrap;margin-top:6px;">
+                                        {% if user.has_password %}
+                                        <span class="role-pill" title="Can sign in with email and password" style="background:rgba(99,140,255,0.15);color:#8aa8ff;border:1px solid rgba(99,140,255,0.35);">Password{{ ' · must change' if user.must_change_password }}</span>
+                                        {% endif %}
+                                        <button class="btn btn-secondary" style="padding:3px 10px;font-size:0.78rem;" onclick='showSetPasswordModal({{ email|tojson }})'>
+                                            {{ 'Reset password' if user.has_password else 'Set password' }}
+                                        </button>
+                                        {% if user.has_password %}
+                                        <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick='adminClearPassword({{ email|tojson }})'>Remove password</button>
+                                        {% endif %}
+                                    </div>
                                     {% else %}
                                     <span class="you-badge">You</span>
                                     {% endif %}
@@ -604,9 +615,51 @@
                         <option value="admin">Admin</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="userPassword">Password (optional)</label>
+                    <input type="password" id="userPassword" minlength="10" maxlength="128" autocomplete="new-password"
+                           placeholder="Leave blank for Google sign-in only">
+                    <small class="cell-muted">At least 10 characters. Share it with the user through a private channel.</small>
+                </div>
+                <div class="form-group">
+                    <label class="filter-pill">
+                        <input type="checkbox" id="userMustChange" checked> Require a new password at first login
+                    </label>
+                </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="setPasswordModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Set Password</h3>
+                <span class="close" onclick="closeModal('setPasswordModal')">&times;</span>
+            </div>
+            <form onsubmit="adminSetPassword(event)">
+                <input type="hidden" id="setPasswordEmail">
+                <p class="cell-muted" id="setPasswordTarget" style="margin-top:0"></p>
+                <div class="form-group">
+                    <label for="setPasswordValue">New password *</label>
+                    <input type="password" id="setPasswordValue" required minlength="10" maxlength="128" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="setPasswordConfirm">Confirm password *</label>
+                    <input type="password" id="setPasswordConfirm" required minlength="10" maxlength="128" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label class="filter-pill">
+                        <input type="checkbox" id="setPasswordMustChange" checked> Require a new password at next login
+                    </label>
+                </div>
+                <p class="cell-muted">All of this user's current sessions will be logged out.</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('setPasswordModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Set Password</button>
                 </div>
             </form>
         </div>

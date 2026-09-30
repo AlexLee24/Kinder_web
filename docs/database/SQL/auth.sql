@@ -17,7 +17,15 @@ CREATE TABLE auth.users (
                     -- 0=guest, 1=user, 50=admin, 99=super_admin
     last_login  TIMESTAMPTZ,
     join_date   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    api_key     TEXT UNIQUE
+    api_key     TEXT UNIQUE,
+    api_key_requested_at TIMESTAMPTZ,
+    -- Password login for admin-created accounts (NULL = Google login only).
+    -- Werkzeug scrypt hash; never selected into user dicts / sessions.
+    password_hash        TEXT,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
+    password_changed_at  TIMESTAMPTZ,
+    -- Bumped on password change/reset so existing sessions are logged out.
+    session_version      INTEGER NOT NULL DEFAULT 0
 );
 
 -- ------------------------------------------------------------

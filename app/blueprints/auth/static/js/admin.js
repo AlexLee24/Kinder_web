@@ -377,6 +377,9 @@ async function addUser(event) {
     const email = document.getElementById('userEmail').value;
     const roleValue = document.getElementById('userRole') ? document.getElementById('userRole').value : 'user';
     const name = document.getElementById('userName').value;
+    const passwordEl = document.getElementById('userPassword');
+    const password = passwordEl ? passwordEl.value : '';
+    const mustChangeEl = document.getElementById('userMustChange');
     
     if (!email) {
         showNotification('Email is required', 'error');
@@ -392,7 +395,9 @@ async function addUser(event) {
             body: JSON.stringify({
                 email: email,
                 name: name || email.split('@')[0],
-                role: roleValue
+                role: roleValue,
+                password: password,
+                must_change_password: mustChangeEl ? mustChangeEl.checked : true
             })
         });
         
@@ -404,6 +409,67 @@ async function addUser(event) {
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}
+
+// Password login (admin-created accounts)
+function showSetPasswordModal(email) {
+    document.getElementById('setPasswordEmail').value = email;
+    document.getElementById('setPasswordTarget').textContent = 'Account: ' + email;
+    document.getElementById('setPasswordModal').style.display = 'block';
+}
+
+async function adminSetPassword(event) {
+    event.preventDefault();
+    const email = document.getElementById('setPasswordEmail').value;
+    const password = document.getElementById('setPasswordValue').value;
+    const confirmValue = document.getElementById('setPasswordConfirm').value;
+    if (password !== confirmValue) {
+        showNotification('The passwords do not match', 'error');
+        return;
+    }
+    try {
+        const response = await fetch('/admin/set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                must_change_password: document.getElementById('setPasswordMustChange').checked
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'Password set', 'success');
+            closeModal('setPasswordModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed to set password'), 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}
+
+async function adminClearPassword(email) {
+    if (!confirm(`Disable password login for ${email}? They can still sign in with Google.`)) {
+        return;
+    }
+    try {
+        const response = await fetch('/admin/clear-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'Password removed', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed to remove password'), 'error');
         }
     } catch (error) {
         showNotification('An error occurred: ' + error.message, 'error');

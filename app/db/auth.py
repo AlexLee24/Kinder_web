@@ -78,9 +78,13 @@ def _group_row_to_dict(row) -> dict:
 # Users
 # ---------------------------------------------------------------------------
 
+# Never select password_hash here: these dicts reach templates, JSON and the session.
 _USER_SELECT = (
     "SELECT u.usr_id, u.email, u.name, u.picture_url, u.roles, "
-    "u.last_login, u.join_date, u.api_key, u.api_key_requested_at "
+    "u.last_login, u.join_date, u.api_key, u.api_key_requested_at, "
+    "(u.password_hash IS NOT NULL) AS has_password, "
+    "COALESCE(u.must_change_password, FALSE) AS must_change_password, "
+    "COALESCE(u.session_version, 0) AS session_version "
     "FROM auth.users u"
 )
 
@@ -225,6 +229,55 @@ def delete_user(email: str) -> bool:
     except Exception as e:
         logger.error("delete_user %s: %s", email, e)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Password (local) login — accounts are created by admins only
+# ---------------------------------------------------------------------------
+
+def get_password_hash(email: str) -> str | None:
+    """Stored password hash for *email* (case-insensitive), or None."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT password_hash FROM auth.users WHERE lower(email) = lower(%s)",
+            (email,)
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def get_login_email(email: str) -> str | None:
+    """Canonical stored email for a case-insensitive login identifier."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT email FROM auth.users WHERE lower(email) = lower(%s)", (email,))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def set_password_hash(email: str, password_hash: str | None,
+                      must_change: bool = False) -> int | None:
+    """Set (or with None, remove) a user's password hash.
+
+    Bumps ``session_version`` so every existing session of that user is logged
+    out. Returns the new session_version, or None if the user does not exist."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE auth.users SET password_hash = %s, must_change_password = %s, "
+                "password_changed_at = now(), "
+                "session_version = COALESCE(session_version, 0) + 1 "
+                "WHERE email = %s RETURNING session_version",
+                (password_hash, bool(must_change and password_hash), email)
+            )
+            row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("set_password_hash %s: %s", email, e)
+        return None
 
 
 def generate_api_key_for_user(email: str) -> str | None:

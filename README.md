@@ -35,6 +35,8 @@ write every log line to the terminal as well as `app/log/<date>.log`.
 - Rate limits are shared by all gunicorn workers on the host through a small SQLite file
   (`app/data/rate_limit.sqlite3`, override with `RATE_LIMIT_DB`).
 - With `open_registration` off (admin panel), new Google accounts need a pending invitation.
+- Admins can create email + password accounts (Admin → Users); there is no self sign-up.
+  Passwords are scrypt-hashed in `auth.users.password_hash` (column added automatically at start-up).
 
 ## Where things are
 
