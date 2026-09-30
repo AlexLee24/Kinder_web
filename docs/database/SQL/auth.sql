@@ -28,7 +28,8 @@ CREATE TABLE auth.users (
     api_key_last_used_at TIMESTAMPTZ,
     -- Google account id ("sub") bound at the first Google sign-in.
     google_sub           TEXT,
-    -- Direct-login name for admin-created accounts ([A-Za-z0-9._-]{3,32}).
+    -- Direct-login name for admin-created accounts (1-32 chars, any language;
+    -- no whitespace, '@' or < > " ' & / \ `).
     -- Accounts created without an email store <username>@users.invalid in email.
     username             TEXT,
     -- Password login for admin-created accounts (NULL = Google login only).

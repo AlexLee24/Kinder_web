@@ -22,7 +22,8 @@ def test_route_count_is_stable(app):
     # /admin/set-password, /admin/clear-password). 251 with the security hardening
     # (/csp-report, /account/logout-all, /admin/force-logout,
     # /api/profile/regenerate_api_key).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 251
+    # 252 with /avatar/<usr_id> (profile pictures served instead of inlined).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 252
 
 
 def test_duplicate_rules_keep_precedence(app):

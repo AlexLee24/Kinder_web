@@ -269,7 +269,7 @@
                             <tr>
                                 <td>
                                     <div class="user-cell">
-                                        <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                        <img src="{{ user.picture or '/static/img/default-avatar.svg' }}" alt="" class="user-avatar" onerror="this.onerror=null;this.src='/static/img/default-avatar.svg'">
                                         <div>
                                             <div class="user-cell-name">{{ user.name }}</div>
                                             <div class="user-cell-email">{% if user.username %}{{ user.username }}{% if not user.has_placeholder_email %} · {% endif %}{% endif %}{% if not user.has_placeholder_email %}{{ email }}{% elif not user.username %}—{% endif %}</div>
@@ -418,7 +418,7 @@
                                 {% for member in group.members %}
                                 <div class="member-row">
                                     <div class="member-info">
-                                        <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
+                                        <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.svg' }}" alt="" class="member-avatar" onerror="this.onerror=null;this.src='/static/img/default-avatar.svg'">
                                         <div>
                                             <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
                                             <div class="member-email">{% if member in users and users[member].has_placeholder_email %}{{ users[member].username or '—' }}{% else %}{{ member }}{% endif %}</div>
@@ -604,13 +604,13 @@
                     Google-only account: leave username and password empty and enter the Google email.</p>
                 <div class="form-group">
                     <label for="userUsername">Username *</label>
-                    <input type="text" id="userUsername" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" spellcheck="false"
-                           placeholder="3–32 letters, digits, . _ -">
+                    <input type="text" id="userUsername" maxlength="32" autocomplete="off" spellcheck="false"
+                           placeholder="Any language, e.g. 王小明 or star.gazer">
                 </div>
                 <div class="form-group">
                     <label for="userPassword">Password * (for direct login)</label>
-                    <input type="password" id="userPassword" minlength="10" maxlength="128" autocomplete="new-password">
-                    <small class="cell-muted">At least 10 characters. Share it with the user through a private channel.</small>
+                    <input type="password" id="userPassword" maxlength="1024" autocomplete="new-password">
+                    <small class="cell-muted">No length or character rules. Share it with the user privately; they can change it after signing in.</small>
                 </div>
                 <div class="form-group">
                     <label for="userName">Display name (optional)</label>
@@ -652,17 +652,17 @@
                 <p class="cell-muted" id="setPasswordTarget" style="margin-top:0"></p>
                 <div class="form-group">
                     <label for="setPasswordUsername">Username *</label>
-                    <input type="text" id="setPasswordUsername" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" spellcheck="false"
-                           placeholder="3–32 letters, digits, . _ -">
+                    <input type="text" id="setPasswordUsername" maxlength="32" autocomplete="off" spellcheck="false"
+                           placeholder="Any language, e.g. 王小明 or star.gazer">
                     <small class="cell-muted">The name this user signs in with.</small>
                 </div>
                 <div class="form-group">
                     <label for="setPasswordValue">New password *</label>
-                    <input type="password" id="setPasswordValue" required minlength="10" maxlength="128" autocomplete="new-password">
+                    <input type="password" id="setPasswordValue" required maxlength="1024" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label for="setPasswordConfirm">Confirm password *</label>
-                    <input type="password" id="setPasswordConfirm" required minlength="10" maxlength="128" autocomplete="new-password">
+                    <input type="password" id="setPasswordConfirm" required maxlength="1024" autocomplete="new-password">
                 </div>
                 <div class="form-group">
                     <label class="filter-pill">

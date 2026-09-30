@@ -727,7 +727,7 @@ class TNSObjectDB:
             cur.execute(
                 "SELECT c.comment_id AS id, c.name AS object_name, "
                 "u.email AS user_email, u.name AS user_name, "
-                "u.picture_url AS user_picture, "
+                "CASE WHEN u.picture_url LIKE 'data:%%' THEN '/avatar/' || u.usr_id || '?v=' || substr(md5(u.picture_url), 1, 10) ELSE u.picture_url END AS user_picture, "
                 "c.comment AS content, c.comment_time AS created_at "
                 "FROM transient.comments c "
                 "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
@@ -760,7 +760,8 @@ class TNSObjectDB:
             cur.execute(
                 "SELECT c.comment_id AS id, c.name AS object_name, "
                 "u.email AS user_email, u.name AS user_name, "
-                "u.picture_url AS user_picture, c.comment AS content, "
+                "CASE WHEN u.picture_url LIKE 'data:%%' THEN '/avatar/' || u.usr_id || '?v=' || substr(md5(u.picture_url), 1, 10) ELSE u.picture_url END AS user_picture, "
+                "c.comment AS content, "
                 "c.comment_time AS created_at, "
                 "o.name_prefix, o.type, "
                 "COALESCE(o.internal_name,'') AS internal_names, "
@@ -886,7 +887,7 @@ class TNSObjectDB:
             cur.execute(
                 "SELECT c.comment_id AS id, c.name AS object_name, "
                 "u.email AS user_email, u.name AS user_name, "
-                "u.picture_url AS user_picture, "
+                "CASE WHEN u.picture_url LIKE 'data:%%' THEN '/avatar/' || u.usr_id || '?v=' || substr(md5(u.picture_url), 1, 10) ELSE u.picture_url END AS user_picture, "
                 "c.comment AS content, c.comment_time AS created_at "
                 "FROM transient.comments c "
                 "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "

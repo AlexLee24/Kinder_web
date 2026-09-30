@@ -2,7 +2,7 @@
 Basic routes (home, login page, profile)
 """
 import io, os, json, logging, time
-from flask import render_template, redirect, url_for, session, flash, send_from_directory, jsonify, request, abort
+from flask import render_template, redirect, url_for, session, flash, send_from_directory, jsonify, request, abort, current_app
 from flask import Blueprint
 from werkzeug.utils import secure_filename
 from PIL import Image
@@ -371,6 +371,28 @@ def api_gallery_update(item_id):
     except Exception:
         logger.exception('Gallery update error')
         return jsonify({'success': False, 'error': 'Update failed'}), 500
+
+
+@basic_bp.route('/avatar/<int:usr_id>')
+def avatar(usr_id):
+    """An uploaded profile picture, served as an image instead of being inlined
+    in every page. Logged-in users only. The URL carries ?v=<hash of the picture>,
+    so it can be cached for a long time and changes when the picture does."""
+    if 'user' not in session:
+        abort(404)
+    from app.core.avatars import DEFAULT_AVATAR, decode_data_uri
+    from app.db.auth import get_stored_picture
+    stored = get_stored_picture(usr_id) or ''
+    if stored.startswith('https://'):
+        return redirect(stored)
+    decoded = decode_data_uri(stored)
+    if not decoded:
+        return redirect(DEFAULT_AVATAR)
+    mimetype, data = decoded
+    resp = current_app.response_class(data, mimetype=mimetype)
+    resp.headers['Cache-Control'] = 'private, max-age=31536000, immutable'
+    resp.headers['Content-Disposition'] = f'inline; filename="avatar-{usr_id}"'
+    return resp
 
 
 @basic_bp.route('/gallery/image/<filename>')

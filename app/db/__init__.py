@@ -304,6 +304,36 @@ def is_db_available(force: bool = False) -> bool:
 # Extra tables not in the original Kinder schema DDL (backward-compat needs)
 # ---------------------------------------------------------------------------
 
+def _shrink_stored_avatars(cur) -> None:
+    """One-time per row: re-encode oversized uploaded avatars (base64 data: URIs,
+    formerly stored at full camera resolution) to a small thumbnail. Pages link
+    to /avatar/<id>, but the value is still read with every user lookup."""
+    from app.core.avatars import MAX_STORED_BYTES, shrink_data_uri
+    try:
+        cur.execute("SELECT usr_id FROM auth.users "
+                    "WHERE picture_url LIKE 'data:%%' AND length(picture_url) > %s",
+                    (MAX_STORED_BYTES,))
+        ids = [r[0] for r in cur.fetchall()]
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: avatar shrink skipped: %s", exc)
+        return
+    shrunk = 0
+    for usr_id in ids:   # one row at a time: the originals can be many MB each
+        try:
+            cur.execute("SELECT picture_url FROM auth.users WHERE usr_id = %s", (usr_id,))
+            row = cur.fetchone()
+            small = shrink_data_uri(row[0]) if row and row[0] else None
+            if small and len(small) < len(row[0]):
+                cur.execute("UPDATE auth.users SET picture_url = %s WHERE usr_id = %s",
+                            (small, usr_id))
+                shrunk += 1
+        except Exception as exc:
+            logger.warning("_ensure_extra_tables: avatar shrink failed for usr_id=%s: %s",
+                           usr_id, exc)
+    if shrunk:
+        logger.info("Shrunk %d oversized profile picture(s)", shrunk)
+
+
 def _migrate_plaintext_api_keys(cur) -> None:
     """One-time: hash legacy plaintext auth.users.api_key values, then drop them.
 
@@ -398,6 +428,7 @@ def _ensure_extra_tables():
         _run("CREATE UNIQUE INDEX IF NOT EXISTS users_api_key_hash_idx "
              "ON auth.users(api_key_hash) WHERE api_key_hash IS NOT NULL")
         _migrate_plaintext_api_keys(cur)
+        _shrink_stored_avatars(cur)
 
         # auth.invitations — invitation tokens for new user sign-up
         _run("""
