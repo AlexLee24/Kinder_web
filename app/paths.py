@@ -37,6 +37,24 @@ DETECT_DIR = VENDOR_DIR / 'DETECT'
 os.environ.setdefault('DETECT_DATA_DIR', str(DETECT_DIR / 'data'))
 DETECT_DATA_DIR = Path(os.environ['DETECT_DATA_DIR'])
 
+# DETECT sets dustmaps' data_dir at import time, and dustmaps saves that to its
+# config file (default ~/.dustmapsrc, shared by every process). gunicorn workers
+# import it at the same moment, so one can read another's half-written file,
+# declare it "corrupted" and fail to boot. Give each process its own config file.
+if 'DUSTMAPS_CONFIG_FNAME' not in os.environ:
+    import atexit
+    import tempfile
+    import warnings
+    _dustmaps_cfg = os.path.join(tempfile.gettempdir(), f'kinder-dustmaps-{os.getpid()}.json')
+    try:
+        with open(_dustmaps_cfg, 'w') as _f:   # empty config: avoids a "not found" warning
+            _f.write('{}')
+        atexit.register(lambda: os.path.exists(_dustmaps_cfg) and os.remove(_dustmaps_cfg))
+    except OSError:
+        pass
+    os.environ['DUSTMAPS_CONFIG_FNAME'] = _dustmaps_cfg
+    warnings.filterwarnings('ignore', message='Overriding default configuration file')
+
 # Runtime sub-directories under DATA_DIR (created lazily by their owners).
 TNS_WORK_DIR = DATA_DIR / 'tns_api_download_work'
 PHOT_CACHE_DIR = DATA_DIR / 'phot_cache'
