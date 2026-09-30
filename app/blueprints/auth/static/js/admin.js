@@ -373,7 +373,9 @@ window.onclick = function(event) {
 // Add User Directly
 // (a) direct-login account: username + password, email optional
 // (b) Google-only account: email only (no username / password)
-const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,32}$/;
+// 1–32 characters in any language; no whitespace and none of @ < > " ' & / \ ` (mirrors the server rule).
+const USERNAME_PATTERN = /^[^\s@<>"'&\/\\`]{1,32}$/u;
+const USERNAME_RULE = 'Username: 1–32 characters (any language), no spaces and none of @ < > " \' & / \\ `';
 
 async function addUser(event) {
     event.preventDefault();
@@ -388,7 +390,7 @@ async function addUser(event) {
 
     if (username || password) {
         if (!username || !USERNAME_PATTERN.test(username)) {
-            showNotification('Username must be 3–32 characters: letters, digits, . _ -', 'error');
+            showNotification(USERNAME_RULE, 'error');
             return;
         }
         if (!password) {
@@ -457,7 +459,7 @@ async function adminSetPassword(event) {
         return;
     }
     if (unameEl && !unameEl.readOnly && !USERNAME_PATTERN.test(username)) {
-        showNotification('Username must be 3–32 characters: letters, digits, . _ -', 'error');
+        showNotification(USERNAME_RULE, 'error');
         return;
     }
     try {

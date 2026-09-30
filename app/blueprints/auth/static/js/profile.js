@@ -110,6 +110,22 @@ async function updateName(event) {
 // ===============================================================================
 // UPLOAD AVATAR
 // ===============================================================================
+function shrinkImageDataUrl(dataUrl, maxSide) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => reject(new Error('unreadable image'));
+        img.src = dataUrl;
+    });
+}
+
 async function uploadAvatar(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -123,17 +139,26 @@ async function uploadAvatar(event) {
         return;
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        showNotification('Image size must be less than 10MB', 'error');
+    // The photo is shrunk in the browser before upload, so only very large files are refused.
+    if (file.size > 30 * 1024 * 1024) {
+        showNotification('Image size must be less than 30MB', 'error');
         // Reset file input
         event.target.value = '';
         return;
     }
 
-    // Convert image to base64
+    // Shrink in the browser first (max 256 px) so a multi-MB photo is not uploaded
+    // in full; the server re-encodes it again anyway.
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const base64Image = e.target.result;
+        let base64Image;
+        try {
+            base64Image = await shrinkImageDataUrl(e.target.result, 256);
+        } catch (err) {
+            showNotification('The image could not be read', 'error');
+            event.target.value = '';
+            return;
+        }
         const currentName = document.getElementById('userName').textContent;
 
         try {

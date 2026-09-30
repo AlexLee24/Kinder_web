@@ -6,7 +6,7 @@ stored or logged.
 from werkzeug.security import check_password_hash, generate_password_hash
 
 MIN_LENGTH = 10
-MAX_LENGTH = 128   # caps hashing cost per request
+MAX_LENGTH = 1024  # caps the size of what gets hashed per request
 
 # Verified when the account does not exist or has no password, so a failed
 # login takes the same time either way (no account enumeration by timing).
@@ -32,6 +32,16 @@ def password_problem(password, email: str = '', username: str = '') -> str | Non
     local_part = (email or '').split('@')[0].lower()
     if (email and lowered == email.lower()) or (len(local_part) >= 4 and local_part in lowered):
         return 'Password must not contain your email address.'
+    return None
+
+
+def admin_password_problem(password) -> str | None:
+    """Passwords an admin sets for someone: no length/character rules (any
+    language is fine), only non-empty and a sanity cap."""
+    if not isinstance(password, str) or password == '':
+        return 'Password is required.'
+    if len(password) > MAX_LENGTH:
+        return f'Password must be at most {MAX_LENGTH} characters.'
     return None
 
 

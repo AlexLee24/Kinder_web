@@ -317,7 +317,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 ### B2. 帳號密碼登入（Direct login；管理員建立的帳號，無自行註冊）
 
 - **帳號**：管理員建立的帳號以 **username + 密碼** 登入（`auth.users.username`，
-  `^[A-Za-z0-9._-]{3,32}$`，`lower(username)` 唯一）。email 變成選填：
+  1–32 字元、可用中文等任何語言，不可含空白、`@` 與 `< > " ' & / \ \``，`lower(username)` 唯一；非 ASCII 帳號的內部 email 為 `u-<雜湊>@users.invalid`）。email 變成選填：
   沒填 email 時存放保留網域的佔位地址 `<小寫 username>@users.invalid`（RFC 2606，永遠收不到信也
   不可能通過 Google 驗證）；email 仍是內部身分鍵（session、群組、留言等）。佔位地址在 UI 中隱藏
   （管理員使用者表、個人資料頁顯示 username 或 `—`），Google 登入也拒絕此網域（`is_placeholder_email()`）。
@@ -335,7 +335,8 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 - **改密碼**：`/account/password`（頁面顯示 username）需輸入目前密碼；有密碼的帳號在個人資料頁都有連結。
 - **安全機制**
   - 密碼以 werkzeug scrypt（含 salt）雜湊存於 `auth.users.password_hash`；雜湊從不被選入 user dict / session / JSON。
-  - 規則：10–128 字元、前後不可有空白、不可過於單調、不可包含 email 帳號名稱或 username（長度 ≥ 4 時）。
+  - 管理員設定的密碼**沒有長度或格式限制**（可用中文，只要非空、≤ 1024 字元）。
+  - 使用者自己改密碼時的規則：10–1024 字元、前後不可有空白、不可過於單調、不可包含 email 帳號名稱或 username（長度 ≥ 4 時）。
   - 暴力破解：同 IP 15 分鐘內失敗 10 次；同「帳號 + IP」15 分鐘內失敗 5 次；同帳號（所有 IP 合計）
     15 分鐘內失敗 50 次即暫停（避免他人以固定帳號鎖死使用者；計數跨 gunicorn worker 共用）。
   - 改密碼、管理員重設、「Log out all devices」、管理員「Log out everywhere」時 `auth.users.session_version` +1，

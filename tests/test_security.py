@@ -197,7 +197,44 @@ def test_username_helpers():
     assert placeholder_email_for('Alice.W') == 'alice.w@users.invalid'
     assert is_placeholder_email('alice.w@USERS.invalid')
     assert not is_placeholder_email('alice@example.com')
-    assert valid_username('a.b_c-1') and not valid_username('ab') and not valid_username('a@b')
+    # Any language, 1-32 characters; no whitespace, '@' or HTML/path characters.
+    assert valid_username('a.b_c-1') and valid_username('ab') and valid_username('王小明')
+    for bad in ('', 'a b', 'a@b', '<b>', 'a/b', 'x' * 33):
+        assert not valid_username(bad)
+    # Non-ASCII usernames get an ASCII placeholder address.
+    assert placeholder_email_for('王小明').startswith('u-')
+    assert placeholder_email_for('王小明').endswith('@users.invalid')
+
+
+def test_admin_password_has_no_format_rules():
+    from app.core.passwords import admin_password_problem, password_problem
+    for ok in ('1', '密碼', 'aaaa'):
+        assert admin_password_problem(ok) is None
+    assert admin_password_problem('') is not None
+    assert admin_password_problem('x' * 1025) is not None
+    # A user choosing their own password still gets the normal policy.
+    assert password_problem('1') is not None
+
+
+def test_avatar_helpers():
+    import base64, io
+    from PIL import Image
+    from app.core.avatars import DEFAULT_AVATAR, avatar_url, shrink_data_uri
+    buf = io.BytesIO()
+    Image.new('RGB', (2000, 1500), (200, 30, 30)).save(buf, 'JPEG')
+    big = 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode()
+    small = shrink_data_uri(big)
+    assert small and small.startswith('data:image/jpeg;base64,') and len(small) < len(big)
+    with Image.open(io.BytesIO(base64.b64decode(small.split(',', 1)[1]))) as im:
+        assert max(im.size) <= 256
+    assert shrink_data_uri('data:image/png;base64,bm90IGFuIGltYWdl') is None
+    assert avatar_url(7, big).startswith('/avatar/7?v=')
+    assert avatar_url(7, 'https://lh3.googleusercontent.com/a/x') == 'https://lh3.googleusercontent.com/a/x'
+    assert avatar_url(7, '') == DEFAULT_AVATAR
+
+
+def test_avatar_route_requires_login(client):
+    assert client.get('/avatar/1', base_url=BASE_URL).status_code == 404
 
 
 def test_safe_next():

@@ -3,7 +3,7 @@ import logging
 import re
 
 from flask import session, request, jsonify
-from app.core.passwords import hash_password, password_problem
+from app.core.passwords import admin_password_problem, hash_password
 from app.db.auth import (
     get_login_email,
     get_user,
@@ -33,6 +33,7 @@ from app.core.auth import admin_required
 
 logger = logging.getLogger(__name__)
 _EMAIL_RE = re.compile(r'^[^@\s<>"\']+@[^@\s<>"\']+\.[^@\s<>"\']+$')
+_USERNAME_RULE = 'Username: 1–32 characters (any language), no spaces and none of @ < > " \' & / \\ `'
 
 
 # ===============================================================================
@@ -64,13 +65,13 @@ def add_user():
     if password and not username:
         return jsonify({'error': 'A username is required for a direct-login account'}), 400
     if username and not valid_username(username):
-        return jsonify({'error': 'Username must be 3–32 characters: letters, digits, . _ -'}), 400
+        return jsonify({'error': _USERNAME_RULE}), 400
     if username and not password and not email:
         return jsonify({'error': 'A password is required for a direct-login account'}), 400
     if not username and not email:
         return jsonify({'error': 'Enter a username and password, or an email for a Google-only account'}), 400
     if password:
-        problem = password_problem(password, email, username)
+        problem = admin_password_problem(password)
         if problem:
             return jsonify({'error': problem}), 400
 
@@ -131,10 +132,10 @@ def admin_set_password():
     username = target_user.get('username')
     if not username:
         if not valid_username(new_username):
-            return jsonify({'error': 'Username must be 3–32 characters: letters, digits, . _ -'}), 400
+            return jsonify({'error': _USERNAME_RULE}), 400
         if username_taken(new_username, exclude_email=target):
             return jsonify({'error': 'This username is already taken'}), 409
-    problem = password_problem(password, target, username or new_username)
+    problem = admin_password_problem(password)
     if problem:
         return jsonify({'error': problem}), 400
     if not username:
@@ -367,7 +368,7 @@ def get_available_users(group_name):
             available_users.append({
                 'email': email,
                 'name': user.get('name', 'Unknown'),
-                'picture': user.get('picture', '/static/img/default-avatar.png')
+                'picture': user.get('picture', '/static/img/default-avatar.svg')
             })
     
     return jsonify({

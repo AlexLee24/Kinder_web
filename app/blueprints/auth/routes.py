@@ -8,10 +8,11 @@ from flask import g, session, flash, redirect, url_for, request, jsonify, render
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
-from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation, get_password_hash, get_login_account, get_login_email, set_password_hash, set_google_sub, bump_session_version, generate_api_key_for_user, is_placeholder_email
+from app.db.auth import user_exists, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation, get_password_hash, get_login_account, get_login_email, set_password_hash, set_google_sub, bump_session_version, generate_api_key_for_user, is_placeholder_email
 from app.config import config
 from app.core import rate_limit
 from app.core.auth import start_user_session
+from app.core.avatars import shrink_data_uri
 from app.core.passwords import MIN_LENGTH as PASSWORD_MIN_LENGTH, password_problem, hash_password, verify_password
 
 from flask import Blueprint
@@ -73,12 +74,13 @@ def google_callback():
                                'the one bound to this user', user_email)
                 flash('This Google account cannot sign in to that user.', 'error')
                 return redirect(url_for('basic.login'))
-            update_user(
-                user_email,
-                name=existing_user_data.get('name') or user_info.get('name'),
-                picture=existing_user_data.get('picture') or user_info.get('picture'),
-                last_login=datetime.now().isoformat()
-            )
+            updates = {'name': existing_user_data.get('name') or user_info.get('name'),
+                       'last_login': datetime.now().isoformat()}
+            # Keep a picture the user already has (uploaded or earlier Google one);
+            # user dicts only carry its display URL, so never write that back.
+            if not existing_user_data.get('has_picture') and user_info.get('picture'):
+                updates['picture'] = user_info.get('picture')
+            update_user(user_email, **updates)
         else:
             is_admin = False
             role = 'guest'
@@ -423,24 +425,25 @@ def update_profile():
             flash('Name cannot be empty.', 'error')
             return redirect(url_for('basic.profile'))
         
+        if picture.startswith('data:'):
+            # Store a small re-encoded copy, never the full-size upload.
+            picture = shrink_data_uri(picture)
+            if not picture:
+                if request.is_json:
+                    return jsonify({'success': False, 'error': 'The image could not be read.'}), 400
+                flash('The image could not be read.', 'error')
+                return redirect(url_for('basic.profile'))
+
         if user_exists(user_email):
-            users = get_users()
-            current_data = users[user_email]
-            
-            update_user(
-                user_email,
-                name=name,
-                picture=picture or current_data.get('picture', ''),
-            )
-            
+            updates = {'name': name}
+            if picture:   # an empty picture field keeps the current one
+                updates['picture'] = picture
+            update_user(user_email, **updates)
+
             session['user']['name'] = name
-            # Never store large base64 strings in the session cookie (limit 4KB)
-            if picture and not picture.startswith('data:image'):
-                session['user']['picture'] = picture
-            
-            # Failsafe: if a base64 string accidentally got stuck in the session, clear it
-            if (session['user'].get('picture') or '').startswith('data:image'):
-                session['user']['picture'] = ''
+            # The session only ever holds the display URL (never image data).
+            fresh = get_user(user_email) or {}
+            session['user']['picture'] = fresh.get('picture') or ''
             session.modified = True
             
             if request.is_json:

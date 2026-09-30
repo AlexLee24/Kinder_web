@@ -13,6 +13,7 @@ import secrets
 from psycopg2 import extras
 
 from . import get_db_connection
+from app.core.avatars import avatar_url
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,11 @@ logger = logging.getLogger(__name__)
 # get a placeholder address in this RFC 2606 reserved TLD: it can never receive
 # mail nor be verified by Google, so it is only an internal identity key.
 PLACEHOLDER_EMAIL_DOMAIN = 'users.invalid'
-USERNAME_RE = re.compile(r'^[A-Za-z0-9._-]{3,32}$')
+# Usernames: 1-32 characters, any language (e.g. Chinese). No whitespace, no '@'
+# (an '@' in the login box means "this is an email") and no HTML/path characters.
+USERNAME_MAX = 32
+_USERNAME_FORBIDDEN = set('@<>"\'&/\\`')
+_ASCII_USERNAME_RE = re.compile(r'^[A-Za-z0-9._-]+$')
 
 
 def is_placeholder_email(email: str | None) -> bool:
@@ -28,11 +33,22 @@ def is_placeholder_email(email: str | None) -> bool:
 
 
 def placeholder_email_for(username: str) -> str:
-    return f'{username.strip().lower()}@{PLACEHOLDER_EMAIL_DOMAIN}'
+    """Internal identity for an account created without an email.
+
+    ASCII usernames keep the readable ``<username>@users.invalid`` form; others
+    (e.g. Chinese) use a hash so the stored address stays plain ASCII."""
+    key = username.strip().lower()
+    if _ASCII_USERNAME_RE.match(key):
+        return f'{key}@{PLACEHOLDER_EMAIL_DOMAIN}'
+    digest = hashlib.sha256(key.encode('utf-8')).hexdigest()[:20]
+    return f'u-{digest}@{PLACEHOLDER_EMAIL_DOMAIN}'
 
 
 def valid_username(username: str | None) -> bool:
-    return bool(username) and bool(USERNAME_RE.match(username))
+    if not isinstance(username, str) or not username or len(username) > USERNAME_MAX:
+        return False
+    return all(ch.isprintable() and not ch.isspace() and ch not in _USERNAME_FORBIDDEN
+               for ch in username)
 
 
 # ---------------------------------------------------------------------------
@@ -69,8 +85,13 @@ def _user_row_to_dict(row) -> dict:
     # role string alias (used by templates)
     roles = d.get('roles', 0) or 0
     d['role'] = 'admin' if roles >= 50 else ('user' if roles >= 1 else 'guest')
-    d['profile_picture'] = d.get('picture_url', '')
-    d['picture'] = d.get('picture_url', '')  # template alias
+    # Never hand the stored image data to templates/JSON: an uploaded avatar is a
+    # base64 data: URI, so pages link to /avatar/<usr_id> instead (browser-cached).
+    raw_picture = d.pop('picture_url', None) or ''
+    d['has_picture'] = bool(raw_picture)
+    d['has_uploaded_picture'] = raw_picture.startswith('data:')
+    d['picture'] = avatar_url(d.get('usr_id'), raw_picture) if raw_picture else ''
+    d['profile_picture'] = d['picture']
     d['display_name'] = d.get('name', '')
     d.setdefault('groups', [])   # filled in by get_users()
     if d.get('last_login') and hasattr(d['last_login'], 'isoformat'):
@@ -399,6 +420,15 @@ def set_google_sub(email: str, google_sub: str) -> bool:
 
 def hash_api_key(api_key: str) -> str:
     return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+
+
+def get_stored_picture(usr_id: int) -> str | None:
+    """Raw stored picture (https:// URL or data: URI) for /avatar/<usr_id>."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT picture_url FROM auth.users WHERE usr_id = %s", (usr_id,))
+        row = cur.fetchone()
+    return row[0] if row else None
 
 
 def generate_api_key_for_user(email: str) -> str | None:
