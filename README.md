@@ -24,6 +24,16 @@ Both entry points start immediately (the start-up backup runs in a background th
 write every log line to the terminal as well as `app/log/<date>.log`.
 `cd app && gunicorn main:app` still works through the `app/main.py` shim.
 
+### Required settings (kinder.env)
+
+- `SECRET_KEY` must be set to a long random value; the app refuses to start without it
+  (tests use a throwaway key automatically).
+- Local admin login (`/admin-login`) is disabled unless `ADMIN_USERNAME`, `ADMIN_PASSWORD`
+  **and** `ADMIN_LOCAL_EMAIL` are all set, and that email has a row in `auth.users`.
+- Scheduled jobs run in **UTC**.
+- `MAX_CONTENT_LENGTH_MB` (default 64) caps request bodies.
+- With `open_registration` off (admin panel), new Google accounts need a pending invitation.
+
 ## Where things are
 
 ```

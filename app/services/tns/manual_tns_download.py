@@ -1,10 +1,7 @@
 import logging
 import os
-import requests
 
 logger = logging.getLogger(__name__)
-import zipfile
-import time
 import csv
 from datetime import datetime, timezone, date as _date
 
@@ -18,7 +15,8 @@ def _to_mjd(s):
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
         try:
             dt = datetime.strptime(str(s).strip(), fmt)
-            return (_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
+            return ((_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
+                    + dt.minute / 1440.0 + (dt.second + dt.microsecond / 1e6) / 86400.0)
         except ValueError:
             continue
     return None
@@ -31,10 +29,10 @@ def _reporters_arr(s):
     return [x.strip() for x in str(s).split(',') if x.strip()]
 try:
     from app.db import get_db_connection
-    from app.db.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from app.db.transient import log_download_attempt, update_download_log, sync_kinder_ids, _tns_name_to_kinder_id
 except ImportError:
     from app.db import get_db_connection
-    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids
+    from database.transient import log_download_attempt, update_download_log, sync_kinder_ids, _tns_name_to_kinder_id
 from psycopg2 import extras
 
 # ---- User settings ----
@@ -53,149 +51,28 @@ bot_name     = env("TNS_BOT_NAME")
 api_key      = env("TNS_API_KEY")
 
 # ---- Function to download TNS API data ----
-def download_TNS_api_hr(hr, debug=False):
-    tns_link = f"https://www.wis-tns.org/system/files/tns_public_objects/tns_public_objects_{hr}.csv.zip"
-    
-    # Set headers with bot info
-    headers = {
-        'user-agent': f'tns_marker{{"tns_id":{bot_id},"type":"bot","name":"{bot_name}"}}'
-    }
-    
-    # Set POST data
-    data = {
-        'api_key': api_key
-    }
-    
-    if debug:
-        logger.debug('URL: %s', tns_link)
-        logger.debug('Headers: %s', headers)
-    
-    # Retry logic: 10s, 30s, 60s
-    retry_delays = [10, 30, 60]
-    attempt = 0
-    max_attempts = len(retry_delays) + 1
-    
-    while attempt < max_attempts:
-        if attempt > 0:
-            delay = retry_delays[attempt - 1]
-            logger.info('Waiting %d seconds before retry %d/%d...', delay, attempt, len(retry_delays))
-            time.sleep(delay)
-        
-        response = requests.post(tns_link, headers=headers, data=data)
-        
-        if response.status_code == 200:
-            output_file = SAVE_DIR / f"tns_public_objects_{hr}.csv.zip"
-            with open(output_file, 'wb') as f:
-                f.write(response.content)
-            if debug:
-                logger.debug('Data successfully saved to: %s', output_file)
-            
-            # Unzip the file
-            with zipfile.ZipFile(output_file, 'r') as zip_ref:
-                zip_ref.extractall(SAVE_DIR)
-            if debug:
-                logger.debug('File unzipped to: %s', SAVE_DIR)
-            
-            # Rename the extracted CSV file
-            extracted_csv = SAVE_DIR / f"tns_public_objects_{hr}.csv"
-            #renamed_csv = SAVE_DIR / f"tns_public_objects_WORK_{hr}_WORK.csv"
-            renamed_csv = SAVE_DIR / f"tns_public_objects_WORK.csv"
-            if extracted_csv.exists():
-                if renamed_csv.exists():
-                    renamed_csv.unlink()
-                extracted_csv.rename(renamed_csv)
-                if debug:
-                        logger.debug('Renamed extracted file to: %s', renamed_csv)
-            
-            # Remove the zip file
-            output_file.unlink()
-            if debug:
-                logger.debug('Removed zip file: %s', output_file)
-            logger.info('Download and extraction completed for %s', hr)
-            return True
-        elif response.status_code == 404:
-            logger.error('File not found (404) for %s', hr)
-            return False
-        else:
-            logger.error('Request failed with status code: %d', response.status_code)
-            attempt += 1
-            if attempt >= max_attempts:
-                logger.error('Failed after %d retries. Stopping.', len(retry_delays))
-    return False
+# Both downloads go through auto_tns_download's helper: request timeout + retries,
+# RequestException handling, and unique temp files so concurrent runs never clobber
+# each other's zip/CSV. Each returns the CSV path (truthy; default
+# tns_public_objects_WORK.csv, or ``dest``) or False.
+def download_TNS_api_hr(hr, debug=False, dest=None):
+    from app.services.tns.auto_tns_download import download_TNS_api_hr as _dl_hr
+    return _dl_hr(hr, debug=debug, dest=dest)
 
 
-def download_TNS_api(year, month, day, debug=False):
-    download_url = f"https://www.wis-tns.org/system/files/tns_public_objects/tns_public_objects_{year}{month:02d}{day:02d}.csv.zip"
-
-    # Set headers with bot info
-    headers = {
-        'user-agent': f'tns_marker{{"tns_id":{bot_id},"type":"bot","name":"{bot_name}"}}'
-    }
-    
-    # Set POST data
-    data = {
-        'api_key': api_key
-    }
-    
-    if debug:
-        logger.debug('URL: %s', download_url)
-        logger.debug('Headers: %s', headers)
-    
-    # Retry logic: 10s, 30s, 60s
-    retry_delays = [10, 30, 60]
-    attempt = 0
-    max_attempts = len(retry_delays) + 1
-    
-    while attempt < max_attempts:
-        if attempt > 0:
-            delay = retry_delays[attempt - 1]
-            logger.info('Waiting %d seconds before retry %d/%d...', delay, attempt, len(retry_delays))
-            time.sleep(delay)
-        
-        response = requests.post(download_url, headers=headers, data=data)
-        
-        if response.status_code == 200:
-            output_file = SAVE_DIR / f"tns_public_objects_{year}{month:02d}{day:02d}.csv.zip"
-            with open(output_file, 'wb') as f:
-                f.write(response.content)
-            if debug:
-                logger.debug('Data successfully saved to: %s', output_file)
-            
-            # Unzip the file
-            with zipfile.ZipFile(output_file, 'r') as zip_ref:
-                zip_ref.extractall(SAVE_DIR)
-            if debug:
-                logger.debug('File unzipped to: %s', SAVE_DIR)
-            
-            # Rename the extracted CSV file
-            extracted_csv = SAVE_DIR / f"tns_public_objects_{year}{month:02d}{day:02d}.csv"
-            #renamed_csv = SAVE_DIR / f"tns_public_objects_WORK_{year}{month:02d}{day:02d}_WORK.csv"
-            renamed_csv = SAVE_DIR / f"tns_public_objects_WORK.csv"
-            if extracted_csv.exists():
-                if renamed_csv.exists():
-                    renamed_csv.unlink()
-                extracted_csv.rename(renamed_csv)
-                if debug:
-                        logger.debug('Renamed extracted file to: %s', renamed_csv)
-            
-            # Remove the zip file
-            output_file.unlink()
-            if debug:
-                logger.debug('Removed zip file: %s', output_file)
-            logger.info('Download and extraction completed for %d-%02d-%02d', year, month, day)
-            return True
-        elif response.status_code == 404:
-            logger.error('File not found (404) for %d-%02d-%02d', year, month, day)
-            return False
-        else:
-            logger.error('Request failed with status code: %d', response.status_code)
-            attempt += 1
-            if attempt >= max_attempts:
-                logger.error('Failed after %d retries. Stopping.', len(retry_delays))
-    return False
+def download_TNS_api(year, month, day, debug=False, dest=None):
+    from app.services.tns.auto_tns_download import download_TNS_api as _dl_day
+    return _dl_day(year, month, day, debug=debug, dest=dest)
 
 
 def addin_database(filepath, debug=False):
+    """Import a TNS CSV; serialised with the auto importer via tns_import_lock()."""
+    from app.services.tns.auto_tns_download import tns_import_lock
+    with tns_import_lock():
+        return _addin_database_locked(filepath, debug=debug)
+
+
+def _addin_database_locked(filepath, debug=False):
     # Log download attempt at the very beginning
     utc_now = datetime.now(timezone.utc)
     hour_utc = utc_now.strftime('%Y-%m-%d_%H')
@@ -240,12 +117,16 @@ def addin_database(filepath, debug=False):
                     if not cleaned_row.get('objid') or not cleaned_row.get('name'):
                         continue
                     
-                    # Check if object exists
-                    cursor.execute('SELECT last_modified_date FROM transient.objects WHERE obj_id = %s', (cleaned_row.get('objid'),))
+                    # Check if object exists. obj_id is the kinder_id for rows created by
+                    # the current importers (not the TNS objid), so match by name like
+                    # auto_tns_download.addin_database does.
+                    cursor.execute('SELECT obj_id, last_modified_date FROM transient.objects WHERE name = %s',
+                                   (cleaned_row.get('name'),))
                     existing = cursor.fetchone()
 
                     if existing:
-                        existing_lastmodified = existing[0]  # MJD float or None
+                        existing_obj_id = existing[0]
+                        existing_lastmodified = existing[1]  # MJD float or None
                         new_lastmodified_mjd = _to_mjd(cleaned_row.get('lastmodified'))
 
                         # Compare last_modified_date (MJD), keep newer data
@@ -277,7 +158,7 @@ def addin_database(filepath, debug=False):
                             _to_mjd(cleaned_row.get('creationdate')),
                             _to_mjd(cleaned_row.get('last_photometry_date')),
                             _to_mjd(cleaned_row.get('lastmodified')),
-                            cleaned_row.get('objid')
+                            existing_obj_id
                         ))
                         updated_count += 1
                         
@@ -299,9 +180,11 @@ def addin_database(filepath, debug=False):
                                 logger.debug('Committed %d updates', len(update_batch))
                             update_batch = []
                     else:
-                        # Prepare insert data
+                        # Prepare insert data (obj_id = kinder_id, as auto_tns_download does)
+                        kinder_id = _tns_name_to_kinder_id(cleaned_row.get('name'))
                         insert_batch.append((
-                            cleaned_row.get('objid'),
+                            kinder_id or cleaned_row.get('objid'),
+                            kinder_id,
                             cleaned_row.get('name_prefix'),
                             cleaned_row.get('name'),
                             cleaned_row.get('ra'),
@@ -328,12 +211,12 @@ def addin_database(filepath, debug=False):
                         if len(insert_batch) >= BATCH_SIZE:
                             extras.execute_batch(cursor, '''
                                 INSERT INTO transient.objects (
-                                    obj_id, name_prefix, name, ra, dec, redshift, type,
+                                    obj_id, kinder_id, name_prefix, name, ra, dec, redshift, type,
                                     report_group, source_group, discovery_date, discovery_mag,
                                     discovery_filter, reporters, received_date, internal_name,
                                     discovery_ADS, class_ADS, creation_date, last_phot_date,
                                     last_modified_date, status, tag
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox', '{}'::text[])
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox', '{}'::text[])
                                 ON CONFLICT DO NOTHING
                             ''', insert_batch, page_size=BATCH_SIZE)
                             conn.commit()
@@ -360,12 +243,12 @@ def addin_database(filepath, debug=False):
             if insert_batch:
                 extras.execute_batch(cursor, '''
                     INSERT INTO transient.objects (
-                        obj_id, name_prefix, name, ra, dec, redshift, type,
+                        obj_id, kinder_id, name_prefix, name, ra, dec, redshift, type,
                         report_group, source_group, discovery_date, discovery_mag,
                         discovery_filter, reporters, received_date, internal_name,
                         discovery_ADS, class_ADS, creation_date, last_phot_date,
                         last_modified_date, status, tag
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox', '{}'::text[])
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Inbox', '{}'::text[])
                     ON CONFLICT DO NOTHING
                 ''', insert_batch, page_size=BATCH_SIZE)
                 if debug:
@@ -463,7 +346,7 @@ def auto_snoozed(time_now_utc, debug=False):
 
 def main():
     # Download latest hourly data
-    utc_hr = f"{datetime.now(timezone.utc).hour:02d}"
+    # utc_hr = f"{datetime.now(timezone.utc).hour:02d}"
     # download_TNS_api_hr(utc_hr, debug=True)
     # # download_TNS_api(2026, 1, 2, debug=True)
     

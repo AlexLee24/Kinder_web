@@ -1,12 +1,17 @@
 """
 Authentication routes (Google OAuth, login, logout)
 """
+import hmac
 import logging
+import re
+import threading
+import time
+from collections import defaultdict, deque
 from flask import session, flash, redirect, url_for, request, jsonify
 
 logger = logging.getLogger(__name__)
-from datetime import datetime
-from app.db.auth import user_exists, get_users, get_user, save_user, update_user, check_object_access, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key
+from datetime import datetime, timezone
+from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation
 from app.config import config
 
 from flask import Blueprint
@@ -20,6 +25,19 @@ def google_login():
     # request's Host header, which is attacker-controlled (host header injection).
     redirect_uri = config.APP_BASE_URL.rstrip('/') + url_for('auth.google_callback')
     return google.authorize_redirect(redirect_uri)
+
+def _pending_invitation_for(email: str) -> dict | None:
+    """Return the pending invitation addressed to *email* (case-insensitive), if any."""
+    if not email:
+        return None
+    try:
+        for inv in get_invitations('pending'):
+            if (inv.get('email') or '').strip().lower() == email.strip().lower():
+                return inv
+    except Exception as exc:
+        logger.warning('Invitation lookup failed for %s: %s', email, exc)
+    return None
+
 
 @auth_bp.route('/auth/google/callback')
 def google_callback():
@@ -35,6 +53,7 @@ def google_callback():
             role = 'guest'
             is_great_lab_member = False
             existing_user_data = None
+            invitation = None
             
             if user_exists(user_email):
                 users = get_users()
@@ -45,9 +64,19 @@ def google_callback():
                 is_great_lab_member = 'GREAT_Lab' in user_groups or is_admin
             else:
                 user_groups = []
+                invitation = None
                 if user_email == config.ADMIN_EMAIL:
                     is_admin = True
                     role = 'admin'
+                elif get_setting('open_registration', 'true') != 'true':
+                    # Closed registration: only invited addresses may create an account.
+                    invitation = _pending_invitation_for(user_email)
+                    if invitation is None:
+                        logger.info('Sign-up refused for %s: registration is closed', user_email)
+                        flash('Registration is currently closed. Please ask an administrator for an invitation.', 'error')
+                        return redirect(url_for('basic.login'))
+                    is_admin = bool(invitation.get('is_admin'))
+                    role = 'admin' if is_admin else (invitation.get('role') or 'user')
             
             display_name = user_info.get('name')
             display_picture = user_info.get('picture')
@@ -91,6 +120,9 @@ def google_callback():
                     is_admin=is_admin,
                     role=role,
                 )
+                if invitation is not None:
+                    update_invitation(invitation['token'], status='accepted',
+                                      accepted_at=datetime.now(timezone.utc))
             
             next_url = session.pop('next_url', None)
             if next_url:
@@ -106,59 +138,124 @@ def google_callback():
         flash('Login failed, please try again.', 'error')
         return redirect(url_for('basic.login'))
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['GET', 'POST'])
 def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('basic.home'))
 
 
+# Per-IP failed-login throttle for the local admin login (in-memory, per worker).
+_ADMIN_LOGIN_MAX_FAILURES = 5
+_ADMIN_LOGIN_WINDOW_S = 5 * 60
+_admin_login_failures: dict[str, deque] = defaultdict(deque)
+_admin_login_lock = threading.Lock()
+
+
+def _admin_login_blocked(ip: str) -> bool:
+    now = time.monotonic()
+    with _admin_login_lock:
+        q = _admin_login_failures.get(ip)
+        if not q:
+            return False
+        while q and now - q[0] > _ADMIN_LOGIN_WINDOW_S:
+            q.popleft()
+        if not q:
+            _admin_login_failures.pop(ip, None)
+            return False
+        return len(q) >= _ADMIN_LOGIN_MAX_FAILURES
+
+
+def _admin_login_record_failure(ip: str) -> None:
+    with _admin_login_lock:
+        _admin_login_failures[ip].append(time.monotonic())
+
+
 @auth_bp.route('/admin-login', methods=['POST'])
 def admin_login():
     username = request.form.get('username', '').strip()
     password = request.form.get('password', '')
+    client_ip = request.remote_addr or 'unknown'
 
     expected_username = config.ADMIN_USERNAME or ''
     expected_password = config.ADMIN_PASSWORD or ''
+    admin_email = config.ADMIN_LOCAL_EMAIL or ''
 
-    if (username.lower() == expected_username.lower() and password == expected_password):
-        admin_email = config.ADMIN_LOCAL_EMAIL
-        admin_data = get_user(admin_email)
+    # Local admin login is disabled unless fully configured.
+    if not expected_username or not expected_password or not admin_email:
+        flash('Local admin login is not configured.', 'error')
+        return redirect(url_for('basic.login'))
 
-        session.permanent = True
-        if admin_data:
-            user_groups = admin_data.get('groups', [])
-            is_great_lab_member = 'GREAT_Lab' in user_groups or check_object_access('greatlab_routes', admin_email)
-            session_picture = admin_data.get('picture')
-            if session_picture and session_picture.startswith('data:image'):
-                session_picture = None
-            session['user'] = {
-                'email': admin_email,
-                'name': admin_data.get('name', 'Admin'),
-                'picture': session_picture,
-                'is_admin': admin_data.get('is_admin', True),
-                'role': admin_data.get('role', 'admin'),
-                'is_great_lab_member': is_great_lab_member,
-                'api_key': admin_data.get('api_key')
-            }
-            update_user(admin_email, last_login=datetime.now().isoformat())
-        else:
-            # Fallback if DB row not found
-            session['user'] = {
-                'email': admin_email,
-                'name': 'Admin',
-                'picture': None,
-                'is_admin': True,
-                'role': 'admin',
-                'is_great_lab_member': True
-            }
+    if _admin_login_blocked(client_ip):
+        logger.warning('Admin login throttled for %s', client_ip)
+        flash('Too many failed attempts. Please try again later.', 'error')
+        return redirect(url_for('basic.login'))
 
-        flash('Welcome Administrator!', 'success')
-        next_url = session.pop('next_url', None)
-        return redirect(next_url or url_for('basic.home'))
-    else:
+    user_ok = hmac.compare_digest(username.lower().encode(), expected_username.lower().encode())
+    pass_ok = hmac.compare_digest(password.encode(), expected_password.encode())
+    if not (user_ok and pass_ok):
+        _admin_login_record_failure(client_ip)
+        logger.warning('Failed admin login from %s', client_ip)
         flash('Invalid admin credentials.', 'error')
         return redirect(url_for('basic.login'))
+
+    try:
+        admin_data = get_user(admin_email)
+    except Exception as exc:
+        logger.error('Admin login: user lookup failed: %s', exc)
+        admin_data = None
+    # The admin session is tied to a real auth.users row (ADMIN_LOCAL_EMAIL) — its
+    # role comes from the DB, never hard-coded here.
+    if not admin_data:
+        logger.error('Admin login: no auth.users row for ADMIN_LOCAL_EMAIL %s', admin_email)
+        flash('Admin account not found in the database.', 'error')
+        return redirect(url_for('basic.login'))
+
+    with _admin_login_lock:
+        _admin_login_failures.pop(client_ip, None)
+
+    next_url = session.pop('next_url', None)
+    session.clear()  # fresh session on privilege change
+    session.permanent = True
+    user_groups = admin_data.get('groups', [])
+    is_admin = bool(admin_data.get('is_admin', False))
+    session_picture = admin_data.get('picture')
+    if session_picture and session_picture.startswith('data:image'):
+        session_picture = None
+    session['user'] = {
+        'email': admin_email,
+        'name': admin_data.get('name') or 'Admin',
+        'picture': session_picture,
+        'is_admin': is_admin,
+        'role': admin_data.get('role', 'guest'),
+        'is_great_lab_member': 'GREAT_Lab' in user_groups or is_admin,
+        'groups': user_groups,
+        'api_key': admin_data.get('api_key')
+    }
+    update_user(admin_email, last_login=datetime.now().isoformat())
+
+    flash('Welcome Administrator!' if is_admin else f"Welcome {session['user']['name']}!", 'success')
+    if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+        return redirect(next_url)
+    return redirect(url_for('basic.home'))
+
+
+_PROFILE_NAME_MAX = 80
+_DATA_IMAGE_RE = re.compile(r'^data:image/(png|jpe?g);base64,[A-Za-z0-9+/=\s]+$')
+
+
+def _clean_profile_name(name: str) -> str:
+    return re.sub(r'[<>]', '', name or '').strip()[:_PROFILE_NAME_MAX].strip()
+
+
+def _valid_profile_picture(picture: str) -> bool:
+    """Empty, an https:// URL, or a base64 PNG/JPEG data URI (avatar upload)."""
+    if not picture:
+        return True
+    if picture.startswith('https://'):
+        return not any(c in picture for c in '<>"\' \t\r\n')
+    return bool(_DATA_IMAGE_RE.match(picture))
+
 
 @auth_bp.route('/update-profile', methods=['POST'])
 def update_profile():
@@ -171,12 +268,19 @@ def update_profile():
     
     try:
         if request.is_json:
-            data = request.get_json()
-            name = data.get('name', '').strip()
-            picture = data.get('picture', '').strip()
+            data = request.get_json(silent=True) or {}
+            name = str(data.get('name') or '').strip()
+            picture = str(data.get('picture') or '').strip()
         else:
             name = request.form.get('name', '').strip()
             picture = request.form.get('picture', '').strip()
+
+        name = _clean_profile_name(name)
+        if not _valid_profile_picture(picture):
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Picture must be an https:// URL or a PNG/JPEG image.'}), 400
+            flash('Picture must be an https:// URL or a PNG/JPEG image.', 'error')
+            return redirect(url_for('basic.profile'))
         
         if not name:
             if request.is_json:

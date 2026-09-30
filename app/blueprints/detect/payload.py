@@ -311,8 +311,6 @@ def _assemble_detect_payload(selected_date):
             continue
         results_by_target.setdefault(t_name, []).append(row)
 
-    t_batch = time.perf_counter()
-
     final_target_list = []
     for target_name, matches in results_by_target.items():
         matches.sort(key=lambda x: float(x.get('separation_arcsec') or 9999))

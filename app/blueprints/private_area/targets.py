@@ -11,6 +11,7 @@ from app.core.auth import login_required
 
 logger = logging.getLogger(__name__)
 from . import private_area_bp
+from .helpers import can_access_page
 
 
 @private_area_bp.route('/api/targets', methods=['GET', 'POST'])
@@ -21,6 +22,8 @@ def api_observation_targets():
     is_admin = session['user'].get('is_admin', False)
     
     if request.method == 'GET':
+        if not can_access_page('daily_trigger'):
+            return jsonify({'error': 'Access denied'}), 403
         targets = get_observation_targets(active_only=False)
         return jsonify({'success': True, 'targets': targets})
         
@@ -28,7 +31,9 @@ def api_observation_targets():
         if not (is_great_lab or is_admin):
             return jsonify({'error': 'Forbidden'}), 403
             
-        data = request.json
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid JSON body'}), 400
         _telescope = (data.get('telescope') or '').strip().upper()
         _auto_exp = bool(data.get('auto_exposure', False))
         if _telescope == 'LOT':

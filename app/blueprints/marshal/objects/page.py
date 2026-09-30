@@ -5,7 +5,21 @@ from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash
 from app.db.transient import search_tns_objects, TNSObjectDB, update_object_abs_mag
 from app.db import get_tns_db_connection, OBJECT_COMPAT_COLS
+from app.db.auth import check_object_access
 from . import objects_bp
+
+
+def _object_access_redirect(matching_obj):
+    """Return a redirect when the session user may not open *matching_obj*, else None."""
+    user = session.get('user') or {}
+    name = (matching_obj.get('name') or '').strip()
+    if check_object_access(name, user.get('email')):
+        return None
+    if not user:
+        flash('Please log in to view this object.', 'warning')
+        return redirect(url_for('basic.login'))
+    flash('You do not have permission to view this object.', 'error')
+    return redirect(url_for('marshal.marshal'))
 
 
 # ===============================================================================
@@ -41,139 +55,138 @@ def object_detail_generic(object_name):
         
         # Try exact match first using direct SQL query
         conn = get_tns_db_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
         
-        # Exact match queries (try multiple variants)
-        tag_logic = """
-        CASE o.status
-            WHEN 'Finish'    THEN 'finished'
-            WHEN 'Follow-up' THEN 'followup'
-            WHEN 'Snoozed'   THEN 'snoozed'
-            ELSE 'object'
-        END as tag
-        """
-        
-        exact_queries = [
-            # Full name match (case insensitive)
-            f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
-                      o.redshift, NULL::int AS typeid, o.type,
-                      NULL::int AS reporting_groupid, o.report_group AS reporting_group,
-                      NULL::int AS source_groupid, o.source_group,
-                      to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
-                      o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
-                      o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
-                      to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
-                      COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
-                      o.class_ADS AS class_ads_bibcodes,
-                      to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
-                      to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
-                      o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
-                      {tag_logic}
-               FROM transient.objects o
-               WHERE (COALESCE(o.name_prefix, '') || COALESCE(o.name, '')) ILIKE %s""",
-            # Name only match (case insensitive)
-            f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
-                      o.redshift, NULL::int AS typeid, o.type,
-                      NULL::int AS reporting_groupid, o.report_group AS reporting_group,
-                      NULL::int AS source_groupid, o.source_group,
-                      to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
-                      o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
-                      o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
-                      to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
-                      COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
-                      o.class_ADS AS class_ads_bibcodes,
-                      to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
-                      to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
-                      o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
-                      {tag_logic}
-               FROM transient.objects o
-               WHERE o.name ILIKE %s"""
-        ]
-        
-        matching_obj = None
-        for i, query in enumerate(exact_queries):
-            cursor.execute(query, (object_name,))
-            result = cursor.fetchone()
-            if result:
-                columns = [desc[0] for desc in cursor.description]
-                matching_obj = dict(zip(columns, result))
-                break
-
-        # If exact match found but URL includes prefix, redirect to name-only canonical URL
-        # e.g. /object/AT2025abc → /object/2025abc
-        if matching_obj:
-            prefix    = (matching_obj.get('name_prefix') or '').strip()
-            name_only = (matching_obj.get('name') or '').strip()
-            if prefix and object_name.lower() != name_only.lower():
-                conn.close()
-                return redirect(url_for('marshal_bp.object_detail_generic', object_name=name_only))
-
-        # If still no match, try internal_names (e.g. ZTF ID) and tags (e.g. EP name)
-        if not matching_obj:
-            alias_query = """
-                SELECT name_prefix, name
-                FROM transient.objects
-                WHERE internal_name ILIKE %s
-                   OR EXISTS (
-                       SELECT 1 FROM unnest(tag) t(v)
-                       WHERE trim(t.v) ILIKE %s
-                   )
-                ORDER BY discovery_date DESC NULLS LAST
-                LIMIT 1
+            # Exact match queries (try multiple variants)
+            tag_logic = """
+            CASE o.status
+                WHEN 'Finish'    THEN 'finished'
+                WHEN 'Follow-up' THEN 'followup'
+                WHEN 'Snoozed'   THEN 'snoozed'
+                ELSE 'object'
+            END as tag
             """
-            cursor.execute(alias_query, (f'%{object_name}%', object_name))
-            alias_result = cursor.fetchone()
-            if alias_result:
-                # Redirect to name-only (no prefix) canonical URL
-                canonical = (alias_result[1] or '').strip()
-                conn.close()
-                return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
-
-        # If still no match, strip AT/SN prefix and retry —
-        # handles the AT→SN classification scenario:
-        # e.g. /object/AT2025wny → object was classified, now name_prefix='SN' → find by name='2025wny'
-        if not matching_obj:
-            import re as _re
-            prefix_stripped = _re.sub(
-                r'^(?:AT|SN|SLSN-I{1,2}|Ia|II)\s*(?=[0-9]{4})',
-                '', object_name, flags=_re.IGNORECASE
-            )
-            if prefix_stripped and prefix_stripped.lower() != object_name.lower():
-                # Try name-only match with stripped value
-                cursor.execute(
-                    f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
-                              o.redshift, NULL::int AS typeid, o.type,
-                              NULL::int AS reporting_groupid, o.report_group AS reporting_group,
-                              NULL::int AS source_groupid, o.source_group,
-                              to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
-                              o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
-                              o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
-                              to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
-                              COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
-                              o.class_ADS AS class_ads_bibcodes,
-                              to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
-                              to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
-                              o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
-                              CASE o.status
-                                  WHEN 'Finish'    THEN 'finished'
-                                  WHEN 'Follow-up' THEN 'followup'
-                                  WHEN 'Snoozed'   THEN 'snoozed'
-                                  ELSE 'object'
-                              END as tag
-                         FROM transient.objects o
-                        WHERE o.name ILIKE %s""",
-                    (prefix_stripped,)
-                )
+        
+            exact_queries = [
+                # Full name match (case insensitive)
+                f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                          o.redshift, NULL::int AS typeid, o.type,
+                          NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                          NULL::int AS source_groupid, o.source_group,
+                          to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                          o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                          o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                          to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                          COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                          o.class_ADS AS class_ads_bibcodes,
+                          to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                          to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                          o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
+                          {tag_logic}
+                   FROM transient.objects o
+                   WHERE (COALESCE(o.name_prefix, '') || COALESCE(o.name, '')) ILIKE %s""",
+                # Name only match (case insensitive)
+                f"""SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                          o.redshift, NULL::int AS typeid, o.type,
+                          NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                          NULL::int AS source_groupid, o.source_group,
+                          to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                          o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                          o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                          to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                          COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                          o.class_ADS AS class_ads_bibcodes,
+                          to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                          to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                          o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
+                          {tag_logic}
+                   FROM transient.objects o
+                   WHERE o.name ILIKE %s"""
+            ]
+        
+            matching_obj = None
+            for i, query in enumerate(exact_queries):
+                cursor.execute(query, (object_name,))
                 result = cursor.fetchone()
                 if result:
                     columns = [desc[0] for desc in cursor.description]
                     matching_obj = dict(zip(columns, result))
-                    # Redirect to canonical name-only URL
-                    canonical = (matching_obj.get('name') or prefix_stripped).strip()
-                    conn.close()
+                    break
+
+            # If exact match found but URL includes prefix, redirect to name-only canonical URL
+            # e.g. /object/AT2025abc → /object/2025abc
+            if matching_obj:
+                prefix    = (matching_obj.get('name_prefix') or '').strip()
+                name_only = (matching_obj.get('name') or '').strip()
+                if prefix and object_name.lower() != name_only.lower():
+                    return redirect(url_for('marshal_bp.object_detail_generic', object_name=name_only))
+
+            # If still no match, try internal_names (e.g. ZTF ID) and tags (e.g. EP name)
+            if not matching_obj:
+                alias_query = """
+                    SELECT name_prefix, name
+                    FROM transient.objects
+                    WHERE internal_name ILIKE %s
+                       OR EXISTS (
+                           SELECT 1 FROM unnest(tag) t(v)
+                           WHERE trim(t.v) ILIKE %s
+                       )
+                    ORDER BY discovery_date DESC NULLS LAST
+                    LIMIT 1
+                """
+                cursor.execute(alias_query, (f'%{object_name}%', object_name))
+                alias_result = cursor.fetchone()
+                if alias_result:
+                    # Redirect to name-only (no prefix) canonical URL
+                    canonical = (alias_result[1] or '').strip()
                     return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
 
-        conn.close()
+            # If still no match, strip AT/SN prefix and retry —
+            # handles the AT→SN classification scenario:
+            # e.g. /object/AT2025wny → object was classified, now name_prefix='SN' → find by name='2025wny'
+            if not matching_obj:
+                import re as _re
+                prefix_stripped = _re.sub(
+                    r'^(?:AT|SN|SLSN-I{1,2}|Ia|II)\s*(?=[0-9]{4})',
+                    '', object_name, flags=_re.IGNORECASE
+                )
+                if prefix_stripped and prefix_stripped.lower() != object_name.lower():
+                    # Try name-only match with stripped value
+                    cursor.execute(
+                        """SELECT o.obj_id AS objid, o.name_prefix, o.name, o.ra, o.dec AS declination,
+                                  o.redshift, NULL::int AS typeid, o.type,
+                                  NULL::int AS reporting_groupid, o.report_group AS reporting_group,
+                                  NULL::int AS source_groupid, o.source_group,
+                                  to_char(TIMESTAMP '1858-11-17' + o.discovery_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS discoverydate,
+                                  o.discovery_mag AS discoverymag, o.discovery_filter AS discmagfilter,
+                                  o.discovery_filter AS filter, array_to_string(o.reporters, ', ') AS reporters,
+                                  to_char(TIMESTAMP '1858-11-17' + o.received_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS time_received,
+                                  COALESCE(o.internal_name,'') AS internal_names, o.discovery_ADS AS discovery_ads_bibcode,
+                                  o.class_ADS AS class_ads_bibcodes,
+                                  to_char(TIMESTAMP '1858-11-17' + o.creation_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS creationdate,
+                                  to_char(TIMESTAMP '1858-11-17' + o.last_modified_date * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS') AS lastmodified,
+                                  o.brightest_mag, o.brightest_abs_mag, array_to_string(o.tag, ', ') AS tags,
+                                  CASE o.status
+                                      WHEN 'Finish'    THEN 'finished'
+                                      WHEN 'Follow-up' THEN 'followup'
+                                      WHEN 'Snoozed'   THEN 'snoozed'
+                                      ELSE 'object'
+                                  END as tag
+                             FROM transient.objects o
+                            WHERE o.name ILIKE %s""",
+                        (prefix_stripped,)
+                    )
+                    result = cursor.fetchone()
+                    if result:
+                        columns = [desc[0] for desc in cursor.description]
+                        matching_obj = dict(zip(columns, result))
+                        # Redirect to canonical name-only URL
+                        canonical = (matching_obj.get('name') or prefix_stripped).strip()
+                        return redirect(url_for('marshal_bp.object_detail_generic', object_name=canonical))
+
+        finally:
+            conn.close()
 
         # If no exact match, fall back to fuzzy search
         if not matching_obj:
@@ -193,6 +206,10 @@ def object_detail_generic(object_name):
         if not matching_obj:
             flash(f'Object {object_name} not found.', 'error')
             return redirect(url_for('marshal.marshal'))
+
+        denied = _object_access_redirect(matching_obj)
+        if denied is not None:
+            return denied
         
         # Values are already calculated by update_object_abs_mag and fetched from DB
         # No need to recalculate here
@@ -220,7 +237,7 @@ def object_detail_generic(object_name):
                              object_name=object_name,
                              visibility=visibility)
         
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         flash('Error loading object data.', 'error')
@@ -256,31 +273,25 @@ def object_detail_tns_format(year, letters):
         
         # Try exact match first using direct SQL query
         conn = get_tns_db_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
         
-        tag_logic = """
-        CASE o.status
-            WHEN 'Finish'    THEN 'finished'
-            WHEN 'Follow-up' THEN 'followup'
-            WHEN 'Snoozed'   THEN 'snoozed'
-            ELSE 'object'
-        END as tag
-        """
         
-        # Exact match query - match name exactly (case insensitive)
-        exact_query = f"""SELECT {OBJECT_COMPAT_COLS}
-               FROM transient.objects o
-               WHERE o.name ILIKE %s"""
+            # Exact match query - match name exactly (case insensitive)
+            exact_query = f"""SELECT {OBJECT_COMPAT_COLS}
+                   FROM transient.objects o
+                   WHERE o.name ILIKE %s"""
         
-        cursor.execute(exact_query, (object_name,))
-        result = cursor.fetchone()
-        matching_obj = None
+            cursor.execute(exact_query, (object_name,))
+            result = cursor.fetchone()
+            matching_obj = None
         
-        if result:
-            columns = [desc[0] for desc in cursor.description]
-            matching_obj = dict(zip(columns, result))
+            if result:
+                columns = [desc[0] for desc in cursor.description]
+                matching_obj = dict(zip(columns, result))
         
-        conn.close()
+        finally:
+            conn.close()
         
         # If no exact match, fall back to fuzzy search
         if not matching_obj:
@@ -312,6 +323,10 @@ def object_detail_tns_format(year, letters):
         if not matching_obj:
             flash(f'Object {object_name} not found.', 'error')
             return redirect(url_for('marshal.marshal'))
+
+        denied = _object_access_redirect(matching_obj)
+        if denied is not None:
+            return denied
         
         # Values are already calculated by update_object_abs_mag and fetched from DB
         # No need to recalculate here
@@ -339,7 +354,7 @@ def object_detail_tns_format(year, letters):
                              object_name=object_name,
                              visibility=visibility)
         
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         flash('Error loading object data.', 'error')

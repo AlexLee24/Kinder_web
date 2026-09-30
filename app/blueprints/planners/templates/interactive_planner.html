@@ -232,6 +232,15 @@
     // =========================================================================
     // TARGET ROW MANAGEMENT
     // =========================================================================
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function addTargetRow(data = {}) {
         const container = document.getElementById('target-list-container');
         const idx = container.children.length;
@@ -242,9 +251,9 @@
         row.dataset.color = color;
         row.innerHTML = `
             <div class="target-color" style="background:${color}"></div>
-            <input type="text" class="target-name" placeholder="Name" value="${data.name || ''}" />
-            <input type="text" class="target-ra" placeholder="RA (hms/deg)" value="${data.ra || ''}" />
-            <input type="text" class="target-dec" placeholder="Dec (dms/deg)" value="${data.dec || ''}" />
+            <input type="text" class="target-name" placeholder="Name" value="${escapeHtml(data.name)}" />
+            <input type="text" class="target-ra" placeholder="RA (hms/deg)" value="${escapeHtml(data.ra)}" />
+            <input type="text" class="target-dec" placeholder="Dec (dms/deg)" value="${escapeHtml(data.dec)}" />
             <button class="btn-remove" title="Remove target">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -677,8 +686,8 @@
                     <div class="target-detail-row">
                         <span class="target-detail-color" style="background:${color}"></span>
                         <div class="target-detail-info">
-                            <strong>${t.number}. ${t.name}</strong>
-                            <span>Transit: ${t.transit_time_utc || 'N/A'} (UTC) | ${t.transit_time_local || 'N/A'} (Local)</span>
+                            <strong>${escapeHtml(t.number)}. ${escapeHtml(t.name)}</strong>
+                            <span>Transit: ${escapeHtml(t.transit_time_utc || 'N/A')} (UTC) | ${escapeHtml(t.transit_time_local || 'N/A')} (Local)</span>
                             <span>Max Alt: ${maxAlt.toFixed(1)}° | Moon Sep: ${t.moon_separation != null ? t.moon_separation + '°' : 'N/A'}</span>
                         </div>
                     </div>`;
@@ -842,10 +851,10 @@
                     }
                     const html = lastResults.map((r, i) => {
                         const meta = [r.type, r.mag ? `mag ${r.mag}` : ''].filter(Boolean).join(' \u00b7 ');
-                        const internal = r.internal_names ? `<span class="db-dd-internal">${r.internal_names}</span>` : '';
+                        const internal = r.internal_names ? `<span class="db-dd-internal">${escapeHtml(r.internal_names)}</span>` : '';
                         return `<div class="db-dd-item" data-idx="${i}">
-                            <span class="db-dd-name">${r.name}</span>
-                            ${meta ? `<span class="db-dd-meta">${meta}</span>` : ''}
+                            <span class="db-dd-name">${escapeHtml(r.name)}</span>
+                            ${meta ? `<span class="db-dd-meta">${escapeHtml(meta)}</span>` : ''}
                             <span class="db-dd-add">+ Add</span>
                             ${internal}
                         </div>`;

@@ -703,10 +703,15 @@ class TNSObjectDB:
             obj_id = _resolve_obj_id_with_prefix(cur, object_name)
             if obj_id is None:
                 return None
+            # Store the canonical object name so every URL variant (AT2024abc /
+            # 2024abc) reads back the same comments.
+            cur.execute("SELECT name FROM transient.objects WHERE obj_id = %s", (obj_id,))
+            name_row = cur.fetchone()
+            canonical_name = name_row[0] if name_row else object_name
             cur.execute(
                 "INSERT INTO transient.comments (obj_id, name, usr_id, comment) "
                 "VALUES (%s,%s,%s,%s) RETURNING comment_id",
-                (obj_id, object_name, usr_id, content)
+                (obj_id, canonical_name, usr_id, content)
             )
             cid = cur.fetchone()[0]
             conn.commit()
@@ -716,6 +721,9 @@ class TNSObjectDB:
     def get_comments(object_name: str) -> list[dict]:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.DictCursor)
+            # Match by obj_id when the object resolves (covers name variants and
+            # legacy rows stored under a prefixed name), else by the raw name.
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
             cur.execute(
                 "SELECT c.comment_id AS id, c.name AS object_name, "
                 "u.email AS user_email, u.name AS user_name, "
@@ -723,8 +731,8 @@ class TNSObjectDB:
                 "c.comment AS content, c.comment_time AS created_at "
                 "FROM transient.comments c "
                 "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
-                "WHERE c.name = %s ORDER BY c.comment_time ASC",
-                (object_name,)
+                "WHERE c.obj_id = %s OR c.name = %s ORDER BY c.comment_time ASC",
+                (obj_id, object_name)
             )
             out = []
             for r in cur.fetchall():
@@ -735,7 +743,18 @@ class TNSObjectDB:
         return out
 
     @staticmethod
-    def get_recent_comments(limit: int = 5) -> list[dict]:
+    def get_recent_comments(limit: int = 5, apply_permissions: bool = False,
+                            viewer_email: str | None = None,
+                            viewer_is_admin: bool = False) -> list[dict]:
+        """Latest comments.  With ``apply_permissions`` comments on objects the
+        viewer cannot open are left out (same rules as ``_build_where``)."""
+        params = []
+        where = ''
+        if apply_permissions:
+            where = 'WHERE ' + _build_where(params, apply_permissions=True,
+                                            viewer_email=viewer_email,
+                                            viewer_is_admin=viewer_is_admin) + ' '
+        params.append(limit)
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.DictCursor)
             cur.execute(
@@ -749,8 +768,9 @@ class TNSObjectDB:
                 "FROM transient.comments c "
                 "LEFT JOIN auth.users u ON c.usr_id = u.usr_id "
                 "LEFT JOIN transient.objects o ON c.obj_id = o.obj_id "
+                + where +
                 "ORDER BY c.comment_time DESC LIMIT %s",
-                (limit,)
+                params
             )
             out = []
             for r in cur.fetchall():
@@ -975,9 +995,30 @@ def _build_where(params, search_term='', object_type='', tag=None,
                  app_mag_min=None, app_mag_max=None,
                  redshift_min=None, redshift_max=None, discoverer=None,
                  brightest_mag_min=None, brightest_mag_max=None,
-                 brightest_abs_mag_min=None, brightest_abs_mag_max=None):
-    """Build WHERE clause and params list for transient.objects queries."""
+                 brightest_abs_mag_min=None, brightest_abs_mag_max=None,
+                 apply_permissions=False, viewer_email=None, viewer_is_admin=False):
+    """Build WHERE clause and params list for transient.objects queries.
+
+    With ``apply_permissions=True`` only objects the viewer may open are kept
+    (same rules as ``app.db.auth.check_object_access``): admins see everything,
+    anonymous viewers only ``public`` objects, logged-in viewers ``public`` /
+    ``login`` objects plus ``groups`` objects shared with a group they have joined.
+    Internal callers (scheduler, pipelines) leave it off."""
     clauses = ['1=1']
+
+    if apply_permissions and not viewer_is_admin:
+        if not viewer_email:
+            clauses.append("o.permission = 'public'")
+        else:
+            clauses.append(
+                "(o.permission IN ('public', 'login') OR ("
+                " o.permission = 'groups' AND EXISTS ("
+                "  SELECT 1 FROM auth.usr_group ug "
+                "  JOIN auth.users u ON ug.usr_id = u.usr_id "
+                "  WHERE u.email = %s AND ug.status = 'joined' "
+                "    AND ug.group_id = ANY(o.groups))))"
+            )
+            params.append(viewer_email)
 
     if search_term:
         pat = f'%{search_term}%'
@@ -1063,7 +1104,9 @@ def get_objects_count(object_type=None, search_term='', tag=None,
                       redshift_min=None, redshift_max=None,
                       discoverer=None,
                       brightest_mag_min=None, brightest_mag_max=None,
-                      brightest_abs_mag_min=None, brightest_abs_mag_max=None) -> int:
+                      brightest_abs_mag_min=None, brightest_abs_mag_max=None,
+                      apply_permissions=False, viewer_email=None,
+                      viewer_is_admin=False) -> int:
     params = []
     where = _build_where(
         params, search_term=search_term, object_type=object_type or '',
@@ -1074,6 +1117,8 @@ def get_objects_count(object_type=None, search_term='', tag=None,
         brightest_mag_min=brightest_mag_min, brightest_mag_max=brightest_mag_max,
         brightest_abs_mag_min=brightest_abs_mag_min,
         brightest_abs_mag_max=brightest_abs_mag_max,
+        apply_permissions=apply_permissions, viewer_email=viewer_email,
+        viewer_is_admin=viewer_is_admin,
     )
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -1184,7 +1229,11 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0,
                        discoverer=None, tag=None,
                        brightest_mag_min=None, brightest_mag_max=None,
                        brightest_abs_mag_min=None,
-                       brightest_abs_mag_max=None) -> list[dict]:
+                       brightest_abs_mag_max=None,
+                       apply_permissions=False, viewer_email=None,
+                       viewer_is_admin=False) -> list[dict]:
+    """Search transient.objects.  Web endpoints must pass ``apply_permissions=True``
+    plus the viewer (see ``_build_where``) so restricted objects are filtered out."""
     params = []
     where = _build_where(
         params, search_term=search_term, object_type=object_type,
@@ -1196,6 +1245,8 @@ def search_tns_objects(search_term='', object_type='', limit=100, offset=0,
         brightest_mag_min=brightest_mag_min, brightest_mag_max=brightest_mag_max,
         brightest_abs_mag_min=brightest_abs_mag_min,
         brightest_abs_mag_max=brightest_abs_mag_max,
+        apply_permissions=apply_permissions, viewer_email=viewer_email,
+        viewer_is_admin=viewer_is_admin,
     )
 
     # Sort column mapping (old name → new transient.objects column)
@@ -1239,7 +1290,8 @@ def get_filtered_stats(search_term='', object_type='', tag=None,
                        date_from=None, date_to=None,
                        app_mag_min=None, app_mag_max=None,
                        redshift_min=None, redshift_max=None,
-                       discoverer=None) -> dict:
+                       discoverer=None, apply_permissions=False,
+                       viewer_email=None, viewer_is_admin=False) -> dict:
     base_params = []
     where = _build_where(
         base_params, search_term=search_term, object_type=object_type,
@@ -1247,6 +1299,8 @@ def get_filtered_stats(search_term='', object_type='', tag=None,
         app_mag_min=app_mag_min, app_mag_max=app_mag_max,
         redshift_min=redshift_min, redshift_max=redshift_max,
         discoverer=discoverer,
+        apply_permissions=apply_permissions, viewer_email=viewer_email,
+        viewer_is_admin=viewer_is_admin,
     )
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -1311,8 +1365,8 @@ def update_object_status(object_name: str, status: str) -> bool:
             cur = conn.cursor()
             cur.execute(
                 "UPDATE transient.objects SET status = %s "
-                "WHERE name = %s OR name ILIKE %s "
-                "OR (COALESCE(name_prefix,'') || name) ILIKE %s",
+                "WHERE name = %s OR lower(name) = lower(%s) "
+                "OR lower(COALESCE(name_prefix,'') || name) = lower(%s)",
                 (new_status, object_name, object_name, object_name)
             )
             updated = cur.rowcount > 0
@@ -2023,24 +2077,37 @@ def _set_screen_host_status(cur, target_name: str, status: str) -> None:
 
 def set_cross_match_host(match_id: int, target_name: str, user_email: str | None = None) -> bool:
     """A person picks *match_id* as the host: every other candidate is marked
-    rejected, the chosen one pinned, so DETECT keeps the choice on re-runs."""
+    rejected, the chosen one pinned, so DETECT keeps the choice on re-runs.
+
+    Returns False (and changes nothing) when *match_id* is not a candidate of
+    *target_name*."""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "UPDATE transient.cross_matches SET is_host = FALSE, "
-                "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
-                "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
-                (_host_decision_json(False, user_email), target_name)
-            )
-            cur.execute(
-                "UPDATE transient.cross_matches SET is_host = TRUE, "
-                "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
-                "WHERE match_id = %s",
-                (_host_decision_json(True, user_email), match_id)
-            )
-            _set_screen_host_status(cur, target_name, 'confirmed')
-            conn.commit()
+            try:
+                # Pin the chosen candidate first, and only if it belongs to this object.
+                cur.execute(
+                    "UPDATE transient.cross_matches SET is_host = TRUE, "
+                    "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
+                    "WHERE match_id = %s "
+                    "  AND obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1)",
+                    (_host_decision_json(True, user_email), match_id, target_name)
+                )
+                if cur.rowcount == 0:
+                    conn.rollback()
+                    return False
+                cur.execute(
+                    "UPDATE transient.cross_matches SET is_host = FALSE, "
+                    "match_data = COALESCE(match_data, '{}'::jsonb) || %s::jsonb "
+                    "WHERE obj_id = (SELECT obj_id FROM transient.objects WHERE name = %s LIMIT 1) "
+                    "  AND match_id <> %s",
+                    (_host_decision_json(False, user_email), target_name, match_id)
+                )
+                _set_screen_host_status(cur, target_name, 'confirmed')
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         return True
     except Exception as e:
         logger.error("set_cross_match_host: %s", e)
@@ -2265,7 +2332,8 @@ def set_object_redshift(target_name: str, z: float) -> bool:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE transient.objects SET redshift = %s WHERE name = %s OR name ILIKE %s",
+                "UPDATE transient.objects SET redshift = %s "
+                "WHERE name = %s OR lower(name) = lower(%s)",
                 (float(z), target_name, target_name)
             )
             conn.commit()
@@ -2286,7 +2354,7 @@ def update_tns_redshift(target_name: str, redshift_str: str) -> bool:
             cur = conn.cursor()
             cur.execute(
                 "UPDATE transient.objects SET redshift = %s "
-                "WHERE name = %s OR name ILIKE %s",
+                "WHERE name = %s OR lower(name) = lower(%s)",
                 (z, target_name, target_name)
             )
             conn.commit()
@@ -2318,8 +2386,8 @@ def update_object_abs_mag(target_name: str) -> bool:
             cur.execute(
                 "SELECT obj_id, name, name_prefix, redshift, ra, dec, discovery_filter, discovery_mag "
                 "FROM transient.objects "
-                "WHERE name = %s OR name ILIKE %s "
-                "OR (COALESCE(name_prefix,'') || name) ILIKE %s LIMIT 1",
+                "WHERE name = %s OR lower(name) = lower(%s) "
+                "OR lower(COALESCE(name_prefix,'') || name) = lower(%s) LIMIT 1",
                 (target_name, target_name, target_name)
             )
             obj = cur.fetchone()

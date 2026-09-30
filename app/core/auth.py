@@ -3,7 +3,7 @@
 Who is logged in lives in ``session['user']`` (a signed client-side cookie) with the keys
 ``email, name, picture, is_admin, role, is_great_lab_member, groups, api_key``.
 ``refresh_user_session`` (installed as a ``before_request`` hook) re-syncs
-``is_admin`` / ``is_great_lab_member`` / ``picture`` from the database on every request and
+``is_admin`` / ``role`` / ``groups`` / ``is_great_lab_member`` / ``picture`` from the database on every request and
 exposes the full user row as ``g.current_user``.
 
 Permission levels used across the site (from weakest to strongest):
@@ -21,7 +21,7 @@ frontend already depends on without checking the JS.
 import logging
 from functools import wraps
 
-from flask import flash, g, jsonify, redirect, request, session, url_for
+from flask import current_app, flash, g, jsonify, redirect, request, session, url_for
 
 from app.db.auth import get_user
 
@@ -39,14 +39,24 @@ def refresh_user_session():
     if request.path.startswith('/static'):
         return
 
-    user_email = session['user']['email']
+    user_email = session['user'].get('email')
+    if not user_email:
+        session.clear()
+        return
     try:
         user_data = get_user(user_email)  # includes groups via single extra query
     except Exception as exc:
+        # DB down: keep the (already signed) session as-is rather than logging
+        # everyone out; nothing is granted beyond what the session already had.
         logger.warning("refresh_user_session skipped because database is unavailable: %s", exc)
         return
 
     if not user_data:
+        # The account was deleted: the session must not outlive it.
+        # (Tests use synthetic personas that have no DB row.)
+        if not current_app.testing:
+            logger.info("refresh_user_session: user %s no longer exists; clearing session", user_email)
+            session.clear()
         return
 
     g.current_user = user_data
@@ -57,8 +67,17 @@ def refresh_user_session():
         session['user']['is_admin'] = current_is_admin
         session.modified = True
 
+    # Sync role (used by is_guest())
+    current_role = user_data.get('role', 'guest')
+    if session['user'].get('role') != current_role:
+        session['user']['role'] = current_role
+        session.modified = True
+
     # Sync groups / GREATLab membership
-    user_groups = user_data.get('groups', [])
+    user_groups = list(user_data.get('groups', []))
+    if session['user'].get('groups') != user_groups:
+        session['user']['groups'] = user_groups
+        session.modified = True
     is_great_lab_member = 'GREAT_Lab' in user_groups or current_is_admin
     if session['user'].get('is_great_lab_member') != is_great_lab_member:
         session['user']['is_great_lab_member'] = is_great_lab_member

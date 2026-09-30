@@ -24,7 +24,7 @@ except ImportError:
     from database.transient import sync_kinder_ids
 
 # ---- Paths & env ----
-from app.paths import ENV_FILE
+from app.paths import ENV_FILE, DATA_DIR
 load_dotenv(ENV_FILE)
 
 bot_id   = os.getenv("TNS_BOT_ID")
@@ -50,7 +50,8 @@ def _to_mjd(s) -> float | None:
     for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
         try:
             dt = _dt.strptime(str(s).strip(), fmt)
-            return (_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
+            return ((_date(dt.year, dt.month, dt.day) - _MJD_EPOCH).days + dt.hour / 24.0
+                    + dt.minute / 1440.0 + (dt.second + dt.microsecond / 1e6) / 86400.0)
         except ValueError:
             continue
     return None
@@ -123,6 +124,45 @@ def _name_to_kinder_id(name: str) -> int | None:
     return year * 1_000_000 + rank
 
 
+# ---- Confirmed-missing backoff ----
+# Names TNS confirmed missing (deleted / never assigned) are remembered with an
+# exponential backoff so the hourly loop does not re-query them every time.
+_MISSING_FILE = os.path.join(str(DATA_DIR), "tns_gap_missing.json")
+_MISSING_BACKOFF_START = 2 * 3600        # seconds
+_MISSING_BACKOFF_MAX   = 7 * 24 * 3600   # seconds
+
+
+def _load_missing() -> dict:
+    """{str(kinder_id): {"next_retry": epoch_s, "backoff": s}}"""
+    try:
+        with open(_MISSING_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        logger.warning("Could not read %s: %s", _MISSING_FILE, e)
+        return {}
+
+
+def _save_missing(data: dict) -> None:
+    tmp = f"{_MISSING_FILE}.{os.getpid()}.tmp"
+    try:
+        os.makedirs(os.path.dirname(_MISSING_FILE), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, _MISSING_FILE)
+    except OSError as e:
+        logger.warning("Could not write %s: %s", _MISSING_FILE, e)
+
+
+def _mark_missing(data: dict, kid: int) -> None:
+    prev = data.get(str(kid))
+    backoff = _MISSING_BACKOFF_START if not prev else min(
+        int(prev.get("backoff", _MISSING_BACKOFF_START)) * 2, _MISSING_BACKOFF_MAX)
+    data[str(kid)] = {"next_retry": time.time() + backoff, "backoff": backoff}
+
+
 # ---- Gap detection ----
 
 def _find_gaps(year: int) -> list[int]:
@@ -172,9 +212,10 @@ def _tns_headers() -> dict:
     }
 
 
-def _search_tns_exists(name: str) -> bool:
+def _search_tns_exists(name: str) -> bool | None:
     """Use Search API to cheaply check if a name exists on TNS.
-    Returns True only when at least one matching object is found."""
+    Returns True when at least one matching object is found, False when the search
+    succeeded with no match (confirmed missing), None on an HTTP/API error."""
     url = "https://www.wis-tns.org/api/get/search"
     payload = json.dumps({"objname": name})
     try:
@@ -186,10 +227,11 @@ def _search_tns_exists(name: str) -> bool:
         )
         if resp.status_code != 200:
             logger.warning("TNS Search HTTP %s for %s", resp.status_code, name)
-            return False
+            return None
         j = resp.json()
         if j.get("id_code") != 200:
-            return False
+            logger.warning("TNS Search id_code %s for %s", j.get("id_code"), name)
+            return None
         data = j.get("data", [])
         # Search API returns data as a list directly, or {"reply": [...]}
         if isinstance(data, list):
@@ -201,7 +243,7 @@ def _search_tns_exists(name: str) -> bool:
         return len(results) > 0
     except Exception as e:
         logger.error("_search_tns_exists(%s): %s", name, e)
-        return False
+        return None
 
 
 def _get_tns_object(name: str) -> dict | None:
@@ -352,14 +394,31 @@ def fill_year_gaps(year: int, delay: float = 60.0) -> int:
         logger.info("pre-scan sync: assigned %d kinder_ids", n_sync)
 
     gaps = _find_gaps(year)
+
+    # Forget backoff entries of this year that are no longer gaps (filled by an import).
+    missing = _load_missing()
+    lo, hi = year * 1_000_000 + 1, (year + 1) * 1_000_000
+    gap_set = set(gaps)
+    stale = [k for k in missing if k.isdigit() and lo <= int(k) < hi and int(k) not in gap_set]
+    for k in stale:
+        del missing[k]
+    if stale:
+        _save_missing(missing)
+
     if not gaps:
         logger.info("No kinder_id gaps for year %d", year)
         return 0
 
-    logger.info("Found %d gaps for year %d (range: %s…%s)",
-                len(gaps), year,
-                _kinder_id_to_name(gaps[0]),
-                _kinder_id_to_name(gaps[-1]))
+    now_ts = time.time()
+    n_all = len(gaps)
+    gaps = [k for k in gaps if missing.get(str(k), {}).get("next_retry", 0) <= now_ts]
+    logger.info("Found %d gaps for year %d (range: %s…%s); %d due, %d in backoff",
+                n_all, year,
+                _kinder_id_to_name(min(gap_set)),
+                _kinder_id_to_name(max(gap_set)),
+                len(gaps), n_all - len(gaps))
+    if not gaps:
+        return 0
 
     filled = 0
     for i, kid in enumerate(gaps):
@@ -375,7 +434,11 @@ def fill_year_gaps(year: int, delay: float = 60.0) -> int:
         # Step 1: cheap Search API check — skip Get Object if not on TNS
         exists = _search_tns_exists(name)
         if not exists:
-            logger.debug("Not found on TNS (search): %s", name)
+            if exists is False:
+                # Confirmed missing: back off before asking TNS about it again.
+                _mark_missing(missing, kid)
+                _save_missing(missing)
+                logger.debug("Not found on TNS (search): %s", name)
             if i < len(gaps) - 1 and not _stop_event.is_set():
                 time.sleep(delay)
             continue
@@ -389,6 +452,8 @@ def fill_year_gaps(year: int, delay: float = 60.0) -> int:
             if ok:
                 logger.info("Filled: %s", name)
                 filled += 1
+                if missing.pop(str(kid), None) is not None:
+                    _save_missing(missing)
             else:
                 logger.debug("Insert skipped (likely already exists): %s", name)
         else:
@@ -415,11 +480,18 @@ def _main_loop(delay: float = 60.0):
     _stop_event.wait(600)  # 10-minute grace period
 
     while not _stop_event.is_set():
-        year = datetime.now(timezone.utc).year
-        try:
-            fill_year_gaps(year, delay=delay)
-        except Exception:
-            logger.exception("Unexpected error in gap filler loop")
+        now = datetime.now(timezone.utc)
+        years = [now.year]
+        # Early January: late reports can still be assigned last year's names.
+        if now.month == 1 and now.day <= 14:
+            years.insert(0, now.year - 1)
+        for year in years:
+            if _stop_event.is_set():
+                break
+            try:
+                fill_year_gaps(year, delay=delay)
+            except Exception:
+                logger.exception("Unexpected error in gap filler loop (year %d)", year)
         # Wait up to 1 hour, but wake immediately if stop is requested
         _stop_event.wait(3600)
 

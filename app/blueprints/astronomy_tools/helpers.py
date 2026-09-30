@@ -17,7 +17,9 @@ _rl_store = {}   # {(ip, endpoint_key): last_allowed_timestamp}
 _RL_INTERVAL = 1.0  # seconds
 
 def _client_ip():
-    return (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+    # ProxyFix (configured app-wide) already resolves the real client into remote_addr;
+    # never trust the raw X-Forwarded-For header, which the client can spoof.
+    return request.remote_addr or ''
 
 def _rate_ok(ip, key, interval=None):
     """Return True and record the timestamp if the request is allowed.
@@ -34,6 +36,11 @@ def _rate_ok(ip, key, interval=None):
             for old in [x for x, t in list(_rl_store.items()) if t < cutoff]:
                 _rl_store.pop(old, None)
         return True
+
+def _rate_ok_burst(ip, key, burst, interval):
+    """Allow up to `burst` requests per `interval` seconds for (ip, key), built on _rate_ok
+    (one slot per sub-key), so pages that fire a few requests at once aren't rejected."""
+    return any(_rate_ok(ip, f'{key}#{i}', interval=interval) for i in range(max(1, int(burst))))
 
 from app.paths import BLUEPRINTS_DIR, CASTOR_SRC, SHARED_PLOTS_DIR
 

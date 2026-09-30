@@ -11,19 +11,20 @@ import logging
 import os
 import time
 import psycopg2
-from psycopg2 import pool
+import psycopg2.pool
 from contextlib import contextmanager
-from dotenv import load_dotenv
 
-from app.paths import ENV_FILE
-
-load_dotenv(ENV_FILE, override=True)
+from app import config as _config  # noqa: F401  -- loads kinder.env (single place)
 
 DB_HOST     = os.getenv("PG_HOST", "localhost")
 DB_PORT     = os.getenv("PG_PORT", "5432")
 DB_USER     = os.getenv("PG_USER", "postgres")
 DB_PASSWORD = os.getenv("PG_PASSWORD", "")
 DB_NAME     = "Kinder"
+
+# application_name reported by this app's pooled connections (pg_stat_activity);
+# the admin "terminate idle" tool uses it to avoid killing our own pool.
+APP_DB_APPLICATION_NAME = "kinder_web"
 
 _DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -45,6 +46,7 @@ def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
             connect_timeout=5,
+            application_name=APP_DB_APPLICATION_NAME,
             # ── Server-side safety timeouts ───────────────────────────────
             # Kill any connection that sits idle-in-transaction for >5 min,
             # and any individual statement that runs >2 min.
@@ -177,12 +179,49 @@ class _PooledConn:
             p.putconn(conn)
 
 
+def _is_healthy(conn) -> bool:
+    """Cheap liveness probe for a connection taken from the pool."""
+    if conn.closed:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        # SELECT 1 opened a transaction (autocommit off); end it so the caller
+        # starts clean and the server doesn't see 'idle in transaction'.
+        if not conn.autocommit:
+            conn.rollback()
+        return True
+    except Exception:
+        return False
+
+
+def _checkout(p):
+    """getconn() with a health check: a dead connection is discarded and one
+    replacement is fetched (itself checked once more)."""
+    conn = p.getconn()
+    if _is_healthy(conn):
+        return conn
+    try:
+        p.putconn(conn, close=True)
+    except Exception:
+        pass
+    conn = p.getconn()
+    if not _is_healthy(conn):
+        try:
+            p.putconn(conn, close=True)
+        except Exception:
+            pass
+        raise psycopg2.OperationalError("could not obtain a healthy pooled connection")
+    return conn
+
+
 def get_tns_db_connection() -> '_PooledConn':
     """Return a raw pooled connection.  Caller MUST call conn.close() to
     return it to the pool (close() is intercepted — it does putconn, not
     actual socket close)."""
     p = init_connection_pool()
-    return _PooledConn(p.getconn(), p)
+    return _PooledConn(_checkout(p), p)
 
 
 @contextmanager
@@ -196,11 +235,8 @@ def get_db_connection():
       'idle in transaction' from this pool.
     """
     p = init_connection_pool()
-    conn = p.getconn()
     # Discard a connection that the server closed while it sat in the pool.
-    if conn.closed:
-        p.putconn(conn, close=True)
-        conn = p.getconn()
+    conn = _checkout(p)
     _returned = False
     try:
         yield conn
@@ -279,10 +315,20 @@ def _ensure_extra_tables():
             user=DB_USER, password=DB_PASSWORD,
             connect_timeout=5,
         )
+        # Autocommit: every statement is its own transaction, so one failing
+        # statement (e.g. missing privilege, pre-existing duplicate data) does not
+        # roll back the others.
+        conn.autocommit = True
         cur = conn.cursor()
 
+        def _run(sql):
+            try:
+                cur.execute(sql)
+            except Exception as exc:
+                logger.warning("_ensure_extra_tables: statement failed: %s", exc)
+
         # auth.invitations — invitation tokens for new user sign-up
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS auth.invitations (
                 token       TEXT PRIMARY KEY,
                 email       TEXT,
@@ -296,7 +342,7 @@ def _ensure_extra_tables():
         """)
 
         # auth.system_settings — generic key/value store
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS auth.system_settings (
                 key        TEXT PRIMARY KEY,
                 value      TEXT,
@@ -305,7 +351,7 @@ def _ensure_extra_tables():
         """)
 
         # transient.object_source_permissions — per-object per-source visibility
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS transient.object_source_permissions (
                 id             SERIAL PRIMARY KEY,
                 object_name    TEXT NOT NULL,
@@ -319,7 +365,7 @@ def _ensure_extra_tables():
         """)
 
         # Unique constraint needed for ON CONFLICT in photometry inserts
-        cur.execute("""
+        _run("""
             DO $$ BEGIN
                 BEGIN
                     ALTER TABLE transient.photometry
@@ -330,7 +376,7 @@ def _ensure_extra_tables():
         """)
 
         # Unique constraint for obs.logs upsert
-        cur.execute("""
+        _run("""
             DO $$ BEGIN
                 BEGIN
                     ALTER TABLE obs.logs
@@ -341,68 +387,68 @@ def _ensure_extra_tables():
         """)
 
         # kinder_id — internal sequential ID: year*1_000_000 + letter_rank
-        cur.execute("""
+        _run("""
             ALTER TABLE transient.objects
                 ADD COLUMN IF NOT EXISTS kinder_id BIGINT
         """)
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_kinder_id_idx
                 ON transient.objects(kinder_id)
                 WHERE kinder_id IS NOT NULL
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_discovery_date_idx
                 ON transient.objects(discovery_date DESC)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_name_prefix_idx
                 ON transient.objects(name_prefix)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_type_idx
                 ON transient.objects(type)
                 WHERE type IS NOT NULL AND type != ''
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_last_phot_date_idx
                 ON transient.objects(last_phot_date DESC)
         """)
 
         # obs.logs indexes — date index enables the sargable date-range filter
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_logs_date_idx
                 ON obs.logs(date)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_logs_name_idx
                 ON obs.logs(name)
         """)
 
         # obs.targets index — speeds up active-only filtering
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_targets_active_idx
                 ON obs.targets(active, name)
         """)
 
         # transient.objects — name lookup used by _resolve_obj_id_with_prefix
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_name_idx
                 ON transient.objects(name)
         """)
 
         # Ensure tag always has a safe default even if an INSERT omits it.
-        cur.execute("""
+        _run("""
             ALTER TABLE transient.objects
                 ALTER COLUMN tag SET DEFAULT '{}'::text[]
         """)
-        cur.execute("""
+        _run("""
             UPDATE transient.objects
                SET tag = '{}'::text[]
              WHERE tag IS NULL
         """)
 
         # cat.ned — NED cone-search result cache
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS cat.ned (
                 ned_id        SERIAL PRIMARY KEY,
                 object_name   TEXT NOT NULL,
@@ -414,12 +460,18 @@ def _ensure_extra_tables():
                 results       JSONB NOT NULL DEFAULT '[]'::jsonb
             )
         """)
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS cat_ned_object_radius_idx
                 ON cat.ned (object_name, radius_arcsec)
         """)
 
-        conn.commit()
+        # transient.cross_matches — extra columns used by DETECT cross-matching
+        # (previously ALTERed on every request in services/detect/detect_cross_match.py).
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_data JSONB")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION")
+
         cur.close()
     except Exception as e:
         logger.warning("_ensure_extra_tables: %s", e)

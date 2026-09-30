@@ -56,12 +56,18 @@ def daily_trigger_send_message():
     requester = session['user'].get('email') or session['user'].get('name') or 'unknown'
 
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Invalid JSON body'}), 400
     telescope = str(data.get('telescope', '')).strip().upper()
     program = str(data.get('program', '')).strip()
     greeting = str(data.get('greeting', ''))
     script = str(data.get('script', ''))
     targets = data.get('targets') or []
-    target_names = [t.get('name') for t in targets if isinstance(t, dict)]
+    if not isinstance(targets, list) or not all(isinstance(t, dict) for t in targets):
+        return jsonify({'success': False, 'error': 'targets must be a list of objects'}), 400
+    if len(targets) > 200:
+        return jsonify({'success': False, 'error': 'Too many targets'}), 400
+    target_names = [t.get('name') for t in targets]
     should_mark_sent = bool(data.get('mark_sent', True))
 
     logger.info('daily_trigger_send_message: request by=%s telescope=%s program=%s targets=%s '

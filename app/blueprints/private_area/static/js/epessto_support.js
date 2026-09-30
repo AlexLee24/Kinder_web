@@ -366,7 +366,7 @@ async function generateReportPdf(previewMode) {
 }
 
 function escapeHtml(text) {
-    return String(text)
+    return String(text == null ? '' : text)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -695,13 +695,13 @@ function buildWidgetHTML(target, info) {
                     <div class="ep-lc-toolbar">
                         <div class="ep-lc-title">Light curve</div>
                         <div class="ep-lc-controls">
-                            <label class="ep-lc-toggle"><input id="${lcIds.extToggle}" type="checkbox" checked> Extinction</label>
-                            <label class="ep-lc-toggle"><input id="${lcIds.kcorrToggle}" type="checkbox"> K-correction</label>
-                            <button id="${lcIds.fetchBtn}" type="button" class="ep-btn ep-btn-mini" data-action="fetch-photometry" data-target-key="${escapeHtml(target.target_key)}">Fetch</button>
-                            <button id="${lcIds.refreshBtn}" type="button" class="ep-btn ep-btn-mini" data-action="refresh-lc" data-target-key="${escapeHtml(target.target_key)}">Refresh</button>
+                            <label class="ep-lc-toggle"><input id="${escapeHtml(lcIds.extToggle)}" type="checkbox" checked> Extinction</label>
+                            <label class="ep-lc-toggle"><input id="${escapeHtml(lcIds.kcorrToggle)}" type="checkbox"> K-correction</label>
+                            <button id="${escapeHtml(lcIds.fetchBtn)}" type="button" class="ep-btn ep-btn-mini" data-action="fetch-photometry" data-target-key="${escapeHtml(target.target_key)}">Fetch</button>
+                            <button id="${escapeHtml(lcIds.refreshBtn)}" type="button" class="ep-btn ep-btn-mini" data-action="refresh-lc" data-target-key="${escapeHtml(target.target_key)}">Refresh</button>
                         </div>
                     </div>
-                    <div id="${lcIds.plot}" class="ep-lc-plot"><div class="ep-lc-hint">Loading light curve...</div></div>
+                    <div id="${escapeHtml(lcIds.plot)}" class="ep-lc-plot"><div class="ep-lc-hint">Loading light curve...</div></div>
                 </div>
                 <div class="ep-widget-file-header">
                     <span>Filename</span>
@@ -887,10 +887,10 @@ async function fetchLiveRooms() {
             return `
                 <div class="ep-live-room">
                     <div>
-                        <div class="ep-live-room-id">${roomId} · ${roomName}</div>
-                        <div class="ep-live-room-time">last update: ${t}${by ? ' · ' + by : ''}</div>
+                        <div class="ep-live-room-id">${escapeHtml(roomId)} · ${escapeHtml(roomName)}</div>
+                        <div class="ep-live-room-time">last update: ${escapeHtml(t)}${by ? ' · ' + escapeHtml(by) : ''}</div>
                     </div>
-                    <button type="button" class="ep-btn" data-action="quick-join" data-room-id="${roomId}">join</button>
+                    <button type="button" class="ep-btn" data-action="quick-join" data-room-id="${escapeHtml(roomId)}">join</button>
                 </div>
             `;
         }).join('');
@@ -1051,10 +1051,10 @@ async function openRoomMembers() {
                 return `
                     <div class="ep-room-member-row">
                         <div>
-                            <div><strong>${m.display_name}</strong>${role}${m.is_self ? ' <span class="ep-room-member-role">you</span>' : ''}</div>
-                            <div class="ep-live-room-time">${m.email} · last seen: ${seen}</div>
+                            <div><strong>${escapeHtml(m.display_name)}</strong>${role}${m.is_self ? ' <span class="ep-room-member-role">you</span>' : ''}</div>
+                            <div class="ep-live-room-time">${escapeHtml(m.email)} · last seen: ${escapeHtml(seen)}</div>
                         </div>
-                        ${m.can_kick ? `<button type="button" class="ep-btn ep-btn-clear" data-action="kick-member" data-email="${m.email}">kick</button>` : ''}
+                        ${m.can_kick ? `<button type="button" class="ep-btn ep-btn-clear" data-action="kick-member" data-email="${escapeHtml(m.email)}">kick</button>` : ''}
                     </div>
                 `;
             }).join('');
@@ -1804,7 +1804,7 @@ async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
         ? ` · <span style="color:#f59e0b; font-size:0.75rem;" title="Loaded from database cache">cached ${new Date(_epNedSearchedAt).toLocaleString()}</span>`
         : ` · <span style="color:#4ade80; font-size:0.75rem;">live from NED</span>`;
     const hostNote = _epNedCurrentHost
-        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${_epNedCurrentHost}</span>`
+        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${escapeHtml(_epNedCurrentHost)}</span>`
         : '';
     if (countEl) countEl.innerHTML = (sources.length
         ? `${sources.length} NED object(s) within ${radiusArcsec}"`
@@ -1826,13 +1826,13 @@ async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
             if (isHost) tr.style.borderLeft = '3px solid rgba(0,245,212,0.6)';
             tr.innerHTML = `
                 <td style="padding:5px 8px; color:#555;">${i + 1}</td>
-                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${obj.objname || '—'}${isHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
-                <td style="padding:5px 8px;">${obj.type || '—'}</td>
+                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${escapeHtml(obj.objname || '—')}${isHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
+                <td style="padding:5px 8px;">${escapeHtml(obj.type || '—')}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right;">${z != null ? z.toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right;">${cz}</td>
-                <td style="padding:5px 8px; color:#aaa;">${obj.redshift_type || '—'}</td>
+                <td style="padding:5px 8px; color:#aaa;">${escapeHtml(obj.redshift_type || '—')}</td>
                 <td style="padding:4px 8px; text-align:center; white-space:nowrap;">
                     ${isHost
                         ? `<button class="ep-ned-host-btn" onclick="epUnsetNEDHost(${i}, this)" style="font-size:0.72rem; padding:2px 8px; border:1px solid rgba(248,113,113,0.6); border-radius:6px; background:rgba(248,113,113,0.08); color:#f87171; cursor:pointer;">Unset Host</button>`

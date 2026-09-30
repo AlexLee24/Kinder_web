@@ -1,4 +1,6 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — helpers (split from private_area_routes.py)."""
+import contextlib
+import fcntl
 import os
 import re
 import secrets
@@ -199,82 +201,127 @@ def _new_epessto_room(password, room_name, created_by):
         'target_state': {}
     }
 
+class EpesstoStoreError(RuntimeError):
+    """The ePessto rooms store exists but cannot be read/parsed; never treat it as empty."""
+
+
+_EPESSTO_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+@contextlib.contextmanager
+def epessto_store_lock():
+    """Exclusive inter-process lock around a read-modify-write of epessto_sessions.json."""
+    lock_path = _get_epessto_sessions_path() + '.lock'
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    with open(lock_path, 'a') as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def save_upload_limited(file_storage, dest_path, max_bytes=_EPESSTO_MAX_UPLOAD_BYTES):
+    """Stream an uploaded file to disk, refusing (and removing) it if it exceeds max_bytes.
+
+    Returns True when saved, False when too large.
+    """
+    written = 0
+    tmp_path = f"{dest_path}.part.{uuid.uuid4().hex[:8]}"
+    try:
+        with open(tmp_path, 'wb') as out:
+            while True:
+                chunk = file_storage.stream.read(64 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    return False
+                out.write(chunk)
+        os.replace(tmp_path, dest_path)
+        return True
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 def _load_epessto_store():
     path = _get_epessto_sessions_path()
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                if not isinstance(data, dict):
-                    return {'rooms': {}}
+        except (OSError, ValueError) as exc:
+            # Do not fall back to an empty store: a later save would wipe every room.
+            raise EpesstoStoreError(f'ePessto store unreadable: {exc}') from exc
+        if not isinstance(data, dict):
+            raise EpesstoStoreError('ePessto store has an unexpected shape')
 
-                # Backward compatible migration from old single-room shape.
-                if 'rooms' not in data:
-                    migrated = {
-                        'rooms': {
-                            'legacy': {
-                                'room_name': 'Legacy Room',
-                                'password_hash': '',
-                                'created_by': 'legacy',
-                                'updated_by': 'legacy',
-                                'invite_token': secrets.token_urlsafe(24),
-                                'members': {},
-                                'kicked_users': [],
-                                'created_at': _utc_now_iso(),
-                                'updated_at': _utc_now_iso(),
-                                'batches': data.get('batches', []) if isinstance(data.get('batches'), list) else [],
-                                'target_state': data.get('target_state', {}) if isinstance(data.get('target_state'), dict) else {}
-                            }
-                        }
+        # Backward compatible migration from old single-room shape.
+        if 'rooms' not in data:
+            migrated = {
+                'rooms': {
+                    'legacy': {
+                        'room_name': 'Legacy Room',
+                        'password_hash': '',
+                        'created_by': 'legacy',
+                        'updated_by': 'legacy',
+                        'invite_token': secrets.token_urlsafe(24),
+                        'members': {},
+                        'kicked_users': [],
+                        'created_at': _utc_now_iso(),
+                        'updated_at': _utc_now_iso(),
+                        'batches': data.get('batches', []) if isinstance(data.get('batches'), list) else [],
+                        'target_state': data.get('target_state', {}) if isinstance(data.get('target_state'), dict) else {}
                     }
-                    return migrated
+                }
+            }
+            return migrated
 
-                rooms = data.get('rooms', {})
-                if not isinstance(rooms, dict):
-                    rooms = {}
-                normalized_rooms = {}
-                for room_id, room in rooms.items():
-                    if not isinstance(room, dict):
-                        continue
-                    members = room.get('members', {})
-                    if not isinstance(members, dict):
-                        members = {}
-                    normalized_members = {}
-                    for mk, mv in members.items():
-                        if not isinstance(mv, dict):
-                            continue
-                        mem_email = str(mv.get('email', mk) or mk).strip().lower()
-                        if not mem_email:
-                            continue
-                        normalized_members[mem_email] = {
-                            'email': mem_email,
-                            'display_name': str(mv.get('display_name') or mem_email),
-                            'is_admin': bool(mv.get('is_admin', False)),
-                            'joined_at': str(mv.get('joined_at') or _utc_now_iso()),
-                            'last_seen': str(mv.get('last_seen') or _utc_now_iso()),
-                        }
+        rooms = data.get('rooms', {})
+        if not isinstance(rooms, dict):
+            rooms = {}
+        normalized_rooms = {}
+        for room_id, room in rooms.items():
+            if not isinstance(room, dict):
+                continue
+            members = room.get('members', {})
+            if not isinstance(members, dict):
+                members = {}
+            normalized_members = {}
+            for mk, mv in members.items():
+                if not isinstance(mv, dict):
+                    continue
+                mem_email = str(mv.get('email', mk) or mk).strip().lower()
+                if not mem_email:
+                    continue
+                normalized_members[mem_email] = {
+                    'email': mem_email,
+                    'display_name': str(mv.get('display_name') or mem_email),
+                    'is_admin': bool(mv.get('is_admin', False)),
+                    'joined_at': str(mv.get('joined_at') or _utc_now_iso()),
+                    'last_seen': str(mv.get('last_seen') or _utc_now_iso()),
+                }
 
-                    kicked_users = room.get('kicked_users', [])
-                    if not isinstance(kicked_users, list):
-                        kicked_users = []
-                    kicked_users = [str(x).strip().lower() for x in kicked_users if str(x).strip()]
+            kicked_users = room.get('kicked_users', [])
+            if not isinstance(kicked_users, list):
+                kicked_users = []
+            kicked_users = [str(x).strip().lower() for x in kicked_users if str(x).strip()]
 
-                    normalized_rooms[str(room_id)] = {
-                        'room_name': str(room.get('room_name', room_id) or room_id),
-                        'password_hash': str(room.get('password_hash', '') or ''),
-                        'created_by': str(room.get('created_by', 'unknown') or 'unknown'),
-                        'updated_by': str(room.get('updated_by', room.get('created_by', 'unknown')) or 'unknown'),
-                        'invite_token': str(room.get('invite_token') or secrets.token_urlsafe(24)),
-                        'members': normalized_members,
-                        'kicked_users': kicked_users,
-                        'created_at': str(room.get('created_at') or _utc_now_iso()),
-                        'updated_at': str(room.get('updated_at') or _utc_now_iso()),
-                        'batches': room.get('batches', []) if isinstance(room.get('batches'), list) else [],
-                        'target_state': room.get('target_state', {}) if isinstance(room.get('target_state'), dict) else {}
-                    }
-                return {'rooms': normalized_rooms}
-        except Exception:
-            pass
+            normalized_rooms[str(room_id)] = {
+                'room_name': str(room.get('room_name', room_id) or room_id),
+                'password_hash': str(room.get('password_hash', '') or ''),
+                'created_by': str(room.get('created_by', 'unknown') or 'unknown'),
+                'updated_by': str(room.get('updated_by', room.get('created_by', 'unknown')) or 'unknown'),
+                'invite_token': str(room.get('invite_token') or secrets.token_urlsafe(24)),
+                'members': normalized_members,
+                'kicked_users': kicked_users,
+                'created_at': str(room.get('created_at') or _utc_now_iso()),
+                'updated_at': str(room.get('updated_at') or _utc_now_iso()),
+                'batches': room.get('batches', []) if isinstance(room.get('batches'), list) else [],
+                'target_state': room.get('target_state', {}) if isinstance(room.get('target_state'), dict) else {}
+            }
+        return {'rooms': normalized_rooms}
     return {'rooms': {}}
 
 def _save_epessto_store(data):
@@ -283,8 +330,16 @@ def _save_epessto_store(data):
     data = data or {}
     if 'rooms' not in data or not isinstance(data.get('rooms'), dict):
         data['rooms'] = {}
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    tmp_path = f"{path}.tmp.{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    try:
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 def _touch_epessto_room(room, actor=None):
     room['updated_at'] = _utc_now_iso()
@@ -509,10 +564,14 @@ def _serialize_from_filenames(filenames, sessions_data=None):
     }
 
 def _serialize_epessto_upload(files, room_id, room_data):
-    """Save uploaded FileStorage objects to disk, record batch in sessions.json."""
+    """Save uploaded FileStorage objects to disk, record batch in sessions.json.
+
+    Files larger than _EPESSTO_MAX_UPLOAD_BYTES are skipped and listed under 'rejected'.
+    """
     upload_dir = _get_epessto_upload_dir(room_id)
     batch_id = uuid.uuid4().hex
     batch_files = []
+    rejected = []
 
     for file_storage in files:
         filename = (file_storage.filename or '').strip()
@@ -522,7 +581,9 @@ def _serialize_epessto_upload(files, room_id, room_data):
         if not safe_name:
             continue
         save_path = os.path.join(upload_dir, safe_name)
-        file_storage.save(save_path)
+        if not save_upload_limited(file_storage, save_path):
+            rejected.append(safe_name)
+            continue
         batch_files.append(safe_name)
 
     if batch_files:
@@ -535,4 +596,7 @@ def _serialize_epessto_upload(files, room_id, room_data):
 
     all_files = _collect_epessto_all_files(room_data)
 
-    return _serialize_from_filenames(all_files, room_data)
+    payload = _serialize_from_filenames(all_files, room_data)
+    if rejected:
+        payload['rejected'] = rejected
+    return payload

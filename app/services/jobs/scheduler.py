@@ -7,8 +7,9 @@ gunicorn forks several workers; the others just serve HTTP.
 With ``DEBUG=True`` every job and daemon thread is disabled — only the NIST spectral-line
 cache warm-up still runs.
 
-Job overview (times are in the scheduler's timezone, i.e. the host's local timezone —
-``BackgroundScheduler`` is created without an explicit ``timezone``):
+Job overview (times are UTC — ``BackgroundScheduler`` is created with ``timezone='UTC'``
+so the schedule does not depend on the host's local timezone; the admin panel labels
+these jobs in UTC too):
 
     daily_backup                   03:00      pg_dump -> app/data/backups/
     daily_phot_fetch               03:30      photometry for every Inbox object
@@ -46,11 +47,16 @@ def _tracked(job_id, fn):
     def wrapper(*args, **kwargs):
         _job_status.record_start(job_id)
         try:
-            fn(*args, **kwargs)
-            _job_status.record_finish(job_id, True)
+            result = fn(*args, **kwargs)
         except Exception as _exc:
             _job_status.record_finish(job_id, False, str(_exc)[:200])
             raise
+        # Several jobs report failure by returning {'error': ...} instead of raising.
+        if isinstance(result, dict) and result.get('error'):
+            _job_status.record_finish(job_id, False, str(result['error'])[:200])
+        else:
+            _job_status.record_finish(job_id, True)
+        return result
     wrapper.__name__ = fn.__name__
     return wrapper
 
@@ -89,7 +95,7 @@ def start_background_jobs(app) -> bool:
         return False
 
     log_dir = str(LOG_DIR)
-    _scheduler = BackgroundScheduler(daemon=True)
+    _scheduler = BackgroundScheduler(daemon=True, timezone='UTC')
     _sched_state.scheduler = _scheduler
     if not config.DEBUG:
         _scheduler.add_job(_tracked('daily_backup', run_daily_backup),                        'cron', hour=3, minute=0,  id='daily_backup')

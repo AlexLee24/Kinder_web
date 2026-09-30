@@ -313,7 +313,20 @@ def get_user_by_api_key(api_key: str) -> dict | None:
             (api_key,)
         )
         row = cur.fetchone()
-    return _user_row_to_dict(row) if row else None
+        if not row:
+            return None
+        d = _user_row_to_dict(row)
+        cur.execute(
+            "SELECT g.name FROM auth.usr_group ug "
+            "JOIN auth.groups g ON ug.group_id = g.group_id "
+            "WHERE ug.usr_id = %s AND ug.status = 'joined' ORDER BY g.name",
+            (d['usr_id'],)
+        )
+        d['groups'] = [r['name'] for r in cur.fetchall()]
+    # Same rule the web session uses (core.auth.refresh_user_session).
+    d['is_admin'] = bool(d.get('is_admin'))
+    d['is_great_lab_member'] = 'GREAT_Lab' in d['groups'] or d['is_admin']
+    return d
 
 
 # ---------------------------------------------------------------------------
@@ -815,11 +828,19 @@ def revoke_object_permission(object_name: str, group_name: str) -> bool:
 
 
 def check_object_access(object_name: str, user_email: str | None = None,
-                        user_roles: int = 0) -> bool:
-    """Return True if the user can access the object."""
-    # Admins always have access
-    if user_roles >= 50:
-        return True
+                        user_roles: int | None = None) -> bool:
+    """Return True if the user can open the object.
+
+    Rules (same as ``transient._build_where(apply_permissions=True)``):
+      * unknown object                       -> False
+      * permission 'public' (or unset/other) -> True for everyone
+      * restricted and ``user_email`` None    -> False
+      * admin (``user_roles`` >= 50, or — when ``user_roles`` is None — the
+        ``auth.users.roles`` of ``user_email`` >= 50) -> True
+      * permission 'login'                    -> True (any logged-in user)
+      * permission 'groups'                   -> True only for a joined member of
+        one of the object's groups (an empty group list means admins only)
+    """
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
@@ -828,27 +849,31 @@ def check_object_access(object_name: str, user_email: str | None = None,
                 (object_name,)
             )
             row = cur.fetchone()
-        if row is None:
-            return False
-        perm, groups = row
-        if perm == 'public':
-            return True
-        if user_email is None:
-            return False
-        if perm == 'login':
-            return True
-        if perm == 'groups' and groups:
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT 1 FROM auth.usr_group ug "
-                    "JOIN auth.users u ON ug.usr_id = u.usr_id "
-                    "WHERE u.email = %s AND ug.group_id = ANY(%s) AND ug.status = 'joined' "
-                    "LIMIT 1",
-                    (user_email, groups)
-                )
-                return cur.fetchone() is not None
-        return False
+            if row is None:
+                return False
+            perm, groups = row
+            if perm not in ('groups', 'login'):
+                return True
+            if not user_email:
+                return False
+            if user_roles is None:
+                cur.execute("SELECT roles FROM auth.users WHERE email = %s", (user_email,))
+                r = cur.fetchone()
+                user_roles = (r[0] or 0) if r else 0
+            if user_roles >= 50:
+                return True
+            if perm == 'login':
+                return True
+            if not groups:
+                return False
+            cur.execute(
+                "SELECT 1 FROM auth.usr_group ug "
+                "JOIN auth.users u ON ug.usr_id = u.usr_id "
+                "WHERE u.email = %s AND ug.group_id = ANY(%s) AND ug.status = 'joined' "
+                "LIMIT 1",
+                (user_email, groups)
+            )
+            return cur.fetchone() is not None
     except Exception as e:
         logger.error("check_object_access: %s", e)
         return False
@@ -1041,7 +1066,9 @@ def filter_by_source_permissions(object_name: str, data_type: str,
                     if user_email is not None:
                         group_ids = d.get('groups') or []
                         default_group_names = {id_to_name[gid] for gid in group_ids if gid in id_to_name}
-                        if not default_group_names or (user_group_set & default_group_names):
+                        # Empty / unresolvable group list = nobody but admins
+                        # (matches the admin UI semantics).
+                        if user_group_set & default_group_names:
                             allowed_sources.add(src)
             else:
                 # System default: TNS sources are public, everything else needs login
@@ -1058,8 +1085,9 @@ def filter_by_source_permissions(object_name: str, data_type: str,
             ]
         return [src for src in source_list if src in allowed_sources]
     except Exception as e:
+        # Fail closed: permissions could not be determined, so show nothing.
         logger.error("filter_by_source_permissions: %s", e)
-        return source_list
+        return []
 
 
 # ---------------------------------------------------------------------------

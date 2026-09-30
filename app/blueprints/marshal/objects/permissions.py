@@ -1,4 +1,5 @@
 """Object detail page and per-object data APIs (blueprint name 'marshal_bp') — permissions (split from object_routes.py)."""
+import logging
 import urllib.parse
 from flask import session, request, jsonify
 from app.db import get_tns_db_connection
@@ -14,6 +15,7 @@ from app.db.auth import (
 from . import objects_bp
 from app.core.auth import admin_required, login_required
 
+logger = logging.getLogger(__name__)
 
 # ===============================================================================
 # SOURCE PERMISSIONS (per telescope/instrument access control)
@@ -25,27 +27,30 @@ def get_object_sources(object_name):
     object_name = urllib.parse.unquote(object_name)
     try:
         conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT DISTINCT COALESCE(p.source, 'Unknown') as src "
-            "FROM transient.photometry p "
-            "JOIN transient.objects o ON p.obj_id = o.obj_id "
-            "WHERE o.name ILIKE %s ORDER BY src",
-            (object_name,)
-        )
-        phot_sources = [r[0] for r in cursor.fetchall()]
-        cursor.execute(
-            "SELECT DISTINCT COALESCE(s.source, 'Unknown') as src "
-            "FROM transient.spectroscopy s "
-            "JOIN transient.objects o ON s.obj_id = o.obj_id "
-            "WHERE o.name ILIKE %s ORDER BY src",
-            (object_name,)
-        )
-        spec_sources = [r[0] for r in cursor.fetchall()]
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT COALESCE(p.source, 'Unknown') as src "
+                "FROM transient.photometry p "
+                "JOIN transient.objects o ON p.obj_id = o.obj_id "
+                "WHERE o.name ILIKE %s ORDER BY src",
+                (object_name,)
+            )
+            phot_sources = [r[0] for r in cursor.fetchall()]
+            cursor.execute(
+                "SELECT DISTINCT COALESCE(s.source, 'Unknown') as src "
+                "FROM transient.spectroscopy s "
+                "JOIN transient.objects o ON s.obj_id = o.obj_id "
+                "WHERE o.name ILIKE %s ORDER BY src",
+                (object_name,)
+            )
+            spec_sources = [r[0] for r in cursor.fetchall()]
+        finally:
+            conn.close()
         return jsonify({'success': True, 'phot_sources': phot_sources, 'spec_sources': spec_sources})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/source-permissions')
 @admin_required
@@ -79,7 +84,8 @@ def get_source_permissions_api(object_name):
                 defaults.append({'source': p['source'], 'permission': 'groups', 'allowed_groups': group_names})
         return jsonify({'success': True, 'permissions': perms, 'defaults': defaults})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/source-permissions/batch', methods=['POST'])
 @admin_required
@@ -113,7 +119,8 @@ def set_source_permissions_batch_api(object_name):
             set_source_permissions_batch(object_name, dt, perms)
         return jsonify({'success': True})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 # ===============================================================================
 # PERMISSIONS
@@ -131,10 +138,11 @@ def get_groups_api():
             'groups': groups_list
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/permissions')
-@login_required(error='Access denied', status=403)
+@admin_required
 def get_object_permissions_api(object_name):
     
     try:
@@ -145,7 +153,8 @@ def get_object_permissions_api(object_name):
             'permissions': permissions
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/permissions', methods=['POST'])
 @admin_required
@@ -167,7 +176,8 @@ def add_object_permission_api(object_name):
         else:
             return jsonify({'error': 'Failed to grant permission (maybe already exists)'}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/permissions', methods=['DELETE'])
 @admin_required
@@ -189,4 +199,5 @@ def remove_object_permission_api(object_name):
         else:
             return jsonify({'error': 'Permission not found'}), 404
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("permissions API error: %s", e)
+        return jsonify({'error': 'Internal server error'}), 500

@@ -148,19 +148,21 @@ def _db_lookup_coords(obj_name: str):
     from app.db.transient import search_tns_objects
 
     conn = get_tns_db_connection()
-    cur  = conn.cursor()
     row  = None
-    for q in [
-        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
-        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
-    ]:
-        cur.execute(q, (obj_name,))
-        row = cur.fetchone()
-        if row:
-            cols = [d[0] for d in cur.description]
-            row  = dict(zip(cols, row))
-            break
-    conn.close()
+    try:
+        cur  = conn.cursor()
+        for q in [
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+        ]:
+            cur.execute(q, (obj_name,))
+            row = cur.fetchone()
+            if row:
+                cols = [d[0] for d in cur.description]
+                row  = dict(zip(cols, row))
+                break
+    finally:
+        conn.close()
 
     if not row:
         for r in search_tns_objects(search_term=obj_name, limit=20):
@@ -433,19 +435,21 @@ def api_public_object(object_name):
         from app.db.transient import search_tns_objects
 
         conn = get_tns_db_connection()
-        cur  = conn.cursor()
         obj  = None
-        for q in [
-            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
-            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
-        ]:
-            cur.execute(q, (object_name,))
-            row = cur.fetchone()
-            if row:
-                cols = [d[0] for d in cur.description]
-                obj  = dict(zip(cols, row))
-                break
-        conn.close()
+        try:
+            cur  = conn.cursor()
+            for q in [
+                f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+                f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+            ]:
+                cur.execute(q, (object_name,))
+                row = cur.fetchone()
+                if row:
+                    cols = [d[0] for d in cur.description]
+                    obj  = dict(zip(cols, row))
+                    break
+        finally:
+            conn.close()
 
         if not obj:
             for r in search_tns_objects(search_term=object_name, limit=50):

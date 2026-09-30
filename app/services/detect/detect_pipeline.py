@@ -11,14 +11,69 @@ import logging
 import os
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX: fall back to the per-process lock only
+    fcntl = None
 
 logger = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 ENABLED = os.getenv("DETECT_IN_WEB", "1").strip().lower() not in ("0", "false", "no", "off")
-from app.paths import DETECT_DIR as _DETECT_DIR
+from app.paths import DETECT_DIR as _DETECT_DIR, DATA_DIR as _DATA_DIR
 DETECT_DIR = str(_DETECT_DIR)   # app/vendor/DETECT
+# _LOCK only serialises threads of one process; this file lock (flock) serialises runs
+# across gunicorn workers and the scheduler process.
+_LOCK_FILE = os.path.join(str(_DATA_DIR), "detect_pipeline.lock")
+
+
+class DetectBusyError(RuntimeError):
+    """Raised by run_single when another DETECT run holds the pipeline lock."""
+
+
+@contextmanager
+def _pipeline_lock(blocking: bool = True):
+    """Hold both the in-process lock and the cross-process file lock.
+
+    blocking=False raises DetectBusyError instead of waiting (request-triggered runs)."""
+    if not _LOCK.acquire(blocking=blocking):
+        raise DetectBusyError("DETECT is busy with another run; please try again in a few minutes.")
+    try:
+        if fcntl is None:
+            yield
+            return
+        os.makedirs(os.path.dirname(_LOCK_FILE), exist_ok=True)
+        with open(_LOCK_FILE, "a+") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+            except BlockingIOError:
+                raise DetectBusyError(
+                    "DETECT is busy with another run; please try again in a few minutes.") from None
+            try:
+                yield
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+    finally:
+        _LOCK.release()
+
+
+def _file_lock_held() -> bool:
+    """True when some process (this one included) currently holds the DETECT file lock."""
+    if fcntl is None or not os.path.exists(_LOCK_FILE):
+        return False
+    try:
+        with open(_LOCK_FILE, "a+") as fh:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    return False
 
 # What this process is running / ran last (the admin panel reads it; completed runs
 # are also persisted through app.services.jobs.job_status so every gunicorn worker sees them).
@@ -89,7 +144,7 @@ def run_for_names(names, label="Web") -> dict:
     if not ENABLED or not names:
         return {}
     from function.run_detect import run_detect_for_names
-    with _LOCK, _Run(label, len(names)):
+    with _pipeline_lock(), _Run(label, len(names)):
         _pin_db_env()
         res = run_detect_for_names(names, group_name=label)
         counts = _summary(res, f"{label} ({len(names)} objects)")
@@ -98,11 +153,14 @@ def run_for_names(names, label="Web") -> dict:
 
 
 def run_single(name: str) -> dict:
-    """The object page's Run / Refresh: returns DETECT's host_summary entry for the object."""
+    """The object page's Run / Refresh: returns DETECT's host_summary entry for the object.
+
+    Request-triggered, so it does not wait for a running import / re-screen: raises
+    DetectBusyError (a RuntimeError with a user-facing message) when the pipeline is busy."""
     if not ENABLED:
         return {}
     from function.run_detect import run_detect_single
-    with _LOCK, _Run(f"object {name}", 1):
+    with _pipeline_lock(blocking=False), _Run(f"object {name}", 1):
         _pin_db_env()
         out = run_detect_single(name)
         _state["running"]["counts"] = {"objects": 1, (out.get("host_status") or "none"): 1}
@@ -115,7 +173,7 @@ def run_followups() -> dict:
     if not ENABLED:
         return {}
     from function.run_detect import run_detect_followups
-    with _LOCK, _Run("Follow-up"):
+    with _pipeline_lock(), _Run("Follow-up"):
         _pin_db_env()
         res = run_detect_followups()
         counts = _summary(res, "Follow-up")
@@ -129,7 +187,7 @@ def run_recent(hours: float = 2.0) -> dict:
     if not ENABLED:
         return {}
     from function.run_detect import run_detect_recent
-    with _LOCK, _Run(f"recent {hours:g}h"):
+    with _pipeline_lock(), _Run(f"recent {hours:g}h"):
         _pin_db_env()
         res = run_detect_recent(hours)
         counts = _summary(res, f"recent {hours}h")
@@ -139,7 +197,7 @@ def run_recent(hours: float = 2.0) -> dict:
 
 
 def is_running() -> bool:
-    return _state["running"] is not None or _LOCK.locked()
+    return _state["running"] is not None or _LOCK.locked() or _file_lock_held()
 
 
 def status() -> dict:
@@ -148,9 +206,10 @@ def status() -> dict:
     (this process), and what the database says about the latest run overall."""
     version = {}
     try:
-        for line in open(os.path.join(DETECT_DIR, "VERSION")).read().splitlines():
-            k, _, v = line.partition(":")
-            version[k.strip()] = v.strip()
+        with open(os.path.join(DETECT_DIR, "VERSION")) as fh:
+            for line in fh.read().splitlines():
+                k, _, v = line.partition(":")
+                version[k.strip()] = v.strip()
     except OSError:
         pass
     data_dir = os.getenv("DETECT_DATA_DIR") or os.path.join(DETECT_DIR, "data")

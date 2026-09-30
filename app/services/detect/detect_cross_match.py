@@ -275,19 +275,8 @@ def save_detect_results(target_name, results):
                     (obj_id,)
                 )
 
-                # Ensure extra columns exist
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_data JSONB"
-                )
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION"
-                )
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION"
-                )
+                # Extra columns (match_data/match_ra/match_dec/flag) are added once at
+                # startup by app.db._ensure_extra_tables, not per request.
 
                 # Deduplicate: same catalog + separation within 0.5 arcsec
                 seen_keys = set()
@@ -372,22 +361,6 @@ def get_detect_results_for_target(target_name):
     try:
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE"
-                )
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_data JSONB"
-                )
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION"
-                )
-                cur.execute(
-                    "ALTER TABLE transient.cross_matches "
-                    "ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION"
-                )
                 cur.execute(
                     "SELECT c.match_id AS id, c.catalog AS catalog_name, "
                     "c.separation AS separation_arcsec, c.updated_date AS created_at, "

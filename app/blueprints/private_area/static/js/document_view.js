@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             contentDiv.innerHTML = `
                 <div class="loading-doc" style="color: #ef4444;">
-                    Error loading document: ${err.message}
+                    Error loading document: ${String(err.message || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}
                 </div>
             `;
             setStatus('Failed to load document.', true);

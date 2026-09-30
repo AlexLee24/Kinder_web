@@ -27,12 +27,22 @@ def allowed_file(filename):
     """Check if file is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def thumbnail_name(filename):
+    """'photo.v2.jpg' -> 'photo.v2_thumb.jpg' (only the extension dot is touched)."""
+    base, ext = os.path.splitext(filename)
+    return f'{base}_thumb{ext}'
+
+
+def is_thumbnail(filename):
+    return os.path.splitext(filename)[0].endswith('_thumb')
+
+
 def create_thumbnail(image_path):
     """Create thumbnail from image."""
     try:
         img = Image.open(image_path)
         img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
-        thumbnail_path = image_path.replace('.', '_thumb.')
+        thumbnail_path = thumbnail_name(image_path)
         img.save(thumbnail_path, quality=85, optimize=True)
         return thumbnail_path
     except Exception as e:
@@ -129,41 +139,7 @@ def profile():
                          user_data=user_data,
                          all_groups=all_groups)
 
-from app.db.auth import create_group_request, remove_user_from_group, group_exists
-
-@basic_bp.route('/api/profile/join_group', methods=['POST'])
-def api_join_group():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-        
-    data = request.json
-    group_name = data.get('group_name')
-    
-    if not group_name or not group_exists(group_name):
-        return jsonify({'success': False, 'error': 'Invalid group name'}), 400
-        
-    user_email = session['user']['email']
-    if create_group_request(user_email, group_name):
-        return jsonify({'success': True, 'message': f'Request to join {group_name} sent.'})
-    else:
-        return jsonify({'success': False, 'error': 'Request already exists or failed to create.'})
-
-@basic_bp.route('/api/profile/leave_group', methods=['POST'])
-def api_leave_group():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-        
-    data = request.json
-    group_name = data.get('group_name')
-    
-    if not group_name:
-        return jsonify({'success': False, 'error': 'Group name required'}), 400
-        
-    user_email = session['user']['email']
-    if remove_user_from_group(user_email, group_name):
-        return jsonify({'success': True, 'message': f'Left {group_name}.'})
-    else:
-        return jsonify({'success': False, 'error': 'Failed to leave group.'})
+# /api/profile/join_group and /api/profile/leave_group live in the auth blueprint.
 
 
 @basic_bp.route('/api/gallery')
@@ -172,8 +148,10 @@ def api_gallery_list():
     try:
         items = []
         if os.path.exists(GALLERY_DIR):
-            for filename in sorted(os.listdir(GALLERY_DIR)):
-                if filename.endswith('_thumb.jpg') or filename.endswith('_thumb.png'):
+            all_files = sorted(os.listdir(GALLERY_DIR))
+            existing = set(all_files)
+            for filename in all_files:
+                if is_thumbnail(filename):
                     continue
                 if allowed_file(filename):
                     filepath = os.path.join(GALLERY_DIR, filename)
@@ -194,8 +172,8 @@ def api_gallery_list():
                         'photographer': metadata.get('photographer', 'Anonymous'),
                         'span': metadata.get('span', 'col-span-1 row-span-1'),
                         'image_url': url_for('basic.gallery_image', filename=filename),
-                        'thumbnail_url': url_for('basic.gallery_image', filename=filename.replace('.', '_thumb.'))
-                            if filename + '_thumb' in os.listdir(GALLERY_DIR) else url_for('basic.gallery_image', filename=filename)
+                        'thumbnail_url': url_for('basic.gallery_image', filename=thumbnail_name(filename))
+                            if thumbnail_name(filename) in existing else url_for('basic.gallery_image', filename=filename)
                     })
         return jsonify({'items': items, 'success': True})
     except Exception as e:
@@ -282,7 +260,7 @@ def api_gallery_delete(item_id):
         os.remove(filepath)
 
         # Delete thumbnail
-        thumb_path = filepath.replace('.', '_thumb.')
+        thumb_path = thumbnail_name(filepath)
         if os.path.exists(thumb_path):
             os.remove(thumb_path)
 

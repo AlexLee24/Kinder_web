@@ -107,11 +107,22 @@ def _query_pg_connections() -> dict:
                       AND usename = %s
                 """, (DB_USER,))
                 row = cur.fetchone()
+                # Server-wide usage vs max_connections: covers every gunicorn worker and
+                # other clients, unlike this process's own pool stats.
+                cur.execute("""
+                    SELECT
+                        (SELECT COUNT(*) FROM pg_stat_activity
+                          WHERE backend_type = 'client backend'),
+                        current_setting('max_connections')::int
+                """)
+                srv = cur.fetchone()
                 return {
                     "total":       row[0],
                     "active":      row[1],
                     "idle":        row[2],
                     "idle_in_tx":  row[3],
+                    "server_total": srv[0],
+                    "max_connections": srv[1],
                 }
     except Exception as exc:
         logger.warning("db_monitor: could not query pg_stat_activity: %s", exc)
@@ -128,11 +139,18 @@ def check_and_alert():
 
     stats   = get_pool_stats()
     pg_info = _query_pg_connections()
-    pct     = stats.get("usage_pct", 0.0)
+    pool_pct = stats.get("usage_pct", 0.0)   # this process's pool only
+    server_pct = None
+    if pg_info.get("max_connections"):
+        server_pct = 100.0 * pg_info.get("server_total", 0) / pg_info["max_connections"]
+    # The pool stats only see the scheduler process's own pool; the server-side count
+    # vs max_connections sees every worker, so alert on whichever is higher.
+    pct = max(pool_pct, server_pct or 0.0)
 
     logger.info(
-        "db_monitor: pool in_use=%d/%d (%.1f%%) | pg active=%s idle=%s idle_in_tx=%s",
-        stats.get("in_use", 0), stats.get("pool_max", 0), pct,
+        "db_monitor: pool in_use=%d/%d (%.1f%%) | server %s/%s | pg active=%s idle=%s idle_in_tx=%s",
+        stats.get("in_use", 0), stats.get("pool_max", 0), pool_pct,
+        pg_info.get("server_total", "?"), pg_info.get("max_connections", "?"),
         pg_info.get("active", "?"), pg_info.get("idle", "?"),
         pg_info.get("idle_in_tx", "?"),
     )
@@ -152,7 +170,7 @@ def check_and_alert():
         return
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    subject = f"{emoji} Kinder DB {level}: pool {pct:.1f}% in use"
+    subject = f"{emoji} Kinder DB {level}: {pct:.1f}% of connections in use"
     body = f"""\
 {emoji} Kinder Web — Database Connection {level}
 Generated: {now_str}
@@ -160,9 +178,11 @@ Generated: {now_str}
 ── Pool (psycopg2 ThreadedConnectionPool) ──────────────────
   In-use   : {stats.get('in_use', '?')} / {stats.get('pool_max', '?')}
   Idle      : {stats.get('idle', '?')}
-  Usage     : {pct:.1f}%  (WARN≥{WARN_PCT}%  CRIT≥{CRIT_PCT}%)
+  Usage     : {pool_pct:.1f}%  (this process's pool only)
 
 ── Server-side pg_stat_activity ────────────────────────────
+  Server    : {pg_info.get('server_total', '?')} / {pg_info.get('max_connections', '?')} max_connections
+  Alert on  : {pct:.1f}%  (WARN≥{WARN_PCT}%  CRIT≥{CRIT_PCT}%)
   Total     : {pg_info.get('total', '?')}
   Active    : {pg_info.get('active', '?')}
   Idle      : {pg_info.get('idle', '?')}

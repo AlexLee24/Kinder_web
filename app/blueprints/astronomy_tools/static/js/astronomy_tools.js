@@ -466,7 +466,10 @@ function showDECResult(container, result) {
 }
 
 function showError(container, message) {
-    container.innerHTML = `<div class="error-message">${message}</div>`;
+    const safe = String(message == null ? '' : message)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    container.innerHTML = `<div class="error-message">${safe}</div>`;
 }
 
 document.addEventListener('DOMContentLoaded', function() {

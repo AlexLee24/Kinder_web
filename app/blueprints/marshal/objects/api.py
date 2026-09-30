@@ -10,9 +10,16 @@ from app.db.transient import (
 from app.db import get_tns_db_connection, OBJECT_COMPAT_COLS
 import logging
 from app.core.auth import admin_required
+from app.db.auth import check_object_access
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
+
+
+def _can_read_object(obj) -> bool:
+    """Object-level permission check for the session user (anonymous included)."""
+    user = session.get('user') or {}
+    return check_object_access((obj.get('name') or '').strip(), user.get('email'))
 
 
 # ===============================================================================
@@ -25,24 +32,25 @@ def api_get_object_tns_format(year, letters):
         object_name = f"{year}{letters}"
         
         # Try exact match first using direct SQL query
-        conn = get_tns_db_connection()  
-        cursor = conn.cursor()
-        
-        # Exact match query - match name exactly (case insensitive)
-        cursor.execute(f"""
-            SELECT {OBJECT_COMPAT_COLS}
-            FROM transient.objects o
-            WHERE o.name ILIKE %s
-        """, (object_name,))
-        
-        result = cursor.fetchone()
-        matching_obj = None
-        
-        if result:
-            columns = [desc[0] for desc in cursor.description]
-            matching_obj = dict(zip(columns, result))
-        
-        conn.close()
+        conn = get_tns_db_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Exact match query - match name exactly (case insensitive)
+            cursor.execute(f"""
+                SELECT {OBJECT_COMPAT_COLS}
+                FROM transient.objects o
+                WHERE o.name ILIKE %s
+            """, (object_name,))
+
+            result = cursor.fetchone()
+            matching_obj = None
+
+            if result:
+                columns = [desc[0] for desc in cursor.description]
+                matching_obj = dict(zip(columns, result))
+        finally:
+            conn.close()
         
         # If no exact match, fall back to fuzzy search
         if not matching_obj:
@@ -65,6 +73,9 @@ def api_get_object_tns_format(year, letters):
         
         if not matching_obj:
             return jsonify({'success': False, 'error': 'Object not found'}), 404
+
+        if not _can_read_object(matching_obj):
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         return jsonify({
             'success': True,
@@ -75,7 +86,7 @@ def api_get_object_tns_format(year, letters):
         logger.error(f"Error fetching TNS object {year}{letters}: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/status', methods=['POST'])
@@ -133,9 +144,6 @@ def get_object_api(object_name):
         update_object_abs_mag(object_name)
         
         # First try exact match
-        conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        
         # Get exact match using SQL - try multiple queries
         exact_queries = [
             # Full name match (prefix + name)
@@ -147,18 +155,22 @@ def get_object_api(object_name):
             FROM transient.objects o
             WHERE o.name ILIKE %s"""
         ]
-        
+
         exact_result = None
-        for query in exact_queries:
-            cursor.execute(query, (object_name,))
-            exact_result = cursor.fetchone()
-            if exact_result:
-                break
-        
-        conn.close()
-        
+        columns = []
+        conn = get_tns_db_connection()
+        try:
+            cursor = conn.cursor()
+            for query in exact_queries:
+                cursor.execute(query, (object_name,))
+                exact_result = cursor.fetchone()
+                if exact_result:
+                    columns = [desc[0] for desc in cursor.description]
+                    break
+        finally:
+            conn.close()
+
         if exact_result:
-            columns = [desc[0] for desc in cursor.description]
             obj = dict(zip(columns, exact_result))
         else:
             # Fallback to search function with more results
@@ -177,6 +189,9 @@ def get_object_api(object_name):
             
             if not obj:
                 return jsonify({'error': 'Object not found'}), 404
+
+        if not _can_read_object(obj):
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
         
         full_name = (obj.get('name_prefix', '') + obj.get('name', '')).strip()
         if not full_name and obj.get('name'):
@@ -188,12 +203,12 @@ def get_object_api(object_name):
             'full_name': full_name
         })
             
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }), 500
 
 @objects_bp.route('/api/object/<object_name>/edit', methods=['POST'])
@@ -210,90 +225,86 @@ def api_edit_object(object_name):
         obj_id = data.get('objid')
 
         conn = get_tns_db_connection()
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # If no objid, resolve from URL param (object_name)
-        if not obj_id:
+            # If no objid, resolve from URL param (object_name)
+            if not obj_id:
+                cursor.execute(
+                    "SELECT obj_id FROM transient.objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                    (urllib.parse.unquote(object_name), urllib.parse.unquote(object_name))
+                )
+                row = cursor.fetchone()
+                if row:
+                    obj_id = row[0]
+
+            if not obj_id:
+                return jsonify({'error': 'Object ID (objid) is required and could not be resolved'}), 400
+
+            updates = {}
+
+            # redshift
+            if 'redshift' in data:
+                v = data['redshift']
+                if v is not None and v != '':
+                    try:
+                        v = float(v)
+                        if v < 0:
+                            return jsonify({'error': 'Redshift must be positive'}), 400
+                    except (ValueError, TypeError):
+                        return jsonify({'error': 'Invalid redshift value'}), 400
+                else:
+                    v = None
+                updates['redshift'] = v
+
+            # internal_name (new schema column name)
+            if 'internal_names' in data:
+                v = data['internal_names']
+                updates['internal_name'] = v.strip() if isinstance(v, str) and v.strip() else None
+
+            # tag (array in new schema — convert from comma-separated string)
+            if 'tags' in data:
+                v = data['tags']
+                if isinstance(v, str) and v.strip():
+                    # Allow only alphanumeric, comma, space, hyphen, underscore
+                    import re as _re
+                    if not _re.match(r'^[A-Za-z0-9,\s\-_]+$', v.strip()):
+                        return jsonify({'error': 'Tags contain invalid characters'}), 400
+                    updates['tag'] = [t.strip() for t in v.split(',') if t.strip()]
+                else:
+                    # Keep NOT NULL contract on transient.objects.tag when clearing tags.
+                    updates['tag'] = []
+
+            if not updates:
+                return jsonify({'error': 'No valid fields to update'}), 400
+
+            set_clauses = [f"{k} = %s" for k in updates.keys()]
+            params = list(updates.values()) + [int(obj_id)]
+
             cursor.execute(
-                "SELECT obj_id FROM transient.objects WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
-                (urllib.parse.unquote(object_name), urllib.parse.unquote(object_name))
+                f"UPDATE transient.objects SET {', '.join(set_clauses)} WHERE obj_id = %s",
+                params
             )
-            row = cursor.fetchone()
-            if row:
-                obj_id = row[0]
+            rows_affected = cursor.rowcount
 
-        if not obj_id:
+            if rows_affected == 0:
+                conn.rollback()
+                return jsonify({'error': 'Object not found'}), 404
+
+            conn.commit()
+
+            return jsonify({
+                'success': True,
+                'message': 'Object updated successfully',
+                'updated_fields': list(updates.keys())
+            })
+        finally:
             conn.close()
-            return jsonify({'error': 'Object ID (objid) is required and could not be resolved'}), 400
 
-        updates = {}
-
-        # redshift
-        if 'redshift' in data:
-            v = data['redshift']
-            if v is not None and v != '':
-                try:
-                    v = float(v)
-                    if v < 0:
-                        conn.close()
-                        return jsonify({'error': 'Redshift must be positive'}), 400
-                except (ValueError, TypeError):
-                    conn.close()
-                    return jsonify({'error': 'Invalid redshift value'}), 400
-            else:
-                v = None
-            updates['redshift'] = v
-
-        # internal_name (new schema column name)
-        if 'internal_names' in data:
-            v = data['internal_names']
-            updates['internal_name'] = v.strip() if isinstance(v, str) and v.strip() else None
-
-        # tag (array in new schema — convert from comma-separated string)
-        if 'tags' in data:
-            v = data['tags']
-            if isinstance(v, str) and v.strip():
-                # Allow only alphanumeric, comma, space, hyphen, underscore
-                import re as _re
-                if not _re.match(r'^[A-Za-z0-9,\s\-_]+$', v.strip()):
-                    conn.close()
-                    return jsonify({'error': 'Tags contain invalid characters'}), 400
-                updates['tag'] = [t.strip() for t in v.split(',') if t.strip()]
-            else:
-                # Keep NOT NULL contract on transient.objects.tag when clearing tags.
-                updates['tag'] = []
-
-        if not updates:
-            conn.close()
-            return jsonify({'error': 'No valid fields to update'}), 400
-
-        set_clauses = [f"{k} = %s" for k in updates.keys()]
-        params = list(updates.values()) + [int(obj_id)]
-
-        cursor.execute(
-            f"UPDATE transient.objects SET {', '.join(set_clauses)} WHERE obj_id = %s",
-            params
-        )
-        rows_affected = cursor.rowcount
-
-        if rows_affected == 0:
-            conn.rollback()
-            conn.close()
-            return jsonify({'error': 'Object not found'}), 404
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'message': f'Object updated successfully',
-            'updated_fields': list(updates.keys())
-        })
-
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+        return jsonify({'error': 'Database error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/delete', methods=['DELETE'])
 def api_delete_object(object_name):
@@ -301,74 +312,65 @@ def api_delete_object(object_name):
     if 'user' not in session or not session['user'].get('is_admin'):
         return jsonify({'error': 'Access denied - Admin privileges required'}), 403
     
+    object_name = urllib.parse.unquote(object_name)
     try:
-        object_name = urllib.parse.unquote(object_name)
-        
         conn = get_tns_db_connection()
+    except Exception:
+        logger.exception("delete object: cannot get DB connection")
+        return jsonify({'error': 'Database error'}), 500
+    try:
         cursor = conn.cursor()
-        
-        # First check if object exists
+
+        # Resolve every matching object (prefix+name or bare name)
         cursor.execute("""
-            SELECT name_prefix, name, type
+            SELECT obj_id
             FROM transient.objects
             WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
                OR name = %s
         """, (object_name, object_name))
-        
-        existing_object = cursor.fetchone()
-        if not existing_object:
-            conn.close()
+        obj_ids = [r[0] for r in cursor.fetchall()]
+        if not obj_ids:
             return jsonify({'error': 'Object not found'}), 404
-        
-        # Delete from transient.objects (CASCADE will handle related rows if FK set up)
-        cursor.execute("""
-            DELETE FROM transient.objects
-            WHERE (COALESCE(name_prefix, '') || COALESCE(name, '')) = %s
-               OR name = %s
-        """, (object_name, object_name))
-        
-        rows_affected = cursor.rowcount
-        
-        if rows_affected == 0:
-            conn.close()
+
+        # Children first (FKs cascade too, but be explicit), then the object itself,
+        # all in one transaction.
+        for table in ('photometry', 'spectroscopy', 'comments', 'cross_matches',
+                      'target_images', 'custom_targets', 'object_views',
+                      'object_views_detail'):
+            cursor.execute("SAVEPOINT child_delete")
+            try:
+                cursor.execute(
+                    f"DELETE FROM transient.{table} WHERE obj_id = ANY(%s)",
+                    (obj_ids,)
+                )
+                cursor.execute("RELEASE SAVEPOINT child_delete")
+            except Exception as child_err:
+                # Optional table missing on an older DB: skip it, keep the transaction usable.
+                cursor.execute("ROLLBACK TO SAVEPOINT child_delete")
+                logger.warning("delete object %s: skipping %s: %s", object_name, table, child_err)
+
+        cursor.execute("DELETE FROM transient.objects WHERE obj_id = ANY(%s)", (obj_ids,))
+        if cursor.rowcount == 0:
+            conn.rollback()
             return jsonify({'error': 'Failed to delete object'}), 500
-        
-        # Clean up related data explicitly
-        try:
-            obj_name = existing_object[1] or object_name
-            cursor.execute(
-                "DELETE FROM transient.photometry WHERE obj_id IN "
-                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
-                (obj_name,)
-            )
-            cursor.execute(
-                "DELETE FROM transient.spectroscopy WHERE obj_id IN "
-                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
-                (obj_name,)
-            )
-            cursor.execute(
-                "DELETE FROM transient.comments WHERE obj_id IN "
-                "(SELECT obj_id FROM transient.objects WHERE name = %s)",
-                (obj_name,)
-            )
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
-        
+
         conn.commit()
-        conn.close()
-        
+
         return jsonify({
             'success': True,
             'message': f'Object {object_name} deleted successfully',
             'object_name': object_name
         })
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logger.exception("Error deleting object %s", object_name)
+        return jsonify({'error': 'Database error'}), 500
+    finally:
+        conn.close()
 
 @objects_bp.route('/api/object/<object_name>/status', methods=['POST'])
 @admin_required

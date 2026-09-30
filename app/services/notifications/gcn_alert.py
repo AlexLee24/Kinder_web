@@ -238,7 +238,8 @@ def _handle_ep_alert(raw_value, slack_client, channel_too, channel_gcn,
         return
 
     utc_now  = datetime.now(timezone.utc)
-    is_night = not (10 <= utc_now.hour < 22)
+    # Lulin is UTC+8: local night (~18:00-06:00) is UTC 10:00-22:00.
+    is_night = 10 <= utc_now.hour < 22
 
     if Ymd == suffix_state['day']:
         suffix_state['count'] += 1
@@ -256,7 +257,7 @@ def _handle_ep_alert(raw_value, slack_client, channel_too, channel_gcn,
         f"```\n{script}```\n"
         "Note: LOT可能也會要觀測，詳細請等待人員確認，先使用SLT觀測，謝謝！"
     )
-    if not is_night:
+    if is_night:
         notice = f"We can trigger the observation of {object_name} tonight.\n{'='*35}\n" + notice
 
     plot_file = None

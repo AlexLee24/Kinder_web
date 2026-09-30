@@ -244,8 +244,8 @@
                             <span class="request-time">{{ req.api_key_requested_at[:16] if req.api_key_requested_at else '' }}</span>
                         </div>
                         <div class="request-actions">
-                            <button class="btn-approve" onclick="adminIssueApiKey('{{ req.email }}', this)">Assign Key</button>
-                            <button class="btn-reject"  onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">Dismiss</button>
+                            <button class="btn-approve" onclick='adminIssueApiKey({{ req.email|tojson }}, this)'>Assign Key</button>
+                            <button class="btn-reject"  onclick='adminDismissApiKeyRequest({{ req.email|tojson }}, this)'>Dismiss</button>
                         </div>
                     </div>
                     {% endfor %}
@@ -308,11 +308,11 @@
                                         <span class="cell-muted" style="font-size:0.8rem;">None</span>
                                     {% endif %}
                                     {% if email != session.user.email %}
-                                        <button class="btn btn-primary" style="padding:3px 10px;font-size:0.78rem;" onclick="adminIssueApiKey('{{ email }}', this)">
+                                        <button class="btn btn-primary" style="padding:3px 10px;font-size:0.78rem;" onclick='adminIssueApiKey({{ email|tojson }}, this)'>
                                             {{ 'Reset' if user.has_api_key else 'Assign' }}
                                         </button>
                                         {% if user.has_api_key %}
-                                        <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick="adminRevokeApiKey('{{ email }}', this)">Revoke</button>
+                                        <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick='adminRevokeApiKey({{ email|tojson }}, this)'>Revoke</button>
                                         {% endif %}
                                     {% endif %}
                                     </div>
@@ -320,7 +320,7 @@
                                 <td>
                                     {% if email != session.user.email %}
                                     <div class="row-actions">
-                                        <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange="changeUserRole('{{ email }}', this.value); this.className='role-select role-select-'+this.value;">
+                                        <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange='changeUserRole({{ email|tojson }}, this.value); this.className="role-select role-select-"+this.value;'>
                                             <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
                                             <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
                                             <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
@@ -379,7 +379,7 @@
                     {% for group_name, group in groups.items() %}
                     <div class="group-card">
                         <div class="group-card-header">
-                            <div class="group-card-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
+                            <div class="group-card-title" onclick='toggleGroupDetails({{ group_name|tojson }}, "{{ loop.index0 }}")'>
                                 <div class="group-icon">{{ group_name[0].upper() }}</div>
                                 <div class="group-title-info">
                                     <div class="group-name-text">{{ group_name }}</div>
@@ -389,7 +389,7 @@
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </span>
                             </div>
-                            <button class="icon-btn icon-btn-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group">
+                            <button class="icon-btn icon-btn-danger" onclick='deleteGroup({{ group_name|tojson }})' title="Delete group">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                             </button>
                         </div>
@@ -399,7 +399,7 @@
                         <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
                             <div class="details-header">
                                 <span class="details-label">Members ({{ group.members|length }})</span>
-                                <button class="btn-ghost-sm" onclick="showAddMembersModal('{{ group_name }}')">+ Add</button>
+                                <button class="btn-ghost-sm" onclick='showAddMembersModal({{ group_name|tojson }})'>+ Add</button>
                             </div>
                             {% if group.members %}
                             <div class="members-list">
@@ -412,7 +412,7 @@
                                             <div class="member-email">{{ member }}</div>
                                         </div>
                                     </div>
-                                    <button class="icon-btn icon-btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove">
+                                    <button class="icon-btn icon-btn-danger" onclick='removeFromGroup({{ member|tojson }}, {{ group_name|tojson }})' title="Remove">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                     </button>
                                 </div>

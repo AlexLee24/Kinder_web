@@ -2,6 +2,19 @@
 from flask import session, request, jsonify
 from app.core.request_validation import get_int_arg, ParamOutOfRangeError
 from . import private_area_bp
+from .helpers import can_access_page
+
+_MAX_TARGET_NAME_LEN = 200
+_MAX_TEXT_FIELD_LEN = 500
+
+
+def _observation_logs_forbidden():
+    """Return an error response unless the user can access the Daily Trigger page."""
+    if 'user' not in session:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if not can_access_page('daily_trigger'):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+    return None
 
 
 # @private_area_bp.route('/debug/object/<object_name>')
@@ -23,8 +36,9 @@ from . import private_area_bp
 
 @private_area_bp.route('/api/observation_log_months', methods=['GET'])
 def api_get_observation_log_months():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    denied = _observation_logs_forbidden()
+    if denied:
+        return denied
     
     try:
         from app.db.obs import get_observation_log_months
@@ -35,8 +49,9 @@ def api_get_observation_log_months():
 
 @private_area_bp.route('/api/observation_logs', methods=['GET', 'POST'])
 def api_get_observation_logs():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    denied = _observation_logs_forbidden()
+    if denied:
+        return denied
     
     try:
         if request.method == 'GET':
@@ -55,9 +70,19 @@ def api_get_observation_logs():
                     
             return jsonify({'success': True, 'logs': logs})
         elif request.method == 'POST':
-            data = request.json
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return jsonify({'success': False, 'error': 'Invalid JSON body'}), 400
+            for _key in ('action', 'target_name', 'obs_date', 'telescope_use', 'user_name', 'priority', 'program'):
+                _val = data.get(_key)
+                if _val is not None and not isinstance(_val, str):
+                    return jsonify({'success': False, 'error': f'{_key} must be a string'}), 400
+                if isinstance(_val, str) and len(_val) > _MAX_TEXT_FIELD_LEN:
+                    return jsonify({'success': False, 'error': f'{_key} is too long'}), 400
             action = (data.get('action') or '').strip().lower()
             target_name = (data.get('target_name') or '').strip()
+            if len(target_name) > _MAX_TARGET_NAME_LEN:
+                return jsonify({'success': False, 'error': 'target_name is too long'}), 400
             obs_date = data.get('obs_date')
             telescope_use = data.get('telescope_use')
 
@@ -92,7 +117,10 @@ def api_get_observation_logs():
             # Backward compatibility: older clients may still send target_id
             if not target_name and data.get('target_id'):
                 from app.db.obs import get_observation_targets
-                tid = int(data.get('target_id'))
+                try:
+                    tid = int(data.get('target_id'))
+                except (TypeError, ValueError):
+                    return jsonify({'success': False, 'error': 'Invalid target_id'}), 400
                 t = next((x for x in get_observation_targets() if x.get('id') == tid), None)
                 if t:
                     target_name = (t.get('name') or '').strip()
@@ -100,6 +128,11 @@ def api_get_observation_logs():
             if not target_name or not obs_date:
                 return jsonify({'success': False, 'error': 'Target Name and Date required'}), 400
                 
+            try:
+                repeat_count = int(data.get('repeat_count') or 0)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid repeat_count'}), 400
+
             from app.db.obs import upsert_observation_log
             success = upsert_observation_log(
                 target_name, obs_date, user_name, is_triggered, is_observed,
@@ -112,7 +145,7 @@ def api_get_observation_logs():
                 priority=priority,
                 program=program,
                 telescope_use=telescope_use,
-                repeat_count=int(data.get('repeat_count') or 0)
+                repeat_count=repeat_count
             )
             
             if success:
