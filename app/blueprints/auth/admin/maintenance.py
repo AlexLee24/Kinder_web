@@ -46,8 +46,9 @@ def backup_now():
         from app.services.jobs.backup import run_daily_backup
         run_daily_backup(force=True)
         return jsonify({'success': True, 'message': 'Backup completed successfully'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Manual backup failed')
+        return jsonify({'error': 'Backup failed (see server log)'}), 500
 
 # ===============================================================================
 # DOCUMENT RESOURCE MANAGEMENT
@@ -96,8 +97,9 @@ def clean_unused_images():
             'message': f'Cleaned {cleaned_count} unused image(s)',
             'cleaned_count': cleaned_count
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Document image clean-up failed')
+        return jsonify({'error': 'Clean-up failed (see server log)'}), 500
 
 # ===============================================================================
 # PHOTOMETRY SCHEDULER

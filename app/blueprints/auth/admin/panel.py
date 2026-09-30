@@ -9,6 +9,7 @@ from app.db.auth import (
     get_api_key_requests,
 )
 from . import admin_bp
+from app.core.auth import session_unverified
 
 
 # ===============================================================================
@@ -19,6 +20,8 @@ def admin_panel():
     if 'user' not in session or not session['user'].get('is_admin'):
         flash('Access denied. Administrator privileges required.', 'error')
         return redirect(url_for('basic.home'))
+    if session_unverified():
+        return 'Service temporarily unavailable (cannot verify your session).', 503
     
     users = get_users()
     groups = get_groups()

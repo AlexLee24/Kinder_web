@@ -4,7 +4,8 @@ import json
 import uuid
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import render_template, request, jsonify, session, abort, redirect, url_for
+from flask import render_template, request, jsonify, session, abort, redirect, url_for, make_response
+from app.core import rate_limit
 from . import astronomy_tools_bp
 from .helpers import _SHARE_DIR, _SHARE_ID_RE, _SHARE_TTL_SECS, _client_ip, _rate_ok_burst
 
@@ -12,6 +13,63 @@ _SHARE_MAX_BYTES = 8 * 1024 * 1024
 _SHARE_MAX_PASSWORD_LEN = 200
 _SHARE_PURGE_INTERVAL_SECS = 3600
 _last_share_purge = 0.0
+
+# Shared plots render third-party-supplied Plotly JSON: only plain 2D (non-WebGL) trace
+# types are accepted, and layout images (arbitrary URLs) are dropped.
+_SHARE_ALLOWED_TRACE_TYPES = frozenset({
+    'scatter', 'bar', 'histogram', 'box', 'violin', 'heatmap', 'contour',
+})
+
+# Per-response CSP for the shared-plot page (overrides the global one).
+_SHARED_PLOT_CSP = (
+    "default-src 'none'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.plot.ly; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com data:; "
+    "img-src 'self' data: blob:; "
+    "connect-src 'none'; "
+    "frame-ancestors 'self'; "
+    "base-uri 'none'; "
+    "form-action 'self'"          # the password gate POSTs back to this page
+)
+
+
+def _strip_layout_images(layout):
+    if not isinstance(layout, dict):
+        return {}
+    layout = dict(layout)
+    layout.pop('images', None)
+    tmpl = layout.get('template')
+    if isinstance(tmpl, dict):
+        tmpl = dict(tmpl)
+        tl = tmpl.get('layout')
+        if isinstance(tl, dict):
+            tl = dict(tl)
+            tl.pop('images', None)
+            tmpl['layout'] = tl
+        tmpl.pop('data', None)   # template trace defaults could smuggle other trace types
+        layout['template'] = tmpl
+    return layout
+
+
+def _sanitize_share_plot(traces, layout):
+    """Return (traces, layout) restricted to safe content, or (None, None) if a trace
+    uses a disallowed type."""
+    clean = []
+    for t in traces:
+        if not isinstance(t, dict):
+            return None, None
+        ttype = t.get('type', 'scatter')
+        if ttype not in _SHARE_ALLOWED_TRACE_TYPES:
+            return None, None
+        clean.append(t)
+    return clean, _strip_layout_images(layout)
+
+
+def _shared_plot_response(**ctx):
+    resp = make_response(render_template('shared_plot.html', **ctx))
+    resp.headers['Content-Security-Policy'] = _SHARED_PLOT_CSP
+    return resp
 
 
 def _purge_expired_shares():
@@ -76,6 +134,8 @@ def lc_plotter_mw_extinction():
 
 @astronomy_tools_bp.route('/lc_plotter/share', methods=['POST'])
 def lc_plotter_share():
+    if 'user' not in session:
+        return jsonify({'error': 'Please log in to create share links.'}), 401
     if not _rate_ok_burst(_client_ip(), 'lc_share', 5, 60.0):
         return jsonify({'error': 'Too many share requests; please wait a minute.'}), 429
     if request.content_length is None:
@@ -92,6 +152,9 @@ def lc_plotter_share():
     if (not isinstance(payload, dict) or not isinstance(payload.get('traces'), list)
             or not isinstance(payload.get('layout'), dict)):
         return jsonify({'error': 'Invalid payload'}), 400
+    traces, layout = _sanitize_share_plot(payload['traces'], payload['layout'])
+    if traces is None:
+        return jsonify({'error': 'Unsupported trace type in plot'}), 400
     raw_pw = payload.get('password') or ''
     if not isinstance(raw_pw, str) or len(raw_pw) > _SHARE_MAX_PASSWORD_LEN:
         return jsonify({'error': 'Invalid password'}), 400
@@ -103,8 +166,8 @@ def lc_plotter_share():
     pw_hash = generate_password_hash(raw_pw) if raw_pw else None
     with open(path, 'w') as f:
         json.dump({
-            'traces': payload['traces'],
-            'layout': payload['layout'],
+            'traces': traces,
+            'layout': layout,
             'isStatic': bool(payload.get('isStatic', False)),
             'created_at': time.time(),
             'password_hash': pw_hash,
@@ -138,25 +201,31 @@ def lc_plotter_shared(share_id):
     if request.method == 'POST':
         if not has_password:
             abort(400)
+        if not rate_limit.allow(f'lc_share_pw:{share_id}:{_client_ip()}', 10, 600):
+            abort(429)
         entered = request.form.get('password', '')
         if check_password_hash(data['password_hash'], entered):
             session[session_key] = True
             return redirect(url_for('astronomy_tools.lc_plotter_shared', share_id=share_id))
-        return render_template('shared_plot.html',
-                               traces=None, layout=None,
-                               is_static=data.get('isStatic', False),
-                               share_id=share_id,
-                               has_password=True, password_error=True, unlocked=False)
+        return _shared_plot_response(
+            traces=None, layout=None,
+            is_static=data.get('isStatic', False),
+            share_id=share_id,
+            has_password=True, password_error=True, unlocked=False)
     # GET
     if has_password and not session.get(session_key):
-        return render_template('shared_plot.html',
-                               traces=None, layout=None,
-                               is_static=data.get('isStatic', False),
-                               share_id=share_id,
-                               has_password=True, password_error=False, unlocked=False)
-    return render_template('shared_plot.html',
-                           traces=data['traces'],
-                           layout=data['layout'],
-                           is_static=data.get('isStatic', False),
-                           share_id=share_id,
-                           has_password=has_password, password_error=False, unlocked=True)
+        return _shared_plot_response(
+            traces=None, layout=None,
+            is_static=data.get('isStatic', False),
+            share_id=share_id,
+            has_password=True, password_error=False, unlocked=False)
+    # Re-sanitize on the way out too: shares created before the whitelist existed.
+    traces, layout = _sanitize_share_plot(data.get('traces') or [], data.get('layout') or {})
+    if traces is None:
+        abort(404)
+    return _shared_plot_response(
+        traces=traces,
+        layout=layout,
+        is_static=data.get('isStatic', False),
+        share_id=share_id,
+        has_password=has_password, password_error=False, unlocked=True)

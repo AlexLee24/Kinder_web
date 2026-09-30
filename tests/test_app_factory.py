@@ -19,8 +19,10 @@ def test_route_count_is_stable(app):
     # group-request URL change); 243 after dropping the shadowed basic.* duplicates of
     # /api/profile/join_group and /leave_group. Update deliberately when routes change.
     # 247 with password login (/login/password, /account/password,
-    # /admin/set-password, /admin/clear-password).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 247
+    # /admin/set-password, /admin/clear-password). 251 with the security hardening
+    # (/csp-report, /account/logout-all, /admin/force-logout,
+    # /api/profile/regenerate_api_key).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 251
 
 
 def test_duplicate_rules_keep_precedence(app):

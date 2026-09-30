@@ -146,8 +146,10 @@ def run(out_path):
     for pname, user in PERSONAS.items():
         c = app.test_client()
         if user:
+            now = int(time.time())
             with c.session_transaction() as sess:
-                sess['user'] = user
+                # iat/last_seen: required by the session policy (app.core.auth)
+                sess['user'] = dict(user, iat=now, last_seen=now, session_version=0)
         res = {}
         for u in urls:
             if u.startswith(RATE_LIMITED_PREFIXES):

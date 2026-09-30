@@ -304,6 +304,45 @@ def is_db_available(force: bool = False) -> bool:
 # Extra tables not in the original Kinder schema DDL (backward-compat needs)
 # ---------------------------------------------------------------------------
 
+def _migrate_plaintext_api_keys(cur) -> None:
+    """One-time: hash legacy plaintext auth.users.api_key values, then drop them.
+
+    Hashing is done in Python (no pgcrypto dependency). Keys keep working: the
+    lookup compares sha256(presented key) with api_key_hash."""
+    import hashlib
+    try:
+        cur.execute("SELECT usr_id, api_key FROM auth.users "
+                    "WHERE api_key IS NOT NULL AND api_key_hash IS NULL")
+        rows = cur.fetchall()
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: api key migration skipped: %s", exc)
+        return
+    migrated = 0
+    for usr_id, key in rows:
+        key = (key or '').strip()
+        try:
+            if key:
+                cur.execute(
+                    "UPDATE auth.users SET api_key_hash = %s, api_key_hint = %s, "
+                    "api_key_created_at = COALESCE(api_key_created_at, now()), api_key = NULL "
+                    "WHERE usr_id = %s AND api_key_hash IS NULL",
+                    (hashlib.sha256(key.encode('utf-8')).hexdigest(), key[-4:], usr_id))
+            else:
+                cur.execute("UPDATE auth.users SET api_key = NULL WHERE usr_id = %s", (usr_id,))
+            migrated += 1
+        except Exception as exc:
+            logger.warning("_ensure_extra_tables: api key migration failed for usr_id=%s: %s",
+                           usr_id, exc)
+    # Rows that were already hashed must not keep a plaintext copy either.
+    try:
+        cur.execute("UPDATE auth.users SET api_key = NULL "
+                    "WHERE api_key IS NOT NULL AND api_key_hash IS NOT NULL")
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: clearing plaintext api keys failed: %s", exc)
+    if migrated:
+        logger.info("Migrated %d plaintext API key(s) to hashed storage", migrated)
+
+
 def _ensure_extra_tables():
     """Create supplementary tables used by app logic that are absent from the
     core Kinder schema DDL.  All created under appropriate schemas."""
@@ -336,6 +375,29 @@ def _ensure_extra_tables():
         _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ")
         _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS "
              "session_version INTEGER NOT NULL DEFAULT 0")
+
+        # auth.users.username — login name for admin-created "direct login"
+        # accounts (email stays the internal identity; a placeholder
+        # <username>@users.invalid is stored when the admin gives none).
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS username TEXT")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx "
+             "ON auth.users(lower(username)) WHERE username IS NOT NULL")
+
+        # auth.users.google_sub — the Google account id ("sub") bound at first
+        # Google sign-in; a different Google account for the same email is refused.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS google_sub TEXT")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
+             "ON auth.users(google_sub) WHERE google_sub IS NOT NULL")
+
+        # API keys are stored hashed (sha256 hex); only the last 4 chars are kept
+        # in clear (api_key_hint) so users/admins can tell keys apart.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_hash TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_hint TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_created_at TIMESTAMPTZ")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_last_used_at TIMESTAMPTZ")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_api_key_hash_idx "
+             "ON auth.users(api_key_hash) WHERE api_key_hash IS NOT NULL")
+        _migrate_plaintext_api_keys(cur)
 
         # auth.invitations — invitation tokens for new user sign-up
         _run("""

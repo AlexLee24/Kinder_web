@@ -59,7 +59,7 @@ def detect_run():
             logger.info('[DETECT Manual] %s by admin: %s', kind, counts)
         except Exception as e:
             logger.exception('[DETECT Manual] %s failed: %s', kind, e)
-            _detect_manual['message'] = f'Error: {e}'
+            _detect_manual['message'] = 'Error (see server log)'
         finally:
             _detect_manual['running'] = False
 

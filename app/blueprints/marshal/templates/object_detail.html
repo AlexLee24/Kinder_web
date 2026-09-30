@@ -199,11 +199,11 @@
                     </ul>
                     
                     <div class="quick-links">
-                        <a href="javascript:void(0)" class="link-btn" onclick="openTNSPage()">TNS</a>
-                        <a href="javascript:void(0)" class="link-btn" onclick="openNED()">NED</a>
-                        <a href="javascript:void(0)" class="link-btn" onclick="openDESI()">DESI LS</a>
-                        <a href="javascript:void(0)" class="link-btn" onclick="openExtinction()">Extinction</a>
-                        <a href="javascript:void(0)" class="link-btn" id="copyCoordBtn" onclick="copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openTNSPage()">TNS</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openNED()">NED</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openDESI()">DESI LS</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openExtinction()">Extinction</a>
+                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
                     </div>
                     
                     {% if session.user and session.user.is_admin %}
@@ -935,7 +935,8 @@ MJD         magnitude  error   filter  telescope
 
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" integrity="sha384-Hl48Kq2HifOWdXEjMsKo6qxqvRLTYqIGbvlENBmkHAxZKIGCXv43H6W1jA671RzC" crossorigin="anonymous"></script>
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK" crossorigin="anonymous"></script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous" async></script>
+    {# Self-hosted pinned Aladin Lite v3. The viewers run in srcdoc iframes that load the same URL, so this warms the cache. #}
+    <script type="text/javascript" src="{{ url_for('static', filename='vendor/aladin-3.8.2.global.js') }}" async></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
     <script>
     (function () {

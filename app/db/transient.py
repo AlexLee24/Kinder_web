@@ -1017,9 +1017,14 @@ def _permission_clause(params, viewer_email=None):
     non-admin viewer may open; appends its params.  Mirrors check_object_access."""
     if not viewer_email:
         return "o.permission = 'public'"
+    # 'login' objects need a non-guest account (roles >= 1: user/admin).
+    params.append(viewer_email)
     params.append(viewer_email)
     return (
-        "(o.permission IN ('public', 'login') OR ("
+        "(o.permission = 'public' OR ("
+        " o.permission = 'login' AND EXISTS ("
+        "  SELECT 1 FROM auth.users lu "
+        "  WHERE lower(lu.email) = lower(%s) AND lu.roles >= 1)) OR ("
         " o.permission = 'groups' AND EXISTS ("
         "  SELECT 1 FROM auth.usr_group ug "
         "  JOIN auth.users u ON ug.usr_id = u.usr_id "
@@ -1039,8 +1044,9 @@ def _build_where(params, search_term='', object_type='', tag=None,
 
     With ``apply_permissions=True`` only objects the viewer may open are kept
     (same rules as ``app.db.auth.check_object_access``): admins see everything,
-    anonymous viewers only ``public`` objects, logged-in viewers ``public`` /
-    ``login`` objects plus ``groups`` objects shared with a group they have joined.
+    anonymous viewers only ``public`` objects, logged-in viewers ``public`` objects,
+    ``login`` objects when they are not a guest (roles >= 1), plus ``groups`` objects
+    shared with a group they have joined.
     Internal callers (scheduler, pipelines) leave it off."""
     clauses = ['1=1']
 

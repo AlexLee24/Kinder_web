@@ -32,7 +32,6 @@ def daily_trigger():
     user_display_name = session['user'].get('name') or user_email
 
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
-                            api_key=session['user'].get('api_key') or '',
                             user_display_name=user_display_name, user_email=user_email,
                             app_debug=config.DEBUG)
 
@@ -95,9 +94,9 @@ def daily_trigger_send_message():
         from app.services.planning.trigger_send import send_to_slack, mark_sent
         send_to_slack(greeting, script, image_path=image_path)
         logger.info('daily_trigger_send_message: Slack send call completed by=%s telescope=%s', requester, telescope)
-    except Exception as e:
+    except Exception:
         logger.exception('daily_trigger_send_message: Slack send failed by=%s telescope=%s', requester, telescope)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Slack send failed; see server log.'}), 500
     finally:
         if image_path:
             try:
@@ -236,9 +235,9 @@ def _log_triggered_targets(telescope, targets, sent_by):
             else:
                 logger.warning('log_triggered_targets: upsert_observation_log returned falsy for %s', name)
                 warnings.append(f'{name}: failed to save log entry')
-        except Exception as e:
+        except Exception:
             logger.exception('log_triggered_targets: failed for %s', name)
-            warnings.append(f'{name}: {e}')
+            warnings.append(f'{name}: failed to save log entry')
 
     logger.info('log_triggered_targets: done telescope=%s succeeded=%s skipped=%s warnings=%s',
                 telescope, succeeded, skipped, warnings)

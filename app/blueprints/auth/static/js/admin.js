@@ -364,28 +364,42 @@ function closeModal(modalId) {
 window.onclick = function(event) {
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
-        if (event.target === modal) {
+        if (event.target === modal && !modal.dataset.sticky) {
             modal.style.display = 'none';
         }
     });
 }
 
 // Add User Directly
+// (a) direct-login account: username + password, email optional
+// (b) Google-only account: email only (no username / password)
+const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,32}$/;
+
 async function addUser(event) {
     event.preventDefault();
-    
-    const email = document.getElementById('userEmail').value;
+
+    const username = (document.getElementById('userUsername').value || '').trim();
+    const email = (document.getElementById('userEmail').value || '').trim();
     const roleValue = document.getElementById('userRole') ? document.getElementById('userRole').value : 'user';
-    const name = document.getElementById('userName').value;
+    const name = (document.getElementById('userName').value || '').trim();
     const passwordEl = document.getElementById('userPassword');
     const password = passwordEl ? passwordEl.value : '';
     const mustChangeEl = document.getElementById('userMustChange');
-    
-    if (!email) {
-        showNotification('Email is required', 'error');
+
+    if (username || password) {
+        if (!username || !USERNAME_PATTERN.test(username)) {
+            showNotification('Username must be 3–32 characters: letters, digits, . _ -', 'error');
+            return;
+        }
+        if (!password) {
+            showNotification('A password is required for a direct-login account', 'error');
+            return;
+        }
+    } else if (!email) {
+        showNotification('Enter a username and password, or an email for a Google-only account', 'error');
         return;
     }
-    
+
     try {
         const response = await fetch('/admin/add-user', {
             method: 'POST',
@@ -393,18 +407,19 @@ async function addUser(event) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                username: username,
                 email: email,
-                name: name || email.split('@')[0],
+                name: name,
                 role: roleValue,
                 password: password,
                 must_change_password: mustChangeEl ? mustChangeEl.checked : true
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
-            showNotification('User added successfully!', 'success');
+            showNotification(result.message || 'User added successfully!', 'success');
             closeModal('addUserModal');
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -416,9 +431,17 @@ async function addUser(event) {
 }
 
 // Password login (admin-created accounts)
-function showSetPasswordModal(email) {
+function showSetPasswordModal(email, username) {
     document.getElementById('setPasswordEmail').value = email;
-    document.getElementById('setPasswordTarget').textContent = 'Account: ' + email;
+    const shownEmail = /@users\.invalid$/i.test(email) ? '' : email;
+    document.getElementById('setPasswordTarget').textContent =
+        'Account: ' + (username ? username + (shownEmail ? ' (' + shownEmail + ')' : '') : shownEmail);
+    const unameEl = document.getElementById('setPasswordUsername');
+    if (unameEl) {
+        unameEl.value = username || '';
+        unameEl.readOnly = !!username;
+        unameEl.required = !username;
+    }
     document.getElementById('setPasswordModal').style.display = 'block';
 }
 
@@ -427,8 +450,14 @@ async function adminSetPassword(event) {
     const email = document.getElementById('setPasswordEmail').value;
     const password = document.getElementById('setPasswordValue').value;
     const confirmValue = document.getElementById('setPasswordConfirm').value;
+    const unameEl = document.getElementById('setPasswordUsername');
+    const username = unameEl ? (unameEl.value || '').trim() : '';
     if (password !== confirmValue) {
         showNotification('The passwords do not match', 'error');
+        return;
+    }
+    if (unameEl && !unameEl.readOnly && !USERNAME_PATTERN.test(username)) {
+        showNotification('Username must be 3–32 characters: letters, digits, . _ -', 'error');
         return;
     }
     try {
@@ -437,6 +466,7 @@ async function adminSetPassword(event) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 email: email,
+                username: username,
                 password: password,
                 must_change_password: document.getElementById('setPasswordMustChange').checked
             })
@@ -452,6 +482,82 @@ async function adminSetPassword(event) {
     } catch (error) {
         showNotification('An error occurred: ' + error.message, 'error');
     }
+}
+
+// End every session of a user (bumps their session_version server-side)
+async function adminForceLogout(email, btn) {
+    if (!confirm(`Log ${email} out of all devices?`)) {
+        return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+        const response = await fetch('/admin/force-logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'User logged out', 'success');
+            if (result.self) setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed'), 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+    if (btn) btn.disabled = false;
+}
+
+// Show a newly issued API key once (it is stored hashed). DOM is built with
+// textContent / value only, so nothing in the key or email is parsed as HTML.
+function showApiKeyOnceAdmin(email, apiKey) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.dataset.sticky = '1';   // only "Done" closes it: the key is shown once
+    overlay.style.display = 'block';
+    const box = document.createElement('div');
+    box.className = 'modal-content';
+
+    const title = document.createElement('h3');
+    title.textContent = 'API key for ' + email;
+    const warn = document.createElement('p');
+    warn.style.color = 'rgba(255,120,120,0.95)';
+    warn.textContent = 'Copy it now and send it to the user through a private channel. '
+        + 'It will not be shown again; any previous key no longer works.';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = apiKey;
+    input.style.cssText = 'width:100%;padding:10px;font-family:monospace;box-sizing:border-box;';
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn btn-primary';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(apiKey);
+        } catch (e) {
+            input.select();
+            document.execCommand('copy');
+        }
+        showNotification('API key copied to clipboard', 'success');
+    });
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'btn btn-secondary';
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', () => { overlay.remove(); location.reload(); });
+    actions.append(copyBtn, doneBtn);
+
+    box.append(title, warn, input, actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
 }
 
 async function adminClearPassword(email) {

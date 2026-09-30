@@ -34,6 +34,12 @@ class Config:
     SENDER_EMAIL = os.getenv('SENDER_EMAIL')
     SENDER_PASSWORD = os.getenv('SENDER_PASSWORD')
     
+    # Session cookie: Secure (HTTPS only) by default; DEBUG defaults to False so the
+    # local http://127.0.0.1 dev server still works. Override with SESSION_COOKIE_SECURE.
+    SESSION_COOKIE_SECURE = os.getenv(
+        'SESSION_COOKIE_SECURE', 'false' if DEBUG else 'true'
+    ).strip().lower() in {'1', 'true', 'yes', 'on'}
+
     # Admin settings
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
     ADMIN_LOCAL_EMAIL = os.getenv('ADMIN_LOCAL_EMAIL')

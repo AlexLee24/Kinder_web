@@ -30,12 +30,10 @@ function safeUrl(value) {
     return '#';
 }
 
-// Read api key injected by server
-const _API_KEY = (document.querySelector('meta[name="x-api-key"]') || {}).content || '';
-
+// Same-origin API calls authenticate with the logged-in session cookie
+// (the API key is never embedded in the page).
 function _apiFetch(url, options) {
-    options = options || {};
-    options.headers = Object.assign({ 'X-API-Key': _API_KEY }, options.headers || {});
+    options = Object.assign({ credentials: 'same-origin' }, options || {});
     return fetch(url, options);
 }
 

@@ -132,8 +132,9 @@ def upload_photometry(year, letters):
             'message': 'Photometry point added successfully',
             'id': point_id
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/batch', methods=['POST'])
 @admin_required
@@ -146,8 +147,9 @@ def upload_photometry_batch(year, letters):
     try:
         inserted = TNSObjectDB.add_photometry_batch(object_name, points)
         return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/photometry/<int:point_id>', methods=['DELETE'])
 @admin_required
@@ -161,8 +163,9 @@ def delete_photometry_point(point_id):
             })
         else:
             return jsonify({'error': 'Photometry point not found'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/download')
 @login_required(error='Access denied', status=403)
@@ -290,8 +293,9 @@ def upload_photometry_generic(object_name):
             telescope=data.get('telescope')
         )
         return jsonify({'success': True, 'message': 'Photometry point added successfully', 'id': point_id})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry/batch', methods=['POST'])
 @admin_required
@@ -304,8 +308,9 @@ def upload_photometry_batch_generic(object_name):
     try:
         inserted = TNSObjectDB.add_photometry_batch(object_name, points)
         return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry/download')
 @login_required(error='Access denied', status=403)
@@ -440,5 +445,6 @@ def _parse_kn_model():
 def api_kn_model():
     try:
         return jsonify({'success': True, 'model': _parse_kn_model()})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500

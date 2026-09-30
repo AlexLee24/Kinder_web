@@ -1,5 +1,6 @@
 """JSON API used by the marshal/object pages and external API-key clients — objects (split from web_api_routes.py)."""
 import math
+import re
 import urllib.parse
 from datetime import datetime
 from flask import request, jsonify, session
@@ -22,6 +23,10 @@ from app.blueprints.marshal.objects.helpers import non_guest_required, session_c
 
 logger = logging.getLogger(__name__)
 from . import web_api_bp
+
+# Allowed characters for manually created object names (TNS-style names such as
+# "SN 2025abc", "AT2025xyz", "ZTF25aaabbbc", "Gaia25a+b").
+_OBJECT_NAME_RE = re.compile(r'^[A-Za-z0-9 _.+\-]{1,64}$')
 
 
 @web_api_bp.route('/api/objects', methods=['POST'])
@@ -64,6 +69,8 @@ def add_object():
         
         if len(object_name) < 3:
             return jsonify({'error': 'Object name must be at least 3 characters'}), 400
+        if not _OBJECT_NAME_RE.fullmatch(object_name):
+            return jsonify({'error': 'Object name may only contain letters, digits, spaces and _ . + - (max 64 characters)'}), 400
         
         existing_objects = search_tns_objects(search_term=object_name, limit=1)
         if existing_objects:
@@ -113,10 +120,10 @@ def add_object():
         })
         
     except (ValueError, TypeError) as e:
-        return jsonify({'error': f'Invalid input data: {str(e)}'}), 400
+        logger.warning('add_object invalid input: %s', e)
+        return jsonify({'error': 'Invalid input data'}), 400
     except Exception:
-        import traceback
-        traceback.print_exc()
+        logger.exception('add_object database error')
         return jsonify({'error': 'Database error'}), 500
 
 @web_api_bp.route('/api/object/<path:object_name>/flag_status', methods=['GET'])

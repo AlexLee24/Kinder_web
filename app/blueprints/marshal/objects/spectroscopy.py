@@ -130,8 +130,9 @@ def upload_spectroscopy_generic(object_name):
             'message': 'Spectrum data added successfully',
             'spectrum_id': spectrum_id
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectroscopy', methods=['POST'])
 def upload_spectroscopy(year, letters):
@@ -150,8 +151,9 @@ def delete_spectrum(spectrum_id):
             })
         else:
             return jsonify({'error': 'Spectrum not found'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/spectrum/<path:spectrum_id>/download')
 @non_guest_required
@@ -260,8 +262,9 @@ def rebuild_spectral_lines():
         from app.services.astro.spectral_lines import warm_cache_async
         warm_cache_async()
         return jsonify({'success': True, 'message': 'Rebuild started in background'})
-    except Exception as exc:
-        return jsonify({'error': str(exc)}), 500
+    except Exception:
+        logger.exception('rebuild_spectral_lines error')
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectrum/plot')
 @non_guest_required
@@ -271,7 +274,7 @@ def get_object_spectrum_plot(year, letters):
     
     # Check permissions
     if not session_can_access_object(object_name):
-        return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
+        return jsonify({'success': True, 'plot_json': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
     rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
@@ -288,22 +291,22 @@ def get_object_spectrum_plot(year, letters):
         if not spectrum_data:
             return jsonify({
                 'success': True,
-                'plot_html': None,
+                'plot_json': None,
                 'message': 'No spectrum data available'
             })
         
         if spectrum_id:
-            plot_html = DataVisualization.create_spectrum_plot_from_db(
+            plot_json = DataVisualization.create_spectrum_plot_from_db(
                 spectrum_data, spectrum_id,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, as_json=True)
         else:
-            plot_html = DataVisualization.create_spectrum_list_plot_from_db(
+            plot_json = DataVisualization.create_spectrum_list_plot_from_db(
                 spectrum_data,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack, as_json=True)
         
         return jsonify({
             'success': True,
-            'plot_html': plot_html,
+            'plot_json': plot_json,
             'data_count': len(spectrum_data)
         })
     except Exception as e:
@@ -318,7 +321,7 @@ def get_object_spectrum_plot_generic(object_name):
     
     # Check permissions
     if not session_can_access_object(object_name):
-        return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
+        return jsonify({'success': True, 'plot_json': None, 'message': 'Access denied.'})
         
     spectrum_id = request.args.get('spectrum_id')
     rest_frame  = request.args.get('rest_frame', 'false').lower() in ('1', 'true')
@@ -340,22 +343,22 @@ def get_object_spectrum_plot_generic(object_name):
         if not spectrum_data:
             return jsonify({
                 'success': True,
-                'plot_html': None,
+                'plot_json': None,
                 'message': 'No spectrum data available for this object'
             })
         
         if spectrum_id:
-            plot_html = DataVisualization.create_spectrum_plot_from_db(
+            plot_json = DataVisualization.create_spectrum_plot_from_db(
                 spectrum_data, spectrum_id,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, as_json=True)
         else:
-            plot_html = DataVisualization.create_spectrum_list_plot_from_db(
+            plot_json = DataVisualization.create_spectrum_list_plot_from_db(
                 spectrum_data,
-                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack)
+                rest_frame=rest_frame, redshift=redshift, normalise=normalise, stack=stack, as_json=True)
         
         return jsonify({
             'success': True,
-            'plot_html': plot_html,
+            'plot_json': plot_json,
             'data_count': len(spectrum_data)
         })
     except Exception as e:

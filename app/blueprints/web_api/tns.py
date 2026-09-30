@@ -35,10 +35,9 @@ def manual_auto_snooze():
                 'error': 'Auto-snooze failed'
             }), 500
             
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ===============================================================================
 # TNS DATA MANAGEMENT
@@ -158,8 +157,9 @@ def auto_snooze_status():
                 'finished_count': stats.get('finished_count', 0)
             }
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @web_api_bp.route('/api/auto-snooze/stats')
 @login_required(error='Access denied', status=403)

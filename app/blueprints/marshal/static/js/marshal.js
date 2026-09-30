@@ -1745,10 +1745,10 @@ function quickView(objectName) {
         const year = pureYearLettersMatch[1];
         const letters = pureYearLettersMatch[2];
         console.log(`Using TNS format route: /object/${year}${letters}`);
-        window.open(`/object/${year}${letters}`, '_blank');
+        window.open(`/object/${year}${letters}`, '_blank', 'noopener,noreferrer');
     } else {
         console.log(`Using generic route: /object/${encodeURIComponent(objectName)}`);
-        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank');
+        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank', 'noopener,noreferrer');
     }
 }
 
@@ -1764,20 +1764,24 @@ function editTags(objectName) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
     modal.innerHTML = `
         <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;min-width:340px;max-width:480px;">
-            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${objectName}</h3>
+            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${escapeHtml(objectName)}</h3>
             <label style="font-size:0.85rem;color:#aaa;display:block;margin-bottom:6px;">Tags (comma-separated, EP will be highlighted)</label>
-            <input id="_tagEditInput" type="text" value="${currentTags}"
+            <input id="_tagEditInput" type="text" value="${escapeHtml(currentTags)}"
                 style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
             <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-                <button onclick="document.getElementById('_inlineTagEditModal').remove()"
+                <button type="button" id="_tagEditCancel"
                     style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#aaa;cursor:pointer;">Cancel</button>
-                <button onclick="_submitTagEdit('${objectName}')"
+                <button type="button" id="_tagEditSave"
                     style="padding:6px 16px;background:#46ffaf22;border:1px solid #46ffaf55;border-radius:6px;color:#46ffaf;cursor:pointer;">Save</button>
             </div>
             <div id="_tagEditResult" style="margin-top:10px;font-size:0.85rem;"></div>
         </div>
     `;
     document.body.appendChild(modal);
+    const saveBtn = document.getElementById('_tagEditSave');
+    saveBtn.dataset.objectName = objectName;
+    saveBtn.addEventListener('click', () => _submitTagEdit(saveBtn.dataset.objectName));
+    document.getElementById('_tagEditCancel').addEventListener('click', () => modal.remove());
     document.getElementById('_tagEditInput').focus();
 }
 

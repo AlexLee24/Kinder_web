@@ -1,7 +1,10 @@
 """Private area — debug endpoint (admin only)."""
+import logging
 from flask import jsonify
 from . import private_area_bp
 from app.core.auth import admin_required
+
+logger = logging.getLogger(__name__)
 
 
 # ===============================================================================
@@ -25,5 +28,6 @@ def debug_database():
             'sample_objects': [list(r) for r in sample_objects],
         })
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('debug_database failed')
+        return jsonify({'error': 'Database query failed'}), 500

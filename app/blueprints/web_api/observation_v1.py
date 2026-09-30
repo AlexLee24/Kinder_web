@@ -1,6 +1,6 @@
 """JSON API used by the marshal/object pages and external API-key clients — observation_v1 (split from web_api_routes.py)."""
 from datetime import datetime, timezone
-from flask import request, jsonify
+from flask import request, jsonify, session
 from app.core.request_validation import get_int_arg, ParamOutOfRangeError
 from app.db.auth import get_user_by_api_key
 from app.db.obs import (
@@ -18,11 +18,17 @@ from .helpers import _limit_decimal_4, _normalize_target_precision
 
 
 def _authenticate_api_key():
-    """Return ``(user, None)`` for a valid API key, else ``(None, error_response)``.
+    """Return ``(user, None)`` for a valid API key or browser session, else ``(None, error_response)``.
 
     The key belongs in the ``X-API-Key`` header. ``?api_key=`` is still accepted
     because the public API docs mention it, but it leaks into logs/history, so
-    each use logs a deprecation warning."""
+    each use logs a deprecation warning.
+
+    When no key is supplied, a logged-in browser session (``session['user']``)
+    is accepted instead, so first-party pages (e.g. Daily Trigger) can call these
+    endpoints with the session cookie. Cross-site POSTs are rejected by the global
+    same-origin guard in ``app.core.hooks``. An explicitly supplied key always wins
+    and is never silently replaced by the session."""
     api_key = (request.headers.get('X-API-Key') or '').strip()
     if not api_key:
         api_key = request.args.get('api_key', '').strip()
@@ -30,7 +36,10 @@ def _authenticate_api_key():
             logger.warning("Deprecated: API key passed via ?api_key= on %s (use the X-API-Key header)",
                            request.path)
     if not api_key:
-        return None, (jsonify({'success': False, 'error': 'Missing API key. Use the X-API-Key header.'}), 401)
+        session_user = session.get('user')
+        if isinstance(session_user, dict) and session_user.get('email'):
+            return session_user, None
+        return None, (jsonify({'success': False, 'error': 'Missing API key. Use the X-API-Key header or log in.'}), 401)
 
     user = get_user_by_api_key(api_key)
     if not user:
@@ -49,8 +58,8 @@ _FORBIDDEN = {'success': False, 'error': 'Forbidden: requires GREAT Lab member o
 def api_v1_observation_targets():
     """
     API: Get or add observation targets.
-    Auth: X-API-Key header (?api_key= query param is deprecated).
-    Requires a GREAT Lab member or admin key.
+    Auth: X-API-Key header (?api_key= query param is deprecated), or a logged-in
+    browser session. Requires a GREAT Lab member or admin.
 
     GET /api/v1/observation_targets?telescope=SLT|LOT
         Returns active targets. telescope param is optional.
@@ -181,15 +190,15 @@ def api_v1_observation_targets():
         else:
             return jsonify({'success': False, 'error': 'Failed to save target'}), 500
     except Exception as e:
-        logger.error(f'api_v1_observation_targets POST error: {e}')
+        logger.error('api_v1_observation_targets POST error: %s', e)
         return jsonify({'success': False, 'error': 'Failed to save target'}), 500
 
 @web_api_bp.route('/api/v1/observation_logs', methods=['GET', 'POST'])
 def api_v1_observation_logs():
     """
     API: Get or upsert observation logs.
-    Auth: X-API-Key header (?api_key= query param is deprecated).
-    Requires a GREAT Lab member or admin key.
+    Auth: X-API-Key header (?api_key= query param is deprecated), or a logged-in
+    browser session. Requires a GREAT Lab member or admin.
 
     GET  /api/v1/observation_logs?year=2026&month=3
     GET  /api/v1/observation_logs?date=2026-03-09  -- Get for specific date
@@ -207,7 +216,7 @@ def api_v1_observation_logs():
              "observed_filter": "rp",         -- optional
              "observed_exp":   300,           -- optional
              "observed_count": 12,            -- optional
-             "user_name":      ignored -- always the API key owner
+             "user_name":      ignored -- always the authenticated user
            }
 
     DELETE (via POST with action=delete):
@@ -301,7 +310,7 @@ def api_v1_observation_logs():
                 observed_filter = _norm_filter(data.get('observed_filter'))
                 observed_exp    = data.get('observed_exp') if data.get('observed_exp') is not None else None
                 observed_count  = data.get('observed_count') if data.get('observed_count') is not None else None
-                # Always the API key owner: the body can't impersonate another user.
+                # Always the authenticated user (key owner or session): the body can't impersonate another user.
                 user_name = user.get('name') or user.get('email')
                 # Normalize priority; split compound "Normal - R01" -> priority + program
                 _VALID_PRIORITIES = {'urgent': 'Urgent', 'high': 'High', 'normal': 'Normal', 'filler': 'Filler'}

@@ -816,7 +816,7 @@ function openFindingChart() {
     const ra   = encodeURIComponent(parseFloat(objectData.ra).toFixed(6));
     const dec  = encodeURIComponent(parseFloat(objectData.declination).toFixed(6));
     const url  = `/finding_chart?object_name=${name}&ra=${ra}&dec=${dec}&survey=DSS2+Red&fov=13&show_stars=0&auto=1`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 // External link functions - 使用完整名稱
@@ -828,7 +828,7 @@ function openTNSPage() {
     
     const fullName = getFullObjectName(objectData) || objectName;
     const tnsUrl = `https://www.wis-tns.org/object/${encodeURIComponent(cleanObjectName)}`;
-    window.open(tnsUrl, '_blank');
+    window.open(tnsUrl, '_blank', 'noopener,noreferrer');
 }
 
 function openDESI() {
@@ -840,7 +840,7 @@ function openDESI() {
     const ra = parseFloat(objectData.ra);
     const dec = parseFloat(objectData.declination);
     const DESIUrl = `https://www.legacysurvey.org/viewer?ra=${ra}&dec=${dec}&zoom=14&mark=${ra},${dec}&layer=ls-dr10-grz&zoom=16&desi-spec-dr1`
-    window.open(DESIUrl, '_blank');
+    window.open(DESIUrl, '_blank', 'noopener,noreferrer');
 }
 
 function openNED() {
@@ -867,7 +867,7 @@ function openNED() {
     const nedUrl = `https://ned.ipac.caltech.edu/conesearch?search_type=Near%20Position%20Search&in_csys=Equatorial&in_equinox=J2000&ra=${raEncoded}&dec=${decEncoded}&radius=0.5&Z_CONSTRAINT=Unconstrained`;
     
     console.log(`Opening NED URL: ${nedUrl}`);
-    window.open(nedUrl, '_blank');
+    window.open(nedUrl, '_blank', 'noopener,noreferrer');
 }
 
 function openExtinction() {
@@ -885,7 +885,7 @@ function openExtinction() {
     
     const extinctionUrl = `https://ned.ipac.caltech.edu/cgi-bin/nph-calc?in_csys=Equatorial&in_equinox=J2000.0&obs_epoch=2000.0&lon=${ra}d&lat=${decStr}d&pa=0.0&out_csys=Galactic&out_equinox=J2000.0`;
     
-    window.open(extinctionUrl, '_blank');
+    window.open(extinctionUrl, '_blank', 'noopener,noreferrer');
 }
 
 // Convert RA decimal degrees to HH:MM:SS format for URLs
@@ -2885,43 +2885,44 @@ function loadSpectrumPlot() {
             
             if (data.success) {
                 if (spectrumContainer) {
-                    if (data.plot_html) {
-                        console.log('Inserting spectrum plot HTML into container...');
-                        
-                        spectrumContainer.innerHTML = data.plot_html;
-                        
-                        setTimeout(() => {
-                            try {
-                                const scripts = spectrumContainer.querySelectorAll('script');
-                                console.log(`Found ${scripts.length} spectrum scripts`);
-                                
-                                scripts.forEach((script, index) => {
-                                    console.log(`Executing spectrum script ${index + 1}...`);
-                                    const newScript = document.createElement('script');
-                                    newScript.innerHTML = script.innerHTML;
-                                    document.head.appendChild(newScript);
-                                    document.head.removeChild(newScript);
+                    if (data.plot_json) {
+                        // Render from figure JSON; no server-built <script> is injected or re-executed.
+                        // Same DOM shape as plotly's output_type='div' (unstyled wrapper + graph div),
+                        // so sizing is unchanged.
+                        spectrumContainer.innerHTML = '';
+                        const wrapper = document.createElement('div');
+                        const plotDiv = document.createElement('div');
+                        plotDiv.className = 'plotly-graph-div';
+                        plotDiv.style.cssText = 'height:100%; width:100%;';
+                        wrapper.appendChild(plotDiv);
+                        spectrumContainer.appendChild(wrapper);
+
+                        try {
+                            const figData = JSON.parse(data.plot_json);
+                            Plotly.newPlot(plotDiv, figData.data || [], figData.layout || {}, {responsive: true})
+                                .then(() => {
+                                    console.log('Spectrum plot rendered successfully');
+                                    // Seed trial-z field, then re-apply spectral lines if active
+                                    _initSpecRedshiftInput();
+                                    if (_specActiveKeys.size > 0 || _specTelActive) _applySpecLines();
+                                    // Seed wavelength range inputs from data extent
+                                    _initSpecWaveRange();
+                                    // Attempt to upgrade to NIST lines (no-op if already loaded)
+                                    _fetchNistSpecLines();
+                                })
+                                .catch(error => {
+                                    console.error('Error rendering spectrum plot:', error);
                                 });
-                                
-                                console.log('Spectrum plot rendered successfully');
-                                // Seed trial-z field, then re-apply spectral lines if active
-                                _initSpecRedshiftInput();
-                                if (_specActiveKeys.size > 0 || _specTelActive) _applySpecLines();
-                                // Seed wavelength range inputs from data extent
-                                _initSpecWaveRange();
-                                // Attempt to upgrade to NIST lines (no-op if already loaded)
-                                _fetchNistSpecLines();
-                            } catch (error) {
-                                console.error('Error executing spectrum plot scripts:', error);
-                                spectrumContainer.innerHTML = `
-                                    <div class="no-data">
-                                        <span class="no-data-icon">${ICONS.error}</span>
-                                        <span class="no-data-text">Error rendering spectrum plot</span>
-                                    </div>
-                                `;
-                            }
-                        }, 100);
-                        
+                        } catch (error) {
+                            console.error('Error rendering spectrum plot:', error);
+                            spectrumContainer.innerHTML = `
+                                <div class="no-data">
+                                    <span class="no-data-icon">${ICONS.error}</span>
+                                    <span class="no-data-text">Error rendering spectrum plot</span>
+                                </div>
+                            `;
+                        }
+
                     } else {
                         spectrumContainer.innerHTML = `
                             <div class="no-data">
@@ -3937,7 +3938,7 @@ function openVisibilityPlot() {
         });
         
         const url = `/interactive_planner?${params.toString()}`;
-        window.open(url, '_blank');
+        window.open(url, '_blank', 'noopener,noreferrer');
         
     } catch (error) {
         console.error('Error opening visibility plot:', error);
@@ -4931,6 +4932,8 @@ function initializeAladin() {
         if (!aladinContainer) return;
 
         const targetName = getFullObjectName(objectData) || objectName;
+        // Self-hosted pinned Aladin Lite v3 (no jQuery needed); CSP blocks the CDS CDN.
+        const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
 
         const html = `
 <!DOCTYPE html>
@@ -4944,12 +4947,14 @@ function initializeAladin() {
         .aladin-lite input { color: #000; background: #fff; border: 1px solid #ccc;  display: inline-block; width: auto; max-width: none; }
         .aladin-copyCoords { color: #fff; display: flex; align-items: center; white-space: nowrap; }
     </style>
-    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+    <script type="text/javascript" src="${aladinSrc}"><\/script>
 </head>
 <body>
     <div id="aladin-lite"></div>
     <script>
+        // srcdoc frames inherit the parent's origin, but location.origin reads "null"
+        // in some browsers, so the parent origin is passed in explicitly.
+        const PARENT_ORIGIN = ${jsStringLiteral(window.location.origin)};
         let aladinInstance;
         window.onload = function() {
             A.init.then(() => {
@@ -4991,7 +4996,7 @@ function initializeAladin() {
                 aladinInstance.addCatalog(cat);
 
                 // Notify parent that setup is done
-                window.parent.postMessage({type: 'aladinReady'}, window.location.origin);
+                window.parent.postMessage({type: 'aladinReady'}, PARENT_ORIGIN);
             });
         };
 
@@ -5017,6 +5022,8 @@ function initializeAladin() {
         }
 
         window.addEventListener('message', function(event) {
+            // Only accept commands from the embedding Kinder page.
+            if (event.source !== window.parent || event.origin !== PARENT_ORIGIN) return;
             if (!event.data) return;
             const d = event.data;
             if (d.type === 'changeSurvey' && aladinInstance) { aladinInstance.setImageSurvey(d.survey); }
@@ -6119,6 +6126,7 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
     // Receive hover events back from iframe
     if (_nedHoverListener) window.removeEventListener('message', _nedHoverListener);
     _nedHoverListener = function(e) {
+        if (!_isFromNEDAladinFrame(e)) return;
         if (!e.data) return;
         if (e.data.type === 'nedHover') {
             const idx = e.data.idx;
@@ -6134,12 +6142,21 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
     window.addEventListener('message', _nedHoverListener);
 }
 
+// Messages must come from our own NED Aladin srcdoc iframe. A srcdoc frame inherits this
+// page's origin; some browsers report it as "null", so the e.source check is the primary guard.
+function _isFromNEDAladinFrame(e) {
+    const frame = document.getElementById('ned-aladin-iframe');
+    if (!frame || e.source !== frame.contentWindow) return false;
+    return e.origin === window.location.origin || e.origin === 'null';
+}
+
 function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcsec) {
     const old = document.getElementById('ned-aladin-iframe');
     if (old) old.remove();
 
     const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '');
     const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
+    const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
 
     const html = `<!DOCTYPE html>
 <html><head>
@@ -6148,11 +6165,11 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
   body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}
   #al{width:100%;height:100%;}
 </style>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
-<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+<script src="${aladinSrc}"><\/script>
 </head><body>
 <div id="al"></div>
 <script>
+  const PARENT_ORIGIN = ${jsStringLiteral(window.location.origin)};
   const T_RA = ${Number(ra)}, T_DEC = ${Number(dec)};
   let al, nedCat;
 
@@ -6188,17 +6205,18 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     // Register hover events
     al.on('objectHovered', function(obj) {
       if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
-        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, window.location.origin);
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, PARENT_ORIGIN);
     });
     al.on('objectHoveredStop', function() {
-      window.parent.postMessage({type:'nedHover', idx:-1}, window.location.origin);
+      window.parent.postMessage({type:'nedHover', idx:-1}, PARENT_ORIGIN);
     });
 
     // Signal parent that Aladin is ready
-    window.parent.postMessage({type:'nedAladinReady'}, window.location.origin);
+    window.parent.postMessage({type:'nedAladinReady'}, PARENT_ORIGIN);
   });
 
   window.addEventListener('message', function(e) {
+    if (e.source !== window.parent || e.origin !== PARENT_ORIGIN) return;
     if (!e.data || !al) return;
     var d = e.data;
     if (d.type === 'addNEDSources') {
@@ -6232,6 +6250,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
 
     // Once Aladin signals ready, hide loading overlay and send NED sources
     const onReady = function(e) {
+        if (!_isFromNEDAladinFrame(e)) return;
         if (e.data && e.data.type === 'nedAladinReady') {
             window.removeEventListener('message', onReady);
             if (loading) loading.style.display = 'none';

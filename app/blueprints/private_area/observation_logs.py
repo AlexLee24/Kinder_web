@@ -1,8 +1,12 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — observation_logs (split from private_area_routes.py)."""
+import logging
 from flask import session, request, jsonify
+from app.core.auth import is_great_lab_member
 from app.core.request_validation import get_int_arg, ParamOutOfRangeError
 from . import private_area_bp
 from .helpers import can_access_page
+
+logger = logging.getLogger(__name__)
 
 _MAX_TARGET_NAME_LEN = 200
 _MAX_TEXT_FIELD_LEN = 500
@@ -15,6 +19,27 @@ def _observation_logs_forbidden():
     if not can_access_page('daily_trigger'):
         return jsonify({'success': False, 'error': 'Access denied'}), 403
     return None
+
+
+def _observer_name(requested):
+    """Observer recorded on a log entry.
+
+    The Daily Trigger form lets a member pick the observer from the member directory, so a
+    requested name is honoured only when it is a registered user's name or email; anything
+    else (or nothing) falls back to the logged-in user from the session.
+    """
+    me = session['user'].get('name') or session['user'].get('email')
+    requested = (requested or '').strip() if isinstance(requested, str) else ''
+    if not requested or requested == me:
+        return me
+    try:
+        from app.db.auth import get_users
+        for email, u in (get_users() or {}).items():
+            if requested == email or requested == (u.get('name') or ''):
+                return requested
+    except Exception:
+        logger.exception('observation log: member lookup failed')
+    return me
 
 
 # @private_area_bp.route('/debug/object/<object_name>')
@@ -44,8 +69,9 @@ def api_get_observation_log_months():
         from app.db.obs import get_observation_log_months
         months = get_observation_log_months()
         return jsonify({'success': True, 'months': months})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('observation_log_months failed')
+        return jsonify({'success': False, 'error': 'Failed to load observation log months'}), 500
 
 @private_area_bp.route('/api/observation_logs', methods=['GET', 'POST'])
 def api_get_observation_logs():
@@ -70,6 +96,9 @@ def api_get_observation_logs():
                     
             return jsonify({'success': True, 'logs': logs})
         elif request.method == 'POST':
+            # Writes (upsert/delete) are limited to GREAT_Lab members and admins.
+            if not is_great_lab_member():
+                return jsonify({'success': False, 'error': 'Access denied'}), 403
             data = request.get_json(silent=True)
             if not isinstance(data, dict):
                 return jsonify({'success': False, 'error': 'Invalid JSON body'}), 400
@@ -95,8 +124,8 @@ def api_get_observation_logs():
                     return jsonify({'success': True})
                 return jsonify({'success': False, 'error': 'Log not found or failed to delete'}), 404
 
-            # Auto-fill user_name from session if not provided
-            user_name = data.get('user_name') or session['user'].get('name') or session['user'].get('email')
+            # Observer: a registered member picked in the form, otherwise the session user.
+            user_name = _observer_name(data.get('user_name'))
             is_triggered = data.get('is_triggered', False)
             is_observed = data.get('is_observed', False)
             import json as _json
@@ -152,7 +181,8 @@ def api_get_observation_logs():
                 return jsonify({'success': True})
             else:
                 return jsonify({'success': False, 'error': 'Failed to save log'}), 500
-    except ParamOutOfRangeError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except ParamOutOfRangeError:
+        return jsonify({'success': False, 'error': 'Invalid year or month'}), 400
+    except Exception:
+        logger.exception('observation_logs request failed')
+        return jsonify({'success': False, 'error': 'Observation log request failed'}), 500

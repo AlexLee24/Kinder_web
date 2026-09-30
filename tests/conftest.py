@@ -9,6 +9,7 @@ endpoints. Run them with::
 """
 import os
 import sys
+import time
 
 import pytest
 
@@ -45,12 +46,22 @@ def app():
     return a
 
 
+def session_user(persona):
+    """Session dict for *persona* as a real login would build it (with the
+    iat/last_seen stamps the session policy requires), or None for 'anon'."""
+    user = PERSONAS[persona]
+    if not user:
+        return None
+    now = int(time.time())
+    return dict(user, iat=now, last_seen=now, session_version=0, auth_method="google")
+
+
 def _client_as(app, persona):
     c = app.test_client()
-    user = PERSONAS[persona]
+    user = session_user(persona)
     if user:
         with c.session_transaction() as s:
-            s["user"] = dict(user)
+            s["user"] = user
     return c
 
 

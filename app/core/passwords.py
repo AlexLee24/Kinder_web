@@ -13,7 +13,7 @@ MAX_LENGTH = 128   # caps hashing cost per request
 _DUMMY_HASH = generate_password_hash('kinder-dummy-password-never-valid')
 
 
-def password_problem(password, email: str = '') -> str | None:
+def password_problem(password, email: str = '', username: str = '') -> str | None:
     """Return a human-readable reason the password is unacceptable, or None."""
     if not isinstance(password, str):
         return 'Password is required.'
@@ -26,6 +26,9 @@ def password_problem(password, email: str = '') -> str | None:
     if len(set(password)) < 4:
         return 'Password is too simple.'
     lowered = password.lower()
+    uname = (username or '').strip().lower()
+    if len(uname) >= 4 and uname in lowered:
+        return 'Password must not contain your username.'
     local_part = (email or '').split('@')[0].lower()
     if (email and lowered == email.lower()) or (len(local_part) >= 4 and local_part in lowered):
         return 'Password must not contain your email address.'
