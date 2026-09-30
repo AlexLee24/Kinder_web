@@ -1,11 +1,13 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — helpers (split from private_area_routes.py)."""
 import contextlib
 import fcntl
+import logging
 import os
 import re
 import secrets
 import shutil
 import uuid
+import warnings
 from datetime import datetime, timedelta, timezone
 from flask import session
 from werkzeug.security import generate_password_hash
@@ -14,6 +16,7 @@ from app.db.auth import get_page_groups
 import json
 from . import private_area_bp
 
+logger = logging.getLogger(__name__)
 
 tutorials_dir = os.path.join(os.path.dirname(__file__), 'tutorials')
 
@@ -71,6 +74,11 @@ def write_documents_env(updates):
     # Write every key back: the file also holds the secrets used by {{hide=KEY}} in documents.
     with open(tutorials_env_path, 'w', encoding='utf-8') as env_file:
         for key, value in config.items():
+            # One KEY=VALUE per line: a CR/LF inside a value must not inject extra keys.
+            key = re.sub(r'[\r\n=]', '', str(key)).strip()
+            value = re.sub(r'[\r\n]', '', str(value))
+            if not key:
+                continue
             env_file.write(f"{key}={value}\n")
 
 def documents_editable():
@@ -219,6 +227,58 @@ def epessto_store_lock():
             yield
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+# Uploaded image extension -> Pillow format it is re-encoded to.
+_IMAGE_EXT_FORMAT = {'.png': 'PNG', '.jpg': 'JPEG', '.jpeg': 'JPEG', '.gif': 'GIF', '.webp': 'WEBP'}
+_IMAGE_ACCEPTED_FORMATS = {'PNG', 'JPEG', 'GIF', 'WEBP'}
+
+
+def reencode_uploaded_image(path, ext):
+    """Validate an uploaded image with Pillow and rewrite it in place.
+
+    ``verify()`` rejects non-images / corrupt files; the re-save keeps only the pixel data
+    (drops EXIF/XMP/comments and any trailing payload, so polyglot files lose their
+    second personality). Returns True when the file is a valid image (now re-encoded);
+    on failure the file is removed and False is returned.
+    """
+    from PIL import Image, ImageOps
+
+    target_fmt = _IMAGE_EXT_FORMAT.get((ext or '').lower())
+    tmp_path = f"{path}.reenc.{uuid.uuid4().hex[:8]}"
+    try:
+        if target_fmt is None:
+            raise ValueError('unsupported extension')
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(path) as im:
+                if im.format not in _IMAGE_ACCEPTED_FORMATS:
+                    raise ValueError(f'unexpected image format {im.format}')
+                im.verify()
+            with Image.open(path) as im:
+                n_frames = getattr(im, 'n_frames', 1) or 1
+                if target_fmt in ('GIF', 'WEBP') and n_frames > 1:
+                    im.save(tmp_path, target_fmt, save_all=True,
+                            duration=im.info.get('duration', 100), loop=im.info.get('loop', 0))
+                else:
+                    im.load()
+                    out = ImageOps.exif_transpose(im) if target_fmt == 'JPEG' else im
+                    if target_fmt == 'JPEG' and out.mode not in ('RGB', 'L'):
+                        out = out.convert('RGB')
+                    if target_fmt == 'JPEG':
+                        out.save(tmp_path, 'JPEG', quality=92)
+                    else:
+                        out.save(tmp_path, target_fmt)
+        os.replace(tmp_path, path)
+        return True
+    except Exception as exc:
+        logger.info('rejected uploaded image %s: %s', os.path.basename(path), exc)
+        for fp in (tmp_path, path):
+            try:
+                os.remove(fp)
+            except OSError:
+                pass
+        return False
 
 
 def save_upload_limited(file_storage, dest_path, max_bytes=_EPESSTO_MAX_UPLOAD_BYTES):

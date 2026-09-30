@@ -95,9 +95,12 @@ def create_app(start_jobs: bool = True) -> Flask:
     app.config['MAX_CONTENT_LENGTH'] = _max_mb * 1024 * 1024
 
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    # Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so only
-    # enforce it outside of DEBUG (production sits behind an HTTPS-terminating proxy).
-    app.config['SESSION_COOKIE_SECURE'] = not config.DEBUG
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    # Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so it
+    # defaults to off only in DEBUG (env SESSION_COOKIE_SECURE overrides).
+    app.config['SESSION_COOKIE_SECURE'] = config.SESSION_COOKIE_SECURE
+    # Absolute session lifetime; idle timeouts (8 h / 1 h admins) are enforced in
+    # app.core.auth.refresh_user_session.
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
     # Check database connection on startup

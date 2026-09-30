@@ -1,7 +1,7 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — finding_chart (split from astronomy_tools_routes.py)."""
 import re
 import io
-import traceback
+import logging
 import numpy as np
 from PIL import Image
 from flask import render_template, request, jsonify, Response
@@ -15,6 +15,8 @@ from .finding_chart_render import (
     _query_nearby_stars,
     _render_finding_chart,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ===============================================================================
@@ -165,9 +167,9 @@ def generate_finding_chart():
             'logs': logs
         })
 
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
+    except Exception:
+        logger.exception('finding chart generation failed')
+        return jsonify({'error': 'Finding chart generation failed.', 'logs': ['[ERROR] Finding chart generation failed.']}), 500
 
 @astronomy_tools_bp.route('/api/finding_chart/fits', methods=['POST'])
 def download_finding_chart_fits():
@@ -209,6 +211,6 @@ def download_finding_chart_fits():
         response = Response(fits_bytes, mimetype='application/fits')
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
+    except Exception:
+        logger.exception('finding chart FITS download failed')
+        return jsonify({'error': 'FITS download failed.', 'logs': ['[ERROR] FITS download failed.']}), 500

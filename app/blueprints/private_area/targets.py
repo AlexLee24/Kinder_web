@@ -156,7 +156,10 @@ def api_search_target():
     
     try:
         from app.db.transient import search_tns_objects
-        rows = search_tns_objects(search_term=q, limit=15, sort_by='discoverydate', sort_order='desc')
+        rows = search_tns_objects(search_term=q, limit=15, sort_by='discoverydate', sort_order='desc',
+                                  apply_permissions=True,
+                                  viewer_email=session['user'].get('email') or None,
+                                  viewer_is_admin=bool(session['user'].get('is_admin')))
         results = []
         for r in rows:
             results.append({
@@ -204,4 +207,4 @@ def api_auto_exposure():
         return jsonify({'success': True, 'filters': filters, 'telescope': telescope})
     except Exception as e:
         logger.error('Auto exposure error: %s', e)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Auto exposure lookup failed'}), 500

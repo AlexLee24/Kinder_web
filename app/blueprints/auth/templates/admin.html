@@ -237,7 +237,7 @@
                     {% for req in api_key_requests %}
                     <div class="request-row" id="apikey-req-{{ loop.index0 }}">
                         <div class="request-info">
-                            <span class="request-email">{{ req.name }} &lt;{{ req.email }}&gt;</span>
+                            <span class="request-email">{{ req.name }} &lt;{{ users[req.email].username if req.email in users and users[req.email].has_placeholder_email else req.email }}&gt;</span>
                             <span class="group-badge" style="background:{% if req.has_key %}rgba(197,160,89,0.2){% else %}rgba(72,199,142,0.15){% endif %}">
                                 {{ 'Reset request' if req.has_key else 'New key request' }}
                             </span>
@@ -272,7 +272,7 @@
                                         <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
                                         <div>
                                             <div class="user-cell-name">{{ user.name }}</div>
-                                            <div class="user-cell-email">{{ email }}</div>
+                                            <div class="user-cell-email">{% if user.username %}{{ user.username }}{% if not user.has_placeholder_email %} · {% endif %}{% endif %}{% if not user.has_placeholder_email %}{{ email }}{% elif not user.username %}—{% endif %}</div>
                                         </div>
                                     </div>
                                 </td>
@@ -328,14 +328,15 @@
                                     </div>
                                     <div class="row-actions" style="gap:6px;flex-wrap:wrap;margin-top:6px;">
                                         {% if user.has_password %}
-                                        <span class="role-pill" title="Can sign in with email and password" style="background:rgba(99,140,255,0.15);color:#8aa8ff;border:1px solid rgba(99,140,255,0.35);">Password{{ ' · must change' if user.must_change_password }}</span>
+                                        <span class="role-pill" title="Can sign in with username and password" style="background:rgba(99,140,255,0.15);color:#8aa8ff;border:1px solid rgba(99,140,255,0.35);">Direct login{{ ' · must change' if user.must_change_password }}</span>
                                         {% endif %}
-                                        <button class="btn btn-secondary" style="padding:3px 10px;font-size:0.78rem;" onclick='showSetPasswordModal({{ email|tojson }})'>
+                                        <button class="btn btn-secondary" style="padding:3px 10px;font-size:0.78rem;" data-email="{{ email }}" data-username="{{ user.username or '' }}" onclick="showSetPasswordModal(this.dataset.email, this.dataset.username)">
                                             {{ 'Reset password' if user.has_password else 'Set password' }}
                                         </button>
                                         {% if user.has_password %}
                                         <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick='adminClearPassword({{ email|tojson }})'>Remove password</button>
                                         {% endif %}
+                                        <button class="btn btn-warning" style="padding:3px 10px;font-size:0.78rem;" title="End all of this user's sessions" data-email="{{ email }}" onclick="adminForceLogout(this.dataset.email, this)">Log out everywhere</button>
                                     </div>
                                     {% else %}
                                     <span class="you-badge">You</span>
@@ -372,7 +373,7 @@
                     {% for req in group_requests %}
                     <div class="request-row">
                         <div class="request-info">
-                            <span class="request-email">{{ req.user_name }} &lt;{{ req.email }}&gt;</span>
+                            <span class="request-email">{{ req.user_name }} &lt;{{ users[req.email].username if req.email in users and users[req.email].has_placeholder_email else req.email }}&gt;</span>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                             <span class="group-badge">{{ req.group_name }}</span>
                             <span class="request-time">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</span>
@@ -420,7 +421,7 @@
                                         <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
                                         <div>
                                             <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
-                                            <div class="member-email">{{ member }}</div>
+                                            <div class="member-email">{% if member in users and users[member].has_placeholder_email %}{{ users[member].username or '—' }}{% else %}{{ member }}{% endif %}</div>
                                         </div>
                                     </div>
                                     <button class="icon-btn icon-btn-danger" onclick='removeFromGroup({{ member|tojson }}, {{ group_name|tojson }})' title="Remove">
@@ -599,13 +600,25 @@
                 <span class="close" onclick="closeModal('addUserModal')">&times;</span>
             </div>
             <form onsubmit="addUser(event)">
+                <p class="cell-muted" style="margin-top:0">Direct-login account: username + password (email optional).
+                    Google-only account: leave username and password empty and enter the Google email.</p>
                 <div class="form-group">
-                    <label for="userEmail">Email Address *</label>
-                    <input type="email" id="userEmail" required placeholder="user@example.com">
+                    <label for="userUsername">Username *</label>
+                    <input type="text" id="userUsername" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" spellcheck="false"
+                           placeholder="3–32 letters, digits, . _ -">
                 </div>
                 <div class="form-group">
-                    <label for="userName">Name (optional)</label>
-                    <input type="text" id="userName" placeholder="If blank, email prefix will be used">
+                    <label for="userPassword">Password * (for direct login)</label>
+                    <input type="password" id="userPassword" minlength="10" maxlength="128" autocomplete="new-password">
+                    <small class="cell-muted">At least 10 characters. Share it with the user through a private channel.</small>
+                </div>
+                <div class="form-group">
+                    <label for="userName">Display name (optional)</label>
+                    <input type="text" id="userName" maxlength="80" placeholder="If blank, the username / email prefix is used">
+                </div>
+                <div class="form-group">
+                    <label for="userEmail">Email (optional)</label>
+                    <input type="email" id="userEmail" maxlength="254" placeholder="user@example.com — required for Google-only accounts">
                 </div>
                 <div class="form-group">
                     <label for="userRole">Role</label>
@@ -614,12 +627,6 @@
                         <option value="user" selected>User</option>
                         <option value="admin">Admin</option>
                     </select>
-                </div>
-                <div class="form-group">
-                    <label for="userPassword">Password (optional)</label>
-                    <input type="password" id="userPassword" minlength="10" maxlength="128" autocomplete="new-password"
-                           placeholder="Leave blank for Google sign-in only">
-                    <small class="cell-muted">At least 10 characters. Share it with the user through a private channel.</small>
                 </div>
                 <div class="form-group">
                     <label class="filter-pill">
@@ -643,6 +650,12 @@
             <form onsubmit="adminSetPassword(event)">
                 <input type="hidden" id="setPasswordEmail">
                 <p class="cell-muted" id="setPasswordTarget" style="margin-top:0"></p>
+                <div class="form-group">
+                    <label for="setPasswordUsername">Username *</label>
+                    <input type="text" id="setPasswordUsername" maxlength="32" pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="off" spellcheck="false"
+                           placeholder="3–32 letters, digits, . _ -">
+                    <small class="cell-muted">The name this user signs in with.</small>
+                </div>
                 <div class="form-group">
                     <label for="setPasswordValue">New password *</label>
                     <input type="password" id="setPasswordValue" required minlength="10" maxlength="128" autocomplete="new-password">
@@ -727,7 +740,9 @@
                     body: JSON.stringify({email})
                 });
                 const d = await r.json();
-                if (d.success) {
+                if (d.success && d.api_key) {
+                    showApiKeyOnceAdmin(email, d.api_key);
+                } else if (d.success) {
                     showAdminNotification(`API key assigned for ${email}`, 'success');
                     setTimeout(() => location.reload(), 800);
                 } else {

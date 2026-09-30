@@ -1857,6 +1857,7 @@ async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
 
     if (_epNedHoverListener) window.removeEventListener('message', _epNedHoverListener);
     _epNedHoverListener = function(e) {
+        if (!_epIsNedIframeMessage(e)) return;
         if (!e.data || e.data.type !== 'nedHover') return;
         const idx = e.data.idx;
         tbody.querySelectorAll('tr').forEach(r => {
@@ -1870,14 +1871,41 @@ async function _epInitNEDExplorer(forceRefresh = false, forceNED = false) {
     window.addEventListener('message', _epNedHoverListener);
 }
 
+// JS string literal safe to embed inside an inline <script> (quotes escaped by JSON,
+// '<' escaped so '</script>' / '<!--' cannot terminate or alter the script block).
+function _epJsStr(v) {
+    return JSON.stringify(String(v == null ? '' : v))
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
+
+function _epFiniteNum(v, fallback) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+// Messages from the NED Aladin srcdoc iframe: must come from that iframe's window.
+// (A srcdoc iframe inherits this page's origin; accept 'null' too for browsers that
+// report the about:srcdoc URL origin.)
+function _epIsNedIframeMessage(e) {
+    const iframe = document.getElementById('ep-ned-aladin-iframe');
+    if (!iframe || !iframe.contentWindow || e.source !== iframe.contentWindow) return false;
+    return e.origin === window.location.origin || e.origin === 'null';
+}
+
 function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcsec) {
     const old = document.getElementById('ep-ned-aladin-iframe');
     if (old) old.remove();
     if (!container) return;
 
-    const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
-    const targetName = String(_epNedTargetName || '').replace(/'/g, "\\'");
-    const survey = _epNedSurvey || 'CDS/P/DSS2/color';
+    ra = _epFiniteNum(ra, 0);
+    dec = _epFiniteNum(dec, 0);
+    const fov = Math.max((_epFiniteNum(radiusArcsec, 60) * 2.4) / 3600, 0.01).toFixed(6);
+    const targetNameLit = _epJsStr(_epNedTargetName || '');
+    const surveyLit = _epJsStr(_epNedSurvey || 'CDS/P/DSS2/color');
+    const parentOriginLit = _epJsStr(window.location.origin);
+    const vendorBase = window.location.origin + '/static/vendor/';
 
     const html = `<!DOCTYPE html>
 <html><head>
@@ -1886,16 +1914,16 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
   body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000;}
   #al{width:100%;height:100%;}
 </style>
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"><\/script>
-<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"><\/script>
+<script src="${vendorBase}aladin-3.8.2.global.js"><\/script>
 </head><body>
 <div id="al"></div>
 <script>
   const T_RA = ${ra}, T_DEC = ${dec};
+  const PARENT_ORIGIN = ${parentOriginLit};
   let al, nedCat;
   A.init.then(function() {
     al = A.aladin('#al', {
-      survey: '${survey}',
+      survey: ${surveyLit},
       fov: ${fov},
       target: T_RA + ' ' + T_DEC,
       cooFrame: 'ICRS',
@@ -1917,18 +1945,19 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
       showStatusBar: false,
     });
     var tCat = A.catalog({name:'Target', color:'#ff4444', sourceSize:16, shape:'cross'});
-    tCat.addSources([A.source(T_RA, T_DEC, {name:'${targetName}', idx:-1})]);
+    tCat.addSources([A.source(T_RA, T_DEC, {name: ${targetNameLit}, idx:-1})]);
     al.addCatalog(tCat);
     al.on('objectHovered', function(obj) {
       if (obj && obj.data && typeof obj.data.idx !== 'undefined' && obj.data.idx >= 0)
-        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, window.location.origin);
+        window.parent.postMessage({type:'nedHover', idx: obj.data.idx}, PARENT_ORIGIN);
     });
     al.on('objectHoveredStop', function() {
-      window.parent.postMessage({type:'nedHover', idx:-1}, window.location.origin);
+      window.parent.postMessage({type:'nedHover', idx:-1}, PARENT_ORIGIN);
     });
-    window.parent.postMessage({type:'nedAladinReady'}, window.location.origin);
+    window.parent.postMessage({type:'nedAladinReady'}, PARENT_ORIGIN);
   });
   window.addEventListener('message', function(e) {
+    if (e.source !== window.parent || e.origin !== PARENT_ORIGIN) return;
     if (!e.data || !al) return;
     var d = e.data;
     if (d.type === 'addNEDSources') {
@@ -1961,6 +1990,8 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
     container.appendChild(iframe);
 
     const onReady = function(e) {
+        if (e.source !== iframe.contentWindow) return;
+        if (e.origin !== window.location.origin && e.origin !== 'null') return;
         if (e.data && e.data.type === 'nedAladinReady') {
             window.removeEventListener('message', onReady);
             if (loading) loading.style.display = 'none';

@@ -15,7 +15,7 @@ import os
 
 import pytest
 
-from tests.conftest import BASE_URL, PERSONAS
+from tests.conftest import BASE_URL, PERSONAS, session_user
 
 pytestmark = pytest.mark.live_db
 
@@ -27,11 +27,12 @@ _cases = [(persona, url, rec) for persona, urls in _data['results'].items() for 
 @pytest.fixture(scope='module')
 def clients(app):
     out = {}
-    for persona, user in PERSONAS.items():
+    for persona in PERSONAS:
         c = app.test_client()
+        user = session_user(persona)
         if user:
             with c.session_transaction() as s:
-                s['user'] = dict(user)
+                s['user'] = user
         out[persona] = c
     return out
 

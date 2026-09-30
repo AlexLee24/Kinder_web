@@ -131,7 +131,7 @@ def api_update_object_status_tns_format(year, letters):
         logger.error(f"Error updating status for {year}{letters}: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }), 500
 
 @objects_bp.route('/api/object/<object_name>')
@@ -397,5 +397,5 @@ def api_update_object_status_generic(object_name):
         logger.error(f"Error updating status for {object_name}: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Internal server error'
         }), 500

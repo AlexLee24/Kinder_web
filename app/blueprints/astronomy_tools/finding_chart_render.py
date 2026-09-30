@@ -240,7 +240,7 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
         return None, logs
     except Exception as e:
         traceback.print_exc()
-        logs.append(f'[ERROR] Exception: {e}')
+        logs.append(f'[ERROR] Exception: {type(e).__name__}')
         return None, logs
 
 def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
@@ -332,7 +332,7 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
         return None, logs
     except Exception as e:
         traceback.print_exc()
-        logs.append(f'[ERROR] Exception: {e}')
+        logs.append(f'[ERROR] Exception: {type(e).__name__}')
         return None, logs
 
 def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
@@ -393,7 +393,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     continue
         logs.append(f'[Vizier] Tycho-2 found {n_tyc} stars')
     except Exception as e:
-        logs.append(f'[Vizier] Tycho-2 ERROR: {e}')
+        logs.append(f'[Vizier] Tycho-2 ERROR: {type(e).__name__}')
 
     # ── 2. UCAC4: adds faint stars not covered by Tycho-2 ───────────────────
     PRIORITY   = [('V', 'Vmag'), ('r', 'rmag'), ('R', 'f.mag')]
@@ -447,7 +447,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     continue
         logs.append(f'[Vizier] UCAC4 added {n_ucac}  total={len(stars)}')
     except Exception as e:
-        logs.append(f'[Vizier] UCAC4 ERROR: {e}')
+        logs.append(f'[Vizier] UCAC4 ERROR: {type(e).__name__}')
 
     # ── 3. SIMBAD: fetch common names for matched stars ──────────────────────
     try:
@@ -482,7 +482,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     n_named += 1
             logs.append(f'[SIMBAD] Named {n_named} stars')
     except Exception as e:
-        logs.append(f'[SIMBAD] WARN: {e}')
+        logs.append(f'[SIMBAD] WARN: {type(e).__name__}')
 
     star_list   = list(stars.values())
     band_counts = {}

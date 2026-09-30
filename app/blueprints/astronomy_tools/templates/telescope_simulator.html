@@ -306,8 +306,8 @@
     <div class="notification-container" id="notificationContainer"></div>
 
     <!-- Scripts -->
-    <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK" crossorigin="anonymous"></script>
-    <script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" crossorigin="anonymous"></script>
+    <!-- Aladin Lite v3 (self-hosted, pinned; v3 does not need jQuery) -->
+    <script type="text/javascript" src="{{ url_for('static', filename='vendor/aladin-3.8.2.global.js') }}" integrity="sha384-lbVORN/EQ6vNTLO94bhRj+19F/xii0a4w11QiGrGeU3av2cPRLGoNy4mYXb8fi+M"></script>
     <script src="{{ url_for('static', filename='js/telescope_simulator.js') }}"></script>
 </body>
 </html>

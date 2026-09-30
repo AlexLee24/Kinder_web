@@ -1,11 +1,13 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — epessto (split from private_area_routes.py)."""
 import functools
+import hmac
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, send_file
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
+from app.core import rate_limit
 from . import private_area_bp
 from .helpers import (
     _EPESSTO_ROOM_LIVE_HOURS,
@@ -31,9 +33,21 @@ from .helpers import (
     _touch_epessto_room,
     _upsert_epessto_room_member,
     can_access_page,
+    reencode_uploaded_image,
     epessto_store_lock,
     save_upload_limited,
 )
+
+# Brute-force guard for room passwords / invite tokens (per user, shared across workers).
+_EPESSTO_JOIN_ATTEMPTS, _EPESSTO_JOIN_WINDOW_S = 5, 600
+_EPESSTO_INVITE_ATTEMPTS, _EPESSTO_INVITE_WINDOW_S = 10, 600
+
+
+def _epessto_attempt_key(kind, room_id=''):
+    user = session.get('user') or {}
+    who = str(user.get('email') or '').strip().lower() or (request.remote_addr or '?')
+    return f'epessto_{kind}:{who}:{room_id}'
+
 
 # Minimum interval between persisting "presence" updates (last_seen / updated_at)
 # on read-only requests, so polling GETs don't rewrite the store every time.
@@ -152,6 +166,9 @@ def api_epessto_support_join_room():
     password = str(payload.get('password', '') or '')
     if not room_id or not password:
         return jsonify({'error': 'room_id and password are required'}), 400
+    if not rate_limit.allow(_epessto_attempt_key('join', room_id),
+                            _EPESSTO_JOIN_ATTEMPTS, _EPESSTO_JOIN_WINDOW_S):
+        return jsonify({'error': 'Too many attempts; please wait a few minutes and try again.'}), 429
 
     store, _, _, _ = _get_epessto_room_or_response(require_room=False)
     room = store.get('rooms', {}).get(room_id)
@@ -280,11 +297,16 @@ def api_epessto_support_join_by_invite():
     invite_token = str(payload.get('invite_token') or '').strip()
     if not invite_token:
         return jsonify({'error': 'invite_token is required'}), 400
+    if not rate_limit.allow(_epessto_attempt_key('invite'),
+                            _EPESSTO_INVITE_ATTEMPTS, _EPESSTO_INVITE_WINDOW_S):
+        return jsonify({'error': 'Too many attempts; please wait a few minutes and try again.'}), 429
 
     store, _, _, _ = _get_epessto_room_or_response(require_room=False)
     matched = None
+    token_b = invite_token.encode('utf-8')
     for room_id, room in store.get('rooms', {}).items():
-        if str(room.get('invite_token') or '') == invite_token:
+        room_token = str(room.get('invite_token') or '')
+        if room_token and hmac.compare_digest(room_token.encode('utf-8'), token_b):
             matched = (room_id, room)
             break
 
@@ -489,6 +511,8 @@ def api_epessto_support_target_image_upload():
     save_path = os.path.join(image_dir, filename)
     if not save_upload_limited(image_file, save_path):
         return jsonify({'error': 'image too large (max 20 MB)'}), 413
+    if not reencode_uploaded_image(save_path, ext):
+        return jsonify({'error': 'file is not a valid image'}), 400
 
     images.append({'filename': filename})
     current['images'] = images
@@ -551,7 +575,8 @@ def api_epessto_support_image_file(filename):
     image_path = os.path.join(_get_epessto_image_dir(room_id), safe_name)
     if not os.path.isfile(image_path):
         return jsonify({'error': 'Not found'}), 404
-    return send_file(image_path)
+    return send_file(image_path, as_attachment=False,
+                     download_name=secure_filename(safe_name) or 'image')
 
 @private_area_bp.route('/api/epessto_support/clear', methods=['DELETE'])
 @_epessto_api

@@ -342,30 +342,82 @@ document.head.appendChild(style);
 // API KEY FUNCTIONALITY
 // ===============================================================================
 
-function toggleApiKeyVisibility(event) {
-    const input = document.getElementById('apiKeyDisplay');
-    const btn = event.currentTarget;
-    if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Hide';
-    } else {
-        input.type = 'password';
-        btn.textContent = 'Show';
-    }
+// Show a freshly issued API key exactly once (it is stored hashed server-side).
+// Built with textContent / value only, never innerHTML, so the key is never parsed as HTML.
+function showApiKeyOnce(apiKey) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.style.display = 'block';
+
+    const box = document.createElement('div');
+    box.className = 'modal-content';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Your new API key';
+
+    const warn = document.createElement('p');
+    warn.style.color = 'rgba(255,120,120,0.95)';
+    warn.textContent = 'Copy it now: it will not be shown again. Your previous key no longer works.';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = apiKey;
+    input.style.cssText = 'width:100%;padding:10px;font-family:monospace;background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:4px;box-sizing:border-box;';
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn btn-primary';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(apiKey);
+        } catch (e) {
+            input.select();
+            document.execCommand('copy');
+        }
+        showNotification('API key copied to clipboard', 'success');
+    });
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-secondary';
+    closeBtn.textContent = 'Done';
+    closeBtn.addEventListener('click', () => { overlay.remove(); location.reload(); });
+    actions.append(copyBtn, closeBtn);
+
+    box.append(title, warn, input, actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
 }
 
-function copyApiKey() {
-    const input = document.getElementById('apiKeyDisplay');
-    if (input.value === 'No API key generated' || !input.value) return;
-    
-    // temporarily change to text to copy
-    const ogType = input.type;
-    input.type = 'text';
-    input.select();
-    document.execCommand('copy');
-    input.type = ogType;
-    
-    showNotification('API Key copied to clipboard!', 'success');
+async function regenerateApiKey(event) {
+    if (!confirm('Generate a new API key? Your current key stops working immediately.')) return;
+    const btn = event.currentTarget;
+    const ogText = btn.textContent;
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+    try {
+        const response = await fetch('/api/profile/regenerate_api_key', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        if (data.success && data.api_key) {
+            const status = document.getElementById('apiKeyStatus');
+            if (status) status.textContent = 'Active (…' + (data.api_key_hint || '') + ')';
+            showApiKeyOnce(data.api_key);
+        } else {
+            showNotification('Error: ' + (data.error || 'Failed'), 'error');
+        }
+    } catch (error) {
+        showNotification('Network error', 'error');
+    }
+    btn.textContent = ogText;
+    btn.disabled = false;
 }
 
 async function requestApiKey(event, isReset) {

@@ -31,11 +31,11 @@
             <p class="login-hint">New accounts start as guests; an admin upgrades your role.</p>
 
             <details class="admin-login-section" open>
-                <summary>Sign in with email &amp; password</summary>
+                <summary>Direct login</summary>
                 <form action="{{ url_for('auth.password_login') }}" method="POST" class="admin-login-form">
                     <label class="field">
-                        <span>Email</span>
-                        <input type="email" name="email" class="admin-input" required maxlength="254" autocomplete="username" spellcheck="false">
+                        <span>Username</span>
+                        <input type="text" name="username" class="admin-input" required maxlength="254" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Username or email">
                     </label>
                     <label class="field">
                         <span>Password</span>
@@ -43,22 +43,7 @@
                     </label>
                     <button type="submit" class="admin-login-btn">Log In</button>
                 </form>
-                <p class="login-hint">Password accounts are created by an administrator; there is no self sign-up.</p>
-            </details>
-
-            <details class="admin-login-section">
-                <summary>Direct access (local admin)</summary>
-                <form action="{{ url_for('auth.admin_login') }}" method="POST" class="admin-login-form" autocomplete="off">
-                    <label class="field">
-                        <span>Username</span>
-                        <input type="text" name="username" class="admin-input" required autocomplete="username" spellcheck="false">
-                    </label>
-                    <label class="field">
-                        <span>Password</span>
-                        <input type="password" name="password" class="admin-input" required autocomplete="current-password">
-                    </label>
-                    <button type="submit" class="admin-login-btn">Log In</button>
-                </form>
+                <p class="login-hint">Direct-login accounts are created by an administrator. You can change your password after signing in.</p>
             </details>
         </section>
     </main>

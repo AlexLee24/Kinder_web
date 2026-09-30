@@ -31,7 +31,8 @@
                                         </span>
                                     </button>
                                 </div>
-                                <p class="user-email">{{ session.user.email }}</p>
+                                {% set placeholder_email = user_data and user_data.has_placeholder_email %}
+                                <p class="user-email">{{ (user_data.username if user_data and user_data.username else '—') if placeholder_email else session.user.email }}</p>
                                 {% if session.user.is_admin %}
                                 <span class="admin-badge">Administrator</span>
                                 {% endif %}
@@ -50,8 +51,14 @@
                             <div class="info-grid">
                                 <div class="info-item">
                                     <span class="info-label">Email:</span>
-                                    <span class="info-value">{{ session.user.email }}</span>
+                                    <span class="info-value">{{ '—' if placeholder_email else session.user.email }}</span>
                                 </div>
+                                {% if user_data and user_data.username %}
+                                <div class="info-item">
+                                    <span class="info-label">Username:</span>
+                                    <span class="info-value">{{ user_data.username }}</span>
+                                </div>
+                                {% endif %}
                                 <div class="info-item">
                                     <span class="info-label">Account Type:</span>
                                     <span class="info-value">
@@ -77,36 +84,34 @@
                                 
                                 {% if user_data and user_data.has_password %}
                                 <div class="info-item" style="grid-column: 1 / -1;">
-                                    <span class="info-label">Password login:</span>
+                                    <span class="info-label">Direct login:</span>
                                     <span class="info-value"><a href="{{ url_for('auth.change_password') }}">Change password</a></span>
                                 </div>
                                 {% endif %}
+
+                                <div class="info-item" style="grid-column: 1 / -1;">
+                                    <span class="info-label">Sessions:</span>
+                                    <form action="{{ url_for('auth.logout_all_devices') }}" method="POST" class="info-value" style="margin:0"
+                                          onsubmit="return confirm('Log out on all devices, including this one?');">
+                                        <button type="submit" class="btn-api btn-api-secondary" style="white-space: nowrap;">Log out all devices</button>
+                                    </form>
+                                </div>
 
                                 <!-- API KEY SECTION -->
                                 {% if session.user.get('role') != 'guest' %}
                                 <div class="info-item api-key-section" style="grid-column: 1 / -1; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
                                     <span class="info-label" style="display: block; margin-bottom: 8px;">API Key:</span>
 
-                                    {% if user_data and user_data.api_key %}
-                                    <!-- Has an active key -->
+                                    {% if user_data and user_data.has_api_key %}
+                                    <!-- Has an active key (only a hint is stored; the key itself is shown once when issued) -->
                                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                                        <input type="password" id="apiKeyDisplay" readonly
-                                            value="{{ user_data.api_key }}"
-                                            style="flex-grow: 1; min-width: 160px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-family: monospace;">
-                                        <button onclick="toggleApiKeyVisibility(event)" class="btn-api btn-api-secondary" style="min-width: 70px;">Show</button>
-                                        <button onclick="copyApiKey()" class="btn-api btn-api-secondary" style="padding: 0 12px;" title="Copy">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                        </button>
-                                        {% if user_data.api_key_request_pending %}
-                                        <button class="btn-api btn-api-secondary" disabled style="white-space: nowrap; opacity: 0.6; display:inline-flex; align-items:center; gap:6px;">
-                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                            Reset Requested
-                                        </button>
-                                        {% else %}
-                                        <button onclick="requestApiKey(event, true)" class="btn-api btn-api-warning" style="white-space: nowrap;">Request Reset</button>
+                                        <span class="role-pill" id="apiKeyStatus" style="font-family: monospace;">Active (…{{ user_data.api_key_hint or '????' }})</span>
+                                        {% if user_data.api_key_last_used_at %}
+                                        <span style="font-size: 0.8rem; color: var(--text-muted, #aaa);">last used {{ user_data.api_key_last_used_at[:16]|replace('T', ' ') }}</span>
                                         {% endif %}
+                                        <button onclick="regenerateApiKey(event)" class="btn-api btn-api-warning" style="white-space: nowrap;">Regenerate Key</button>
                                     </div>
-                                    <p style="font-size: 0.82rem; color: rgba(255,100,100,0.85); margin-top: 6px;">Do not share your API key.</p>
+                                    <p style="font-size: 0.82rem; color: rgba(255,100,100,0.85); margin-top: 6px;">Do not share your API key. Lost it? Regenerate it: the old key stops working immediately.</p>
 
                                     {% elif user_data and user_data.api_key_request_pending %}
                                     <!-- No key, but request pending -->

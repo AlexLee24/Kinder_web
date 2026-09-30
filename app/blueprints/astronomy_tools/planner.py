@@ -5,7 +5,8 @@ import ephem
 import uuid
 import pytz
 import numpy as np
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, session
+from app.core.auth import is_logged_in, is_non_guest
 from app.services.planning import obsplan as obs
 from app.services.planning.observation_script import get_followup_targets_json, process_observation_request
 import logging
@@ -81,8 +82,9 @@ def generate_plot():
         
         try:
             enforce_max_files(plot_folder, max_files=10)
-        except Exception as e:
-            return jsonify({'error': f'Failed to prepare plot folder: {str(e)}'}), 500
+        except Exception:
+            logger.exception('generate_plot: failed to prepare plot folder')
+            return jsonify({'error': 'Failed to prepare plot folder'}), 500
         
         data = request.get_json(silent=True)
         if not data or not isinstance(data, dict):
@@ -109,16 +111,16 @@ def generate_plot():
             date = date.replace("-", "").replace("/", "")
             if len(date) != 8:
                 return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD or YYYY/MM/DD'}), 400
-        except Exception as e:
-            return jsonify({'error': f'Date processing error: {str(e)}'}), 400
+        except Exception:
+            return jsonify({'error': 'Date processing error'}), 400
         
         try:
             timezone_int = int(timezone)
             timezone_name = obs.get_timezone_name(timezone_int)
-        except (ValueError, TypeError) as e:
-            return jsonify({'error': f'Invalid timezone: {str(e)}'}), 400
-        except Exception as e:
-            return jsonify({'error': f'Timezone processing error: {str(e)}'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Invalid timezone'}), 400
+        except Exception:
+            return jsonify({'error': 'Timezone processing error'}), 400
         
         for i, target in enumerate(targets):
             if not isinstance(target, dict):
@@ -143,8 +145,8 @@ def generate_plot():
                 ephem_target = obs.create_ephem_target(name, ra_clean, dec_clean)
                 target_list.append(ephem_target)
                 
-            except Exception as e:
-                return jsonify({'error': f'Invalid coordinates for target {name}: {str(e)}'}), 400
+            except Exception:
+                return jsonify({'error': f'Invalid coordinates for target {name}'}), 400
         
         try:
             location_parts = location.split()
@@ -159,8 +161,8 @@ def generate_plot():
             
             obs_site = obs.create_ephem_observer(observer, longitude, latitude, altitude)
             
-        except (ValueError, TypeError, IndexError) as e:
-            return jsonify({'error': f'Invalid location format: {str(e)}'}), 400
+        except (ValueError, TypeError, IndexError):
+            return jsonify({'error': 'Invalid location format'}), 400
         
         try:
             obs_date = str(int(date))
@@ -175,8 +177,8 @@ def generate_plot():
             obs_start_local_dt = obs.dt_naive_to_dt_aware(obs_start.datetime(), timezone_name)
             obs_end_local_dt = obs.dt_naive_to_dt_aware(obs_end.datetime(), timezone_name)
             
-        except Exception as e:
-            return jsonify({'error': f'Error processing dates: {str(e)}'}), 400
+        except Exception:
+            return jsonify({'error': 'Error processing dates'}), 400
         
         plot_path = os.path.join(plot_folder, unique_filename)
         
@@ -187,8 +189,9 @@ def generate_plot():
                 n_steps=1000, savepath=plot_path
             )
             
-        except Exception as e:
-            return jsonify({'error': f'Error generating plot: {str(e)}'}), 500
+        except Exception:
+            logger.exception('generate_plot: plotting failed')
+            return jsonify({'error': 'Error generating plot'}), 500
         
         if not os.path.exists(plot_path):
             return jsonify({'error': 'Plot generation failed - file not created'}), 500
@@ -202,11 +205,9 @@ def generate_plot():
             "message": success_message
         })
         
-    except Exception as e:
-        error_message = f"Unexpected error in generate_plot: {str(e)}"
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': error_message}), 500
+    except Exception:
+        logger.exception('Unexpected error in generate_plot')
+        return jsonify({'error': 'Unexpected error while generating the plot'}), 500
 
 # ===============================================================================
 # INTERACTIVE VISIBILITY PLANNER
@@ -263,8 +264,8 @@ def visibility_data():
             latitude = parse_coordinate(location_parts[1])
             altitude = float(location_parts[2])
             obs_site = obs.create_ephem_observer(observer_name, longitude, latitude, altitude)
-        except Exception as e:
-            return jsonify({'error': f'Invalid location: {str(e)}'}), 400
+        except Exception:
+            return jsonify({'error': 'Invalid location'}), 400
 
         # Parse date and create observation window (local 17:00 to next day 09:00)
         try:
@@ -280,8 +281,8 @@ def visibility_data():
             obs_end_local = obs.dt_naive_to_dt_aware(obs_end_ephem.datetime(), timezone_name)
             obs_start = ephem.Date(obs_start_local.astimezone(pytz.utc))
             obs_end = ephem.Date(obs_end_local.astimezone(pytz.utc))
-        except Exception as e:
-            return jsonify({'error': f'Date processing error: {str(e)}'}), 400
+        except Exception:
+            return jsonify({'error': 'Date processing error'}), 400
 
         # Generate time array
         times_ephem = np.linspace(float(obs_start), float(obs_end), n_steps)
@@ -469,18 +470,23 @@ def visibility_data():
             'obs_date': obs_date_fmt
         })
 
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('visibility computation failed')
+        return jsonify({'error': 'Visibility computation failed'}), 500
 
 @astronomy_tools_bp.route('/astronomy_tools/get_followup_targets', methods=['GET'])
 def get_followup_targets_route():
+    # The follow-up list is internal (non-public targets): non-guest accounts only.
+    if not is_logged_in():
+        return jsonify({'success': False, 'error': 'Login required'}), 401
+    if not is_non_guest():
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
     try:
         data = get_followup_targets_json()
         return jsonify({'success': True, 'data': data})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('get_followup_targets failed')
+        return jsonify({'success': False, 'error': 'Failed to load follow-up targets'}), 500
 
 @astronomy_tools_bp.route('/astronomy_tools/generate_script', methods=['POST'])
 def generate_script_route():
@@ -488,8 +494,9 @@ def generate_script_route():
         data = request.get_json()
         script = process_observation_request(data)
         return jsonify({'success': True, 'script': script})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('generate_script failed')
+        return jsonify({'success': False, 'error': 'Failed to generate script'}), 500
 
 @astronomy_tools_bp.route('/astronomy_tools/generate_trigger_script', methods=['POST'])
 def generate_trigger_script_route():
@@ -510,9 +517,9 @@ def generate_trigger_script_route():
         logger.info('generate_trigger_script: ok telescope=%s targets=%d script_chars=%d',
                     telescope, len(targets), len(script))
         return jsonify({'success': True, 'script': script})
-    except Exception as e:
+    except Exception:
         logger.exception('generate_trigger_script: failed telescope=%s targets=%s', telescope, target_names)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Failed to generate trigger script'}), 500
 
 # ===============================================================================
 # TARGET AUTOCOMPLETE (for visibility planner)
@@ -525,7 +532,10 @@ def target_autocomplete():
         return jsonify([])
     try:
         from app.db.transient import search_tns_objects
-        rows = search_tns_objects(search_term=q, limit=10)
+        viewer = session.get('user') or {}
+        rows = search_tns_objects(search_term=q, limit=10, apply_permissions=True,
+                                  viewer_email=viewer.get('email') or None,
+                                  viewer_is_admin=bool(viewer.get('is_admin')))
         out = []
         for r in rows:
             prefix = r.get('name_prefix', '') or ''

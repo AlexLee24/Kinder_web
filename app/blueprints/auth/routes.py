@@ -4,13 +4,14 @@ Authentication routes (Google OAuth, login, logout)
 import hmac
 import logging
 import re
-from flask import session, flash, redirect, url_for, request, jsonify, render_template
+from flask import g, session, flash, redirect, url_for, request, jsonify, render_template
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
-from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation, get_password_hash, get_login_email, set_password_hash
+from app.db.auth import user_exists, get_users, get_user, save_user, update_user, create_group_request, group_exists, user_in_group, remove_user_from_group, get_user_group_requests, request_api_key, get_setting, get_invitations, update_invitation, get_password_hash, get_login_account, get_login_email, set_password_hash, set_google_sub, bump_session_version, generate_api_key_for_user, is_placeholder_email
 from app.config import config
 from app.core import rate_limit
+from app.core.auth import start_user_session
 from app.core.passwords import MIN_LENGTH as PASSWORD_MIN_LENGTH, password_problem, hash_password, verify_password
 
 from flask import Blueprint
@@ -40,100 +41,93 @@ def _pending_invitation_for(email: str) -> dict | None:
 
 @auth_bp.route('/auth/google/callback')
 def google_callback():
-    user_groups = []
     try:
         token = google.authorize_access_token()
         user_info = token.get('userinfo')
-
-        if user_info:
-            user_email = user_info.get('email')
-            
-            is_admin = False
-            role = 'guest'
-            is_great_lab_member = False
-            existing_user_data = None
-            invitation = None
-            
-            if user_exists(user_email):
-                users = get_users()
-                existing_user_data = users[user_email]
-                is_admin = existing_user_data.get('is_admin', False)
-                role = existing_user_data.get('role', 'guest')
-                user_groups = existing_user_data.get('groups', [])
-                is_great_lab_member = 'GREAT_Lab' in user_groups or is_admin
-            else:
-                user_groups = []
-                invitation = None
-                if user_email == config.ADMIN_EMAIL:
-                    is_admin = True
-                    role = 'admin'
-                elif get_setting('open_registration', 'true') != 'true':
-                    # Closed registration: only invited addresses may create an account.
-                    invitation = _pending_invitation_for(user_email)
-                    if invitation is None:
-                        logger.info('Sign-up refused for %s: registration is closed', user_email)
-                        flash('Registration is currently closed. Please ask an administrator for an invitation.', 'error')
-                        return redirect(url_for('basic.login'))
-                    is_admin = bool(invitation.get('is_admin'))
-                    role = 'admin' if is_admin else (invitation.get('role') or 'user')
-            
-            display_name = user_info.get('name')
-            display_picture = user_info.get('picture')
-            
-            if existing_user_data:
-                display_name = existing_user_data.get('name') or user_info.get('name')
-                display_picture = existing_user_data.get('picture') or user_info.get('picture')
-                
-            # Prevent huge base64 strings in session cookie (limit 4KB)
-            session_picture = display_picture
-            if session_picture and session_picture.startswith('data:image'):
-                session_picture = user_info.get('picture') # fallback to google picture for cookie
-            
-            session.permanent = True
-            session['user'] = {
-                'email': user_email,
-                'name': display_name,
-                'picture': session_picture,
-                'is_admin': is_admin,
-                'role': role,
-                'is_great_lab_member': is_great_lab_member,
-                'groups': user_groups,
-                'api_key': existing_user_data.get('api_key') if existing_user_data else None
-            }
-
-            flash_message = 'Welcome Administrator!' if is_admin else f'Welcome {display_name}!'
-            flash(flash_message, 'success')
-            
-            if user_exists(user_email):
-                update_user(
-                    user_email,
-                    name=existing_user_data.get('name') or user_info.get('name'),
-                    picture=existing_user_data.get('picture') or user_info.get('picture'),
-                    last_login=datetime.now().isoformat()
-                )
-            else:
-                save_user(
-                    email=user_email,
-                    name=user_info.get('name'),
-                    picture_url=user_info.get('picture'),
-                    is_admin=is_admin,
-                    role=role,
-                )
-                if invitation is not None:
-                    update_invitation(invitation['token'], status='accepted',
-                                      accepted_at=datetime.now(timezone.utc))
-            
-            next_url = session.pop('next_url', None)
-            if next_url:
-                return redirect(next_url)
-            
-            return redirect(url_for('basic.home'))
-        else:
+        if not user_info:
             flash('Login failed, please try again.', 'error')
             return redirect(url_for('basic.login'))
-            
-    except Exception as e:
-        logger.error('Login error: %s', e)
+
+        # Only addresses Google has verified can be trusted as an identity.
+        if user_info.get('email_verified') is not True:
+            logger.warning('Google login refused: email not verified (%s)', user_info.get('email'))
+            flash('Your Google account email is not verified.', 'error')
+            return redirect(url_for('basic.login'))
+        user_email = (user_info.get('email') or '').strip().lower()
+        google_sub = str(user_info.get('sub') or '').strip()
+        if not user_email or not google_sub or is_placeholder_email(user_email):
+            logger.warning('Google login refused: missing/invalid email or sub (%r)', user_email)
+            flash('Login failed, please try again.', 'error')
+            return redirect(url_for('basic.login'))
+
+        # Stored emails may differ in case from Google's lowercase one.
+        canonical_email = get_login_email(user_email)
+        existing_user_data = get_user(canonical_email) if canonical_email else None
+        invitation = None
+
+        if existing_user_data:
+            user_email = existing_user_data['email']
+            bound_sub = existing_user_data.get('google_sub')
+            if bound_sub and bound_sub != google_sub:
+                logger.warning('Google login refused for %s: Google account id does not match '
+                               'the one bound to this user', user_email)
+                flash('This Google account cannot sign in to that user.', 'error')
+                return redirect(url_for('basic.login'))
+            update_user(
+                user_email,
+                name=existing_user_data.get('name') or user_info.get('name'),
+                picture=existing_user_data.get('picture') or user_info.get('picture'),
+                last_login=datetime.now().isoformat()
+            )
+        else:
+            is_admin = False
+            role = 'guest'
+            # ADMIN_EMAIL bootstrap (email_verified is required above).
+            if config.ADMIN_EMAIL and user_email == config.ADMIN_EMAIL.strip().lower():
+                is_admin = True
+                role = 'admin'
+            elif get_setting('open_registration', 'true') != 'true':
+                # Closed registration: only invited addresses may create an account.
+                invitation = _pending_invitation_for(user_email)
+                if invitation is None:
+                    logger.info('Sign-up refused for %s: registration is closed', user_email)
+                    flash('Registration is currently closed. Please ask an administrator for an invitation.', 'error')
+                    return redirect(url_for('basic.login'))
+                is_admin = bool(invitation.get('is_admin'))
+                role = 'admin' if is_admin else (invitation.get('role') or 'user')
+            if not save_user(
+                email=user_email,
+                name=user_info.get('name'),
+                picture_url=user_info.get('picture'),
+                is_admin=is_admin,
+                role=role,
+            ):
+                flash('Login failed, please try again.', 'error')
+                return redirect(url_for('basic.login'))
+            if invitation is not None:
+                update_invitation(invitation['token'], status='accepted',
+                                  accepted_at=datetime.now(timezone.utc))
+
+        if not (existing_user_data or {}).get('google_sub'):
+            set_google_sub(user_email, google_sub)
+
+        user_data = get_user(user_email)
+        if not user_data:
+            flash('Login failed, please try again.', 'error')
+            return redirect(url_for('basic.login'))
+
+        next_url = _safe_next(session.get('next_url'))
+        _start_user_session(user_data, auth_method='google')
+        # A Google sign-in is strongly authenticated; a pending forced password
+        # change only applies to sessions that used the temporary password.
+        logger.info('Google login: %s from %s', user_email, request.remote_addr)
+
+        name = session['user']['name']
+        flash('Welcome Administrator!' if session['user']['is_admin'] else f'Welcome {name}!', 'success')
+        return redirect(next_url or url_for('basic.home'))
+
+    except Exception:
+        logger.exception('Google login error')
         flash('Login failed, please try again.', 'error')
         return redirect(url_for('basic.login'))
 
@@ -144,45 +138,59 @@ def logout():
     return redirect(url_for('basic.home'))
 
 
-# Per-IP failed-login throttle for the local admin login (shared across workers).
-_ADMIN_LOGIN_MAX_FAILURES = 5
+@auth_bp.route('/account/logout-all', methods=['POST'])
+def logout_all_devices():
+    """End every session of the current account (all browsers/devices)."""
+    if 'user' not in session:
+        return redirect(url_for('basic.login'))
+    email = session['user']['email']
+    new_version = bump_session_version(email)
+    if new_version is None:
+        flash('Could not sign out other devices. Please try again.', 'error')
+        return redirect(url_for('basic.profile'))
+    logger.info('audit action=logout_all actor=%s target=%s ip=%s', email, email, request.remote_addr)
+    session.clear()
+    flash('You have been logged out on all devices.', 'info')
+    return redirect(url_for('basic.login'))
+
+
+# ---------------------------------------------------------------------------
+# Local admin login from kinder.env (ADMIN_USERNAME / ADMIN_PASSWORD /
+# ADMIN_LOCAL_EMAIL). Disabled unless all three are set. The login page no longer
+# shows a separate form: /login/password falls back to it when the username is
+# ADMIN_USERNAME and no DB account matches. /admin-login is kept for old clients.
+# ---------------------------------------------------------------------------
+_ADMIN_LOGIN_MAX_FAILURES = 5           # per client IP
 _ADMIN_LOGIN_WINDOW_S = 5 * 60
+_ADMIN_LOGIN_USER_MAX_FAILURES = 10     # per username, any IP
+_ADMIN_LOGIN_USER_WINDOW_S = 60 * 60
 
 
-def _admin_login_blocked(ip: str) -> bool:
-    return rate_limit.count(f'admin_login_fail:{ip}', _ADMIN_LOGIN_WINDOW_S) >= _ADMIN_LOGIN_MAX_FAILURES
+def _env_admin_configured() -> bool:
+    return bool(config.ADMIN_USERNAME and config.ADMIN_PASSWORD and config.ADMIN_LOCAL_EMAIL)
 
 
-def _admin_login_record_failure(ip: str) -> None:
-    rate_limit.hit(f'admin_login_fail:{ip}')
-
-
-@auth_bp.route('/admin-login', methods=['POST'])
-def admin_login():
-    username = request.form.get('username', '').strip()
-    password = request.form.get('password', '')
-    client_ip = request.remote_addr or 'unknown'
-
+def _env_admin_login(username: str, password: str, client_ip: str):
+    """Check the kinder.env admin credentials and start the session (a response)."""
     expected_username = config.ADMIN_USERNAME or ''
     expected_password = config.ADMIN_PASSWORD or ''
     admin_email = config.ADMIN_LOCAL_EMAIL or ''
+    ip_key = f'admin_login_fail:{client_ip}'
+    user_key = f'admin_login_fail_user:{username.lower()[:64]}'
 
-    # Local admin login is disabled unless fully configured.
-    if not expected_username or not expected_password or not admin_email:
-        flash('Local admin login is not configured.', 'error')
-        return redirect(url_for('basic.login'))
-
-    if _admin_login_blocked(client_ip):
-        logger.warning('Admin login throttled for %s', client_ip)
+    if (rate_limit.count(ip_key, _ADMIN_LOGIN_WINDOW_S) >= _ADMIN_LOGIN_MAX_FAILURES
+            or rate_limit.count(user_key, _ADMIN_LOGIN_USER_WINDOW_S) >= _ADMIN_LOGIN_USER_MAX_FAILURES):
+        logger.warning('Local admin login throttled (ip=%s)', client_ip)
         flash('Too many failed attempts. Please try again later.', 'error')
         return redirect(url_for('basic.login'))
 
     user_ok = hmac.compare_digest(username.lower().encode(), expected_username.lower().encode())
     pass_ok = hmac.compare_digest(password.encode(), expected_password.encode())
     if not (user_ok and pass_ok):
-        _admin_login_record_failure(client_ip)
-        logger.warning('Failed admin login from %s', client_ip)
-        flash('Invalid admin credentials.', 'error')
+        rate_limit.hit(ip_key)
+        rate_limit.hit(user_key)
+        logger.warning('Failed local admin login from %s', client_ip)
+        flash(_PW_GENERIC_ERROR, 'error')
         return redirect(url_for('basic.login'))
 
     try:
@@ -194,101 +202,107 @@ def admin_login():
     # role comes from the DB, never hard-coded here.
     if not admin_data:
         logger.error('Admin login: no auth.users row for ADMIN_LOCAL_EMAIL %s', admin_email)
-        flash('Admin account not found in the database.', 'error')
+        flash('Login is temporarily unavailable. Please try again later.', 'error')
         return redirect(url_for('basic.login'))
 
-    rate_limit.clear(f'admin_login_fail:{client_ip}')
+    rate_limit.clear(ip_key)
 
     next_url = _safe_next(session.get('next_url'))
-    _start_user_session(admin_data)   # fresh session on privilege change
-    session['user']['auth_method'] = 'local_admin'
+    _start_user_session(admin_data, auth_method='local_admin')   # fresh session on privilege change
     session['user']['must_change_password'] = False
     update_user(admin_email, last_login=datetime.now().isoformat())
+    logger.info('Local admin login: %s from %s', admin_email, client_ip)
 
     flash('Welcome Administrator!' if session['user']['is_admin'] else f"Welcome {session['user']['name']}!", 'success')
     return redirect(next_url or url_for('basic.home'))
 
 
+@auth_bp.route('/admin-login', methods=['POST'])
+def admin_login():
+    username = request.form.get('username', '').strip()[:128]
+    password = request.form.get('password', '')
+    if not _env_admin_configured():
+        flash('Local admin login is not configured.', 'error')
+        return redirect(url_for('basic.login'))
+    return _env_admin_login(username, password, request.remote_addr or 'unknown')
+
+
 # ---------------------------------------------------------------------------
-# Password login for admin-created accounts (no self-registration)
+# Direct login (username or email + password) for admin-created accounts
+# (no self-registration)
 # ---------------------------------------------------------------------------
-_PW_IP_MAX_FAILURES = 10          # per client IP
-_PW_ACCOUNT_MAX_FAILURES = 5      # per account (slows targeted guessing)
+_PW_IP_MAX_FAILURES = 10            # per client IP
+_PW_ACCOUNT_IP_MAX_FAILURES = 5     # per account + client IP (slows targeted guessing)
+_PW_ACCOUNT_MAX_FAILURES = 50       # per account from all IPs (distributed guessing)
 _PW_WINDOW_S = 15 * 60
-_PW_GENERIC_ERROR = 'Invalid email or password.'
+_PW_CHANGE_MAX_FAILURES = 5
+_PW_GENERIC_ERROR = 'Invalid username or password.'
 
 
 def _safe_next(next_url):
     """Only same-site relative paths are allowed as post-login redirects."""
-    if next_url and next_url.startswith('/') and not next_url.startswith('//') and '\\' not in next_url:
+    if (isinstance(next_url, str) and next_url.startswith('/') and not next_url.startswith('//')
+            and '\\' not in next_url and not any(c in next_url for c in '\r\n\t')):
         return next_url
     return None
 
 
-def _start_user_session(user_data: dict) -> None:
+def _start_user_session(user_data: dict, auth_method: str = 'password') -> None:
     """Replace the session with a fresh one for *user_data* (a get_user() dict)."""
-    session.clear()   # new session on login: no fixation, no leftovers
-    session.permanent = True
-    user_groups = user_data.get('groups', [])
-    is_admin = bool(user_data.get('is_admin', False))
-    picture = user_data.get('picture')
-    if picture and picture.startswith('data:image'):
-        picture = None   # keep base64 out of the 4 KB cookie
-    session['user'] = {
-        'email': user_data['email'],
-        'name': user_data.get('name') or user_data['email'].split('@')[0],
-        'picture': picture,
-        'is_admin': is_admin,
-        'role': user_data.get('role', 'guest'),
-        'is_great_lab_member': 'GREAT_Lab' in user_groups or is_admin,
-        'groups': user_groups,
-        'api_key': user_data.get('api_key'),
-        'auth_method': 'password',
-        'session_version': int(user_data.get('session_version') or 0),
-        'must_change_password': bool(user_data.get('must_change_password')),
-    }
+    start_user_session(user_data, auth_method)
 
 
 @auth_bp.route('/login/password', methods=['POST'])
 def password_login():
-    email = (request.form.get('email') or '').strip()[:254]
+    # 'username' accepts a username or an email; 'email' is the old field name.
+    identifier = (request.form.get('username') or request.form.get('email') or '').strip()[:254]
     password = request.form.get('password') or ''
     client_ip = request.remote_addr or 'unknown'
+    ident_key = identifier.lower()
     ip_key = f'pw_login_fail_ip:{client_ip}'
-    acct_key = f'pw_login_fail_acct:{email.lower()}'
+    acct_ip_key = f'pw_login_fail_acct:{ident_key}:{client_ip}'
+    acct_key = f'pw_login_fail_acct_all:{ident_key}'
 
     if (rate_limit.count(ip_key, _PW_WINDOW_S) >= _PW_IP_MAX_FAILURES
-            or (email and rate_limit.count(acct_key, _PW_WINDOW_S) >= _PW_ACCOUNT_MAX_FAILURES)):
+            or (identifier and (
+                rate_limit.count(acct_ip_key, _PW_WINDOW_S) >= _PW_ACCOUNT_IP_MAX_FAILURES
+                or rate_limit.count(acct_key, _PW_WINDOW_S) >= _PW_ACCOUNT_MAX_FAILURES))):
         logger.warning('Password login throttled (ip=%s)', client_ip)
         flash('Too many failed attempts. Please try again in 15 minutes.', 'error')
         return redirect(url_for('basic.login'))
 
     try:
-        stored_hash = get_password_hash(email) if email else None
+        account = get_login_account(identifier) if identifier else None
     except Exception as exc:
         logger.error('Password login: lookup failed: %s', exc)
         flash('Login is temporarily unavailable. Please try again later.', 'error')
         return redirect(url_for('basic.login'))
 
+    # No DB account under that name: the kinder.env local admin (if configured).
+    if (account is None and _env_admin_configured()
+            and hmac.compare_digest(ident_key.encode(), (config.ADMIN_USERNAME or '').lower().encode())):
+        return _env_admin_login(identifier, password, client_ip)
+
+    canonical_email, stored_hash = account if account else (None, None)
     # verify_password always does one hash check, so unknown accounts and
     # accounts without a password fail in the same time as a wrong password.
     if not verify_password(stored_hash, password):
         rate_limit.hit(ip_key)
-        if email:
+        if identifier:
+            rate_limit.hit(acct_ip_key)
             rate_limit.hit(acct_key)
         logger.warning('Failed password login from %s', client_ip)
         flash(_PW_GENERIC_ERROR, 'error')
         return redirect(url_for('basic.login'))
 
-    canonical_email = get_login_email(email)
     user_data = get_user(canonical_email) if canonical_email else None
     if not user_data:
         flash(_PW_GENERIC_ERROR, 'error')
         return redirect(url_for('basic.login'))
 
-    rate_limit.clear(acct_key)
+    rate_limit.clear(acct_ip_key)
     next_url = _safe_next(session.get('next_url'))
-    _start_user_session(user_data)
+    _start_user_session(user_data, auth_method='password')
     update_user(canonical_email, last_login=datetime.now().isoformat())
     logger.info('Password login: %s from %s', canonical_email, client_ip)
 
@@ -316,8 +330,12 @@ def change_password():
         return redirect(url_for('basic.profile'))
 
     forced = bool(session['user'].get('must_change_password'))
+    account = getattr(g, 'current_user', None) or {}
+    username = account.get('username') if account.get('email') == email else None
     if request.method == 'GET':
         return render_template('change_password.html', forced=forced,
+                               username=username,
+                               account_email=None if is_placeholder_email(email) else email,
                                min_length=PASSWORD_MIN_LENGTH, current_path='/account/password')
 
     current = request.form.get('current_password') or ''
@@ -325,7 +343,7 @@ def change_password():
     confirm = request.form.get('confirm_password') or ''
     fail_key = f'pw_change_fail:{email.lower()}'
 
-    if rate_limit.count(fail_key, _PW_WINDOW_S) >= _PW_ACCOUNT_MAX_FAILURES:
+    if rate_limit.count(fail_key, _PW_WINDOW_S) >= _PW_CHANGE_MAX_FAILURES:
         flash('Too many failed attempts. Please try again in 15 minutes.', 'error')
         return redirect(url_for('auth.change_password'))
     if not verify_password(stored_hash, current):
@@ -335,7 +353,7 @@ def change_password():
     if new != confirm:
         flash('The new passwords do not match.', 'error')
         return redirect(url_for('auth.change_password'))
-    problem = password_problem(new, email)
+    problem = password_problem(new, email, username or '')
     if problem:
         flash(problem, 'error')
         return redirect(url_for('auth.change_password'))
@@ -491,3 +509,37 @@ def profile_request_api_key():
     if request_api_key(user_email):
         return jsonify({'success': True, 'message': 'Request submitted. An admin will review it.'})
     return jsonify({'error': 'Failed to submit request'}), 500
+
+
+_API_KEY_REGEN_MAX = 3
+_API_KEY_REGEN_WINDOW_S = 60 * 60
+
+
+@auth_bp.route('/api/profile/regenerate_api_key', methods=['POST'])
+def profile_regenerate_api_key():
+    """Replace your own (already approved) API key. The new key is returned once."""
+    if 'user' not in session:
+        return jsonify({'error': 'Not logged in'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'error': 'Guests cannot have an API key'}), 403
+    user_email = session['user']['email']
+    try:
+        user_data = get_user(user_email)
+    except Exception as exc:
+        logger.error('regenerate_api_key lookup failed: %s', exc)
+        return jsonify({'error': 'Service temporarily unavailable'}), 503
+    if not user_data or not user_data.get('has_api_key'):
+        return jsonify({'error': 'You do not have an API key yet. Request one first.'}), 400
+    if not rate_limit.allow(f'api_key_regen:{user_email.lower()}', _API_KEY_REGEN_MAX, _API_KEY_REGEN_WINDOW_S):
+        return jsonify({'error': 'Too many key regenerations. Please try again later.'}), 429
+    new_key = generate_api_key_for_user(user_email)
+    if not new_key:
+        return jsonify({'error': 'Failed to generate a new key'}), 500
+    logger.info('audit action=api_key_regenerate actor=%s target=%s ip=%s hint=%s',
+                user_email, user_email, request.remote_addr, new_key[-4:])
+    return jsonify({
+        'success': True,
+        'message': 'New API key generated. Your previous key no longer works.',
+        'api_key': new_key,
+        'api_key_hint': new_key[-4:],
+    })

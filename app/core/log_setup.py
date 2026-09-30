@@ -6,6 +6,7 @@ terminal. Redirects sys.stdout so all print() calls are captured too.
 import io
 import logging
 import os
+import re
 import sys
 import threading
 from datetime import datetime
@@ -19,6 +20,37 @@ def _utc8_today_str() -> str:
     return datetime.now(_UTC_PLUS_8).date().isoformat()
 
 _log_dir: str = None
+
+# API keys must never reach the log files (they may arrive as ?api_key=... in a
+# URL that a library logs, or as an X-API-Key header dump).
+_SECRET_PATTERNS = (
+    re.compile(r'(?i)(api_key=)[^&\s"\']+'),
+    re.compile(r'(?i)(x-api-key["\']?\s*[:=]\s*["\']?)[^&\s"\',}]+'),
+)
+
+
+def redact_secrets(text: str) -> str:
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(r'\1[REDACTED]', text)
+    return text
+
+
+class RedactSecretsFilter(logging.Filter):
+    """Rewrites each record so API keys are replaced by ``[REDACTED]``.
+
+    Attached to every handler set up here; the record's message is formatted once
+    (args merged) and redacted, so formatters downstream see the safe text."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        redacted = redact_secrets(msg)
+        if redacted != msg or record.args:
+            record.msg = redacted
+            record.args = None
+        return True
 
 
 def get_log_dir() -> str:
@@ -164,6 +196,8 @@ def setup_logging(log_dir: str) -> None:
         datefmt='%Y-%m-%d %H:%M:%S',
     )
     handler.setFormatter(formatter)
+    redact = RedactSecretsFilter()
+    handler.addFilter(redact)
 
     root = logging.getLogger()
     root.setLevel(logging.INFO)
@@ -178,7 +212,12 @@ def setup_logging(log_dir: str) -> None:
     console = logging.StreamHandler(sys.__stderr__)
     console.name = 'kinder-console'
     console.setFormatter(formatter)
+    console.addFilter(redact)
     root.addHandler(console)
+    # Any other handler already on the root logger (e.g. gunicorn's) gets it too.
+    for h in root.handlers:
+        if not any(isinstance(f, RedactSecretsFilter) for f in h.filters):
+            h.addFilter(redact)
 
     # Silence very noisy third-party loggers
     logging.getLogger('werkzeug').setLevel(logging.INFO)   # keep ' * Running on ...' and dev-server request lines

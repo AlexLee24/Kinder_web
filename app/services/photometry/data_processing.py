@@ -556,7 +556,7 @@ class DataVisualization:
         return float(scale) if scale and scale > 0 else float(np.max(arr)) or 1.0
 
     @staticmethod
-    def create_spectrum_plot_from_db(spectrum_data, spectrum_id, rest_frame=False, redshift=None, normalise=False):
+    def create_spectrum_plot_from_db(spectrum_data, spectrum_id, rest_frame=False, redshift=None, normalise=False, as_json=False):
         """Create interactive spectrum plot from database data"""
         if not spectrum_data:
             return None
@@ -638,13 +638,17 @@ class DataVisualization:
         layout = DataVisualization._apply_unified_plot_style(layout, legend_right=False)
         
         fig = go.Figure(data=[trace], layout=layout)
-        
+
+        if as_json:
+            # Figure JSON for Plotly.newPlot on the client (no server-built <script>).
+            return fig.to_json()
+
         # Convert to HTML div
         plot_div = pyo.plot(fig, output_type='div', include_plotlyjs=False)
         return plot_div
     
     @staticmethod
-    def create_spectrum_list_plot_from_db(spectrum_data, rest_frame=False, redshift=None, normalise=False, stack=False):
+    def create_spectrum_list_plot_from_db(spectrum_data, rest_frame=False, redshift=None, normalise=False, stack=False, as_json=False):
         """Create plot showing all available spectra for an object"""
         if not spectrum_data:
             return None
@@ -758,6 +762,10 @@ class DataVisualization:
         layout = DataVisualization._apply_unified_plot_style(layout, legend_right=True)
 
         fig = go.Figure(data=traces, layout=layout)
+
+        if as_json:
+            # Figure JSON for Plotly.newPlot on the client (no server-built <script>).
+            return fig.to_json()
 
         # Convert to HTML div
         plot_div = pyo.plot(fig, output_type='div', include_plotlyjs=False)

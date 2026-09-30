@@ -39,7 +39,7 @@ def tns_download_hourly():
                 logger.warning('[TNS Manual] hourly download failed, hr=%s', hr)
         except Exception as e:
             logger.exception('TNS hourly task error: %s', e)
-            _tns_task_status['message'] = f'Error: {e}'
+            _tns_task_status['message'] = 'Error (see server log)'
         finally:
             if work_csv is not None:
                 try:
@@ -94,7 +94,7 @@ def tns_download_daily():
                 logger.warning('[TNS Manual] daily download failed, date=%s', dt.date())
         except Exception as e:
             logger.exception('TNS daily task error: %s', e)
-            _tns_task_status['message'] = f'Error: {e}'
+            _tns_task_status['message'] = 'Error (see server log)'
         finally:
             if work_csv is not None:
                 try:
@@ -125,7 +125,7 @@ def tns_auto_snooze():
             logger.info('[TNS Manual] auto-snooze completed')
         except Exception as e:
             logger.exception('TNS auto-snooze error: %s', e)
-            _tns_task_status['message'] = f'Error: {e}'
+            _tns_task_status['message'] = 'Error (see server log)'
         finally:
             _tns_task_status['running'] = False
 

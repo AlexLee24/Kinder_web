@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, abort
 from werkzeug.utils import secure_filename
+from app.core.auth import is_great_lab_member
 from . import private_area_bp
 from .helpers import (
     allowed_image_ext,
@@ -14,6 +15,7 @@ from .helpers import (
     get_documents_metadata,
     is_admin_user,
     read_documents_env,
+    reencode_uploaded_image,
     sanitize_document_filename,
     save_documents_metadata,
     tutorials_dir,
@@ -208,11 +210,15 @@ def api_documents_content(filename):
         with open(file_path, 'r', encoding='utf-8') as doc_file:
             raw_content = doc_file.read()
         
-        # Replace {{hide=KEY}} with actual values from env
+        # Replace {{hide=KEY}} with actual values from env — only for GREAT_Lab members /
+        # admins; everyone else who can open the page sees a placeholder.
         if '{{hide=' in raw_content:
-            env_config = read_documents_env()
             import re
+            reveal = is_great_lab_member()
+            env_config = read_documents_env() if reveal else {}
             def replace_secret(match):
+                if not reveal:
+                    return '[hidden]'
                 key = match.group(1).strip()
                 # Return actual value if it exists, otherwise keep placeholder or visually show it's missing
                 return env_config.get(key, f"[{key} NOT FOUND IN ENV]")
@@ -266,6 +272,8 @@ def api_documents_upload_image():
         return jsonify({'error': 'Image too large (max 10 MB)'}), 413
     with open(image_path, 'wb') as out:
         out.write(data)
+    if not reencode_uploaded_image(image_path, ext):
+        return jsonify({'error': 'File is not a valid image'}), 400
 
     static_path = f"/tutorials/images/{image_name}"
     return jsonify({
@@ -281,6 +289,10 @@ def serve_tutorial_image(filename):
         abort(403)
     if '..' in filename or filename.startswith('/'):
         abort(400)
+    if os.path.splitext(filename)[1].lower() not in allowed_image_ext:
+        abort(404)
     from flask import send_from_directory
     images_dir = os.path.join(tutorials_dir, 'images')
-    return send_from_directory(images_dir, filename)
+    return send_from_directory(images_dir, filename,
+                               download_name=secure_filename(os.path.basename(filename)) or 'image',
+                               as_attachment=False)

@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     {% include '_favicon.html' %}
-    <meta name="x-api-key" content="{{ api_key }}">
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
     <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
@@ -889,7 +888,7 @@
             var dataBtn = document.getElementById('openDataBtn');
             if (!dataBtn) return;
             dataBtn.addEventListener('click', function() {
-                window.open('https://drive.google.com/drive/folders/1vE5m4ospsew_iNOV9hdz_PxxIY2zW_Vc', '_blank');
+                window.open('https://drive.google.com/drive/folders/1vE5m4ospsew_iNOV9hdz_PxxIY2zW_Vc', '_blank', 'noopener,noreferrer');
             });
         })();
     </script>

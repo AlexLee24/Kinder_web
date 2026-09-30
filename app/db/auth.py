@@ -5,15 +5,34 @@ All SQL targets the 'Kinder' database auth schema.
 Return dicts use backward-compatible key names matching the legacy kinder_web DB.
 """
 
+import hashlib
 import logging
+import re
 import secrets
-import string
 
 from psycopg2 import extras
 
 from . import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+# Direct-login (username + password) accounts created by an admin without an email
+# get a placeholder address in this RFC 2606 reserved TLD: it can never receive
+# mail nor be verified by Google, so it is only an internal identity key.
+PLACEHOLDER_EMAIL_DOMAIN = 'users.invalid'
+USERNAME_RE = re.compile(r'^[A-Za-z0-9._-]{3,32}$')
+
+
+def is_placeholder_email(email: str | None) -> bool:
+    return bool(email) and email.strip().lower().endswith('@' + PLACEHOLDER_EMAIL_DOMAIN)
+
+
+def placeholder_email_for(username: str) -> str:
+    return f'{username.strip().lower()}@{PLACEHOLDER_EMAIL_DOMAIN}'
+
+
+def valid_username(username: str | None) -> bool:
+    return bool(username) and bool(USERNAME_RE.match(username))
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +77,15 @@ def _user_row_to_dict(row) -> dict:
         d['last_login'] = d['last_login'].isoformat()
     if d.get('join_date') and hasattr(d['join_date'], 'isoformat'):
         d['join_date'] = d['join_date'].isoformat()
-    if d.get('api_key_requested_at') and hasattr(d['api_key_requested_at'], 'isoformat'):
-        d['api_key_requested_at'] = d['api_key_requested_at'].isoformat()
-    d['has_api_key'] = bool(d.get('api_key'))
+    for tf in ('api_key_requested_at', 'api_key_created_at', 'api_key_last_used_at'):
+        if d.get(tf) and hasattr(d[tf], 'isoformat'):
+            d[tf] = d[tf].isoformat()
+    # API keys are stored hashed: the plaintext is never available after issue.
+    d.pop('api_key', None)
+    d.pop('api_key_hash', None)
+    d['has_api_key'] = bool(d.get('has_api_key'))
+    d['username'] = d.get('username') or None
+    d['has_placeholder_email'] = is_placeholder_email(d.get('email'))
     d['api_key_request_pending'] = bool(d.get('api_key_requested_at'))
     return d
 
@@ -78,10 +103,13 @@ def _group_row_to_dict(row) -> dict:
 # Users
 # ---------------------------------------------------------------------------
 
-# Never select password_hash here: these dicts reach templates, JSON and the session.
+# Never select password_hash / api_key_hash here: these dicts reach templates, JSON
+# and the session.
 _USER_SELECT = (
     "SELECT u.usr_id, u.email, u.name, u.picture_url, u.roles, "
-    "u.last_login, u.join_date, u.api_key, u.api_key_requested_at, "
+    "u.last_login, u.join_date, u.api_key_requested_at, "
+    "(u.api_key_hash IS NOT NULL) AS has_api_key, u.api_key_hint, "
+    "u.api_key_created_at, u.api_key_last_used_at, u.google_sub, u.username, "
     "(u.password_hash IS NOT NULL) AS has_password, "
     "COALESCE(u.must_change_password, FALSE) AS must_change_password, "
     "COALESCE(u.session_version, 0) AS session_version "
@@ -144,8 +172,10 @@ ROLE_LEVELS = {'guest': 0, 'user': 1, 'admin': 50, 'super_admin': 99}
 
 
 def save_user(email: str, name: str = '', picture_url: str = '',
-              is_admin: bool = False, role: str | None = None) -> dict | None:
-    """Insert (or refresh) a user. ``role`` ('guest'/'user'/'admin') wins over ``is_admin``."""
+              is_admin: bool = False, role: str | None = None,
+              username: str | None = None) -> dict | None:
+    """Insert (or refresh) a user. ``role`` ('guest'/'user'/'admin') wins over ``is_admin``.
+    ``username`` (direct-login name) is only set on insert."""
     if role in ROLE_LEVELS:
         roles = ROLE_LEVELS[role]
     else:
@@ -154,13 +184,14 @@ def save_user(email: str, name: str = '', picture_url: str = '',
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
             cur.execute(
-                "INSERT INTO auth.users (email, name, picture_url, roles, last_login) "
-                "VALUES (%s,%s,%s,%s,now()) "
+                "INSERT INTO auth.users (email, name, picture_url, roles, last_login, username) "
+                "VALUES (%s,%s,%s,%s,now(),%s) "
                 "ON CONFLICT (email) DO UPDATE "
                 "SET name = EXCLUDED.name, picture_url = EXCLUDED.picture_url, "
                 "    last_login = now() "
-                "RETURNING usr_id, email, name, picture_url, roles, last_login, join_date, api_key",
-                (email, name, picture_url, roles)
+                "RETURNING usr_id, email, name, picture_url, roles, last_login, join_date, "
+                "(api_key_hash IS NOT NULL) AS has_api_key",
+                (email, name, picture_url, roles, username or None)
             )
             row = cur.fetchone()
             conn.commit()
@@ -247,6 +278,51 @@ def get_password_hash(email: str) -> str | None:
     return row[0] if row else None
 
 
+def get_login_account(identifier: str) -> tuple[str, str | None] | None:
+    """(canonical email, password_hash) for a direct-login identifier.
+
+    An identifier containing '@' is matched against the email, anything else
+    against the username (usernames cannot contain '@'); both case-insensitive."""
+    identifier = (identifier or '').strip()
+    if not identifier:
+        return None
+    column = 'email' if '@' in identifier else 'username'
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT email, password_hash FROM auth.users WHERE lower({column}) = lower(%s) "
+            "ORDER BY usr_id LIMIT 1",
+            (identifier,)
+        )
+        row = cur.fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def username_taken(username: str, exclude_email: str | None = None) -> bool:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM auth.users WHERE lower(username) = lower(%s) "
+            "AND (%s::text IS NULL OR email <> %s) LIMIT 1",
+            (username, exclude_email, exclude_email)
+        )
+        return cur.fetchone() is not None
+
+
+def set_username(email: str, username: str) -> bool:
+    """Give *email* a direct-login username (False if taken / user missing)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE auth.users SET username = %s WHERE email = %s", (username, email))
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("set_username %s: %s", email, e)
+        return False
+
+
 def get_login_email(email: str) -> str | None:
     """Canonical stored email for a case-insensitive login identifier."""
     with get_db_connection() as conn:
@@ -280,16 +356,65 @@ def set_password_hash(email: str, password_hash: str | None,
         return None
 
 
-def generate_api_key_for_user(email: str) -> str | None:
-    """Admin action: generate (or replace) API key and clear any pending request."""
-    alphabet = string.ascii_letters + string.digits
-    api_key = ''.join(secrets.choice(alphabet) for _ in range(48))
+def bump_session_version(email: str) -> int | None:
+    """Invalidate every existing session of *email* ("log out all devices").
+
+    Returns the new session_version, or None if the user does not exist."""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE auth.users SET api_key = %s, api_key_requested_at = NULL WHERE email = %s",
-                (api_key, email)
+                "UPDATE auth.users SET session_version = COALESCE(session_version, 0) + 1 "
+                "WHERE email = %s RETURNING session_version",
+                (email,)
+            )
+            row = cur.fetchone()
+            conn.commit()
+        return row[0] if row else None
+    except Exception as e:
+        logger.error("bump_session_version %s: %s", email, e)
+        return None
+
+
+def set_google_sub(email: str, google_sub: str) -> bool:
+    """Bind a Google account id to *email* (only when none is bound yet)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE auth.users SET google_sub = %s WHERE email = %s AND google_sub IS NULL",
+                (google_sub, email)
+            )
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("set_google_sub %s: %s", email, e)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# API keys — only sha256(key) + the last 4 characters are stored
+# ---------------------------------------------------------------------------
+
+def hash_api_key(api_key: str) -> str:
+    return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+
+
+def generate_api_key_for_user(email: str) -> str | None:
+    """Generate (or replace) *email*'s API key and clear any pending request.
+
+    Only the hash and a 4-character hint are stored. The plaintext key is
+    returned exactly once so the caller can show it to the user."""
+    api_key = secrets.token_urlsafe(32)
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE auth.users SET api_key = NULL, api_key_hash = %s, api_key_hint = %s, "
+                "api_key_created_at = now(), api_key_last_used_at = NULL, "
+                "api_key_requested_at = NULL WHERE email = %s",
+                (hash_api_key(api_key), api_key[-4:], email)
             )
             if cur.rowcount == 0:
                 return None
@@ -306,7 +431,9 @@ def revoke_api_key(email: str) -> bool:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
-                "UPDATE auth.users SET api_key = NULL, api_key_requested_at = NULL WHERE email = %s",
+                "UPDATE auth.users SET api_key = NULL, api_key_hash = NULL, api_key_hint = NULL, "
+                "api_key_created_at = NULL, api_key_last_used_at = NULL, "
+                "api_key_requested_at = NULL WHERE email = %s",
                 (email,)
             )
             updated = cur.rowcount > 0
@@ -340,7 +467,7 @@ def get_api_key_requests() -> list[dict]:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
             cur.execute(
-                "SELECT email, name, (api_key IS NOT NULL) AS has_key, api_key_requested_at "
+                "SELECT email, name, (api_key_hash IS NOT NULL) AS has_key, api_key_requested_at "
                 "FROM auth.users WHERE api_key_requested_at IS NOT NULL "
                 "ORDER BY api_key_requested_at ASC"
             )
@@ -357,18 +484,32 @@ def get_api_key_requests() -> list[dict]:
 
 
 def get_user_by_api_key(api_key: str) -> dict | None:
-    if not api_key:
+    """User dict for a presented API key (looked up by its sha256), or None."""
+    api_key = (api_key or '').strip()
+    if not api_key or len(api_key) > 256:
         return None
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(
-            f"{_USER_SELECT} WHERE u.api_key = %s",
-            (api_key,)
+            f"{_USER_SELECT} WHERE u.api_key_hash = %s",
+            (hash_api_key(api_key),)
         )
         row = cur.fetchone()
         if not row:
             return None
         d = _user_row_to_dict(row)
+        # Last-used timestamp, written at most once per minute per key.
+        try:
+            cur.execute(
+                "UPDATE auth.users SET api_key_last_used_at = now() WHERE usr_id = %s "
+                "AND (api_key_last_used_at IS NULL "
+                "     OR api_key_last_used_at < now() - interval '1 minute')",
+                (d['usr_id'],)
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            logger.warning("get_user_by_api_key: last-used update failed: %s", e)
         cur.execute(
             "SELECT g.name FROM auth.usr_group ug "
             "JOIN auth.groups g ON ug.group_id = g.group_id "
@@ -890,7 +1031,8 @@ def check_object_access(object_name: str, user_email: str | None = None,
       * restricted and ``user_email`` None    -> False
       * admin (``user_roles`` >= 50, or — when ``user_roles`` is None — the
         ``auth.users.roles`` of ``user_email`` >= 50) -> True
-      * permission 'login'                    -> True (any logged-in user)
+      * permission 'login'                    -> True for a non-guest account
+        (roles >= 1: user/admin); guests are refused
       * permission 'groups'                   -> True only for a joined member of
         one of the object's groups (an empty group list means admins only)
     """
@@ -910,13 +1052,14 @@ def check_object_access(object_name: str, user_email: str | None = None,
             if not user_email:
                 return False
             if user_roles is None:
-                cur.execute("SELECT roles FROM auth.users WHERE email = %s", (user_email,))
+                cur.execute("SELECT roles FROM auth.users WHERE lower(email) = lower(%s)",
+                            (user_email,))
                 r = cur.fetchone()
                 user_roles = (r[0] or 0) if r else 0
             if user_roles >= 50:
                 return True
             if perm == 'login':
-                return True
+                return user_roles >= 1   # guests (roles 0) do not see 'login' objects
             if not groups:
                 return False
             cur.execute(
