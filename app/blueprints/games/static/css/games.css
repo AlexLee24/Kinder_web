@@ -210,3 +210,24 @@ body {
     .game-controls input { margin-bottom: 10px; width: 100%; box-sizing: border-box; }
     .game-controls button { width: 100%; }     /* not every button: the navbar's Install / menu buttons are buttons too */
 }
+
+/* Game Lobby link (EAU Astro) */
+.lobby-card {
+    display: flex; align-items: center; gap: 14px;
+    box-sizing: border-box;
+    width: min(900px, calc(100% - 32px));
+    margin: 0 auto 28px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(18, 20, 28, 0.72);
+    border: 1px solid rgba(197, 160, 89, 0.35);
+    color: #fff; text-decoration: none;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.lobby-card:hover { border-color: var(--kw-accent, #c5a059); transform: translateY(-2px); }
+.lobby-card-icon { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: rgba(197, 160, 89, 0.14); color: var(--kw-accent, #c5a059); }
+.lobby-card-icon svg { width: 24px; height: 24px; }
+.lobby-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lobby-card-text b { font-size: 1rem; font-weight: 600; }
+.lobby-card-text small { font-size: 0.82rem; color: rgba(255, 255, 255, 0.65); }
+.lobby-card-go { flex-shrink: 0; padding: 7px 14px; border-radius: 999px; background: var(--kw-accent, #c5a059); color: #141414; font-size: 0.85rem; font-weight: 600; }
