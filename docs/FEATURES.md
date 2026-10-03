@@ -234,7 +234,7 @@ Kinder（Logo → /）
 
 ## 9. 路由總表（自動產生）
 
-見文末「附錄 A」（由 `tests/tools/dump_url_map.py` 產生，250 條規則、14 個 blueprint；重構清理後 245 條，2026-10 加上 `/sw.js`、`/offline` 為 247 條）。
+見文末「附錄 A」（由 `tests/tools/dump_url_map.py` 產生，250 條規則、14 個 blueprint；重構清理後 245 條，之後密碼登入、安全性強化、`/avatar/<usr_id>` 與 2026-10 的 `/sw.js`、`/offline` 加入後為 254 條）。
 
 ---
 
