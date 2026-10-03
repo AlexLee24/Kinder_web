@@ -239,54 +239,110 @@
 .flash-message.info { border-left-color: var(--kw-color-info); }
 @keyframes kwFlashIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
-/* ── Narrow screens: slide-down sheet ─────────────────────────── */
+/* ── Narrow screens: full-height drawer (2026-10, after EAU_Web) ──
+   Slides in from the left and fills the screen below the navbar (solid background, scrolls on its
+   own, page behind is locked). Order: your account card (Profile · Install · Log Out) first, so
+   Log Out is never out of reach, then the pages as large rows; Tools / Planners / About / Private /
+   Manage are accordions with a chevron. The phone tab bar stays visible below it. */
 @media (max-width: 900px) {
     #kw-navbar .hamburger-menu { display: flex; }
     #kw-navbar .main-nav {
         position: fixed;
         top: var(--kw-nav-h); left: 0; right: 0;
-        max-height: calc(100vh - var(--kw-nav-h));
+        height: calc(100vh - var(--kw-nav-h));
+        height: calc(100dvh - var(--kw-nav-h));
         overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
         flex-direction: column;
         align-items: stretch;
-        padding: 12px 16px 24px;
-        background: rgba(11, 13, 20, 0.96);
-        -webkit-backdrop-filter: blur(24px);
-        backdrop-filter: blur(24px);
-        border-bottom: 1px solid var(--kw-border);
-        transform: translateY(-8px);
+        justify-content: flex-start;
+        gap: 0;
+        padding: 12px 16px calc(var(--kw-dock-h, 0px) + 32px + env(safe-area-inset-bottom, 0px));
+        background: #0B0D14;
+        border-top: 1px solid var(--kw-border);
+        transform: translateX(-100%);
         opacity: 0;
         visibility: hidden;
-        pointer-events: none;           /* closed panel must never catch taps meant for the page */
-        transition: opacity var(--kw-transition-fast), transform var(--kw-transition-fast), visibility 0s linear 0.15s;
+        pointer-events: none;           /* closed drawer must never catch taps meant for the page */
+        transition: transform 0.26s var(--kw-ease), opacity 0.26s var(--kw-ease), visibility 0s linear 0.26s;
     }
-    #kw-navbar .main-nav.active { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
-    #kw-navbar .main-nav ul { flex-direction: column; align-items: stretch; gap: 4px; }
-    #kw-navbar .main-nav ul.nav-left { margin: 0; }
-    #kw-navbar .nav-right { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--kw-border); }
-    #kw-navbar .main-nav li > a { min-height: var(--kw-target-min); border-radius: var(--kw-radius-sm); font-size: var(--kw-text-md); }
-    #kw-navbar .main-nav a.login-button { justify-content: center; }
+    #kw-navbar .main-nav.active { transform: none; opacity: 1; visibility: visible; pointer-events: auto; transition-delay: 0s; }
+    html.kw-menu-open, html.kw-menu-open body { overflow: hidden; }
+
+    #kw-navbar .main-nav ul { flex-direction: column; align-items: stretch; gap: 2px; margin: 0; }
+    #kw-navbar .main-nav ul.nav-left, #kw-navbar .main-nav ul.nav-right { width: 100%; margin: 0; }
+    #kw-navbar .main-nav > ul > li { width: 100%; }
+
+    /* account first (and inside it, the account card before Manage) */
+    #kw-navbar .main-nav ul.nav-right { order: -1; margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid var(--kw-border); }
+    #kw-navbar .main-nav ul.nav-right > li.dropdown:has(.user-dropdown) { order: -1; }
+
+    /* Level 1 rows: flush left, large, high contrast */
+    #kw-navbar .main-nav > ul > li > a {
+        display: flex;
+        justify-content: flex-start;
+        width: 100%;
+        min-height: 50px;
+        padding: 0 12px;
+        border-radius: var(--kw-radius-md);
+        font-size: 1rem;
+        font-weight: 500;
+        color: var(--kw-text-white);
+    }
+    #kw-navbar .main-nav > ul > li > a:active { background: rgba(255, 255, 255, 0.08); }
+    #kw-navbar .main-nav > ul > li > a.active { color: var(--kw-accent); background: var(--kw-accent-dim); }
+    #kw-navbar .main-nav a.login-button { justify-content: center; margin-top: 4px; }
+
+    /* accordion chevron, right-aligned; only .mobile-active rotates it (hover sticks on touch) */
     #kw-navbar .dropdown::after { display: none; }
-    #kw-navbar .dropdown-content {
+    #kw-navbar .dropdown-toggle .dropdown-arrow { margin-left: auto; transition: none; }
+    #kw-navbar .dropdown:hover .dropdown-arrow { transform: none; }
+    #kw-navbar .dropdown.mobile-active > .dropdown-toggle .dropdown-arrow { transform: rotate(180deg); }
+    #kw-navbar .dropdown.mobile-active > .dropdown-toggle { color: var(--kw-accent); }
+
+    /* Level 2: indented rows */
+    /* `ul.` because `.main-nav ul { display: flex }` above is more specific than a bare class */
+    #kw-navbar .main-nav ul.dropdown-content {
         position: static;
         display: none;
         min-width: 0;
-        margin: 4px 0 4px 12px;
+        margin: 2px 0 6px;
         padding: 0;
         background: transparent;
         border: 0;
-        border-left: 2px solid var(--kw-border-med);
         border-radius: 0;
         box-shadow: none;
-        /* inherit, not visible: an expanded sub-menu inside the closed (invisible) panel used to stay
-           clickable and covered the page — e.g. the "Continue with Google" button on /login */
         opacity: 1; visibility: inherit; transform: none;
     }
-    #kw-navbar .dropdown:hover > .dropdown-content { display: none; }
-    #kw-navbar .dropdown.mobile-active > .dropdown-content { display: flex; }
-    #kw-navbar .dropdown-content li > a { border-radius: 0 var(--kw-radius-sm) var(--kw-radius-sm) 0; }
+    #kw-navbar .main-nav .dropdown:hover > ul.dropdown-content,
+    #kw-navbar .main-nav .dropdown:focus-within > ul.dropdown-content { display: none; }
+    #kw-navbar .main-nav .dropdown.mobile-active > ul.dropdown-content { display: flex; }
+    #kw-navbar .dropdown-content li > a {
+        min-height: 44px;
+        padding: 0 12px 0 34px;
+        border-radius: var(--kw-radius-md);
+        font-size: 0.94rem;
+        color: rgba(255, 255, 255, 0.86);
+    }
     /* the desktop :hover / :focus-within / .mobile-active rule sets visibility: visible with higher specificity */
     #kw-navbar .main-nav:not(.active) .dropdown-content { visibility: hidden; }
+
+    /* account card: avatar + name as a header, its menu always open */
+    #kw-navbar .nav-right > li.dropdown:has(.user-dropdown) > a.user-menu {
+        min-height: 56px;
+        pointer-events: none;           /* nothing to toggle: the menu below is always shown */
+        background: none;
+    }
+    #kw-navbar .nav-right a.user-menu .user-avatar { width: 36px; height: 36px; }
+    #kw-navbar .nav-right a.user-menu .user-name { max-width: none; font-size: 1.02rem; font-weight: 600; }
+    #kw-navbar .nav-right a.user-menu .dropdown-arrow { display: none; }
+    #kw-navbar .main-nav .nav-right ul.user-dropdown { display: flex; margin: 0; }
+    #kw-navbar .nav-right .user-dropdown .user-dropdown-name { display: none; }      /* already in the header row */
+    #kw-navbar .nav-right .user-dropdown .user-dropdown-head { padding: 0 12px 6px 60px; }
+    #kw-navbar .nav-right .user-dropdown li.dropdown-sep { display: none; }
+    #kw-navbar .nav-right .user-dropdown li > a { padding-left: 12px; }
+    #kw-navbar .main-nav a.manage-btn { border: 0; color: var(--kw-accent); }
 }
 
 /* ── Install app button (PWA, 2026-10) ────────────────────────── */

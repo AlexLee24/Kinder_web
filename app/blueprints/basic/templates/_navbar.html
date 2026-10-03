@@ -87,6 +87,7 @@
                             <a href="#" class="dropdown-toggle manage-btn" title="Admin tools" aria-haspopup="true">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                                 <span>Manage</span>
+                                <span class="dropdown-arrow" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
                             </a>
                             <ul class="dropdown-content dropdown-align-right">
                                 <li><a href="{{ url_for('admin.admin_panel') }}" class="{{ 'active' if _p == '/admin' }}">Admin Panel</a></li>
@@ -152,6 +153,8 @@
     <button type="button" class="kw-dock-more" aria-label="More pages">{{ _dock_icon('<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>') }}<span>More</span></button>
 </nav>
 
+<script type="speculationrules">{"prefetch": [{"where": {"selector_matches": ".kw-dock a, #kw-navbar .main-nav a"}, "eagerness": "moderate"}]}</script>
+
 <!-- Flash Messages -->
 <div class="flash-message-container" aria-live="polite">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -175,6 +178,7 @@
             hamburger.classList.remove('active');
             mainNav.classList.remove('active');
             hamburger.setAttribute('aria-expanded', 'false');
+            document.documentElement.classList.remove('kw-menu-open');
             document.querySelectorAll('#kw-navbar .dropdown.mobile-active').forEach(d => d.classList.remove('mobile-active'));
         }
 
@@ -184,6 +188,8 @@
                 const open = hamburger.classList.toggle('active');
                 mainNav.classList.toggle('active', open);
                 hamburger.setAttribute('aria-expanded', open ? 'true' : 'false');
+                document.documentElement.classList.toggle('kw-menu-open', open);   // lock the page behind the drawer
+                if (open) mainNav.scrollTop = 0;
             });
             document.addEventListener('click', function(e) {
                 if (mainNav.classList.contains('active') && !mainNav.contains(e.target) && !hamburger.contains(e.target)) {
@@ -210,6 +216,30 @@
         });
     });
 
+    // Tapping a link: react at once (tab bar highlights the tapped tab, a progress bar runs under the
+    // navbar) instead of sitting still until the next page has loaded.
+    (function() {
+        const root = document.documentElement;
+        document.addEventListener('click', function(e) {
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const a = e.target.closest && e.target.closest('a[href]');
+            if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+            const href = a.getAttribute('href');
+            if (!href || href.charAt(0) === '#' || href.startsWith('javascript:')) return;
+            let u;
+            try { u = new URL(href, location.href); } catch (err) { return; }
+            if (u.origin !== location.origin) return;
+            if (u.pathname === location.pathname && u.search === location.search) return;   // same page / hash only
+            if (a.closest('.kw-dock')) {
+                document.querySelectorAll('.kw-dock > a.active').forEach(x => x.classList.remove('active'));
+                a.classList.add('active');
+            }
+            if (window.matchMedia('(max-width: 900px)').matches) root.classList.add('kw-navigating');   // phones only
+        });
+        // back/forward cache restores the old page as it was: clear the loading state
+        window.addEventListener('pageshow', function() { root.classList.remove('kw-navigating', 'kw-menu-open'); });
+    })();
+
     // Phone tab bar: "More" opens the main menu; hide the bar while the on-screen keyboard is up
     (function() {
         const more = document.querySelector('.kw-dock-more');
@@ -217,7 +247,6 @@
         if (more && burger) more.addEventListener('click', function(e) {
             e.stopPropagation();
             burger.click();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
         const typing = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]), textarea, select, [contenteditable="true"]');
         document.addEventListener('focusin', e => { if (typing(e.target)) document.documentElement.classList.add('kw-typing'); });

@@ -143,3 +143,31 @@ body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-are
 .kw-pwa-step-ico { flex: 0 0 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--kw-surface); color: var(--kw-accent); }
 .kw-pwa-step-ico svg { width: 18px; height: 18px; }
 .kw-pwa-guide-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+/* ── Navigation feedback (phones / narrow screens only): a link was tapped, the next page is
+   loading. The tapped tab turns gold at once, a gold bar runs under the navbar, and the page
+   dims a moment later (fast loads never show the dim). ── */
+@media (max-width: 900px) {
+    html.kw-navigating #kw-navbar::after {
+        content: "";
+        position: absolute;
+        left: 0; bottom: -1px;
+        height: 3px;
+        width: 100%;
+        background: linear-gradient(90deg, transparent, var(--kw-accent) 40%, var(--kw-accent) 60%, transparent);
+        background-size: 50% 100%;
+        background-repeat: no-repeat;
+        animation: kwNavLoad 0.9s linear infinite;
+        z-index: 2;
+    }
+    html.kw-navigating .kw-dock > a.active { color: var(--kw-accent); }
+    html.kw-navigating .kw-dock > a.active svg { animation: kwNavPulse 0.9s ease-in-out infinite; }
+    body > *:not(#kw-navbar):not(.kw-dock):not(.kw-header-spacer) { transition: opacity 0.2s ease; }
+    html.kw-navigating body > *:not(#kw-navbar):not(.kw-dock):not(.kw-header-spacer) { opacity: 0.45; transition-delay: 0.15s; }
+}
+@keyframes kwNavLoad { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+@keyframes kwNavPulse { 50% { transform: scale(0.88); opacity: 0.7; } }
+@media (prefers-reduced-motion: reduce) {
+    html.kw-navigating #kw-navbar::after { animation: none; background: var(--kw-accent); }
+    html.kw-navigating .kw-dock > a.active svg { animation: none; }
+}
