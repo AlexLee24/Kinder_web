@@ -580,3 +580,61 @@
         min-height: 160px !important;
     }
 }
+
+/* Phones: Comments and DETECT mini panels side by side leave ~150px each (names wrap per word) — stack them */
+@media (max-width: 600px) {
+    .top-inline-panels { flex-direction: column; flex-wrap: nowrap; }
+    .top-inline-panels .top-mini-panel { flex: none; width: 100%; }
+}
+
+/* Phones: section jump bar (Comments · DETECT · Info · Images · Photometry · Spectra · Sources).
+   Sticks under the navbar; full-bleed so it reads as part of the navbar. Hidden above 768px. */
+.od-jump { display: none; }
+@media (max-width: 768px) {
+    .object-detail-container { margin-top: 15px; }     /* the old 80–90px gap was for a floating navbar; the bar now sits right under it */
+    .od-jump {
+        position: sticky;
+        top: var(--kw-nav-h, 60px);
+        z-index: 50;
+        display: flex;
+        gap: 6px;
+        margin: -15px -15px 10px;
+        padding: 8px 15px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        background: rgba(10, 11, 16, 0.94);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .od-jump::-webkit-scrollbar { display: none; }
+    .od-jump a {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 13px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+        color: rgba(255, 255, 255, 0.78);
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .od-jump a.is-active {
+        color: #141414;
+        background: var(--kw-accent, #c5a059);
+        border-color: transparent;
+        font-weight: 500;
+    }
+    /* jump targets stop below navbar + bar */
+    #commentsMiniPanel, #detectMiniPanel, #od-info, #od-images, #od-phot, #od-spec, #od-perm {
+        scroll-margin-top: calc(var(--kw-nav-h, 60px) + 60px);
+    }
+}
+@media (max-width: 480px) {
+    .object-detail-container { margin-top: 10px; }
+    .od-jump { margin: -10px -10px 10px; padding: 8px 10px; }
+}

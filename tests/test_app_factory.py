@@ -16,8 +16,9 @@ def test_all_blueprints_registered(app):
 def test_route_count_is_stable(app):
     # 250 rules before the 2026-09 refactor (docs/FEATURES.md appendix A); 245 after the
     # clean-up (4 template-less /private/* pages, the dead web_api.static rule and the
-    # group-request URL change). Update deliberately when routes are added or removed.
-    assert sum(1 for _ in app.url_map.iter_rules()) == 245
+    # group-request URL change); 247 since the installable app (2026-10: /sw.js, /offline).
+    # Update deliberately when routes are added or removed.
+    assert sum(1 for _ in app.url_map.iter_rules()) == 247
 
 
 def test_duplicate_rules_keep_precedence(app):

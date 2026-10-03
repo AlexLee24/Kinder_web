@@ -1,12 +1,12 @@
-/* ===== 基礎樣式 ===== */
-:root {
-    --profile-accent: var(--kw-accent);
-    --profile-accent-hover: var(--kw-accent-hover);
-    --profile-border: var(--kw-border);
-    --profile-glass: var(--kw-glass-bg);
-    --profile-text: var(--kw-text-primary);
-    --profile-muted: var(--kw-text-muted);
-}
+/* ================================================================
+   profile.css — My Profile (/profile)
+   Layout (2026-10, after EAU_Web): identity card (avatar · name · role ·
+   quick facts) → two columns: Account + API key | Groups, in Kinder's
+   dark-panel + gold style. Generic pieces (kw-panel, kw-btn, kw-chip,
+   kw-modal …) are in _theme.css, which loads after this file.
+   ================================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
     font-family: var(--kw-font-sans);
@@ -18,872 +18,131 @@ body {
     padding: 0;
     font-weight: 300;
     min-height: 100vh;
-}
-
-/* ===== 選取文字效果 ===== */
-::selection,
-::-moz-selection {
-    background: rgba(197, 160, 89, 0.3);
-}
-
-/* ===== 主容器 ===== */
-.profile-container {
-    max-width: 90%;
-    margin: 120px auto 40px;
-    padding: 20px;
-}
-
-.profile-layout {
-    display: flex;
-    gap: 30px;
-    align-items: flex-start;
-}
-
-.profile-left {
-    flex: 1;
-    min-width: 0;
-}
-
-.profile-right {
-    flex: 1;
-    min-width: 0;
-}
-
-@media (max-width: 992px) {
-    .profile-layout {
-        flex-direction: column;
-    }
-}
-
-/* ===== 標題區域 ===== */
-.profile-header {
-    text-align: center;
-    margin-bottom: 40px;
-}
-
-.profile-header h1 {
-    font-size: 2.5em;
-    color: #ffffff;
-    margin-bottom: 10px;
-    font-weight: 300;
-    letter-spacing: 2px;
-    text-shadow: 0 4px 20px rgba(0,0,0,0.2);
-}
-
-.profile-header p {
-    font-size: 1.2em;
-    color: rgba(255, 255, 255, 0.8);
-    font-weight: 300;
-    letter-spacing: 1px;
-}
-
-/* ===== 個人檔案卡片 ===== */
-.profile-card {
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 25px;
-    padding: 40px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    color: #ffffff;
-}
-
-/* ===== 用戶資訊區域 ===== */
-.user-info-section {
-    display: flex;
-    align-items: center;
-    margin-bottom: 40px;
-    padding-bottom: 30px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    gap: 30px;
-}
-
-.user-avatar-wrapper {
-    flex-shrink: 0;
-    position: relative;
-    cursor: pointer;
-    width: 120px;
-    height: 120px;
-    border-radius: 50%;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    overflow: hidden; /* Ensures overlay doesn't spill out */
-}
-
-.user-avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: filter 0.3s ease;
-}
-
-.user-avatar-wrapper:hover .user-avatar-img {
-    filter: brightness(0.6);
-}
-
-.avatar-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    color: white;
-    font-size: 0.9em;
-    font-weight: 500;
-    background: rgba(0, 0, 0, 0.4);
-    pointer-events: none;
-}
-
-.user-avatar-wrapper:hover .avatar-overlay {
-    opacity: 1;
-}
-
-#avatar-upload {
-    display: none;
-}
-
-.user-details {
-    flex: 1;
-    min-width: 0;
-}
-
-.user-details h2 {
-    margin: 0 0 12px 0;
-    font-size: 2.2em;
-    font-weight: 400;
-    color: var(--kw-accent);
-    letter-spacing: 1px;
-    word-break: break-word;
-}
-
-.user-email {
-    font-size: 1.1em;
-    color: rgba(255, 255, 255, 0.8);
-    margin: 0 0 15px 0;
-    font-weight: 300;
-    word-break: break-all;
-}
-
-.admin-badge {
-    background: #ff6b6b;
-    color: #ffffff;
-    padding: 8px 18px;
-    border-radius: 25px;
-    font-size: 0.9em;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    display: inline-block;
-}
-
-/* ===== Edit Name Functionality ===== */
-.user-name-container {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 12px;
-}
-
-.edit-name-btn {
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.edit-name-btn:hover {
-    background: rgba(40, 40, 40, 0.9);
-    border-color: rgba(255, 255, 255, 0.3);
-    transform: scale(1.1);
-}
-
-.edit-icon {
-    font-size: 1.2em;
-    filter: brightness(0) invert(1);
-}
-
-/* ===== Modal Styles ===== */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-}
-
-.modal-content {
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 20px;
-    margin: 15% auto;
-    padding: 0;
-    width: 90%;
-    max-width: 500px;
-    color: #ffffff;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-    
-}
-
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 25px 30px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.modal-header h3 {
-    margin: 0;
-    font-size: 1.5em;
-    font-weight: 400;
-    color: var(--kw-accent);
-    letter-spacing: 1px;
-}
-
-.close {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    width: 35px;
-    height: 35px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: all 0.3s ease;
-}
-
-.close:hover {
-    color: #ffffff;
-    background: rgba(40, 40, 40, 0.9);
-}
-
-.modal form {
-    padding: 30px;
-}
-
-.form-group {
-    margin-bottom: 25px;
-}
-
-.form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
-    letter-spacing: 0.5px;
-}
-
-.form-group input {
-    width: 100%;
-    padding: 15px 20px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    background: rgba(40, 40, 40, 0.9);
-    color: #ffffff;
-    font-size: 16px;
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-}
-
-.form-group input:focus {
-    outline: none;
-    border-color: var(--kw-accent);
-    background: rgba(40, 40, 40, 0.9);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.form-group input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-}
-
-.char-counter {
-    text-align: right;
-    margin-top: 5px;
-    font-size: 0.9em;
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.modal-actions {
-    display: flex;
-    gap: 15px;
-    justify-content: flex-end;
-    margin-top: 30px;
-}
-
-.btn-secondary {
-    background: rgba(40, 40, 40, 0.9);
-    color: rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.btn-secondary:hover {
-    background: rgba(40, 40, 40, 0.9);
-    color: #ffffff;
-    
-}
-
-/* ===== Notification Styles ===== */
-.notification {
-    position: fixed;
-    top: 100px;
-    right: 20px;
-    padding: 15px 25px;
-    border-radius: 12px;
-    color: #ffffff;
-    font-weight: 500;
-    z-index: 1001;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-
-.notification-success {
-    background: var(--kw-accent);
-    border: 1px solid rgba(197, 160, 89, 0.3);
-}
-
-.notification-error {
-    background: #ff6b6b;
-    border: 1px solid rgba(255, 107, 107, 0.3);
-}
-
-.notification-warning {
-    background: #feca57;
-    border: 1px solid rgba(254, 202, 87, 0.3);
-}
-
-.notification-info {
-    background: #74b9ff;
-    border: 1px solid rgba(116, 185, 255, 0.3);
-}
-
-/* ===== 群組區域 ===== */
-.groups-section {
-    margin-bottom: 40px;
-}
-
-.groups-section h3 {
-    font-size: 1.8em;
-    color: var(--kw-accent);
-    margin-bottom: 25px;
-    font-weight: 400;
-    letter-spacing: 1px;
-}
-
-.groups-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 20px;
-    margin-bottom: 20px;
-}
-
-.groups-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.group-item-row {
-    display: flex;
-    align-items: center;
-    padding: 15px 20px;
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
-    transition: all 0.3s ease;
-}
-
-.group-item-row:hover {
-    background: rgba(50, 50, 50, 0.9);
-    border-color: rgba(255, 255, 255, 0.25);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.group-item {
-    display: flex;
-    align-items: center;
-    padding: 20px;
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 18px;
-    transition: all 0.3s ease;
-    cursor: default;
-    min-height: 70px;
-}
-
-.group-item:hover {
-    background: rgba(40, 40, 40, 0.9);
-    border-color: rgba(255, 255, 255, 0.25);
-    
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.group-icon {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: var(--kw-accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 18px;
-    flex-shrink: 0;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.group-icon span {
-    font-size: 1.4em;
-    font-weight: bold;
-    color: #ffffff;
-    text-transform: uppercase;
-}
-
-.group-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.group-name {
-    font-size: 1.1em;
-    font-weight: 500;
-    color: #ffffff;
-    letter-spacing: 0.5px;
-    word-break: break-word;
-    line-height: 1.3;
-    display: block;
-}
-
-.group-members {
-    font-size: 0.85em;
-    color: rgba(255, 255, 255, 0.6);
-    display: block;
-    margin-top: 2px;
-}
-
-.group-description {
-    font-size: 0.9em;
-    color: rgba(255, 255, 255, 0.7);
-    margin-top: 5px;
-    line-height: 1.4;
-}
-
-.group-actions {
-    flex-shrink: 0;
-    margin-left: 15px;
-}
-
-/* ===== 無群組狀態 ===== */
-.no-groups {
-    text-align: center;
-    padding: 50px 30px;
-    background: rgba(40, 40, 40, 0.9);
-    border: 2px dashed rgba(255, 255, 255, 0.2);
-    border-radius: 20px;
-}
-
-.no-groups-icon {
-    font-size: 3.5em;
-    margin-bottom: 20px;
-    opacity: 0.6;
-}
-
-.no-groups p {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 1.2em;
-    margin: 0 0 15px 0;
-    font-style: italic;
-}
-
-.admin-hint {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 1em;
-    margin: 15px 0 0 0;
-    line-height: 1.4;
-}
-
-.admin-hint a {
-    color: var(--kw-accent);
-    text-decoration: none;
-    transition: color 0.3s ease;
-}
-
-.admin-hint a:hover {
-    color: #ffffff;
-    text-decoration: underline;
-}
-
-/* ===== 帳戶資訊區域 ===== */
-.account-section {
-    margin-bottom: 40px;
-}
-
-.account-section h3 {
-    font-size: 1.8em;
-    color: var(--kw-accent);
-    margin-bottom: 25px;
-    font-weight: 400;
-    letter-spacing: 1px;
-}
-
-.info-grid {
-    display: grid;
-    gap: 15px;
-}
-
-.info-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 18px 25px;
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 15px;
-    transition: all 0.3s ease;
-}
-
-.info-item:hover {
-    background: rgba(40, 40, 40, 0.9);
-}
-
-.info-label {
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.8);
-    letter-spacing: 0.5px;
-    font-size: 1em;
-    flex-shrink: 0;
-    white-space: nowrap;
-    margin-right: 12px;
-}
-
-.info-value {
-    color: #ffffff;
-    font-weight: 400;
-    font-size: 1em;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: right;
-}
-
-/* ===== Ask to Join Group ===== */
-.ask-join-section {
-    margin-top: 40px;
-    padding-top: 30px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.ask-join-section h3 {
-    font-size: 1.8em;
-    color: var(--kw-accent);
-    margin-bottom: 15px;
-    font-weight: 400;
-}
-
-.join-info {
-    margin-bottom: 20px;
-}
-
-.join-info p {
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 1em;
-    margin: 0;
-}
-
-.join-form .form-group {
-    margin-bottom: 15px;
-}
-
-.join-form input,
-.join-form textarea {
-    width: 100%;
-    padding: 12px 15px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.3);
-    color: #ffffff;
-    font-size: 15px;
-    box-sizing: border-box;
-    font-family: inherit;
-    resize: vertical;
-}
-
-.join-form input:focus,
-.join-form textarea:focus {
-    outline: none;
-    border-color: var(--kw-accent);
-    background: rgba(40, 40, 40, 0.9);
-}
-
-.join-submit-btn {
-    width: 100%;
-    margin-top: 10px;
-    font-size: 1em;
-    padding: 12px;
-}
-
-/* ===== 管理員區域 ===== */
-.admin-section {
-    margin-bottom: 0;
-}
-
-.admin-section h3 {
-    font-size: 1.8em;
-    color: var(--kw-accent);
-    margin-bottom: 25px;
-    font-weight: 400;
-    letter-spacing: 1px;
-}
-
-.admin-actions {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-/* ===== 按鈕樣式 ===== */
-.btn {
-    padding: 15px 30px;
-    border: none;
-    border-radius: 25px;
-    cursor: pointer;
-    font-size: 15px;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    text-decoration: none;
-    display: inline-block;
-    letter-spacing: 0.8px;
-    font-family: var(--kw-font-sans);
-    text-align: center;
-    min-width: 150px;
-}
-
-.btn-primary {
-    background: var(--kw-accent);
-    color: #ffffff;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-.btn-primary:hover {
-    
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-}
-
-/* ===== 響應式設計 ===== */
-@media (max-width: 768px) {
-    .profile-container {
-        margin-top: 100px;
-        padding: 15px;
-        max-width: 100%;
-    }
-
-    .profile-header h1 {
-        font-size: 2em;
-    }
-
-    .profile-card {
-        padding: 30px 25px;
-    }
-
-    .user-info-section {
-        flex-direction: column;
-        text-align: center;
-        gap: 20px;
-    }
-
-    .user-details h2 {
-        font-size: 1.8em;
-    }
-
-    .groups-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .group-item {
-        padding: 18px;
-    }
-
-    .info-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 16px 20px;
-    }
-
-    .admin-actions {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .btn {
-        width: 100%;
-        max-width: 250px;
-    }
-
-    .modal-content {
-        margin: 10% auto;
-        width: 95%;
-    }
-    
-    .modal-header {
-        padding: 20px 25px;
-    }
-    
-    .modal form {
-        padding: 25px;
-    }
-    
-    .modal-actions {
-        flex-direction: column;
-    }
-    
-    .btn {
-        width: 100%;
-        margin-bottom: 10px;
-    }
-    
-    .user-name-container {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-    
-    .edit-name-btn {
-        align-self: flex-start;
-    }
-}
-
-@media (max-width: 480px) {
-    .profile-header h1 {
-        font-size: 1.8em;
-        letter-spacing: 1px;
-    }
-
-    .profile-card {
-        padding: 25px 20px;
-        border-radius: 20px;
-    }
-
-    .user-details h2 {
-        font-size: 1.6em;
-    }
-
-    .user-avatar img {
-        width: 80px;
-        height: 80px;
-    }
-
-    .group-item {
-        padding: 15px;
-        min-height: 60px;
-    }
-
-    .group-icon {
-        width: 45px;
-        height: 45px;
-        margin-right: 15px;
-    }
-
-    .group-icon span {
-        font-size: 1.2em;
-    }
-
-    .group-name {
-        font-size: 1em;
-    }
-
-    .info-item {
-        padding: 14px 18px;
-    }
-
-    .groups-section h3,
-    .account-section h3,
-    .admin-section h3 {
-        font-size: 1.5em;
-    }
-
-    .no-groups {
-        padding: 40px 20px;
-    }
-
-    .no-groups-icon {
-        font-size: 3em;
-    }
-
-    .no-groups p {
-        font-size: 1.1em;
-    }
-
-    .notification {
-        right: 10px;
-        left: 10px;
-        top: 90px;
-    }
-    
-    .modal-content {
-        margin: 5% auto;
-    }
-    
-    .modal-header h3 {
-        font-size: 1.3em;
-    }
-    
-    .form-group input {
-        padding: 12px 15px;
-        font-size: 14px;
-    }
-}
-
-
-/* ===== API Key Buttons ===== */
-.btn-api {
-    padding: 8px 16px;
-    font-size: 0.85rem;
-    border-radius: 6px;
-    border: none;
-    cursor: pointer;
-    font-weight: 500;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 36px;
-}
-
-.btn-api-secondary {
-    background: rgba(80, 80, 80, 0.6);
     color: #fff;
-    border: 1px solid rgba(255,255,255,0.2);
 }
 
-.btn-api-secondary:hover {
-    background: rgba(100, 100, 100, 0.8);
-}
+::selection, ::-moz-selection { background: rgba(197, 160, 89, 0.3); }
 
-.btn-api-warning {
-    background: #feca57;
-    color: #333;
-    font-weight: 600;
-}
+.kw-page.profile-page { max-width: 1120px; padding-top: 28px; }
 
-.btn-api-warning:hover {
-    background: #ffda79;
-    box-shadow: 0 0 8px rgba(254, 202, 87, 0.4);
+/* ── Identity card ────────────────────────────────────────────── */
+.profile-hero {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 28px;
+    padding: 26px 28px;
+    margin-bottom: 16px;
+    border-radius: var(--kw-radius-xl);
+    background: var(--kw-card-bg);
+    border: 1px solid var(--kw-border);
+    box-shadow: var(--kw-shadow);
+}
+.profile-avatar { position: relative; width: 108px; height: 108px; border-radius: 50%; overflow: hidden; cursor: pointer; flex-shrink: 0; border: 3px solid var(--kw-accent-border); }
+.profile-avatar img, .profile-avatar-initial { width: 100%; height: 100%; object-fit: cover; display: block; transition: filter 0.3s ease; }
+.profile-avatar-initial { display: flex; align-items: center; justify-content: center; font-size: 2.4rem; font-weight: 300; color: var(--kw-accent); background: var(--kw-bg-elevated); }
+.profile-avatar:hover img, .profile-avatar:hover .profile-avatar-initial { filter: brightness(0.6); }
+.profile-avatar:focus-visible { outline: none; box-shadow: var(--kw-focus-ring); }
+.profile-avatar-badge {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: center;
+    height: 30px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.profile-avatar:hover .profile-avatar-badge, .profile-avatar:focus-visible .profile-avatar-badge { opacity: 1; }
+.profile-avatar-badge svg { width: 15px; height: 15px; }
+
+.profile-id { min-width: 0; }
+.profile-name-row { display: flex; align-items: center; gap: 6px; }
+.profile-name-row h1 {
+    margin: 0;
+    font-size: clamp(1.6rem, 1.2rem + 1.2vw, 2.1rem);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+    color: var(--kw-accent);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-email { margin: 4px 0 12px; font-size: 0.92rem; color: rgba(255, 255, 255, 0.75); overflow-wrap: anywhere; }
+.profile-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.profile-chips .role-admin { background: #ff6b6b; color: #fff; }
+
+.profile-facts { display: flex; gap: 10px; margin: 0; }
+.profile-facts > div { min-width: 104px; padding: 12px 14px; border-radius: 12px; background: var(--kw-card-bg-2); border: 1px solid var(--kw-border); text-align: center; }
+.profile-facts dt { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
+.profile-facts dd { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: 1.05rem; font-weight: 400; color: #fff; white-space: nowrap; }
+
+.profile-note {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: var(--kw-radius-md);
+    background: rgba(116, 185, 255, 0.08);
+    border: 1px solid rgba(116, 185, 255, 0.25);
+    font-size: 0.86rem; line-height: 1.5;
+    color: rgba(255, 255, 255, 0.8);
+}
+.profile-note svg { width: 18px; height: 18px; flex-shrink: 0; color: #74b9ff; }
+
+/* ── Columns ──────────────────────────────────────────────────── */
+.profile-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
+
+.info-list { margin: 0; }
+.info-list > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 11px 2px; }
+.info-list > div + div { border-top: 1px solid var(--kw-hairline); }
+.info-list dt { font-size: 0.84rem; color: rgba(255, 255, 255, 0.6); }
+.info-list dd { margin: 0; font-size: 0.88rem; font-weight: 400; color: #fff; text-align: right; overflow-wrap: anywhere; }
+
+/* API key */
+.api-key-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.api-key-row input { flex: 1 1 180px; min-width: 0; min-height: 36px; padding: 0 12px; border-radius: 10px; font-family: var(--kw-font-mono); font-size: 0.82rem; background: rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.2); }
+.api-key-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.api-warn { font-size: 0.8rem; color: rgba(255, 100, 100, 0.85); }
+.api-pending, .api-empty { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 0.88rem; color: rgba(255, 255, 255, 0.7); }
+.api-pending { color: var(--kw-accent); }
+.api-pending svg { width: 15px; height: 15px; flex-shrink: 0; }
+.api-empty span { flex: 1 1 220px; }
+
+/* Groups */
+.groups-list { display: flex; flex-direction: column; }
+.group-item-row { display: flex; align-items: center; gap: 14px; padding: 12px 2px; }
+.group-item-row + .group-item-row { border-top: 1px solid var(--kw-hairline); }
+.group-icon {
+    width: 42px; height: 42px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: 1rem; font-weight: 500;
+    color: var(--kw-accent);
+    background: var(--kw-accent-dim);
+    border: 1px solid var(--kw-accent-border);
+}
+.group-item-row.is-member .group-icon { color: var(--kw-accent-contrast); background: var(--kw-accent); border-color: transparent; }
+.group-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.group-name { font-size: 0.95rem; font-weight: 400; color: #fff; }
+.group-members { font-size: 0.78rem; color: rgba(255, 255, 255, 0.55); line-height: 1.45; }
+.group-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* Edit-name dialog */
+.char-counter { align-self: flex-end; font-size: 0.74rem; color: var(--kw-text-muted); }
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 960px) {
+    .profile-hero { grid-template-columns: auto minmax(0, 1fr); }
+    .profile-facts { grid-column: 1 / -1; }
+    .profile-facts > div { flex: 1; }
+    .profile-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+    .kw-page.profile-page { padding-top: 16px; }
+    .profile-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 24px 18px 20px; gap: 16px; }
+    .profile-name-row { justify-content: center; }
+    .profile-name-row h1 { white-space: normal; }
+    .profile-chips { justify-content: center; }
+    .profile-facts { width: 100%; gap: 6px; }
+    .profile-facts > div { min-width: 0; padding: 10px 6px; }
+    .group-item-row { flex-wrap: wrap; }
+    .group-actions { width: 100%; justify-content: flex-end; }
 }

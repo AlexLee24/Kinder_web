@@ -430,7 +430,8 @@ body {
         flex-direction: column;
     }
     .controls-panel {
-        flex: 0 0 100%;
+        flex: 0 0 auto;
+        width: 100%;            /* column layout with align-items:flex-start would shrink it to its content */
         min-width: unset;
         max-width: unset;
         position: static;

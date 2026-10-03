@@ -204,15 +204,23 @@ kinder_web_blueprint/
 
 ---
 
-## 8. 視覺設計系統（2026-09）
+## 8. 視覺設計系統（2026-09 token；2026-10 EAU 版面）
 
-依 Apple Human Interface Guidelines（`apple-design-skill`）與 UI/UX Pro Max 的「Data-Dense Dashboard」建議重新設計外觀，原則：系統字體（SF / Inter）、4/8pt 間距、44pt 觸控目標、每個畫面只有一個醒目主要動作（金色）、藍色連結、可見的鍵盤 focus、`prefers-reduced-motion`、深色玻璃材質。
+2026-09 依 Apple HIG 建立 token（系統字體、4/8pt 間距、44pt 觸控目標、金色主要動作、藍色連結、可見 focus、`prefers-reduced-motion`）。2026-10 參考 EAU_Web 重排版面（頁首 = eyebrow + 標題 + 說明 + 右側動作、分頁列、KPI 卡、面板、資料表），**外觀維持 Kinder 原本的樣子**：深色半透明面板（`rgba(18,20,28,0.72)`）、細白框、金色標題與表頭、實心金色主要按鈕；不加任何玻璃特效。各頁背景圖沒有改動。
 
 | 檔案 | 內容 |
 |---|---|
-| `app/blueprints/basic/static/css/_theme.css` | 所有 design token（顏色、字級、間距、圓角、動效、陰影）＋ 共用元件層：按鈕角色（`.btn-primary` / `.btn-secondary` / `.btn-danger`、`.btn-approve` / `.btn-reject`）、表單控制項、focus ring、捲軸。每個頁面都載入（透過 `_navbar.html`；首頁直接載入）。 |
-| `_navbar.css` / `_navbar.html` | 固定玻璃工具列：左 Logo、主要導覽（Marshal / Tools / Planners / About / Private）、右側依狀態顯示 Log In（主要動作）或 Manage + 使用者選單；≤900px 變成下拉式選單面板。`current_path` 會標示目前頁面。 |
-| `home.css` / `home.html` | 首頁：全螢幕 hero（兩個 CTA）、Quick access 卡片（登入身分不同卡片不同）、Gallery、頁尾；lightbox 與上傳/編輯 modal 的 DOM id 與 `home_gallery.js` 相同。 |
-| `login.css` / `login.html` | 登入卡片：Google 為主要動作，本機管理員登入收在「Direct access」展開區。 |
+| `app/blueprints/basic/static/css/_theme.css` | design token ＋ 共用元件層：按鈕角色（`.btn-primary` / `.btn-secondary` / `.btn-danger`…）、表單控制項、focus ring、捲軸；檔尾是 2026-10 的版面元件（全部 `kw-` 前綴）：`.kw-page` / `.kw-page-head`（`.kw-eyebrow`）/ `.kw-grid-2/-3`、`.kw-subnav` + `.kw-tabbar` / `.kw-tab`、`.kw-seg`、`.kw-kpis` / `.kw-kpi`、`.kw-mini-stats`、`.kw-panel`、`.kw-row`、`.kw-table`、`.kw-btn(-primary/-tinted/-danger/-ghost/-sm)`、`.kw-icon-btn`、`.kw-search`、`.kw-select`、`.kw-switch`、`.kw-field`、`.kw-chip`、`.kw-avatar`、`.kw-modal` + `.kw-modal-card`、toast `.notification`。每個頁面都載入（透過 `_navbar.html`；首頁直接載入）。 |
+| `_navbar.css` / `_navbar.html` | 原本的固定工具列；主要導覽（Marshal / Tools / Planners / About / Private）改為置中（EAU 版面），右側 Manage ▾（Admin Panel、Users & API keys、Groups、Web Log、DB Status）與使用者選單（頂端顯示姓名 / email / 角色）；≤900px 變成下拉式選單面板。 |
+| `auth/templates/_admin_nav.html` | 管理區共用分頁列（Overview / Users / Groups / Access / Operations ｜ DB Status / Web Log），`/admin`、`/admin/database`、`/admin/log` 都 include。在 `/admin` 上前五個切換頁內分頁（網址 `#users` 等，可直接連結、可按上一頁），在另兩頁是連回 `/admin#<tab>` 的連結。 |
+| `admin.html` / `admin.css` / `admin.js` | 管理後台：每個分頁 = 頁首 + 內容；Overview 先列「Needs a decision」（加入群組 / API key 申請，可直接核准），再是最近登入、DETECT、排程、System（開放註冊開關等）。Users：角色分段篩選 + 群組 + 搜尋，手機版表格變卡片。 |
+| `profile.html` / `profile.css` | 個人頁：身分卡（頭像可點換、名稱可改、角色、Groups / Member since / API key 速覽）→ 左 Account + API key、右 Groups。 |
+| `home.css` / `home.html`、`login.css` / `login.html` | 首頁與登入頁（2026-09 版，未改）。 |
+| `_mobile.css` + `_navbar.html` 的 `.kw-dock` | 手機版（≤768px）：底部分頁列（成員：Marshal / DETECT / Trigger / Planner / More），輸入時收起；安全區、16px 輸入框、讓位給底部分頁列的固定按鈕。只放全站通用的規則，頁面專屬的手機版寫在該頁 CSS（例：`marshal/_phone.css`）。 |
+| PWA：`_pwa_head.html`、`static/manifest.json`、`static/sw.js`、`js/pwa.js`、`static/pwa/` | 可安裝成 App。`sw.js` 由 `/sw.js` 服務（`core/static_files.py`），只快取網址會隨內容改變的東西（`?v=` 靜態檔、CDN 函式庫、字型），頁面與 `/api` 一律走網路，斷線顯示 `/offline`。圖示 / 啟動畫面 / 小尺寸 logo 由 `scripts/gen_pwa_assets.py` 產生（原始 `Kinder_light.png` 2.7 MB，不要直接拿來顯示）。改 `sw.js` 的快取策略時記得改 `VERSION`。 |
 
-其他頁面沿用各自的 CSS，只透過 token 與共用元件層取得一致的按鈕 / 輸入框 / 導覽列外觀；要逐頁改版時，先把該頁 CSS 裡的硬編碼顏色換成 `--kw-*` token。
+注意事項：
+
+- `_navbar.html` 在 `<body>` 內載入 `_theme.css`，所以它排在各頁自己的 CSS **之後**：同樣權重時 theme 會贏。頁面 CSS 要覆寫 `kw-*` 規則時需提高權重（例：`.kw-page.profile-page`、`.kw-panel.req-banner`、`body .kw-subnav`）。
+- 新增頁面：`<head>` 的 viewport meta 用 `width=device-width, initial-scale=1.0, viewport-fit=cover`，下一行 `{% include '_pwa_head.html' %}`；body 裡 include `_navbar.html`。
+- 其他頁面仍沿用各自的 CSS；要逐頁改版時，用 `kw-page-head` + `kw-panel` 等元件重排，硬編碼顏色換成 `--kw-*` token。

@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>Database Status - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
     {% include '_favicon.html' %}
@@ -31,51 +32,9 @@
             background-position: center;
             background-attachment: fixed;
         }
-        /* Admin Hub Nav */
-        .admin-hub-nav {
-            position: sticky;
-            top: 72px;
-            z-index: 90;
-            background: rgba(8,10,24,0.88);
-            backdrop-filter: blur(20px) saturate(180%);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            padding: 0 28px;
-        }
-        .admin-hub-inner {
-            max-width: 1450px;
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            height: 44px;
-        }
-        .hub-label {
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: rgba(197,160,89,0.8);
-            margin-right: 12px;
-            white-space: nowrap;
-        }
-        .hub-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 14px;
-            border-radius: 8px;
-            font-size: 0.84rem;
-            font-weight: 500;
-            color: rgba(255,255,255,0.65);
-            text-decoration: none;
-            transition: background .2s, color .2s;
-        }
-        .hub-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
-        .hub-link.active { background: rgba(197,160,89,0.18); color: #C5A059; }
-
         .page-shell {
             max-width: 1450px;
-            margin: 32px auto 40px;
+            margin: 0 auto 40px;
             padding: 0 24px;
         }
 
@@ -350,43 +309,30 @@
             .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 760px) {
-            .page-shell { padding: 0 12px; margin-top: 102px; }
+            .page-shell { padding: 0 12px; }
             .grid { grid-template-columns: 1fr; }
             .pressure-grid { grid-template-columns: 1fr; }
             .query { max-width: 300px; }
             thead th, tbody td { padding: 9px 8px; }
         }
+        /* admin tab bar (_admin_nav.html) spans the same width as this page; body.* beats _theme.css */
+        body .kw-subnav { max-width: 1450px; padding: 0 24px; }
+        @media (max-width: 760px) { body .kw-subnav { padding: 0 12px; } }
     </style>
 </head>
 <body>
     {% include '_navbar.html' %}
 
-    <!-- Admin Hub Navigation -->
-    <div class="admin-hub-nav">
-        <div class="admin-hub-inner">
-            <span class="hub-label">Admin Hub</span>
-            <a href="/admin" class="hub-link">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                Admin Panel
-            </a>
-            <a href="/admin/database" class="hub-link active">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-                DB Status
-            </a>
-            <a href="/admin/log" class="hub-link">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Web Log
-            </a>
-        </div>
-    </div>
+    {% include '_admin_nav.html' %}
 
     <div class="page-shell">
-        <div class="hero">
+        <div class="kw-page-head">
             <div>
+                <span class="kw-eyebrow">Admin</span>
                 <h1>Database Status</h1>
                 <p>This page stays available even when the database is down, so you can still inspect status and recover quickly.</p>
             </div>
-            <div class="hero-actions">
+            <div class="kw-page-actions">
                 <button class="btn" id="refreshBtn" onclick="refreshStatus()">Refresh</button>
             </div>
         </div>

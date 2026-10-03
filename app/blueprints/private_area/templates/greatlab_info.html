@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>GREAT Lab Info - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab useful links and resources">
@@ -302,7 +303,7 @@
                 <!-- Page Title -->
                 <div class="info-page-title">
                     <h1>
-                        <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="Kinder Logo" class="home-logo">
+                        <img src="{{ url_for('static', filename='pwa/logo-128.png') }}" alt="Kinder Logo" class="home-logo">
                         GREAT Lab Info
                     </h1>
                     <p>Useful links and resources for GREAT Lab members.</p>

@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>Kinder · Kilonova Finder</title>
     <meta name="description" content="Kinder - Kilonova Finder">
     <meta name="author" content="GREAT Lab, Institute of Astronomy, National Central University, Taiwan">
@@ -25,7 +26,7 @@
         <div class="hero-title">
             <p class="hero-eyebrow">GREAT Lab · National Central University</p>
             <div class="hero-logo-row">
-                <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="" aria-hidden="true" class="home-logo">
+                <img src="{{ url_for('static', filename='pwa/logo-256.png') }}" alt="" aria-hidden="true" class="home-logo">
                 <h1><span class="kl">K</span><span class="kl">i</span><span class="kl">n</span><span class="kl">d</span><span class="kl">e</span><span class="kl">r</span></h1>
             </div>
             <h2>Kilonova Finder</h2>

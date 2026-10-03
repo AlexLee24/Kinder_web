@@ -2672,6 +2672,40 @@ function updateTriggerChecklistProgress() {
 
     const scriptColEl = document.getElementById('trigger-script-col');
     if (scriptColEl) scriptColEl.classList.toggle('locked', !allDone);
+
+    // Done → the checklist folds away (Show / Hide in its head). In the stacked phone/tablet
+    // layout the script column — Generate, Copy, Send — is then scrolled into view.
+    const toggleBtn = document.getElementById('trigger-checklist-toggle');
+    if (toggleBtn) toggleBtn.hidden = !allDone;
+    if (!allDone) {
+        setTriggerChecklistCollapsed(false);
+    } else if (_triggerChecklistWasDone === false && window.matchMedia('(max-width: 900px)').matches) {
+        setTriggerChecklistCollapsed(true);
+        if (scriptColEl) {
+            const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            setTimeout(() => scriptColEl.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' }), 80);
+        }
+    }
+    _triggerChecklistWasDone = allDone;
+}
+
+// null until the first update (page load), so only a completion made by the user folds the list
+let _triggerChecklistWasDone = null;
+
+function setTriggerChecklistCollapsed(collapsed) {
+    const col = document.querySelector('.pa-trigger-checklist-col');
+    const btn = document.getElementById('trigger-checklist-toggle');
+    if (!col) return;
+    col.classList.toggle('is-collapsed', collapsed);
+    if (btn) {
+        btn.textContent = collapsed ? 'Show' : 'Hide';
+        btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+}
+
+function toggleTriggerChecklist() {
+    const col = document.querySelector('.pa-trigger-checklist-col');
+    if (col) setTriggerChecklistCollapsed(!col.classList.contains('is-collapsed'));
 }
 
 let scriptTelescope = 'SLT';

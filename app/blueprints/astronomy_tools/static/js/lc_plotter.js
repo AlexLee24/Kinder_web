@@ -1058,6 +1058,11 @@ function renderPlot() {
     document.getElementById('plotPlaceholder').style.display = 'none';
     const plotDiv = document.getElementById('plotlyDiv');
     plotDiv.style.display = '';
+    // On a phone the plot sits below all the controls: bring it into view after rendering
+    if (window.matchMedia('(max-width: 860px)').matches) {
+        const area = plotDiv.closest('.lcp-plot-area') || plotDiv;
+        requestAnimationFrame(() => area.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
 
     Plotly.react('plotlyDiv', traces, layout, config).then(() => {
         plotRendered = true;

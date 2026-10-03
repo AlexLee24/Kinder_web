@@ -1307,7 +1307,16 @@ function loadPhotometryPlot() {
                             figData.layout.margin = Object.assign(figData.layout.margin || {}, { t: 45 });
                         }
                         enforceMinLcXAxisSpan(figData, 1);
-                        Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, {responsive: true});
+                        // Phones: desktop margins leave a ~150px wide plot and the mode bar covers the title
+                        const phone = window.matchMedia('(max-width: 600px)').matches;
+                        if (phone && figData.layout) {
+                            const t = figData.layout.title;
+                            figData.layout.margin = { l: 48, r: 44, t: 36, b: 44, pad: 0 };
+                            figData.layout.font.size = 10;
+                            figData.layout.title = Object.assign({}, typeof t === 'string' ? { text: t } : (t || {}), { font: { size: 13 } });
+                            document.getElementById('phot-plotly-div').style.height = '380px';
+                        }
+                        Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, { responsive: true, displayModeBar: !phone });
                         _buildTelescopeToggles(figData.data);
                         _buildFilterLegend(figData.data);
 
@@ -6218,3 +6227,60 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     };
     window.addEventListener('message', onReady);
 }
+
+// ── Phone: section jump bar (#odJump, shown ≤ 768px by responsive.css) ──
+// Tapping a chip scrolls to its panel; while scrolling, the chip of the panel under the bar is
+// highlighted and kept in view. The links are plain #anchors, so the bar still works without JS.
+(function initSectionJump() {
+    const bar = document.getElementById('odJump');
+    if (!bar) return;
+    const links = Array.from(bar.querySelectorAll('a[href^="#"]'))
+        .map(a => ({ a, el: document.getElementById(a.getAttribute('href').slice(1)) }))
+        .filter(x => x.el);
+    if (!links.length) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let active = null;
+    let lockUntil = 0;     // ignore the scroll-spy while a tapped jump is still scrolling
+
+    function setActive(item) {
+        if (item === active) return;
+        if (active) active.a.classList.remove('is-active');
+        active = item;
+        if (!item) return;
+        item.a.classList.add('is-active');
+        const left = item.a.offsetLeft - (bar.clientWidth - item.a.offsetWidth) / 2;
+        bar.scrollTo({ left: Math.max(0, left), behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+    }
+    function spy() {
+        if (!bar.offsetParent || Date.now() < lockUntil) return;     // hidden on desktop
+        const line = bar.getBoundingClientRect().bottom + 24;
+        let current = links[0];
+        for (const item of links) {
+            if (item.el.offsetParent && item.el.getBoundingClientRect().top <= line) current = item;
+        }
+        // at the very bottom the last short panel can never reach the line
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+            current = links[links.length - 1];
+        }
+        setActive(current);
+    }
+
+    bar.addEventListener('click', function (e) {
+        const a = e.target.closest('a[href^="#"]');
+        const item = a && links.find(x => x.a === a);
+        if (!item) return;
+        e.preventDefault();
+        lockUntil = Date.now() + 900;
+        setActive(item);
+        item.el.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
+    });
+    let ticking = false;
+    window.addEventListener('scroll', function () {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(function () { ticking = false; spy(); });
+    }, { passive: true });
+    window.addEventListener('scrollend', function () { lockUntil = 0; spy(); });
+    window.addEventListener('resize', spy);
+    spy();
+})();

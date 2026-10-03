@@ -231,8 +231,16 @@ function _renderPlotly(plotDiv, plotJsonStr, targetName) {
         if (plotDiv._fullLayout) { try { Plotly.purge(plotDiv); } catch (_) {} }
         plotDiv.innerHTML = '';
         const plotData = JSON.parse(plotJsonStr);
+        // Phones: desktop margins leave a sliver of plot and the mode bar covers the title
+        const phone = window.matchMedia('(max-width: 600px)').matches;
+        if (phone && plotData.layout) {
+            const t = plotData.layout.title;
+            plotData.layout.margin = { l: 48, r: 44, t: 36, b: 44, pad: 0 };
+            plotData.layout.font = Object.assign({}, plotData.layout.font, { size: 10 });
+            plotData.layout.title = Object.assign({}, typeof t === 'string' ? { text: t } : (t || {}), { font: { size: 13 } });
+        }
         Plotly.newPlot(plotDiv, plotData.data, plotData.layout,
-            Object.assign({ responsive: true, displayModeBar: true }, plotData.config || {}));
+            Object.assign({ responsive: true, displayModeBar: !phone }, plotData.config || {}));
     } catch (err) {
         console.error('[detect] plot render error for', targetName, err);
         plotDiv.innerHTML = '<div class="card-no-data">Plot render failed</div>';

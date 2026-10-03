@@ -486,6 +486,14 @@ body::before {
     color: #69db7c;
 }
 
+/* Completed checklist folds to its head + hint (daily_trigger.js → setTriggerChecklistCollapsed) */
+.pa-checklist-toggle { margin-left: 8px; }
+.pa-trigger-checklist-col.is-collapsed #trigger-checklist { display: none; }
+.pa-trigger-checklist-col.is-collapsed .pa-trigger-col-head { margin-bottom: 0.4rem; }
+.pa-trigger-checklist-col.is-collapsed .pa-checklist-hint { margin-top: 0; }
+.pa-trigger-grid:has(.is-collapsed) { align-items: start; }
+#trigger-script-col { scroll-margin-top: calc(var(--kw-nav-h, 60px) + 12px); }
+
 .pa-btn-log-action:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -758,7 +766,8 @@ body::before {
 .pa-trigger-send-status.pending { color: #ffa94d; }
 
 @media (max-width: 900px) {
-    .pa-trigger-grid {
+    .pa-trigger-grid,
+    .pa-trigger-grid.is-complete {      /* .is-complete (3fr 7fr) used to win here and squeeze phones into two columns */
         grid-template-columns: 1fr;
     }
 }
@@ -2107,6 +2116,9 @@ body::before {
 
     .pa-script-textarea { min-height: 220px; }
     .pa-script-vis-panel { min-height: 200px; }
+    /* nothing to plot yet → one line instead of a 200px empty box, so Send is on the first screen */
+    .pa-script-vis-panel:has(.pa-script-vis-empty) { min-height: 0; }
+    .pa-script-vis-panel:has(.pa-script-vis-empty) .pa-script-vis-plot { min-height: 36px; }
 
     /* Send row: chips centered above, actions become a full-width 2-col grid
        (same treatment as .pa-obs-actions for the Targets section) */
@@ -2120,7 +2132,7 @@ body::before {
 
     .pa-trigger-send-actions {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr 2fr;       /* Copy | Send Message on one row */
         gap: 10px;
         width: 100%;
     }
@@ -2132,7 +2144,7 @@ body::before {
         height: 46px;
     }
 
-    .pa-btn-send-trigger { grid-column: span 2; }
+    .pa-btn-send-trigger { grid-column: auto; }
 
     /* Copy-to-telescope dropdown: anchor to the right so it can't run off
        the edge of a narrow viewport */

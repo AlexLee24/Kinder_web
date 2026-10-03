@@ -56,6 +56,7 @@ docs/
   database/                 schema notes and DDL for the Kinder PostgreSQL database
 tests/                      pytest (needs the live database): python -m pytest -q
 scripts/sync_detect.sh      refresh app/vendor/DETECT from a DETECT checkout
+scripts/gen_pwa_assets.py   regenerate the app icons / launch screens / small logos in basic/static/pwa/
 ```
 
 To find a page: start from the navbar entry in `docs/FEATURES.md` §2, which names the

@@ -44,7 +44,7 @@
 
 ## 2. 網站地圖（Sitemap）
 
-導覽列 `_navbar.html`（`app/routes/basic/templates/`）被 27 個頁面 include；首頁有自己的精簡頂欄與底部導覽，內容相同。**權限欄**是「頁面本身」的門檻；頁面內的 API 各自有更細的檢查（見章節）。
+導覽列 `_navbar.html`（`app/blueprints/basic/templates/`）被 28 個頁面 include（含首頁）；2026-10 起主要導覽置中、Manage 選單多了直達 Users / Groups 分頁的項目。**權限欄**是「頁面本身」的門檻；頁面內的 API 各自有更細的檢查（見章節）。
 
 ```
 Kinder（Logo → /）
@@ -68,13 +68,15 @@ Kinder（Logo → /）
 │     ├── ePessto++ Support Team    /epessto_support                can_access_page('epessto_support')       → 07
 │     ├── Documents                 /documents、/documents/<file>   can_access_page('documents')             → 07
 │     └── Lab Info                  /greatlab_info                  can_access_page('greatlab_info')         → 07
-├── 使用者選單（登入後）
+├── 使用者選單（登入後；頂端顯示姓名 / email / 角色）
 │     ├── Profile                   /profile                        需登入                                  → 01
-│     └── Logout                    /logout                                                                → 01
+│     └── Log Out                   /logout                                                                → 01
 ├── Manage ▾（僅 is_admin）
+│     ├── Admin Panel               /admin（#overview #users #groups #access #operations）  僅 admin       → 02
+│     ├── Users & API keys          /admin#users                    僅 admin                                → 02
+│     ├── Groups                    /admin#groups                   僅 admin                                → 02
 │     ├── Web Log                   /admin/log                      admin 或 GREAT_Lab                      → 02
-│     ├── DB Status                 /admin/database                 僅 admin                                → 02
-│     └── Admin Panel               /admin                          僅 admin                                → 02
+│     └── DB Status                 /admin/database                 僅 admin                                → 02
 └── Login                           /login                          公開                                    → 01
       ├── Sign in with Google       /auth/google → Google → /auth/google/callback → /                      → 01
       └── Direct Access（本機管理員） POST /admin-login → /                                                   → 01
@@ -126,7 +128,9 @@ Kinder（Logo → /）
 | Flask app | `Flask(__name__, template_folder='html', static_folder=None)`；`app/html` 不存在，模板全部來自各 blueprint 的 `templates/`（Jinja 會搜尋所有已註冊 blueprint 的 template_folder，所以 `astronomy_tools` 的 route 可以渲染 `planners/templates/` 裡的模板） |
 | Session cookie | 客戶端簽章 cookie；`SESSION_COOKIE_SAMESITE=Lax`、`SESSION_COOKIE_SECURE = not DEBUG`、`PERMANENT_SESSION_LIFETIME = 30 天`；`ProxyFix(x_proto=1, x_host=1)` |
 | Host 白名單 | `before_request`：`request.host` 不在 `{APP_BASE_URL 的 netloc}`（DEBUG 另加 `HOST:PORT`、`localhost:PORT`、`127.0.0.1:PORT`）→ 404 |
-| 統一靜態檔路由 | `GET /static/<path:filename>`（endpoint `static`）依序在 9 個 blueprint 的 `static/` 目錄找第一個存在的檔案：basic → auth → astronomy_tools → marshal → detect → games → private_area → planners → web_api；`photo/*` 另找專案根 `photo/`（不存在）；`icon/*` 找 `basic/icon/`。**同名檔會被前面的目錄遮蔽**（實際只有 `photo/background.jpg` 一組：basic 的生效，astronomy_tools 的永遠不會被服務）。各 blueprint 自動產生的 `<bp>.static` endpoint 只用來 `url_for`，URL 相同、由 app 層路由處理 |
+| 統一靜態檔路由 | `GET /static/<path:filename>`（endpoint `static`）依序在 9 個 blueprint 的 `static/` 目錄找第一個存在的檔案：basic → auth → astronomy_tools → marshal → detect → games → private_area → planners → web_api；`photo/*` 另找專案根 `photo/`（不存在）；`icon/*` 找 `basic/icon/`。**同名檔會被前面的目錄遮蔽**（實際只有 `photo/background.jpg` 一組：basic 的生效，astronomy_tools 的永遠不會被服務）。各 blueprint 自動產生的 `<bp>.static` endpoint 只用來 `url_for`，URL 相同、由 app 層路由處理。2026-10：`url_for('static', …)` 自動加 `?v=<檔案 mtime>`，帶 `v` 的請求回 `Cache-Control: max-age=1 年`（改檔就換網址），沒帶 `v` 的照舊每次重新驗證 |
+| 可安裝 App（PWA，2026-10） | 每頁 `<head>` include `basic/templates/_pwa_head.html`（manifest、iOS 主畫面圖示與啟動畫面、theme-color）；`GET /sw.js`（endpoint `service_worker`，`core/static_files.py`）送出 `basic/static/sw.js`，scope 為全站：頁面一律走網路、斷線時改顯示預先快取的 `GET /offline`（`basic.offline`，不查 DB）；帶 `?v=` 的靜態檔與 Plotly / jQuery / Aladin / Google Fonts 會快取；`/api` 與 POST 不經手。`js/pwa.js`（由 `_navbar.html` 載入）註冊 worker、在 About 與帳號選單顯示「Install app」、iOS 顯示加入主畫面步驟、手機登入者第一次會看到安裝提示（「Not now」14 天內不再出現）；以 App 開啟時，站內 `target=_blank` 連結與 `window.open` 在 App 內開啟。圖示由 `scripts/gen_pwa_assets.py` 從 `icon/Kinder_light.png` 產生到 `basic/static/pwa/` |
+| 手機版（≤768px） | `_navbar.html` 加入底部分頁列 `.kw-dock`（GREAT_Lab 成員：Marshal / DETECT / Trigger / Planner / More；其他人：Home / Marshal / Planner / Tools / More，More 打開完整選單），輸入時自動收起；全站手機規則在 `basic/static/css/_mobile.css`（安全區、輸入框 16px 防 iOS 放大、固定在底部的按鈕讓位）。各頁手機版調整：Marshal（`css/marshal/_phone.css`：精簡控制區、清單先於側欄、卡片 709→244px；Table 檢視改成每個天體一塊的精簡清單，不再左右捲動，RA / Dec 不顯示）、物件頁（頂端吸附的區段跳轉列 `#odJump`：Comments / DETECT / Info / Images / Photometry / Spectra / Sources，依可見權限顯示，捲動時標示目前區段；Comments / DETECT 堆疊、光變曲線手機版邊距）、Daily Trigger（按鈕列改格狀不再超出畫面；checklist 勾滿 9/9 後收成一行（標題列有 Show / Hide），≤900px 時自動捲到 Trigger Script 欄，Copy 與 Send 同一列、尚未產生腳本時 Visibility 框縮小，Send 在第一屏；修正勾滿後手機版被擠成兩欄）、DETECT 審查頁（不再整頁左右捲動）、LC Plotter、Finding Chart、DETECT Archives |
 | `before_request` 順序 | 1 `_enforce_allowed_host` → 2 `refresh_user_session` → 3 `_mark_request_start` → 4 `_block_pipe_in_api_params`（只對 `/api/` 路徑：query / form / JSON 內任何值含 `\|` → 400；影響含 Markdown 表格的文件儲存、含 `\|` 的評論與 tags） |
 | `after_request` | 所有回應加 `Cross-Origin-Opener-Policy: same-origin`、`Cross-Origin-Resource-Policy: same-origin`；`ACCESS_LOG_ENABLED=1` 時以 logger `web.request` 記錄每個請求（略過 `/static/`、`/api/log/content`、`/api/log/daemon/content`） |
 | 錯誤處理 | `ParamOutOfRangeError`（`modules/request_validation.py` 的 `get_int_arg` / `get_float_arg`）→ `{'error': ...}` 400。其他例外走 Flask 預設 500 HTML |
@@ -230,7 +234,7 @@ Kinder（Logo → /）
 
 ## 9. 路由總表（自動產生）
 
-見文末「附錄 A」（由 `tests/tools/dump_url_map.py` 產生，250 條規則、14 個 blueprint）。
+見文末「附錄 A」（由 `tests/tools/dump_url_map.py` 產生，250 條規則、14 個 blueprint；重構清理後 245 條，2026-10 加上 `/sw.js`、`/offline` 為 247 條）。
 
 ---
 
@@ -553,6 +557,7 @@ Blueprint 對照章節：basic/auth/api→01、admin/web_log/database_status→0
 | `/private/resources` | GET | `private_area.private_resources` | 07 |
 | `/private/telescope` | GET | `private_area.private_telescope` | 07 |
 | `/profile` | GET | `basic.profile` | 01 |
+| `/offline` | GET | `basic.offline` | §4 |
 | `/slideshow/image/<filename>` | GET | `basic.slideshow_image` | 01 |
 | `/static/<path:filename>` | GET | `admin.static` | 02 |
 | `/static/<path:filename>` | GET | `astronomy_tools.static` | 06 |
@@ -564,6 +569,7 @@ Blueprint 對照章節：basic/auth/api→01、admin/web_log/database_status→0
 | `/static/<path:filename>` | GET | `planners.static` | 05 |
 | `/static/<path:filename>` | GET | `private_area.static` | 07 |
 | `/static/<path:filename>` | GET | `static` | §4 |
+| `/sw.js` | GET | `service_worker` | §4 |
 | `/static/<path:filename>` | GET | `web_api.static` | 08 |
 | `/telescope_simulator` | GET | `astronomy_tools.telescope_simulator` | 06 |
 | `/tutorials/images/<path:filename>` | GET | `private_area.serve_tutorial_image` | 07 |

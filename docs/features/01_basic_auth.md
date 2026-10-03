@@ -144,45 +144,32 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 ### `_navbar.html` 導覽結構（全站骨幹）
 
-檔案：`app/routes/basic/templates/_navbar.html`（被 27 個模板 include；**首頁 `home.html` 不 include**，自有精簡頂欄）。內容依序為：
+檔案：`app/blueprints/basic/templates/_navbar.html`（被 28 個模板 include，含首頁）。2026-10 起主要導覽置中（EAU_Web 的版面），外觀與結構其餘維持原樣。內容依序為：
 
-1. **`<head>` 片段**（注意：它是被 include 在各頁 `<body>` 內的，因此會產生第二個 `<head>`）：`<title>Kinder Web</title>`、載入 `css/_theme.css`、`css/_navbar.css`、定義 `--navbar-bg-image: url(/static/photo/navbar.jpg)`（檔案不存在，且 `_navbar.css` 未使用此變數）、`{% include '_favicon.html' %}`。
-2. **`<header>`**：
-   - Logo `<a href="/">`（`icon/Kinder_light.png` + 文字 Kinder）。
-   - 漢堡按鈕（≤780px）。
-   - **左側 `ul.nav-left`**（所有人可見）：
+1. **樣式**：載入 `css/_theme.css`、`css/_navbar.css`，`{% include '_favicon.html' %}`。因為它在 `<body>` 內，這兩個 CSS 排在各頁自己的 CSS 之後。
+2. **`<header id="kw-navbar">`**：
+   - Logo `<a href="/">`（`icon/Kinder_light.png` + 文字 Kinder）、漢堡按鈕（≤900px）。
+   - **`ul.nav-left`**（置中，所有人可見）：
 
    | 項目 | 連結 / endpoint | 顯示條件 |
    |---|---|---|
-   | Marshal | `url_for('marshal.marshal')` → `/marshal` | 永遠 |
-   | Tools ▾ Astronomy Tools | `astronomy_tools.astronomy_tools` → `/astronomy_tools` | 永遠 |
-   | Tools ▾ Telescope Simulator | `astronomy_tools.telescope_simulator` → `/telescope_simulator` | 永遠 |
-   | Tools ▾ LC Plotter | `astronomy_tools.lc_plotter` → `/lc_plotter` | 永遠 |
-   | Tools ▾ Exposure Time Calculator | `astronomy_tools.exposure_time_calculator` → `/exposure_time_calculator` | 永遠 |
-   | Tools ▾ (3D Mount Simulator) | `astronomy_tools.mount_3d` → `/mount_3d` | **HTML 註解掉**，但 Jinja 仍會執行 `url_for`（endpoint 存在，不會出錯） |
-   | Tools ▾ Games | `games.games` → `/games` | 永遠 |
-   | Planners ▾ Visibility Plot | `astronomy_tools.interactive_planner` → `/interactive_planner` | 永遠（注意是 astronomy_tools 而非 planners blueprint） |
-   | Planners ▾ Finding Chart | `astronomy_tools.finding_chart` → `/finding_chart` | 永遠 |
-   | About Us ▾ About GREAT Lab | 外部 `https://sites.google.com/view/great-lab/home?authuser=0`（新分頁） | 永遠 |
-   | About Us ▾ NCU Lulin Observatory | 外部 `https://www.lulin.ncu.edu.tw/weather/`（新分頁） | 永遠 |
-   | Private ▾ DETECT | `detect.detect_results` → `/detect` | `session.user` 且 `is_great_lab_member` |
-   | Private ▾ Daily Trigger | `private_area.daily_trigger` → `/daily_trigger` | 同上 |
-   | Private ▾ ePessto++ Support Team | `private_area.epessto_support_page` → `/epessto_support` | 同上 |
-   | Private ▾ Documents | `private_area.documents_list` → `/documents` | 同上 |
-   | Private ▾ Lab Info | `private_area.greatlab_info` → `/greatlab_info` | 同上 |
+   | Marshal | `marshal.marshal` → `/marshal` | 永遠（`/object/...` 時也標示 active） |
+   | Tools ▾ Astronomy Tools / Telescope Simulator / LC Plotter / Exposure Time Calculator / Games | `astronomy_tools.*`、`games.games` | 永遠 |
+   | Planners ▾ Visibility Plot / Finding Chart | `astronomy_tools.interactive_planner`、`astronomy_tools.finding_chart` | 永遠 |
+   | About ▾ About GREAT Lab / NCU Lulin Observatory | 外部連結（新分頁） | 永遠 |
+   | Private ▾ DETECT / Daily Trigger / ePessto++ Support Team / Documents / Lab Info | `detect.detect_results`、`private_area.*` | `session.user` 且 `is_great_lab_member` |
 
-   - **右側 `ul.nav-right`**：
+   - **`ul.nav-right`**：
 
    | 狀態 | 顯示內容 |
    |---|---|
-   | 未登入 | `Login` 按鈕 → `url_for('basic.login')` → `/login` |
-   | 已登入 | 使用者選單：頭像（`g.current_user.picture` 優先，否則 `session.user.picture`）+ `session.user.name`；若 `role == 'guest'` 且非 admin 額外顯示「(Guest)」。下拉：Profile → `basic.profile`（`/profile`）、Logout → `auth.logout`（`/logout`） |
-   | 已登入且 `session.user.is_admin` | 額外分隔線 + `Manage ▾`：Web Log → `web_log.log_viewer`（`/admin/log`）、DB Status → `database_status.database_status_page`（`/admin/database`）、Admin Panel → `admin.admin_panel`（`/admin`） |
+   | 未登入 | 金色 `Log In` → `basic.login`（`/login`） |
+   | 已登入 | 使用者選單：頭像（`g.current_user.picture` 優先，否則 `session.user.picture`）+ 名稱（guest 另顯示 Guest 標籤）。下拉頂端顯示姓名、email、角色 chip（Administrator / Member / Guest、GREAT Lab），再來是 Profile、Log Out |
+   | 已登入且 `session.user.is_admin` | 額外 `Manage ▾`：Admin Panel（`/admin`）、Users & API keys（`/admin#users`）、Groups（`/admin#groups`）、Web Log（`/admin/log`）、DB Status（`/admin/database`） |
 
-   所有 `url_for` 目標經全站路由清單逐一比對皆存在。
-3. **Flash 訊息容器**：`get_flashed_messages(with_categories=true)` 逐條渲染 `div.flash-message.<category>`（類別：`success` / `error` / `warning` / `info`），內嵌 script 於 3 秒後隱藏 `#flash-message`。
-4. **內嵌 script**：漢堡切換 `.main-nav.active`、點外部關閉；≤780px 時 dropdown 以點擊展開（`mobile-active`）；捲動 >20px 時 header 加 `scrolled` class。
-5. `current_path` 變數用於「active」樣式判斷（Tools：`/astronomy_tools`、`/telescope_simulator`、`/mount_3d`、`/lc_plotter`、`/exposure_time_calculator`、`/games`；Planners：`/observation_planner`、`/interactive_planner`、`/finding_chart`；Private：`/detect_results`、`/private`、`/documents`、`/epessto_support`），但因 `<a>` 標籤同時已有 `class="dropdown-toggle"` 又再寫一個 `class="active"`（重複屬性，瀏覽器取第一個），實際上 active 樣式不會套用。
+3. **Flash 訊息容器**：`get_flashed_messages(with_categories=true)` 逐條渲染 `div.flash-message.<category>`（`success` / `error` / `warning` / `info`），3.5 秒後隱藏 `#flash-message`。
+4. **內嵌 script**：漢堡切換 `.main-nav.active`、點外部 / Esc 關閉；≤900px 時 dropdown 以點擊展開（`mobile-active`）；捲動 >8px 時 header 加 `scrolled`。
+5. active 樣式以 `current_path`（沒傳時用 `request.path`）判斷。
 
 `_favicon.html`（單行）：`<link rel="icon" href="{{ url_for('basic.static', filename='icon/favicon.ico') }}">` → `/static/icon/favicon.ico` → 由 app 層 static 路由在 `basic/static/icon/favicon.ico` 找到。
 

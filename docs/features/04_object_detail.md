@@ -127,6 +127,7 @@ visibility = { detect, spectroscopy, comments, tags, peak_abs_mag: can_see_restr
 
 | 區塊 | 顯示條件 | 元素 / 按鈕 / Modal | 呼叫的 API 或導向 |
 |---|---|---|---|
+| 區段跳轉列 `#odJump`（2026-10） | 只在 ≤768px 顯示（`responsive.css`）；Comments / DETECT / Spectra 依 `visibility`，Sources 只給 admin | 吸附在 navbar 下的 chips：Comments（`#commentsMiniPanel`）、DETECT（`#detectMiniPanel`）、Info（`#od-info`）、Images（`#od-images`，DESI + Aladin）、Photometry（`#od-phot`）、Spectra（`#od-spec`）、Sources（`#od-perm`）；點擊平滑捲動，捲動時標示目前區段（`object_detail.js` 結尾的 `initSectionJump`） | 無（頁內錨點） |
 | 頂部導覽列 | 一律 | 「Marshal」麵包屑 | `url_for('marshal.marshal')` → `/marshal` |
 | | 一律 | 「Finding Chart」`openFindingChart()` | `window.open('/finding_chart?object_name&ra&dec&survey=DSS2+Red&fov=13&show_stars=0&auto=1')` |
 | | 一律 | 「Visibility」`openVisibilityPlot()` | `window.open('/interactive_planner?object_name&ra(HMS)&dec(DMS)')` |

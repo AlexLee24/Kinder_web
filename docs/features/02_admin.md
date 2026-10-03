@@ -12,7 +12,7 @@
 | `web_log` | `app/routes/auth/web_log_routes.py`（294 行） | `/admin/log` | 瀏覽 `app/log/YYYY-MM-DD.log` 的即時 log viewer |
 | `database_status` | `app/routes/auth/database_status_routes.py`（322 行） | `/admin/database` | 讀取 `pg_stat_activity`、取消 / 終止 PostgreSQL 連線 |
 
-三個頁面共用一條「Admin Hub」導覽列（`/admin` ↔ `/admin/database` ↔ `/admin/log`），並由全站 `_navbar.html`（`app/routes/basic/templates/_navbar.html` 第 114–132 行）在 `session.user.is_admin` 為真時提供「Manage」下拉選單連到這三頁；`home.html` 第 34 行也在 `is_admin` 時提供 `url_for('admin.admin_panel')`。
+三個頁面共用一條分頁列 `auth/templates/_admin_nav.html`（2026-10：Overview / Users / Groups / Access / Operations ｜ DB Status / Web Log）；全站 `_navbar.html` 在 `session.user.is_admin` 為真時提供「Manage」下拉選單（Admin Panel、Users & API keys、Groups、Web Log、DB Status）。
 
 權限判斷全部直接讀 Flask `session['user']`（由 `auth_routes.py` 登入時寫入：`is_admin` = `auth.users.roles >= 50`、`role` = `admin`/`user`/`guest`、`is_great_lab_member` = 屬於 `GREAT_Lab` 群組或 `is_admin`）。沒有 decorator，每個 view 開頭各自檢查。
 
@@ -45,9 +45,9 @@
 2. 1 秒後 `checkDataConsistency()` → `GET /admin/check-consistency`。
 3. `loadPrivatePagePerms()` → `GET /api/admin/private_area/page_perms`。
 4. `loadDefaultSourcePermissions()` → `GET /admin/default-source-permissions` + `GET /admin/sources/all`。
-5. `showTab(sessionStorage.adminActiveTab || 'overview')`；當分頁是 `overview` 時 `_startJobsPolling()`：立即並每 15 秒 `GET /admin/scheduled-jobs-status` + `GET /admin/detect-status`，切到其他分頁即停止。
+5. `initAdminTabs()` → `showTab(location.hash || sessionStorage.adminActiveTab || 'overview')`；當分頁是 `overview` 時 `_startJobsPolling()`：立即並每 15 秒 `GET /admin/scheduled-jobs-status` + `GET /admin/detect-status`，切到其他分頁即停止。
 
-版面：左側 sidebar 5 個分頁按鈕（`showTab()`，狀態存於 `sessionStorage['adminActiveTab']`）；右側 `main`。
+版面（2026-10 改版，參考 EAU_Web，外觀沿用 Kinder 的深色面板與金色）：頂端分頁列（`_admin_nav.html`），分頁以網址 hash 定址（`/admin#users`，`history.pushState`，上一頁可回到前一個分頁；Users / Groups 分頁上有待處理數紅點）。每個分頁 = 頁首（eyebrow「Admin」+ 標題 + 說明 + 右側動作）+ 內容。Overview：KPI 卡（Users、Active · 7 days、Groups、API keys、Needs a decision）→「Needs a decision」面板（群組加入申請、API key 申請，可直接 Approve / Assign key）與「Recent sign-ins」→ DETECT pipeline → Scheduled jobs 與 System（開放註冊開關、DB Status / Web Log 入口、一致性檢查）。統計數字由 `panel.py` 的 `_overview_stats()` / `_recent_users()` 從已載入的使用者 / 群組資料計算（不多查資料庫）。Users：頁首統計、搜尋 + 角色分段篩選（All / Admins / Users / Guests / API key，依 `<tr data-role data-key>`）+ 群組下拉，手機版表格變卡片。下表各區塊描述的是改版前的元件，功能與呼叫的 API 不變。
 
 **分頁 1：Overview（`#overview-tab`）**
 
@@ -125,7 +125,7 @@
 
 | 區塊 | 元件 | 行為 / API |
 |---|---|---|
-| Admin Hub nav | 連結 `/admin`、`/admin/database`、`/admin/log`（active） | 導向 |
+| 管理分頁列（`_admin_nav.html`） | Overview…Operations 連到 `/admin#<tab>`；DB Status、Web Log（active） | 導向 |
 | 控制列 | `#liveDot`（輪詢中閃爍）；`#dateSelect`（`switchDate(v)`）；Sources 多選 `#sourceList` + **All** / **Clear**（`selectAllSources` / `clearAllSources`）+ `#sourceSummary`；Level 按鈕 **All / ⚠ Warn+ / 🔴 Error**（`setLevelFilter`，純 CSS class 隱藏）；搜尋框 `#searchInput`（`oninput` → `applySearchMask()`，Enter / Shift+Enter 上下一筆，Ctrl/Cmd+F 聚焦，Esc 清除）+ ↑ ↓ + `#searchStatus` + ✕；**Follow tail** checkbox；**▶ Start Reading / ■ Stop Reading**（`toggleLogStream`）；**↺ Refresh**（`manualRefresh`）；**⎘ Copy Errors**（`copyErrors`：把 `.line-error/.line-warning` 文字複製到剪貼簿）；**✕ Clear**（`clearDisplay`）；統計 `#statDate / #statLines / #statErrors（可點→errors_only）/ #statWarns（可點→warn_up）/ #statBytes` | — |
 | Log panel | `#logFileName`、`#logWrap`（含 `#loadingOverlay` spinner）、`<pre id="logPre">` | `colorize()` 依 `WEB_LOG_RE`（`YYYY-MM-DD HH:MM:SS [source] LEVEL msg`）或 `DAEMON_LOG_RE` 上色；`colorizeStructured()` 高亮 `event= status= duration_ms= method= path= user=`；DOM 最多保留 600 行（`MAX_DISPLAY_LINES`） |
 
@@ -236,10 +236,10 @@ log 檔格式由 `modules/log_setup.py::setup_logging(app/log)` 決定：`%(asct
 ## 導向與流程
 
 **進入點**
-- 登入後 `_navbar.html`「Manage」下拉（僅 `session.user.is_admin`）：Web Log → `web_log.log_viewer`、DB Status → `database_status.database_status_page`、Admin Panel → `admin.admin_panel`。`home.html` 使用者選單另有 Admin Panel。
-- 三頁頂端 Admin Hub 列互相連結（`/admin`、`/admin/database`、`/admin/log`）。
+- 登入後 `_navbar.html`「Manage」下拉（僅 `session.user.is_admin`）：Admin Panel → `admin.admin_panel`、Users & API keys → `/admin#users`、Groups → `/admin#groups`、Web Log → `web_log.log_viewer`、DB Status → `database_status.database_status_page`。
+- 三頁頂端共用分頁列 `_admin_nav.html` 互相連結（`/admin#<tab>`、`/admin/database`、`/admin/log`）。
 - Admin Panel Overview 的「Open DB Status」「Open Web Log」按鈕；DETECT 卡片「review page」連到 `/detect`（`detect.detect_results`）。
-- GREAT_Lab 非 admin 成員可開 `/admin/log`，但**導覽列不提供入口**（Manage 選單只給 admin），且該頁 Admin Hub 上的另外兩個連結對其會被 redirect 回首頁。
+- GREAT_Lab 非 admin 成員可開 `/admin/log`，但**導覽列不提供入口**（Manage 選單只給 admin），且該頁分頁列上的其他連結對其會被 redirect 回首頁。
 
 **權限失敗去向**
 - `/admin` → flash error + `basic.home`；`/admin/log`、`/admin/database` → 直接 `basic.home`（無 flash）。

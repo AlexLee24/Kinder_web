@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>Log In · Kinder</title>
     <meta name="description" content="Kinder Login Page">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
@@ -14,7 +15,7 @@
     <main class="login-container">
         <section class="login-card" aria-labelledby="login-title">
             <div class="login-header">
-                <img src="{{ url_for('static', filename='icon/Kinder_light.png') }}" alt="" aria-hidden="true" class="login-logo">
+                <img src="{{ url_for('static', filename='pwa/logo-128.png') }}" alt="" aria-hidden="true" class="login-logo">
                 <h1 id="login-title">Welcome to Kinder</h1>
                 <p>Kilonova Finder · GREAT Lab, NCU</p>
             </div>

@@ -152,8 +152,12 @@ async function uploadAvatar(event) {
             const result = await response.json();
             
             if (result.success) {
-                // Update the display image
-                document.getElementById('profile-avatar-img').src = base64Image;
+                // Update the display image (it may have been a hidden placeholder next to the initial)
+                const profileImg = document.getElementById('profile-avatar-img');
+                profileImg.src = base64Image;
+                profileImg.hidden = false;
+                const initial = document.querySelector('.profile-avatar-initial');
+                if (initial) initial.remove();
                 
                 // Also update the navbar avatar if it exists
                 const navAvatars = document.querySelectorAll('.user-avatar');
@@ -322,21 +326,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Add slide out animation
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes notificationSlideOut {
-        from {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        to {
-            opacity: 0;
-            transform: translateX(100%);
-        }
-    }
-`;
-document.head.appendChild(style);
+// (the notificationSlideOut keyframes live in _theme.css)
 
 // ===============================================================================
 // API KEY FUNCTIONALITY

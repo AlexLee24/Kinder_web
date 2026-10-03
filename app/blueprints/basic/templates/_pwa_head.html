@@ -1,0 +1,18 @@
+{#- Installable app (PWA) tags, included right after the viewport meta of every page's <head>.
+    Images come from scripts/gen_pwa_assets.py (static/pwa/); the worker is /sw.js, registered by js/pwa.js. -#}
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#0B0D14">
+<meta name="color-scheme" content="dark">
+<meta name="application-name" content="Kinder">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kinder">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="format-detection" content="telephone=no">
+{% for n in (180, 167, 152, 120) %}<link rel="apple-touch-icon" sizes="{{ n }}x{{ n }}" href="{{ url_for('static', filename='pwa/apple-touch-icon-%d.png' % n) }}">
+{% endfor %}
+{#- iOS launch screens: used only when width / height / pixel ratio match the device exactly (same list as the generator) -#}
+{% for w, h, r in [(440, 956, 3), (402, 874, 3), (430, 932, 3), (393, 852, 3), (428, 926, 3), (390, 844, 3), (375, 812, 3), (414, 896, 3), (414, 896, 2), (414, 736, 3), (375, 667, 2), (1024, 1366, 2), (834, 1194, 2), (820, 1180, 2), (810, 1080, 2), (768, 1024, 2)] %}<link rel="apple-touch-startup-image" media="screen and (device-width: {{ w }}px) and (device-height: {{ h }}px) and (-webkit-device-pixel-ratio: {{ r }}) and (orientation: portrait)" href="{{ url_for('static', filename='pwa/splash/%dx%d.png' % (w * r, h * r)) }}">
+{% endfor %}
+{#- Mark the document before first paint when it runs as an installed app, so CSS can adapt without a jump -#}
+<script>(function(){try{if(matchMedia('(display-mode: standalone)').matches||navigator.standalone===true)document.documentElement.classList.add('is-standalone');}catch(e){}})();</script>

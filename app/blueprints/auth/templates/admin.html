@@ -2,601 +2,586 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>Admin Panel - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
     <meta name="description" content="Kinder Admin Panel">
     {% include '_favicon.html' %}
 </head>
-<body>
+{#- Dates arrive as ISO strings (db.auth) or datetimes -#}
+{% macro day(v) %}{% if v %}{{ v.strftime('%Y-%m-%d') if v.strftime is defined else (v|string)[:10] }}{% else %}—{% endif %}{% endmacro %}
+{% macro stamp(v) %}{% if v %}{{ v.strftime('%Y-%m-%d %H:%M') if v.strftime is defined else (v|string)[:16]|replace('T', ' ') }}{% endif %}{% endmacro %}
+{#- Photo avatar that falls back to the initial when the image is missing / blocked -#}
+{% macro avatar(pic, name, cls='') %}{% set _i = (name or '?')[:1]|upper %}{% if pic %}<img src="{{ pic }}" alt="" class="kw-avatar {{ cls }}" loading="lazy" data-initial="{{ _i }}" onerror="var s=document.createElement('span');s.className=this.className;s.textContent=this.dataset.initial;this.replaceWith(s)">{% else %}<span class="kw-avatar {{ cls }}">{{ _i }}</span>{% endif %}{% endmacro %}
+{% set ic_plus %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>{% endset %}
+{% set ic_x %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>{% endset %}
+{% set ic_check %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>{% endset %}
+{% set ic_key %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>{% endset %}
+{% set ic_play %}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/></svg>{% endset %}
+<body class="kw-admin-body">
     {% include '_navbar.html' %}
+    {% include '_admin_nav.html' %}
 
-    <!-- ── Admin Hub Navigation ── -->
-    <div class="admin-hub-nav">
-        <div class="admin-hub-inner">
-            <span class="hub-label">Admin Hub</span>
-            <a href="/admin" class="hub-link active">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                Admin Panel
-            </a>
-            <a href="/admin/database" class="hub-link">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-                DB Status
-            </a>
-            <a href="/admin/log" class="hub-link">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Web Log
-            </a>
-        </div>
-    </div>
+    <main class="kw-page admin-page">
 
-    <!-- ── Admin Layout: Sidebar + Main ── -->
-    <div class="admin-layout">
-
-        <!-- ── Sidebar Navigation ── -->
-        <aside class="admin-sidebar">
-            <div class="sidebar-section-label">Overview</div>
-            <button class="tab-button active" onclick="showTab('overview')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-                Overview
-            </button>
-
-            <div class="sidebar-section-label">Management</div>
-            <button class="tab-button" onclick="showTab('users')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                Users
-                <span class="tab-count">{{ users|length }}</span>
-                {% if api_key_requests %}<span class="tab-badge">{{ api_key_requests|length }}</span>{% endif %}
-            </button>
-            <button class="tab-button" onclick="showTab('groups')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                Groups
-                {% if group_requests %}<span class="tab-badge">{{ group_requests|length }}</span>{% endif %}
-            </button>
-
-            <div class="sidebar-section-label">System</div>
-            <button class="tab-button" onclick="showTab('access')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                Access Control
-            </button>
-            <button class="tab-button" onclick="showTab('operations')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                Operations
-            </button>
-        </aside>
-
-        <!-- ── Main Content ── -->
-        <main class="admin-main">
-
-            <!-- ── Overview Tab ── -->
-            <div id="overview-tab" class="tab-content active">
-                <div class="section-header">
-                    <div class="section-title-block">
-                        <h2>Overview</h2>
-                        <p>System summary and quick actions</p>
-                    </div>
-                    <div class="section-actions">
-                        <span id="consistencyStatus" class="hdr-status"></span>
-                        <span id="backupStatus" class="hdr-status"></span>
-                    </div>
+        <!-- ═══════════════ Overview ═══════════════ -->
+        <section id="overview-tab" class="tab-content active" data-tab="overview" aria-labelledby="h-overview">
+            <div class="kw-page-head">
+                <div>
+                    <span class="kw-eyebrow">Admin</span>
+                    <h1 id="h-overview">Overview</h1>
+                    <p>Everything at a glance. Requests that need a decision come first.</p>
                 </div>
-
-                <!-- Stats -->
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value">{{ users|length }}</div>
-                        <div class="stat-label">Total Users</div>
-                    </div>
-                    <div class="stat-card">
-                        {% set admin_count = users.values() | selectattr('is_admin') | list | length %}
-                        <div class="stat-value">{{ admin_count }}</div>
-                        <div class="stat-label">Administrators</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ groups|length }}</div>
-                        <div class="stat-label">Groups</div>
-                    </div>
-                    <div class="stat-card stat-card-alert">
-                        <div class="stat-value">{{ group_requests|length }}</div>
-                        <div class="stat-label">Pending Requests</div>
-                    </div>
+                <div class="kw-page-actions">
+                    <span id="consistencyStatus" class="hdr-status"></span>
+                    <span id="backupStatus" class="hdr-status"></span>
+                    <button class="kw-btn" onclick="checkDataConsistency()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        Check consistency
+                    </button>
+                    <button class="kw-btn" onclick="triggerManualBackup()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Backup now
+                    </button>
+                    <button class="kw-btn kw-btn-primary" onclick="showAddUserModal()">{{ ic_plus }} Add user</button>
                 </div>
+            </div>
 
-                <!-- Quick Action Panels -->
-                <div class="settings-grid">
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                            Database Health
-                        </div>
-                        <p class="settings-desc">Run a data consistency check to find orphaned references, then clean them up.</p>
-                        <div class="settings-row">
-                            <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
-                            <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
-                        </div>
+            <div class="kw-kpis">
+                <button type="button" class="kw-kpi" onclick="showTab('users')">
+                    <span class="kw-kpi-label">Users</span>
+                    <b>{{ stats.users }}</b>
+                    <small>{{ stats.admins }} admin{{ 's' if stats.admins != 1 }} · {{ stats.guests }} guest{{ 's' if stats.guests != 1 }}</small>
+                </button>
+                <button type="button" class="kw-kpi" onclick="showTab('users')">
+                    <span class="kw-kpi-label">Active · 7 days</span>
+                    <b>{{ stats.active_7d }}</b>
+                    <small>+{{ stats.new_30d }} joined in 30 days</small>
+                </button>
+                <button type="button" class="kw-kpi" onclick="showTab('groups')">
+                    <span class="kw-kpi-label">Groups</span>
+                    <b>{{ stats.groups }}</b>
+                    <small>{{ stats.memberships }} memberships</small>
+                </button>
+                <button type="button" class="kw-kpi" onclick="showTab('users')">
+                    <span class="kw-kpi-label">API keys</span>
+                    <b>{{ stats.api_keys }}</b>
+                    <small>{{ api_key_requests|length }} request{{ 's' if api_key_requests|length != 1 }} waiting</small>
+                </button>
+                <a href="#attention" class="kw-kpi{{ ' is-alert' if stats.pending }}">
+                    <span class="kw-kpi-label">{% if stats.pending %}<span class="kw-dot is-warn"></span>{% endif %}Needs a decision</span>
+                    <b>{{ stats.pending }}</b>
+                    <small>{{ group_requests|length }} join · {{ api_key_requests|length }} API key</small>
+                </a>
+            </div>
+
+            <div class="kw-grid-2 ov-grid">
+                <!-- Needs attention -->
+                <section class="kw-panel" id="attention">
+                    <div class="kw-panel-head">
+                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>Needs a decision</h2>
+                        <span class="kw-panel-meta">{{ stats.pending }} open</span>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-                            Database Sessions
+                    {% if group_requests or api_key_requests %}
+                    <div class="req-list">
+                        {% for req in group_requests %}
+                        <div class="kw-row req-row">
+                            {{ avatar(users[req.email].picture if req.email in users else '', req.user_name, 'kw-avatar-sm') }}
+                            <div class="kw-row-main">
+                                <b>{{ req.user_name or req.email }}</b>
+                                <small>wants to join <span class="group-badge">{{ req.group_name }}</span> · {{ stamp(req.created_at) }}</small>
+                            </div>
+                            <div class="kw-row-trail">
+                                <button class="kw-btn kw-btn-sm kw-btn-tinted" data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'approve')">{{ ic_check }} Approve</button>
+                                <button class="kw-icon-btn is-danger" title="Reject" aria-label="Reject" data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'reject')">{{ ic_x }}</button>
+                            </div>
                         </div>
-                        <p class="settings-desc">View live PostgreSQL session activity, cancel or terminate stuck connections.</p>
-                        <div class="settings-row">
-                            <a href="/admin/database" class="btn btn-primary">Open DB Status</a>
+                        {% endfor %}
+                        {% for req in api_key_requests %}
+                        <div class="kw-row req-row">
+                            {{ avatar(users[req.email].picture if req.email in users else '', req.name, 'kw-avatar-sm') }}
+                            <div class="kw-row-main">
+                                <b>{{ req.name or req.email }}</b>
+                                <small>{{ 'asks for a key reset' if req.has_key else 'asks for an API key' }} · {{ stamp(req.api_key_requested_at) }}</small>
+                            </div>
+                            <div class="kw-row-trail">
+                                <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="adminIssueApiKey('{{ req.email }}', this)">{{ ic_key }} Assign key</button>
+                                <button class="kw-icon-btn is-danger" title="Dismiss" aria-label="Dismiss" onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">{{ ic_x }}</button>
+                            </div>
                         </div>
+                        {% endfor %}
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                            System Log
-                        </div>
-                        <p class="settings-desc">Browse real-time server logs with source and severity filters.</p>
-                        <div class="settings-row">
-                            <a href="/admin/log" class="btn btn-primary">Open Web Log</a>
-                        </div>
+                    {% else %}
+                    <div class="kw-empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+                        All clear — no join or API key requests.
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
-                            Registration Policy
+                    {% endif %}
+                </section>
+
+                <!-- Recent sign-ins -->
+                <section class="kw-panel">
+                    <div class="kw-panel-head">
+                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Recent sign-ins</h2>
+                        <a href="/admin#users" class="kw-panel-link" onclick="event.preventDefault(); showTab('users')">All users →</a>
+                    </div>
+                    {% for u in recent_users %}
+                    <div class="kw-row">
+                        {{ avatar(u.picture, u.name, 'kw-avatar-sm') }}
+                        <div class="kw-row-main">
+                            <b>{{ u.name or u.email }}</b>
+                            <small>{{ u.email }}</small>
                         </div>
-                        <p class="settings-desc">Allow or deny new users from signing up with Google OAuth.</p>
-                        <div class="settings-row">
-                            <label class="filter-pill" style="gap:10px; font-size:0.85rem; color:#e8e8e8;">
-                                <input type="checkbox" {% if open_registration %}checked{% endif %}
-                                       onchange="toggleOpenRegistration(this)" style="transform:scale(1.2);">
-                                Open Registration
+                        {% if u.is_admin %}<span class="role-pill role-admin">admin</span>{% endif %}
+                        <span class="kw-row-time" data-ago="{{ u.last_login_iso }}">{{ day(u.last_login) }}</span>
+                    </div>
+                    {% else %}
+                    <div class="kw-empty">No sign-ins recorded yet.</div>
+                    {% endfor %}
+                </section>
+            </div>
+
+            <!-- DETECT pipeline -->
+            <section class="kw-panel">
+                <div class="kw-panel-head">
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>DETECT pipeline <span id="detectEnabledBadge" class="dt-badge"></span></h2>
+                    <span id="detectStatusUpdated" class="kw-panel-meta"></span>
+                </div>
+                <p class="kw-panel-desc">Cross-match → host rule v1 → screening → finder, embedded from <code>app/vendor/DETECT</code>. Runs after every TNS import, daily on Follow-up objects, and from the object page's Run button.</p>
+                <div id="detectStatusGrid" class="dt-grid">
+                    <div class="kw-muted">Loading…</div>
+                </div>
+                <div class="kw-panel-foot detect-actions">
+                    <button id="detectRunFuBtn" class="kw-btn kw-btn-sm" onclick="runDetect('followups')" title="Re-screen every Follow-up object now">{{ ic_play }} Re-screen Follow-ups</button>
+                    <button id="detectRunRecentBtn" class="kw-btn kw-btn-sm" onclick="runDetect('recent')" title="Objects TNS touched in the last 2 hours">{{ ic_play }} Recent (2 h)</button>
+                    <span class="detect-names">
+                        <input type="text" id="detectRunNames" placeholder="2026abdm, 2026abnn" aria-label="Object names">
+                        <button id="detectRunNamesBtn" class="kw-btn kw-btn-sm kw-btn-tinted" onclick="runDetect('names')">Run on objects</button>
+                    </span>
+                    <span id="detectRunStatus" class="settings-status"></span>
+                </div>
+            </section>
+
+            <div class="kw-grid-2 ov-grid">
+                <!-- Scheduled jobs -->
+                <section class="kw-panel">
+                    <div class="kw-panel-head">
+                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Scheduled jobs</h2>
+                        <span id="scheduledJobsUpdated" class="kw-panel-meta"></span>
+                    </div>
+                    <div id="scheduledJobsGrid" class="sj-list">
+                        <div class="kw-muted">Loading…</div>
+                    </div>
+                </section>
+
+                <!-- System -->
+                <section class="kw-panel">
+                    <div class="kw-panel-head">
+                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>System</h2>
+                    </div>
+                    <div class="sys-list">
+                        <div class="sys-row">
+                            <div class="kw-row-main"><b>Open registration</b><small>New Google accounts may sign up (as guests).</small></div>
+                            <label class="kw-switch" title="Open registration">
+                                <input type="checkbox" {% if open_registration %}checked{% endif %} onchange="toggleOpenRegistration(this)"><span></span>
                             </label>
                         </div>
-                    </div>
-                </div>
-
-                <!-- DETECT pipeline -->
-                <div class="settings-panel" style="margin-top:24px;">
-                    <div class="settings-panel-header" style="justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:8px;">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="1" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="23"></line><line x1="1" y1="12" x2="4" y2="12"></line><line x1="20" y1="12" x2="23" y2="12"></line></svg>
-                            DETECT Pipeline
-                            <span id="detectEnabledBadge" class="dt-badge"></span>
-                        </span>
-                        <span id="detectStatusUpdated" style="font-size:0.75rem;color:var(--muted);font-weight:300;"></span>
-                    </div>
-                    <p class="settings-desc">Cross-match → host rule v1 → screening → finder, embedded from <code>app/modules/DETECT</code>. Runs after every TNS import, daily on Follow-up objects, and from the object page's Run button.</p>
-                    <div id="detectStatusGrid" class="dt-grid">
-                        <div style="color:var(--muted);font-size:0.83rem;padding:4px;">Loading…</div>
-                    </div>
-                    <div class="settings-row" style="flex-wrap:wrap; gap:8px; align-items:center; margin-top:14px;">
-                        <button id="detectRunFuBtn" class="btn btn-primary" onclick="runDetect('followups')" title="Re-screen every Follow-up object now">Re-screen Follow-ups</button>
-                        <button id="detectRunRecentBtn" class="btn btn-primary" onclick="runDetect('recent')" title="Objects TNS touched in the last 2 hours">Run on recent (2 h)</button>
-                        <div style="display:flex; align-items:center; gap:6px;">
-                            <input type="text" id="detectRunNames" placeholder="2026abdm, 2026abnn" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem; width:220px;">
-                            <button id="detectRunNamesBtn" class="btn btn-primary" onclick="runDetect('names')">Run on objects</button>
+                        <div class="sys-row">
+                            <div class="kw-row-main"><b>Database sessions</b><small>Live PostgreSQL activity; cancel or terminate stuck connections.</small></div>
+                            <a href="/admin/database" class="kw-btn kw-btn-sm">Open →</a>
                         </div>
-                        <span id="detectRunStatus" class="settings-status"></span>
+                        <div class="sys-row">
+                            <div class="kw-row-main"><b>Server log</b><small>Real-time logs with source and severity filters.</small></div>
+                            <a href="/admin/log" class="kw-btn kw-btn-sm">Open →</a>
+                        </div>
+                        <div class="sys-row">
+                            <div class="kw-row-main"><b>Data consistency</b><small>Find orphaned user ↔ group references, then clean them up.</small></div>
+                            <button class="kw-btn kw-btn-sm" onclick="checkDataConsistency()">Check</button>
+                        </div>
                     </div>
-                </div>
+                </section>
+            </div>
+        </section>
 
-                <!-- Scheduled Jobs -->
-                <div class="settings-panel" style="margin-top:24px;">
-                    <div class="settings-panel-header" style="justify-content:space-between;">
-                        <span style="display:flex;align-items:center;gap:8px;">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            Scheduled Jobs
-                        </span>
-                        <span id="scheduledJobsUpdated" style="font-size:0.75rem;color:var(--muted);font-weight:300;"></span>
-                    </div>
-                    <div id="scheduledJobsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:14px;">
-                        <div style="color:var(--muted);font-size:0.83rem;padding:4px;">Loading…</div>
-                    </div>
+        <!-- ═══════════════ Users ═══════════════ -->
+        <section id="users-tab" class="tab-content" data-tab="users" aria-labelledby="h-users">
+            <div class="kw-page-head">
+                <div>
+                    <span class="kw-eyebrow">Admin</span>
+                    <h1 id="h-users">Users</h1>
+                    <p>Roles, group membership and API keys. Your own account can't be changed here.</p>
+                </div>
+                <div class="kw-mini-stats">
+                    <div><b>{{ stats.users }}</b>Total</div>
+                    <div><b>{{ stats.admins }}</b>Admins</div>
+                    <div><b>{{ stats.members }}</b>Users</div>
+                    <div><b>{{ stats.guests }}</b>Guests</div>
+                    <div><b>{{ stats.api_keys }}</b>API keys</div>
                 </div>
             </div>
 
-            <!-- ── Users Tab ── -->
-            <div id="users-tab" class="tab-content">
-                <div class="section-header">
-                    <div class="section-title-block">
-                        <h2>Users <span style="font-size:1rem; color:var(--muted); font-weight:300;">{{ users|length }}</span></h2>
-                        <p>Manage accounts and role assignments</p>
+            {% if api_key_requests %}
+            <section class="kw-panel req-banner">
+                <div class="kw-panel-head">
+                    <h2>{{ ic_key }}{{ api_key_requests|length }} API key request{{ 's' if api_key_requests|length != 1 }}</h2>
+                </div>
+                {% for req in api_key_requests %}
+                <div class="kw-row req-row" id="apikey-req-{{ loop.index0 }}">
+                    {{ avatar(users[req.email].picture if req.email in users else '', req.name, 'kw-avatar-sm') }}
+                    <div class="kw-row-main">
+                        <b>{{ req.name }} <span class="kw-muted">&lt;{{ req.email }}&gt;</span></b>
+                        <small>{{ 'Reset request' if req.has_key else 'New key request' }} · {{ stamp(req.api_key_requested_at) }}</small>
                     </div>
-                    <div class="section-actions">
-                        <button class="btn btn-primary" onclick="showAddUserModal()">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            Add User
-                        </button>
+                    <div class="kw-row-trail">
+                        <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="adminIssueApiKey('{{ req.email }}', this)">Assign key</button>
+                        <button class="kw-btn kw-btn-sm kw-btn-ghost" onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">Dismiss</button>
                     </div>
                 </div>
+                {% endfor %}
+            </section>
+            {% endif %}
 
-                <div class="tab-toolbar">
-                    <div class="toolbar-search">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input type="text" id="userSearch" placeholder="Search by name or email…" onkeyup="searchUsers()">
-                    </div>
-                    <div class="toolbar-filters">
-                        <label class="filter-pill">
-                            <input type="checkbox" id="adminFilter" onchange="searchUsers()"> Admins only
-                        </label>
-                        <select id="groupFilter" class="filter-select" onchange="searchUsers()">
-                            <option value="">All groups</option>
-                            {% for group_name in groups.keys() %}
-                            <option value="{{ group_name.lower() }}">{{ group_name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button class="btn-ghost" onclick="clearSearch()">Clear</button>
-                    </div>
-                    <div class="toolbar-right">
-                        <span id="searchResults" class="result-count">{{ users|length }} users</span>
-                    </div>
+            <div class="kw-toolbar">
+                <label class="kw-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input type="search" id="userSearch" placeholder="Search name or email…" oninput="searchUsers()" aria-label="Search users">
+                </label>
+                <div class="kw-seg" id="roleFilter" role="group" aria-label="Filter by role">
+                    <button type="button" class="kw-seg-item is-on" data-role="">All</button>
+                    <button type="button" class="kw-seg-item" data-role="admin">Admins</button>
+                    <button type="button" class="kw-seg-item" data-role="user">Users</button>
+                    <button type="button" class="kw-seg-item" data-role="guest">Guests</button>
+                    <button type="button" class="kw-seg-item" data-role="key">API key</button>
                 </div>
-
-                {% if api_key_requests %}
-                <div class="requests-banner" style="margin-bottom:18px">
-                    <div class="requests-banner-header">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-                        {{ api_key_requests|length }} Pending API Key Request{{ 's' if api_key_requests|length != 1 else '' }}
-                    </div>
-                    {% for req in api_key_requests %}
-                    <div class="request-row" id="apikey-req-{{ loop.index0 }}">
-                        <div class="request-info">
-                            <span class="request-email">{{ req.name }} &lt;{{ req.email }}&gt;</span>
-                            <span class="group-badge" style="background:{% if req.has_key %}rgba(197,160,89,0.2){% else %}rgba(72,199,142,0.15){% endif %}">
-                                {{ 'Reset request' if req.has_key else 'New key request' }}
-                            </span>
-                            <span class="request-time">{{ req.api_key_requested_at[:16] if req.api_key_requested_at else '' }}</span>
-                        </div>
-                        <div class="request-actions">
-                            <button class="btn-approve" onclick="adminIssueApiKey('{{ req.email }}', this)">Assign Key</button>
-                            <button class="btn-reject"  onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">Dismiss</button>
-                        </div>
-                    </div>
+                <select id="groupFilter" class="kw-select" onchange="searchUsers()" aria-label="Filter by group">
+                    <option value="">All groups</option>
+                    {% for group_name in groups.keys() %}
+                    <option value="{{ group_name.lower() }}">{{ group_name }}</option>
                     {% endfor %}
-                </div>
-                {% endif %}
-
-                <div class="data-table-wrap">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Role</th>
-                                <th>Groups</th>
-                                <th>Joined</th>
-                                <th>API Key</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for email, user in users.items() %}
-                            <tr>
-                                <td>
-                                    <div class="user-cell">
-                                        <img src="{{ user.picture or '/static/img/default-avatar.png' }}" alt="" class="user-avatar" onerror="this.src='/static/img/default-avatar.png'">
-                                        <div>
-                                            <div class="user-cell-name">{{ user.name }}</div>
-                                            <div class="user-cell-email">{{ email }}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span class="role-pill role-{{ user.get('role', 'guest') }}">{{ user.get('role', 'guest') }}</span>
-                                </td>
-                                <td>
-                                    <div class="groups-cell">
-                                    {% if user.get('groups') %}
-                                        {% for group in user.groups %}
-                                        <span class="group-badge">{{ group }}</span>
-                                        {% endfor %}
-                                    {% else %}
-                                        <span class="cell-muted">—</span>
-                                    {% endif %}
-                                    </div>
-                                </td>
-                                <td class="cell-muted cell-date">
-                                    {% set active_date = user.invited_at or user.last_login %}
-                                    {% if active_date %}{{ active_date.strftime('%Y-%m-%d') if active_date.strftime is defined else active_date[:10] }}
-                                    {% else %}—{% endif %}
-                                </td>
-                                <td>
-                                    <div class="row-actions" style="gap:6px;flex-wrap:wrap;">
-                                    {% if user.api_key_request_pending %}
-                                        <span class="role-pill" style="background:rgba(197,160,89,0.18);color:#c5a059;border:1px solid rgba(197,160,89,0.35);display:inline-flex;align-items:center;gap:4px;">
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                            Requested
-                                        </span>
-                                    {% elif user.has_api_key %}
-                                        <span class="role-pill" style="background:rgba(72,199,142,0.15);color:#48c78e;border:1px solid rgba(72,199,142,0.35);">Active</span>
-                                    {% else %}
-                                        <span class="cell-muted" style="font-size:0.8rem;">None</span>
-                                    {% endif %}
-                                    {% if email != session.user.email %}
-                                        <button class="btn btn-primary" style="padding:3px 10px;font-size:0.78rem;" onclick="adminIssueApiKey('{{ email }}', this)">
-                                            {{ 'Reset' if user.has_api_key else 'Assign' }}
-                                        </button>
-                                        {% if user.has_api_key %}
-                                        <button class="btn btn-danger" style="padding:3px 10px;font-size:0.78rem;" onclick="adminRevokeApiKey('{{ email }}', this)">Revoke</button>
-                                        {% endif %}
-                                    {% endif %}
-                                    </div>
-                                </td>
-                                <td>
-                                    {% if email != session.user.email %}
-                                    <div class="row-actions">
-                                        <select class="role-select role-select-{{ user.get('role', 'guest') }}" onchange="changeUserRole('{{ email }}', this.value); this.className='role-select role-select-'+this.value;">
-                                            <option value="guest" {% if user.get('role', 'guest') == 'guest' %}selected{% endif %}>Guest</option>
-                                            <option value="user"  {% if user.get('role') == 'user'  %}selected{% endif %}>User</option>
-                                            <option value="admin" {% if user.get('role') == 'admin' %}selected{% endif %}>Admin</option>
-                                        </select>
-                                    </div>
-                                    {% else %}
-                                    <span class="you-badge">You</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+                </select>
+                <span id="searchResults" class="result-count">{{ users|length }} users</span>
+                <button class="kw-btn kw-btn-primary" onclick="showAddUserModal()">{{ ic_plus }} Add user</button>
             </div>
 
-            <!-- ── Groups Tab ── -->
-            <div id="groups-tab" class="tab-content">
-                <div class="section-header">
-                    <div class="section-title-block">
-                        <h2>Groups <span style="font-size:1rem; color:var(--muted); font-weight:300;">{{ groups|length }}</span></h2>
-                        <p>Manage access groups and membership</p>
-                    </div>
-                    <div class="section-actions">
-                        <button class="btn btn-primary" onclick="showCreateGroupModal()">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            New Group
-                        </button>
-                    </div>
-                </div>
-
-                {% if group_requests %}
-                <div class="requests-banner">
-                    <div class="requests-banner-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                        {{ group_requests|length }} Pending Join Request{{ 's' if group_requests|length != 1 else '' }}
-                    </div>
-                    {% for req in group_requests %}
-                    <div class="request-row">
-                        <div class="request-info">
-                            <span class="request-email">{{ req.user_name }} &lt;{{ req.email }}&gt;</span>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-                            <span class="group-badge">{{ req.group_name }}</span>
-                            <span class="request-time">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at and req.created_at.strftime is defined else req.created_at }}</span>
-                        </div>
-                        <div class="request-actions">
-                            <button class="btn-approve" data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'approve')">Approve</button>
-                            <button class="btn-reject"  data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'reject')">Reject</button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endif %}
-
-                <div class="groups-grid">
-                    {% for group_name, group in groups.items() %}
-                    <div class="group-card">
-                        <div class="group-card-header">
-                            <div class="group-card-title" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')">
-                                <div class="group-icon">{{ group_name[0].upper() }}</div>
-                                <div class="group-title-info">
-                                    <div class="group-name-text">{{ group_name }}</div>
-                                    <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
+            <div class="kw-table-wrap">
+                <table class="kw-table data-table users-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Groups</th>
+                            <th>Last sign-in</th>
+                            <th>API key</th>
+                            <th class="th-right">Change role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for email, user in users.items() %}
+                        {% set _role = 'admin' if user.is_admin else user.get('role', 'guest') %}
+                        <tr data-role="{{ _role }}" data-key="{{ 'pending' if user.api_key_request_pending else ('active' if user.has_api_key else 'none') }}">
+                            <td>
+                                <div class="user-cell">
+                                    {{ avatar(user.picture, user.name) }}
+                                    <div class="user-cell-text">
+                                        <div class="user-cell-name">{{ user.name }}{% if email == session.user.email %} <span class="kw-chip">You</span>{% endif %}</div>
+                                        <div class="user-cell-email">{{ email }}</div>
+                                    </div>
                                 </div>
-                                <span class="expand-icon" id="icon-{{ loop.index0 }}">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                </span>
-                            </div>
-                            <button class="icon-btn icon-btn-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            </td>
+                            <td><span class="role-pill role-{{ _role }}">{{ _role }}</span></td>
+                            <td>
+                                <div class="groups-cell">
+                                {% for group in user.get('groups') or [] %}<span class="group-badge">{{ group }}</span>{% else %}<span class="cell-muted">—</span>{% endfor %}
+                                </div>
+                            </td>
+                            <td class="cell-date">
+                                <span data-ago="{{ user.last_login or '' }}">{{ day(user.last_login) }}</span>
+                                {% if user.join_date %}<small>joined {{ day(user.join_date) }}</small>{% endif %}
+                            </td>
+                            <td>
+                                <div class="key-cell">
+                                {% if user.api_key_request_pending %}
+                                    <span class="kw-chip kw-chip-gold"><span class="kw-dot is-warn"></span>Requested</span>
+                                {% elif user.has_api_key %}
+                                    <span class="kw-chip kw-chip-green">Active</span>
+                                {% else %}
+                                    <span class="cell-muted">None</span>
+                                {% endif %}
+                                {% if email != session.user.email %}
+                                    <button class="kw-btn kw-btn-sm" onclick="adminIssueApiKey('{{ email }}', this)">{{ 'Reset' if user.has_api_key else 'Assign' }}</button>
+                                    {% if user.has_api_key %}
+                                    <button class="kw-btn kw-btn-sm kw-btn-danger" onclick="adminRevokeApiKey('{{ email }}', this)">Revoke</button>
+                                    {% endif %}
+                                {% endif %}
+                                </div>
+                            </td>
+                            <td class="td-right">
+                                {% if email != session.user.email %}
+                                <select class="kw-select kw-select-sm role-select role-select-{{ _role }}" aria-label="Role for {{ email }}" onchange="changeUserRole('{{ email }}', this.value); this.className='kw-select kw-select-sm role-select role-select-'+this.value;">
+                                    <option value="guest" {% if _role == 'guest' %}selected{% endif %}>Guest</option>
+                                    <option value="user"  {% if _role == 'user'  %}selected{% endif %}>User</option>
+                                    <option value="admin" {% if _role == 'admin' %}selected{% endif %}>Admin</option>
+                                </select>
+                                {% else %}
+                                <span class="cell-muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div id="usersEmpty" class="kw-empty" hidden>No users match these filters.</div>
+            </div>
+        </section>
+
+        <!-- ═══════════════ Groups ═══════════════ -->
+        <section id="groups-tab" class="tab-content" data-tab="groups" aria-labelledby="h-groups">
+            <div class="kw-page-head">
+                <div>
+                    <span class="kw-eyebrow">Admin</span>
+                    <h1 id="h-groups">Groups <span class="kw-count">{{ groups|length }}</span></h1>
+                    <p>Groups decide who sees private pages and restricted photometry sources.</p>
+                </div>
+                <div class="kw-page-actions">
+                    <button class="kw-btn kw-btn-primary" onclick="showCreateGroupModal()">{{ ic_plus }} New group</button>
+                </div>
+            </div>
+
+            {% if group_requests %}
+            <section class="kw-panel req-banner">
+                <div class="kw-panel-head">
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>{{ group_requests|length }} join request{{ 's' if group_requests|length != 1 }}</h2>
+                </div>
+                {% for req in group_requests %}
+                <div class="kw-row req-row">
+                    {{ avatar(users[req.email].picture if req.email in users else '', req.user_name, 'kw-avatar-sm') }}
+                    <div class="kw-row-main">
+                        <b>{{ req.user_name }} <span class="kw-muted">&lt;{{ req.email }}&gt;</span></b>
+                        <small>→ <span class="group-badge">{{ req.group_name }}</span> · {{ stamp(req.created_at) }}</small>
+                    </div>
+                    <div class="kw-row-trail">
+                        <button class="kw-btn kw-btn-sm kw-btn-tinted" data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'approve')">Approve</button>
+                        <button class="kw-btn kw-btn-sm kw-btn-ghost" data-email="{{ req.email }}" data-group="{{ req.group_name }}" onclick="handleGroupRequest(this.dataset.email, this.dataset.group, 'reject')">Reject</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            <div class="groups-grid">
+                {% for group_name, group in groups.items() %}
+                <article class="group-card">
+                    <header class="group-card-header">
+                        <div class="group-icon">{{ group_name[0].upper() }}</div>
+                        <div class="group-title-info">
+                            <div class="group-name-text">{{ group_name }}</div>
+                            <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
+                        </div>
+                        <button class="kw-icon-btn is-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group" aria-label="Delete {{ group_name }}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    </header>
+                    <p class="group-desc">{{ group.description or 'No description.' }}</p>
+                    <div class="group-card-foot">
+                        <span class="kw-avatar-stack">
+                            {% for member in group.members[:5] %}{{ avatar(users[member].picture if member in users else '', users[member].name if member in users else member, 'kw-avatar-sm') }}{% endfor %}
+                            {% if group.members|length > 5 %}<span class="kw-avatar kw-avatar-sm kw-avatar-more">+{{ group.members|length - 5 }}</span>{% endif %}
+                        </span>
+                        <span class="group-card-btns">
+                            <button class="kw-btn kw-btn-sm kw-btn-ghost group-toggle" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')" aria-expanded="false">
+                                Members <span class="expand-icon" id="icon-{{ loop.index0 }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></span>
                             </button>
-                        </div>
-                        {% if group.description %}
-                        <p class="group-desc">{{ group.description }}</p>
-                        {% endif %}
-                        <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
-                            <div class="details-header">
-                                <span class="details-label">Members ({{ group.members|length }})</span>
-                                <button class="btn-ghost-sm" onclick="showAddMembersModal('{{ group_name }}')">+ Add</button>
-                            </div>
-                            {% if group.members %}
-                            <div class="members-list">
-                                {% for member in group.members %}
-                                <div class="member-row">
-                                    <div class="member-info">
-                                        <img src="{{ users[member].picture if member in users and users[member].picture else '/static/img/default-avatar.png' }}" alt="" class="member-avatar" onerror="this.src='/static/img/default-avatar.png'">
-                                        <div>
-                                            <div class="member-name">{{ users[member].name if member in users else 'Unknown' }}</div>
-                                            <div class="member-email">{{ member }}</div>
-                                        </div>
-                                    </div>
-                                    <button class="icon-btn icon-btn-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    </button>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% else %}
-                            <p class="cell-muted no-members-msg">No members yet.</p>
-                            {% endif %}
-                        </div>
+                            <button class="kw-btn kw-btn-sm" onclick="showAddMembersModal('{{ group_name }}')">{{ ic_plus }} Add</button>
+                        </span>
                     </div>
-                    {% endfor %}
+                    <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
+                        {% for member in group.members %}
+                        <div class="member-row">
+                            {{ avatar(users[member].picture if member in users else '', users[member].name if member in users else member, 'kw-avatar-sm') }}
+                            <div class="kw-row-main">
+                                <b>{{ users[member].name if member in users else 'Unknown' }}</b>
+                                <small>{{ member }}</small>
+                            </div>
+                            <button class="kw-icon-btn is-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove from group" aria-label="Remove {{ member }}">{{ ic_x }}</button>
+                        </div>
+                        {% else %}
+                        <p class="kw-empty">No members yet.</p>
+                        {% endfor %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- ═══════════════ Access ═══════════════ -->
+        <section id="access-tab" class="tab-content" data-tab="access" aria-labelledby="h-access">
+            <div class="kw-page-head">
+                <div>
+                    <span class="kw-eyebrow">Admin</span>
+                    <h1 id="h-access">Access control</h1>
+                    <p>Which groups can open each private page, and the default visibility of every photometry / spectra source.</p>
                 </div>
             </div>
 
-            <!-- ── Access Control Tab ── -->
-            <div id="access-tab" class="tab-content">
-                <div class="section-header">
-                    <div class="section-title-block">
-                        <h2>Access Control</h2>
-                        <p>Per-page and per-source visibility rules</p>
-                    </div>
+            <section class="kw-panel">
+                <div class="kw-panel-head">
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Private area — per-page access</h2>
                 </div>
-
-                <div class="settings-panel" style="margin-bottom:20px;">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                        Private Area — Per-Page Access
-                    </div>
-                    <p class="settings-desc">Control which groups can access each Private Area page. <em>GREAT_Lab</em> and admins always have access.</p>
-                    <div id="privatePagePermsTable" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap:14px; margin-top:14px;">
-                        <div style="color:#888; font-size:0.85rem;">Loading…</div>
-                    </div>
+                <p class="kw-panel-desc"><em>GREAT_Lab</em> members and admins can always open every private page. Add other groups per page.</p>
+                <div id="privatePagePermsTable" class="pperm-grid">
+                    <div class="kw-muted">Loading…</div>
                 </div>
+            </section>
 
-                <div class="settings-panel">
-                    <div class="settings-panel-header">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                        Default Source Permissions
-                    </div>
-                    <p class="settings-desc">Set global default visibility rules for each photometry/spectra source (telescope). These apply to all objects unless overridden per-object.</p>
-                    <div class="settings-row" style="align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                        <select id="sourceAddSelect" class="settings-input" style="flex: 1; min-width: 200px;" onchange="addDefaultPermFromSelect(this)">
+            <section class="kw-panel">
+                <div class="kw-panel-head">
+                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Default source permissions</h2>
+                    <div class="kw-page-actions">
+                        <select id="sourceAddSelect" class="kw-select" onchange="addDefaultPermFromSelect(this)" aria-label="Add a source">
                             <option value="">— select source to add —</option>
                         </select>
-                        <button class="btn btn-primary" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save All</button>
+                        <button class="kw-btn kw-btn-primary kw-btn-sm" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save all</button>
                     </div>
-                    <div id="defaultPermsTableWrap">
-                        <table class="data-table" id="defaultPermsTable">
-                            <thead>
-                                <tr>
-                                    <th>Source Name</th>
-                                    <th>Visibility</th>
-                                    <th>Allowed Groups</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody id="defaultPermsTbody"></tbody>
-                        </table>
-                        <p id="defaultPermsEmpty" class="cell-muted" style="padding: 12px 0; display:none;">No default rules yet. Select and add sources above.</p>
-                    </div>
-                    <span id="defaultPermsSaveStatus" class="settings-status"></span>
+                </div>
+                <p class="kw-panel-desc">Global visibility rule for each telescope / source. Applies to every object unless the object page overrides it.</p>
+                <div id="defaultPermsTableWrap" class="kw-table-inset">
+                    <table class="kw-table data-table" id="defaultPermsTable">
+                        <thead>
+                            <tr><th>Source</th><th>Visibility</th><th>Allowed groups</th><th></th></tr>
+                        </thead>
+                        <tbody id="defaultPermsTbody"></tbody>
+                    </table>
+                    <p id="defaultPermsEmpty" class="kw-empty" style="display:none;">No default rules yet. Pick a source above to add one.</p>
+                </div>
+                <span id="defaultPermsSaveStatus" class="settings-status"></span>
+            </section>
+        </section>
+
+        <!-- ═══════════════ Operations ═══════════════ -->
+        <section id="operations-tab" class="tab-content" data-tab="operations" aria-labelledby="h-ops">
+            <div class="kw-page-head">
+                <div>
+                    <span class="kw-eyebrow">Admin</span>
+                    <h1 id="h-ops">Operations</h1>
+                    <p>Run scheduled jobs by hand. Each one also runs on its own schedule.</p>
                 </div>
             </div>
 
-            <!-- ── Operations Tab ── -->
-            <div id="operations-tab" class="tab-content">
-                <div class="section-header">
-                    <div class="section-title-block">
-                        <h2>Operations</h2>
-                        <p>Scheduled tasks, data sync, and maintenance</p>
+            <div class="ops-grid">
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+                        <div><h3>TNS sync</h3><span class="kw-chip">Auto · :15 / :45 hourly · 01:00 UTC daily</span></div>
                     </div>
-                </div>
+                    <p>Download the TNS public object list by hand, or auto-snooze stale Inbox objects.</p>
+                    <div class="op-actions">
+                        <button id="tnsDlHrBtn" class="kw-btn kw-btn-sm kw-btn-tinted" onclick="runTnsHourly()">{{ ic_play }} Hourly</button>
+                        <span class="op-inline">
+                            <button id="tnsDlDailyBtn" class="kw-btn kw-btn-sm kw-btn-tinted" onclick="runTnsDaily()">{{ ic_play }} Daily</button>
+                            <input type="date" id="tnsDailyDate" title="Leave empty for yesterday" aria-label="Daily file date">
+                        </span>
+                        <button id="tnsSnoozeBtn" class="kw-btn kw-btn-sm" onclick="runTnsSnooze()">Auto-snooze</button>
+                    </div>
+                    <span id="tnsTaskStatus" class="settings-status"></span>
+                </article>
 
-                <div class="settings-grid">
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            Inbox Photometry Fetch
-                        </div>
-                        <p class="settings-desc">Fetch photometry for all Inbox objects. Auto-runs daily at 09:00 UTC+8.</p>
-                        <div class="settings-row">
-                            <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="btn btn-primary">Run Now</button>
-                            <span id="photFetchStatus" class="settings-status"></span>
-                        </div>
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l5-6 4 3 7-8"/></svg></span>
+                        <div><h3>Inbox photometry fetch</h3><span class="kw-chip">Auto · daily 09:00 UTC+8</span></div>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                            Missing Photometry Check
-                        </div>
-                        <p class="settings-desc">Fetch photometry only for Inbox objects with zero data points. Auto-runs hourly.</p>
-                        <div class="settings-row">
-                            <button id="runMissingPhotBtn" onclick="runMissingPhotFetch()" class="btn btn-primary">Run Now</button>
-                            <span id="missingPhotStatus" class="settings-status"></span>
-                        </div>
+                    <p>Fetch photometry for every Inbox object.</p>
+                    <div class="op-actions">
+                        <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                            Update Target Magnitudes
-                        </div>
-                        <p class="settings-desc">Look up the latest photometry magnitude for each active target. Auto-runs daily at 05:00.</p>
-                        <div class="settings-row">
-                            <button id="runTargetMagBtn" onclick="runUpdateTargetMags()" class="btn btn-primary">Run Now</button>
-                            <span id="targetMagStatus" class="settings-status"></span>
-                        </div>
+                    <span id="photFetchStatus" class="settings-status"></span>
+                </article>
+
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v3"/><path d="M11 14h.01"/></svg></span>
+                        <div><h3>Missing photometry</h3><span class="kw-chip">Auto · hourly</span></div>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            TNS Manual Operations
-                        </div>
-                        <p class="settings-desc">Manually trigger TNS data download or auto-snooze. Auto-runs via daemon at :15/:45 (hourly) and 01:00 UTC (daily).</p>
-                        <div class="settings-row" style="flex-wrap:wrap; gap:8px; align-items:center;">
-                            <button id="tnsDlHrBtn" class="btn btn-primary" onclick="runTnsHourly()">Download Hourly</button>
-                            <div style="display:flex; align-items:center; gap:6px;">
-                                <button id="tnsDlDailyBtn" class="btn btn-primary" onclick="runTnsDaily()">Download Daily</button>
-                                <input type="date" id="tnsDailyDate" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.3); color:#fff; font-size:0.82rem;" title="Leave empty for yesterday">
-                            </div>
-                            <button id="tnsSnoozeBtn" class="btn btn-warning" onclick="runTnsSnooze()">Auto-Snooze</button>
-                            <span id="tnsTaskStatus" class="settings-status"></span>
-                        </div>
+                    <p>Fetch photometry only for Inbox objects that have no data points yet.</p>
+                    <div class="op-actions">
+                        <button id="runMissingPhotBtn" onclick="runMissingPhotFetch()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            Document Images
-                        </div>
-                        <p class="settings-desc">Remove uploaded images no longer referenced in any markdown document.</p>
-                        <div class="settings-row">
-                            <button onclick="cleanDocumentImages()" class="btn btn-warning">Clean Unused Images</button>
-                            <span id="cleanImagesStatus" class="settings-status"></span>
-                        </div>
+                    <span id="missingPhotStatus" class="settings-status"></span>
+                </article>
+
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+                        <div><h3>Target magnitudes</h3><span class="kw-chip">Auto · daily 05:00</span></div>
                     </div>
-                    <div class="settings-panel">
-                        <div class="settings-panel-header">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                            Database Maintenance
-                        </div>
-                        <p class="settings-desc">Check data consistency and trigger manual backups.</p>
-                        <div class="settings-row" style="flex-wrap:wrap; gap:8px;">
-                            <button class="btn btn-info" onclick="checkDataConsistency()">Check Consistency</button>
-                            <button class="btn btn-warning" onclick="triggerManualBackup()">Backup Now</button>
-                        </div>
+                    <p>Look up the latest magnitude for every active observation target.</p>
+                    <div class="op-actions">
+                        <button id="runTargetMagBtn" onclick="runUpdateTargetMags()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
                     </div>
-                </div>
+                    <span id="targetMagStatus" class="settings-status"></span>
+                </article>
+
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
+                        <div><h3>Database maintenance</h3><span class="kw-chip">Backup · daily</span></div>
+                    </div>
+                    <p>Check user ↔ group consistency and take a backup right now.</p>
+                    <div class="op-actions">
+                        <button class="kw-btn kw-btn-sm" onclick="checkDataConsistency()">Check consistency</button>
+                        <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="triggerManualBackup()">Backup now</button>
+                    </div>
+                </article>
+
+                <article class="kw-panel op-card">
+                    <div class="op-head">
+                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
+                        <div><h3>Document images</h3><span class="kw-chip">Manual</span></div>
+                    </div>
+                    <p>Remove uploaded images that no Markdown document references any more.</p>
+                    <div class="op-actions">
+                        <button onclick="cleanDocumentImages()" class="kw-btn kw-btn-sm kw-btn-danger">Clean unused images</button>
+                    </div>
+                    <span id="cleanImagesStatus" class="settings-status"></span>
+                </article>
             </div>
+        </section>
+    </main>
 
-        </main>
-    </div>
-
-    <!-- ── Modals ── -->
-    <div id="consistencyModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Data Consistency Check</h3>
-                <span class="close" onclick="closeModal('consistencyModal')">&times;</span>
+    <!-- ── Modals (admin.js shows them with style.display = 'block') ── -->
+    <div id="consistencyModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-consistency">
+        <div class="modal-content kw-modal-card is-wide">
+            <div class="kw-modal-head">
+                <h3 id="m-consistency">Data consistency check</h3>
+                <button class="kw-icon-btn close" onclick="closeModal('consistencyModal')" aria-label="Close">{{ ic_x }}</button>
             </div>
             <div class="consistency-content">
                 <div id="consistencyResults"></div>
-                <div class="modal-actions" id="consistencyActions" style="display: none;">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('consistencyModal')">Cancel</button>
-                    <button type="button" class="btn btn-warning" onclick="cleanDataConsistency()">Clean Issues</button>
+                <div class="kw-modal-actions" id="consistencyActions" style="display: none;">
+                    <button type="button" class="kw-btn" onclick="closeModal('consistencyModal')">Cancel</button>
+                    <button type="button" class="kw-btn kw-btn-danger" onclick="cleanDataConsistency()">Clean issues</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="addUserModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add New User</h3>
-                <span class="close" onclick="closeModal('addUserModal')">&times;</span>
+    <div id="addUserModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-adduser">
+        <div class="modal-content kw-modal-card">
+            <div class="kw-modal-head">
+                <h3 id="m-adduser">Add user</h3>
+                <button class="kw-icon-btn close" onclick="closeModal('addUserModal')" aria-label="Close">{{ ic_x }}</button>
             </div>
             <form onsubmit="addUser(event)">
-                <div class="form-group">
-                    <label for="userEmail">Email Address *</label>
+                <div class="kw-field">
+                    <label for="userEmail">Email address *</label>
                     <input type="email" id="userEmail" required placeholder="user@example.com">
                 </div>
-                <div class="form-group">
-                    <label for="userName">Name (optional)</label>
-                    <input type="text" id="userName" placeholder="If blank, email prefix will be used">
+                <div class="kw-field">
+                    <label for="userName">Name <span class="kw-muted">(optional)</span></label>
+                    <input type="text" id="userName" placeholder="Defaults to the part before @">
                 </div>
-                <div class="form-group">
+                <div class="kw-field">
                     <label for="userRole">Role</label>
                     <select id="userRole">
                         <option value="guest">Guest</option>
@@ -604,51 +589,52 @@
                         <option value="admin">Admin</option>
                     </select>
                 </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add User</button>
+                <div class="kw-modal-actions">
+                    <button type="button" class="kw-btn" onclick="closeModal('addUserModal')">Cancel</button>
+                    <button type="submit" class="kw-btn kw-btn-primary">Add user</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="createGroupModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Create New Group</h3>
-                <span class="close" onclick="closeModal('createGroupModal')">&times;</span>
+    <div id="createGroupModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-newgroup">
+        <div class="modal-content kw-modal-card">
+            <div class="kw-modal-head">
+                <h3 id="m-newgroup">New group</h3>
+                <button class="kw-icon-btn close" onclick="closeModal('createGroupModal')" aria-label="Close">{{ ic_x }}</button>
             </div>
             <form onsubmit="createGroup(event)">
-                <div class="form-group">
-                    <label for="groupName">Group Name *</label>
+                <div class="kw-field">
+                    <label for="groupName">Group name *</label>
                     <input type="text" id="groupName" required placeholder="e.g. Observers">
                 </div>
-                <div class="form-group">
+                <div class="kw-field">
                     <label for="groupDescription">Description</label>
-                    <textarea id="groupDescription" placeholder="Optional description…"></textarea>
+                    <textarea id="groupDescription" placeholder="Optional"></textarea>
                 </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('createGroupModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Group</button>
+                <div class="kw-modal-actions">
+                    <button type="button" class="kw-btn" onclick="closeModal('createGroupModal')">Cancel</button>
+                    <button type="submit" class="kw-btn kw-btn-primary">Create group</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="addMembersModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add Members — <span id="selectedGroupName" style="color:#C5A059;"></span></h3>
-                <span class="close" onclick="closeModal('addMembersModal')">&times;</span>
+    <div id="addMembersModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-addmembers">
+        <div class="modal-content kw-modal-card">
+            <div class="kw-modal-head">
+                <h3 id="m-addmembers">Add members — <span id="selectedGroupName" class="kw-accent-text"></span></h3>
+                <button class="kw-icon-btn close" onclick="closeModal('addMembersModal')" aria-label="Close">{{ ic_x }}</button>
             </div>
             <div class="add-members-content">
-                <div class="search-users-section">
-                    <input type="text" id="memberSearch" placeholder="Search users…" onkeyup="filterAvailableUsers()">
-                </div>
+                <label class="kw-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input type="search" id="memberSearch" placeholder="Search users…" oninput="filterAvailableUsers()" aria-label="Search users">
+                </label>
                 <div class="available-users-container" id="availableUsersContainer"></div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('addMembersModal')">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="addSelectedMembers()">Add Selected</button>
+                <div class="kw-modal-actions">
+                    <button type="button" class="kw-btn" onclick="closeModal('addMembersModal')">Cancel</button>
+                    <button type="button" class="kw-btn kw-btn-primary" onclick="addSelectedMembers()">Add selected</button>
                 </div>
             </div>
         </div>
@@ -657,15 +643,10 @@
     <script type="application/json" id="adminGroupsData">{{ groups.keys() | list | tojson }}</script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const activeTab = sessionStorage.getItem('adminActiveTab') || 'overview';
-            showTab(activeTab);
-        });
-
         async function adminIssueApiKey(email, btn) {
             if (!confirm(`Assign / reset API key for ${email}?\nThe old key will be immediately invalidated.`)) return;
             btn.disabled = true;
-            const origText = btn.textContent;
+            const origText = btn.innerHTML;
             btn.textContent = '…';
             try {
                 const r = await fetch('/admin/api-key/issue', {
@@ -675,15 +656,15 @@
                 });
                 const d = await r.json();
                 if (d.success) {
-                    showAdminNotification(`API key assigned for ${email}`, 'success');
+                    showNotification(`API key assigned for ${email}`, 'success');
                     setTimeout(() => location.reload(), 800);
                 } else {
-                    showAdminNotification(d.error || 'Failed', 'error');
-                    btn.disabled = false; btn.textContent = origText;
+                    showNotification(d.error || 'Failed', 'error');
+                    btn.disabled = false; btn.innerHTML = origText;
                 }
             } catch(e) {
-                showAdminNotification('Network error', 'error');
-                btn.disabled = false; btn.textContent = origText;
+                showNotification('Network error', 'error');
+                btn.disabled = false; btn.innerHTML = origText;
             }
         }
 
@@ -698,14 +679,14 @@
                 });
                 const d = await r.json();
                 if (d.success) {
-                    showAdminNotification(`API key revoked for ${email}`, 'success');
+                    showNotification(`API key revoked for ${email}`, 'success');
                     setTimeout(() => location.reload(), 800);
                 } else {
-                    showAdminNotification(d.error || 'Failed', 'error');
+                    showNotification(d.error || 'Failed', 'error');
                     btn.disabled = false;
                 }
             } catch(e) {
-                showAdminNotification('Network error', 'error');
+                showNotification('Network error', 'error');
                 btn.disabled = false;
             }
         }
@@ -721,27 +702,16 @@
                 });
                 const d = await r.json();
                 if (d.success) {
-                    showAdminNotification(`Request dismissed for ${email}`, 'success');
+                    showNotification(`Request dismissed for ${email}`, 'success');
                     setTimeout(() => location.reload(), 800);
                 } else {
-                    showAdminNotification(d.error || 'Failed', 'error');
+                    showNotification(d.error || 'Failed', 'error');
                     btn.disabled = false;
                 }
             } catch(e) {
-                showAdminNotification('Network error', 'error');
+                showNotification('Network error', 'error');
                 btn.disabled = false;
             }
-        }
-
-        function showAdminNotification(msg, type) {
-            const n = document.createElement('div');
-            n.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;
-                padding:12px 20px;border-radius:8px;font-size:0.9rem;
-                background:${type==='success'?'rgba(72,199,142,0.9)':'rgba(255,100,100,0.9)'};
-                color:#fff;box-shadow:0 4px 20px rgba(0,0,0,0.3)`;
-            n.textContent = msg;
-            document.body.appendChild(n);
-            setTimeout(() => n.remove(), 3000);
         }
     </script>
 </body>

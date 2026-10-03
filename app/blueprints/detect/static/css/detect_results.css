@@ -1332,3 +1332,21 @@ kbd {
 .sr-note { color: rgba(255,255,255,0.45); font-size: 0.76rem; }
 .score-rules-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.55); font-size: 0.76rem; }
 .review-guide .score-rules { margin-top: 8px; }
+
+/* ── Phones (2026-10) ─────────────────────────────────────────────
+   The 7 queue filters in one row and the help steps' long words widened the page to
+   ~530px, so the whole page scrolled sideways. Filters scroll in their own strip,
+   help steps may shrink, wide tables keep scrolling inside their own wrappers. */
+@media (max-width: 768px) {
+    .results-section-hdr { flex-direction: column; align-items: stretch; gap: 10px; }
+    .results-section-meta { min-width: 0; max-width: 100%; }
+    .table-filter-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+    .table-filter-bar::-webkit-scrollbar { display: none; }
+    .tbl-filter-btn { flex-shrink: 0; min-height: 36px; }
+    .review-guide { grid-template-columns: minmax(0, 1fr); padding: 14px; }
+    .guide-step > :not(.guide-num) { min-width: 0; overflow-wrap: anywhere; }
+    .card-nav-bar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; justify-content: center; }   /* prev · n/N · next pending · next · ↺ */
+    .card-nav-btn { padding: 6px 12px; }
+    .content-area { padding-left: 12px; padding-right: 12px; }
+    .verdict-main { flex-direction: column; align-items: flex-start; gap: 8px; }   /* badge above its explanation */
+}

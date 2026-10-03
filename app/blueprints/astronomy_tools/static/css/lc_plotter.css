@@ -781,8 +781,9 @@ body {
 @media (max-width: 860px) {
     body { overflow: auto; }
     .lcp-layout { flex-direction: column; height: auto; overflow: visible; }
-    .lcp-sidebar { width: 100%; min-width: 100%; height: auto; max-height: 65vh; border-right: none; border-bottom: 1px solid var(--lcp-border); }
-    .lcp-plot-area { height: 55vh; overflow: hidden; }
+    /* one page scroll on phones: no scroll box nested inside the page */
+    .lcp-sidebar { width: 100%; min-width: 100%; height: auto; max-height: none; overflow: visible; border-right: none; border-bottom: 1px solid var(--lcp-border); }
+    .lcp-plot-area { height: 62vh; min-height: 320px; overflow: hidden; }
     .lcp-tab-hint { display: none; }
 }
 

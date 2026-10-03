@@ -80,8 +80,8 @@
     min-width: 0;
 }
 #kw-navbar .main-nav ul { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 2px; }
-#kw-navbar .nav-left { margin-left: 12px; }
-#kw-navbar .nav-right { margin-left: auto; gap: 6px; }
+#kw-navbar .main-nav ul.nav-left { margin: 0 auto; }   /* links centred between logo and account (EAU layout) */
+#kw-navbar .nav-right { gap: 6px; }
 
 #kw-navbar .main-nav li > a {
     display: inline-flex;
@@ -180,6 +180,14 @@
     color: #FFD60A;
 }
 
+/* Menu separators and the account menu header (name · email · role) */
+#kw-navbar .dropdown-content li.dropdown-sep { height: 1px; margin: 4px 6px; background: var(--kw-border); }
+#kw-navbar .user-dropdown { min-width: 240px; }
+#kw-navbar .user-dropdown-head { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 6px; }
+#kw-navbar .user-dropdown-name { font-size: 0.9rem; font-weight: 600; color: var(--kw-text-white); }
+#kw-navbar .user-dropdown-email { font-size: 0.74rem; color: var(--kw-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#kw-navbar .user-dropdown-roles { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
 /* ── Hamburger ────────────────────────────────────────────────── */
 #kw-navbar .hamburger-menu {
     display: none;
@@ -253,7 +261,7 @@
     }
     #kw-navbar .main-nav.active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
     #kw-navbar .main-nav ul { flex-direction: column; align-items: stretch; gap: 4px; }
-    #kw-navbar .nav-left { margin: 0; }
+    #kw-navbar .main-nav ul.nav-left { margin: 0; }
     #kw-navbar .nav-right { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--kw-border); }
     #kw-navbar .main-nav li > a { min-height: var(--kw-target-min); border-radius: var(--kw-radius-sm); font-size: var(--kw-text-md); }
     #kw-navbar .main-nav a.login-button { justify-content: center; }

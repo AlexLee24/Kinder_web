@@ -36,7 +36,7 @@ def refresh_user_session():
     """Refresh user session data from database on every request (registered globally)."""
     if 'user' not in session:
         return
-    if request.path.startswith('/static'):
+    if request.path.startswith('/static') or request.path in ('/sw.js', '/offline'):
         return
 
     user_email = session['user']['email']

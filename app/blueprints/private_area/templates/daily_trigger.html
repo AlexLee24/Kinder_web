@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>Daily Trigger - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
@@ -149,6 +150,21 @@
             line-height: 0;
             opacity: 0.9;
         }
+    
+        /* ── Phones (2026-10): the mobile rules in private_area.css never applied here — the
+           action bar has an inline display:flex and the rules above reset .pa-log-controls —
+           so buttons overflowed off-screen. Grid them, and tighten the target cards. ── */
+        @media (max-width: 768px) {
+            .pa-obs-section .pa-obs-actions { display: grid !important; grid-template-columns: 1fr 1fr; justify-content: stretch; width: 100%; }
+            .pa-obs-section .pa-obs-actions button { width: 100%; justify-content: center; min-height: 42px; }
+            .pa-log-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .pa-log-controls > * { width: 100% !important; margin: 0 !important; }
+            .pa-log-controls .pa-btn-log-action { justify-content: center; min-height: 42px; }
+            .pa-log-controls #log-target-search, .pa-log-controls #logShowFilterBtn { grid-column: span 2; }
+            .pa-target-table tr { margin-bottom: 12px !important; padding: 4px 10px !important; }
+            .pa-target-table td { padding: 7px 2px !important; font-size: 0.86rem !important; }
+            .pa-target-table td::before { font-size: 0.78rem; }
+        }
     </style>
 </head>
 <body>
@@ -173,6 +189,8 @@
                             <div class="pa-trigger-col-head">
                                 <span>Pre-Trigger Checklist</span>
                                 <span id="trigger-checklist-progress" class="pa-trigger-progress">0 / 9</span>
+                                <button type="button" id="trigger-checklist-toggle" class="pa-btn-checklist-action pa-checklist-toggle"
+                                        onclick="toggleTriggerChecklist()" aria-controls="trigger-checklist" aria-expanded="true" hidden>Hide</button>
                             </div>
 
                             <div id="trigger-checklist" class="pa-checklist-groups">

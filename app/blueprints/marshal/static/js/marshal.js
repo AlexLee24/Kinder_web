@@ -246,12 +246,14 @@ function loadInitialObjects() {
             filteredObjects = [...currentObjects];
             updateDOMCardsWithTags(updatedObjects);
             refreshCurrentView();
+            updatePagination();   // the "Showing x-y of n" text was left at its pre-load 0
         })
         .catch(error => {
             console.error('Error fetching tags:', error);
             currentObjects = objectsFromDOM;
             filteredObjects = [...currentObjects];
             refreshCurrentView();
+            updatePagination();
         });
 }
 
@@ -316,7 +318,7 @@ function updateDOMCardsWithTags(objects) {
             if (tagBadge) {
                 tagBadge.classList.remove('object', 'followup', 'finished', 'snoozed');
                 tagBadge.classList.add(newTag);
-                tagBadge.textContent = getTagDisplayName(newTag);
+                tagBadge.innerHTML = getTagDisplayName(newTag);   // icon SVG + fixed label (not user input)
             }
             
             console.log(`Updated DOM card ${objectName} with tag: ${newTag}`);
@@ -887,7 +889,7 @@ function updateCardStyling(card, tag) {
     if (tagBadge) {
         tagBadge.classList.remove('object', 'followup', 'finished', 'snoozed');
         tagBadge.classList.add(tag);
-        tagBadge.textContent = getTagDisplayName(tag);
+        tagBadge.innerHTML = getTagDisplayName(tag);   // icon SVG + fixed label (not user input)
     }
     
     console.log(`Applied styling: tag-${tag} to card:`, card.querySelector('.object-name a')?.textContent);

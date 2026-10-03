@@ -3,7 +3,8 @@
 <head>
     <meta name="referrer" content="no-referrer">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
     <title>{{ object_name }} - Object Detail - Kinder</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/object_detail_main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/responsive.css') }}">
@@ -29,6 +30,17 @@
 
 
     <div class="object-detail-container">
+        <!-- Phone only (≤ 768px): sticky section jump bar under the navbar (object_detail.js → initSectionJump) -->
+        <nav class="od-jump" id="odJump" aria-label="Page sections">
+            {% if visibility.comments %}<a href="#commentsMiniPanel">Comments</a>{% endif %}
+            {% if visibility.detect %}<a href="#detectMiniPanel">DETECT</a>{% endif %}
+            <a href="#od-info">Info</a>
+            <a href="#od-images">Images</a>
+            <a href="#od-phot">Photometry</a>
+            {% if visibility.spectroscopy %}<a href="#od-spec">Spectra</a>{% endif %}
+            {% if session.user and session.user.is_admin %}<a href="#od-perm">Sources</a>{% endif %}
+        </nav>
+
         <!-- Top Navigation Bar -->
         <div class="top-nav-bar">
             <div class="top-nav-top">
@@ -141,7 +153,7 @@
         <div class="mid-panels-grid">
             
             <!-- Panel 1: Details & Tools -->
-            <div class="panel-card">
+            <div class="panel-card" id="od-info">
                 <div class="panel-header">
                     <h3>Metadata & Info</h3>
                     {% if session.user and session.user.is_admin %}
@@ -219,7 +231,7 @@
             </div>
 
             <!-- Panel 2: DESI Image -->
-            <div class="panel-card">
+            <div class="panel-card" id="od-images">
                 <div class="panel-header">
                     <h3>DESI Legacy Survey</h3>
                 </div>
@@ -278,7 +290,7 @@
         <div class="bottom-grid">
             
             <!-- Photometry Span 1 Column -->
-            <div class="panel-card">
+            <div class="panel-card" id="od-phot">
                 <div class="panel-header phot-panel-header">
                     <div class="phot-header-top">
                         <h3>Photometry
@@ -371,7 +383,7 @@
 
             <!-- Spectroscopy — full width row -->
             {% if visibility.spectroscopy %}
-            <div class="panel-card spec-full-width">
+            <div class="panel-card spec-full-width" id="od-spec">
                 <div class="panel-header spec-panel-header">
                     <div class="spec-header-top">
                         <h3>Spectroscopy</h3>
@@ -437,7 +449,7 @@
         
         <!-- Data Source Permissions -->
         {% if session.user and session.user.is_admin %}
-        <div class="panel-card perm-panel" style="grid-column: 1 / -1; margin-top: 20px;">
+        <div class="panel-card perm-panel" id="od-perm" style="grid-column: 1 / -1; margin-top: 20px;">
             <div class="panel-header">
                 <div class="perm-header-left">
                     <h3>Data Source Permissions</h3>

@@ -23,7 +23,10 @@ const ICONS = {
 // Initialize users data when page loads
 document.addEventListener('DOMContentLoaded', function() {
     loadUsersData();
-    
+    initRoleFilter();
+    initAdminTabs();
+    renderRelativeTimes();
+
     // Auto-check consistency when page loads
     setTimeout(checkDataConsistency, 1000);
     
@@ -34,10 +37,11 @@ document.addEventListener('DOMContentLoaded', function() {
     loadDefaultSourcePermissions();
 });
 
-// Load users data for search functionality
-// Table columns: [0]=User(name+email), [1]=Role, [2]=Groups, [3]=Joined, [4]=Actions
+// Load users data for search functionality.
+// Each <tr> carries data-role (admin|user|guest) and data-key (active|pending|none);
+// cells[0] holds .user-cell-name / .user-cell-email, cells[2] the .group-badge chips.
 function loadUsersData() {
-    const userRows = document.querySelectorAll('#users-tab .data-table tbody tr');
+    const userRows = document.querySelectorAll('#users-tab .users-table tbody tr');
     allUsers = [];
     
     userRows.forEach(row => {
@@ -48,25 +52,41 @@ function loadUsersData() {
             element: row,
             name:    (nameEl  ? nameEl.textContent  : cells[0].textContent).toLowerCase().trim(),
             email:   (emailEl ? emailEl.textContent : '').toLowerCase().trim(),
-            isAdmin: cells[1].textContent.toLowerCase().includes('admin'),
+            role:    row.dataset.role || 'guest',
+            key:     row.dataset.key || 'none',
             groups:  Array.from(cells[2].querySelectorAll('.group-badge')).map(b => b.textContent.toLowerCase().trim())
         });
     });
     filteredUsers = [...allUsers];
 }
 
+function _activeRoleFilter() {
+    const on = document.querySelector('#roleFilter .kw-seg-item.is-on');
+    return on ? on.dataset.role : '';
+}
+
+function initRoleFilter() {
+    document.querySelectorAll('#roleFilter .kw-seg-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#roleFilter .kw-seg-item').forEach(b => b.classList.toggle('is-on', b === btn));
+            searchUsers();
+        });
+    });
+}
+
 // Search users functionality
 function searchUsers() {
-    const searchTerm = document.getElementById('userSearch').value.toLowerCase();
-    const showAdminOnly = document.getElementById('adminFilter').checked;
+    const searchTerm = (document.getElementById('userSearch').value || '').toLowerCase().trim();
+    const roleFilter = _activeRoleFilter();
     const groupFilter = document.getElementById('groupFilter').value.toLowerCase();
     
     filteredUsers = allUsers.filter(user => {
-        const matchesSearch = user.name.includes(searchTerm) || user.email.includes(searchTerm);
-        const matchesAdmin = !showAdminOnly || user.isAdmin;
+        const matchesSearch = !searchTerm || user.name.includes(searchTerm) || user.email.includes(searchTerm);
+        const matchesRole = !roleFilter
+            || (roleFilter === 'key' ? user.key !== 'none' : user.role === roleFilter);
         const matchesGroup = !groupFilter || user.groups.includes(groupFilter);
         
-        return matchesSearch && matchesAdmin && matchesGroup;
+        return matchesSearch && matchesRole && matchesGroup;
     });
     
     updateUsersDisplay();
@@ -74,56 +94,89 @@ function searchUsers() {
 
 // Update users table display
 function updateUsersDisplay() {
+    const visible = new Set(filteredUsers);
     allUsers.forEach(user => {
-        user.element.style.display = 'none';
-    });
-    
-    filteredUsers.forEach(user => {
-        user.element.style.display = '';
+        user.element.style.display = visible.has(user) ? '' : 'none';
     });
     
     // Update results count
     const resultCount = document.getElementById('searchResults');
     if (resultCount) {
-        resultCount.textContent = `${filteredUsers.length} users found`;
+        resultCount.textContent = filteredUsers.length === allUsers.length
+            ? `${allUsers.length} users`
+            : `${filteredUsers.length} of ${allUsers.length}`;
     }
+    const empty = document.getElementById('usersEmpty');
+    if (empty) empty.hidden = filteredUsers.length > 0;
 }
 
 // Clear search
 function clearSearch() {
     document.getElementById('userSearch').value = '';
-    document.getElementById('adminFilter').checked = false;
     document.getElementById('groupFilter').value = '';
+    document.querySelectorAll('#roleFilter .kw-seg-item').forEach(b => b.classList.toggle('is-on', !b.dataset.role));
     filteredUsers = [...allUsers];
     updateUsersDisplay();
 }
 
+// ── Tabs: one section per tab, addressable as /admin#users (DB Status / Web Log link here) ──
+const ADMIN_TABS = ['overview', 'users', 'groups', 'access', 'operations'];
+
+function initAdminTabs() {
+    document.querySelectorAll('.admin-tabbar .kw-tab[data-tab]').forEach(tab => {
+        tab.addEventListener('click', e => {
+            e.preventDefault();
+            showTab(tab.dataset.tab);
+        });
+    });
+    window.addEventListener('hashchange', () => {
+        const t = location.hash.slice(1);
+        if (ADMIN_TABS.includes(t)) showTab(t, { push: false });
+    });
+    const fromHash = location.hash.slice(1);
+    let saved = null;
+    try { saved = sessionStorage.getItem('adminActiveTab'); } catch (e) { /* storage blocked */ }
+    const start = ADMIN_TABS.includes(fromHash) ? fromHash : (ADMIN_TABS.includes(saved) ? saved : 'overview');
+    showTab(start, { push: false, scroll: false });
+}
+
 // Tab functionality
-function showTab(tabName) {
-    // Save state
-    sessionStorage.setItem('adminActiveTab', tabName);
+function showTab(tabName, opts) {
+    opts = opts || {};
+    if (!ADMIN_TABS.includes(tabName)) tabName = 'overview';
+    try { sessionStorage.setItem('adminActiveTab', tabName); } catch (e) { /* storage blocked */ }
 
-    const tabContents = document.querySelectorAll('.tab-content');
-    tabContents.forEach(content => content.classList.remove('active'));
-
-    const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => {
-        button.classList.remove('active');
-        if (button.getAttribute('onclick') && button.getAttribute('onclick').includes(`'${tabName}'`)) {
-            button.classList.add('active');
-        }
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === tabName + '-tab');
+    });
+    document.querySelectorAll('.admin-tabbar .kw-tab[data-tab]').forEach(tab => {
+        const on = tab.dataset.tab === tabName;
+        tab.classList.toggle('is-on', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
     });
 
-    const targetTab = document.getElementById(tabName + '-tab');
-    if (targetTab) {
-        targetTab.classList.add('active');
+    if (opts.push !== false && location.hash !== '#' + tabName) {
+        history.pushState(null, '', '#' + tabName);
     }
+    if (opts.scroll !== false) window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (tabName === 'overview') {
         _startJobsPolling();
     } else {
         _stopJobsPolling();
     }
+}
+
+// "3h ago" labels for every [data-ago] timestamp (title keeps the exact date)
+function renderRelativeTimes() {
+    document.querySelectorAll('[data-ago]').forEach(el => {
+        const iso = el.dataset.ago;
+        if (!iso) return;
+        const txt = _timeAgo(iso);
+        if (!txt) return;
+        el.title = el.textContent.trim();
+        el.textContent = txt;
+    });
 }
 
 // Modal functions
@@ -346,6 +399,11 @@ function closeModal(modalId) {
         form.reset();
     }
 }
+
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.modal').forEach(m => { if (m.style.display === 'block') closeModal(m.id); });
+});
 
 // Close modals when clicking outside
 window.onclick = function(event) {
@@ -685,13 +743,11 @@ function toggleGroupDetails(groupName, index) {
     const detailsElement = document.getElementById(`details-${index}`);
     const iconElement = document.getElementById(`icon-${index}`);
     
-    if (detailsElement.style.display === 'none' || detailsElement.style.display === '') {
-        detailsElement.style.display = 'block';
-        iconElement.innerHTML = ICONS.chevronUp;
-    } else {
-        detailsElement.style.display = 'none';
-        iconElement.innerHTML = ICONS.chevronDown;
-    }
+    const open = detailsElement.style.display === 'none' || detailsElement.style.display === '';
+    detailsElement.style.display = open ? 'block' : 'none';
+    iconElement.innerHTML = open ? ICONS.chevronUp : ICONS.chevronDown;
+    const btn = iconElement.closest('button');
+    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
 // Show add members modal
@@ -732,7 +788,7 @@ function updateAvailableUsersDisplay(users) {
             <label class="user-checkbox-label">
                 <input type="checkbox" value="${user.email}" class="user-checkbox">
                 <div class="user-info">
-                    <img src="${user.picture}" alt="Avatar" class="user-avatar-small">
+                    ${user.picture ? `<img src="${user.picture}" alt="" class="kw-avatar kw-avatar-sm user-avatar-small">` : `<span class="kw-avatar kw-avatar-sm">${(user.name || '?').slice(0, 1).toUpperCase()}</span>`}
                     <div class="user-details">
                         <span class="user-name">${user.name}</span>
                         <span class="user-email">${user.email}</span>
@@ -1385,13 +1441,13 @@ function buildDefaultPermRow(p, idx) {
         : (p.allowed_groups.length === 0 ? 'blocked' : 'groups')));
 
     const groupChips = (p.allowed_groups || []).map(g =>
-        `<span class="perm-tag" style="cursor:default">${g}
-            <span style="cursor:pointer;margin-left:4px;" onclick="removeDefaultPermGroup(${idx},'${g}')">&times;</span>
+        `<span class="perm-tag">${g}
+            <button type="button" class="kw-chip-x" title="Remove" onclick="removeDefaultPermGroup(${idx},'${g}')">&times;</button>
          </span>`
     ).join('');
 
     const groupAddSelect = (typeof ADMIN_GROUPS !== 'undefined' && ADMIN_GROUPS.length > 0)
-        ? `<select style="font-size:11px;margin-left:4px;background:rgba(255,255,255,0.08);color:inherit;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:2px 4px;"
+        ? `<select class="kw-select kw-select-sm" aria-label="Add group"
                   onchange="addDefaultPermGroup(${idx}, this); this.value=''">
                <option value="">+ group</option>
                ${ADMIN_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('')}
@@ -1399,9 +1455,9 @@ function buildDefaultPermRow(p, idx) {
         : '';
 
     return `
-        <td><span class="group-badge">${p.source_name}</span></td>
+        <td><span class="source-name">${p.source_name}</span></td>
         <td>
-            <select class="role-select" data-idx="${idx}" onchange="onDefaultPermVisChange(${idx}, this.value)">
+            <select class="kw-select kw-select-sm perm-vis perm-vis-${visValue}" data-idx="${idx}" onchange="onDefaultPermVisChange(${idx}, this.value)">
                 <option value="public"    ${visValue==='public'    ? 'selected':''}>Public</option>
                 <option value="logged_in" ${visValue==='logged_in' ? 'selected':''}>All logged-in</option>
                 <option value="groups"    ${visValue==='groups'    ? 'selected':''}>Specific groups</option>
@@ -1409,13 +1465,13 @@ function buildDefaultPermRow(p, idx) {
             </select>
         </td>
         <td>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            <div class="perm-groups">
                 ${groupChips}
-                ${visValue === 'groups' ? groupAddSelect : ''}
+                ${visValue === 'groups' ? groupAddSelect : (visValue === 'public' ? '<span class="cell-muted">Everyone</span>' : visValue === 'logged_in' ? '<span class="cell-muted">Any signed-in user</span>' : '<span class="cell-muted">Nobody</span>')}
             </div>
         </td>
-        <td>
-            <button class="icon-btn icon-btn-danger" onclick="removeDefaultPermRow(${idx})" title="Remove">
+        <td class="td-right">
+            <button class="kw-icon-btn is-danger" onclick="removeDefaultPermRow(${idx})" title="Remove rule" aria-label="Remove rule">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </td>`;
@@ -1575,7 +1631,7 @@ async function loadPrivatePagePerms() {
     try {
         const res = await fetch('/api/admin/private_area/page_perms');
         const data = await res.json();
-        if (!data.success) { container.innerHTML = '<div style="color:#e06c75;">Failed to load</div>'; return; }
+        if (!data.success) { container.innerHTML = '<div class="kw-empty">Failed to load</div>'; return; }
 
         const perms = data.perms || {};   // {page: [groupName, ...]}
         const pages = data.pages || [];
@@ -1593,37 +1649,35 @@ async function loadPrivatePagePerms() {
                 .map(g => _ppermGroupTag(page, g))
                 .join('');
             return `
-            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px 14px;">
-                <div style="font-size:0.82rem; font-weight:600; color:#ccc; margin-bottom:8px;">${labels[page] || page}</div>
-                <div id="pperm_tags_${page}" class="permissions-list" style="min-height:28px; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
-                    <div class="perm-tag perm-locked">
-                        <span>GREAT_Lab</span>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                    </div>
+            <div class="pperm-card">
+                <div class="pperm-title">${labels[page] || page}</div>
+                <div id="pperm_tags_${page}" class="pperm-tags">
+                    <span class="perm-tag perm-locked" title="Always has access">
+                        GREAT_Lab
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    </span>
                     ${groupTagsHtml}
                 </div>
-                <div class="settings-row" style="gap:6px;">
-                    <select id="pperm_select_${page}" class="settings-select" style="flex:1;">
-                        <option value="">— Select Group —</option>
+                <div class="pperm-add">
+                    <select id="pperm_select_${page}" class="kw-select kw-select-sm" aria-label="Group to add">
+                        <option value="">Add a group…</option>
                         ${optionsHtml}
                     </select>
-                    <button class="btn btn-primary" onclick="addPrivatePagePerm('${page}')">Add</button>
+                    <button class="kw-btn kw-btn-sm" onclick="addPrivatePagePerm('${page}')">Add</button>
                 </div>
             </div>`;
         }).join('');
     } catch (e) {
-        if (container) container.innerHTML = '<div style="color:#e06c75;">Error loading permissions</div>';
+        if (container) container.innerHTML = '<div class="kw-empty">Error loading permissions</div>';
     }
 }
 
 function _ppermGroupTag(page, groupName) {
     return `
-    <div class="perm-tag" style="background:rgba(255,107,107,0.1); border-color:rgba(255,107,107,0.3); color:#ff6b6b;">
-        <span>${groupName}</span>
-        <svg onclick="removePrivatePagePerm('${page}','${groupName}')" style="cursor:pointer; opacity:0.7;" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
-            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-    </div>`;
+    <span class="perm-tag">
+        ${groupName}
+        <button type="button" class="kw-chip-x" title="Remove" aria-label="Remove ${groupName}" onclick="removePrivatePagePerm('${page}','${groupName}')">&times;</button>
+    </span>`;
 }
 
 async function addPrivatePagePerm(page) {
@@ -1750,7 +1804,7 @@ function _renderDetectStatus(st) {
     cards.push(`<div class="dt-card ${db.pending_review > 0 ? 'live' : ''}">
         <div class="dt-label">Waiting for a person</div>
         <div class="dt-value">${db.pending_review != null ? db.pending_review : '—'}</div>
-        <div class="dt-sub">Inbox objects with a host verdict (7 d) · <a href="/detect" style="color:var(--gold);">review page</a> · ${db.followups != null ? db.followups + ' in Follow-up' : ''}</div>
+        <div class="dt-sub">Inbox objects with a host verdict (7 d) · <a href="/detect" class="dt-link">review page</a> · ${db.followups != null ? db.followups + ' in Follow-up' : ''}</div>
     </div>`);
     cards.push(`<div class="dt-card ${db.legacy_rows_24h > 0 ? 'warn' : ''}">
         <div class="dt-label">Other writers</div>
@@ -1837,7 +1891,7 @@ function _renderScheduledJobs(jobs) {
     if (!grid) return;
 
     if (!jobs.length) {
-        grid.innerHTML = '<div style="color:var(--muted);font-size:0.83rem;padding:4px;">No scheduled jobs found.</div>';
+        grid.innerHTML = '<div class="kw-empty">No scheduled jobs found.</div>';
         return;
     }
 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Offline · Kinder</title>
+    <meta name="theme-color" content="#0B0D14">
+    {#- Self-contained: the service worker caches this page at install and shows it when there is no connection. -#}
+    <style>
+        html, body { height: 100%; margin: 0; }
+        body {
+            display: grid; place-items: center;
+            padding: 24px; box-sizing: border-box;
+            background: #0B0D14; color: #F2F2F7;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+            text-align: center;
+        }
+        .card { max-width: 340px; }
+        img { width: 72px; height: auto; margin-bottom: 18px; }
+        h1 { margin: 0 0 8px; font-size: 1.35rem; font-weight: 500; letter-spacing: 0.02em; }
+        p { margin: 0 0 22px; font-size: 0.92rem; line-height: 1.6; color: rgba(235, 235, 245, 0.72); }
+        button {
+            min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
+            background: #D4B06A; color: #1A1408; font: 600 0.95rem/1 inherit; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <img src="/static/pwa/logo-128.png" alt="">
+        <h1>You're offline</h1>
+        <p>Kinder can't reach the server right now. Check your connection, then try again.</p>
+        <button type="button" onclick="location.reload()">Try again</button>
+    </div>
+</body>
+</html>

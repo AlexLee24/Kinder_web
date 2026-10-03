@@ -77,6 +77,11 @@ def get_slideshow():
 def home():
     return render_template('home.html', current_path='/', db_offline=not is_db_available())
 
+@basic_bp.route('/offline')
+def offline():
+    """Shown by the service worker (static/sw.js) when a page can't load. Pre-cached at install, so no DB."""
+    return render_template('offline.html')
+
 @basic_bp.route('/login')
 def login():
     return render_template('login.html', current_path='/login')

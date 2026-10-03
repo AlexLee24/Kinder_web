@@ -1,0 +1,137 @@
+/* ================================================================
+   _mobile.css — phone / tablet adjustments for every page + the installable-app UI.
+   Loaded by _navbar.html after _theme.css / _navbar.css, i.e. after each page's own
+   CSS, so equal-specificity rules here win. Page-specific mobile fixes stay in the
+   page's CSS; this file only holds what applies everywhere.
+   ================================================================ */
+
+[data-pwa-install][hidden] { display: none !important; }
+
+/* Touch: no 300 ms double-tap delay, no grey flash on the navigation */
+a, button, input, select, textarea, label, summary { touch-action: manipulation; }
+#kw-navbar, .kw-dock { -webkit-tap-highlight-color: transparent; }
+
+/* Landscape iPhones (viewport-fit=cover): keep content out of the notch */
+body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+#kw-navbar .kw-header-inner { padding-left: max(clamp(16px, 3vw, 32px), env(safe-area-inset-left, 0px)); padding-right: max(clamp(16px, 3vw, 32px), env(safe-area-inset-right, 0px)); }
+
+/* ── Phone tab bar (markup in _navbar.html) ───────────────────── */
+.kw-dock { display: none; }
+
+@media (max-width: 768px) {
+    :root { --kw-dock-h: 58px; }
+
+    .kw-dock {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 990;                       /* under the navbar (1000) and dialogs (1300) */
+        display: flex;
+        align-items: stretch;
+        height: calc(var(--kw-dock-h) + env(safe-area-inset-bottom, 0px));
+        padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        background: rgba(11, 13, 20, 0.96);
+        border-top: 1px solid var(--kw-border);
+        font-family: var(--kw-font-sans);
+        transition: transform 0.2s var(--kw-ease);
+    }
+    .kw-dock > a, .kw-dock > button {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        min-width: 0;
+        min-height: var(--kw-dock-h);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: none;
+        color: var(--kw-text-muted);
+        font: 500 0.66rem/1 var(--kw-font-sans);
+        letter-spacing: 0.02em;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .kw-dock svg { width: 23px; height: 23px; }
+    .kw-dock > a:active, .kw-dock > button:active { color: var(--kw-text-white); }
+    .kw-dock > a.active { color: var(--kw-accent); }
+    /* the on-screen keyboard is up: get the bar out of the way */
+    html.kw-typing .kw-dock { transform: translateY(110%); }
+
+    /* leave room for the bar at the end of every page */
+    body { padding-bottom: calc(var(--kw-dock-h) + env(safe-area-inset-bottom, 0px)); }
+
+    /* fixed bottom elements sit above the bar */
+    .notification:not(.notification-container > *) { bottom: calc(var(--kw-dock-h) + 14px + env(safe-area-inset-bottom, 0px)); }
+    .lcp-fab-render { bottom: calc(var(--kw-dock-h) + 16px + env(safe-area-inset-bottom, 0px)) !important; }
+    .lcp-toast { bottom: calc(var(--kw-dock-h) + 16px + env(safe-area-inset-bottom, 0px)) !important; }
+    #backToTopBtn, .scroll-to-top { bottom: calc(var(--kw-dock-h) + 16px + env(safe-area-inset-bottom, 0px)) !important; right: 16px !important; }
+    #toast.toast { bottom: calc(var(--kw-dock-h) + 16px + env(safe-area-inset-bottom, 0px)); }   /* DETECT review */
+
+    /* home hero fills the screen above the bar, so its scroll hint stays visible */
+    .main-banner { min-height: calc(100svh - var(--kw-dock-h) - env(safe-area-inset-bottom, 0px)); }
+
+    /* "Database offline" notice (home): under the navbar instead of over it */
+    .db-offline-banner { top: var(--kw-nav-h); padding: 8px 12px; font-size: 0.78rem; }
+
+    /* iOS zooms into any field whose text is smaller than 16px: keep fields at 16px on touch screens */
+    @media (pointer: coarse) {
+        input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="file"]):not([type="color"]),
+        select, textarea { font-size: 16px !important; }
+    }
+}
+
+/* ── Install banner + guide (js/pwa.js) ───────────────────────── */
+.kw-pwa-banner {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: min(520px, calc(100vw - 24px));
+    padding: 12px 14px;
+    border-radius: var(--kw-radius-lg);
+    background: #1A1D27;
+    border: 1px solid var(--kw-accent-border);
+    box-shadow: var(--kw-shadow-lg);
+    color: var(--kw-text-primary);
+    font-family: var(--kw-font-sans);
+    transform: translate(-50%, 24px);
+    opacity: 0;
+    transition: transform 0.25s var(--kw-ease), opacity 0.25s var(--kw-ease);
+}
+.kw-pwa-banner.is-in { transform: translate(-50%, 0); opacity: 1; }
+.kw-pwa-banner img { width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0; }
+.kw-pwa-banner-txt { flex: 1; min-width: 0; line-height: 1.35; }
+.kw-pwa-banner-txt b { display: block; font-size: 0.9rem; font-weight: 600; }
+.kw-pwa-banner-txt small { display: block; font-size: 0.76rem; color: var(--kw-text-secondary); }
+.kw-pwa-banner-acts { display: flex; gap: 6px; flex-shrink: 0; }
+@media (max-width: 768px) {
+    .kw-pwa-banner { bottom: calc(var(--kw-dock-h) + 12px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; }
+    .kw-pwa-banner-acts { width: 100%; justify-content: flex-end; }
+}
+
+.kw-pwa-guide {
+    width: min(400px, calc(100vw - 32px));
+    margin: auto;
+    padding: 20px;
+    border-radius: 18px;
+    border: 1px solid var(--kw-border-med);
+    background: #1A1D27;
+    color: var(--kw-text-primary);
+    font-family: var(--kw-font-sans);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.kw-pwa-guide::backdrop { background: rgba(0, 0, 0, 0.6); }
+.kw-pwa-guide-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.kw-pwa-guide-head img { width: 44px; height: 44px; border-radius: 11px; }
+.kw-pwa-guide-head b { font-size: 1.02rem; font-weight: 600; }
+.kw-pwa-guide-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.kw-pwa-guide-steps li { display: flex; align-items: center; gap: 10px; font-size: 0.88rem; line-height: 1.5; }
+.kw-pwa-step-n { flex: 0 0 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--kw-accent); color: var(--kw-accent-contrast); font-size: 0.74rem; font-weight: 700; }
+.kw-pwa-step-ico { flex: 0 0 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--kw-surface); color: var(--kw-accent); }
+.kw-pwa-step-ico svg { width: 18px; height: 18px; }
+.kw-pwa-guide-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
