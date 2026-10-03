@@ -4,7 +4,7 @@ import urllib.parse
 from flask import session, request, jsonify, Response
 from app.db.transient import search_tns_objects, TNSObjectDB
 from app.core.request_validation import get_float_arg
-from app.db.auth import check_object_access, filter_by_source_permissions
+from app.db.auth import filter_by_source_permissions
 from app.services.photometry.data_processing import DataVisualization
 from app.services.astro import ext_M_calculator
 import os as _os
@@ -13,7 +13,75 @@ from app.core.auth import admin_required, login_required
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
-from .helpers import sanitize_for_json
+from .helpers import sanitize_for_json, can_access_object
+
+
+def _download_phot_response(object_name):
+    """Shared body of the photometry .dat download endpoints: object-level and
+    source-level permissions are applied exactly as for the JSON endpoint."""
+    user = session.get('user') or {}
+    user_email = user.get('email')
+    user_groups = user.get('groups', [])
+    is_admin = user.get('is_admin', False)
+
+    if not can_access_object(object_name, user_email):
+        return jsonify({'error': 'Access denied'}), 403
+
+    telescopes_param = request.args.get('telescopes', '')
+    filters_param    = request.args.get('filters', '')
+    mjd_min          = get_float_arg('mjd_min')
+    mjd_max          = get_float_arg('mjd_max')
+    include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
+
+    sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
+    sel_filters    = {f.strip() for f in filters_param.split(',') if f.strip()}
+
+    try:
+        phot = TNSObjectDB.get_photometry(object_name)
+        phot = filter_by_source_permissions(
+            object_name, 'phot', phot,
+            user_email=user_email, user_groups=user_groups, is_admin=is_admin
+        )
+
+        rows = []
+        for p in phot:
+            if sel_telescopes and (p.get('telescope') or '') not in sel_telescopes:
+                continue
+            if sel_filters and (p.get('filter') or '') not in sel_filters:
+                continue
+            if mjd_min is not None and p.get('mjd', 0) < mjd_min:
+                continue
+            if mjd_max is not None and p.get('mjd', 0) > mjd_max:
+                continue
+            if not include_nondet and p.get('magnitude_error') is None:
+                continue
+            rows.append(p)
+
+        lines = [f"# {object_name} photometry", "# MJD magnitude error filter telescope"]
+        for p in rows:
+            mjd = p.get('mjd', '')
+            mag = p.get('magnitude')
+            err = p.get('magnitude_error')
+            flt = p.get('filter') or ''
+            tel = p.get('telescope') or 'Unknown'
+            if err is None:
+                mag_str = f">{mag:.6f}" if mag is not None else ">nan"
+                err_str = "nan"
+            else:
+                mag_str = f"{mag:.6f}" if mag is not None else "nan"
+                err_str = f"{err:.6f}"
+            lines.append(f"{mjd:.6f}  {mag_str}  {err_str}  {flt}  {tel}")
+
+        content = '\n'.join(lines) + '\n'
+        safe_name = ''.join(ch for ch in object_name if ch.isalnum() or ch in '-_.') or 'object'
+        return Response(
+            content,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename="{safe_name}_phot.dat"'}
+        )
+    except Exception as e:
+        logger.error("[Photometry/download] error: object=%s error=%s", object_name, e)
+        return jsonify({'error': 'Failed to build photometry file'}), 500
 
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry')
@@ -25,6 +93,8 @@ def get_object_photometry(year, letters):
     is_admin = user.get('is_admin', False) if user else False
 
     logger.info("[Photometry] fetch request: object=%s user=%s", object_name, user_email or 'guest')
+    if not can_access_object(object_name, user_email):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
         photometry = TNSObjectDB.get_photometry(object_name)
@@ -38,7 +108,7 @@ def get_object_photometry(year, letters):
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
         logger.error("[Photometry] fetch error: object=%s error=%s", object_name, str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to load photometry'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry', methods=['POST'])
 @admin_required
@@ -62,8 +132,9 @@ def upload_photometry(year, letters):
             'message': 'Photometry point added successfully',
             'id': point_id
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/batch', methods=['POST'])
 @admin_required
@@ -76,8 +147,9 @@ def upload_photometry_batch(year, letters):
     try:
         inserted = TNSObjectDB.add_photometry_batch(object_name, points)
         return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/photometry/<int:point_id>', methods=['DELETE'])
 @admin_required
@@ -91,70 +163,15 @@ def delete_photometry_point(point_id):
             })
         else:
             return jsonify({'error': 'Photometry point not found'}), 404
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/download')
 @login_required(error='Access denied', status=403)
 def download_photometry(year, letters):
     """Download photometry as .dat file with optional filters."""
-
-    object_name = f"{year}{letters}"
-
-    telescopes_param = request.args.get('telescopes', '')
-    filters_param    = request.args.get('filters', '')
-    mjd_min          = get_float_arg('mjd_min')
-    mjd_max          = get_float_arg('mjd_max')
-    include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
-
-    sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
-    sel_filters    = {f.strip() for f in filters_param.split(',') if f.strip()}
-
-    try:
-        phot = TNSObjectDB.get_photometry(object_name)
-
-        rows = []
-        for p in phot:
-            if sel_telescopes and (p.get('telescope') or '') not in sel_telescopes:
-                continue
-            if sel_filters and (p.get('filter') or '') not in sel_filters:
-                continue
-            if mjd_min is not None and p.get('mjd', 0) < mjd_min:
-                continue
-            if mjd_max is not None and p.get('mjd', 0) > mjd_max:
-                continue
-            is_upper = p.get('magnitude_error') is None
-            if not include_nondet and is_upper:
-                continue
-            rows.append(p)
-
-        lines = [
-            f"# {object_name} photometry",
-            "# MJD magnitude error filter telescope",
-        ]
-        for p in rows:
-            mjd  = p.get('mjd', '')
-            mag  = p.get('magnitude')
-            err  = p.get('magnitude_error')
-            flt  = p.get('filter') or ''
-            tel  = p.get('telescope') or 'Unknown'
-            is_upper = err is None
-            if is_upper:
-                mag_str = f">{mag:.6f}" if mag is not None else ">nan"
-                err_str = "nan"
-            else:
-                mag_str = f"{mag:.6f}" if mag is not None else "nan"
-                err_str = f"{err:.6f}"
-            lines.append(f"{mjd:.6f}  {mag_str}  {err_str}  {flt}  {tel}")
-
-        content = '\n'.join(lines) + '\n'
-        return Response(
-            content,
-            mimetype='text/plain',
-            headers={'Content-Disposition': f'attachment; filename="{object_name}_phot.dat"'}
-        )
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return _download_phot_response(f"{year}{letters}")
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/plot')
 def get_object_photometry_plot(year, letters):
@@ -167,7 +184,7 @@ def get_object_photometry_plot(year, letters):
 
     logger.info("[Photometry/plot] request: object=%s user=%s", object_name, user_email or 'guest')
 
-    if user and not check_object_access(object_name, user_email):
+    if not can_access_object(object_name, user_email):
         return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
 
     try:
@@ -234,7 +251,7 @@ def get_object_photometry_plot(year, letters):
         })
     except Exception as e:
         logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to build plot'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry')
 def get_object_photometry_generic(object_name):
@@ -244,6 +261,8 @@ def get_object_photometry_generic(object_name):
     user_groups = user.get('groups', []) if user else []
     is_admin = user.get('is_admin', False) if user else False
     logger.info("[Photometry] fetch request: object=%s user=%s", object_name, user_email or 'guest')
+    if not can_access_object(object_name, user_email):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
     try:
         TNSObjectDB.sync_last_photometry_date(object_name)
         photometry = TNSObjectDB.get_photometry(object_name)
@@ -257,7 +276,7 @@ def get_object_photometry_generic(object_name):
         return jsonify({'success': True, 'photometry': photometry, 'count': len(photometry)})
     except Exception as e:
         logger.error("[Photometry] fetch error: object=%s error=%s", object_name, str(e))
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to load photometry'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry', methods=['POST'])
 @admin_required
@@ -274,8 +293,9 @@ def upload_photometry_generic(object_name):
             telescope=data.get('telescope')
         )
         return jsonify({'success': True, 'message': 'Photometry point added successfully', 'id': point_id})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry/batch', methods=['POST'])
 @admin_required
@@ -288,62 +308,14 @@ def upload_photometry_batch_generic(object_name):
     try:
         inserted = TNSObjectDB.add_photometry_batch(object_name, points)
         return jsonify({'success': True, 'inserted': inserted, 'total': len(points)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry/download')
 @login_required(error='Access denied', status=403)
 def download_photometry_generic(object_name):
-    object_name = urllib.parse.unquote(object_name)
-
-    telescopes_param = request.args.get('telescopes', '')
-    filters_param    = request.args.get('filters', '')
-    mjd_min          = get_float_arg('mjd_min')
-    mjd_max          = get_float_arg('mjd_max')
-    include_nondet   = request.args.get('include_nondet', 'true').lower() != 'false'
-
-    sel_telescopes = {t.strip() for t in telescopes_param.split(',') if t.strip()}
-    sel_filters    = {f.strip() for f in filters_param.split(',') if f.strip()}
-
-    try:
-        phot = TNSObjectDB.get_photometry(object_name)
-        rows = []
-        for p in phot:
-            if sel_telescopes and (p.get('telescope') or '') not in sel_telescopes:
-                continue
-            if sel_filters and (p.get('filter') or '') not in sel_filters:
-                continue
-            if mjd_min is not None and p.get('mjd', 0) < mjd_min:
-                continue
-            if mjd_max is not None and p.get('mjd', 0) > mjd_max:
-                continue
-            if not include_nondet and p.get('magnitude_error') is None:
-                continue
-            rows.append(p)
-
-        lines = [f"# {object_name} photometry", "# MJD magnitude error filter telescope"]
-        for p in rows:
-            mjd = p.get('mjd', '')
-            mag = p.get('magnitude')
-            err = p.get('magnitude_error')
-            flt = p.get('filter') or ''
-            tel = p.get('telescope') or 'Unknown'
-            if err is None:
-                mag_str = f">{mag:.6f}" if mag is not None else ">nan"
-                err_str = "nan"
-            else:
-                mag_str = f"{mag:.6f}" if mag is not None else "nan"
-                err_str = f"{err:.6f}"
-            lines.append(f"{mjd:.6f}  {mag_str}  {err_str}  {flt}  {tel}")
-
-        content = '\n'.join(lines) + '\n'
-        return Response(
-            content,
-            mimetype='text/plain',
-            headers={'Content-Disposition': f'attachment; filename="{object_name}_phot.dat"'}
-        )
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return _download_phot_response(urllib.parse.unquote(object_name))
 
 @objects_bp.route('/api/object/<object_name>/photometry/plot')
 def get_object_photometry_plot_generic(object_name):
@@ -357,7 +329,7 @@ def get_object_photometry_plot_generic(object_name):
     logger.info("[Photometry/plot] request: object=%s user=%s", object_name, user_email or 'guest')
 
     try:
-        if user and not check_object_access(object_name, user_email):
+        if not can_access_object(object_name, user_email):
             return jsonify({'success': True, 'plot_html': None, 'message': 'Access denied.'})
 
         results = search_tns_objects(search_term=object_name, limit=1)
@@ -430,7 +402,7 @@ def get_object_photometry_plot_generic(object_name):
         import traceback
         traceback.print_exc()
         logger.error("[Photometry/plot] error: object=%s error=%s", object_name, str(e))
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Failed to build plot'}), 500
 
 _KN_MODEL_CACHE = None
 
@@ -473,5 +445,6 @@ def _parse_kn_model():
 def api_kn_model():
     try:
         return jsonify({'success': True, 'model': _parse_kn_model()})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500

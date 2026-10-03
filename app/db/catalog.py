@@ -1,10 +1,34 @@
 """cat schema — catalog tables: cat.desi, cat.lens."""
 
 import logging
+import math
+
 from psycopg2 import extras
 from . import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+
+def _ra_box_clause(ra: float, dec: float, radius_deg: float) -> tuple[str, list]:
+    """RA part of a bounding-box pre-filter, handling the 0/360 wrap.
+
+    Returns (sql, params). Near the poles (or for a box wider than the sky) the
+    RA constraint is dropped entirely.
+    """
+    dec_rad = math.radians(min(abs(dec) + radius_deg, 90.0))
+    cos_dec = math.cos(dec_rad)
+    if cos_dec < 1e-3:
+        return "TRUE", []
+    ra_margin = radius_deg / cos_dec
+    if ra_margin >= 180.0:
+        return "TRUE", []
+    ra = ra % 360.0
+    lo, hi = ra - ra_margin, ra + ra_margin
+    if lo < 0.0:
+        return "(ra >= %s OR ra <= %s)", [lo + 360.0, hi]
+    if hi > 360.0:
+        return "(ra >= %s OR ra <= %s)", [lo, hi - 360.0]
+    return "ra BETWEEN %s AND %s", [lo, hi]
 
 
 # ---------------------------------------------------------------------------
@@ -16,11 +40,6 @@ def cone_search_desi(ra: float, dec: float, radius_arcsec: float = 5.0,
                      z_max: float | None = None) -> list[dict]:
     """Return DESI sources within radius_arcsec of (ra, dec)."""
     radius_deg = radius_arcsec / 3600.0
-    params = [ra, dec, ra, radius_deg]
-    clauses = [
-        "q3c_radial_query(ra, dec, %s, %s, %s)",
-        "ABS(ra - %s) < %s",
-    ]
     # Use Cartesian pre-filter for speed when q3c is available
     try:
         with get_db_connection() as conn:
@@ -35,15 +54,9 @@ def cone_search_desi(ra: float, dec: float, radius_arcsec: float = 5.0,
         q_params = [ra, dec, radius_deg]
     else:
         # Fall back to bounding-box filter with latitude correction
-        dec_rad = abs(dec) * 3.141592653589793 / 180.0
-        import math
-        ra_margin = radius_deg / max(math.cos(dec_rad), 0.001)
-        where_parts = [
-            "ra BETWEEN %s AND %s",
-            "dec BETWEEN %s AND %s",
-        ]
-        q_params = [ra - ra_margin, ra + ra_margin,
-                    dec - radius_deg, dec + radius_deg]
+        ra_sql, ra_params = _ra_box_clause(ra, dec, radius_deg)
+        where_parts = [ra_sql, "dec BETWEEN %s AND %s"]
+        q_params = ra_params + [dec - radius_deg, dec + radius_deg]
 
     if z_min is not None:
         where_parts.append("redshift >= %s"); q_params.append(z_min)
@@ -115,12 +128,9 @@ def cone_search_lens(ra: float, dec: float,
         where = "q3c_radial_query(ra, dec, %s, %s, %s)"
         q_params = [ra, dec, radius_deg]
     else:
-        import math
-        dec_rad = abs(dec) * math.pi / 180.0
-        ra_margin = radius_deg / max(math.cos(dec_rad), 0.001)
-        where = "ra BETWEEN %s AND %s AND dec BETWEEN %s AND %s"
-        q_params = [ra - ra_margin, ra + ra_margin,
-                    dec - radius_deg, dec + radius_deg]
+        ra_sql, ra_params = _ra_box_clause(ra, dec, radius_deg)
+        where = f"{ra_sql} AND dec BETWEEN %s AND %s"
+        q_params = ra_params + [dec - radius_deg, dec + radius_deg]
 
     try:
         with get_db_connection() as conn:

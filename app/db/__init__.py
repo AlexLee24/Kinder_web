@@ -11,19 +11,20 @@ import logging
 import os
 import time
 import psycopg2
-from psycopg2 import pool
+import psycopg2.pool
 from contextlib import contextmanager
-from dotenv import load_dotenv
 
-from app.paths import ENV_FILE
-
-load_dotenv(ENV_FILE, override=True)
+from app import config as _config  # noqa: F401  -- loads kinder.env (single place)
 
 DB_HOST     = os.getenv("PG_HOST", "localhost")
 DB_PORT     = os.getenv("PG_PORT", "5432")
 DB_USER     = os.getenv("PG_USER", "postgres")
 DB_PASSWORD = os.getenv("PG_PASSWORD", "")
 DB_NAME     = "Kinder"
+
+# application_name reported by this app's pooled connections (pg_stat_activity);
+# the admin "terminate idle" tool uses it to avoid killing our own pool.
+APP_DB_APPLICATION_NAME = "kinder_web"
 
 _DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -45,6 +46,7 @@ def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
             database=DB_NAME,
             user=DB_USER, password=DB_PASSWORD,
             connect_timeout=5,
+            application_name=APP_DB_APPLICATION_NAME,
             # ── Server-side safety timeouts ───────────────────────────────
             # Kill any connection that sits idle-in-transaction for >5 min,
             # and any individual statement that runs >2 min.
@@ -177,12 +179,49 @@ class _PooledConn:
             p.putconn(conn)
 
 
+def _is_healthy(conn) -> bool:
+    """Cheap liveness probe for a connection taken from the pool."""
+    if conn.closed:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        # SELECT 1 opened a transaction (autocommit off); end it so the caller
+        # starts clean and the server doesn't see 'idle in transaction'.
+        if not conn.autocommit:
+            conn.rollback()
+        return True
+    except Exception:
+        return False
+
+
+def _checkout(p):
+    """getconn() with a health check: a dead connection is discarded and one
+    replacement is fetched (itself checked once more)."""
+    conn = p.getconn()
+    if _is_healthy(conn):
+        return conn
+    try:
+        p.putconn(conn, close=True)
+    except Exception:
+        pass
+    conn = p.getconn()
+    if not _is_healthy(conn):
+        try:
+            p.putconn(conn, close=True)
+        except Exception:
+            pass
+        raise psycopg2.OperationalError("could not obtain a healthy pooled connection")
+    return conn
+
+
 def get_tns_db_connection() -> '_PooledConn':
     """Return a raw pooled connection.  Caller MUST call conn.close() to
     return it to the pool (close() is intercepted — it does putconn, not
     actual socket close)."""
     p = init_connection_pool()
-    return _PooledConn(p.getconn(), p)
+    return _PooledConn(_checkout(p), p)
 
 
 @contextmanager
@@ -196,11 +235,8 @@ def get_db_connection():
       'idle in transaction' from this pool.
     """
     p = init_connection_pool()
-    conn = p.getconn()
     # Discard a connection that the server closed while it sat in the pool.
-    if conn.closed:
-        p.putconn(conn, close=True)
-        conn = p.getconn()
+    conn = _checkout(p)
     _returned = False
     try:
         yield conn
@@ -268,6 +304,75 @@ def is_db_available(force: bool = False) -> bool:
 # Extra tables not in the original Kinder schema DDL (backward-compat needs)
 # ---------------------------------------------------------------------------
 
+def _shrink_stored_avatars(cur) -> None:
+    """One-time per row: re-encode oversized uploaded avatars (base64 data: URIs,
+    formerly stored at full camera resolution) to a small thumbnail. Pages link
+    to /avatar/<id>, but the value is still read with every user lookup."""
+    from app.core.avatars import MAX_STORED_BYTES, shrink_data_uri
+    try:
+        cur.execute("SELECT usr_id FROM auth.users "
+                    "WHERE picture_url LIKE 'data:%%' AND length(picture_url) > %s",
+                    (MAX_STORED_BYTES,))
+        ids = [r[0] for r in cur.fetchall()]
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: avatar shrink skipped: %s", exc)
+        return
+    shrunk = 0
+    for usr_id in ids:   # one row at a time: the originals can be many MB each
+        try:
+            cur.execute("SELECT picture_url FROM auth.users WHERE usr_id = %s", (usr_id,))
+            row = cur.fetchone()
+            small = shrink_data_uri(row[0]) if row and row[0] else None
+            if small and len(small) < len(row[0]):
+                cur.execute("UPDATE auth.users SET picture_url = %s WHERE usr_id = %s",
+                            (small, usr_id))
+                shrunk += 1
+        except Exception as exc:
+            logger.warning("_ensure_extra_tables: avatar shrink failed for usr_id=%s: %s",
+                           usr_id, exc)
+    if shrunk:
+        logger.info("Shrunk %d oversized profile picture(s)", shrunk)
+
+
+def _migrate_plaintext_api_keys(cur) -> None:
+    """One-time: hash legacy plaintext auth.users.api_key values, then drop them.
+
+    Hashing is done in Python (no pgcrypto dependency). Keys keep working: the
+    lookup compares sha256(presented key) with api_key_hash."""
+    import hashlib
+    try:
+        cur.execute("SELECT usr_id, api_key FROM auth.users "
+                    "WHERE api_key IS NOT NULL AND api_key_hash IS NULL")
+        rows = cur.fetchall()
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: api key migration skipped: %s", exc)
+        return
+    migrated = 0
+    for usr_id, key in rows:
+        key = (key or '').strip()
+        try:
+            if key:
+                cur.execute(
+                    "UPDATE auth.users SET api_key_hash = %s, api_key_hint = %s, "
+                    "api_key_created_at = COALESCE(api_key_created_at, now()), api_key = NULL "
+                    "WHERE usr_id = %s AND api_key_hash IS NULL",
+                    (hashlib.sha256(key.encode('utf-8')).hexdigest(), key[-4:], usr_id))
+            else:
+                cur.execute("UPDATE auth.users SET api_key = NULL WHERE usr_id = %s", (usr_id,))
+            migrated += 1
+        except Exception as exc:
+            logger.warning("_ensure_extra_tables: api key migration failed for usr_id=%s: %s",
+                           usr_id, exc)
+    # Rows that were already hashed must not keep a plaintext copy either.
+    try:
+        cur.execute("UPDATE auth.users SET api_key = NULL "
+                    "WHERE api_key IS NOT NULL AND api_key_hash IS NOT NULL")
+    except Exception as exc:
+        logger.warning("_ensure_extra_tables: clearing plaintext api keys failed: %s", exc)
+    if migrated:
+        logger.info("Migrated %d plaintext API key(s) to hashed storage", migrated)
+
+
 def _ensure_extra_tables():
     """Create supplementary tables used by app logic that are absent from the
     core Kinder schema DDL.  All created under appropriate schemas."""
@@ -279,10 +384,54 @@ def _ensure_extra_tables():
             user=DB_USER, password=DB_PASSWORD,
             connect_timeout=5,
         )
+        # Autocommit: every statement is its own transaction, so one failing
+        # statement (e.g. missing privilege, pre-existing duplicate data) does not
+        # roll back the others.
+        conn.autocommit = True
         cur = conn.cursor()
 
+        def _run(sql):
+            try:
+                cur.execute(sql)
+            except Exception as exc:
+                logger.warning("_ensure_extra_tables: statement failed: %s", exc)
+
+        # auth.users — password login for admin-created accounts.
+        # password_hash: werkzeug scrypt hash (NULL = no password login).
+        # session_version: bumped on password change/reset to log out old sessions.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS password_hash TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS "
+             "must_change_password BOOLEAN NOT NULL DEFAULT FALSE")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS "
+             "session_version INTEGER NOT NULL DEFAULT 0")
+
+        # auth.users.username — login name for admin-created "direct login"
+        # accounts (email stays the internal identity; a placeholder
+        # <username>@users.invalid is stored when the admin gives none).
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS username TEXT")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_idx "
+             "ON auth.users(lower(username)) WHERE username IS NOT NULL")
+
+        # auth.users.google_sub — the Google account id ("sub") bound at first
+        # Google sign-in; a different Google account for the same email is refused.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS google_sub TEXT")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_google_sub_idx "
+             "ON auth.users(google_sub) WHERE google_sub IS NOT NULL")
+
+        # API keys are stored hashed (sha256 hex); only the last 4 chars are kept
+        # in clear (api_key_hint) so users/admins can tell keys apart.
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_hash TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_hint TEXT")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_created_at TIMESTAMPTZ")
+        _run("ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS api_key_last_used_at TIMESTAMPTZ")
+        _run("CREATE UNIQUE INDEX IF NOT EXISTS users_api_key_hash_idx "
+             "ON auth.users(api_key_hash) WHERE api_key_hash IS NOT NULL")
+        _migrate_plaintext_api_keys(cur)
+        _shrink_stored_avatars(cur)
+
         # auth.invitations — invitation tokens for new user sign-up
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS auth.invitations (
                 token       TEXT PRIMARY KEY,
                 email       TEXT,
@@ -296,7 +445,7 @@ def _ensure_extra_tables():
         """)
 
         # auth.system_settings — generic key/value store
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS auth.system_settings (
                 key        TEXT PRIMARY KEY,
                 value      TEXT,
@@ -305,7 +454,7 @@ def _ensure_extra_tables():
         """)
 
         # transient.object_source_permissions — per-object per-source visibility
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS transient.object_source_permissions (
                 id             SERIAL PRIMARY KEY,
                 object_name    TEXT NOT NULL,
@@ -319,7 +468,7 @@ def _ensure_extra_tables():
         """)
 
         # Unique constraint needed for ON CONFLICT in photometry inserts
-        cur.execute("""
+        _run("""
             DO $$ BEGIN
                 BEGIN
                     ALTER TABLE transient.photometry
@@ -330,7 +479,7 @@ def _ensure_extra_tables():
         """)
 
         # Unique constraint for obs.logs upsert
-        cur.execute("""
+        _run("""
             DO $$ BEGIN
                 BEGIN
                     ALTER TABLE obs.logs
@@ -341,68 +490,68 @@ def _ensure_extra_tables():
         """)
 
         # kinder_id — internal sequential ID: year*1_000_000 + letter_rank
-        cur.execute("""
+        _run("""
             ALTER TABLE transient.objects
                 ADD COLUMN IF NOT EXISTS kinder_id BIGINT
         """)
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_kinder_id_idx
                 ON transient.objects(kinder_id)
                 WHERE kinder_id IS NOT NULL
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_discovery_date_idx
                 ON transient.objects(discovery_date DESC)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_name_prefix_idx
                 ON transient.objects(name_prefix)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_type_idx
                 ON transient.objects(type)
                 WHERE type IS NOT NULL AND type != ''
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS objects_last_phot_date_idx
                 ON transient.objects(last_phot_date DESC)
         """)
 
         # obs.logs indexes — date index enables the sargable date-range filter
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_logs_date_idx
                 ON obs.logs(date)
         """)
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_logs_name_idx
                 ON obs.logs(name)
         """)
 
         # obs.targets index — speeds up active-only filtering
-        cur.execute("""
+        _run("""
             CREATE INDEX IF NOT EXISTS obs_targets_active_idx
                 ON obs.targets(active, name)
         """)
 
         # transient.objects — name lookup used by _resolve_obj_id_with_prefix
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_name_idx
                 ON transient.objects(name)
         """)
 
         # Ensure tag always has a safe default even if an INSERT omits it.
-        cur.execute("""
+        _run("""
             ALTER TABLE transient.objects
                 ALTER COLUMN tag SET DEFAULT '{}'::text[]
         """)
-        cur.execute("""
+        _run("""
             UPDATE transient.objects
                SET tag = '{}'::text[]
              WHERE tag IS NULL
         """)
 
         # cat.ned — NED cone-search result cache
-        cur.execute("""
+        _run("""
             CREATE TABLE IF NOT EXISTS cat.ned (
                 ned_id        SERIAL PRIMARY KEY,
                 object_name   TEXT NOT NULL,
@@ -414,12 +563,18 @@ def _ensure_extra_tables():
                 results       JSONB NOT NULL DEFAULT '[]'::jsonb
             )
         """)
-        cur.execute("""
+        _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS cat_ned_object_radius_idx
                 ON cat.ned (object_name, radius_arcsec)
         """)
 
-        conn.commit()
+        # transient.cross_matches — extra columns used by DETECT cross-matching
+        # (previously ALTERed on every request in services/detect/detect_cross_match.py).
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS flag BOOLEAN DEFAULT FALSE")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_data JSONB")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION")
+        _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION")
+
         cur.close()
     except Exception as e:
         logger.warning("_ensure_extra_tables: %s", e)

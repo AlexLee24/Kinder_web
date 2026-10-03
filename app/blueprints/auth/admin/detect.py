@@ -5,7 +5,7 @@ from app.core.auth import admin_required
 
 logger = logging.getLogger(__name__)
 from . import admin_bp
-from .helpers import _detect_manual
+from .helpers import _detect_manual, _claim_task, _start_claimed_task
 
 
 @admin_bp.route('/admin/detect-status')
@@ -30,7 +30,6 @@ def detect_run():
         return jsonify({'success': False, 'message': 'A DETECT run is already in progress'}), 409
 
     import re as _re
-    import threading
     data = request.get_json(silent=True) or {}
     kind = (data.get('kind') or '').strip()
     names = [n for n in _re.split(r'[\s,;]+', str(data.get('names') or '')) if n]
@@ -44,8 +43,6 @@ def detect_run():
         return jsonify({'success': False, 'message': 'Unknown run kind'}), 400
 
     def _run():
-        _detect_manual['running'] = True
-        _detect_manual['message'] = 'Running...'
         try:
             if kind == 'followups':
                 counts = detect_pipeline.run_followups()
@@ -62,11 +59,13 @@ def detect_run():
             logger.info('[DETECT Manual] %s by admin: %s', kind, counts)
         except Exception as e:
             logger.exception('[DETECT Manual] %s failed: %s', kind, e)
-            _detect_manual['message'] = f'Error: {e}'
+            _detect_manual['message'] = 'Error (see server log)'
         finally:
             _detect_manual['running'] = False
 
-    threading.Thread(target=_run, daemon=True, name='detect_manual').start()
+    if not _claim_task(_detect_manual):
+        return jsonify({'success': False, 'message': 'A DETECT run is already in progress'}), 409
+    _start_claimed_task(_detect_manual, _run, name='detect_manual')
     what = {'followups': 'Follow-up re-screen', 'recent': f'objects TNS touched in the last {hours:g} h',
             'names': f'{len(names)} object(s)'}[kind]
     return jsonify({'success': True, 'message': f'DETECT started: {what}'})

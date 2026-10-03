@@ -4,6 +4,16 @@ let filteredUsers = [];
 let currentGroupName = '';
 let availableUsers = [];
 
+// Escape a value for use in HTML text or a quoted attribute (also escapes quotes).
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Populated from <script type="application/json" id="adminGroupsData"> injected by Jinja
 const ADMIN_GROUPS = (function () {
     const el = document.getElementById('adminGroupsData');
@@ -222,9 +232,11 @@ function updateGroupsModalDisplay(userGroups, availableGroups) {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'group-item current-group';
         groupDiv.innerHTML = `
-            <span>${groupName}</span>
-            <button class="btn-small btn-danger" onclick="removeFromGroup('${currentUserEmail}', '${groupName}')">Remove</button>
+            <span>${escapeHtml(groupName)}</span>
+            <button class="btn-small btn-danger">Remove</button>
         `;
+        const userEmail = currentUserEmail;
+        groupDiv.querySelector('button').addEventListener('click', () => removeFromGroup(userEmail, groupName));
         currentGroupsList.appendChild(groupDiv);
     });
     
@@ -238,9 +250,10 @@ function updateGroupsModalDisplay(userGroups, availableGroups) {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'group-item available-group';
         groupDiv.innerHTML = `
-            <span>${groupName}</span>
-            <button class="btn-small btn-primary" onclick="addToGroup('${groupName}')">Add</button>
+            <span>${escapeHtml(groupName)}</span>
+            <button class="btn-small btn-primary">Add</button>
         `;
+        groupDiv.querySelector('button').addEventListener('click', () => addToGroup(groupName));
         availableGroupsList.appendChild(groupDiv);
     });
     
@@ -284,9 +297,9 @@ function updateBatchGroupsDisplay(userGroups, allGroups) {
         groupDiv.className = 'batch-group-item';
         groupDiv.innerHTML = `
             <label class="checkbox-label">
-                <input type="checkbox" value="${groupName}" ${isChecked ? 'checked' : ''}>
+                <input type="checkbox" value="${escapeHtml(groupName)}" ${isChecked ? 'checked' : ''}>
                 <span class="checkmark"></span>
-                ${groupName}
+                ${escapeHtml(groupName)}
             </label>
         `;
         groupsContainer.appendChild(groupDiv);
@@ -409,25 +422,44 @@ document.addEventListener('keydown', e => {
 window.onclick = function(event) {
     const modals = document.querySelectorAll('.modal');
     modals.forEach(modal => {
-        if (event.target === modal) {
+        if (event.target === modal && !modal.dataset.sticky) {
             modal.style.display = 'none';
         }
     });
 }
 
 // Add User Directly
+// (a) direct-login account: username + password, email optional
+// (b) Google-only account: email only (no username / password)
+// 1–32 characters in any language; no whitespace and none of @ < > " ' & / \ ` (mirrors the server rule).
+const USERNAME_PATTERN = /^[^\s@<>"'&\/\\`]{1,32}$/u;
+const USERNAME_RULE = 'Username: 1–32 characters (any language), no spaces and none of @ < > " \' & / \\ `';
+
 async function addUser(event) {
     event.preventDefault();
-    
-    const email = document.getElementById('userEmail').value;
+
+    const username = (document.getElementById('userUsername').value || '').trim();
+    const email = (document.getElementById('userEmail').value || '').trim();
     const roleValue = document.getElementById('userRole') ? document.getElementById('userRole').value : 'user';
-    const name = document.getElementById('userName').value;
-    
-    if (!email) {
-        showNotification('Email is required', 'error');
+    const name = (document.getElementById('userName').value || '').trim();
+    const passwordEl = document.getElementById('userPassword');
+    const password = passwordEl ? passwordEl.value : '';
+    const mustChangeEl = document.getElementById('userMustChange');
+
+    if (username || password) {
+        if (!username || !USERNAME_PATTERN.test(username)) {
+            showNotification(USERNAME_RULE, 'error');
+            return;
+        }
+        if (!password) {
+            showNotification('A password is required for a direct-login account', 'error');
+            return;
+        }
+    } else if (!email) {
+        showNotification('Enter a username and password, or an email for a Google-only account', 'error');
         return;
     }
-    
+
     try {
         const response = await fetch('/admin/add-user', {
             method: 'POST',
@@ -435,20 +467,175 @@ async function addUser(event) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                username: username,
                 email: email,
-                name: name || email.split('@')[0],
-                role: roleValue
+                name: name,
+                role: roleValue,
+                password: password,
+                must_change_password: mustChangeEl ? mustChangeEl.checked : true
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
-            showNotification('User added successfully!', 'success');
+            showNotification(result.message || 'User added successfully!', 'success');
             closeModal('addUserModal');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}
+
+// Password login (admin-created accounts)
+function showSetPasswordModal(email, username) {
+    document.getElementById('setPasswordEmail').value = email;
+    const shownEmail = /@users\.invalid$/i.test(email) ? '' : email;
+    document.getElementById('setPasswordTarget').textContent =
+        'Account: ' + (username ? username + (shownEmail ? ' (' + shownEmail + ')' : '') : shownEmail);
+    const unameEl = document.getElementById('setPasswordUsername');
+    if (unameEl) {
+        unameEl.value = username || '';
+        unameEl.readOnly = !!username;
+        unameEl.required = !username;
+    }
+    document.getElementById('setPasswordModal').style.display = 'block';
+}
+
+async function adminSetPassword(event) {
+    event.preventDefault();
+    const email = document.getElementById('setPasswordEmail').value;
+    const password = document.getElementById('setPasswordValue').value;
+    const confirmValue = document.getElementById('setPasswordConfirm').value;
+    const unameEl = document.getElementById('setPasswordUsername');
+    const username = unameEl ? (unameEl.value || '').trim() : '';
+    if (password !== confirmValue) {
+        showNotification('The passwords do not match', 'error');
+        return;
+    }
+    if (unameEl && !unameEl.readOnly && !USERNAME_PATTERN.test(username)) {
+        showNotification(USERNAME_RULE, 'error');
+        return;
+    }
+    try {
+        const response = await fetch('/admin/set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: email,
+                username: username,
+                password: password,
+                must_change_password: document.getElementById('setPasswordMustChange').checked
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'Password set', 'success');
+            closeModal('setPasswordModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed to set password'), 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+}
+
+// End every session of a user (bumps their session_version server-side)
+async function adminForceLogout(email, btn) {
+    if (!confirm(`Log ${email} out of all devices?`)) {
+        return;
+    }
+    if (btn) btn.disabled = true;
+    try {
+        const response = await fetch('/admin/force-logout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'User logged out', 'success');
+            if (result.self) setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed'), 'error');
+        }
+    } catch (error) {
+        showNotification('An error occurred: ' + error.message, 'error');
+    }
+    if (btn) btn.disabled = false;
+}
+
+// Show a newly issued API key once (it is stored hashed). DOM is built with
+// textContent / value only, so nothing in the key or email is parsed as HTML.
+function showApiKeyOnceAdmin(email, apiKey) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal kw-modal';
+    overlay.dataset.sticky = '1';   // only "Done" closes it: the key is shown once
+    overlay.style.display = 'block';
+    const box = document.createElement('div');
+    box.className = 'modal-content kw-modal-card';
+
+    const title = document.createElement('h3');
+    title.textContent = 'API key for ' + email;
+    const warn = document.createElement('p');
+    warn.style.color = 'rgba(255,120,120,0.95)';
+    warn.textContent = 'Copy it now and send it to the user through a private channel. '
+        + 'It will not be shown again; any previous key no longer works.';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = apiKey;
+    input.style.cssText = 'width:100%;padding:10px;font-family:monospace;box-sizing:border-box;';
+
+    const actions = document.createElement('div');
+    actions.className = 'kw-modal-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'kw-btn kw-btn-primary';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(apiKey);
+        } catch (e) {
+            input.select();
+            document.execCommand('copy');
+        }
+        showNotification('API key copied to clipboard', 'success');
+    });
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'kw-btn';
+    doneBtn.textContent = 'Done';
+    doneBtn.addEventListener('click', () => { overlay.remove(); location.reload(); });
+    actions.append(copyBtn, doneBtn);
+
+    box.append(title, warn, input, actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+}
+
+async function adminClearPassword(email) {
+    if (!confirm(`Disable password login for ${email}? They can still sign in with Google.`)) {
+        return;
+    }
+    try {
+        const response = await fetch('/admin/clear-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showNotification(result.message || 'Password removed', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('Error: ' + (result.error || 'Failed to remove password'), 'error');
         }
     } catch (error) {
         showNotification('An error occurred: ' + error.message, 'error');
@@ -786,12 +973,12 @@ function updateAvailableUsersDisplay(users) {
         userDiv.className = 'available-user-item';
         userDiv.innerHTML = `
             <label class="user-checkbox-label">
-                <input type="checkbox" value="${user.email}" class="user-checkbox">
+                <input type="checkbox" value="${escapeHtml(user.email)}" class="user-checkbox">
                 <div class="user-info">
-                    ${user.picture ? `<img src="${user.picture}" alt="" class="kw-avatar kw-avatar-sm user-avatar-small">` : `<span class="kw-avatar kw-avatar-sm">${(user.name || '?').slice(0, 1).toUpperCase()}</span>`}
+                    ${user.picture ? `<img src="${escapeHtml(user.picture)}" alt="" class="kw-avatar kw-avatar-sm user-avatar-small">` : `<span class="kw-avatar kw-avatar-sm">${escapeHtml((user.name || '?').slice(0, 1).toUpperCase())}</span>`}
                     <div class="user-details">
-                        <span class="user-name">${user.name}</span>
-                        <span class="user-email">${user.email}</span>
+                        <span class="user-name">${escapeHtml(user.name)}</span>
+                        <span class="user-email">${escapeHtml(user.email)}</span>
                     </div>
                 </div>
             </label>
@@ -976,7 +1163,7 @@ function showConsistencyResults(issues) {
         html += '<p class="issue-description">Users that no longer exist but still have group associations:</p>';
         html += '<ul class="issue-list">';
         issues.orphaned_user_groups.forEach(item => {
-            html += `<li>User: ${item[0]} ${ICONS.arrowRight} Group: ${item[1]}</li>`;
+            html += `<li>User: ${escapeHtml(item[0])} ${ICONS.arrowRight} Group: ${escapeHtml(item[1])}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -988,7 +1175,7 @@ function showConsistencyResults(issues) {
         html += '<p class="issue-description">Groups that no longer exist but still have user associations:</p>';
         html += '<ul class="issue-list">';
         issues.orphaned_group_users.forEach(item => {
-            html += `<li>User: ${item[0]} ${ICONS.arrowRight} Group: ${item[1]}</li>`;
+            html += `<li>User: ${escapeHtml(item[0])} ${ICONS.arrowRight} Group: ${escapeHtml(item[1])}</li>`;
         });
         html += '</ul>';
         html += '</div>';
@@ -1070,8 +1257,8 @@ async function loadGreatLabPermissions() {
                     const groupName = perm.group_name || perm.name || perm;
                     return `
                     <div style="background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.3); padding: 5px 12px; border-radius: 15px; font-size: 0.85rem; color: #ff6b6b; display: flex; align-items: center; gap: 8px;">
-                        <span>${groupName}</span>
-                        <svg onclick="removeGreatLabPermission('${groupName}')" style="cursor: pointer; opacity: 0.7;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                        <span>${escapeHtml(groupName)}</span>
+                        <svg class="js-remove-greatlab-perm" data-group="${escapeHtml(groupName)}" style="cursor: pointer; opacity: 0.7;" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
                             <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
                     </div>
@@ -1079,6 +1266,9 @@ async function loadGreatLabPermissions() {
             }
             
             container.innerHTML = lockedHtml + dynamicHtml;
+            container.querySelectorAll('.js-remove-greatlab-perm').forEach(el => {
+                el.addEventListener('click', () => removeGreatLabPermission(el.dataset.group));
+            });
         }
     } catch (error) {
         console.error('Error loading permissions:', error);
@@ -1190,7 +1380,7 @@ function runPhotometryFetch() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${data.message}</span>`;
+            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
             showNotification(data.message, 'success');
             // Poll until done
             const poll = setInterval(() => {
@@ -1214,7 +1404,7 @@ function runPhotometryFetch() {
             }, 3000);
         } else {
             btn.disabled = false;
-            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
             showNotification(data.message || data.error, 'error');
         }
     })
@@ -1241,10 +1431,10 @@ function runUpdateTargetMags() {
     .then(data => {
         btn.disabled = false;
         if (data.success) {
-            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${data.message}</span>`;
+            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
             showNotification(data.message, 'success');
         } else {
-            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
             showNotification(data.message || data.error, 'error');
         }
     })
@@ -1270,12 +1460,12 @@ function runMissingPhotFetch() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${data.message}</span>`;
+            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
             showNotification(data.message, 'success');
             btn.disabled = false;
         } else {
             btn.disabled = false;
-            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${data.message || data.error}</span>`;
+            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
             showNotification(data.message || data.error, 'error');
         }
     })
@@ -1304,10 +1494,10 @@ function cleanDocumentImages() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${data.message}</span>`;
+            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
             showNotification(data.message, 'success');
         } else {
-            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} Error: ${data.error}</span>`;
+            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} Error: ${escapeHtml(data.error)}</span>`;
             showNotification('Failed to clean images: ' + data.error, 'error');
         }
     })
@@ -1400,7 +1590,7 @@ function populateSourceAddSelect() {
     sel.innerHTML = '<option value="">— select source to add —</option>' +
         _allSourcesList
             .filter(s => !existing.has(s))
-            .map(s => `<option value="${s}">${s}</option>`)
+            .map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`)
             .join('');
 }
 
@@ -1432,6 +1622,9 @@ function renderDefaultPermsTable() {
         tr.innerHTML = buildDefaultPermRow(p, idx);
         tbody.appendChild(tr);
     });
+    tbody.querySelectorAll('.js-remove-default-perm-group').forEach(el => {
+        el.addEventListener('click', () => removeDefaultPermGroup(Number(el.dataset.idx), el.dataset.group));
+    });
 }
 
 function buildDefaultPermRow(p, idx) {
@@ -1441,8 +1634,8 @@ function buildDefaultPermRow(p, idx) {
         : (p.allowed_groups.length === 0 ? 'blocked' : 'groups')));
 
     const groupChips = (p.allowed_groups || []).map(g =>
-        `<span class="perm-tag">${g}
-            <button type="button" class="kw-chip-x" title="Remove" onclick="removeDefaultPermGroup(${idx},'${g}')">&times;</button>
+        `<span class="perm-tag">${escapeHtml(g)}
+            <button type="button" class="kw-chip-x js-remove-default-perm-group" title="Remove" data-idx="${idx}" data-group="${escapeHtml(g)}">&times;</button>
          </span>`
     ).join('');
 
@@ -1450,12 +1643,12 @@ function buildDefaultPermRow(p, idx) {
         ? `<select class="kw-select kw-select-sm" aria-label="Add group"
                   onchange="addDefaultPermGroup(${idx}, this); this.value=''">
                <option value="">+ group</option>
-               ${ADMIN_GROUPS.map(g => `<option value="${g}">${g}</option>`).join('')}
+               ${ADMIN_GROUPS.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
            </select>`
         : '';
 
     return `
-        <td><span class="source-name">${p.source_name}</span></td>
+        <td><span class="source-name">${escapeHtml(p.source_name)}</span></td>
         <td>
             <select class="kw-select kw-select-sm perm-vis perm-vis-${visValue}" data-idx="${idx}" onchange="onDefaultPermVisChange(${idx}, this.value)">
                 <option value="public"    ${visValue==='public'    ? 'selected':''}>Public</option>
@@ -1569,7 +1762,7 @@ function _tnsPoll() {
                 if (!s.running) {
                     clearInterval(poll);
                     _tnsSetBtns(false);
-                    statusEl.innerHTML = '<span style="color:#98c379;">' + ICONS.check + ' ' + s.message + '</span>';
+                    statusEl.innerHTML = '<span style="color:#98c379;">' + ICONS.check + ' ' + escapeHtml(s.message) + '</span>';
                 } else {
                     statusEl.textContent = 'Running...';
                 }
@@ -1586,7 +1779,7 @@ function runTnsHourly() {
         .then(r => r.json())
         .then(data => {
             if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
         })
         .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
@@ -1604,7 +1797,7 @@ function runTnsDaily() {
         .then(r => r.json())
         .then(data => {
             if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
         })
         .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
@@ -1617,7 +1810,7 @@ function runTnsSnooze() {
         .then(r => r.json())
         .then(data => {
             if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + data.message + '</span>'; showNotification(data.message, 'error'); }
+            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
         })
         .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
@@ -1642,7 +1835,7 @@ async function loadPrivatePagePerms() {
         container.innerHTML = pages.map(page => {
             const groups = perms[page] || [];
             const optionsHtml = availableGroups
-                .map(g => `<option value="${g}">${g}</option>`)
+                .map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`)
                 .join('');
             const groupTagsHtml = groups
                 .filter(g => g !== 'GREAT_Lab')
@@ -1650,8 +1843,8 @@ async function loadPrivatePagePerms() {
                 .join('');
             return `
             <div class="pperm-card">
-                <div class="pperm-title">${labels[page] || page}</div>
-                <div id="pperm_tags_${page}" class="pperm-tags">
+                <div class="pperm-title">${escapeHtml(labels[page] || page)}</div>
+                <div id="pperm_tags_${escapeHtml(page)}" class="pperm-tags">
                     <span class="perm-tag perm-locked" title="Always has access">
                         GREAT_Lab
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
@@ -1659,14 +1852,24 @@ async function loadPrivatePagePerms() {
                     ${groupTagsHtml}
                 </div>
                 <div class="pperm-add">
-                    <select id="pperm_select_${page}" class="kw-select kw-select-sm" aria-label="Group to add">
+                    <select id="pperm_select_${escapeHtml(page)}" class="kw-select kw-select-sm" aria-label="Group to add">
                         <option value="">Add a group…</option>
                         ${optionsHtml}
                     </select>
-                    <button class="kw-btn kw-btn-sm" onclick="addPrivatePagePerm('${page}')">Add</button>
+                    <button class="kw-btn kw-btn-sm js-pperm-add" data-page="${escapeHtml(page)}">Add</button>
                 </div>
             </div>`;
         }).join('');
+        if (!container.dataset.ppermBound) {
+            // One delegated listener (also covers tags inserted later by addPrivatePagePerm).
+            container.dataset.ppermBound = '1';
+            container.addEventListener('click', (ev) => {
+                const add = ev.target.closest('.js-pperm-add');
+                if (add) { addPrivatePagePerm(add.dataset.page); return; }
+                const rm = ev.target.closest('.js-pperm-remove');
+                if (rm) removePrivatePagePerm(rm.dataset.page, rm.dataset.group);
+            });
+        }
     } catch (e) {
         if (container) container.innerHTML = '<div class="kw-empty">Error loading permissions</div>';
     }
@@ -1675,8 +1878,8 @@ async function loadPrivatePagePerms() {
 function _ppermGroupTag(page, groupName) {
     return `
     <span class="perm-tag">
-        ${groupName}
-        <button type="button" class="kw-chip-x" title="Remove" aria-label="Remove ${groupName}" onclick="removePrivatePagePerm('${page}','${groupName}')">&times;</button>
+        ${escapeHtml(groupName)}
+        <button type="button" class="kw-chip-x js-pperm-remove" title="Remove" aria-label="Remove ${escapeHtml(groupName)}" data-page="${escapeHtml(page)}" data-group="${escapeHtml(groupName)}">&times;</button>
     </span>`;
 }
 
@@ -1783,18 +1986,18 @@ function _renderDetectStatus(st) {
     const cards = [];
     cards.push(`<div class="dt-card ${run ? 'live' : ''}">
         <div class="dt-label">Now</div>
-        <div class="dt-value">${run ? `<span class="sj-state running"><span class="sj-dot"></span>${run.label}</span>` : 'Idle'}</div>
+        <div class="dt-value">${run ? `<span class="sj-state running"><span class="sj-dot"></span>${escapeHtml(run.label)}</span>` : 'Idle'}</div>
         <div class="dt-sub">${run ? `${run.objects != null ? run.objects + ' objects · ' : ''}since ${_timeAgo(run.started_at)}` : (st.manual && st.manual.running ? 'manual run queued' : 'waiting for the next TNS import')}</div>
     </div>`);
     cards.push(`<div class="dt-card ${last && last.status === 'error' ? 'warn' : ''}">
         <div class="dt-label">Last run (this server)</div>
-        <div class="dt-value">${last ? `${last.status === 'success' ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">✗</span>'} ${last.label}` : '—'}</div>
-        <div class="dt-sub">${last ? `${_timeAgo(last.finished_at)}${last.seconds ? ' · ' + last.seconds + ' s' : ''}${last.counts ? ' · ' + _countsText(last.counts) : (last.message ? ' · ' + last.message : '')}` : 'nothing yet since start-up'}</div>
+        <div class="dt-value">${last ? `${last.status === 'success' ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">✗</span>'} ${escapeHtml(last.label)}` : '—'}</div>
+        <div class="dt-sub">${last ? `${_timeAgo(last.finished_at)}${last.seconds ? ' · ' + last.seconds + ' s' : ''}${last.counts ? ' · ' + _countsText(last.counts) : (last.message ? ' · ' + escapeHtml(last.message) : '')}` : 'nothing yet since start-up'}</div>
     </div>`);
     cards.push(`<div class="dt-card ${db.last_run && (Date.now() - new Date(db.last_run).getTime()) > 6 * 3600e3 ? 'warn' : ''}">
         <div class="dt-label">Latest screening in DB</div>
         <div class="dt-value">${db.last_run ? _timeAgo(db.last_run) : (db.error ? '<span class="dt-bad">DB error</span>' : '—')}</div>
-        <div class="dt-sub">${db.last_run ? `${_fmtJobTime(db.last_run)} · any DETECT instance` : (db.error || '')}</div>
+        <div class="dt-sub">${db.last_run ? `${_fmtJobTime(db.last_run)} · any DETECT instance` : escapeHtml(db.error || '')}</div>
     </div>`);
     cards.push(`<div class="dt-card">
         <div class="dt-label">Last 24 h</div>
@@ -1814,7 +2017,7 @@ function _renderDetectStatus(st) {
     cards.push(`<div class="dt-card ${st.sfd_maps ? '' : 'warn'}">
         <div class="dt-label">Code &amp; data</div>
         <div class="dt-value">${st.version && st.version.synced ? 'synced ' + st.version.synced.slice(0, 10) : (st.code_present ? 'present' : '<span class="dt-bad">missing</span>')}</div>
-        <div class="dt-sub">SFD dust maps ${st.sfd_maps ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">missing (fetched on first use)</span>'} · <span title="${st.data_dir || ''}">data dir</span></div>
+        <div class="dt-sub">SFD dust maps ${st.sfd_maps ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">missing (fetched on first use)</span>'} · <span title="${escapeHtml(st.data_dir || '')}">data dir</span></div>
     </div>`);
     grid.innerHTML = cards.join('');
 }
@@ -1832,7 +2035,7 @@ function _detectPoll() {
                 clearInterval(poll);
                 _detectSetBtns(false);
                 const ok = !/^Error/.test(m.message || '');
-                statusEl.innerHTML = `<span style="color:${ok ? '#98c379' : '#e06c75'};">${ok ? ICONS.check + ' ' : ''}${m.message || 'Done'}</span>`;
+                statusEl.innerHTML = `<span style="color:${ok ? '#98c379' : '#e06c75'};">${ok ? ICONS.check + ' ' : ''}${escapeHtml(m.message || 'Done')}</span>`;
             } else {
                 statusEl.textContent = m.message || 'Running...';
             }
@@ -1851,7 +2054,7 @@ function runDetect(kind) {
         .then(r => r.json())
         .then(data => {
             if (data.success) { showNotification(data.message, 'success'); _detectPoll(); }
-            else { _detectSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + (data.message || 'Failed') + '</span>'; showNotification(data.message || 'Failed', 'error'); }
+            else { _detectSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message || 'Failed') + '</span>'; showNotification(data.message || 'Failed', 'error'); }
         })
         .catch(e => { _detectSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
@@ -1912,13 +2115,13 @@ function _renderScheduledJobs(jobs) {
         } else if (j.last_status === 'success') {
             lastHtml = `<div class="sj-last success">Last run: ✓ ${_timeAgo(j.last_run_at)}</div>`;
         } else {
-            const msg = j.last_message ? ': ' + j.last_message.slice(0, 80) : '';
+            const msg = j.last_message ? ': ' + escapeHtml(j.last_message.slice(0, 80)) : '';
             lastHtml = `<div class="sj-last error">Last run: ✗ Failed${msg}</div>`;
         }
 
         return `<div class="sj-card${j.is_running ? ' sj-running' : ''}">
-            <div class="sj-name">${j.name}</div>
-            <div class="sj-schedule">${j.schedule}</div>
+            <div class="sj-name">${escapeHtml(j.name)}</div>
+            <div class="sj-schedule">${escapeHtml(j.schedule)}</div>
             ${stateHtml}
             ${lastHtml}
         </div>`;

@@ -32,7 +32,6 @@ def daily_trigger():
     user_display_name = session['user'].get('name') or user_email
 
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
-                            api_key=session['user'].get('api_key') or '',
                             user_display_name=user_display_name, user_email=user_email,
                             app_debug=config.DEBUG)
 
@@ -56,12 +55,18 @@ def daily_trigger_send_message():
     requester = session['user'].get('email') or session['user'].get('name') or 'unknown'
 
     data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Invalid JSON body'}), 400
     telescope = str(data.get('telescope', '')).strip().upper()
     program = str(data.get('program', '')).strip()
     greeting = str(data.get('greeting', ''))
     script = str(data.get('script', ''))
     targets = data.get('targets') or []
-    target_names = [t.get('name') for t in targets if isinstance(t, dict)]
+    if not isinstance(targets, list) or not all(isinstance(t, dict) for t in targets):
+        return jsonify({'success': False, 'error': 'targets must be a list of objects'}), 400
+    if len(targets) > 200:
+        return jsonify({'success': False, 'error': 'Too many targets'}), 400
+    target_names = [t.get('name') for t in targets]
     should_mark_sent = bool(data.get('mark_sent', True))
 
     logger.info('daily_trigger_send_message: request by=%s telescope=%s program=%s targets=%s '
@@ -89,9 +94,9 @@ def daily_trigger_send_message():
         from app.services.planning.trigger_send import send_to_slack, mark_sent
         send_to_slack(greeting, script, image_path=image_path)
         logger.info('daily_trigger_send_message: Slack send call completed by=%s telescope=%s', requester, telescope)
-    except Exception as e:
+    except Exception:
         logger.exception('daily_trigger_send_message: Slack send failed by=%s telescope=%s', requester, telescope)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Slack send failed; see server log.'}), 500
     finally:
         if image_path:
             try:
@@ -230,9 +235,9 @@ def _log_triggered_targets(telescope, targets, sent_by):
             else:
                 logger.warning('log_triggered_targets: upsert_observation_log returned falsy for %s', name)
                 warnings.append(f'{name}: failed to save log entry')
-        except Exception as e:
+        except Exception:
             logger.exception('log_triggered_targets: failed for %s', name)
-            warnings.append(f'{name}: {e}')
+            warnings.append(f'{name}: failed to save log entry')
 
     logger.info('log_triggered_targets: done telescope=%s succeeded=%s skipped=%s warnings=%s',
                 telescope, succeeded, skipped, warnings)

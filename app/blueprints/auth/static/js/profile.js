@@ -62,8 +62,8 @@ async function updateName(event) {
         return;
     }
     
-    if (newName.length > 100) {
-        showNotification('Name is too long (maximum 100 characters)', 'error');
+    if (newName.length > 80) {
+        showNotification('Name is too long (maximum 80 characters)', 'error');
         return;
     }
     
@@ -110,6 +110,22 @@ async function updateName(event) {
 // ===============================================================================
 // UPLOAD AVATAR
 // ===============================================================================
+function shrinkImageDataUrl(dataUrl, maxSide) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => reject(new Error('unreadable image'));
+        img.src = dataUrl;
+    });
+}
+
 async function uploadAvatar(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -123,17 +139,26 @@ async function uploadAvatar(event) {
         return;
     }
 
-    if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        showNotification('Image size must be less than 10MB', 'error');
+    // The photo is shrunk in the browser before upload, so only very large files are refused.
+    if (file.size > 30 * 1024 * 1024) {
+        showNotification('Image size must be less than 30MB', 'error');
         // Reset file input
         event.target.value = '';
         return;
     }
 
-    // Convert image to base64
+    // Shrink in the browser first (max 256 px) so a multi-MB photo is not uploaded
+    // in full; the server re-encodes it again anyway.
     const reader = new FileReader();
     reader.onload = async function(e) {
-        const base64Image = e.target.result;
+        let base64Image;
+        try {
+            base64Image = await shrinkImageDataUrl(e.target.result, 256);
+        } catch (err) {
+            showNotification('The image could not be read', 'error');
+            event.target.value = '';
+            return;
+        }
         const currentName = document.getElementById('userName').textContent;
 
         try {
@@ -332,30 +357,82 @@ document.addEventListener('DOMContentLoaded', function() {
 // API KEY FUNCTIONALITY
 // ===============================================================================
 
-function toggleApiKeyVisibility(event) {
-    const input = document.getElementById('apiKeyDisplay');
-    const btn = event.currentTarget;
-    if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Hide';
-    } else {
-        input.type = 'password';
-        btn.textContent = 'Show';
-    }
+// Show a freshly issued API key exactly once (it is stored hashed server-side).
+// Built with textContent / value only, never innerHTML, so the key is never parsed as HTML.
+function showApiKeyOnce(apiKey) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal kw-modal';
+    overlay.style.display = 'block';
+
+    const box = document.createElement('div');
+    box.className = 'modal-content kw-modal-card';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Your new API key';
+
+    const warn = document.createElement('p');
+    warn.style.color = 'rgba(255,120,120,0.95)';
+    warn.textContent = 'Copy it now: it will not be shown again. Your previous key no longer works.';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.value = apiKey;
+    input.style.cssText = 'width:100%;padding:10px;font-family:monospace;background:rgba(0,0,0,0.3);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:4px;box-sizing:border-box;';
+
+    const actions = document.createElement('div');
+    actions.className = 'kw-modal-actions';
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'kw-btn kw-btn-primary';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(apiKey);
+        } catch (e) {
+            input.select();
+            document.execCommand('copy');
+        }
+        showNotification('API key copied to clipboard', 'success');
+    });
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'kw-btn';
+    closeBtn.textContent = 'Done';
+    closeBtn.addEventListener('click', () => { overlay.remove(); location.reload(); });
+    actions.append(copyBtn, closeBtn);
+
+    box.append(title, warn, input, actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
 }
 
-function copyApiKey() {
-    const input = document.getElementById('apiKeyDisplay');
-    if (input.value === 'No API key generated' || !input.value) return;
-    
-    // temporarily change to text to copy
-    const ogType = input.type;
-    input.type = 'text';
-    input.select();
-    document.execCommand('copy');
-    input.type = ogType;
-    
-    showNotification('API Key copied to clipboard!', 'success');
+async function regenerateApiKey(event) {
+    if (!confirm('Generate a new API key? Your current key stops working immediately.')) return;
+    const btn = event.currentTarget;
+    const ogText = btn.textContent;
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+    try {
+        const response = await fetch('/api/profile/regenerate_api_key', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await response.json();
+        if (data.success && data.api_key) {
+            const status = document.getElementById('apiKeyStatus');
+            if (status) status.textContent = 'Active (…' + (data.api_key_hint || '') + ')';
+            showApiKeyOnce(data.api_key);
+        } else {
+            showNotification('Error: ' + (data.error || 'Failed'), 'error');
+        }
+    } catch (error) {
+        showNotification('Network error', 'error');
+    }
+    btn.textContent = ogText;
+    btn.disabled = false;
 }
 
 async function requestApiKey(event, isReset) {

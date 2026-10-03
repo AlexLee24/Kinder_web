@@ -9,6 +9,7 @@ endpoints. Run them with::
 """
 import os
 import sys
+import time
 
 import pytest
 
@@ -17,6 +18,12 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 os.environ.setdefault("DETECT_IN_WEB", "1")
+# create_app() refuses to start without a real SECRET_KEY outside of tests.
+os.environ.setdefault("TESTING", "1")
+os.environ.setdefault("SECRET_KEY", "pytest-only-secret-key-not-for-production")
+# The Host check only admits APP_BASE_URL (or local hosts in DEBUG); without a kinder.env
+# point it at the test BASE_URL below.
+os.environ.setdefault("APP_BASE_URL", "http://localhost:8000")
 
 BASE_URL = "http://localhost:8000"  # must be one of the allowed hosts (DEBUG) or APP_BASE_URL
 
@@ -39,12 +46,22 @@ def app():
     return a
 
 
+def session_user(persona):
+    """Session dict for *persona* as a real login would build it (with the
+    iat/last_seen stamps the session policy requires), or None for 'anon'."""
+    user = PERSONAS[persona]
+    if not user:
+        return None
+    now = int(time.time())
+    return dict(user, iat=now, last_seen=now, session_version=0, auth_method="google")
+
+
 def _client_as(app, persona):
     c = app.test_client()
-    user = PERSONAS[persona]
+    user = session_user(persona)
     if user:
         with c.session_transaction() as s:
-            s["user"] = dict(user)
+            s["user"] = user
     return c
 
 

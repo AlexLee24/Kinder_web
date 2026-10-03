@@ -1,5 +1,7 @@
 """DETECT host screening pages and review APIs — cache (split from detect_routes.py)."""
 from app.db.transient import get_followup_objects_for_tracking, get_detect_metadata
+from datetime import datetime
+import re
 import time
 import threading
 import logging
@@ -20,6 +22,20 @@ from .helpers import (
     _TRACKER_CACHE_TTL,
 )
 from .payload import _assemble_detect_payload, _safe_float
+
+
+_DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+
+
+def _is_valid_date_string(value) -> bool:
+    """True for a real calendar date written as YYYY-MM-DD."""
+    if not isinstance(value, str) or not _DATE_RE.match(value):
+        return False
+    try:
+        datetime.strptime(value, '%Y-%m-%d')
+    except ValueError:
+        return False
+    return True
 
 
 def _cache_hit_rate(stats):
@@ -87,6 +103,9 @@ def _detect_page_unmark_building(selected_date):
 
 def _start_detect_page_build(selected_date, app_obj=None, force=False):
     if not selected_date:
+        return
+    if not _is_valid_date_string(selected_date):
+        logger.warning('Refusing DETECT page build for invalid date %r', selected_date)
         return
     if not force:
         entry = _get_detect_page_cache(selected_date)

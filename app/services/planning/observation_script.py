@@ -1,4 +1,26 @@
+import re
+
 from app.db import get_tns_db_connection
+
+
+# ACP scripts are line-oriented: a newline inside user text would end a ";" comment and
+# let the rest be parsed as directives, so comment text is flattened to one line and
+# target names are restricted to a safe character set.
+_TARGET_NAME_BAD_CHARS = re.compile(r'[^A-Za-z0-9 _\-+.()/]')
+
+
+def _one_line(text):
+    """Comment-safe text: CR/LF (and other line breaks) replaced by spaces."""
+    if text is None:
+        return ""
+    return re.sub(r'[\r\n\v\f\u2028\u2029\x85]+', ' ', str(text))
+
+
+def _safe_target_name(name):
+    """Whitelist target-name characters for the ACP target line; others become '_'."""
+    if name is None:
+        return name
+    return _TARGET_NAME_BAD_CHARS.sub('_', str(name).strip())
 
 # ========================= Function ========================================
 
@@ -63,6 +85,7 @@ def check_filter_LOT(filter):
 
 # Generate Trigger Script
 def generate_single_script(name, ra, dec, mag, priority, is_lot="False", Repeat=0, auto_exp=True, filter_input=None, exp_time=None, count=None, info=None):
+    name = _safe_target_name(name)
     # Defensive coding: Ensure RA/Dec are strings if they are passed as dictionaries
     if isinstance(ra, dict) and 'ra_hms' in ra:
         ra = ra['ra_hms']
@@ -134,14 +157,14 @@ def generate_single_script(name, ra, dec, mag, priority, is_lot="False", Repeat=
     script = ""
     
     if info and str(info).strip():
-        script += f";Info: {str(info).strip()}\n"
+        script += f";Info: {_one_line(info).strip()}\n"
 
     if priority == "None" or not priority:
         header = f";==={telescope}===\n"
     elif priority == "Urgent":
         header = f";==={telescope}_Urgent_priority. Immediately Observe When Possible ===\n"
     else:
-        header = f";==={telescope}_{priority}_priority===\n"
+        header = f";==={telescope}_{_one_line(priority)}_priority===\n"
         
     script += header
     script += "\n"
@@ -152,8 +175,8 @@ def generate_single_script(name, ra, dec, mag, priority, is_lot="False", Repeat=
     script += f"#FILTER {all_filters}\n"
     script += f"#INTERVAL {all_exp_times}\n"
     script += f"#COUNT {all_count}\n"
-    script += f";# mag: {mag} mag\n"
-    script += f"{name}\t{ra}\t{dec}\n"
+    script += f";# mag: {_one_line(mag)} mag\n"
+    script += f"{name}\t{_one_line(ra)}\t{_one_line(dec)}\n"
     script += "#WAITFOR 1\n\n\n"
     
     return script

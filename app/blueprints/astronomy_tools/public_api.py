@@ -2,12 +2,12 @@
 import os
 import re
 import io
-import traceback
+import logging
 import base64
 import ephem
 import numpy as np
 from PIL import Image
-from flask import render_template, request, jsonify, Response
+from flask import render_template, request, jsonify, Response, session
 from app.services.astro.astronomy_calculator import calculate_redshift_distance, calculate_absolute_magnitude
 from app.core.request_validation import get_int_arg, get_float_arg
 from app.services.astro.date_converter import (
@@ -27,6 +27,25 @@ from .finding_chart import _resolve_target_coord
 from .finding_chart_render import _fetch_survey_image, _query_nearby_stars, _render_finding_chart
 from .helpers import _API_DOCS, _FINDING_CHART_SURVEYS, _client_ip, _rate_ok
 from .planner import parse_coordinate
+
+logger = logging.getLogger(__name__)
+
+# The docs advertise embedding these PNG/JPEG endpoints in other sites.
+_EMBEDDABLE_IMAGE_HEADERS = {'Cross-Origin-Resource-Policy': 'cross-origin'}
+
+
+def _session_viewer():
+    """(email, is_admin) of the logged-in session user, or (None, False)."""
+    u = session.get('user') or {}
+    return u.get('email') or None, bool(u.get('is_admin'))
+
+
+def _viewer_can_see(obj_row: dict, viewer_email, viewer_is_admin) -> bool:
+    """Object-level permission check for a transient.objects row (admins always pass)."""
+    if viewer_is_admin:
+        return True
+    from app.db.auth import check_object_access
+    return check_object_access((obj_row.get('name') or '').strip(), viewer_email)
 
 
 @astronomy_tools_bp.route('/api', methods=['GET'])
@@ -56,8 +75,8 @@ def api_distance():
         H0     = get_float_arg('H0',    67.7)
         Om0    = get_float_arg('Om0',   0.309)
         Tcmb0  = get_float_arg('Tcmb0', 2.725)
-    except ValueError as e:
-        return jsonify({'error': f'Invalid parameter value: {e}'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid parameter value.'}), 400
 
     try:
         out = {
@@ -69,8 +88,9 @@ def api_distance():
         if m is not None:
             out['magnitude'] = calculate_absolute_magnitude(m, z, A, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         return jsonify({'success': True, 'result': out})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('api_distance failed')
+        return jsonify({'error': 'Calculation failed.'}), 500
 
 @astronomy_tools_bp.route('/api/coords', methods=['GET'])
 def api_coords():
@@ -100,8 +120,8 @@ def api_coords():
             result.update(convert_dec_dms_to_decimal(dec_dms))
         elif dec_deg:
             result.update(convert_dec_decimal_to_dms(float(dec_deg)))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid coordinate value.'}), 400
 
     return jsonify({'success': True, 'result': result})
 
@@ -129,8 +149,8 @@ def api_date():
         else:
             result = convert_common_date_to_jd(date)
         return jsonify({'success': True, 'result': result})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid date value.'}), 400
 
 @astronomy_tools_bp.route('/api/finding_chart/surveys', methods=['GET'])
 def api_finding_chart_surveys():
@@ -141,42 +161,47 @@ def api_finding_chart_surveys():
         'surveys': _FINDING_CHART_SURVEYS,
     })
 
-def _db_lookup_coords(obj_name: str):
+def _db_lookup_coords(obj_name: str, viewer_email=None, viewer_is_admin=False):
     """Look up an object by name in the transient DB.
-    Returns (ra_str, dec_str, full_name) or raises ValueError if not found."""
+    Returns (ra_str, dec_str, full_name) or raises ValueError if not found
+    (or not visible to the viewer — existence is not revealed)."""
     from app.db import get_tns_db_connection, OBJECT_COMPAT_COLS
     from app.db.transient import search_tns_objects
 
     conn = get_tns_db_connection()
-    cur  = conn.cursor()
     row  = None
-    for q in [
-        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
-        f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
-    ]:
-        cur.execute(q, (obj_name,))
-        row = cur.fetchone()
-        if row:
-            cols = [d[0] for d in cur.description]
-            row  = dict(zip(cols, row))
-            break
-    conn.close()
+    try:
+        cur  = conn.cursor()
+        for q in [
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+        ]:
+            cur.execute(q, (obj_name,))
+            row = cur.fetchone()
+            if row:
+                cols = [d[0] for d in cur.description]
+                row  = dict(zip(cols, row))
+                break
+    finally:
+        conn.close()
 
     if not row:
-        for r in search_tns_objects(search_term=obj_name, limit=20):
+        for r in search_tns_objects(search_term=obj_name, limit=20,
+                                    apply_permissions=True, viewer_email=viewer_email,
+                                    viewer_is_admin=viewer_is_admin):
             pref = (r.get('name_prefix') or '').strip()
             nm   = (r.get('name') or '').strip()
             if (pref + nm).lower() == obj_name.lower() or nm.lower() == obj_name.lower():
                 row = r
                 break
 
-    if not row:
-        raise ValueError(f'Object "{obj_name}" not found in database.')
+    if not row or not _viewer_can_see(row, viewer_email, viewer_is_admin):
+        raise ValueError('Object not found in database.')
 
     ra  = row.get('ra')
     dec = row.get('declination') or row.get('dec')
     if ra is None or dec is None:
-        raise ValueError(f'Object "{obj_name}" has no coordinates in database.')
+        raise ValueError('Object has no coordinates in database.')
 
     pref      = (row.get('name_prefix') or '').strip()
     name_only = (row.get('name') or '').strip()
@@ -197,8 +222,9 @@ def api_finding_chart_image():
     # obj_name → look up RA/Dec from DB
     db_full_name = None
     if obj_name:
+        viewer_email, viewer_is_admin = _session_viewer()
         try:
-            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name)
+            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name, viewer_email, viewer_is_admin)
         except ValueError as e:
             return Response(str(e), 404, mimetype='text/plain')
 
@@ -223,8 +249,8 @@ def api_finding_chart_image():
         coord   = _resolve_target_coord(name, ra_raw, dec_raw)
         ra_deg  = coord.ra.deg
         dec_deg = coord.dec.deg
-    except Exception as e:
-        return Response(f'Invalid coordinates: {e}', 400, mimetype='text/plain')
+    except Exception:
+        return Response('Invalid coordinates.', 400, mimetype='text/plain')
 
     try:
         img_data, _ = _fetch_survey_image(survey, ra_deg, dec_deg, fov)
@@ -252,11 +278,12 @@ def api_finding_chart_image():
         return Response(
             png_bytes,
             mimetype='image/png',
-            headers={'Content-Disposition': f'inline; filename="finding_chart_{safe}.png"'},
+            headers={'Content-Disposition': f'inline; filename="finding_chart_{safe}.png"',
+                     **_EMBEDDABLE_IMAGE_HEADERS},
         )
-    except Exception as e:
-        traceback.print_exc()
-        return Response(f'Error generating chart: {e}', 500, mimetype='text/plain')
+    except Exception:
+        logger.exception('api_finding_chart_image failed')
+        return Response('Error generating chart.', 500, mimetype='text/plain')
 
 @astronomy_tools_bp.route('/api/visibility/image', methods=['GET'])
 def api_visibility_image():
@@ -273,8 +300,9 @@ def api_visibility_image():
     # obj_name → look up RA/Dec from DB
     db_full_name = None
     if obj_name:
+        viewer_email, viewer_is_admin = _session_viewer()
         try:
-            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name)
+            ra_raw, dec_raw, db_full_name = _db_lookup_coords(obj_name, viewer_email, viewer_is_admin)
         except ValueError as e:
             return Response(str(e), 404, mimetype='text/plain')
 
@@ -340,11 +368,12 @@ def api_visibility_image():
         return Response(
             img_bytes,
             mimetype='image/jpeg',
-            headers={'Content-Disposition': f'inline; filename="visibility_{date_raw}_{safe}.jpg"'},
+            headers={'Content-Disposition': f'inline; filename="visibility_{re.sub(r"[^0-9]", "", date_clean)}_{safe}.jpg"',
+                     **_EMBEDDABLE_IMAGE_HEADERS},
         )
-    except Exception as e:
-        traceback.print_exc()
-        return Response(f'Error generating plot: {e}', 500, mimetype='text/plain')
+    except Exception:
+        logger.exception('api_visibility_image failed')
+        return Response('Error generating plot.', 500, mimetype='text/plain')
 
 @astronomy_tools_bp.route('/api/objects/<path:object_name>', methods=['GET'])
 def api_public_object(object_name):
@@ -362,14 +391,18 @@ def api_public_object(object_name):
 
     object_name = _urlparse.unquote(object_name).strip()
 
-    # Optional API key
-    api_key = request.args.get('api_key', '').strip()
+    # Optional API key (?api_key= or X-API-Key header); otherwise the logged-in session user.
+    api_key = (request.args.get('api_key', '') or request.headers.get('X-API-Key', '')).strip()
     auth_user = None
     if api_key:
         from app.db.auth import get_user_by_api_key as _get_user
         auth_user = _get_user(api_key)
         if not auth_user:
             return jsonify({'error': 'Invalid API key.'}), 401
+        viewer_email    = auth_user.get('email')
+        viewer_is_admin = bool(auth_user.get('is_admin'))
+    else:
+        viewer_email, viewer_is_admin = _session_viewer()
 
     def _san(v):
         """Recursively sanitize NaN/Inf for JSON serialization."""
@@ -433,30 +466,35 @@ def api_public_object(object_name):
         from app.db.transient import search_tns_objects
 
         conn = get_tns_db_connection()
-        cur  = conn.cursor()
         obj  = None
-        for q in [
-            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
-            f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
-        ]:
-            cur.execute(q, (object_name,))
-            row = cur.fetchone()
-            if row:
-                cols = [d[0] for d in cur.description]
-                obj  = dict(zip(cols, row))
-                break
-        conn.close()
+        try:
+            cur  = conn.cursor()
+            for q in [
+                f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE (COALESCE(o.name_prefix,'') || COALESCE(o.name,'')) ILIKE %s",
+                f"SELECT {OBJECT_COMPAT_COLS} FROM transient.objects o WHERE o.name ILIKE %s",
+            ]:
+                cur.execute(q, (object_name,))
+                row = cur.fetchone()
+                if row:
+                    cols = [d[0] for d in cur.description]
+                    obj  = dict(zip(cols, row))
+                    break
+        finally:
+            conn.close()
 
         if not obj:
-            for r in search_tns_objects(search_term=object_name, limit=50):
+            for r in search_tns_objects(search_term=object_name, limit=50,
+                                        apply_permissions=True, viewer_email=viewer_email,
+                                        viewer_is_admin=viewer_is_admin):
                 pref = (r.get('name_prefix') or '').strip()
                 nm   = (r.get('name') or '').strip()
                 if (pref + nm).lower() == object_name.lower() or nm.lower() == object_name.lower():
                     obj = r
                     break
 
-        if not obj:
-            return jsonify({'error': f'Object "{object_name}" not found.'}), 404
+        # Restricted objects the caller may not open are reported exactly like missing ones.
+        if not obj or not _viewer_can_see(obj, viewer_email, viewer_is_admin):
+            return jsonify({'error': 'Object not found.'}), 404
 
         obj  = _san(obj)
         meta = _san(_build_meta(obj))
@@ -485,8 +523,9 @@ def api_public_object(object_name):
                 )
                 out['photometry']       = phot
                 out['photometry_count'] = len(phot)
-            except Exception as pe:
-                out['photometry_error'] = str(pe)
+            except Exception:
+                logger.exception('api_public_object: photometry lookup failed')
+                out['photometry_error'] = 'Photometry unavailable.'
 
             try:
                 spectra = TNSObjectDB.get_spectrum_list(full_name)
@@ -497,13 +536,14 @@ def api_public_object(object_name):
                 )
                 out['spectra']       = spectra
                 out['spectra_count'] = len(spectra)
-            except Exception as se:
-                out['spectra_error'] = str(se)
+            except Exception:
+                logger.exception('api_public_object: spectrum lookup failed')
+                out['spectra_error'] = 'Spectra unavailable.'
 
             out['requested_by'] = user_email
 
         return jsonify(out)
 
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('api_public_object failed')
+        return jsonify({'error': 'Internal server error.'}), 500

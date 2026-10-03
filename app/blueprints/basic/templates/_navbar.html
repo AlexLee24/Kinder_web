@@ -100,7 +100,7 @@
                             <ul class="dropdown-content dropdown-align-right user-dropdown">
                                 <li class="user-dropdown-head">
                                     <span class="user-dropdown-name">{{ session.user.name }}</span>
-                                    <span class="user-dropdown-email">{{ session.user.email }}</span>
+                                    {% if not (session.user.email or '').endswith('@users.invalid') %}<span class="user-dropdown-email">{{ session.user.email }}</span>{% endif %}
                                     <span class="user-dropdown-roles">
                                         {% if session.user.is_admin %}<span class="kw-chip kw-chip-gold">Administrator</span>
                                         {% elif session.user.get('role', 'guest') == 'guest' %}<span class="kw-chip">Guest</span>
@@ -111,7 +111,9 @@
                                 <li class="dropdown-sep" role="separator"></li>
                                 <li><a href="{{ url_for('basic.profile') }}" class="{{ 'active' if _p == '/profile' }}">Profile</a></li>
                                 <li data-pwa-install hidden><a href="#">Install app</a></li>
-                                <li><a href="{{ url_for('auth.logout') }}">Log Out</a></li>
+                                {# Logout is a POST (GET kept only as a no-JS fallback) #}
+                                <li><a href="{{ url_for('auth.logout') }}" onclick="event.preventDefault(); document.getElementById('kw-logout-form').submit();">Log Out</a>
+                                    <form id="kw-logout-form" method="post" action="{{ url_for('auth.logout') }}" style="display:none"></form></li>
                             </ul>
                         </li>
                     {% else %}

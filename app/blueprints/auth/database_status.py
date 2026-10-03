@@ -14,7 +14,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Blueprint, jsonify, render_template, request, redirect, session, url_for
 
-from app.db import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
+from app.db import APP_DB_APPLICATION_NAME, DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER
 
 logger = logging.getLogger(__name__)
 
@@ -288,12 +288,14 @@ def api_database_action():
                     FROM pg_stat_activity
                     WHERE datname = %s
                       AND pid <> pg_backend_pid()
+                      -- never kill this app's own pooled / status connections
+                      AND COALESCE(application_name, '') NOT IN (%s, %s)
                       AND backend_type = 'client backend'
                       AND state = 'idle'
                       AND now() - state_change >= make_interval(mins => %s)
                     ORDER BY state_change ASC, pid ASC
                     """,
-                    (DB_NAME, idle_minutes),
+                    (DB_NAME, APP_DB_APPLICATION_NAME, 'kinder_db_status', idle_minutes),
                 )
                 target_pids = [int(row[0]) for row in cur.fetchall()]
         except Exception as exc:

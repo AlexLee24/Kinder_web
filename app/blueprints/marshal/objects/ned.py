@@ -5,33 +5,41 @@ import requests as _requests
 from app.db import get_tns_db_connection
 from app.core.request_validation import get_float_arg, ParamOutOfRangeError
 from app.db.catalog import get_ned_cache, upsert_ned_cache
+from app.core.auth import is_non_guest
 import logging
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
+from .helpers import session_can_access_object
 
 
 # ============================================================
 # NED Cone Search Proxy
 # ============================================================
-def _get_current_ned_host_name(target_name: str) -> str | None:
-    """Return current NED host name for target from transient.objects.host_name."""
+def _get_ned_target(target_name: str) -> dict | None:
+    """Return {name, ra, dec, host_name} of *target_name* from transient.objects,
+    or None when the object is unknown (or the lookup fails)."""
     if not target_name:
         return None
     try:
         conn = get_tns_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT host_name FROM transient.objects "
-            "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
-            (target_name, target_name)
-        )
-        row = cur.fetchone()
-        conn.close()
-        return row[0] if row and row[0] else None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT name, ra, dec, host_name FROM transient.objects "
+                "WHERE name = %s OR (COALESCE(name_prefix,'') || name) = %s LIMIT 1",
+                (target_name, target_name)
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        return {'name': row[0], 'ra': row[1], 'dec': row[2], 'host_name': row[3] or None}
     except Exception as e:
-        logger.warning("[NED] read current host failed for %s: %s", target_name, e)
+        logger.warning("[NED] read target failed for %s: %s", target_name, e)
         return None
+
 
 @objects_bp.route('/api/ned/cone')
 def ned_cone_search():
@@ -44,7 +52,27 @@ def ned_cone_search():
         radius = get_float_arg('radius_arcsec', 60)
         object_name = request.args.get('object_name', '').strip()
         force       = request.args.get('force', '0').strip() not in ('0', 'false', '')
-        current_host = _get_current_ned_host_name(object_name) if object_name else None
+        can_write   = is_non_guest()
+        if force and not can_write:
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+        current_host = None
+        if object_name:
+            target = _get_ned_target(object_name)
+            if target is None:
+                # Unknown object: never read/write the cache under a name we can't verify.
+                object_name = ''
+            else:
+                if not session_can_access_object(target['name']):
+                    return jsonify({'success': False, 'error': 'Access denied'}), 403
+                object_name = target['name']
+                current_host = target['host_name']
+                # The cache is keyed by object: search around the object's own
+                # position, never a caller-supplied one.
+                if target['ra'] is not None and target['dec'] is not None:
+                    ra, dec = float(target['ra']), float(target['dec'])
+                else:
+                    can_write = False
 
         logger.info(
             "[NED] cone search start ra=%.6f dec=%.6f radius_arcsec=%.1f",
@@ -219,8 +247,8 @@ def ned_cone_search():
             sample
         )
 
-        # --- Write to DB cache ---
-        if object_name:
+        # --- Write to DB cache (non-guest users, verified objects only) ---
+        if object_name and can_write:
             try:
                 upsert_ned_cache(object_name, ra, dec, radius, results)
                 logger.info("[NED] cached %d results for %s r=%.1f",
@@ -233,15 +261,15 @@ def ned_cone_search():
 
     except _requests.Timeout as e:
         logger.warning("[NED] upstream timed out: %s", e)
-        return jsonify({'success': False, 'error': f'NED request timed out: {e}'}), 502
+        return jsonify({'success': False, 'error': 'NED request timed out'}), 502
     except _requests.RequestException as e:
         logger.error("[NED] upstream request failed: %s", e)
-        return jsonify({'success': False, 'error': f'NED request failed: {e}'}), 502
+        return jsonify({'success': False, 'error': 'NED request failed'}), 502
     except ParamOutOfRangeError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
-    except Exception as e:
+    except Exception:
         logger.exception("[NED] cone search error")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'NED cone search failed'}), 500
 
 @objects_bp.route('/api/ned/set_host', methods=['POST'])
 def ned_set_host():
@@ -284,9 +312,9 @@ def ned_set_host():
             'z_flag': z_flag,
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception("[NED] set_host error")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/ned/unset_host', methods=['POST'])
 def ned_unset_host():
@@ -305,6 +333,6 @@ def ned_unset_host():
         logger.info("[NED] unset_host target=%s", target_name)
         return jsonify({'success': True})
 
-    except Exception as e:
+    except Exception:
         logger.exception("[NED] unset_host error")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500

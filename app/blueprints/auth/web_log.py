@@ -1,9 +1,14 @@
 """
-Log viewer routes — accessible to GREATLab members and admins.
+Log viewer routes — admins only (logs contain emails, IPs and internal errors).
 """
+import logging
 import os
 import re
-from flask import Blueprint, render_template, session, jsonify, request, redirect, url_for
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for
+
+from app.core.auth import is_admin
+
+logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 _SRC_RE = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[([^\]]+)\]')
@@ -99,10 +104,13 @@ def _parse_source_filters() -> tuple[set[str], bool]:
 web_log_bp = Blueprint('web_log', __name__, template_folder='templates')
 
 def _can_view():
-    if 'user' not in session:
-        return False
-    u = session['user']
-    return bool(u.get('is_great_lab_member')) or bool(u.get('is_admin'))
+    # is_admin() fails closed (False) when the session cannot be verified (DB down).
+    return is_admin()
+
+
+def _read_error():
+    logger.exception('Log viewer: could not read log file')
+    return jsonify({'error': 'Could not read the log file'}), 500
 
 @web_log_bp.route('/admin/log')
 def log_viewer():
@@ -173,8 +181,8 @@ def api_log_content():
                 'truncated': (rendered_lines >= tail_lines) or tail_truncated,
                 'file_size': file_size,
             })
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            return _read_error()
 
     if offset >= file_size:
         return jsonify({
@@ -203,8 +211,8 @@ def api_log_content():
             'truncated': (new_offset < file_size and (new_offset - offset) >= max_bytes),
             'file_size': file_size,
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return _read_error()
 
 
 @web_log_bp.route('/api/log/sources')
@@ -237,8 +245,8 @@ def api_log_sources():
                     sources.add(src)
                 if i >= 120000:
                     break
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return _read_error()
 
     return jsonify({'sources': sorted(sources)})
 
@@ -290,5 +298,5 @@ def api_daemon_log_content():
             content = f.read(max_bytes)
             new_offset = f.tell()
         return jsonify({'content': content, 'offset': new_offset})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return _read_error()

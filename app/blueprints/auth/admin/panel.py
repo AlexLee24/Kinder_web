@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask import flash, redirect, render_template, session, url_for
 
+from app.core.auth import session_unverified
 from app.db.auth import (
     get_api_key_requests,
     get_group_requests,
@@ -65,6 +66,8 @@ def admin_panel():
     if 'user' not in session or not session['user'].get('is_admin'):
         flash('Access denied. Administrator privileges required.', 'error')
         return redirect(url_for('basic.home'))
+    if session_unverified():
+        return 'Service temporarily unavailable (cannot verify your session).', 503
 
     users = get_users()
     groups = get_groups()

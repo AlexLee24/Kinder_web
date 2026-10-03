@@ -103,7 +103,7 @@ class HomeGalleryManager {
         const spanClass = item.span || 'col-span-1 row-span-1';
         div.className = `home-gallery-item ${spanClass}`;
         div.innerHTML = `
-            <img src="${item.thumbnail_url}" alt="${item.title}" loading="lazy" />
+            <img src="${this.escapeHtml(item.thumbnail_url)}" alt="${this.escapeHtml(item.title)}" loading="lazy" />
             <div class="home-gallery-overlay">
                 <p class="home-gallery-title">${this.escapeHtml(item.title)}</p>
             </div>
@@ -144,7 +144,7 @@ class HomeGalleryManager {
         this.galleryItems.forEach((item, index) => {
             const dockItem = document.createElement('div');
             dockItem.className = `home-dock-item ${index === this.currentIndex ? 'active' : ''}`;
-            dockItem.innerHTML = `<img src="${item.thumbnail_url}" alt="${item.title}" />`;
+            dockItem.innerHTML = `<img src="${this.escapeHtml(item.thumbnail_url)}" alt="${this.escapeHtml(item.title)}" />`;
             dockItem.addEventListener('click', () => this.openLightbox(index));
             this.dockItems.appendChild(dockItem);
         });
@@ -495,9 +495,13 @@ const file = this.imageFile.files[0];
     }
 
     escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        // Safe for HTML text and quoted attributes (escapes quotes too).
+        return String(text == null ? '' : text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 }
 

@@ -72,7 +72,7 @@ function makeGuess() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
         <td>${attempts}</td>
-        <td style="letter-spacing: 2px;">${guess}</td>
+        <td style="letter-spacing: 2px;">${escapeHtml(guess)}</td>
         <td><span class="result-a">${A}A</span><span class="result-b">${B}B</span></td>
     `;
     tbody.insertBefore(tr, tbody.firstChild);
@@ -108,6 +108,15 @@ function submitScore(attempts) {
     .catch(e => console.error("Error submitting score:", e));
 }
 
+function escapeHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function loadLeaderboard() {
     fetch('/api/games/leaderboard')
         .then(r => r.json())
@@ -130,8 +139,8 @@ function loadLeaderboard() {
                 
                 tr.innerHTML = `
                     <td style="color: #C5A059; font-weight: bold;">${rankText}</td>
-                    <td style="text-align: left;">${run.name}</td>
-                    <td style="color: #4db8ff; font-weight: bold;">${run.attempts}</td>
+                    <td style="text-align: left;">${escapeHtml(run.name)}</td>
+                    <td style="color: #4db8ff; font-weight: bold;">${escapeHtml(run.attempts)}</td>
                 `;
                 tbody.appendChild(tr);
             });

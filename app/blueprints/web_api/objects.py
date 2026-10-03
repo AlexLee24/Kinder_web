@@ -1,5 +1,6 @@
 """JSON API used by the marshal/object pages and external API-key clients — objects (split from web_api_routes.py)."""
 import math
+import re
 import urllib.parse
 from datetime import datetime
 from flask import request, jsonify, session
@@ -16,12 +17,16 @@ from app.db.transient import (
 )
 from app.db import get_tns_db_connection
 from app.core.request_validation import get_int_arg, get_float_arg
-from app.services.photometry.download_phot import process_single_object_workflow
 import logging
 from app.core.auth import admin_required, login_required
+from app.blueprints.marshal.objects.helpers import non_guest_required, session_can_access_object
 
 logger = logging.getLogger(__name__)
 from . import web_api_bp
+
+# Allowed characters for manually created object names (TNS-style names such as
+# "SN 2025abc", "AT2025xyz", "ZTF25aaabbbc", "Gaia25a+b").
+_OBJECT_NAME_RE = re.compile(r'^[A-Za-z0-9 _.+\-]{1,64}$')
 
 
 @web_api_bp.route('/api/objects', methods=['POST'])
@@ -31,7 +36,9 @@ def add_object():
         return jsonify({'error': 'Access denied - Admin privileges required'}), 403
     
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({'error': 'Invalid request body'}), 400
         
         required_fields = ['name', 'ra', 'dec']
         for field in required_fields:
@@ -62,6 +69,8 @@ def add_object():
         
         if len(object_name) < 3:
             return jsonify({'error': 'Object name must be at least 3 characters'}), 400
+        if not _OBJECT_NAME_RE.fullmatch(object_name):
+            return jsonify({'error': 'Object name may only contain letters, digits, spaces and _ . + - (max 64 characters)'}), 400
         
         existing_objects = search_tns_objects(search_term=object_name, limit=1)
         if existing_objects:
@@ -83,23 +92,25 @@ def add_object():
         now_mjd  = (datetime.now().date() - _epoch).days
         
         conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            """INSERT INTO transient.objects
-               (name, name_prefix, type, ra, dec, discovery_mag, discovery_date,
-                     source_group, received_date, last_modified_date, status, tag)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Object', '{}'::text[])
-               RETURNING obj_id""",
-            (object_name, '', object_type, ra, dec,
-             magnitude, disc_mjd,
-             source or 'Manual Entry',
-             now_mjd, now_mjd)
-        )
-        new_obj_id = cursor.fetchone()[0]
-        
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """INSERT INTO transient.objects
+                   (name, name_prefix, type, ra, dec, discovery_mag, discovery_date,
+                         source_group, received_date, last_modified_date, status, tag)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Object', '{}'::text[])
+                   RETURNING obj_id""",
+                (object_name, '', object_type, ra, dec,
+                 magnitude, disc_mjd,
+                 source or 'Manual Entry',
+                 now_mjd, now_mjd)
+            )
+            new_obj_id = cursor.fetchone()[0]
+
+            conn.commit()
+        finally:
+            conn.close()
         
         return jsonify({
             'success': True,
@@ -108,12 +119,12 @@ def add_object():
             'objid': new_obj_id
         })
         
-    except ValueError as e:
-        return jsonify({'error': f'Invalid input data: {str(e)}'}), 400
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+    except (ValueError, TypeError) as e:
+        logger.warning('add_object invalid input: %s', e)
+        return jsonify({'error': 'Invalid input data'}), 400
+    except Exception:
+        logger.exception('add_object database error')
+        return jsonify({'error': 'Database error'}), 500
 
 @web_api_bp.route('/api/object/<path:object_name>/flag_status', methods=['GET'])
 @login_required
@@ -126,15 +137,20 @@ def get_flag_status(object_name):
 
 @web_api_bp.route('/api/object/<path:object_name>/toggle_flag', methods=['POST'])
 @login_required
+@non_guest_required
 def update_flag_status(object_name):
     """Toggle flag status for an object"""
         
     object_name = urllib.parse.unquote(object_name)
-    data = request.get_json()
-    flag_status = data.get('flag')
+    data = request.get_json(silent=True) or {}
+    flag_status = data.get('flag') if isinstance(data, dict) else None
     
     if flag_status is None:
         return jsonify({'error': 'Missing flag status'}), 400
+    if not isinstance(flag_status, bool):
+        return jsonify({'error': 'flag must be a boolean'}), 400
+    if not session_can_access_object(object_name):
+        return jsonify({'error': 'Access denied'}), 403
         
     success = update_object_flag_by_name(object_name, flag_status)
     if success:
@@ -195,7 +211,7 @@ def api_get_stats():
         logger.error(f"Stats API error: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': 'Failed to load stats',
             'stats': {
                 'inbox_count': 0,
                 'followup_count': 0,
@@ -210,11 +226,21 @@ def api_get_stats():
 
 @web_api_bp.route('/api/object/<path:object_name>/fetch_photometry', methods=['POST'])
 @login_required(error='Access denied', status=403)
+@non_guest_required
 def fetch_photometry(object_name):
     """Fetch photometry for a specific object"""
-        
+    object_name = urllib.parse.unquote(object_name)
+    if not session_can_access_object(object_name):
+        return jsonify({'success': False, 'error': 'Access denied'}), 403
+
+    # The fetcher lives in a private (gitignored) module: the app must start without it.
     try:
-        object_name = urllib.parse.unquote(object_name)
+        from app.services.photometry.download_phot import process_single_object_workflow
+    except ImportError:
+        logger.warning('fetch_photometry: photometry fetcher not installed')
+        return jsonify({'success': False, 'error': 'photometry fetcher not installed'}), 503
+
+    try:
         logger.info('Fetching photometry for %s', object_name)
         
         # Run the workflow
@@ -225,10 +251,9 @@ def fetch_photometry(object_name):
             'message': f'Photometry fetch completed for {object_name}'
         })
         
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('fetch_photometry failed for %s', object_name)
+        return jsonify({'success': False, 'error': 'Photometry fetch failed'}), 500
 
 @web_api_bp.route('/api/objects')
 def api_get_objects():
@@ -254,6 +279,8 @@ def api_get_objects():
 
     discoverer = request.args.get('discoverer', '')
 
+    viewer = session.get('user') or {}
+
     try:
         objects = search_tns_objects(
             search_term=search, 
@@ -269,7 +296,10 @@ def api_get_objects():
             app_mag_max=app_mag_max,
             redshift_min=redshift_min,
             redshift_max=redshift_max,
-            discoverer=discoverer
+            discoverer=discoverer,
+            apply_permissions=True,
+            viewer_email=viewer.get('email'),
+            viewer_is_admin=bool(viewer.get('is_admin')),
         )
         
         total = get_objects_count(
@@ -282,7 +312,10 @@ def api_get_objects():
             app_mag_max=app_mag_max,
             redshift_min=redshift_min,
             redshift_max=redshift_max,
-            discoverer=discoverer
+            discoverer=discoverer,
+            apply_permissions=True,
+            viewer_email=viewer.get('email'),
+            viewer_is_admin=bool(viewer.get('is_admin')),
         )
         
         stats = get_filtered_stats(
@@ -295,7 +328,10 @@ def api_get_objects():
             app_mag_max=app_mag_max,
             redshift_min=redshift_min,
             redshift_max=redshift_max,
-            discoverer=discoverer
+            discoverer=discoverer,
+            apply_permissions=True,
+            viewer_email=viewer.get('email'),
+            viewer_is_admin=bool(viewer.get('is_admin')),
         )
         
         return jsonify({
@@ -322,7 +358,7 @@ def api_get_objects():
                 'at_count': 0, 
                 'classified_count': 0
             },
-            'error': str(e)
+            'error': 'Failed to load objects'
         }), 500
 
 @web_api_bp.route('/api/object-tags', methods=['POST'])
@@ -330,18 +366,22 @@ def api_get_objects():
 def api_get_object_tags():
     
     try:
-        data = request.get_json()
-        object_names = data.get('object_names', [])
+        data = request.get_json(silent=True) or {}
+        object_names = data.get('object_names', []) if isinstance(data, dict) else []
         
         if not object_names:
             return jsonify({'success': True, 'tags': {}})
         
-        conn = get_tns_db_connection()
-        cursor = conn.cursor()
-        
+        if not isinstance(object_names, list) or not all(isinstance(n, str) for n in object_names):
+            return jsonify({'success': False, 'error': 'object_names must be a list of strings'}), 400
+        object_names = object_names[:1000]
+
         placeholders = ','.join(['%s' for _ in object_names])
-        
-        cursor.execute(f'''
+
+        conn = get_tns_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(f'''
             SELECT o.name,
                    array_to_string(o.tag, ', ') AS tags,
                    CASE o.status
@@ -352,10 +392,11 @@ def api_get_object_tags():
                    END AS tag
             FROM transient.objects o
             WHERE o.name IN ({placeholders})
-        ''', tuple(object_names))
-        
-        results = cursor.fetchall()
-        conn.close()
+            ''', tuple(object_names))
+
+            results = cursor.fetchall()
+        finally:
+            conn.close()
         
         tag_mapping = {}
         tags_mapping = {}
@@ -379,7 +420,7 @@ def api_get_object_tags():
         logger.error(f"Object tags API error: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': 'Failed to load tags'
         }), 500
 
 @web_api_bp.route('/api/classifications')
@@ -398,6 +439,6 @@ def api_get_classifications():
         logger.error(f"Classifications API error: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e),
+            'error': 'Failed to load classifications',
             'classifications': ['AT', 'Kilonova']
         }), 500

@@ -32,6 +32,35 @@ from .cache import (
 )
 from .helpers import _TRACKER_CACHE
 from .payload import _build_detect_lc_payload, _parse_float_or_none
+from .cache import _is_valid_date_string
+
+
+def _json_body():
+    """Request JSON as a dict ({} when missing, malformed or not an object)."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _clean_target_name(value):
+    """A non-empty target name string, or None."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _is_known_detect_date(selected_date, metadata=None):
+    """YYYY-MM-DD and one of the days DETECT has data for (cross-match or screening)."""
+    if not _is_valid_date_string(selected_date):
+        return False
+    if metadata is None:
+        metadata = get_detect_metadata()
+    known = set(metadata.get('available_dates') or [])
+    known.update((metadata.get('screen_counts') or {}).keys())
+    if not known:
+        # Metadata unavailable (DB hiccup): the format check alone gates the build.
+        return True
+    return selected_date in known
 
 
 @detect_bp.route('/detect_image/<target_name>')
@@ -57,6 +86,8 @@ def detect_image(target_name):
 @detect_bp.route('/detect_image_by_id/<int:image_id>')
 def detect_image_by_id(image_id):
     if 'user' not in session:
+        return "Unauthorized", 401
+    elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return "Unauthorized", 401
     image_data = get_detect_image_by_id(image_id)
     if image_data:
@@ -101,18 +132,21 @@ def set_host():
     elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-    data = request.json
+    data = _json_body()
     match_id = data.get('match_id')
-    target_name = data.get('target_name')
+    target_name = _clean_target_name(data.get('target_name'))
     redshift = data.get('redshift')
     status = data.get('status', 'followup')          # 'followup' | 'snoozed' | 'keep'
 
-    if not match_id or not target_name:
-        return jsonify({'success': False, 'message': 'Missing parameters'})
+    if isinstance(match_id, str) and match_id.strip().isdigit():
+        match_id = int(match_id.strip())
+    if isinstance(match_id, bool) or not isinstance(match_id, int) or match_id <= 0 or not target_name:
+        return jsonify({'success': False, 'message': 'Missing parameters'}), 400
     if status not in ('followup', 'snoozed', 'keep'):
-        return jsonify({'success': False, 'message': 'Invalid status'})
+        return jsonify({'success': False, 'message': 'Invalid status'}), 400
 
-    # 1. cross_matches: is_host + the person's pin (DETECT keeps it on re-runs)
+    # 1. cross_matches: is_host + the person's pin (DETECT keeps it on re-runs).
+    #    Fails (changes nothing) when match_id is not a candidate of target_name.
     if set_cross_match_host(match_id, target_name, session['user'].get('email')):
         # 2. object status is the reviewer's call
         if status != 'keep':
@@ -127,7 +161,7 @@ def set_host():
             return jsonify({'success': True})
         return jsonify({'success': True, 'message': 'Host set, but no redshift to update'})
     else:
-        return jsonify({'success': False, 'message': 'Database error'})
+        return jsonify({'success': False, 'message': 'Host candidate not found for this target'}), 404
 
 @detect_bp.route('/api/unset_host', methods=['POST'])
 def unset_host():
@@ -136,11 +170,11 @@ def unset_host():
     elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
-    data = request.json
-    target_name = data.get('target_name')
+    data = _json_body()
+    target_name = _clean_target_name(data.get('target_name'))
 
     if not target_name:
-        return jsonify({'success': False, 'message': 'Missing parameters'})
+        return jsonify({'success': False, 'message': 'Missing parameters'}), 400
 
     # Reopen: the person's decision is withdrawn, the rule's host stays visible.
     if release_cross_match_host(target_name):
@@ -177,12 +211,12 @@ def set_object_status():
     if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
-    data = request.json
-    target_name = data.get('target_name')
+    data = _json_body()
+    target_name = _clean_target_name(data.get('target_name'))
     status = data.get('status')  # 'finished', 'followup', or 'object' (reset to Inbox)
 
     if not target_name or status not in ('finished', 'followup', 'object', 'snoozed'):
-        return jsonify({'success': False, 'message': 'Missing or invalid parameters'})
+        return jsonify({'success': False, 'message': 'Missing or invalid parameters'}), 400
 
     if update_object_status(target_name, status):
         # Invalidate page cache so next load gets fresh data
@@ -201,10 +235,10 @@ def mark_no_host():
     if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
-    data = request.json
-    target_name = data.get('target_name')
+    data = _json_body()
+    target_name = _clean_target_name(data.get('target_name'))
     if not target_name:
-        return jsonify({'success': False, 'message': 'Missing parameters'})
+        return jsonify({'success': False, 'message': 'Missing parameters'}), 400
 
     # Every candidate rejected by this person; DETECT honours that on re-runs.
     reject_cross_match_hosts(target_name, session['user'].get('email'))
@@ -249,6 +283,10 @@ def detect_results():
                                daily_counts=daily_counts,
                                overview=get_detect_overview(),
                                current_path='/detect')
+
+    if not _is_known_detect_date(selected_date, metadata):
+        flash('Invalid or unknown DETECT date.', 'error')
+        return redirect(url_for('detect.detect_results'))
 
     payload, is_fresh = _get_detect_page_payload_swr(selected_date)
     if payload:
@@ -299,6 +337,8 @@ def detect_cache_status_api():
     selected_date = request.args.get('detect_results', '').strip()
     if not selected_date:
         return jsonify({'success': False, 'message': 'Missing detect_results date'}), 400
+    if not _is_known_detect_date(selected_date):
+        return jsonify({'success': False, 'message': 'Invalid or unknown detect_results date'}), 400
 
     payload, fresh = _get_detect_page_payload_swr(selected_date)
     building = _detect_page_is_building(selected_date)
@@ -347,7 +387,7 @@ def detect_lightcurve_api(target_name):
         return jsonify(payload)
     except Exception as e:
         logger.error('Error loading LC for %s: %s', target_name, e)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({'success': False, 'message': 'Failed to load light curve'}), 500
 
 @detect_bp.route('/detect/archives')
 def detect_archives():
@@ -371,9 +411,13 @@ def toggle_flag():
     elif session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
         
-    data = request.json
+    data = _json_body()
     result_id = data.get('id')
     flag_value = data.get('flag')
+    if isinstance(result_id, str) and result_id.strip().isdigit():
+        result_id = int(result_id.strip())
+    if isinstance(result_id, bool) or not isinstance(result_id, int) or not isinstance(flag_value, bool):
+        return jsonify({'success': False, 'message': 'Missing or invalid parameters'}), 400
     
     if update_cross_match_flag(result_id, flag_value):
         return jsonify({'success': True})

@@ -1,14 +1,18 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — epessto (split from private_area_routes.py)."""
+import functools
+import hmac
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from flask import render_template, redirect, url_for, session, flash, request, jsonify, send_file
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
+from app.core import rate_limit
 from . import private_area_bp
 from .helpers import (
     _EPESSTO_ROOM_LIVE_HOURS,
     _EPESSTO_ROOM_SESSION_KEY,
+    EpesstoStoreError,
     _cleanup_epessto_stale_rooms,
     _collect_epessto_all_files,
     _epessto_can_manage_members,
@@ -29,8 +33,42 @@ from .helpers import (
     _touch_epessto_room,
     _upsert_epessto_room_member,
     can_access_page,
-    can_view_private_area,
+    reencode_uploaded_image,
+    epessto_store_lock,
+    save_upload_limited,
 )
+
+# Brute-force guard for room passwords / invite tokens (per user, shared across workers).
+_EPESSTO_JOIN_ATTEMPTS, _EPESSTO_JOIN_WINDOW_S = 5, 600
+_EPESSTO_INVITE_ATTEMPTS, _EPESSTO_INVITE_WINDOW_S = 10, 600
+
+
+def _epessto_attempt_key(kind, room_id=''):
+    user = session.get('user') or {}
+    who = str(user.get('email') or '').strip().lower() or (request.remote_addr or '?')
+    return f'epessto_{kind}:{who}:{room_id}'
+
+
+# Minimum interval between persisting "presence" updates (last_seen / updated_at)
+# on read-only requests, so polling GETs don't rewrite the store every time.
+_EPESSTO_PRESENCE_SAVE_SECONDS = 60
+
+
+def _epessto_api(view):
+    """Page permission check + exclusive store lock for every ePessto API call."""
+    @functools.wraps(view)
+    def wrapper(*args, **kwargs):
+        if not can_access_page('epessto_support'):
+            return jsonify({'error': 'Forbidden'}), 403
+        if request.mimetype == 'multipart/form-data':
+            # Receive/parse the upload body before taking the lock.
+            request.files  # noqa: B018
+        try:
+            with epessto_store_lock():
+                return view(*args, **kwargs)
+        except EpesstoStoreError:
+            return jsonify({'error': 'ePessto room store is temporarily unavailable; please retry later.'}), 503
+    return wrapper
 
 
 @private_area_bp.route('/epessto_support')
@@ -60,19 +98,26 @@ def _get_epessto_room_or_response(require_room=True):
             session.pop(_EPESSTO_ROOM_SESSION_KEY, None)
             return None, None, None, (jsonify({'error': 'You were removed from this room'}), 403)
 
+        ident_email = ident['email']
+        before = dict((room.get('members') or {}).get(ident_email) or {})
         _upsert_epessto_room_member(room)
-        _touch_epessto_room(room, _get_epessto_actor())
-        _save_epessto_store(store)
+        after = (room.get('members') or {}).get(ident_email) or {}
+        member_changed = {k: v for k, v in before.items() if k != 'last_seen'} != \
+            {k: v for k, v in after.items() if k != 'last_seen'}
+        last_update = _parse_utc_iso(room.get('updated_at'))
+        stale = (last_update is None or last_update.tzinfo is None or
+                 datetime.now(timezone.utc) - last_update >= timedelta(seconds=_EPESSTO_PRESENCE_SAVE_SECONDS))
+        if member_changed or stale:
+            _touch_epessto_room(room, _get_epessto_actor())
+            _save_epessto_store(store)
 
     if require_room and (not room_id or not room):
         return None, None, None, (jsonify({'error': 'No room joined'}), 401)
     return store, room_id, room, None
 
 @private_area_bp.route('/api/epessto_support/rooms/live', methods=['GET'])
+@_epessto_api
 def api_epessto_support_live_rooms():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, _, _, _ = _get_epessto_room_or_response(require_room=False)
     now = datetime.now(timezone.utc)
     live_cutoff = now - timedelta(hours=_EPESSTO_ROOM_LIVE_HOURS)
@@ -90,10 +135,8 @@ def api_epessto_support_live_rooms():
     return jsonify({'success': True, 'rooms': live})
 
 @private_area_bp.route('/api/epessto_support/rooms/create', methods=['POST'])
+@_epessto_api
 def api_epessto_support_create_room():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     payload = request.get_json(silent=True) or {}
     room_name = str(payload.get('room_name', '') or '').strip()
     password = str(payload.get('password', '') or '')
@@ -116,20 +159,26 @@ def api_epessto_support_create_room():
     })
 
 @private_area_bp.route('/api/epessto_support/rooms/join', methods=['POST'])
+@_epessto_api
 def api_epessto_support_join_room():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     payload = request.get_json(silent=True) or {}
     room_id = str(payload.get('room_id', '') or '').strip().upper()
     password = str(payload.get('password', '') or '')
     if not room_id or not password:
         return jsonify({'error': 'room_id and password are required'}), 400
+    if not rate_limit.allow(_epessto_attempt_key('join', room_id),
+                            _EPESSTO_JOIN_ATTEMPTS, _EPESSTO_JOIN_WINDOW_S):
+        return jsonify({'error': 'Too many attempts; please wait a few minutes and try again.'}), 429
 
     store, _, _, _ = _get_epessto_room_or_response(require_room=False)
     room = store.get('rooms', {}).get(room_id)
     if not room:
         return jsonify({'error': 'Room not found'}), 404
+
+    ident = _get_epessto_user_identity()
+    kicked = set(str(x).strip().lower() for x in room.get('kicked_users', []))
+    if ident['email'] and ident['email'] in kicked:
+        return jsonify({'error': 'You were removed from this room'}), 403
 
     pwd_hash = str(room.get('password_hash', '') or '')
     valid = False
@@ -154,9 +203,8 @@ def api_epessto_support_join_room():
     })
 
 @private_area_bp.route('/api/epessto_support/room/current', methods=['GET'])
+@_epessto_api
 def api_epessto_support_current_room():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
     store, room_id, room, _ = _get_epessto_room_or_response(require_room=False)
     if not room_id or not room:
         return jsonify({'success': True, 'joined': False, 'room_id': None})
@@ -170,17 +218,14 @@ def api_epessto_support_current_room():
     })
 
 @private_area_bp.route('/api/epessto_support/room/leave', methods=['POST'])
+@_epessto_api
 def api_epessto_support_leave_room():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
     session.pop(_EPESSTO_ROOM_SESSION_KEY, None)
     return jsonify({'success': True})
 
 @private_area_bp.route('/api/epessto_support/room/members', methods=['GET'])
+@_epessto_api
 def api_epessto_support_room_members():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     _, _, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -214,10 +259,8 @@ def api_epessto_support_room_members():
     return jsonify({'success': True, 'can_manage': can_manage, 'members': members})
 
 @private_area_bp.route('/api/epessto_support/room/kick', methods=['POST'])
+@_epessto_api
 def api_epessto_support_room_kick():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, _, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -248,19 +291,22 @@ def api_epessto_support_room_kick():
     return jsonify({'success': True})
 
 @private_area_bp.route('/api/epessto_support/rooms/join_by_invite', methods=['POST'])
+@_epessto_api
 def api_epessto_support_join_by_invite():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     payload = request.get_json(silent=True) or {}
     invite_token = str(payload.get('invite_token') or '').strip()
     if not invite_token:
         return jsonify({'error': 'invite_token is required'}), 400
+    if not rate_limit.allow(_epessto_attempt_key('invite'),
+                            _EPESSTO_INVITE_ATTEMPTS, _EPESSTO_INVITE_WINDOW_S):
+        return jsonify({'error': 'Too many attempts; please wait a few minutes and try again.'}), 429
 
     store, _, _, _ = _get_epessto_room_or_response(require_room=False)
     matched = None
+    token_b = invite_token.encode('utf-8')
     for room_id, room in store.get('rooms', {}).items():
-        if str(room.get('invite_token') or '') == invite_token:
+        room_token = str(room.get('invite_token') or '')
+        if room_token and hmac.compare_digest(room_token.encode('utf-8'), token_b):
             matched = (room_id, room)
             break
 
@@ -270,8 +316,9 @@ def api_epessto_support_join_by_invite():
     room_id, room = matched
     ident = _get_epessto_user_identity()
     kicked = set(str(x).strip().lower() for x in room.get('kicked_users', []))
-    if ident['email'] in kicked:
-        room['kicked_users'] = [x for x in room.get('kicked_users', []) if str(x).strip().lower() != ident['email']]
+    if ident['email'] and ident['email'] in kicked:
+        # A kick must stick: an old invite link does not re-admit a removed member.
+        return jsonify({'error': 'You were removed from this room'}), 403
 
     _upsert_epessto_room_member(room)
     _touch_epessto_room(room, _get_epessto_actor())
@@ -286,10 +333,8 @@ def api_epessto_support_join_by_invite():
     })
 
 @private_area_bp.route('/api/epessto_support/upload', methods=['POST'])
+@_epessto_api
 def api_epessto_support_upload():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -305,10 +350,8 @@ def api_epessto_support_upload():
     return jsonify({'success': True, **payload})
 
 @private_area_bp.route('/api/epessto_support/session', methods=['GET'])
+@_epessto_api
 def api_epessto_support_session():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     _, _, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -323,10 +366,8 @@ def api_epessto_support_session():
     return jsonify({'success': True, **payload})
 
 @private_area_bp.route('/api/epessto_support/target_state', methods=['POST'])
+@_epessto_api
 def api_epessto_support_target_state():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, _, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -379,10 +420,8 @@ def api_epessto_support_target_state():
     return jsonify({'success': True, **data})
 
 @private_area_bp.route('/api/epessto_support/target', methods=['DELETE'])
+@_epessto_api
 def api_epessto_support_remove_target():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -445,10 +484,8 @@ def api_epessto_support_remove_target():
     return jsonify({'success': True, 'removed': removed, **data})
 
 @private_area_bp.route('/api/epessto_support/target_image', methods=['POST'])
+@_epessto_api
 def api_epessto_support_target_image_upload():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -472,7 +509,10 @@ def api_epessto_support_target_image_upload():
     image_dir = _get_epessto_image_dir(room_id)
     filename = secure_filename(f"{target_key}_{uuid.uuid4().hex}{ext}")
     save_path = os.path.join(image_dir, filename)
-    image_file.save(save_path)
+    if not save_upload_limited(image_file, save_path):
+        return jsonify({'error': 'image too large (max 20 MB)'}), 413
+    if not reencode_uploaded_image(save_path, ext):
+        return jsonify({'error': 'file is not a valid image'}), 400
 
     images.append({'filename': filename})
     current['images'] = images
@@ -490,10 +530,8 @@ def api_epessto_support_target_image_upload():
     return jsonify({'success': True, **data})
 
 @private_area_bp.route('/api/epessto_support/target_image', methods=['DELETE'])
+@_epessto_api
 def api_epessto_support_target_image_delete():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -527,10 +565,8 @@ def api_epessto_support_target_image_delete():
     return jsonify({'success': True, **data})
 
 @private_area_bp.route('/api/epessto_support/image/<path:filename>', methods=['GET'])
+@_epessto_api
 def api_epessto_support_image_file(filename):
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     _, room_id, _, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err
@@ -539,13 +575,12 @@ def api_epessto_support_image_file(filename):
     image_path = os.path.join(_get_epessto_image_dir(room_id), safe_name)
     if not os.path.isfile(image_path):
         return jsonify({'error': 'Not found'}), 404
-    return send_file(image_path)
+    return send_file(image_path, as_attachment=False,
+                     download_name=secure_filename(safe_name) or 'image')
 
 @private_area_bp.route('/api/epessto_support/clear', methods=['DELETE'])
+@_epessto_api
 def api_epessto_support_clear():
-    if not can_view_private_area():
-        return jsonify({'error': 'Forbidden'}), 403
-
     store, room_id, room, err = _get_epessto_room_or_response(require_room=True)
     if err:
         return err

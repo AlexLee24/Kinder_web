@@ -1,19 +1,22 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — finding_chart (split from astronomy_tools_routes.py)."""
 import re
 import io
-import traceback
+import logging
 import numpy as np
 from PIL import Image
 from flask import render_template, request, jsonify, Response
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from . import astronomy_tools_bp
+from .helpers import _client_ip, _rate_ok_burst
 from .finding_chart_render import (
     _fetch_survey_fits,
     _fetch_survey_image,
     _query_nearby_stars,
     _render_finding_chart,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ===============================================================================
@@ -52,6 +55,21 @@ def _resolve_target_coord(target_name, ra_str, dec_str):
         return SkyCoord.from_name(target_name)
     raise ValueError(f'Cannot parse coordinates: RA={ra_str} Dec={dec_str}')
 
+_FOV_MIN_ARCMIN, _FOV_MAX_ARCMIN = 0.5, 60.0
+_MAG_LIMIT_MIN, _MAG_LIMIT_MAX = 5.0, 22.0
+
+
+def _clamp(value, lo, hi):
+    return max(lo, min(hi, value))
+
+
+def _parse_fov(data):
+    fov = float(data.get('fov', 10))
+    if not np.isfinite(fov):
+        raise ValueError('Invalid fov')
+    return _clamp(fov, _FOV_MIN_ARCMIN, _FOV_MAX_ARCMIN)
+
+
 def _safe_chart_basename(name):
     safe = re.sub(r'[^A-Za-z0-9._-]+', '_', str(name or 'target')).strip('_')
     return safe or 'target'
@@ -63,9 +81,11 @@ def generate_finding_chart():
     Fetches base image from DSS/DESI LS/Pan-STARRS, overlays
     target marker and nearby bright star annotations.
     """
+    if not _rate_ok_burst(_client_ip(), 'finding_chart', 6, 30.0):
+        return jsonify({'error': 'Too many requests; please wait a few seconds.'}), 429
     try:
-        data = request.get_json()
-        if not data:
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
             return jsonify({'error': 'No data provided'}), 400
 
         # ---- Parse parameters ----
@@ -73,14 +93,21 @@ def generate_finding_chart():
         ra_str = data.get('ra', '')
         dec_str = data.get('dec', '')
         survey = data.get('survey', 'DSS2 Red')
-        fov_arcmin = float(data.get('fov', 10))
+        try:
+            fov_arcmin = _parse_fov(data)
+            mag_limit = float(data.get('mag_limit', 15.0))
+            name_limit = float(data.get('name_limit', 10.0))
+            if not (np.isfinite(mag_limit) and np.isfinite(name_limit)):
+                raise ValueError('non-finite')
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid fov / mag_limit / name_limit'}), 400
+        mag_limit = _clamp(mag_limit, _MAG_LIMIT_MIN, _MAG_LIMIT_MAX)
+        name_limit = _clamp(name_limit, 0.0, _MAG_LIMIT_MAX)
         invert = data.get('invert', False)
-        mag_limit = float(data.get('mag_limit', 15.0))
-        name_limit = float(data.get('name_limit', 10.0))
         show_mag   = data.get('show_mag', True)
         show_names = data.get('show_names', True)
         _ms = data.get('max_stars')
-        max_stars  = int(_ms) if _ms else None
+        max_stars  = _clamp(int(_ms), 1, 500) if _ms else None
         show_slit       = data.get('show_slit', False)
         slit_length     = float(data.get('slit_length', 20.0))
         slit_width      = float(data.get('slit_width', 1.5))
@@ -140,20 +167,27 @@ def generate_finding_chart():
             'logs': logs
         })
 
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
+    except Exception:
+        logger.exception('finding chart generation failed')
+        return jsonify({'error': 'Finding chart generation failed.', 'logs': ['[ERROR] Finding chart generation failed.']}), 500
 
 @astronomy_tools_bp.route('/api/finding_chart/fits', methods=['POST'])
 def download_finding_chart_fits():
     """Download FOV-matched raw FITS cutout with WCS metadata when available."""
+    if not _rate_ok_burst(_client_ip(), 'finding_chart_fits', 3, 30.0):
+        return jsonify({'error': 'Too many requests; please wait a few seconds.'}), 429
     try:
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify({'error': 'No data provided'}), 400
         target_name = data.get('name', 'target')
         ra_str = data.get('ra', '')
         dec_str = data.get('dec', '')
         survey = data.get('survey', 'DSS2 Red')
-        fov_arcmin = float(data.get('fov', 10))
+        try:
+            fov_arcmin = _parse_fov(data)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Invalid fov'}), 400
 
         try:
             coord = _resolve_target_coord(target_name, ra_str, dec_str)
@@ -177,6 +211,6 @@ def download_finding_chart_fits():
         response = Response(fits_bytes, mimetype='application/fits')
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({'error': str(e), 'logs': [f'[ERROR] {str(e)}']}), 500
+    except Exception:
+        logger.exception('finding chart FITS download failed')
+        return jsonify({'error': 'FITS download failed.', 'logs': ['[ERROR] FITS download failed.']}), 500

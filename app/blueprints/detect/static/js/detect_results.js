@@ -16,6 +16,17 @@
 
 const CAN_EDIT = document.body.dataset.canEdit === 'true';
 
+// Escape server data before it goes into innerHTML / attribute values.
+function _esc(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // ── In-memory LC cache ────────────────────────────────────────────────────
 const _lcCache = new Map(); // target_name → plot_json string
 
@@ -176,7 +187,7 @@ function fetchCardLightcurve(targetName, cardIdx) {
         if (fetchBtn) { fetchBtn.disabled = false; fetchBtn.innerHTML = fetchBtn._origText || 'Fetch LC'; }
         if (data.success) _fetchLC(targetName, cardIdx, true);
         else {
-            plotDiv.innerHTML = `<div class="card-no-data">Fetch failed: ${data.error || 'Unknown error'}</div>`;
+            plotDiv.innerHTML = `<div class="card-no-data">Fetch failed: ${_esc(data.error || 'Unknown error')}</div>`;
             if (statusEl) { statusEl.textContent = 'Error'; statusEl.className = 'card-lc-status error'; }
         }
     })
@@ -266,7 +277,7 @@ const _TAG_CLASS = {
 };
 function _tagChips(tags) {
     return (tags || []).filter(t => !String(t).startsWith('Host-') || t === 'Host-z')
-        .map(t => `<span class="tag-chip ${_TAG_CLASS[t] || 'tag-warn'}">${t}</span>`).join('');
+        .map(t => `<span class="tag-chip ${_TAG_CLASS[t] || 'tag-warn'}">${_esc(t)}</span>`).join('');
 }
 function _hostBadge(hs) {
     if (hs === 'confirmed') return '<span class="hs-badge hs-confirmed">● Confirmed host</span>';
@@ -347,16 +358,16 @@ function loadTracker(force) {
             tracker.forEach(item => {
                 const src = item.abs_mag_source === 'peak' ? `peak (${item.abs_mag_band || ''})` : item.abs_mag_source === 'discovery' ? 'discovery mag' : '';
                 html += `<tr>
-                    <td><a href="/object/${item.name}" class="tracker-obj-link" target="_blank" rel="noopener noreferrer">${item.name}</a></td>
+                    <td><a href="/object/${encodeURIComponent(item.name || '')}" class="tracker-obj-link" target="_blank" rel="noopener noreferrer">${_esc(item.name)}</a></td>
                     <td style="text-align:center;">${item.score != null ? _scoreChip(item.score) : '—'}</td>
                     <td>${item.host_status ? _hostBadge(item.host_status) : '—'}</td>
                     <td class="td-tags">${_tagChips(item.tags)}</td>
-                    <td class="td-absmag" title="${src}">${_formatAbsMag(item.abs_mag, item.separation_arcsec)}</td>
-                    <td>${item.z != null ? item.z.toFixed(4) : '—'}</td>
-                    <td class="td-catalog">${item.catalog_name}</td>
-                    <td>${item.separation_arcsec != null ? item.separation_arcsec.toFixed(2) : '—'}</td>
-                    <td class="td-date">${item.discoverydate}</td>
-                    <td class="td-date">${item.detect_run_date || '—'}</td>
+                    <td class="td-absmag" title="${_esc(src)}">${_formatAbsMag(item.abs_mag, item.separation_arcsec)}</td>
+                    <td>${item.z != null ? _esc(Number(item.z).toFixed(4)) : '—'}</td>
+                    <td class="td-catalog">${_esc(item.catalog_name)}</td>
+                    <td>${item.separation_arcsec != null ? _esc(Number(item.separation_arcsec).toFixed(2)) : '—'}</td>
+                    <td class="td-date">${_esc(item.discoverydate)}</td>
+                    <td class="td-date">${_esc(item.detect_run_date || '—')}</td>
                 </tr>`;
             });
             html += '</tbody></table></div>';
@@ -410,7 +421,7 @@ function _setCardBusy(card, busy, message = 'Saving…') {
             overlay.setAttribute('role', 'status');
             card.appendChild(overlay);
         }
-        overlay.innerHTML = `<div class="card-busy-box"><span class="tracker-spinner card-busy-spinner"></span><span>${message}</span></div>`;
+        overlay.innerHTML = `<div class="card-busy-box"><span class="tracker-spinner card-busy-spinner"></span><span>${_esc(message)}</span></div>`;
         card.classList.add('card-busy');
         return;
     }
@@ -581,12 +592,12 @@ function _renderCard(card) {
         } else if (done) {
             bar.innerHTML = `
                 <span class="action-lead">${hostId ? 'Closed with host accepted' : 'Closed as no host'}${pinned || rejected ? ' — your decision' : ''}.</span>
-                <button class="btn-decide btn-reopen" onclick="decideReopen('${name}')" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
+                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
         } else if (status === 'followup') {
             bar.innerHTML = `
                 <span class="action-lead">In follow-up${hostId ? ' with host ' + (pinned ? 'chosen by a reviewer' : 'from the rule') : ' without a host'}. DETECT re-screens it daily.</span>
-                <button class="btn-decide btn-done" onclick="decideDone('${name}')" title="Close it (D)">✓ Done <kbd>D</kbd></button>
-                <button class="btn-decide btn-reopen" onclick="decideReopen('${name}')" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
+                <button class="btn-decide btn-done" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Close it (D)">✓ Done <kbd>D</kbd></button>
+                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
         } else {
             let lead;
             if (pinned)            lead = 'Host chosen by you — now decide:';
@@ -597,9 +608,9 @@ function _renderCard(card) {
             const nohostLabel = hostId ? '✗ No host' : '✗ No host · close';
             bar.innerHTML = `
                 <span class="action-lead">${lead}</span>
-                <button class="btn-decide btn-followup" onclick="decideFollowup('${name}')" title="Follow-up (F)${hostId ? ' — accepts the host' : ''}">★ Follow-up <kbd>F</kbd></button>
-                <button class="btn-decide btn-done ${hostId ? '' : 'btn-quiet'}" onclick="decideDone('${name}')" title="Done (D)${hostId ? ' — accepts the host, no follow-up' : ''}">✓ Done <kbd>D</kbd></button>
-                <button class="btn-decide btn-nohost ${hostId ? 'btn-quiet' : ''}" onclick="decideNoHost('${name}')" title="None of the candidates is the host (N)">${nohostLabel} <kbd>N</kbd></button>`;
+                <button class="btn-decide btn-followup" data-name="${_esc(name)}" onclick="decideFollowup(this.dataset.name)" title="Follow-up (F)${hostId ? ' — accepts the host' : ''}">★ Follow-up <kbd>F</kbd></button>
+                <button class="btn-decide btn-done ${hostId ? '' : 'btn-quiet'}" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Done (D)${hostId ? ' — accepts the host, no follow-up' : ''}">✓ Done <kbd>D</kbd></button>
+                <button class="btn-decide btn-nohost ${hostId ? 'btn-quiet' : ''}" data-name="${_esc(name)}" onclick="decideNoHost(this.dataset.name)" title="None of the candidates is the host (N)">${nohostLabel} <kbd>N</kbd></button>`;
         }
     }
 
@@ -613,12 +624,12 @@ function _renderCard(card) {
         r.classList.toggle('row-is-host', isHost);
         let html = '';
         if (isHost) {
-            html += `<span class="badge-host" title="${mine ? 'Chosen by ' + (by || 'a reviewer') : 'DETECT rule v1'}">✓ HOST${mine ? ' · you' : ''}</span>`;
+            html += `<span class="badge-host" title="${_esc(mine ? 'Chosen by ' + (by || 'a reviewer') : 'DETECT rule v1')}">✓ HOST${mine ? ' · you' : ''}</span>`;
         } else if (CAN_EDIT && !done) {
             const z = r.dataset.matchZ || '';
             const kind = r.dataset.ruleKind;
             const prominent = (!hostId && (kind === 'tentative' || kind === 'member')) || (kind === 'member' && r.dataset.ruleRank === '2');
-            html += `<button class="btn-action btn-set-host ${prominent ? 'btn-prominent' : ''}" onclick="pickHost('${name}', '${r.dataset.matchId}', '${z}')" title="Make this row the host">Set host</button>`;
+            html += `<button class="btn-action btn-set-host ${prominent ? 'btn-prominent' : ''}" data-name="${_esc(name)}" data-match-id="${_esc(r.dataset.matchId)}" data-z="${_esc(z)}" onclick="pickHost(this.dataset.name, this.dataset.matchId, this.dataset.z)" title="Make this row the host">Set host</button>`;
         } else {
             html += '<span style="color:#444;">—</span>';
         }

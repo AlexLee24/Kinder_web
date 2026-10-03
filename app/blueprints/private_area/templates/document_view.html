@@ -9,7 +9,8 @@
     <meta name="description" content="{{ title }}">
     {% include '_favicon.html' %}
     <!-- Marked.js for Markdown parsing -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/marked-18.0.14.umd.js') }}" integrity="sha384-2vpGtuKqJvFlwJqYnf/wUMuzUfhUnYBt9oay0e2yaFcq0Dh6/aEbQ8YAOeKGzlYo"></script>
+    <script src="{{ url_for('static', filename='vendor/purify-3.4.16.min.js') }}" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL"></script>
     <style>
         .pa-docs-section {
             background-color: var(--card-bg, #1a1a1a);

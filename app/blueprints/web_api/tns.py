@@ -5,6 +5,9 @@ from app.db.transient import get_tns_statistics, search_tns_objects, get_auto_sn
 from app.services.tns.manual_tns_download import download_TNS_api_hr, addin_database, auto_snoozed
 from . import web_api_bp
 from app.core.auth import admin_required, login_required
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @web_api_bp.route('/api/auto-snooze/manual-run', methods=['POST'])
@@ -32,10 +35,9 @@ def manual_auto_snooze():
                 'error': 'Auto-snooze failed'
             }), 500
             
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
 # ===============================================================================
 # TNS DATA MANAGEMENT
@@ -44,25 +46,29 @@ def manual_auto_snooze():
 @admin_required
 def manual_tns_download():
     
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
     try:
-        data = request.get_json() or {}
-        hour_offset = data.get('hour_offset', 0)
-        
-        # Download TNS data
+        hour_offset = int(data.get('hour_offset', 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'hour_offset must be an integer'}), 400
+
+    work_csv = None
+    try:
+        from app.services.tns.auto_tns_download import new_work_csv_path
+
+        # Download TNS data into a private CSV so concurrent imports never share a file
         utc_now = datetime.now(timezone.utc)
         utc_hr = f"{(utc_now.hour - hour_offset) % 24:02d}"
-        
-        download_success = download_TNS_api_hr(utc_hr, debug=True)
-        
-        if not download_success:
+
+        work_csv = new_work_csv_path(f"manual{utc_hr}")
+        downloaded = download_TNS_api_hr(utc_hr, debug=True, dest=work_csv)
+
+        if not downloaded:
             return jsonify({'error': 'Download failed'}), 500
-        
-        # Import to database from the shared TNS work directory (app/data/tns_api_download_work)
-        from app.paths import TNS_WORK_DIR
-        SAVE_DIR = TNS_WORK_DIR
-        work_csv = SAVE_DIR / "tns_public_objects_WORK.csv"
-        
-        import_success = addin_database(work_csv, debug=True)
+
+        import_success = addin_database(downloaded, debug=True)
         
         if import_success:
             stats = get_tns_statistics()
@@ -71,29 +77,51 @@ def manual_tns_download():
             
             return jsonify({
                 'success': True,
-                'message': f'Successfully downloaded and imported TNS data',
+                'message': 'Successfully downloaded and imported TNS data',
                 'imported_count': latest.get('imported_count', 0),
                 'updated_count': latest.get('updated_count', 0)
             })
         else:
             return jsonify({'error': 'Import failed'}), 500
         
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'TNS download/import failed'}), 500
+    finally:
+        if work_csv is not None:
+            try:
+                work_csv.unlink(missing_ok=True)
+            except Exception as cleanup_err:
+                logger.warning("manual TNS download: could not remove %s: %s", work_csv, cleanup_err)
 
 @web_api_bp.route('/api/tns/search', methods=['POST'])
 @login_required(error='Access denied', status=403)
 def search_tns():
     
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'JSON object body required'}), 400
+    search_term = data.get('search_term', '')
+    object_type = data.get('object_type', '')
+    if not isinstance(search_term, str) or not isinstance(object_type, str):
+        return jsonify({'error': 'search_term and object_type must be strings'}), 400
+    search_term = search_term.strip()
+    object_type = object_type.strip()
     try:
-        data = request.get_json()
-        search_term = data.get('search_term', '').strip()
-        object_type = data.get('object_type', '').strip()
-        limit = min(int(data.get('limit', 100)), 1000)
-        
-        results = search_tns_objects(search_term, object_type, limit)
+        limit = int(data.get('limit', 100))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'limit must be an integer'}), 400
+    limit = max(1, min(limit, 1000))
+
+    try:
+        user = session.get('user') or {}
+        results = search_tns_objects(
+            search_term, object_type, limit,
+            apply_permissions=True,
+            viewer_email=user.get('email'),
+            viewer_is_admin=bool(user.get('is_admin')),
+        )
         
         return jsonify({
             'success': True,
@@ -102,7 +130,8 @@ def search_tns():
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("tns search error: %s", e)
+        return jsonify({'error': 'Search failed'}), 500
 
 @web_api_bp.route('/api/tns/stats')
 @login_required(error='Access denied', status=403)
@@ -112,7 +141,8 @@ def tns_stats_api():
         stats = get_tns_statistics()
         return jsonify({'success': True, 'stats': stats})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("tns stats error: %s", e)
+        return jsonify({'error': 'Failed to load stats'}), 500
 
 @web_api_bp.route('/api/auto-snooze/status')
 @admin_required
@@ -127,8 +157,9 @@ def auto_snooze_status():
                 'finished_count': stats.get('finished_count', 0)
             }
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        logger.exception('Unhandled error in %s', request.path)
+        return jsonify({'error': 'Internal server error'}), 500
 
 @web_api_bp.route('/api/auto-snooze/stats')
 @login_required(error='Access denied', status=403)
@@ -138,4 +169,5 @@ def auto_snooze_stats_api():
         stats = get_auto_snooze_stats()
         return jsonify({'success': True, 'stats': stats})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error("auto-snooze stats error: %s", e)
+        return jsonify({'error': 'Failed to load stats'}), 500

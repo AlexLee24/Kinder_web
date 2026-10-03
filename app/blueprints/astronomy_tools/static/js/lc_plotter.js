@@ -460,26 +460,26 @@ function renderSeriesManager() {
                     <span>Shape</span>
                     <select class="s-shape" style="flex:1">${shapeOpts}</select>
                     <span>size</span>
-                    <input type="number" class="lcp-input-small s-size" min="2" max="30" step="1" value="${cfg.markerSize}">
+                    <input type="number" class="lcp-input-small s-size" min="2" max="30" step="1" value="${escHtml(cfg.markerSize)}">
                 </div>
                 <div class="lcp-series-row">
                     <span>Line</span>
                     <input type="checkbox" class="s-line" ${cfg.showLine ? 'checked' : ''}>
                     <select class="s-lstyle" style="flex:1">${lineOpts}</select>
-                    <input type="number" class="lcp-input-small s-lwidth" min="0.5" max="8" step="0.5" value="${cfg.lineWidth}" title="Line width">
+                    <input type="number" class="lcp-input-small s-lwidth" min="0.5" max="8" step="0.5" value="${escHtml(cfg.lineWidth)}" title="Line width">
                 </div>
                 <div class="lcp-series-row" style="flex-wrap:wrap;gap:4px">
                     <span title="X-values or row indices (0-based) to mark as ★">★ pts</span>
                     <input type="text" class="lcp-input-full s-stars"
                         placeholder="x-values or row indices, comma separated"
-                        value="${[...cfg.starIndices].join(', ')}">
+                        value="${escHtml([...cfg.starIndices].join(', '))}">
                     <span title="Star marker size">★ sz</span>
-                    <input type="number" class="lcp-input-small s-starsize" min="4" max="40" step="1" value="${cfg.starSize != null ? cfg.starSize : 14}">
+                    <input type="number" class="lcp-input-small s-starsize" min="4" max="40" step="1" value="${escHtml(cfg.starSize != null ? cfg.starSize : 14)}">
                 </div>
                 <div class="lcp-series-row s-mwext-row" style="${useMWExt ? '' : 'display:none'}">
                     <span title="Milky Way extinction A (mag)">A_MW</span>
                     <input type="number" class="lcp-input-full s-mwext" step="0.001" min="0" max="10"
-                        placeholder="0.000" value="${cfg.mwExt != null ? cfg.mwExt : 0}">
+                        placeholder="0.000" value="${escHtml(cfg.mwExt != null ? cfg.mwExt : 0)}">
                     <span style="font-size:0.68rem;color:var(--lcp-muted);white-space:nowrap">mag</span>
                 </div>
             </div>
@@ -1342,11 +1342,15 @@ async function _doShare() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ traces, layout, isStatic, password }),
         });
-        if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+        if (!resp.ok) {
+            let msg = `Server error ${resp.status}`;
+            try { const err = await resp.json(); if (err && err.error) msg = err.error; } catch (_) {}
+            throw new Error(msg);
+        }
         const { id } = await resp.json();
         const url = `${location.origin}/lc_plotter/shared/${id}`;
         try { await navigator.clipboard.writeText(url); } catch (_) {}
-        window.open(url, '_blank');
+        window.open(url, '_blank', 'noopener,noreferrer');
         showToast('Link copied & opened!', 'ok');
     } catch (e) {
         showToast('Share failed: ' + e.message, 'error');
@@ -1460,25 +1464,26 @@ function exportDAT() {
 }
 // ─── Utilities ────────────────────────────────────────────────────
 function hexToRgba(hex, alpha) {
-    if (!hex) return `rgba(128,128,128,${alpha})`;
-    if (hex.startsWith('rgba(')) return hex.replace(/[\d.]+\)$/, `${alpha})`);
-    if (hex.startsWith('rgb('))  return hex.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+    if (!hex || typeof hex !== 'string') return `rgba(128,128,128,${alpha})`;
+    // Only accept well-formed rgb()/rgba() strings (values may come from shared/imported settings).
+    if (/^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*\)$/.test(hex)) return hex.replace(/[\d.]+\s*\)$/, `${alpha})`);
+    if (/^rgb\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*\)$/.test(hex)) return hex.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
     const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return r
         ? `rgba(${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)},${alpha})`
         : `rgba(128,128,128,${alpha})`;
 }
 function colorToHex(color) {
-    if (!color) return '#888888';
-    if (color.startsWith('#') && color.length === 7) return color;
-    if (color.startsWith('#') && color.length === 4)
+    if (!color || typeof color !== 'string') return '#888888';
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+    if (/^#[0-9a-f]{3}$/i.test(color))
         return '#' + color.slice(1).split('').map(c => c+c).join('');
     const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
     if (m) return '#' + [m[1],m[2],m[3]].map(x => (+x).toString(16).padStart(2,'0')).join('');
     return '#888888';
 }
 function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function showToast(msg, type = 'ok') {

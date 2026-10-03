@@ -11,6 +11,15 @@ from PIL import Image
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astroquery.vizier import Vizier
+from urllib.parse import urlencode
+from .helpers import _FINDING_CHART_SURVEYS
+
+# Only these survey identifiers may reach the upstream URL builders.
+_ALLOWED_SURVEYS = frozenset(s['value'] for s in _FINDING_CHART_SURVEYS) | {'DSS1'}
+
+
+def _is_allowed_survey(survey):
+    return isinstance(survey, str) and survey in _ALLOWED_SURVEYS
 
 
 def _derotate_fits(raw, header):
@@ -39,7 +48,7 @@ def _derotate_fits(raw, header):
             # FLIP_TOP_BOTTOM (applied after) inverts chirality, so negate angle here
             raw = nd_rotate(raw, -angle, reshape=False, cval=fill_val, order=1)
             angle_applied = angle
-    except Exception as exc:
+    except Exception:
         pass  # fallback: no rotation
     return raw, angle_applied
 
@@ -87,6 +96,9 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
     Returns (bytes_or_None, list_of_log_strings)."""
     timeout = 45
     logs = []
+    if not _is_allowed_survey(survey):
+        logs.append('[ERROR] Unknown survey')
+        return None, logs
     try:
         # ------------------------------------------------------------------ DSS
         if survey.startswith('DSS'):
@@ -98,11 +110,10 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 'DSS1':      'poss1_red',
             }
             dss_name = survey_map.get(survey, 'poss2ukstu_red')
-            url = (
-                f'https://archive.stsci.edu/cgi-bin/dss_search'
-                f'?v={dss_name}&r={ra_deg}&d={dec_deg}&e=J2000'
-                f'&h={fov_arcmin}&w={fov_arcmin}&f=fits&c=gz&fov=NONE&v3='
-            )
+            url = 'https://archive.stsci.edu/cgi-bin/dss_search?' + urlencode({
+                'v': dss_name, 'r': ra_deg, 'd': dec_deg, 'e': 'J2000',
+                'h': fov_arcmin, 'w': fov_arcmin, 'f': 'fits', 'c': 'gz', 'fov': 'NONE', 'v3': '',
+            })
             logs.append(f'[DSS] GET {url[:80]}...')
             r = requests.get(url, timeout=timeout)
             logs.append(f'[DSS] HTTP {r.status_code}  size={len(r.content)} bytes')
@@ -119,7 +130,7 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 buf = io.BytesIO()
                 img_pil.save(buf, format='PNG')
                 return buf.getvalue(), logs
-            logs.append(f'[DSS] ERROR: non-200 response')
+            logs.append('[DSS] ERROR: non-200 response')
             return None, logs
 
         # --------------------------------------------------------------- DESI LS
@@ -127,21 +138,19 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
             layer = 'ls-dr10'
             pixscale = fov_arcmin * 60 / 900  # arcsec/pixel for 900 px
             if 'color' in survey:
-                url = (
-                    f'https://www.legacysurvey.org/viewer/cutout.jpg'
-                    f'?ra={ra_deg}&dec={dec_deg}&size=900&layer={layer}&pixscale={pixscale:.4f}'
-                )
+                url = 'https://www.legacysurvey.org/viewer/cutout.jpg?' + urlencode({
+                    'ra': ra_deg, 'dec': dec_deg, 'size': 900, 'layer': layer, 'pixscale': f'{pixscale:.4f}',
+                })
                 logs.append(f'[DESI] GET color JPG  pixscale={pixscale:.4f}"')
                 r = requests.get(url, timeout=timeout)
                 logs.append(f'[DESI] HTTP {r.status_code}  size={len(r.content)} bytes')
                 return (r.content if r.status_code == 200 else None), logs
             else:
                 band = survey.split('-')[-1].lower()
-                url = (
-                    f'https://www.legacysurvey.org/viewer/cutout.fits'
-                    f'?ra={ra_deg}&dec={dec_deg}&size=900&layer={layer}'
-                    f'&pixscale={pixscale:.4f}&bands={band}'
-                )
+                url = 'https://www.legacysurvey.org/viewer/cutout.fits?' + urlencode({
+                    'ra': ra_deg, 'dec': dec_deg, 'size': 900, 'layer': layer,
+                    'pixscale': f'{pixscale:.4f}', 'bands': band,
+                })
                 logs.append(f'[DESI] GET {band}-band FITS  pixscale={pixscale:.4f}"')
                 r = requests.get(url, timeout=timeout)
                 logs.append(f'[DESI] HTTP {r.status_code}  size={len(r.content)} bytes')
@@ -170,10 +179,9 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 filters = survey.split('-')[-1].lower()
 
             # Step 1: resolve actual image filenames
-            fn_url = (
-                f'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py'
-                f'?ra={ra_deg}&dec={dec_deg}&filters={filters}&type=stack'
-            )
+            fn_url = 'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py?' + urlencode({
+                'ra': ra_deg, 'dec': dec_deg, 'filters': filters, 'type': 'stack',
+            })
             logs.append(f'[PS1] Querying filenames: filters={filters}')
             fr = requests.get(fn_url, timeout=timeout)
             logs.append(f'[PS1] Filenames HTTP {fr.status_code}')
@@ -206,11 +214,10 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 if not all([r_f, g_f, b_f]):
                     logs.append(f'[PS1] ERROR: missing bands for color — {file_map}')
                     return None, logs
-                cut_url = (
-                    f'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi'
-                    f'?ra={ra_deg}&dec={dec_deg}&size={src_px}&format=jpg'
-                    f'&output_size={size_px}&red={r_f}&green={g_f}&blue={b_f}'
-                )
+                cut_url = 'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi?' + urlencode({
+                    'ra': ra_deg, 'dec': dec_deg, 'size': src_px, 'format': 'jpg',
+                    'output_size': size_px, 'red': r_f, 'green': g_f, 'blue': b_f,
+                })
                 logs.append('[PS1] Fetching color cutout (JPG)')
                 cr = requests.get(cut_url, timeout=timeout)
                 logs.append(f'[PS1] Cutout HTTP {cr.status_code}  size={len(cr.content)} bytes')
@@ -220,11 +227,10 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
                 if not fname:
                     logs.append(f'[PS1] ERROR: band {filters} not available')
                     return None, logs
-                cut_url = (
-                    f'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi'
-                    f'?ra={ra_deg}&dec={dec_deg}&size={src_px}&format=jpg'
-                    f'&output_size={size_px}&red={fname}'
-                )
+                cut_url = 'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi?' + urlencode({
+                    'ra': ra_deg, 'dec': dec_deg, 'size': src_px, 'format': 'jpg',
+                    'output_size': size_px, 'red': fname,
+                })
                 logs.append(f'[PS1] Fetching {filters}-band cutout (JPG, as grayscale red channel)')
                 cr = requests.get(cut_url, timeout=timeout)
                 logs.append(f'[PS1] Cutout HTTP {cr.status_code}  size={len(cr.content)} bytes')
@@ -234,13 +240,16 @@ def _fetch_survey_image(survey, ra_deg, dec_deg, fov_arcmin):
         return None, logs
     except Exception as e:
         traceback.print_exc()
-        logs.append(f'[ERROR] Exception: {e}')
+        logs.append(f'[ERROR] Exception: {type(e).__name__}')
         return None, logs
 
 def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
     """Fetch raw FITS bytes for selected survey/FOV. Returns (bytes_or_None, logs)."""
     timeout = 45
     logs = []
+    if not _is_allowed_survey(survey):
+        logs.append('[ERROR] Unknown survey')
+        return None, logs
     try:
         if survey.startswith('DSS'):
             survey_map = {
@@ -251,11 +260,10 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
                 'DSS1': 'poss1_red',
             }
             dss_name = survey_map.get(survey, 'poss2ukstu_red')
-            url = (
-                f'https://archive.stsci.edu/cgi-bin/dss_search'
-                f'?v={dss_name}&r={ra_deg}&d={dec_deg}&e=J2000'
-                f'&h={fov_arcmin}&w={fov_arcmin}&f=fits&c=gz&fov=NONE&v3='
-            )
+            url = 'https://archive.stsci.edu/cgi-bin/dss_search?' + urlencode({
+                'v': dss_name, 'r': ra_deg, 'd': dec_deg, 'e': 'J2000',
+                'h': fov_arcmin, 'w': fov_arcmin, 'f': 'fits', 'c': 'gz', 'fov': 'NONE', 'v3': '',
+            })
             logs.append(f'[DSS] GET FITS {url[:80]}...')
             r = requests.get(url, timeout=timeout)
             logs.append(f'[DSS] HTTP {r.status_code}  size={len(r.content)} bytes')
@@ -272,11 +280,10 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
             pixscale = fov_arcmin * 60 / 900
             band = survey.split('-')[-1].lower() if '-' in survey else 'grz'
             bands = 'grz' if band == 'color' else band
-            url = (
-                f'https://www.legacysurvey.org/viewer/cutout.fits'
-                f'?ra={ra_deg}&dec={dec_deg}&size=900&layer={layer}'
-                f'&pixscale={pixscale:.4f}&bands={bands}'
-            )
+            url = 'https://www.legacysurvey.org/viewer/cutout.fits?' + urlencode({
+                'ra': ra_deg, 'dec': dec_deg, 'size': 900, 'layer': layer,
+                'pixscale': f'{pixscale:.4f}', 'bands': bands,
+            })
             logs.append(f'[DESI] GET FITS bands={bands} pixscale={pixscale:.4f}"')
             r = requests.get(url, timeout=timeout)
             logs.append(f'[DESI] HTTP {r.status_code}  size={len(r.content)} bytes')
@@ -287,10 +294,9 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
             src_px = max(240, int(fov_arcmin * 60 / 0.25))
             req_filter = 'r' if 'color' in survey else survey.split('-')[-1].lower()
 
-            fn_url = (
-                f'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py'
-                f'?ra={ra_deg}&dec={dec_deg}&filters={req_filter}&type=stack'
-            )
+            fn_url = 'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py?' + urlencode({
+                'ra': ra_deg, 'dec': dec_deg, 'filters': req_filter, 'type': 'stack',
+            })
             logs.append(f'[PS1] Querying filenames: filters={req_filter}')
             fr = requests.get(fn_url, timeout=timeout)
             logs.append(f'[PS1] Filenames HTTP {fr.status_code}')
@@ -313,11 +319,10 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
             if not fname:
                 return None, logs
 
-            cut_url = (
-                f'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi'
-                f'?ra={ra_deg}&dec={dec_deg}&size={src_px}&format=fits'
-                f'&output_size={size_px}&red={fname}'
-            )
+            cut_url = 'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi?' + urlencode({
+                'ra': ra_deg, 'dec': dec_deg, 'size': src_px, 'format': 'fits',
+                'output_size': size_px, 'red': fname,
+            })
             logs.append(f'[PS1] Fetching {req_filter}-band FITS cutout')
             cr = requests.get(cut_url, timeout=timeout)
             logs.append(f'[PS1] Cutout HTTP {cr.status_code}  size={len(cr.content)} bytes')
@@ -327,7 +332,7 @@ def _fetch_survey_fits(survey, ra_deg, dec_deg, fov_arcmin):
         return None, logs
     except Exception as e:
         traceback.print_exc()
-        logs.append(f'[ERROR] Exception: {e}')
+        logs.append(f'[ERROR] Exception: {type(e).__name__}')
         return None, logs
 
 def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
@@ -388,7 +393,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     continue
         logs.append(f'[Vizier] Tycho-2 found {n_tyc} stars')
     except Exception as e:
-        logs.append(f'[Vizier] Tycho-2 ERROR: {e}')
+        logs.append(f'[Vizier] Tycho-2 ERROR: {type(e).__name__}')
 
     # ── 2. UCAC4: adds faint stars not covered by Tycho-2 ───────────────────
     PRIORITY   = [('V', 'Vmag'), ('r', 'rmag'), ('R', 'f.mag')]
@@ -442,7 +447,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     continue
         logs.append(f'[Vizier] UCAC4 added {n_ucac}  total={len(stars)}')
     except Exception as e:
-        logs.append(f'[Vizier] UCAC4 ERROR: {e}')
+        logs.append(f'[Vizier] UCAC4 ERROR: {type(e).__name__}')
 
     # ── 3. SIMBAD: fetch common names for matched stars ──────────────────────
     try:
@@ -477,7 +482,7 @@ def _query_nearby_stars(ra_deg, dec_deg, fov_arcmin, mag_limit):
                     n_named += 1
             logs.append(f'[SIMBAD] Named {n_named} stars')
     except Exception as e:
-        logs.append(f'[SIMBAD] WARN: {e}')
+        logs.append(f'[SIMBAD] WARN: {type(e).__name__}')
 
     star_list   = list(stars.values())
     band_counts = {}

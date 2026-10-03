@@ -31,19 +31,20 @@
             </a>
             <p class="login-hint">New accounts start as guests; an admin upgrades your role.</p>
 
-            <details class="admin-login-section">
-                <summary>Direct access (local admin)</summary>
-                <form action="{{ url_for('auth.admin_login') }}" method="POST" class="admin-login-form" autocomplete="off">
+            <details class="admin-login-section" open>
+                <summary>Direct login</summary>
+                <form action="{{ url_for('auth.password_login') }}" method="POST" class="admin-login-form">
                     <label class="field">
                         <span>Username</span>
-                        <input type="text" name="username" class="admin-input" required autocomplete="username" spellcheck="false">
+                        <input type="text" name="username" class="admin-input" required maxlength="254" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Username or email">
                     </label>
                     <label class="field">
                         <span>Password</span>
-                        <input type="password" name="password" class="admin-input" required autocomplete="current-password">
+                        <input type="password" name="password" class="admin-input" required maxlength="1024" autocomplete="current-password">
                     </label>
                     <button type="submit" class="admin-login-btn">Log In</button>
                 </form>
+                <p class="login-hint">Direct-login accounts are created by an administrator. You can change your password after signing in.</p>
             </details>
         </section>
     </main>

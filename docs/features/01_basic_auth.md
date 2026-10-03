@@ -213,7 +213,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 |---|---|---|
 | 標題 | Welcome to Kinder / Kilonova Finder | — |
 | Google 登入 | `Sign in with Google` 連結 | `GET /auth/google`（`auth.google_login`） |
-| Direct Access（本機管理員） | `<form method="POST" action="{{ url_for('auth.admin_login') }}">`：`username`（text, required）、`password`（password, required） | `POST /admin-login`（`auth.admin_login`） |
+| Direct login | `<form method="POST" action="{{ url_for('auth.password_login') }}">`：`username`（text, required；也接受 email）、`password`（password, required） | `POST /login/password`（`auth.password_login`；無 DB 帳號且符合 `ADMIN_USERNAME` 時改走 env 本機管理員） |
 | 說明清單 | After logging in, you can: View your profile / Access more features / Get personalized experience | — |
 
 - **無 JS 檔**（僅 `_navbar.html` 內嵌 script）。
@@ -291,11 +291,45 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
    - Google 未回 userinfo / state 驗證失敗 / DB 例外：flash `Login failed, please try again.` → `/login`。
 4. `session['pending_invitation']`、`session['next_url']` 全站沒有任何地方寫入，因此登入後**永遠回首頁**。
 
-### B. 本機管理員登入（Direct Access）
+### B. 本機管理員登入（kinder.env，相容用）
 
-1. `/login` 表單 → `POST /admin-login`。
-2. 帳密符合 → session 設為 `ADMIN_LOCAL_EMAIL` 管理員 → flash `Welcome Administrator!` → `/`。
-3. 不符 → flash `Invalid admin credentials.` → `/login`。
+1. `/login` 不再有獨立的「local admin」表單；統一使用下方 B2 的「Direct login」。
+2. `POST /login/password` 若輸入的帳號在 DB 中找不到，且 `ADMIN_USERNAME` / `ADMIN_PASSWORD` /
+   `ADMIN_LOCAL_EMAIL` 三者都已設定、輸入等於 `ADMIN_USERNAME`（不分大小寫），才改用 env 帳密比對
+   （常數時間比較），成功後 session 綁定 `ADMIN_LOCAL_EMAIL` 的 DB 列（角色一律取自 DB）。
+3. 舊的 `POST /admin-login` 路由保留給舊客戶端，行為相同。
+4. 節流：同 IP 5 分鐘內失敗 5 次、同 username 1 小時內失敗 10 次即暫停；每次失敗寫 WARNING log。
+5. 正式環境除非必要請不要設定這三個變數（未設定即停用）。
+
+### B2. 帳號密碼登入（Direct login；管理員建立的帳號，無自行註冊）
+
+- **帳號**：管理員建立的帳號以 **username + 密碼** 登入（`auth.users.username`，
+  1–32 字元、可用中文等任何語言，不可含空白、`@` 與 `< > " ' & / \ \``，`lower(username)` 唯一；非 ASCII 帳號的內部 email 為 `u-<雜湊>@users.invalid`）。email 變成選填：
+  沒填 email 時存放保留網域的佔位地址 `<小寫 username>@users.invalid`（RFC 2606，永遠收不到信也
+  不可能通過 Google 驗證）；email 仍是內部身分鍵（session、群組、留言等）。佔位地址在 UI 中隱藏
+  （管理員使用者表、個人資料頁顯示 username 或 `—`），Google 登入也拒絕此網域（`is_placeholder_email()`）。
+- **建立**：只有管理員能在 Admin → Users → `Add User`（`POST /admin/add-user`）建立：
+  (a) Direct login：Username *、Password *、Display name（選填）、Email（選填）、Role、
+  「Require a new password at first login」（預設勾選）；或 (b) Google 帳號：只填 Email（不填 username/密碼；
+  若 email 已存在則沿用舊行為：更新角色）。username / email 重複回 409。
+  使用者列按 `Set password` / `Reset password`（`POST /admin/set-password`）時，若該帳號還沒有 username
+  必須同時設定一個（已有則唯讀顯示）；`Remove password`（`POST /admin/clear-password`）。沒有任何公開註冊路由。
+- **登入**：`/login` 只有一個「Direct login」區塊：`Username`（也接受 email）+ `Password` →
+  `POST /login/password`（含 `@` 以 email 比對，否則以 username 比對，皆不分大小寫；舊欄位名 `email` 仍接受）。
+  錯誤一律顯示 `Invalid username or password.`，帳號不存在、沒設密碼、密碼錯誤的回應與耗時相同（防帳號列舉）。
+- **首次登入強制改密碼**：管理員設密碼時預設勾選「Require a new password」→ 登入後只能進
+  `GET/POST /account/password`，其他頁面導回該頁、API 回 403（只限用密碼登入的 session，Google 登入不受影響）。
+- **改密碼**：`/account/password`（頁面顯示 username）需輸入目前密碼；有密碼的帳號在個人資料頁都有連結。
+- **安全機制**
+  - 密碼以 werkzeug scrypt（含 salt）雜湊存於 `auth.users.password_hash`；雜湊從不被選入 user dict / session / JSON。
+  - 管理員設定的密碼**沒有長度或格式限制**（可用中文，只要非空、≤ 1024 字元）。
+  - 使用者自己改密碼時的規則：10–1024 字元、前後不可有空白、不可過於單調、不可包含 email 帳號名稱或 username（長度 ≥ 4 時）。
+  - 暴力破解：同 IP 15 分鐘內失敗 10 次；同「帳號 + IP」15 分鐘內失敗 5 次；同帳號（所有 IP 合計）
+    15 分鐘內失敗 50 次即暫停（避免他人以固定帳號鎖死使用者；計數跨 gunicorn worker 共用）。
+  - 改密碼、管理員重設、「Log out all devices」、管理員「Log out everywhere」時 `auth.users.session_version` +1，
+    該帳號其他裝置的 session 立即失效。
+  - 一般 admin 不能設定其他 admin / super admin 的密碼（可冒用身分），只有 super admin 可以；自己的可以。
+  - 登入時重建 session（防 session fixation），跨站 POST 由同源檢查擋下；log 不記錄密碼。
 
 ### C. 登出
 

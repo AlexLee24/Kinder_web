@@ -13,6 +13,7 @@
 {% set _pic = user_data.picture if user_data and user_data.picture else session.user.picture %}
 {% set _is_admin = session.user.get('role') == 'admin' or session.user.is_admin %}
 {% set _is_guest = not _is_admin and session.user.get('role', 'guest') == 'guest' %}
+{% set _placeholder = user_data and user_data.has_placeholder_email %}
 {% set _since = (user_data.join_date or user_data.invited_at) if user_data else None %}
 <body>
     {% include '_navbar.html' %}
@@ -42,7 +43,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
                     </button>
                 </div>
-                <p class="profile-email">{{ session.user.email }}</p>
+                <p class="profile-email">{{ user_data.username if _placeholder else session.user.email }}</p>
                 <div class="profile-chips">
                     {% if _is_admin %}<span class="kw-chip role-admin">Administrator</span>
                     {% elif _is_guest %}<span class="kw-chip">Guest</span>
@@ -54,7 +55,7 @@
             <dl class="profile-facts">
                 <div><dt>Groups</dt><dd>{{ user_groups|length }}</dd></div>
                 <div><dt>Member since</dt><dd>{{ (_since|string)[:10] if _since else '—' }}</dd></div>
-                <div><dt>API key</dt><dd>{% if user_data and user_data.api_key %}<span class="kw-dot is-ok"></span> Active{% elif user_data and user_data.api_key_request_pending %}<span class="kw-dot is-warn"></span> Pending{% else %}None{% endif %}</dd></div>
+                <div><dt>API key</dt><dd>{% if user_data and user_data.has_api_key %}<span class="kw-dot is-ok"></span> Active{% elif user_data and user_data.api_key_request_pending %}<span class="kw-dot is-warn"></span> Pending{% else %}None{% endif %}</dd></div>
             </dl>
         </section>
 
@@ -73,12 +74,18 @@
                         <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg>Account</h2>
                     </div>
                     <dl class="info-list">
-                        <div><dt>Email</dt><dd>{{ session.user.email }}</dd></div>
+                        <div><dt>Email</dt><dd>{{ '—' if _placeholder else session.user.email }}</dd></div>
+                        {% if user_data and user_data.username %}<div><dt>Username</dt><dd>{{ user_data.username }}</dd></div>{% endif %}
                         <div><dt>Account type</dt><dd>{{ 'Administrator' if _is_admin else ('Guest' if _is_guest else 'User') }}</dd></div>
                         <div><dt>Groups</dt><dd>{{ user_groups|length }} group{{ 's' if user_groups|length != 1 else '' }}</dd></div>
                         {% if _since %}<div><dt>Member since</dt><dd>{{ (_since|string)[:10] }}</dd></div>{% endif %}
-                        <div><dt>Sign-in</dt><dd>Google account</dd></div>
+                        <div><dt>Sign-in</dt><dd>{% if user_data and user_data.has_password %}Username &amp; password · <a href="{{ url_for('auth.change_password') }}">Change password</a>{% else %}Google account{% endif %}</dd></div>
                     </dl>
+                    <form class="sessions-row" action="{{ url_for('auth.logout_all_devices') }}" method="POST"
+                          onsubmit="return confirm('Log out on all devices, including this one?');">
+                        <span>Signed in somewhere you don't recognise?</span>
+                        <button type="submit" class="kw-btn kw-btn-sm kw-btn-ghost">Log out all devices</button>
+                    </form>
                 </section>
 
                 <!-- ── API key ── -->
@@ -89,25 +96,14 @@
                         <a href="{{ url_for('astronomy_tools.api_index') }}" class="kw-panel-link">API docs →</a>
                     </div>
 
-                    {% if user_data and user_data.api_key %}
+                    {% if user_data and user_data.has_api_key %}
                     <div class="api-key-row">
-                        <input type="password" id="apiKeyDisplay" readonly value="{{ user_data.api_key }}" aria-label="Your API key">
-                        <button onclick="toggleApiKeyVisibility(event)" class="kw-btn kw-btn-sm">Show</button>
-                        <button onclick="copyApiKey()" class="kw-btn kw-btn-sm" title="Copy" aria-label="Copy API key">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            Copy
-                        </button>
+                        <span class="kw-chip kw-chip-green api-key-hint" id="apiKeyStatus">Active (…{{ user_data.api_key_hint or '????' }})</span>
+                        {% if user_data.api_key_last_used_at %}<span class="api-last-used">last used {{ user_data.api_key_last_used_at[:16]|replace('T', ' ') }}</span>{% endif %}
                     </div>
                     <div class="api-key-foot">
-                        <span class="api-warn">Keep this key private — it acts as your account.</span>
-                        {% if user_data.api_key_request_pending %}
-                        <button class="kw-btn kw-btn-sm" disabled>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            Reset requested
-                        </button>
-                        {% else %}
-                        <button onclick="requestApiKey(event, true)" class="kw-btn kw-btn-sm kw-btn-tinted">Request reset</button>
-                        {% endif %}
+                        <span class="api-warn">The key is shown only once, when it is issued. Lost it? Regenerate it — the old key stops working immediately.</span>
+                        <button onclick="regenerateApiKey(event)" class="kw-btn kw-btn-sm kw-btn-tinted">Regenerate key</button>
                     </div>
 
                     {% elif user_data and user_data.api_key_request_pending %}
@@ -145,11 +141,11 @@
                         <div class="group-actions">
                             {% if group.is_member %}
                                 <span class="kw-chip kw-chip-green">Joined</span>
-                                <button class="kw-btn kw-btn-sm kw-btn-ghost" onclick="leaveGroup('{{ group.name }}')">Leave</button>
+                                <button class="kw-btn kw-btn-sm kw-btn-ghost" data-group="{{ group.name }}" onclick="leaveGroup(this.dataset.group)">Leave</button>
                             {% elif group.request_status == 'request' %}
                                 <span class="kw-chip kw-chip-gold"><span class="kw-dot is-warn"></span>Pending</span>
                             {% else %}
-                                <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="askToJoinGroup('{{ group.name }}')">Ask to join</button>
+                                <button class="kw-btn kw-btn-sm kw-btn-tinted" data-group="{{ group.name }}" onclick="askToJoinGroup(this.dataset.group)">Ask to join</button>
                             {% endif %}
                         </div>
                     </div>

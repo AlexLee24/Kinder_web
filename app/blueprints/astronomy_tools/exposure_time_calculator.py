@@ -1,8 +1,11 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — exposure_time_calculator (split from astronomy_tools_routes.py)."""
 import os
+import logging
 from flask import render_template, request, jsonify, Response
 from . import astronomy_tools_bp
 from .helpers import _CASTOR_ETC_BODY_PATH, _CASTOR_PRESETS_PATH
+
+logger = logging.getLogger(__name__)
 
 
 @astronomy_tools_bp.route('/exposure_time_calculator')
@@ -55,8 +58,9 @@ def api_exposure_time_calculator():
         return jsonify(result.model_dump())
     except ValidationError as e:
         return _castor_validation_error_response(e)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        logger.exception('exposure time calculation failed')
+        return jsonify({'error': 'Calculation failed; check the input values.'}), 400
 
 @astronomy_tools_bp.route('/api/exposure_time_calculator/batch', methods=['POST'])
 def api_exposure_time_calculator_batch():
@@ -73,5 +77,6 @@ def api_exposure_time_calculator_batch():
         return jsonify(result.model_dump())
     except ValidationError as e:
         return _castor_validation_error_response(e)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        logger.exception('exposure time calculation failed')
+        return jsonify({'error': 'Calculation failed; check the input values.'}), 400

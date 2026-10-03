@@ -27,8 +27,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Removed editToggle/server-controlled editable setting — client-side editing always allowed.
 
+    // Markdown -> sanitised HTML. If DOMPurify failed to load, fall back to plain
+    // text rather than injecting unsanitised HTML.
+    const renderSafe = (target, text) => {
+        if (window.DOMPurify) {
+            target.innerHTML = DOMPurify.sanitize(marked.parse(text || ''));
+        } else {
+            target.textContent = text || '';
+        }
+    };
+
     const renderMarkdown = () => {
-        contentDiv.innerHTML = marked.parse(markdownText || '');
+        renderSafe(contentDiv, markdownText);
     };
 
     const switchMode = (enableEdit) => {
@@ -54,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 editor.focus();
                 const previewPane = document.getElementById('previewPane');
                 if (previewPane) {
-                    previewPane.innerHTML = marked.parse(editor.value || '');
+                    renderSafe(previewPane, editor.value);
                 }
             }
             setStatus('', false);
@@ -67,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editor.addEventListener('input', () => {
             const previewPane = document.getElementById('previewPane');
             if (previewPane) {
-                previewPane.innerHTML = marked.parse(editor.value || '');
+                renderSafe(previewPane, editor.value);
             }
         });
     }
@@ -85,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             contentDiv.innerHTML = `
                 <div class="loading-doc" style="color: #ef4444;">
-                    Error loading document: ${err.message}
+                    Error loading document: ${String(err.message || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}
                 </div>
             `;
             setStatus('Failed to load document.', true);

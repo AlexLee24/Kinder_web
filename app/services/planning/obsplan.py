@@ -666,8 +666,15 @@ def LST_from_local(dt_local, observer_lon_deg):
     Returns:
         list: [hour, minute] of LMST.
     """
-    gmst = compute_sidereal_time(None, dt_local, as_type='datetime')
-    return [gmst.hour, gmst.minute]
+    # ephem works in naive UTC; convert an aware datetime first.
+    if dt_local.tzinfo is not None:
+        dt_local = dt_local.astimezone(pytz.utc).replace(tzinfo=None)
+    tmp_obs = ephem.Observer()
+    tmp_obs.lon = str(observer_lon_deg)   # a string is parsed as degrees by ephem
+    tmp_obs.date = ephem.Date(dt_local)
+    lst_hours = float(tmp_obs.sidereal_time()) * 12.0 / np.pi
+    total_min = int(lst_hours * 60) % (24 * 60)
+    return [total_min // 60, total_min % 60]
 
 # -----------------------------------------------------------------------------
 # Calculate twilight times (sunset, civil, nautical, astronomical) for a given date.
@@ -704,7 +711,7 @@ def calculate_twilight_times(obsframe, startdate, verbose=False):
 # -----------------------------------------------------------------------------
 # Plot the observing tracks for targets along with sun/moon tracks and twilight regions.
 # -----------------------------------------------------------------------------
-def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None, mode='nearest', plotmeantransit=False, toptime='local', timezone='auto', n_steps=1000, simpletracks=False, azcmap='rainbow', light_fill=False, bgcolor='k', xaxisformatter=mdates.DateFormatter('%H:%M'), figsize=(14,8), dpi=200, savepath='', showplot=False):
+def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None, mode='nearest', plotmeantransit=False, toptime='local', timezone='auto', n_steps=1000, simpletracks=False, azcmap='rainbow', light_fill=False, bgcolor='k', xaxisformatter=None, figsize=(14,8), dpi=200, savepath='', showplot=False):
     """
     Plot altitude tracks for one or more targets over a night, including:
       - Target altitude tracks (optionally colored by azimuth)
@@ -727,7 +734,7 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
         azcmap (str): Colormap for azimuth.
         light_fill (bool): If True, use light color fill for twilight.
         bgcolor (str): Background color for twilight fills.
-        xaxisformatter (mdates.DateFormatter): Formatter for the x-axis.
+        xaxisformatter (mdates.DateFormatter): Formatter for the x-axis (default '%H:%M').
         figsize (tuple): Figure size.
         dpi (int): Dots per inch for saved figure.
         savepath (str): Path to save the figure.
@@ -736,6 +743,8 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
     Returns:
         None
     """
+    if xaxisformatter is None:
+        xaxisformatter = mdates.DateFormatter('%H:%M')
     obsstart = ephem.Date(obsstart)
     obsend = ephem.Date(obsend)
     if obsend < obsstart:
@@ -882,7 +891,7 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
         for t in utc_ticks:
             t_utc = datetime.strptime(obsday + " " + t.get_text(), '%Y/%m/%d %H:%M').replace(tzinfo=pytz.utc)
             if t_utc.time() < utctime0.time():
-                t_utc = t_utc.replace(day=t_utc.day + 1)
+                t_utc = t_utc + timedelta(days=1)
             t_lst = LST_from_local(t_utc, observer.lon * 180 / np.pi)
             xtl.append(f"{t_lst[0]}:{t_lst[1]}")
         axin3.xaxis.set_ticklabels(xtl)
@@ -899,7 +908,7 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
 # -----------------------------------------------------------------------------
 # Wrapper function to plot night observing tracks with light_fill disabled.
 # -----------------------------------------------------------------------------
-def plot_night_observing_tracks(target_list, observer, obsstart, obsend, weights=None, mode='nearest', plotmeantransit=False, toptime='local', timezone='auto', n_steps=1000, simpletracks=False, azcmap='rainbow', bgcolor='k', xaxisformatter=mdates.DateFormatter('%H:%M'), figsize=(14,8), dpi=200, savepath='', showplot=False):
+def plot_night_observing_tracks(target_list, observer, obsstart, obsend, weights=None, mode='nearest', plotmeantransit=False, toptime='local', timezone='auto', n_steps=1000, simpletracks=False, azcmap='rainbow', bgcolor='k', xaxisformatter=None, figsize=(14,8), dpi=200, savepath='', showplot=False):
     """
     Wrapper for plot_observing_tracks with light_fill set to False.
 

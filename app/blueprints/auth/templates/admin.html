@@ -19,6 +19,11 @@
 {% set ic_check %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>{% endset %}
 {% set ic_key %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>{% endset %}
 {% set ic_play %}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/></svg>{% endset %}
+{# Shown identity: username for accounts whose email is a placeholder (…@users.invalid) #}
+{% macro who(email) -%}
+{%- set _u = users[email] if email in users else none -%}
+{{ _u.username if _u and _u.has_placeholder_email and _u.username else email }}
+{%- endmacro %}
 <body class="kw-admin-body">
     {% include '_navbar.html' %}
     {% include '_admin_nav.html' %}
@@ -89,7 +94,7 @@
                         <div class="kw-row req-row">
                             {{ avatar(users[req.email].picture if req.email in users else '', req.user_name, 'kw-avatar-sm') }}
                             <div class="kw-row-main">
-                                <b>{{ req.user_name or req.email }}</b>
+                                <b>{{ req.user_name or who(req.email) }}</b>
                                 <small>wants to join <span class="group-badge">{{ req.group_name }}</span> · {{ stamp(req.created_at) }}</small>
                             </div>
                             <div class="kw-row-trail">
@@ -102,12 +107,12 @@
                         <div class="kw-row req-row">
                             {{ avatar(users[req.email].picture if req.email in users else '', req.name, 'kw-avatar-sm') }}
                             <div class="kw-row-main">
-                                <b>{{ req.name or req.email }}</b>
+                                <b>{{ req.name or who(req.email) }}</b>
                                 <small>{{ 'asks for a key reset' if req.has_key else 'asks for an API key' }} · {{ stamp(req.api_key_requested_at) }}</small>
                             </div>
                             <div class="kw-row-trail">
-                                <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="adminIssueApiKey('{{ req.email }}', this)">{{ ic_key }} Assign key</button>
-                                <button class="kw-icon-btn is-danger" title="Dismiss" aria-label="Dismiss" onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">{{ ic_x }}</button>
+                                <button class="kw-btn kw-btn-sm kw-btn-tinted" data-email="{{ req.email }}" onclick="adminIssueApiKey(this.dataset.email, this)">{{ ic_key }} Assign key</button>
+                                <button class="kw-icon-btn is-danger" title="Dismiss" aria-label="Dismiss" data-email="{{ req.email }}" onclick="adminDismissApiKeyRequest(this.dataset.email, this)">{{ ic_x }}</button>
                             </div>
                         </div>
                         {% endfor %}
@@ -130,8 +135,8 @@
                     <div class="kw-row">
                         {{ avatar(u.picture, u.name, 'kw-avatar-sm') }}
                         <div class="kw-row-main">
-                            <b>{{ u.name or u.email }}</b>
-                            <small>{{ u.email }}</small>
+                            <b>{{ u.name or who(u.email) }}</b>
+                            <small>{{ who(u.email) }}</small>
                         </div>
                         {% if u.is_admin %}<span class="role-pill role-admin">admin</span>{% endif %}
                         <span class="kw-row-time" data-ago="{{ u.last_login_iso }}">{{ day(u.last_login) }}</span>
@@ -230,12 +235,12 @@
                 <div class="kw-row req-row" id="apikey-req-{{ loop.index0 }}">
                     {{ avatar(users[req.email].picture if req.email in users else '', req.name, 'kw-avatar-sm') }}
                     <div class="kw-row-main">
-                        <b>{{ req.name }} <span class="kw-muted">&lt;{{ req.email }}&gt;</span></b>
+                        <b>{{ req.name }} <span class="kw-muted">&lt;{{ who(req.email) }}&gt;</span></b>
                         <small>{{ 'Reset request' if req.has_key else 'New key request' }} · {{ stamp(req.api_key_requested_at) }}</small>
                     </div>
                     <div class="kw-row-trail">
-                        <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="adminIssueApiKey('{{ req.email }}', this)">Assign key</button>
-                        <button class="kw-btn kw-btn-sm kw-btn-ghost" onclick="adminDismissApiKeyRequest('{{ req.email }}', this)">Dismiss</button>
+                        <button class="kw-btn kw-btn-sm kw-btn-tinted" data-email="{{ req.email }}" onclick="adminIssueApiKey(this.dataset.email, this)">Assign key</button>
+                        <button class="kw-btn kw-btn-sm kw-btn-ghost" data-email="{{ req.email }}" onclick="adminDismissApiKeyRequest(this.dataset.email, this)">Dismiss</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -273,7 +278,7 @@
                             <th>Groups</th>
                             <th>Last sign-in</th>
                             <th>API key</th>
-                            <th class="th-right">Change role</th>
+                            <th class="th-right">Role &amp; sign-in</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -285,11 +290,14 @@
                                     {{ avatar(user.picture, user.name) }}
                                     <div class="user-cell-text">
                                         <div class="user-cell-name">{{ user.name }}{% if email == session.user.email %} <span class="kw-chip">You</span>{% endif %}</div>
-                                        <div class="user-cell-email">{{ email }}</div>
+                                        <div class="user-cell-email">{% if user.username %}{{ user.username }}{% if not user.has_placeholder_email %} · {% endif %}{% endif %}{% if not user.has_placeholder_email %}{{ email }}{% elif not user.username %}—{% endif %}</div>
                                     </div>
                                 </div>
                             </td>
-                            <td><span class="role-pill role-{{ _role }}">{{ _role }}</span></td>
+                            <td>
+                                <span class="role-pill role-{{ _role }}">{{ _role }}</span>
+                                {% if user.has_password %}<span class="kw-chip kw-chip-blue login-chip" title="Can sign in with username and password">Direct login{{ ' · must change' if user.must_change_password }}</span>{% endif %}
+                            </td>
                             <td>
                                 <div class="groups-cell">
                                 {% for group in user.get('groups') or [] %}<span class="group-badge">{{ group }}</span>{% else %}<span class="cell-muted">—</span>{% endfor %}
@@ -309,20 +317,27 @@
                                     <span class="cell-muted">None</span>
                                 {% endif %}
                                 {% if email != session.user.email %}
-                                    <button class="kw-btn kw-btn-sm" onclick="adminIssueApiKey('{{ email }}', this)">{{ 'Reset' if user.has_api_key else 'Assign' }}</button>
+                                    <button class="kw-btn kw-btn-sm" data-email="{{ email }}" onclick="adminIssueApiKey(this.dataset.email, this)">{{ 'Reset' if user.has_api_key else 'Assign' }}</button>
                                     {% if user.has_api_key %}
-                                    <button class="kw-btn kw-btn-sm kw-btn-danger" onclick="adminRevokeApiKey('{{ email }}', this)">Revoke</button>
+                                    <button class="kw-btn kw-btn-sm kw-btn-danger" data-email="{{ email }}" onclick="adminRevokeApiKey(this.dataset.email, this)">Revoke</button>
                                     {% endif %}
                                 {% endif %}
                                 </div>
                             </td>
                             <td class="td-right">
                                 {% if email != session.user.email %}
-                                <select class="kw-select kw-select-sm role-select role-select-{{ _role }}" aria-label="Role for {{ email }}" onchange="changeUserRole('{{ email }}', this.value); this.className='kw-select kw-select-sm role-select role-select-'+this.value;">
+                                <select class="kw-select kw-select-sm role-select role-select-{{ _role }}" aria-label="Role for {{ email }}" data-email="{{ email }}" onchange="changeUserRole(this.dataset.email, this.value); this.className='kw-select kw-select-sm role-select role-select-'+this.value;">
                                     <option value="guest" {% if _role == 'guest' %}selected{% endif %}>Guest</option>
                                     <option value="user"  {% if _role == 'user'  %}selected{% endif %}>User</option>
                                     <option value="admin" {% if _role == 'admin' %}selected{% endif %}>Admin</option>
                                 </select>
+                                <div class="user-row-actions">
+                                    <button class="kw-btn kw-btn-sm kw-btn-ghost" data-email="{{ email }}" data-username="{{ user.username or '' }}" onclick="showSetPasswordModal(this.dataset.email, this.dataset.username)">{{ 'Reset password' if user.has_password else 'Set password' }}</button>
+                                    {% if user.has_password %}
+                                    <button class="kw-btn kw-btn-sm kw-btn-ghost" data-email="{{ email }}" onclick="adminClearPassword(this.dataset.email)">Remove password</button>
+                                    {% endif %}
+                                    <button class="kw-btn kw-btn-sm kw-btn-danger" title="End all of this user's sessions" data-email="{{ email }}" onclick="adminForceLogout(this.dataset.email, this)">Log out everywhere</button>
+                                </div>
                                 {% else %}
                                 <span class="cell-muted">—</span>
                                 {% endif %}
@@ -357,7 +372,7 @@
                 <div class="kw-row req-row">
                     {{ avatar(users[req.email].picture if req.email in users else '', req.user_name, 'kw-avatar-sm') }}
                     <div class="kw-row-main">
-                        <b>{{ req.user_name }} <span class="kw-muted">&lt;{{ req.email }}&gt;</span></b>
+                        <b>{{ req.user_name }} <span class="kw-muted">&lt;{{ users[req.email].username if req.email in users and users[req.email].has_placeholder_email else req.email }}&gt;</span></b>
                         <small>→ <span class="group-badge">{{ req.group_name }}</span> · {{ stamp(req.created_at) }}</small>
                     </div>
                     <div class="kw-row-trail">
@@ -378,7 +393,7 @@
                             <div class="group-name-text">{{ group_name }}</div>
                             <div class="group-meta">{{ group.members|length }} member{{ 's' if group.members|length != 1 else '' }}</div>
                         </div>
-                        <button class="kw-icon-btn is-danger" onclick="deleteGroup('{{ group_name }}')" title="Delete group" aria-label="Delete {{ group_name }}">
+                        <button class="kw-icon-btn is-danger" data-group="{{ group_name }}" onclick="deleteGroup(this.dataset.group)" title="Delete group" aria-label="Delete {{ group_name }}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         </button>
                     </header>
@@ -389,10 +404,10 @@
                             {% if group.members|length > 5 %}<span class="kw-avatar kw-avatar-sm kw-avatar-more">+{{ group.members|length - 5 }}</span>{% endif %}
                         </span>
                         <span class="group-card-btns">
-                            <button class="kw-btn kw-btn-sm kw-btn-ghost group-toggle" onclick="toggleGroupDetails('{{ group_name }}', '{{ loop.index0 }}')" aria-expanded="false">
+                            <button class="kw-btn kw-btn-sm kw-btn-ghost group-toggle" data-group="{{ group_name }}" onclick="toggleGroupDetails(this.dataset.group, '{{ loop.index0 }}')" aria-expanded="false">
                                 Members <span class="expand-icon" id="icon-{{ loop.index0 }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></span>
                             </button>
-                            <button class="kw-btn kw-btn-sm" onclick="showAddMembersModal('{{ group_name }}')">{{ ic_plus }} Add</button>
+                            <button class="kw-btn kw-btn-sm" data-group="{{ group_name }}" onclick="showAddMembersModal(this.dataset.group)">{{ ic_plus }} Add</button>
                         </span>
                     </div>
                     <div class="group-details" id="details-{{ loop.index0 }}" style="display:none;">
@@ -401,9 +416,9 @@
                             {{ avatar(users[member].picture if member in users else '', users[member].name if member in users else member, 'kw-avatar-sm') }}
                             <div class="kw-row-main">
                                 <b>{{ users[member].name if member in users else 'Unknown' }}</b>
-                                <small>{{ member }}</small>
+                                <small>{{ who(member) }}</small>
                             </div>
-                            <button class="kw-icon-btn is-danger" onclick="removeFromGroup('{{ member }}', '{{ group_name }}')" title="Remove from group" aria-label="Remove {{ member }}">{{ ic_x }}</button>
+                            <button class="kw-icon-btn is-danger" data-email="{{ member }}" data-group="{{ group_name }}" onclick="removeFromGroup(this.dataset.email, this.dataset.group)" title="Remove from group" aria-label="Remove {{ member }}">{{ ic_x }}</button>
                         </div>
                         {% else %}
                         <p class="kw-empty">No members yet.</p>
@@ -573,13 +588,25 @@
                 <button class="kw-icon-btn close" onclick="closeModal('addUserModal')" aria-label="Close">{{ ic_x }}</button>
             </div>
             <form onsubmit="addUser(event)">
+                <p class="kw-muted add-user-hint">Direct-login account: username + password (email optional).
+                    Google-only account: leave username and password empty and enter the Google email.</p>
                 <div class="kw-field">
-                    <label for="userEmail">Email address *</label>
-                    <input type="email" id="userEmail" required placeholder="user@example.com">
+                    <label for="userUsername">Username</label>
+                    <input type="text" id="userUsername" maxlength="32" autocomplete="off" spellcheck="false"
+                           placeholder="Any language, e.g. 王小明 or star.gazer">
                 </div>
                 <div class="kw-field">
-                    <label for="userName">Name <span class="kw-muted">(optional)</span></label>
-                    <input type="text" id="userName" placeholder="Defaults to the part before @">
+                    <label for="userPassword">Password <span class="kw-muted">(for direct login)</span></label>
+                    <input type="password" id="userPassword" maxlength="1024" autocomplete="new-password">
+                    <small class="kw-muted">No length or character rules. Share it privately; they can change it after signing in.</small>
+                </div>
+                <div class="kw-field">
+                    <label for="userName">Display name <span class="kw-muted">(optional)</span></label>
+                    <input type="text" id="userName" maxlength="80" placeholder="If blank, the username / email prefix is used">
+                </div>
+                <div class="kw-field">
+                    <label for="userEmail">Email <span class="kw-muted">(optional)</span></label>
+                    <input type="email" id="userEmail" maxlength="254" placeholder="Required for Google-only accounts">
                 </div>
                 <div class="kw-field">
                     <label for="userRole">Role</label>
@@ -589,9 +616,47 @@
                         <option value="admin">Admin</option>
                     </select>
                 </div>
+                <label class="kw-check">
+                    <input type="checkbox" id="userMustChange" checked> Require a new password at first login
+                </label>
                 <div class="kw-modal-actions">
                     <button type="button" class="kw-btn" onclick="closeModal('addUserModal')">Cancel</button>
                     <button type="submit" class="kw-btn kw-btn-primary">Add user</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="setPasswordModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-setpw">
+        <div class="modal-content kw-modal-card">
+            <div class="kw-modal-head">
+                <h3 id="m-setpw">Set password</h3>
+                <button class="kw-icon-btn close" onclick="closeModal('setPasswordModal')" aria-label="Close">{{ ic_x }}</button>
+            </div>
+            <form onsubmit="adminSetPassword(event)">
+                <input type="hidden" id="setPasswordEmail">
+                <p class="kw-muted" id="setPasswordTarget"></p>
+                <div class="kw-field">
+                    <label for="setPasswordUsername">Username</label>
+                    <input type="text" id="setPasswordUsername" maxlength="32" autocomplete="off" spellcheck="false"
+                           placeholder="Any language, e.g. 王小明 or star.gazer">
+                    <small class="kw-muted">The name this user signs in with.</small>
+                </div>
+                <div class="kw-field">
+                    <label for="setPasswordValue">New password</label>
+                    <input type="password" id="setPasswordValue" required maxlength="1024" autocomplete="new-password">
+                </div>
+                <div class="kw-field">
+                    <label for="setPasswordConfirm">Confirm password</label>
+                    <input type="password" id="setPasswordConfirm" required maxlength="1024" autocomplete="new-password">
+                </div>
+                <label class="kw-check">
+                    <input type="checkbox" id="setPasswordMustChange" checked> Require a new password at next login
+                </label>
+                <p class="kw-muted">All of this user's current sessions will be logged out.</p>
+                <div class="kw-modal-actions">
+                    <button type="button" class="kw-btn" onclick="closeModal('setPasswordModal')">Cancel</button>
+                    <button type="submit" class="kw-btn kw-btn-primary">Set password</button>
                 </div>
             </form>
         </div>
@@ -655,7 +720,9 @@
                     body: JSON.stringify({email})
                 });
                 const d = await r.json();
-                if (d.success) {
+                if (d.success && d.api_key) {
+                    showApiKeyOnceAdmin(email, d.api_key);
+                } else if (d.success) {
                     showNotification(`API key assigned for ${email}`, 'success');
                     setTimeout(() => location.reload(), 800);
                 } else {

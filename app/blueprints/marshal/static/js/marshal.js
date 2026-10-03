@@ -1,3 +1,14 @@
+// Escape server data before it goes into innerHTML / attribute values.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Global variables
 let currentView = 'cards';
 let currentObjects = [];
@@ -533,8 +544,6 @@ function generateTableView() {
         row.dataset.tag = obj.tag;
         row.classList.add(`tag-${obj.tag}`);
         
-        const escapedName = obj.name.replace(/'/g, "\\'");
-        
         // Extract year and letters regardless of prefix (e.g. AT2025abc -> 2025abc)
         const yearLettersMatch = obj.name.match(/(?:AT|SN)?(\d{4})([a-zA-Z]+)$/);
         let objectLink = '';
@@ -549,27 +558,27 @@ function generateTableView() {
         
         row.innerHTML = `
             <td class="object-name-cell">
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer">${obj.name}</a>${buildObjectTags(obj.tags, true)}
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer">${escapeHtml(obj.name)}</a>${buildObjectTags(obj.tags, true)}
             </td>
             <td class="class-cell">
-                <span class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
+                <span class="classification-badge ${escapeHtml(obj.classification.toLowerCase().replace(' ', '-'))}">${escapeHtml(obj.classification)}</span>
             </td>
             <td class="coord-cell">${formattedRA}</td>
             <td class="coord-cell">${formattedDec}</td>
-            <td class="magnitude-cell">${obj.magnitude || 'N/A'}</td>
-            <td class="magnitude-cell">${obj.brightest_mag || 'N/A'}</td>
-            <td class="magnitude-cell">${obj.brightest_abs_mag || 'N/A'}</td>
-            <td class="redshift-cell">${obj.redshift || 'N/A'}</td>
-            <td class="date-cell">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</td>
-            <td class="discoverer-cell">${obj.source ? obj.source.slice(0, 30) : 'N/A'}</td>
+            <td class="magnitude-cell">${escapeHtml(obj.magnitude || 'N/A')}</td>
+            <td class="magnitude-cell">${escapeHtml(obj.brightest_mag || 'N/A')}</td>
+            <td class="magnitude-cell">${escapeHtml(obj.brightest_abs_mag || 'N/A')}</td>
+            <td class="redshift-cell">${escapeHtml(obj.redshift || 'N/A')}</td>
+            <td class="date-cell">${escapeHtml(obj.discovery_date ? String(obj.discovery_date).slice(0, 10) : 'N/A')}</td>
+            <td class="discoverer-cell">${escapeHtml(obj.source ? String(obj.source).slice(0, 30) : 'N/A')}</td>
             <td class="tag-cell">
-                <span class="tag-badge ${obj.tag}">
+                <span class="tag-badge ${escapeHtml(obj.tag)}">
                     ${getTagDisplayName(obj.tag)}
                 </span>
             </td>
             <td class="actions-cell">
                 <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="action-btn view" title="View">View</a>
-                ${window.isAdmin ? `<button class="action-btn edit" onclick="editTags('${escapedName}')" title="Edit Tags">Edit</button>` : ''}
+                ${window.isAdmin ? `<button class="action-btn edit" data-name="${escapeHtml(obj.name)}" onclick="editTags(this.dataset.name)" title="Edit Tags">Edit</button>` : ''}
             </td>
         `;
         
@@ -607,8 +616,8 @@ function generateCompactView() {
         
         item.innerHTML = `
             <div class="compact-main">
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="compact-name">${obj.name}</a>
-                <span class="compact-classification ${obj.classification.toLowerCase().replace(' ', '-')}">${obj.classification}</span>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="compact-name">${escapeHtml(obj.name)}</a>
+                <span class="compact-classification ${escapeHtml(obj.classification.toLowerCase().replace(' ', '-'))}">${escapeHtml(obj.classification)}</span>
                 <span class="compact-coords">${formattedRA}, ${formattedDec}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
                 ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest Mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
@@ -616,8 +625,8 @@ function generateCompactView() {
                 ${obj.redshift ? `<span class="compact-redshift">z=${parseFloat(obj.redshift).toFixed(3)}</span>` : ''}
             </div>
             <div class="compact-meta">
-                <span class="compact-date">${obj.discovery_date ? obj.discovery_date.slice(0, 10) : 'N/A'}</span>
-                <span class="tag-indicator ${obj.tag}">
+                <span class="compact-date">${escapeHtml(obj.discovery_date ? String(obj.discovery_date).slice(0, 10) : 'N/A')}</span>
+                <span class="tag-indicator ${escapeHtml(obj.tag)}">
                     ${getTagIndicator(obj.tag)}
                 </span>
             </div>
@@ -664,11 +673,11 @@ function generateCardsView() {
             <div class="card-header">
                 <div class="object-name">
                     <a href="${objectLink}" target="_blank" rel="noopener noreferrer">
-                        ${obj.name}
+                        ${escapeHtml(obj.name)}
                     </a>
                 </div>
-                <div class="classification-badge ${obj.classification.toLowerCase().replace(' ', '-')}">
-                    ${obj.classification}
+                <div class="classification-badge ${escapeHtml(obj.classification.toLowerCase().replace(' ', '-'))}">
+                    ${escapeHtml(obj.classification)}
                 </div>
             </div>
             ${obj.tags ? `<div class="card-tags">${buildObjectTags(obj.tags)}</div>` : ''}
@@ -687,37 +696,37 @@ function generateCardsView() {
                 
                 <div class="object-info">
                     <div class="info-item">
-                        <span>Discovery Mag = ${obj.magnitude || '---'}</span>
+                        <span>Discovery Mag = ${escapeHtml(obj.magnitude || '---')}</span>
                     </div>
                     
                     <div class="info-item">
-                        <span>Brightest Mag = ${obj.brightest_mag || '---'}</span>
+                        <span>Brightest Mag = ${escapeHtml(obj.brightest_mag || '---')}</span>
                     </div>
 
                     <div class="info-item">
-                        <span>Redshift = ${obj.redshift || '---'}</span>
+                        <span>Redshift = ${escapeHtml(obj.redshift || '---')}</span>
                     </div>
 
                     <div class="info-item">
-                        <span>Brightest M = ${obj.brightest_abs_mag || '---'}</span>
+                        <span>Brightest M = ${escapeHtml(obj.brightest_abs_mag || '---')}</span>
                     </div>
                     
                     <div class="info-item">
-                        <span>Date: ${obj.discovery_date ? obj.discovery_date.substring(0, 10) : '---'}</span>
+                        <span>Date: ${escapeHtml(obj.discovery_date ? String(obj.discovery_date).substring(0, 10) : '---')}</span>
                     </div>
                     
                     <div class="info-item">
-                        <span>Source: ${obj.source || '---'}</span>
+                        <span>Source: ${escapeHtml(obj.source || '---')}</span>
                     </div>
                 </div>
             </div>
             
             <div class="card-footer">
-                <div class="tag-badge ${obj.tag}">
+                <div class="tag-badge ${escapeHtml(obj.tag)}">
                     ${getTagDisplayName(obj.tag)}
                 </div>
                 <div class="last-update">
-                    ${obj.last_update ? obj.last_update.substring(0, 16) : 'No update'}
+                    ${escapeHtml(obj.last_update ? String(obj.last_update).substring(0, 16) : 'No update')}
                 </div>
                 <div class="card-actions">
                     <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="quick-action">
@@ -1492,8 +1501,8 @@ function buildObjectTags(tags, mini = false) {
     const ep = parts.filter(t => t.toUpperCase().startsWith('EP'));
     const others = parts.filter(t => !t.toUpperCase().startsWith('EP'));
     const cls = mini ? 'mini-tag' : 'custom-tag';
-    return [...ep.map(t => `<span class="${cls} ep">${t}</span>`),
-            ...others.map(t => `<span class="${cls}">${t}</span>`)].join('');
+    return [...ep.map(t => `<span class="${cls} ep">${escapeHtml(t)}</span>`),
+            ...others.map(t => `<span class="${cls}">${escapeHtml(t)}</span>`)].join('');
 }
 
 // Kept for backward compat during transition
@@ -1514,17 +1523,17 @@ function renderPinnedObjects(objects) {
         const bareName = obj.name || '';
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
-        const typeLabel = obj.type ? `<span class="wi-type">(${obj.type})</span>` : '';
+        const typeLabel = obj.type ? `<span class="wi-type">(${escapeHtml(obj.type)})</span>` : '';
         const epTags = buildObjectTags(obj.tags, true);
         const viewsMeta = obj.view_count
-            ? `<span class="wi-meta"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${obj.view_count}</span>`
+            ? `<span class="wi-meta"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>${escapeHtml(obj.view_count)}</span>`
             : '';
         const li = document.createElement('li');
         li.className = 'widget-item';
         li.innerHTML = `
             <div class="wi-row">
                 <span class="wi-rank">${index + 1}</span>
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${escapeHtml(fullName)}</a>
                 ${typeLabel}${epTags}
                 ${viewsMeta}
             </div>`;
@@ -1577,15 +1586,15 @@ function renderRecentComments(comments) {
         const bareName = c.object_name || '';
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
-        const typeLabel = c.type ? `<span class="wi-type">(${c.type})</span>` : '';
+        const typeLabel = c.type ? `<span class="wi-type">(${escapeHtml(c.type)})</span>` : '';
         const epTags = buildObjectTags(c.tags, true);
         li.innerHTML = `
             <div class="wi-row">
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${escapeHtml(fullName)}</a>
                 ${typeLabel}${epTags}
                 <span class="wi-date">${d.toLocaleDateString()}</span>
             </div>
-            <div class="wi-subline">"${c.content}"<span class="wi-author"> — ${c.user_name || 'User'}</span></div>
+            <div class="wi-subline">"${escapeHtml(c.content)}"<span class="wi-author"> — ${escapeHtml(c.user_name || 'User')}</span></div>
         `;
         list.appendChild(li);
     });
@@ -1616,20 +1625,20 @@ function renderRecentTnsUpdates(updates, isFallback) {
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(bareName)}`;
 
         const showTypeInline = !u.is_classified && !u.is_new_add;
-        const typeLabel = (showTypeInline && u.type) ? `<span class="wi-type">(${u.type})</span>` : '';
+        const typeLabel = (showTypeInline && u.type) ? `<span class="wi-type">(${escapeHtml(u.type)})</span>` : '';
         const classifiedBadge = u.is_classified ? `<span class="tns-classified-badge">classified</span>` : '';
         const newAddBadge = (!u.is_classified && u.is_new_add) ? `<span class="tns-new-add-badge">new add</span>` : '';
 
         let subline;
         if (u.is_classified && u.type) {
-            subline = `Classified as: <strong style="color:rgba(255,255,255,0.8);">${u.type}</strong>`;
+            subline = `Classified as: <strong style="color:rgba(255,255,255,0.8);">${escapeHtml(u.type)}</strong>`;
         } else if (u.is_new_add) {
-            subline = `Newly added${u.type ? `: <strong style="color:rgba(255,255,255,0.8);">${u.type}</strong>` : ''}`;
+            subline = `Newly added${u.type ? `: <strong style="color:rgba(255,255,255,0.8);">${escapeHtml(u.type)}</strong>` : ''}`;
         } else {
             const changedFields = Array.isArray(u.changed_fields) && u.changed_fields.length > 0
                 ? u.changed_fields.join(', ')
                 : (isFallback ? 'newly added' : 'metadata refresh');
-            subline = `${isFallback ? 'Added' : 'Updated'}: ${changedFields}`;
+            subline = `${isFallback ? 'Added' : 'Updated'}: ${escapeHtml(changedFields)}`;
         }
 
         let timeStr = '';
@@ -1644,7 +1653,7 @@ function renderRecentTnsUpdates(updates, isFallback) {
         li.className = `widget-item${u.is_classified ? ' tns-classified-item' : ''}${u.is_new_add ? ' tns-new-add-item' : ''}`;
         li.innerHTML = `
             <div class="wi-row">
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${escapeHtml(fullName)}</a>
                 ${typeLabel}${classifiedBadge}${newAddBadge}${buildObjectTags(u.tags, true)}
                 <span class="wi-date">${timeStr}</span>
             </div>
@@ -1666,18 +1675,18 @@ function renderTopViewed(targets) {
         const li = document.createElement('li');
         li.className = 'widget-item';
         const typeLabel = t.object_type && t.object_type !== 'Unknown'
-            ? `<span class="wi-type">(${t.object_type})</span>` : '';
+            ? `<span class="wi-type">(${escapeHtml(t.object_type)})</span>` : '';
         const fullName = (t.name_prefix || '') + (t.object_name || '');
         const m = fullName.match(/(?:AT|SN)?(\d{4}[a-zA-Z]+)$/);
         const objectLink = m ? `/object/${m[1]}` : `/object/${encodeURIComponent(t.object_name)}`;
         li.innerHTML = `
             <div class="wi-row">
                 <span class="wi-rank">${index + 1}</span>
-                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${fullName}</a>
+                <a href="${objectLink}" target="_blank" rel="noopener noreferrer" class="wi-name">${escapeHtml(fullName)}</a>
                 ${typeLabel}${buildObjectTags(t.tags, true)}
                 <span class="wi-meta">
                     <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    ${t.view_count}
+                    ${escapeHtml(t.view_count)}
                 </span>
             </div>`;
         list.appendChild(li);
@@ -1738,10 +1747,10 @@ function quickView(objectName) {
         const year = pureYearLettersMatch[1];
         const letters = pureYearLettersMatch[2];
         console.log(`Using TNS format route: /object/${year}${letters}`);
-        window.open(`/object/${year}${letters}`, '_blank');
+        window.open(`/object/${year}${letters}`, '_blank', 'noopener,noreferrer');
     } else {
         console.log(`Using generic route: /object/${encodeURIComponent(objectName)}`);
-        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank');
+        window.open(`/object/${encodeURIComponent(objectName)}`, '_blank', 'noopener,noreferrer');
     }
 }
 
@@ -1757,20 +1766,24 @@ function editTags(objectName) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
     modal.innerHTML = `
         <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;min-width:340px;max-width:480px;">
-            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${objectName}</h3>
+            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${escapeHtml(objectName)}</h3>
             <label style="font-size:0.85rem;color:#aaa;display:block;margin-bottom:6px;">Tags (comma-separated, EP will be highlighted)</label>
-            <input id="_tagEditInput" type="text" value="${currentTags}"
+            <input id="_tagEditInput" type="text" value="${escapeHtml(currentTags)}"
                 style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
             <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-                <button onclick="document.getElementById('_inlineTagEditModal').remove()"
+                <button type="button" id="_tagEditCancel"
                     style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#aaa;cursor:pointer;">Cancel</button>
-                <button onclick="_submitTagEdit('${objectName}')"
+                <button type="button" id="_tagEditSave"
                     style="padding:6px 16px;background:#46ffaf22;border:1px solid #46ffaf55;border-radius:6px;color:#46ffaf;cursor:pointer;">Save</button>
             </div>
             <div id="_tagEditResult" style="margin-top:10px;font-size:0.85rem;"></div>
         </div>
     `;
     document.body.appendChild(modal);
+    const saveBtn = document.getElementById('_tagEditSave');
+    saveBtn.dataset.objectName = objectName;
+    saveBtn.addEventListener('click', () => _submitTagEdit(saveBtn.dataset.objectName));
+    document.getElementById('_tagEditCancel').addEventListener('click', () => modal.remove());
     document.getElementById('_tagEditInput').focus();
 }
 
@@ -1799,7 +1812,7 @@ async function _submitTagEdit(objectName) {
             document.getElementById('_inlineTagEditModal').remove();
             showNotification(`Tags updated for ${objectName}`, 'success');
         } else {
-            if (result) result.innerHTML = `<span style="color:#ff6b6b;">${data.error || 'Failed'}</span>`;
+            if (result) result.innerHTML = `<span style="color:#ff6b6b;">${escapeHtml(data.error || 'Failed')}</span>`;
         }
     } catch (e) {
         if (result) result.innerHTML = `<span style="color:#ff6b6b;">Network error</span>`;

@@ -1,6 +1,6 @@
 """JSON API used by the marshal/object pages and external API-key clients — observation_v1 (split from web_api_routes.py)."""
 from datetime import datetime, timezone
-from flask import request, jsonify
+from flask import request, jsonify, session
 from app.core.request_validation import get_int_arg, ParamOutOfRangeError
 from app.db.auth import get_user_by_api_key
 from app.db.obs import (
@@ -17,11 +17,49 @@ from . import web_api_bp
 from .helpers import _limit_decimal_4, _normalize_target_precision
 
 
+def _authenticate_api_key():
+    """Return ``(user, None)`` for a valid API key or browser session, else ``(None, error_response)``.
+
+    The key belongs in the ``X-API-Key`` header. ``?api_key=`` is still accepted
+    because the public API docs mention it, but it leaks into logs/history, so
+    each use logs a deprecation warning.
+
+    When no key is supplied, a logged-in browser session (``session['user']``)
+    is accepted instead, so first-party pages (e.g. Daily Trigger) can call these
+    endpoints with the session cookie. Cross-site POSTs are rejected by the global
+    same-origin guard in ``app.core.hooks``. An explicitly supplied key always wins
+    and is never silently replaced by the session."""
+    api_key = (request.headers.get('X-API-Key') or '').strip()
+    if not api_key:
+        api_key = request.args.get('api_key', '').strip()
+        if api_key:
+            logger.warning("Deprecated: API key passed via ?api_key= on %s (use the X-API-Key header)",
+                           request.path)
+    if not api_key:
+        session_user = session.get('user')
+        if isinstance(session_user, dict) and session_user.get('email'):
+            return session_user, None
+        return None, (jsonify({'success': False, 'error': 'Missing API key. Use the X-API-Key header or log in.'}), 401)
+
+    user = get_user_by_api_key(api_key)
+    if not user:
+        return None, (jsonify({'success': False, 'error': 'Invalid API key.'}), 401)
+    return user, None
+
+
+def _is_great_lab_or_admin(user) -> bool:
+    return bool(user.get('is_great_lab_member') or user.get('is_admin'))
+
+
+_FORBIDDEN = {'success': False, 'error': 'Forbidden: requires GREAT Lab member or admin role'}
+
+
 @web_api_bp.route('/api/v1/observation_targets', methods=['GET', 'POST'])
 def api_v1_observation_targets():
     """
     API: Get or add observation targets.
-    Auth: X-API-Key header OR ?api_key= query param
+    Auth: X-API-Key header (?api_key= query param is deprecated), or a logged-in
+    browser session. Requires a GREAT Lab member or admin.
 
     GET /api/v1/observation_targets?telescope=SLT|LOT
         Returns active targets. telescope param is optional.
@@ -45,13 +83,11 @@ def api_v1_observation_targets():
             "note_gl":      "GL note"           -- optional
           }
     """
-    api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
-    if not api_key:
-        return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
-
-    user = get_user_by_api_key(api_key)
-    if not user:
-        return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
+    user, err = _authenticate_api_key()
+    if err:
+        return err
+    if not _is_great_lab_or_admin(user):
+        return jsonify(_FORBIDDEN), 403
 
     # ── GET ──────────────────────────────────────────────────────────────────
     if request.method == 'GET':
@@ -64,7 +100,8 @@ def api_v1_observation_targets():
             all_targets = [t for t in all_targets if t.get('is_active', True)]
             all_targets = [_normalize_target_precision(t) for t in all_targets]
         except Exception as e:
-            return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
+            logger.error('api_v1_observation_targets GET error: %s', e)
+            return jsonify({'success': False, 'error': 'Database error'}), 500
 
         slt = [t for t in all_targets if t['telescope'] == 'SLT']
         lot = [t for t in all_targets if t['telescope'] == 'LOT']
@@ -84,17 +121,14 @@ def api_v1_observation_targets():
         return jsonify(resp)
 
     # ── POST ─────────────────────────────────────────────────────────────────
-    is_member = user.get('is_great_lab_member', False)
-    is_admin  = user.get('is_admin', False)
-    if not (is_member or is_admin):
-        return jsonify({'success': False, 'error': 'Forbidden: requires GREAT Lab member or admin role'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'JSON object body required'}), 400
 
-    data = request.get_json(silent=True) or {}
-
-    telescope = (data.get('telescope') or '').strip().upper()
-    name      = (data.get('name') or '').strip()
-    ra        = _limit_decimal_4((data.get('ra') or '').strip())
-    dec       = _limit_decimal_4((data.get('dec') or '').strip())
+    telescope = str(data.get('telescope') or '').strip().upper()
+    name      = str(data.get('name') or '').strip()
+    ra        = _limit_decimal_4(str(data.get('ra') or '').strip())
+    dec       = _limit_decimal_4(str(data.get('dec') or '').strip())
     mag       = _limit_decimal_4(data.get('mag'))
     # LOT never uses auto exposure
     auto_exposure = bool(data.get('auto_exposure', False))
@@ -108,9 +142,17 @@ def api_v1_observation_targets():
     if not ra or not dec:
         return jsonify({'success': False, 'error': 'ra and dec are required'}), 400
 
-    priority = (data.get('priority') or 'Normal').strip()
+    priority = str(data.get('priority') or 'Normal').strip()
     if priority not in ('Normal', 'High', 'Urgent'):
         return jsonify({'success': False, 'error': 'priority must be Normal, High, or Urgent'}), 400
+
+    try:
+        repeat_count = int(data.get('repeat_count') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'repeat_count must be an integer'}), 400
+    filters = data.get('filters', [])
+    if filters is not None and not isinstance(filters, list):
+        return jsonify({'success': False, 'error': 'filters must be a list'}), 400
 
     try:
         new_id = save_observation_target(
@@ -120,9 +162,9 @@ def api_v1_observation_targets():
             ra=ra,
             dec=dec,
             priority=priority,
-            repeat_count=int(data.get('repeat_count') or 0),
+            repeat_count=repeat_count,
             auto_exposure=auto_exposure,
-            filters=data.get('filters', []),
+            filters=filters or [],
             plan=data.get('plan'),
             program=data.get('program'),
             note_gl=data.get('note_gl', ''),
@@ -141,21 +183,22 @@ def api_v1_observation_targets():
                     'dec': dec,
                     'mag': mag,
                     'priority': priority,
-                    'repeat_count': int(data.get('repeat_count') or 0),
+                    'repeat_count': repeat_count,
                     'auto_exposure': auto_exposure,
                 }
             }), 201
         else:
             return jsonify({'success': False, 'error': 'Failed to save target'}), 500
     except Exception as e:
-        logger.error(f'api_v1_observation_targets POST error: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error('api_v1_observation_targets POST error: %s', e)
+        return jsonify({'success': False, 'error': 'Failed to save target'}), 500
 
 @web_api_bp.route('/api/v1/observation_logs', methods=['GET', 'POST'])
 def api_v1_observation_logs():
     """
     API: Get or upsert observation logs.
-    Auth: X-API-Key header OR ?api_key= query param
+    Auth: X-API-Key header (?api_key= query param is deprecated), or a logged-in
+    browser session. Requires a GREAT Lab member or admin.
 
     GET  /api/v1/observation_logs?year=2026&month=3
     GET  /api/v1/observation_logs?date=2026-03-09  -- Get for specific date
@@ -173,7 +216,7 @@ def api_v1_observation_logs():
              "observed_filter": "rp",         -- optional
              "observed_exp":   300,           -- optional
              "observed_count": 12,            -- optional
-             "user_name":      "Alex"         -- optional, auto-fills from API key owner
+             "user_name":      ignored -- always the authenticated user
            }
 
     DELETE (via POST with action=delete):
@@ -184,13 +227,11 @@ def api_v1_observation_logs():
              "obs_date":    "2026-03-09"
            }
     """
-    api_key = request.headers.get('X-API-Key') or request.args.get('api_key', '').strip()
-    if not api_key:
-        return jsonify({'success': False, 'error': 'Missing API key. Use X-API-Key header or ?api_key= param.'}), 401
-
-    user = get_user_by_api_key(api_key)
-    if not user:
-        return jsonify({'success': False, 'error': 'Invalid API key.'}), 401
+    user, err = _authenticate_api_key()
+    if err:
+        return err
+    if not _is_great_lab_or_admin(user):
+        return jsonify(_FORBIDDEN), 403
 
     try:
         if request.method == 'GET':
@@ -227,12 +268,14 @@ def api_v1_observation_logs():
             })
 
         elif request.method == 'POST':
-            data = request.get_json(silent=True) or {}
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return jsonify({'success': False, 'error': 'JSON object body required'}), 400
             action = data.get('action', 'upsert')
 
-            target_name = data.get('target_name', '').strip()
-            telescope_hint = data.get('telescope', '').strip().upper()
-            obs_date = data.get('obs_date', '').strip()
+            target_name = str(data.get('target_name') or '').strip()
+            telescope_hint = str(data.get('telescope') or '').strip().upper()
+            obs_date = str(data.get('obs_date') or '').strip()
 
             if not target_name or not obs_date:
                 return jsonify({'success': False, 'error': 'target_name and obs_date are required'}), 400
@@ -267,18 +310,18 @@ def api_v1_observation_logs():
                 observed_filter = _norm_filter(data.get('observed_filter'))
                 observed_exp    = data.get('observed_exp') if data.get('observed_exp') is not None else None
                 observed_count  = data.get('observed_count') if data.get('observed_count') is not None else None
-                # Auto-fill user_name from API key owner if not provided
-                user_name = data.get('user_name') or user.get('name') or user.get('email')
+                # Always the authenticated user (key owner or session): the body can't impersonate another user.
+                user_name = user.get('name') or user.get('email')
                 # Normalize priority; split compound "Normal - R01" -> priority + program
                 _VALID_PRIORITIES = {'urgent': 'Urgent', 'high': 'High', 'normal': 'Normal', 'filler': 'Filler'}
-                _raw_pri = (data.get('priority') or '').strip()
+                _raw_pri = str(data.get('priority') or '').strip()
                 if ' - ' in _raw_pri:
                     _pri_part, _prog_part = _raw_pri.split(' - ', 1)
                     _pri_part = _pri_part.strip()
                     _prog_part = _prog_part.strip()
                 else:
                     _pri_part = _raw_pri
-                    _prog_part = data.get('program', '') or ''
+                    _prog_part = str(data.get('program', '') or '')
                 priority = _VALID_PRIORITIES.get(_pri_part.lower(), _pri_part.title()) if _pri_part else None
                 program = _prog_part
 
@@ -314,4 +357,5 @@ def api_v1_observation_logs():
     except ParamOutOfRangeError as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error('api_v1_observation_logs error: %s', e)
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500

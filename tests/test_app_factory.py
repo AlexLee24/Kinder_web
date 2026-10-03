@@ -16,9 +16,15 @@ def test_all_blueprints_registered(app):
 def test_route_count_is_stable(app):
     # 250 rules before the 2026-09 refactor (docs/FEATURES.md appendix A); 245 after the
     # clean-up (4 template-less /private/* pages, the dead web_api.static rule and the
-    # group-request URL change); 247 since the installable app (2026-10: /sw.js, /offline).
-    # Update deliberately when routes are added or removed.
-    assert sum(1 for _ in app.url_map.iter_rules()) == 247
+    # group-request URL change); 243 after dropping the shadowed basic.* duplicates of
+    # /api/profile/join_group and /leave_group. Update deliberately when routes change.
+    # 247 with password login (/login/password, /account/password,
+    # /admin/set-password, /admin/clear-password). 251 with the security hardening
+    # (/csp-report, /account/logout-all, /admin/force-logout,
+    # /api/profile/regenerate_api_key).
+    # 252 with /avatar/<usr_id> (profile pictures served instead of inlined).
+    # 254 with the installable app (2026-10: /sw.js, /offline).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 254
 
 
 def test_duplicate_rules_keep_precedence(app):

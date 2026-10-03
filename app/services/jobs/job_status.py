@@ -5,6 +5,11 @@ import os
 import time
 import logging
 
+try:
+    import fcntl
+except ImportError:  # non-POSIX: no cross-process lock, merge still applies
+    fcntl = None
+
 logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
@@ -23,15 +28,40 @@ _file_cache: dict = {}
 # ---------------------------------------------------------------------------
 
 def _persist() -> None:
+    """Merge this process's completed entries into the shared file.
+
+    Several processes (gunicorn workers, the scheduler owner) write the file, so the
+    read-merge-write runs under an flock and each process uses its own tmp file."""
     try:
         os.makedirs(os.path.dirname(_STATUS_FILE), exist_ok=True)
         with _lock:
-            data = {k: dict(v) for k, v in _registry.items()
+            mine = {k: dict(v) for k, v in _registry.items()
                     if v.get('finished_at')}   # only write completed entries
-        tmp = _STATUS_FILE + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(data, f)
-        os.replace(tmp, _STATUS_FILE)          # atomic replace
+        with open(_STATUS_FILE + '.lock', 'a+') as lock_fh:
+            if fcntl is not None:
+                fcntl.flock(lock_fh, fcntl.LOCK_EX)
+            try:
+                try:
+                    with open(_STATUS_FILE, 'r') as f:
+                        data = json.load(f)
+                    if not isinstance(data, dict):
+                        data = {}
+                except (FileNotFoundError, ValueError):
+                    data = {}
+                for k, v in mine.items():
+                    old = data.get(k)
+                    # Newer finished_at wins (ISO-8601 UTC strings compare correctly);
+                    # without a timestamp on the file side, this process's entry wins.
+                    if (not isinstance(old, dict) or not old.get('finished_at')
+                            or str(v.get('finished_at')) >= str(old.get('finished_at'))):
+                        data[k] = v
+                tmp = f'{_STATUS_FILE}.{os.getpid()}.tmp'
+                with open(tmp, 'w') as f:
+                    json.dump(data, f)
+                os.replace(tmp, _STATUS_FILE)          # atomic replace
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_fh, fcntl.LOCK_UN)
     except Exception as e:
         logger.debug('job_status persist error: %s', e)
 

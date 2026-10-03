@@ -1,13 +1,16 @@
 """
 Basic routes (home, login page, profile)
 """
-import os, json, time
-from flask import render_template, redirect, url_for, session, flash, send_from_directory, jsonify, request, abort
+import io, os, json, logging, time
+from flask import render_template, redirect, url_for, session, flash, send_from_directory, jsonify, request, abort, current_app
 from flask import Blueprint
 from werkzeug.utils import secure_filename
 from PIL import Image
 
+from app.core.auth import is_admin
 from app.db import is_db_available
+
+logger = logging.getLogger(__name__)
 
 basic_bp = Blueprint('basic', __name__, template_folder='templates', static_folder='static')
 
@@ -27,12 +30,57 @@ def allowed_file(filename):
     """Check if file is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Pillow format name -> file extension used when saving a re-encoded upload.
+_PIL_FORMAT_EXT = {'PNG': 'png', 'JPEG': 'jpg', 'GIF': 'gif', 'WEBP': 'webp'}
+
+
+def _reencode_image(raw: bytes):
+    """Verify *raw* is a real PNG/JPEG/GIF/WebP and re-encode it (drops any
+    trailing payload / metadata). Returns (bytes, ext) or None when invalid."""
+    try:
+        with Image.open(io.BytesIO(raw)) as probe:
+            fmt = probe.format
+            probe.verify()
+        if fmt not in _PIL_FORMAT_EXT:
+            return None
+        with Image.open(io.BytesIO(raw)) as img:
+            img.load()
+            out = io.BytesIO()
+            save_kwargs = {}
+            if getattr(img, 'n_frames', 1) > 1 and fmt in ('GIF', 'WEBP'):
+                save_kwargs['save_all'] = True
+            if fmt == 'JPEG':
+                if img.mode not in ('RGB', 'L', 'CMYK'):
+                    img = img.convert('RGB')
+                save_kwargs['quality'] = 95
+            img.save(out, format=fmt, **save_kwargs)
+        return out.getvalue(), _PIL_FORMAT_EXT[fmt]
+    except Exception as exc:
+        logger.warning('Rejected gallery upload: not a valid image (%s)', exc)
+        return None
+
+
+def _is_image_filename(filename: str) -> bool:
+    """Only real image files may be served (never the .json metadata sidecars)."""
+    return allowed_file(filename) and not filename.startswith('.')
+
+
+def thumbnail_name(filename):
+    """'photo.v2.jpg' -> 'photo.v2_thumb.jpg' (only the extension dot is touched)."""
+    base, ext = os.path.splitext(filename)
+    return f'{base}_thumb{ext}'
+
+
+def is_thumbnail(filename):
+    return os.path.splitext(filename)[0].endswith('_thumb')
+
+
 def create_thumbnail(image_path):
     """Create thumbnail from image."""
     try:
         img = Image.open(image_path)
         img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
-        thumbnail_path = image_path.replace('.', '_thumb.')
+        thumbnail_path = thumbnail_name(image_path)
         img.save(thumbnail_path, quality=85, optimize=True)
         return thumbnail_path
     except Exception as e:
@@ -43,6 +91,8 @@ def create_thumbnail(image_path):
 def slideshow_image(filename):
     """Serve images from the slideshow folder."""
     filename = os.path.basename(filename)  # prevent path traversal
+    if not _is_image_filename(filename):
+        abort(404)
     return send_from_directory(SLIDESHOW_DIR, filename)
 
 
@@ -134,41 +184,7 @@ def profile():
                          user_data=user_data,
                          all_groups=all_groups)
 
-from app.db.auth import create_group_request, remove_user_from_group, group_exists
-
-@basic_bp.route('/api/profile/join_group', methods=['POST'])
-def api_join_group():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-        
-    data = request.json
-    group_name = data.get('group_name')
-    
-    if not group_name or not group_exists(group_name):
-        return jsonify({'success': False, 'error': 'Invalid group name'}), 400
-        
-    user_email = session['user']['email']
-    if create_group_request(user_email, group_name):
-        return jsonify({'success': True, 'message': f'Request to join {group_name} sent.'})
-    else:
-        return jsonify({'success': False, 'error': 'Request already exists or failed to create.'})
-
-@basic_bp.route('/api/profile/leave_group', methods=['POST'])
-def api_leave_group():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-        
-    data = request.json
-    group_name = data.get('group_name')
-    
-    if not group_name:
-        return jsonify({'success': False, 'error': 'Group name required'}), 400
-        
-    user_email = session['user']['email']
-    if remove_user_from_group(user_email, group_name):
-        return jsonify({'success': True, 'message': f'Left {group_name}.'})
-    else:
-        return jsonify({'success': False, 'error': 'Failed to leave group.'})
+# /api/profile/join_group and /api/profile/leave_group live in the auth blueprint.
 
 
 @basic_bp.route('/api/gallery')
@@ -177,8 +193,10 @@ def api_gallery_list():
     try:
         items = []
         if os.path.exists(GALLERY_DIR):
-            for filename in sorted(os.listdir(GALLERY_DIR)):
-                if filename.endswith('_thumb.jpg') or filename.endswith('_thumb.png'):
+            all_files = sorted(os.listdir(GALLERY_DIR))
+            existing = set(all_files)
+            for filename in all_files:
+                if is_thumbnail(filename):
                     continue
                 if allowed_file(filename):
                     filepath = os.path.join(GALLERY_DIR, filename)
@@ -199,19 +217,19 @@ def api_gallery_list():
                         'photographer': metadata.get('photographer', 'Anonymous'),
                         'span': metadata.get('span', 'col-span-1 row-span-1'),
                         'image_url': url_for('basic.gallery_image', filename=filename),
-                        'thumbnail_url': url_for('basic.gallery_image', filename=filename.replace('.', '_thumb.'))
-                            if filename + '_thumb' in os.listdir(GALLERY_DIR) else url_for('basic.gallery_image', filename=filename)
+                        'thumbnail_url': url_for('basic.gallery_image', filename=thumbnail_name(filename))
+                            if thumbnail_name(filename) in existing else url_for('basic.gallery_image', filename=filename)
                     })
         return jsonify({'items': items, 'success': True})
-    except Exception as e:
-        print(f'Gallery list error: {e}')
-        return jsonify({'items': [], 'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Gallery list error')
+        return jsonify({'items': [], 'success': False, 'error': 'Could not load the gallery'}), 500
 
 
 @basic_bp.route('/api/gallery/upload', methods=['POST'])
 def api_gallery_upload():
     """Upload a gallery image (admin only)."""
-    if 'user' not in session or not session.get('user', {}).get('is_admin'):
+    if 'user' not in session or not is_admin():   # is_admin() fails closed if DB is down
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
@@ -233,15 +251,22 @@ def api_gallery_upload():
         if file_size > MAX_FILE_SIZE:
             return jsonify({'success': False, 'error': 'File too large'}), 400
 
-        # Save file
+        # Verify + re-encode with Pillow: only genuine images are stored.
+        reencoded = _reencode_image(file.read())
+        if reencoded is None:
+            return jsonify({'success': False, 'error': 'File is not a valid image'}), 400
+        data, real_ext = reencoded
+
+        # Save file (extension follows the actual image format)
         filename = secure_filename(file.filename)
         # Add timestamp to avoid conflicts
         timestamp = int(time.time())
-        name, ext = os.path.splitext(filename)
-        filename = f'{name}_{timestamp}{ext}'
+        name, _ext = os.path.splitext(filename)
+        filename = f'{name or "image"}_{timestamp}.{real_ext}'
 
         filepath = os.path.join(GALLERY_DIR, filename)
-        file.save(filepath)
+        with open(filepath, 'wb') as out:
+            out.write(data)
 
         # Create thumbnail
         create_thumbnail(filepath)
@@ -266,15 +291,15 @@ def api_gallery_upload():
             'filename': filename
         })
 
-    except Exception as e:
-        print(f'Upload error: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Gallery upload error')
+        return jsonify({'success': False, 'error': 'Upload failed'}), 500
 
 
 @basic_bp.route('/api/gallery/<item_id>', methods=['DELETE'])
 def api_gallery_delete(item_id):
     """Delete a gallery image (admin only)."""
-    if 'user' not in session or not session.get('user', {}).get('is_admin'):
+    if 'user' not in session or not is_admin():   # is_admin() fails closed if DB is down
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
@@ -287,7 +312,7 @@ def api_gallery_delete(item_id):
         os.remove(filepath)
 
         # Delete thumbnail
-        thumb_path = filepath.replace('.', '_thumb.')
+        thumb_path = thumbnail_name(filepath)
         if os.path.exists(thumb_path):
             os.remove(thumb_path)
 
@@ -298,15 +323,15 @@ def api_gallery_delete(item_id):
 
         return jsonify({'success': True, 'message': 'Image deleted'})
 
-    except Exception as e:
-        print(f'Delete error: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Gallery delete error')
+        return jsonify({'success': False, 'error': 'Delete failed'}), 500
 
 
 @basic_bp.route('/api/gallery/<item_id>', methods=['PUT'])
 def api_gallery_update(item_id):
     """Update gallery image metadata (admin only)."""
-    if 'user' not in session or not session.get('user', {}).get('is_admin'):
+    if 'user' not in session or not is_admin():   # is_admin() fails closed if DB is down
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
@@ -348,15 +373,37 @@ def api_gallery_update(item_id):
             'data': metadata
         })
 
-    except Exception as e:
-        print(f'Update error: {e}')
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        logger.exception('Gallery update error')
+        return jsonify({'success': False, 'error': 'Update failed'}), 500
+
+
+@basic_bp.route('/avatar/<int:usr_id>')
+def avatar(usr_id):
+    """An uploaded profile picture, served as an image instead of being inlined
+    in every page. Logged-in users only. The URL carries ?v=<hash of the picture>,
+    so it can be cached for a long time and changes when the picture does."""
+    if 'user' not in session:
+        abort(404)
+    from app.core.avatars import DEFAULT_AVATAR, decode_data_uri
+    from app.db.auth import get_stored_picture
+    stored = get_stored_picture(usr_id) or ''
+    if stored.startswith('https://'):
+        return redirect(stored)
+    decoded = decode_data_uri(stored)
+    if not decoded:
+        return redirect(DEFAULT_AVATAR)
+    mimetype, data = decoded
+    resp = current_app.response_class(data, mimetype=mimetype)
+    resp.headers['Cache-Control'] = 'private, max-age=31536000, immutable'
+    resp.headers['Content-Disposition'] = f'inline; filename="avatar-{usr_id}"'
+    return resp
 
 
 @basic_bp.route('/gallery/image/<filename>')
 def gallery_image(filename):
     """Serve gallery images."""
     filename = secure_filename(filename)
-    if not os.path.exists(os.path.join(GALLERY_DIR, filename)):
+    if not _is_image_filename(filename) or not os.path.exists(os.path.join(GALLERY_DIR, filename)):
         abort(404)
     return send_from_directory(GALLERY_DIR, filename)

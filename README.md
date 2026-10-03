@@ -24,6 +24,59 @@ Both entry points start immediately (the start-up backup runs in a background th
 write every log line to the terminal as well as `app/log/<date>.log`.
 `cd app && gunicorn main:app` still works through the `app/main.py` shim.
 
+### Required settings (kinder.env)
+
+- `SECRET_KEY` must be set to a long random value; the app refuses to start without it
+  (tests use a throwaway key automatically).
+- The kinder.env local admin login is disabled unless `ADMIN_USERNAME`, `ADMIN_PASSWORD`
+  **and** `ADMIN_LOCAL_EMAIL` are all set, and that email has a row in `auth.users`. It is a
+  break-glass fallback of the login page's "Direct login" (used only when no DB account has
+  that username); **leave it disabled in production unless you need it**.
+- Scheduled jobs run in **UTC**.
+- `MAX_CONTENT_LENGTH_MB` (default 64) caps request bodies.
+- Rate limits are shared by all gunicorn workers on the host through a small SQLite file
+  (`app/data/rate_limit.sqlite3`, override with `RATE_LIMIT_DB`).
+- With `open_registration` off (admin panel), new Google accounts need a pending invitation.
+- Admins create "direct login" accounts (Admin → Users → Add User): **username + password**,
+  email optional (without one a placeholder `<username>@users.invalid` is stored as the internal
+  identity key and hidden in the UI). Google-only accounts are added with just an email. There
+  is no self sign-up for direct-login accounts. Users sign in on `/login` with their username
+  (or email) and can change their password from their profile. Passwords are scrypt-hashed in
+  `auth.users.password_hash` (columns added automatically at start-up).
+
+## Security
+
+- **Headers** (every response, `app/core/hooks.py`): enforced Content-Security-Policy
+  (violations are reported to `POST /csp-report` and logged at WARNING),
+  `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive `Permissions-Policy`,
+  COOP/CORP `same-origin`, HSTS (1 year, subdomains) on HTTPS when `DEBUG` is off, and
+  `Cache-Control: no-store` for logged-in users, `/admin*` and `/api/*`. A view that sets its
+  own CSP, CORP or Cache-Control keeps it.
+- **Sessions**: signed cookie, `HttpOnly`, `SameSite=Lax`, `Secure` (env
+  `SESSION_COOKIE_SECURE`, default on unless `DEBUG`). Idle timeout 8 h (1 h for admins),
+  absolute lifetime 30 days; the session is rebuilt at every login. Password changes,
+  "Log out all devices" (profile) and the admin's "Log out everywhere" end all other sessions.
+  When the database is unreachable, admin-only actions answer 503 instead of trusting the cookie.
+- **Google sign-in** requires a verified email and binds the Google account id (`sub`) to the
+  user on first login; a different Google account for the same email is refused.
+- **API keys** are stored only as a SHA-256 hash plus the last 4 characters. A key is shown
+  exactly once when an admin issues it (or the user regenerates it on the profile page) and
+  never appears in cookies, pages or logs (`api_key=` / `X-API-Key` values are redacted from
+  every log line). Send it in the `X-API-Key` header; `?api_key=` still works but ends up in
+  proxy logs.
+- **Guests** (role 0) see only `public` objects; `login` objects need a user/admin account.
+- **Brute force**: direct login is throttled per IP (10 / 15 min), per account + IP
+  (5 / 15 min) and per account overall (50 / 15 min); the env admin login per IP and per
+  username. Admin actions on users (roles, admin status, deletion, passwords, keys, groups,
+  force-logout) are audit-logged; changing another admin or a super admin needs a super admin.
+- **Deployment**: bind gunicorn to `127.0.0.1` behind an HTTPS-terminating reverse proxy
+  (nginx/Caddy). `ProxyFix` trusts exactly **one** proxy hop (`X-Forwarded-For/Proto/Host`),
+  so the proxy must overwrite, not append to, client-supplied forwarding headers and nothing
+  else may reach gunicorn directly. Set `APP_BASE_URL` to the public HTTPS URL. Use a
+  least-privilege PostgreSQL role instead of `postgres`. Enable HSTS preload only once every
+  subdomain is HTTPS.
+
 ## Where things are
 
 ```

@@ -60,6 +60,11 @@ def save_default_source_perms():
     perms_list = data.get('permissions', [])
     if not isinstance(perms_list, list):
         return jsonify({'error': 'Invalid payload'}), 400
+    for p in perms_list:
+        if (not isinstance(p, dict)
+                or not isinstance(p.get('source_name'), str) or not p['source_name'].strip()
+                or not (p.get('allowed_groups') is None or isinstance(p.get('allowed_groups'), list))):
+            return jsonify({'error': 'Invalid payload: each item needs a source_name'}), 400
 
     groups_dict = get_groups()
     name_to_id = {name: info.get('group_id') for name, info in groups_dict.items()}
@@ -75,7 +80,8 @@ def save_default_source_perms():
             ids = [name_to_id[n] for n in (allowed or []) if n in name_to_id]
             return {'source': p['source_name'], 'permission': 'groups', 'groups': ids}
 
-    set_default_source_permissions_batch([_to_db(p) for p in perms_list])
+    if not set_default_source_permissions_batch([_to_db(p) for p in perms_list]):
+        return jsonify({'error': 'Failed to save default permissions'}), 500
     return jsonify({'success': True})
 
 @admin_bp.route('/admin/sources/search')

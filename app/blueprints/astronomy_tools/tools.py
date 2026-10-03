@@ -43,8 +43,8 @@ def calculate_redshift():
         result = calculate_redshift_distance(redshift, redshift_error, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         return jsonify({'success': True, 'result': result})
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid redshift input.'}), 400
 
 @astronomy_tools_bp.route('/calculate_absolute_magnitude', methods=['POST'])
 def calculate_absolute_magnitude_route():
@@ -60,8 +60,8 @@ def calculate_absolute_magnitude_route():
         result = calculate_absolute_magnitude(apparent_magnitude, redshift, extinction, H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         return jsonify({'success': True, 'result': result})
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid magnitude/redshift input.'}), 400
 
 @astronomy_tools_bp.route('/convert_date', methods=['POST'])
 def convert_date():
@@ -82,8 +82,8 @@ def convert_date():
         
         return jsonify({'success': True, 'result': result})
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid date value.'}), 400
 
 @astronomy_tools_bp.route('/convert_ra', methods=['POST'])
 def convert_ra():
@@ -101,8 +101,8 @@ def convert_ra():
         
         return jsonify({'success': True, 'result': result})
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid RA. Use hh:mm:ss.ss or decimal degrees.'}), 400
 
 @astronomy_tools_bp.route('/convert_dec', methods=['POST'])
 def convert_dec():
@@ -120,8 +120,8 @@ def convert_dec():
         
         return jsonify({'success': True, 'result': result})
         
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+    except Exception:
+        return jsonify({'error': 'Invalid Dec. Use ±dd:mm:ss.ss or decimal degrees (-90 to +90).'}), 400
 
 # ===============================================================================
 # OBSERVATION PLANNING
