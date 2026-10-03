@@ -15,6 +15,7 @@ body {
 }
 
 .detect-home-container {
+    box-sizing: border-box;     /* width 100% + 20px padding overflowed phones by 40px and cut the text */
     width: 100%;
     max-width: 1400px;
     padding: 20px;
@@ -493,3 +494,31 @@ kbd {
 .sr-note { color: rgba(255,255,255,0.45); font-size: 0.76rem; }
 .score-rules-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.55); font-size: 0.76rem; }
 .review-guide .score-rules { margin-top: 8px; }
+
+/* Phones: the 7-column "Highest priority right now" table was 514px wide and widened the whole
+   page (the browser then zoomed out, so the navbar and tab bar looked broken). One card per object:
+   name · score / host · M · z / tags · Judge */
+@media (max-width: 600px) {
+    .detect-home-container { padding: 16px 12px; }
+    .overview-top, .overview-top tbody { display: block; width: 100%; }
+    .overview-top thead { display: none; }
+    .overview-top tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas: "name name score" "host m z" "tags tags act";
+        gap: 6px 10px;
+        align-items: center;
+        padding: 10px 2px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .overview-top td { display: block; padding: 0; border: 0; min-width: 0; }
+    .overview-top td:nth-child(1) { grid-area: name; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .overview-top td:nth-child(2) { grid-area: score; justify-self: end; }
+    .overview-top td:nth-child(3) { grid-area: host; min-width: 0; }
+    .overview-top td:nth-child(4) { grid-area: m; }
+    .overview-top td:nth-child(5) { grid-area: z; justify-self: end; }
+    .overview-top td:nth-child(4)::before { content: "M "; color: #777; font-size: 0.72rem; }
+    .overview-top td:nth-child(5)::before { content: "z "; color: #777; font-size: 0.72rem; }
+    .overview-top td.tags { grid-area: tags; display: flex; flex-wrap: wrap; gap: 4px; }
+    .overview-top td.ov-act { grid-area: act; width: auto; justify-self: end; }
+}

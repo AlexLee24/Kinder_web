@@ -128,7 +128,7 @@ body {
     box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.2);
 }
 
-button {
+.game-controls button, .btn-primary, .btn-secondary {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -208,5 +208,5 @@ button {
 @media (max-width: 600px) {
     .game-controls { flex-direction: column; }
     .game-controls input { margin-bottom: 10px; width: 100%; box-sizing: border-box; }
-    button { width: 100%; }
+    .game-controls button { width: 100%; }     /* not every button: the navbar's Install / menu buttons are buttons too */
 }

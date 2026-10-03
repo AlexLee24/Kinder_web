@@ -11,6 +11,7 @@
     <style>
         /* ── Page layout ── */
         .info-page-wrap {
+            box-sizing: border-box;
             width: 90%;
             margin: 40px auto 60px auto;
             max-width: 1600px;
@@ -286,7 +287,7 @@
         .scroll-to-top:hover { background-color: #388bfd; transform: translateY(-3px); }
 
         @media (max-width: 700px) {
-            .info-page-wrap { width: 95%; max-width: none; padding: 30px 20px; }
+            .info-page-wrap { width: 100%; max-width: none; margin: 12px auto 24px; padding: 24px 16px; }
             .edit-controls { position: relative; top: 0; right: 0; justify-content: center; margin-bottom: 20px; }
             .info-card-grid { grid-template-columns: 1fr; }
             .info-page-title h1 { font-size: 1.9rem; }

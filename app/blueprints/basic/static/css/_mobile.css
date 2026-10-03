@@ -15,6 +15,14 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 #kw-navbar .kw-header-inner { padding-left: max(clamp(16px, 3vw, 32px), env(safe-area-inset-left, 0px)); padding-right: max(clamp(16px, 3vw, 32px), env(safe-area-inset-right, 0px)); }
 
+/* Safety net: one over-wide element (a table, a long word) must not widen the whole page — phone
+   browsers then zoom the page out and the navbar / tab bar look broken. `clip` (unlike `hidden`)
+   does not create a scroll container, so position: sticky keeps working. Wide tables that should
+   scroll sideways still do inside their own overflow-x: auto wrapper. */
+@media (max-width: 768px) {
+    body { overflow-x: clip; }
+}
+
 /* ── Phone tab bar (markup in _navbar.html) ───────────────────── */
 .kw-dock { display: none; }
 

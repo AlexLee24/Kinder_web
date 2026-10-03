@@ -257,9 +257,10 @@
         transform: translateY(-8px);
         opacity: 0;
         visibility: hidden;
+        pointer-events: none;           /* closed panel must never catch taps meant for the page */
         transition: opacity var(--kw-transition-fast), transform var(--kw-transition-fast), visibility 0s linear 0.15s;
     }
-    #kw-navbar .main-nav.active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+    #kw-navbar .main-nav.active { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
     #kw-navbar .main-nav ul { flex-direction: column; align-items: stretch; gap: 4px; }
     #kw-navbar .main-nav ul.nav-left { margin: 0; }
     #kw-navbar .nav-right { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--kw-border); }
@@ -277,16 +278,21 @@
         border-left: 2px solid var(--kw-border-med);
         border-radius: 0;
         box-shadow: none;
-        opacity: 1; visibility: visible; transform: none;
+        /* inherit, not visible: an expanded sub-menu inside the closed (invisible) panel used to stay
+           clickable and covered the page — e.g. the "Continue with Google" button on /login */
+        opacity: 1; visibility: inherit; transform: none;
     }
     #kw-navbar .dropdown:hover > .dropdown-content { display: none; }
     #kw-navbar .dropdown.mobile-active > .dropdown-content { display: flex; }
     #kw-navbar .dropdown-content li > a { border-radius: 0 var(--kw-radius-sm) var(--kw-radius-sm) 0; }
+    /* the desktop :hover / :focus-within / .mobile-active rule sets visibility: visible with higher specificity */
+    #kw-navbar .main-nav:not(.active) .dropdown-content { visibility: hidden; }
 }
 
 /* ── Install app button (PWA, 2026-10) ────────────────────────── */
 #kw-navbar .kw-install-btn {
     order: 3;                               /* desktop: after the nav, at the far right */
+    width: auto;                            /* page CSS like `button { width: 100% }` must not stretch it */
     display: inline-flex;
     align-items: center;
     gap: 6px;
