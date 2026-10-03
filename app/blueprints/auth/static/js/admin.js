@@ -433,7 +433,7 @@ window.onclick = function(event) {
 // (b) Google-only account: email only (no username / password)
 // 1–32 characters in any language; no whitespace and none of @ < > " ' & / \ ` (mirrors the server rule).
 const USERNAME_PATTERN = /^[^\s@<>"'&\/\\`]{1,32}$/u;
-const USERNAME_RULE = 'Username: 1–32 characters (any language), no spaces and none of @ < > " \' & / \\ `';
+const USERNAME_RULE = 'Username: 1–32 characters, no spaces and none of @ < > " \' & / \\ `';
 
 async function addUser(event) {
     event.preventDefault();

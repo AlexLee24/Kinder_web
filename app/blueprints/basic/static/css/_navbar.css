@@ -283,3 +283,32 @@
     #kw-navbar .dropdown.mobile-active > .dropdown-content { display: flex; }
     #kw-navbar .dropdown-content li > a { border-radius: 0 var(--kw-radius-sm) var(--kw-radius-sm) 0; }
 }
+
+/* ── Install app button (PWA, 2026-10) ────────────────────────── */
+#kw-navbar .kw-install-btn {
+    order: 3;                               /* desktop: after the nav, at the far right */
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid var(--kw-accent-border);
+    background: var(--kw-accent-dim);
+    color: var(--kw-accent);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+#kw-navbar .kw-install-btn[hidden] { display: none; }
+#kw-navbar .kw-install-btn:hover { background: rgba(197, 160, 89, 0.22); }
+#kw-navbar .kw-install-btn svg { width: 14px; height: 14px; }
+@media (max-width: 768px) {
+    #kw-navbar .kw-install-btn { order: 0; margin-left: auto; min-height: 34px; padding: 0 11px; }
+    #kw-navbar .kw-install-btn + .hamburger-menu { margin-left: 4px; }
+    #kw-navbar .kw-install-btn span { display: none; }
+    #kw-navbar .kw-install-btn::after { content: "Install"; }
+}

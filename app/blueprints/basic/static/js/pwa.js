@@ -1,14 +1,17 @@
 // Installable app (PWA): registers /sw.js and offers "Install app" (2026-10, after EAU_Web's pwa.js).
-// Loaded on every page by _navbar.html. Install entries are elements with [data-pwa-install]
-// (navbar menus); they stay hidden unless the browser can install the site or it is iOS Safari,
-// where installing means Share → Add to Home Screen, so we show those steps instead.
-// Signed-in users on a phone also get a one-time banner (snoozed for 14 days by "Not now").
+// Loaded on every page by _navbar.html. Install entries: the navbar button [data-pwa-install-btn]
+// and menu items [data-pwa-install]. They show whenever Kinder is not already running as an
+// installed app: the browser's own install prompt when it offers one, otherwise step-by-step
+// instructions for that browser (iOS Share → Add to Home Screen, Safari File → Add to Dock, …).
+// Prompt banner: once on the first sign-in on any device, then on phones until installed
+// ("Not now" snoozes it for 14 days).
 (function () {
     var script = document.currentScript;
     var signedIn = !!(script && script.dataset.user === '1');
     var standalone = document.documentElement.classList.contains('is-standalone');
     var SNOOZE_KEY = 'kinder_pwa_snooze_until';
     var INSTALLED_KEY = 'kinder_pwa_installed';
+    var WELCOMED_KEY = 'kinder_pwa_welcomed';      // first-sign-in prompt already shown on this device
     var SNOOZE_DAYS = 14;
     var deferred = null;
 
@@ -29,13 +32,16 @@
     function isInApp() { return /Line\/|FBAN|FBAV|Instagram|Messenger|MicroMessenger/i.test(ua); }
     function isPhone() { return window.matchMedia('(max-width: 768px) and (pointer: coarse)').matches; }
 
+    function isFirefox() { return /Firefox\//.test(ua) && !/Seamonkey/i.test(ua); }
+    function isDesktopSafari() { return /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox/.test(ua) && !isIOS(); }
+
+    // false only when Kinder already runs as (or was installed as) an app
     function installable() {
-        if (standalone || getItem(INSTALLED_KEY) === '1') return false;
-        return !!deferred || isIOS() || isInApp();
+        return !(standalone || getItem(INSTALLED_KEY) === '1');
     }
     function refresh() {
         var show = installable();
-        document.querySelectorAll('[data-pwa-install]').forEach(function (el) { el.hidden = !show; });
+        document.querySelectorAll('[data-pwa-install], [data-pwa-install-btn]').forEach(function (el) { el.hidden = !show; });
     }
 
     // ── step-by-step guide (iOS, in-app browsers) ──
@@ -57,8 +63,19 @@
             [ICO.share, 'Tap the Share button in Safari (bottom bar on iPhone, top right on iPad).'],
             [ICO.plus, 'Scroll down and choose “Add to Home Screen”, then tap “Add”.'],
             [ICO.open, 'Open Kinder from its icon — it runs full screen, like an app.']] };
+        if (isDesktopSafari()) return { title: 'Add Kinder to the Dock', steps: [
+            [ICO.share, 'In Safari’s menu bar choose File → “Add to Dock…” (or Share → “Add to Dock”).'],
+            [ICO.open, 'Open Kinder from the Dock or Launchpad — it gets its own window.']] };
+        if (isFirefox()) return { title: 'Use another browser to install', steps: [
+            [ICO.compass, 'Firefox can’t install web apps. Open Kinder in Chrome, Edge or Safari.'],
+            [ICO.plus, 'Then choose “Install app” again.']] };
+        if (isPhone()) return { title: 'Install Kinder', steps: [
+            [ICO.dots, 'Open the browser menu (⋮) and choose “Install app” or “Add to Home screen”.'],
+            [ICO.open, 'Open Kinder from its icon — it runs full screen, like an app.']] };
         return { title: 'Install Kinder', steps: [
-            [ICO.dots, 'Open the browser menu and choose “Install app” or “Add to Home screen”.']] };
+            [ICO.plus, 'Click the install icon at the right end of the address bar,'],
+            [ICO.dots, 'or open the browser menu (⋮ / ⋯) → “Cast, save and share” / “Apps” → “Install Kinder”.'],
+            [ICO.open, 'Kinder then opens in its own window and can be pinned to the taskbar or Dock.']] };
     }
     function guide() {
         var g = steps();
@@ -100,14 +117,16 @@
     var banner = null;
     function hideBanner() { if (banner) { banner.classList.remove('is-in'); var b = banner; banner = null; setTimeout(function () { b.remove(); }, 250); } }
     function maybeBanner() {
-        if (banner || !signedIn || !isPhone() || !installable()) return;
-        if (Number(getItem(SNOOZE_KEY) || 0) > Date.now()) return;
+        if (banner || !signedIn || !installable()) return;
+        var first = getItem(WELCOMED_KEY) !== '1';
+        if (!first && (!isPhone() || Number(getItem(SNOOZE_KEY) || 0) > Date.now())) return;
+        setItem(WELCOMED_KEY, '1');
         banner = document.createElement('div');
         banner.className = 'kw-pwa-banner';
         banner.setAttribute('role', 'dialog');
         banner.setAttribute('aria-label', 'Install Kinder');
         banner.innerHTML = '<img src="/static/pwa/icon-96.png" alt="">' +
-            '<div class="kw-pwa-banner-txt"><b>Install Kinder</b><small>Open Marshal and Daily Trigger full screen, like an app.</small></div>' +
+            '<div class="kw-pwa-banner-txt"><b>Install Kinder</b><small>Marshal, DETECT and Daily Trigger in their own window — full screen on your phone.</small></div>' +
             '<div class="kw-pwa-banner-acts"><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-act="later">Not now</button>' +
             '<button type="button" class="kw-btn kw-btn-sm kw-btn-primary" data-act="install">Install</button></div>';
         banner.addEventListener('click', function (e) {
@@ -134,7 +153,7 @@
     });
     // capture phase: _navbar.html stops propagation of clicks on dropdown links
     document.addEventListener('click', function (e) {
-        var t = e.target.closest('[data-pwa-install] a, [data-pwa-install-btn]');
+        var t = e.target.closest('[data-pwa-install] a, [data-pwa-install-btn]');   // navbar button + menu items
         if (!t) return;
         e.preventDefault();
         install();
@@ -170,7 +189,9 @@
 
     function start() {
         refresh();
-        if (isIOS() || isInApp()) setTimeout(maybeBanner, 1500);   // no beforeinstallprompt there
+        // Chrome / Edge / Android fire beforeinstallprompt first (→ maybeBanner); give them a moment,
+        // then show the banner anyway so the first sign-in always gets the prompt.
+        setTimeout(maybeBanner, 1500);
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
     else start();
