@@ -331,8 +331,18 @@
                     </div>
                 </div>
                 <div class="panel-body">
+                    <!-- Phase axis reference epoch (t0): discovery date by default, or a custom MJD/date -->
+                    <div id="phaseRefControls" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 0 10px; font-size:0.8rem; color:rgba(255,255,255,0.6);">
+                        <span style="white-space:nowrap;">Phase t₀</span>
+                        <input type="text" id="phaseRefInput" placeholder="MJD or YYYY-MM-DD HH:MM" autocomplete="off" spellcheck="false"
+                               style="width:170px; padding:3px 6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:4px; color:inherit;"
+                               onkeydown="if (event.key === 'Enter') { event.preventDefault(); setPhaseReference(this.value); }">
+                        <button type="button" class="btn-modern phot-btn" onclick="setPhaseReference(document.getElementById('phaseRefInput').value)">Set</button>
+                        <button type="button" class="btn-modern phot-btn" onclick="resetPhaseReference()" title="Use the discovery date as t₀">Discovery</button>
+                        <span id="phaseRefLabel" style="white-space:nowrap;"></span>
+                    </div>
                     <div id="telescopeToggles" style="display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;"></div>
-                    <div style="height:420px; display:flex; position:relative; overflow:hidden;" id="photometryPlotContainer">
+                    <div style="height:420px; display:flex; position:relative; overflow:hidden;" id="photometryPlotContainer" data-discovery="{{ object_data.discoverydate or '' }}">
                         <div id="photometryLoading" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#00f5d4;">
                             <div class="loading-spinner-small"></div> Loading data...
                         </div>

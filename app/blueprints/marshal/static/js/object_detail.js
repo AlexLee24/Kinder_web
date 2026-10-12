@@ -1155,6 +1155,194 @@ function enforceMinLcXAxisSpan(figData, minSpanDays = 1) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Light-curve x axes: MJD (bottom), Date (top) and Phase (second bottom axis,
+// days since a reference epoch t0 — the discovery date unless the user sets one).
+// ---------------------------------------------------------------------------
+const LC_PHASE_DOMAIN_BOTTOM = 0.17;   // y-domain start: room below the plot for the phase axis
+
+function _mjdFromDateString(text) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?)?/.exec(String(text || '').trim());
+    if (!m) return null;
+    const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), 0) + parseFloat(m[6] || 0) * 1000;
+    return Number.isFinite(ms) ? ms / 86400000 + 40587 : null;
+}
+
+function _mjdToDateString(mjd) {
+    return new Date((mjd - 40587) * 86400000).toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function _phaseStorageKey() {
+    const name = (objectData && objectData.name) || window.location.pathname;
+    return 'kinder.lcPhaseRef.' + name;
+}
+
+function _discoveryMjd() {
+    const box = document.getElementById('photometryPlotContainer');
+    const fromPage = box ? _mjdFromDateString(box.dataset.discovery) : null;
+    if (fromPage !== null) return fromPage;
+    return objectData ? _mjdFromDateString(objectData.discoverydate) : null;
+}
+
+/** Reference epoch for the phase axis: {mjd, custom} or null when unknown. */
+function _phaseRef() {
+    let saved = null;
+    try { saved = localStorage.getItem(_phaseStorageKey()); } catch (e) { /* storage blocked */ }
+    const custom = saved !== null ? parseFloat(saved) : NaN;
+    if (Number.isFinite(custom)) return { mjd: custom, custom: true };
+    const disc = _discoveryMjd();
+    return disc !== null ? { mjd: disc, custom: false } : null;
+}
+
+function _phaseAxisTitle(ref) {
+    return ref.custom
+        ? `Phase (days since MJD ${ref.mjd.toFixed(2)})`
+        : 'Phase (days since discovery)';
+}
+
+function _updatePhaseRefControls(ref) {
+    const input = document.getElementById('phaseRefInput');
+    const label = document.getElementById('phaseRefLabel');
+    if (input && document.activeElement !== input) input.value = ref ? ref.mjd.toFixed(3) : '';
+    if (label) {
+        label.textContent = !ref ? 'no discovery date'
+            : (ref.custom ? `custom · ${_mjdToDateString(ref.mjd).slice(0, 16)} UTC`
+                          : `discovery · ${_mjdToDateString(ref.mjd).slice(0, 16)} UTC`);
+    }
+}
+
+/** Add the phase axis (xaxis3) to a light-curve figure before it is drawn. */
+function _addPhaseAxis(figData) {
+    const layout = figData && figData.layout;
+    const range = layout && layout.xaxis && layout.xaxis.range;
+    const ref = _phaseRef();
+    _updatePhaseRefControls(ref);
+    if (!ref || !Array.isArray(range) || range.length !== 2) return;
+    const lo = Number(range[0]), hi = Number(range[1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+
+    ['yaxis', 'yaxis2'].forEach(ax => {
+        if (layout[ax] && !layout[ax].overlaying) layout[ax].domain = [LC_PHASE_DOMAIN_BOTTOM, 1];
+    });
+    layout.xaxis3 = {
+        title: { text: _phaseAxisTitle(ref), standoff: 4 },
+        overlaying: 'x',
+        anchor: 'free',
+        position: 0,
+        side: 'bottom',
+        range: [lo - ref.mjd, hi - ref.mjd],
+        tickformat: '+~g',    // explicit sign: +12 d / −3 d
+        ticksuffix: ' d',
+        showgrid: false,
+        zeroline: false,
+    };
+    layout.margin = Object.assign({}, layout.margin || {}, { b: Math.max((layout.margin || {}).b || 0, 52) });
+    // An overlaying axis is only drawn when a trace uses it.
+    figData.data.push({
+        x: [lo - ref.mjd], y: [null], xaxis: 'x3', yaxis: 'y', type: 'scatter', mode: 'markers',
+        marker: { opacity: 0 }, showlegend: false, hoverinfo: 'skip',
+    });
+}
+
+/**
+ * Keep the light-curve axes usable while zooming:
+ *  - axes drawn with fixed tick spacing (tickmode 'linear', e.g. one tick per day or
+ *    per 0.2 mag) show no labels once the view is narrower than that spacing, so a
+ *    zoom switches them to automatic ticks and a reset restores the fixed grid;
+ *  - the Date (top) and Phase axes follow the MJD axis.
+ */
+function _wireLcAxes(plotDiv) {
+    if (!plotDiv || !plotDiv.layout || typeof plotDiv.on !== 'function') return;
+    const fixed = {};
+    ['xaxis', 'yaxis', 'yaxis2'].forEach(ax => {
+        const a = plotDiv.layout[ax];
+        if (a && a.tickmode === 'linear') {
+            fixed[ax] = { tickmode: 'linear', dtick: a.dtick, tick0: a.tick0,
+                          range: Array.isArray(a.range) ? a.range.slice() : null };
+        }
+    });
+    let busy = false;
+
+    plotDiv.on('plotly_relayout', ev => {
+        if (busy || !ev) return;
+        const update = {};
+        const touched = ax => `${ax}.range[0]` in ev || `${ax}.range` in ev || `${ax}.autorange` in ev;
+
+        Object.keys(fixed).forEach(ax => {
+            if (!touched(ax)) return;
+            const cur = (plotDiv.layout[ax] || {}).range || [];
+            const init = fixed[ax].range;
+            const isReset = ev[`${ax}.autorange`] === true || (init && cur.length === 2
+                && Math.abs(cur[0] - init[0]) < 1e-9 && Math.abs(cur[1] - init[1]) < 1e-9);
+            if (isReset) {
+                update[`${ax}.tickmode`] = 'linear';
+                update[`${ax}.dtick`] = fixed[ax].dtick;
+                update[`${ax}.tick0`] = fixed[ax].tick0;
+            } else {
+                update[`${ax}.tickmode`] = 'auto';
+                update[`${ax}.dtick`] = null;
+                update[`${ax}.tick0`] = null;
+            }
+        });
+
+        if (touched('xaxis')) Object.assign(update, _secondaryXRanges(plotDiv));
+        if (!Object.keys(update).length) return;
+        busy = true;
+        Promise.resolve(Plotly.relayout(plotDiv, update)).finally(() => { busy = false; });
+    });
+}
+
+/** Date (xaxis2) and Phase (xaxis3) ranges that match the current MJD range. */
+function _secondaryXRanges(plotDiv) {
+    const r = (plotDiv.layout.xaxis || {}).range;
+    if (!Array.isArray(r) || r.length !== 2) return {};
+    const lo = Number(r[0]), hi = Number(r[1]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return {};
+    const out = {};
+    if (plotDiv.layout.xaxis2) {
+        out['xaxis2.range'] = [_mjdToDateString(lo), _mjdToDateString(hi)];
+        out['xaxis2.autorange'] = false;
+    }
+    const ref = _phaseRef();
+    if (plotDiv.layout.xaxis3 && ref) {
+        out['xaxis3.range'] = [lo - ref.mjd, hi - ref.mjd];
+        out['xaxis3.autorange'] = false;
+        out['xaxis3.title.text'] = _phaseAxisTitle(ref);
+    }
+    return out;
+}
+
+/** Phase reference controls: set a custom t0 (MJD or YYYY-MM-DD[ HH:MM]) or go back to discovery. */
+function setPhaseReference(value) {
+    const text = String(value == null ? '' : value).trim();
+    let mjd = null;
+    if (text) {
+        mjd = /^\d+(\.\d+)?$/.test(text) ? parseFloat(text) : _mjdFromDateString(text);
+        if (mjd === null || !Number.isFinite(mjd) || mjd < 30000 || mjd > 90000) {
+            if (typeof showNotification === 'function') {
+                showNotification('Enter an MJD (e.g. 61234.5) or a date (YYYY-MM-DD HH:MM)', 'error');
+            }
+            return;
+        }
+    }
+    try {
+        if (mjd === null) localStorage.removeItem(_phaseStorageKey());
+        else localStorage.setItem(_phaseStorageKey(), String(mjd));
+    } catch (e) { /* storage blocked: the change still applies to this view */ }
+    const plotDiv = document.getElementById('phot-plotly-div');
+    const ref = mjd === null ? _phaseRef() : { mjd, custom: true };
+    _updatePhaseRefControls(ref);
+    if (plotDiv && plotDiv.layout && plotDiv.layout.xaxis3) {
+        Plotly.relayout(plotDiv, _secondaryXRanges(plotDiv));
+    } else if (plotDiv && plotDiv.layout) {
+        loadPhotometryPlot();   // axis not drawn yet (e.g. no discovery date before): redraw
+    }
+}
+
+function resetPhaseReference() {
+    setPhaseReference('');
+}
+
 const PHOTOMETRY_FETCH_TIMEOUT_MS = 120000;
 
 function fetchJsonWithTimeout(url, timeoutMs = PHOTOMETRY_FETCH_TIMEOUT_MS, options = {}) {
@@ -1320,7 +1508,9 @@ function loadPhotometryPlot() {
                             figData.layout.title = Object.assign({}, typeof t === 'string' ? { text: t } : (t || {}), { font: { size: 13 } });
                             document.getElementById('phot-plotly-div').style.height = '380px';
                         }
+                        _addPhaseAxis(figData);
                         Plotly.newPlot('phot-plotly-div', figData.data, figData.layout, { responsive: true, displayModeBar: !phone });
+                        _wireLcAxes(document.getElementById('phot-plotly-div'));
                         _buildTelescopeToggles(figData.data);
                         _buildFilterLegend(figData.data);
 
