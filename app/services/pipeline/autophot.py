@@ -6,7 +6,9 @@ passes answers to AutoPhOT's questions and reads what it wrote.
 
   One folder per workspace: <runs>/<id>/
     target.json   settings from the web page
-    images/       copies of the source FITS (AutoPhOT's fits_dir); output in images_REDUCED/
+    images/       the FITS uploaded from the page or handed over by a pipeline stage (AutoPhOT's
+                  fits_dir), templates in images/templates/<filter>_template/; output in images_REDUCED/
+    .uploads/     uploads in progress (chunks are appended, then the FITS is checked and moved in)
     job.json      the current or last run (status, pid) — shared by all gunicorn workers
     .stdin        FIFO that becomes AutoPhOT's stdin, so any worker can send an answer
     web_run.log, result.json, exit.json, legacy/<time>/ (earlier runs)
@@ -45,6 +47,9 @@ IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp')
 TEXT_EXT = ('.log', '.txt', '.yml', '.yaml', '.json', '.dat', '.cat', '.reg', '.param', '.conv', '.sex', '.md', '.ecsv', '.tex')
 MAX_RUNNING = 2                   # AutoPhOT runs at once on this server
 MAX_SCAN = 500
+MAX_UPLOAD_BYTES = 4 * 1024 ** 3  # one FITS
+UPLOAD_CHUNK = 8 * 1024 * 1024    # the page sends files in pieces of this size (under the request size limit)
+FILTER_RE = re.compile(r'[A-Za-z0-9_+\-]{1,16}')
 LEGACY_KEEP = 3                   # archived runs kept per workspace
 LEGACY_RE = re.compile(r'^\d{8}-\d{6}(?:-\d+)?$')
 TID_RE = re.compile(r'[A-Za-z0-9_+\-.]{1,80}')
@@ -82,30 +87,6 @@ def runs_root():
     p = config.paths()['autophot_runs']
     if not p:
         raise NotConfigured('The workspaces folder is not set (Admin → Operations → Pipeline).')
-    return p
-
-
-def source_root():
-    p = config.paths()['autophot_source_root']
-    if not p:
-        raise NotConfigured('The image folder root is not set (Admin → Operations → Pipeline).')
-    return p
-
-
-def source_path(folder):
-    """A user-typed folder → resolved Path, only if it lies under the image folder root."""
-    raw = str(folder or '').strip()
-    if not raw:
-        raise PipelineError('Enter the folder with the FITS images.')
-    base = source_root().expanduser().resolve()
-    p = Path(raw).expanduser()
-    if not p.is_absolute():
-        p = base / p
-    p = p.resolve()
-    if p != base and base not in p.parents:
-        raise PipelineError(f'Image folders must be inside {base}.')
-    if not p.is_dir():
-        raise PipelineError(f'Folder not found: {p}')
     return p
 
 
@@ -148,7 +129,7 @@ def reduced_dir(cfg):
     return Path(str(cfg['fits_dir']).rstrip('/') + '_' + out)
 
 
-# ── Image folders ──
+# ── Images in a workspace ──
 
 def _fits_in(d, recursive):
     """FITS in a folder; with recursive, also subfolders except templates/ (AutoPhOT finds templates itself)."""
@@ -180,37 +161,112 @@ def _scan_dir(d, recursive):
             'missing': sum(1 for f in out if f.get('error') or not (f.get('TELESCOP') and f.get('INSTRUME') and f.get('FILTER')))}
 
 
-def scan(folder, recursive=False):
-    """FITS in a source folder with TELESCOP / INSTRUME / FILTER (AutoPhOT skips an image missing one)."""
-    return _scan_dir(source_path(folder), recursive)
-
-
 def images_dir(tid):
     return tdir(tid, must=False) / 'images'
 
 
-def _source_files(src, top_only):
-    """Files to copy from the source: FITS (top level only with top_only) and the whole templates/ folder."""
-    src = Path(src)
-    rels = [p.relative_to(src) for p in _fits_in(src, not top_only)]
-    tpl = src / 'templates'
-    if tpl.is_dir():
-        rels += [p.relative_to(src) for p in tpl.rglob('*') if p.is_file() and not p.name.startswith('.')]
-    return sorted(set(rels))
+def _upload_name(name):
+    from werkzeug.utils import secure_filename
+    n = secure_filename(os.path.basename(str(name or '')))[:150]
+    if not n or not n.lower().endswith(FITS_EXT):
+        raise PipelineError('Only FITS files can be added (.fits, .fit, .fts, .fits.fz, .fits.gz).')
+    return n
 
 
-def _copy_new(tid, cfg):
-    """Copy source files the workspace does not have yet (removed ones stay out). Returns the new paths."""
-    src, dest = source_path(cfg['source']), images_dir(tid)
-    removed = set(cfg.get('removed') or [])
-    added = []
-    for rel in _source_files(src, cfg.get('top_only', True)):
-        if str(rel) in removed or (dest / rel).exists():
+def _image_dest(tid, name, template_filter=''):
+    """Where a new file goes: images/<name>, or images/templates/<filter>_template/<name> for a template."""
+    base = images_dir(tid)
+    if template_filter:
+        if not FILTER_RE.fullmatch(template_filter):
+            raise PipelineError('Template filter: letters, digits, _ + - only (e.g. r, gp, rp).')
+        return base / 'templates' / f'{template_filter}_template' / name
+    return base / name
+
+
+def _check_fits(path, label):
+    try:
+        from astropy.io import fits
+        with fits.open(path) as hdul:
+            hdul[0].header
+    except Exception:
+        raise PipelineError(f'{label} is not a readable FITS file.')
+
+
+def _added(tid, rels, origin):
+    """Record new files: they are no longer 'removed', and note where they came from."""
+    cfg = _read_json(tdir(tid) / 'target.json')
+    cfg['removed'] = sorted(set(cfg.get('removed') or []) - set(rels))
+    cfg['imported'] = time.time()
+    cfg.setdefault('origins', {})
+    for r in rels:
+        cfg['origins'][r] = origin
+    _write_json(tdir(tid) / 'target.json', cfg)
+
+
+def upload_chunk(tid, name, offset, total, data, template_filter=''):
+    """Append one piece of an upload; on the last piece check the FITS and move it into images/.
+
+    The page sends each file in UPLOAD_CHUNK pieces, in order, so no request is larger than
+    the server's limit. Returns {'done': False, 'received'} or {'done': True, 'name'}."""
+    tdir(tid)
+    _busy(tid)
+    name = _upload_name(name)
+    if not 0 < total <= MAX_UPLOAD_BYTES:
+        raise PipelineError(f'{name}: files up to {MAX_UPLOAD_BYTES // 1024 ** 3} GB.')
+    if offset < 0 or not data or offset + len(data) > total:
+        raise PipelineError('Upload out of range; start the file again.')
+    dest = _image_dest(tid, name, template_filter)
+    rel = str(dest.relative_to(images_dir(tid)))
+    if dest.exists():
+        raise PipelineError(f'{rel} is already in this workspace.')
+    part = tdir(tid) / '.uploads' / (rel.replace('/', '__') + '.part')
+    part.parent.mkdir(parents=True, exist_ok=True)
+    if offset == 0:
+        part.unlink(missing_ok=True)
+    have = part.stat().st_size if part.exists() else 0
+    if have != offset:
+        raise PipelineError('Upload out of order; start the file again.')
+    with open(part, 'ab') as f:
+        f.write(data)
+    received = offset + len(data)
+    if received < total:
+        return {'done': False, 'received': received}
+    try:
+        _check_fits(part, name)
+    except PipelineError:
+        part.unlink(missing_ok=True)
+        raise
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(part, dest)
+    _added(tid, [rel], 'upload')
+    return {'done': True, 'name': rel}
+
+
+def add_files(tid, paths, origin='reduction', move=False, template_filter=''):
+    """Hand files to a workspace from another pipeline stage (e.g. reduced frames from Reduction).
+
+    paths are files on this server that the stage wrote; each must be a readable FITS. An existing
+    file with the same name is kept and reported in 'skipped'. Returns {'added', 'skipped'}."""
+    tdir(tid)
+    _busy(tid)
+    added, skipped = [], []
+    for src in paths:
+        src = Path(src)
+        name = _upload_name(src.name)
+        dest = _image_dest(tid, name, template_filter)
+        rel = str(dest.relative_to(images_dir(tid)))
+        if dest.exists():
+            skipped.append(rel)
             continue
-        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src / rel, dest / rel)
-        added.append(str(rel))
-    return added
+        if not src.is_file():
+            raise PipelineError(f'{src} not found.')
+        _check_fits(src, name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        (shutil.move if move else shutil.copy2)(str(src), str(dest))
+        added.append(rel)
+    if added:
+        _added(tid, added, origin)
+    return {'added': added, 'skipped': skipped}
 
 
 def _pick(body, old, key, allowed, default):
@@ -234,7 +290,7 @@ def _flag(body, old, key, default=False):
 
 
 def save_target(tid, body, user=''):
-    """tid=None creates a workspace (copies the images); otherwise updates the settings only."""
+    """tid=None creates an empty workspace (images are uploaded after); otherwise updates the settings."""
     name = str(body.get('name') or '').strip()[:80]
     if not name:
         raise PipelineError('Enter a target name.')
@@ -261,17 +317,13 @@ def save_target(tid, body, user=''):
                 raise PipelineError('Extra settings must be YAML key: value pairs.')
         except yaml.YAMLError as e:
             raise PipelineError(f'Extra settings are not valid YAML: {e}')
-    if creating or 'source' in body:
-        source = str(source_path(body.get('source')))
-    else:
-        source = old.get('source', '')
     _busy(tid)
     overrides = clean_overrides(body['overrides']) if 'overrides' in body else old.get('overrides') or {}
-    cfg = {**old, 'name': name, 'source': source, 'fits_dir': str(images_dir(tid)), 'ra': ra, 'dec': dec,
+    cfg = {**old, 'name': name, 'fits_dir': str(images_dir(tid)), 'ra': ra, 'dec': dec,
            'catalog': catalog, 'overrides': overrides,
            'ncpu': int(_num(body, old, 'ncpu', 1, 1, os.cpu_count() or 1, int)),
            'subtraction': _flag(body, old, 'subtraction'), 'sub_method': sub_method, 'extra_yaml': extra,
-           'top_only': _flag(body, old, 'top_only', True),
+           'top_only': True,              # uploads are flat; templates/ is found by AutoPhOT itself
            # stacking: stack = measure the stacks (off by default); stack_with_singles = also the single frames
            'stack': _flag(body, old, 'stack'),
            'stack_with_singles': _flag(body, old, 'stack_with_singles'),
@@ -289,15 +341,6 @@ def save_target(tid, body, user=''):
         runs_root().mkdir(parents=True, exist_ok=True)
         images_dir(tid).mkdir(parents=True, exist_ok=True)
         cfg['removed'] = []
-        try:
-            added = _copy_new(tid, cfg)
-        except Exception:
-            shutil.rmtree(tdir(tid, must=False), ignore_errors=True)
-            raise
-        if not any(Path(a).name.lower().endswith(FITS_EXT) and not a.startswith('templates/') for a in added):
-            shutil.rmtree(tdir(tid, must=False), ignore_errors=True)
-            raise PipelineError('No FITS files in that folder.')
-        cfg['imported'] = time.time()
     _write_json(tdir(tid, must=False) / 'target.json', cfg)
     return tid
 
@@ -316,45 +359,18 @@ def _parse_coord(ra, dec):
         raise PipelineError('Could not read RA / Dec. Use degrees or 12:34:56.7 / -12:34:56.7.')
 
 
-def _auto_import(tid):
-    """Before a run, copy files that appeared in the source folder since (skipped if it is gone)."""
-    cfg = _read_json(tdir(tid) / 'target.json')
-    try:
-        added = _copy_new(tid, cfg)
-    except PipelineError:
-        return []
-    if added:
-        cfg['imported'] = time.time()
-        _write_json(tdir(tid) / 'target.json', cfg)
-    return added
-
-
-def import_new(tid):
-    _busy(tid)
-    cfg = _read_json(tdir(tid) / 'target.json')
-    added = _copy_new(tid, cfg)
-    if added:
-        cfg['imported'] = time.time()
-        _write_json(tdir(tid) / 'target.json', cfg)
-    return added
-
-
 def workspace_images(tid):
-    """Images in the workspace (header summary) and how many new ones wait in the source folder."""
+    """Images in the workspace (header summary), templates, removed ones and stacks."""
     cfg = _read_json(tdir(tid) / 'target.json')
     d = images_dir(tid)
-    out = _scan_dir(d, not cfg.get('top_only', True)) if d.is_dir() else {'path': str(d), 'n': 0, 'n_sub': 0, 'files': [], 'missing': 0}
-    removed = set(cfg.get('removed') or [])
-    try:
-        src = source_path(cfg.get('source'))
-    except PipelineError:
-        src = None
-    out['n_new'] = sum(1 for rel in _source_files(src, cfg.get('top_only', True))
-                       if not str(rel).startswith('templates/') and str(rel) not in removed
-                       and not (d / rel).exists()) if src else 0
-    out['source'] = cfg.get('source', '')
-    out['source_ok'] = bool(src)
-    out['removed'] = sorted(removed)
+    out = _scan_dir(d, False) if d.is_dir() else {'path': str(d), 'n': 0, 'n_sub': 0, 'files': [], 'missing': 0}
+    tpl = d / 'templates'
+    out['templates'] = sorted(str(p.relative_to(d)) for p in tpl.rglob('*')
+                              if p.is_file() and p.name.lower().endswith(FITS_EXT)) if tpl.is_dir() else []
+    out['removed'] = sorted(cfg.get('removed') or [])
+    origins = cfg.get('origins') or {}
+    for f in out['files']:
+        f['origin'] = origins.get(f['name'], '')
     out['stacks'] = sorted(cfg.get('stacks') or {})
     return out
 
@@ -368,7 +384,7 @@ def _inside(base, rel):
 
 
 def remove_image(tid, rel):
-    """Move one image out of the workspace (to .removed/); importing will not copy it back."""
+    """Move one image (or template) out of the workspace to .removed/; it can be put back."""
     _busy(tid)
     p = _inside(images_dir(tid), rel)
     if not p.is_file():
@@ -389,15 +405,9 @@ def restore_image(tid, rel):
         raise NotFound('No such file.')
     src = _inside(tdir(tid) / '.removed', rel)
     dest = _inside(images_dir(tid), rel)
-    if src.is_file():
+    if src.is_file() and not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dest))
-    else:
-        with contextlib.suppress(PipelineError):
-            orig = _inside(source_path(cfg.get('source')), rel)
-            if orig.is_file():
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(orig, dest)
     cfg['removed'] = sorted(set(cfg.get('removed') or []) - {rel})
     _write_json(tdir(tid) / 'target.json', cfg)
 
@@ -425,7 +435,7 @@ def info(tid):
     return {
         'id': tid, 'name': cfg.get('name', tid), 'cfg': cfg, 'result': res, 'reduced': str(red), 'has_results': have,
         'lightcurve_csv': lc.is_file(), 'n_rows': _count_rows(lc), 'n_images': n_images, 'updated': updated,
-        'source': cfg.get('source', ''), 'images': str(imgs), 'status': status, 'job': job,
+        'images': str(imgs), 'status': status, 'job': job,
         'n_legacy': sum(1 for x in (d / 'legacy').iterdir() if x.is_dir()) if (d / 'legacy').is_dir() else 0,
     }
 
@@ -445,7 +455,7 @@ def targets():
 
 
 def delete_target(tid):
-    """Move the whole workspace to <runs>/.deleted/ (not erased); the source folder is not touched."""
+    """Move the whole workspace (images, results, settings, log) to <runs>/.deleted/; not erased."""
     d = tdir(tid)
     _busy(tid)
     trash = runs_root() / '.deleted'
@@ -556,7 +566,8 @@ def start(tid, user=''):
         _busy(tid)
         if _running_count() >= MAX_RUNNING:
             raise PipelineError(f'{MAX_RUNNING} AutoPhOT runs are already going on this server; try again when one finishes.')
-        imported = _auto_import(tid)                 # new images in the source folder (removed ones stay out)
+        if not _fits_in(images_dir(tid), False):
+            raise PipelineError('Upload at least one FITS image first.')
         archive_previous(tid)                        # the previous run moves to legacy/<time>/
         for name in ('result.json', 'exit.json'):
             (d / name).unlink(missing_ok=True)
@@ -564,11 +575,7 @@ def start(tid, user=''):
         with contextlib.suppress(FileNotFoundError):
             fifo.unlink()
         os.mkfifo(fifo, 0o600)
-        header = f'$ autophot {d.name}\n'
-        if imported:
-            header += (f'[web] imported {len(imported)} new file(s) from the source folder: ' + ', '.join(imported[:8])
-                       + (' …' if len(imported) > 8 else '') + '\n')
-        (d / 'web_run.log').write_text(header)
+        (d / 'web_run.log').write_text(f'$ autophot {d.name}\n')
         log = open(d / 'web_run.log', 'a')           # append: answers written by the web page are kept
         rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
         wfd = os.open(fifo, os.O_WRONLY)             # kept open in the child, so stdin never hits EOF

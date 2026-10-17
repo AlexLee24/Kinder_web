@@ -14,7 +14,6 @@ SETTINGS = {
     'autophot_dir': ('AUTOPHOT_DIR', 'AutoPhOT folder'),
     'autophot_python': ('AUTOPHOT_PYTHON', 'AutoPhOT Python'),
     'autophot_runs': ('AUTOPHOT_RUNS', 'Workspaces folder'),
-    'autophot_source_root': ('AUTOPHOT_SOURCE_ROOT', 'Image folders under'),
 }
 
 # Pipeline stages, in order. A stage that is not ready is shown as planned.
@@ -30,7 +29,7 @@ _TTL = 5.0
 
 
 def _stored():
-    """The four settings as stored (strings, '' when unset), cached for a few seconds."""
+    """The settings as stored (strings, '' when unset), cached for a few seconds."""
     now = time.monotonic()
     if _cache['values'] is not None and now - _cache['at'] < _TTL:
         return _cache['values']
@@ -49,7 +48,7 @@ def _path(value):
 
 
 def paths():
-    """{'autophot_dir', 'autophot_python', 'autophot_runs', 'autophot_source_root'} → Path or None."""
+    """{'autophot_dir', 'autophot_python', 'autophot_runs'} → Path or None."""
     stored = _stored()
     raw = {k: stored.get(k) or os.getenv(env, '').strip() for k, (env, _) in SETTINGS.items()}
     out = {k: _path(v) for k, v in raw.items()}
@@ -57,8 +56,6 @@ def paths():
         out['autophot_python'] = out['autophot_dir'] / '.venv' / 'bin' / 'python'
     if out['autophot_dir'] and not out['autophot_runs']:
         out['autophot_runs'] = out['autophot_dir'].parent / 'autophot-runs'
-    if out['autophot_runs'] and not out['autophot_source_root']:
-        out['autophot_source_root'] = out['autophot_runs'].parent
     return out
 
 
@@ -107,9 +104,6 @@ def check(probe_python=True):
         parent_ok = runs.parent.is_dir() and os.access(runs.parent, os.W_OK)
         out.append({'key': 'autophot_runs', 'ok': parent_ok,
                     'detail': 'Will be created on first use' if parent_ok else f'{runs} does not exist'})
-    src = p['autophot_source_root']
-    out.append({'key': 'autophot_source_root', 'ok': bool(src and src.is_dir()),
-                'detail': 'Exists' if src and src.is_dir() else ('Not set' if not src else f'{src} does not exist')})
     return out
 
 

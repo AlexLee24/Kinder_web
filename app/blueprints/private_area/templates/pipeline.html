@@ -13,11 +13,11 @@
     {% include '_navbar.html' %}
     {% from '_pipeline_form.html' import pl_form with context %}
 
-    <main class="kw-page pl-page">
+    <main class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
         <header class="kw-page-head">
             <div>
                 <h1>Pipeline</h1>
-                <p>Turn images from any telescope into a calibrated light curve. Each workspace holds a copy of the images and everything the tools write, so the original folder is never touched.</p>
+                <p>Turn images from any telescope into a calibrated light curve. Upload the FITS from your computer; each workspace keeps them on the server with everything the tools write.</p>
             </div>
         </header>
 
@@ -43,8 +43,8 @@
         {% if stage == 'reduction' %}
         <section class="kw-panel pl-planned">
             <div class="kw-panel-head"><h2>Reduction comes next</h2></div>
-            <p>Raw frames will be calibrated here (bias, dark and flat, cosmic rays, astrometry) and handed straight to a Photometry workspace, so AutoPhOT measures reduced frames without copying them by hand.</p>
-            <p>Until then, reduce the frames as usual and create a <a href="{{ url_for('private_area.pipeline') }}">Photometry workspace</a> from the reduced folder.</p>
+            <p>Raw frames will be calibrated here (bias, dark and flat, cosmic rays, astrometry) and handed straight to a Photometry workspace, so AutoPhOT measures the reduced frames without uploading them again.</p>
+            <p>Until then, reduce the frames as usual and upload them to a <a href="{{ url_for('private_area.pipeline') }}">Photometry workspace</a>.</p>
         </section>
 
         {% elif not ready %}
@@ -60,7 +60,7 @@
         </section>
 
         {% else %}
-        <div class="pl-home" data-source-root="{{ source_root }}">
+        <div class="pl-home">
             <section class="kw-panel pl-new" aria-labelledby="plNewTitle">
                 <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2></div>
                 {{ pl_form({}) }}
@@ -73,7 +73,7 @@
                 </div>
                 {% if error %}<p class="pl-msg is-error">{{ error }}</p>{% endif %}
                 {% if not workspaces %}
-                <div class="pl-empty"><b>No workspaces yet</b>Create one from a folder of FITS images. AutoPhOT then runs on the copies.</div>
+                <div class="pl-empty"><b>No workspaces yet</b>Create one and upload the FITS images from your computer.</div>
                 {% else %}
                 <ul class="pl-ws-list">
                     {% for w in workspaces %}

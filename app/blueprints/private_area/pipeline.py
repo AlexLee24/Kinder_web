@@ -2,12 +2,25 @@
 
 AutoPhOT runs on this server in its own Python; app/services/pipeline/autophot.py
 starts it and reads its output. The paths are set by an admin in
-Admin → Operations → Pipeline. Workspaces live in that folder, one per target.
+Admin → Operations → Pipeline. Workspaces live in that folder, one per target;
+images are uploaded from the page (or, later, handed over by the Reduction stage).
 """
 import functools
 import logging
 
-from flask import Response, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import (
+    Response,
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
 
 from app.core import rate_limit
 from app.services.pipeline import autophot as ap
@@ -62,6 +75,12 @@ def _body():
     return data
 
 
+def _upload_chunk():
+    """Upload piece size: AutoPhOT's default, but always under this server's request size limit."""
+    limit = current_app.config.get('MAX_CONTENT_LENGTH') or ap.UPLOAD_CHUNK * 2
+    return max(256 * 1024, min(ap.UPLOAD_CHUNK, limit // 2))
+
+
 def _setup():
     """(ready, checks) — checks list what is missing for the 'not set up' panel."""
     checks = pconfig.check(probe_python=False)
@@ -84,7 +103,7 @@ def pipeline():
             error = str(e)
     return render_template('pipeline.html', current_path='/pipeline', stage='photometry', stages=pconfig.STAGES,
                            ready=ready, checks=checks, labels={k: v[1] for k, v in pconfig.SETTINGS.items()},
-                           workspaces=workspaces, error=error, source_root=str(pconfig.paths()['autophot_source_root'] or ''),
+                           workspaces=workspaces, error=error, upload_chunk=_upload_chunk(),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
                            ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV)
@@ -96,7 +115,7 @@ def pipeline_reduction():
     if guard:
         return guard
     return render_template('pipeline.html', current_path='/pipeline', stage='reduction', stages=pconfig.STAGES,
-                           ready=False, checks=[], labels={}, workspaces=[], error='', source_root='')
+                           ready=False, checks=[], labels={}, workspaces=[], error='')
 
 
 @private_area_bp.route('/pipeline/autophot/<tid>')
@@ -137,7 +156,7 @@ def pipeline_workspace(tid):
     elif tab == 'legacy':
         ctx['runs'] = ap.legacy_runs(tid)
     return render_template('pipeline_workspace.html', current_path='/pipeline', zp_flag_text=ap.zp_flag_text,
-                           source_root=str(pconfig.paths()['autophot_source_root'] or ''),
+                           upload_chunk=_upload_chunk(),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
                            ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, **ctx)
@@ -210,12 +229,6 @@ def pipeline_log(tid):
 
 # ── API ──
 
-@private_area_bp.route('/api/pipeline/autophot/scan')
-@_api
-def pipeline_api_scan():
-    return jsonify({'success': True, **ap.scan(request.args.get('path', ''), bool(request.args.get('recursive')))})
-
-
 @private_area_bp.route('/api/pipeline/autophot/resolve')
 @_api
 def pipeline_api_resolve():
@@ -246,10 +259,22 @@ def pipeline_api_images(tid):
     return jsonify({'success': True, **ap.workspace_images(tid)})
 
 
-@private_area_bp.route('/api/pipeline/autophot/<tid>/import', methods=['POST'])
+@private_area_bp.route('/api/pipeline/autophot/<tid>/upload', methods=['POST'])
 @_api
-def pipeline_api_import(tid):
-    return jsonify({'success': True, 'added': ap.import_new(tid)})
+def pipeline_api_upload(tid):
+    """One piece of a FITS upload: raw bytes in the body; ?name= &offset= &total= [&template=<filter>]."""
+    try:
+        offset = int(request.args.get('offset', ''))
+        total = int(request.args.get('total', ''))
+    except ValueError:
+        raise ap.PipelineError('Invalid upload.')
+    if (request.content_length or 0) > _upload_chunk() + 1024:
+        raise ap.PipelineError('Upload piece too large.')
+    result = ap.upload_chunk(tid, request.args.get('name', ''), offset, total, request.get_data(cache=False),
+                             template_filter=request.args.get('template', '').strip())
+    if result['done']:
+        logger.info('pipeline: %s uploaded %s to %s', _actor(), result['name'], tid)
+    return jsonify({'success': True, **result})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/images/remove', methods=['POST'])
