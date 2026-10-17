@@ -203,6 +203,22 @@ body {
 .op-inline { display: inline-flex; align-items: center; gap: 6px; }
 .op-inline input[type="date"] { min-height: 30px; padding: 0 10px; border-radius: 999px; font-size: 0.78rem; color-scheme: dark; }
 
+/* Pipeline · AutoPhOT paths */
+.pipe-settings { margin-top: 14px; }
+.pipe-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
+.pipe-rows .kw-field { margin-bottom: 10px; min-width: 0; }
+.pipe-rows input { font-family: var(--kw-font-mono); font-size: 0.8rem; }
+.pipe-label { display: flex; align-items: center; gap: 8px; }
+.pipe-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.pipe-dot.is-ok { background: #4CD964; }
+.pipe-dot.is-bad { background: #FF6B61; }
+.pipe-note { font-size: 0.74rem; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.pipe-note.is-bad { color: #FF8A80; }
+.pipe-note code { font-family: var(--kw-font-mono); font-size: 0.95em; }
+.pipe-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pipe-loading { color: var(--muted); font-size: 0.82rem; }
+@media (max-width: 700px) { .pipe-rows { grid-template-columns: 1fr; } }
+
 /* ── Modal contents (admin.js markup) ─────────────────────────── */
 .add-members-content .kw-search { margin-bottom: 12px; }
 .available-users-container { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }

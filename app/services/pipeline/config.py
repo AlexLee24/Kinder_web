@@ -1,0 +1,129 @@
+"""Where the pipeline tools live on this server.
+
+Admins set the paths in Admin → Operations → Pipeline (auth.system_settings); an
+empty setting falls back to the environment (kinder.env), then to a default next
+to AutoPhOT. Nothing here imports AutoPhOT: it runs in its own Python.
+"""
+import os
+import subprocess
+import time
+from pathlib import Path
+
+# setting key → (environment variable, label shown in the admin panel)
+SETTINGS = {
+    'autophot_dir': ('AUTOPHOT_DIR', 'AutoPhOT folder'),
+    'autophot_python': ('AUTOPHOT_PYTHON', 'AutoPhOT Python'),
+    'autophot_runs': ('AUTOPHOT_RUNS', 'Workspaces folder'),
+    'autophot_source_root': ('AUTOPHOT_SOURCE_ROOT', 'Image folders under'),
+}
+
+# Pipeline stages, in order. A stage that is not ready is shown as planned.
+STAGES = [
+    {'key': 'reduction', 'label': 'Reduction', 'ready': False,
+     'about': 'Bias, dark and flat correction, cosmic rays and astrometry for raw frames.'},
+    {'key': 'photometry', 'label': 'Photometry', 'tool': 'AutoPhOT', 'ready': True,
+     'about': 'PSF and aperture photometry, calibration, template subtraction and limits.'},
+]
+
+_cache = {'at': 0.0, 'values': None}
+_TTL = 5.0
+
+
+def _stored():
+    """The four settings as stored (strings, '' when unset), cached for a few seconds."""
+    now = time.monotonic()
+    if _cache['values'] is not None and now - _cache['at'] < _TTL:
+        return _cache['values']
+    from app.db.auth import get_setting
+    values = {k: (get_setting(f'pipeline.{k}', '') or '').strip() for k in SETTINGS}
+    _cache.update(at=now, values=values)
+    return values
+
+
+def clear_cache():
+    _cache.update(at=0.0, values=None)
+
+
+def _path(value):
+    return Path(value).expanduser() if value else None
+
+
+def paths():
+    """{'autophot_dir', 'autophot_python', 'autophot_runs', 'autophot_source_root'} → Path or None."""
+    stored = _stored()
+    raw = {k: stored.get(k) or os.getenv(env, '').strip() for k, (env, _) in SETTINGS.items()}
+    out = {k: _path(v) for k, v in raw.items()}
+    if out['autophot_dir'] and not out['autophot_python']:
+        out['autophot_python'] = out['autophot_dir'] / '.venv' / 'bin' / 'python'
+    if out['autophot_dir'] and not out['autophot_runs']:
+        out['autophot_runs'] = out['autophot_dir'].parent / 'autophot-runs'
+    if out['autophot_runs'] and not out['autophot_source_root']:
+        out['autophot_source_root'] = out['autophot_runs'].parent
+    return out
+
+
+def describe():
+    """For the admin panel: stored value, environment fallback and the path in use."""
+    stored = _stored()
+    used = paths()
+    return [{'key': k, 'label': label, 'env': env, 'value': stored.get(k, ''),
+             'env_value': os.getenv(env, '').strip(), 'used': str(used[k]) if used[k] else ''}
+            for k, (env, label) in SETTINGS.items()]
+
+
+def check(probe_python=True):
+    """Problems that stop AutoPhOT from running here: [{'key', 'ok', 'detail'}], all ok → ready."""
+    p = paths()
+    out = []
+    d = p['autophot_dir']
+    out.append({'key': 'autophot_dir', 'ok': bool(d and (d / 'autophot.py').is_file()),
+                'detail': 'autophot.py found' if d and (d / 'autophot.py').is_file()
+                else ('Not set' if not d else f'No autophot.py in {d}')})
+    py = p['autophot_python']
+    ok, detail = False, 'Not set'
+    if py:
+        if not py.is_file():
+            detail = f'{py} does not exist (run "uv sync" in the AutoPhOT folder)'
+        elif not os.access(py, os.X_OK):
+            detail = f'{py} is not executable'
+        elif probe_python:
+            try:
+                r = subprocess.run([str(py), '-c', 'import sys; print(sys.version.split()[0])'],
+                                   capture_output=True, text=True, timeout=20, env=child_env(), cwd=str(d or py.parent))
+                ok = r.returncode == 0
+                detail = f'Python {r.stdout.strip()}' if ok else (r.stderr.strip().splitlines() or ['failed'])[-1]
+            except (OSError, subprocess.SubprocessError) as e:
+                detail = f'Could not start: {e}'
+        else:
+            ok, detail = True, str(py)
+    out.append({'key': 'autophot_python', 'ok': ok, 'detail': detail})
+    runs = p['autophot_runs']
+    if not runs:
+        out.append({'key': 'autophot_runs', 'ok': False, 'detail': 'Not set'})
+    elif runs.is_dir():
+        w = os.access(runs, os.W_OK | os.X_OK)
+        out.append({'key': 'autophot_runs', 'ok': w, 'detail': 'Writable' if w else f'{runs} is not writable'})
+    else:
+        parent_ok = runs.parent.is_dir() and os.access(runs.parent, os.W_OK)
+        out.append({'key': 'autophot_runs', 'ok': parent_ok,
+                    'detail': 'Will be created on first use' if parent_ok else f'{runs} does not exist'})
+    src = p['autophot_source_root']
+    out.append({'key': 'autophot_source_root', 'ok': bool(src and src.is_dir()),
+                'detail': 'Exists' if src and src.is_dir() else ('Not set' if not src else f'{src} does not exist')})
+    return out
+
+
+def ready():
+    return all(c['ok'] for c in check(probe_python=False))
+
+
+def child_env():
+    """Environment for AutoPhOT: only what it needs, never Kinder's secrets (DB, OAuth, Slack, TNS)."""
+    keep = ('HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'TZ')
+    env = {k: os.environ[k] for k in keep if k in os.environ}
+    home = os.environ.get('HOME') or str(Path.home())
+    # PATH is kept (solve-field, sex, swarp, hotpants live there) with uv's ~/.local/bin first
+    env['PATH'] = os.pathsep.join([str(Path(home) / '.local' / 'bin'),
+                                   os.environ.get('PATH') or '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'])
+    env.update(PYTHONUNBUFFERED='1', MPLBACKEND='Agg')
+    return env

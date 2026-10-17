@@ -1,0 +1,111 @@
+{# AutoPhOT workspace settings: new workspace (Pipeline page) and edit (Run tab); pipeline.js reads [data-pl-form] #}
+{% macro pl_form(cfg, tid='') %}
+<form class="pl-form" data-pl-form{% if tid %} data-tid="{{ tid }}"{% endif %} autocomplete="off" novalidate>
+    <div class="pl-row pl-row-name">
+        <div class="kw-field pl-name-field">
+            <label for="plName{{ tid }}">Target</label>
+            <div class="pl-inline">
+                <input type="text" id="plName{{ tid }}" name="name" value="{{ cfg.name or '' }}" maxlength="80" required
+                       placeholder="SN 2026abc" spellcheck="false" aria-autocomplete="list">
+                <button type="button" class="kw-btn kw-btn-sm" data-lookup title="Look up the J2000 position in SIMBAD / NED / VizieR (CDS Sesame)">Look up</button>
+            </div>
+            <ul class="pl-suggest" role="listbox" hidden></ul>
+        </div>
+    </div>
+    <div class="pl-row">
+        <div class="kw-field">
+            <label for="plRa{{ tid }}">RA (J2000)</label>
+            <input type="text" id="plRa{{ tid }}" name="ra" value="{{ cfg.ra or '' }}" maxlength="40" required placeholder="deg or 12:34:56.7" spellcheck="false">
+        </div>
+        <div class="kw-field">
+            <label for="plDec{{ tid }}">Dec (J2000)</label>
+            <input type="text" id="plDec{{ tid }}" name="dec" value="{{ cfg.dec or '' }}" maxlength="40" required placeholder="deg or -12:34:56.7" spellcheck="false">
+        </div>
+    </div>
+    <p class="pl-hint">AutoPhOT measures at this position; the name is only a label. Pick a Kinder object to fill both.</p>
+
+    <div class="kw-field">
+        <label for="plSource{{ tid }}">Image folder</label>
+        <div class="pl-inline">
+            <input type="text" id="plSource{{ tid }}" name="source" value="{{ cfg.source or '' }}" maxlength="500"
+                   placeholder="{{ (source_root ~ '/…') if source_root else '/path/to/SN2026abc' }}" spellcheck="false"{% if not tid %} required{% endif %}>
+            <button type="button" class="kw-btn kw-btn-sm" data-scan>Check headers</button>
+        </div>
+        <p class="pl-hint">{% if tid %}Where the images came from. Changing it copies nothing; use Import below.{% else %}The FITS (and a <code>templates/</code> folder, if any) are copied into the workspace; this folder is never changed.{% endif %}{% if source_root %} Must be inside <code>{{ source_root }}</code>.{% endif %}</p>
+        <label class="pl-check"><input type="checkbox" name="top_only"{% if cfg.top_only is not defined or cfg.top_only %} checked{% endif %}><span>Only the FITS directly in this folder (skip subfolders)</span></label>
+    </div>
+    <div class="pl-scan" hidden></div>
+
+    <div class="pl-row">
+        <div class="kw-field">
+            <label for="plCatalog{{ tid }}">Calibration catalog</label>
+            <select id="plCatalog{{ tid }}" name="catalog" class="kw-select">
+                {% for c in catalogs %}<option value="{{ c }}"{% if (cfg.catalog or default_catalog) == c %} selected{% endif %}>{{ c }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="kw-field">
+            <label for="plNcpu{{ tid }}">Images in parallel</label>
+            <input type="number" id="plNcpu{{ tid }}" name="ncpu" min="1" value="{{ cfg.ncpu or 1 }}">
+        </div>
+    </div>
+
+    <div class="pl-toggles">
+        <label class="pl-toggle"><input type="checkbox" name="stack"{% if cfg.stack %} checked{% endif %}>
+            <span><b>Stacking</b><small>Combine the frames of each filter and night, then measure the stacks</small></span></label>
+        <label class="pl-toggle"><input type="checkbox" name="subtraction"{% if cfg.subtraction %} checked{% endif %}>
+            <span><b>Template subtraction</b><small>Subtract a reference image before measuring the target</small></span></label>
+    </div>
+
+    <fieldset class="pl-optsec" data-show-if="stack"{% if not cfg.stack %} hidden{% endif %}>
+        <legend>Stacking</legend>
+        <div class="pl-row pl-row-3">
+            <div class="kw-field"><label for="plStAlign{{ tid }}">Alignment</label>
+                <select id="plStAlign{{ tid }}" name="stack_align" class="kw-select">
+                    {% for v, l in [('auto', 'Automatic'), ('stars', 'Star matching'), ('wcs', 'WCS')] %}<option value="{{ v }}"{% if (cfg.stack_align or 'auto') == v %} selected{% endif %}>{{ l }}</option>{% endfor %}
+                </select></div>
+            <div class="kw-field"><label for="plStComb{{ tid }}">Combine</label>
+                <select id="plStComb{{ tid }}" name="stack_combine" class="kw-select">
+                    {% for v, l in [('mean', 'Mean, clip cosmic rays'), ('median', 'Median')] %}<option value="{{ v }}"{% if (cfg.stack_combine or 'mean') == v %} selected{% endif %}>{{ l }}</option>{% endfor %}
+                </select></div>
+            <div class="kw-field"><label for="plStSig{{ tid }}">Clipping (σ)</label>
+                <input type="number" id="plStSig{{ tid }}" name="stack_sigma" min="1.5" max="10" step="0.5" value="{{ cfg.stack_sigma or 3 }}"></div>
+        </div>
+        <label class="pl-check"><input type="checkbox" name="stack_with_singles"{% if cfg.stack_with_singles %} checked{% endif %}><span>Also measure the single frames</span></label>
+        <p class="pl-hint">Frames of the same filter and night (two or more) become <code>stack_&lt;filter&gt;_&lt;date&gt;.fits</code>, aligned and averaged in ADU per frame with GAIN, read noise and mid-time written for AutoPhOT. A stack is reused while its frames and these settings stay the same.</p>
+    </fieldset>
+
+    <fieldset class="pl-optsec" data-show-if="subtraction"{% if not cfg.subtraction %} hidden{% endif %}>
+        <legend>Template subtraction</legend>
+        <div class="pl-row pl-row-3">
+            <div class="kw-field"><label for="plSub{{ tid }}">Method</label>
+                <select id="plSub{{ tid }}" name="sub_method" class="kw-select">
+                    {% for m in sub_methods %}<option value="{{ m }}"{% if (cfg.sub_method or 'sfft') == m %} selected{% endif %}>{{ m }}</option>{% endfor %}
+                </select></div>
+            <div class="kw-field"><label for="plTsDl{{ tid }}">Templates</label>
+                <select id="plTsDl{{ tid }}" name="ts_download" class="kw-select">
+                    <option value=""{% if not cfg.ts_download %} selected{% endif %}>My own (templates/)</option>
+                    {% for d in ts_download %}<option value="{{ d }}"{% if cfg.ts_download == d %} selected{% endif %}>Download from {{ ts_download_labels[d] }}</option>{% endfor %}
+                </select></div>
+            <div class="kw-field"><label for="plTsSize{{ tid }}">Size (arcmin)</label>
+                <input type="number" id="plTsSize{{ tid }}" name="ts_size" min="1" max="60" step="1" value="{{ cfg.ts_size or 10 }}"></div>
+        </div>
+        <div class="pl-row">
+            <div class="kw-field"><label for="plTsAlign{{ tid }}">Alignment to the science image</label>
+                <select id="plTsAlign{{ tid }}" name="ts_align" class="kw-select">
+                    {% for a in ts_align %}<option value="{{ a }}"{% if (cfg.ts_align or 'spalipy') == a %} selected{% endif %}>{{ a }}</option>{% endfor %}
+                </select></div>
+            <div class="kw-field"><label for="plTsConv{{ tid }}">Convolution</label>
+                <select id="plTsConv{{ tid }}" name="ts_forceconv" class="kw-select">
+                    {% set conv = {'REF': 'Blur the template (REF)', 'SCI': 'Blur the science image (SCI)', 'AUTO': 'Decide per image (AUTO)'} %}
+                    {% for c in ts_forceconv %}<option value="{{ c }}"{% if (cfg.ts_forceconv or 'REF') == c %} selected{% endif %}>{{ conv[c] }}</option>{% endfor %}
+                </select></div>
+        </div>
+        <p class="pl-hint">Own templates: one FITS per filter in <code>templates/&lt;filter&gt;_template/</code> of the image folder. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky. Without subtraction, exported filters are marked “(w/o TS)”.</p>
+    </fieldset>
+
+    <p class="pl-msg" role="status" aria-live="polite"></p>
+    <div class="pl-form-foot">
+        <button class="kw-btn kw-btn-primary" type="submit">{% if tid %}Save settings{% else %}Create workspace{% endif %}</button>
+    </div>
+</form>
+{% endmacro %}

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>Pipeline - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
+    <meta name="description" content="Reduce and measure images from any telescope">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    {% from '_pipeline_form.html' import pl_form with context %}
+
+    <main class="kw-page pl-page">
+        <header class="kw-page-head">
+            <div>
+                <h1>Pipeline</h1>
+                <p>Turn images from any telescope into a calibrated light curve. Each workspace holds a copy of the images and everything the tools write, so the original folder is never touched.</p>
+            </div>
+        </header>
+
+        <nav class="pl-stages" aria-label="Pipeline stages">
+            {% for s in stages %}
+            {% set here = s.key == stage %}
+            <a class="pl-stage{% if here %} is-on{% endif %}{% if not s.ready %} is-planned{% endif %}"
+               href="{{ url_for('private_area.pipeline_reduction') if s.key == 'reduction' else url_for('private_area.pipeline') }}"
+               {% if here %}aria-current="page"{% endif %}>
+                <span class="pl-stage-top">
+                    <b>{{ s.label }}</b>
+                    {% if not s.ready %}<span class="kw-chip">Planned</span>
+                    {% elif s.key == 'photometry' and ready %}<span class="kw-chip kw-chip-gold">{{ workspaces|length }} workspace{{ '' if workspaces|length == 1 else 's' }}</span>
+                    {% elif s.key == 'photometry' %}<span class="kw-chip kw-chip-red">Not set up</span>{% endif %}
+                </span>
+                {% if s.tool %}<span class="pl-stage-tool">{{ s.tool }}</span>{% endif %}
+                <span class="pl-stage-about">{{ s.about }}</span>
+            </a>
+            {% if not loop.last %}<span class="pl-stage-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></span>{% endif %}
+            {% endfor %}
+        </nav>
+
+        {% if stage == 'reduction' %}
+        <section class="kw-panel pl-planned">
+            <div class="kw-panel-head"><h2>Reduction comes next</h2></div>
+            <p>Raw frames will be calibrated here (bias, dark and flat, cosmic rays, astrometry) and handed straight to a Photometry workspace, so AutoPhOT measures reduced frames without copying them by hand.</p>
+            <p>Until then, reduce the frames as usual and create a <a href="{{ url_for('private_area.pipeline') }}">Photometry workspace</a> from the reduced folder.</p>
+        </section>
+
+        {% elif not ready %}
+        <section class="kw-panel pl-setup" aria-labelledby="plSetupTitle">
+            <div class="kw-panel-head"><h2 id="plSetupTitle">AutoPhOT is not set up on this server</h2></div>
+            <p class="kw-panel-desc">An admin sets where AutoPhOT, its Python and the workspaces live.</p>
+            <ul class="pl-checks">
+                {% for c in checks %}
+                <li><span class="kw-dot {{ 'is-ok' if c.ok else 'is-bad' }}"></span><b>{{ labels[c.key] }}</b><span>{{ c.detail }}</span></li>
+                {% endfor %}
+            </ul>
+            {% if session.user.is_admin %}<div class="kw-panel-foot"><a class="kw-btn kw-btn-primary" href="{{ url_for('admin.admin_panel') }}#operations">Open admin settings</a></div>{% endif %}
+        </section>
+
+        {% else %}
+        <div class="pl-home" data-source-root="{{ source_root }}">
+            <section class="kw-panel pl-new" aria-labelledby="plNewTitle">
+                <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2></div>
+                {{ pl_form({}) }}
+            </section>
+
+            <section class="kw-panel pl-list" aria-labelledby="plListTitle">
+                <div class="kw-panel-head">
+                    <h2 id="plListTitle">Workspaces</h2>
+                    <span class="kw-panel-meta">{{ workspaces|length }}</span>
+                </div>
+                {% if error %}<p class="pl-msg is-error">{{ error }}</p>{% endif %}
+                {% if not workspaces %}
+                <div class="pl-empty"><b>No workspaces yet</b>Create one from a folder of FITS images. AutoPhOT then runs on the copies.</div>
+                {% else %}
+                <ul class="pl-ws-list">
+                    {% for w in workspaces %}
+                    <li class="pl-ws">
+                        <a class="pl-ws-main" href="{{ url_for('private_area.pipeline_workspace', tid=w.id) }}">
+                            <span class="pl-ws-top">
+                                <b>{{ w.name }}</b>
+                                {% if w.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
+                                {% elif w.status == 'done' %}<span class="kw-chip kw-chip-green">Done</span>
+                                {% elif w.status == 'stopped' %}<span class="kw-chip">Stopped</span>
+                                {% elif w.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if w.status == 'failed' else 'Did not finish' }}</span>{% endif %}
+                            </span>
+                            <span class="pl-ws-meta">
+                                <span>{{ w.n_images }} FITS</span>
+                                {% if w.lightcurve_csv %}<span>{{ w.n_rows }} light-curve point{{ '' if w.n_rows == 1 else 's' }}</span>{% endif %}
+                                <span class="pl-mono">{{ w.cfg.ra }} {{ w.cfg.dec }}</span>
+                                {% if w.updated %}<span data-ts="{{ w.updated }}"></span>{% endif %}
+                            </span>
+                            {% if w.id != w.name %}<span class="pl-ws-id pl-mono">{{ w.id }}</span>{% endif %}
+                        </a>
+                        <div class="pl-ws-actions">
+                            <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=w.id, tab='run') }}">Run</a>
+                            <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=w.id, tab='results') }}">Results</a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </section>
+        </div>
+        {% endif %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
+</body>
+</html>

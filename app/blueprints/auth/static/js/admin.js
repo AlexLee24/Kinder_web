@@ -2127,3 +2127,94 @@ function _renderScheduledJobs(jobs) {
         </div>`;
     }).join('');
 }
+
+// ── Pipeline · AutoPhOT paths (Operations tab) ──
+(function () {
+    const form = document.getElementById('pipelineForm');
+    if (!form) return;
+    const rows = document.getElementById('pipelineRows');
+    const status = document.getElementById('pipelineStatus');
+    const hints = {
+        autophot_dir: 'Folder with autophot.py, e.g. /Users/alex-lee/UCD/autophot',
+        autophot_python: 'Default: <AutoPhOT folder>/.venv/bin/python',
+        autophot_runs: 'Default: autophot-runs next to the AutoPhOT folder',
+        autophot_source_root: 'Image folders typed on the Pipeline page must be inside this. Default: the parent of the workspaces folder',
+    };
+
+    function node(tag, cls, text) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text != null) n.textContent = text;
+        return n;
+    }
+
+    function render(settings, checks) {
+        const byKey = {};
+        (checks || []).forEach(c => { byKey[c.key] = c; });
+        rows.replaceChildren(...settings.map(s => {
+            const c = byKey[s.key];
+            const field = node('div', 'kw-field');
+            const label = node('label', 'pipe-label');
+            label.htmlFor = 'pipe_' + s.key;
+            label.append(node('span', 'pipe-dot' + (c ? (c.ok ? ' is-ok' : ' is-bad') : '')), node('span', '', s.label));
+            const input = node('input');
+            input.type = 'text';
+            input.id = 'pipe_' + s.key;
+            input.name = s.key;
+            input.value = s.value || '';
+            input.spellcheck = false;
+            input.placeholder = s.env_value ? 'kinder.env: ' + s.env_value : (s.used || hints[s.key] || '');
+            const note = node('div', 'pipe-note' + (c && !c.ok ? ' is-bad' : ''));
+            if (s.used) {
+                note.append('In use: ');
+                note.append(node('code', '', s.used));
+                if (c) note.append(' · ' + c.detail);
+            } else {
+                note.textContent = c ? c.detail : hints[s.key];
+            }
+            field.append(label, input, note);
+            return field;
+        }));
+    }
+
+    async function load(probe) {
+        status.textContent = probe ? 'Checking…' : '';
+        try {
+            const res = await fetch('/admin/pipeline/settings' + (probe ? '?probe=1' : ''), { credentials: 'same-origin' });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Could not load');
+            render(data.settings, data.checks);
+            const bad = data.checks.filter(c => !c.ok).length;
+            status.textContent = probe ? (bad ? bad + ' problem' + (bad > 1 ? 's' : '') + ' found' : 'Ready') : '';
+        } catch (e) {
+            rows.replaceChildren(node('p', 'pipe-note is-bad', 'Could not load the pipeline settings.'));
+            status.textContent = '';
+        }
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('pipelineSave');
+        const settings = {};
+        form.querySelectorAll('input[name]').forEach(i => { settings[i.name] = i.value.trim(); });
+        btn.disabled = true;
+        status.textContent = 'Saving…';
+        try {
+            const res = await fetch('/admin/pipeline/settings', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
+            render(data.settings, data.checks);
+            const bad = data.checks.filter(c => !c.ok).length;
+            status.textContent = bad ? 'Saved · ' + bad + ' problem' + (bad > 1 ? 's' : '') + ' left' : 'Saved · ready';
+        } catch (err) {
+            status.textContent = err.message;
+        }
+        btn.disabled = false;
+    });
+    document.getElementById('pipelineCheck').addEventListener('click', () => load(true));
+    load(false);
+})();

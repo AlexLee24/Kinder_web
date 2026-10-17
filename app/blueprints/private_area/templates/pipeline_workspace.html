@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>{{ ap.name }} · Pipeline - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    {% from '_pipeline_form.html' import pl_form with context %}
+    {% macro size(n) %}{% if n >= 1073741824 %}{{ '%.1f'|format(n / 1073741824) }} GB{% elif n >= 1048576 %}{{ '%.1f'|format(n / 1048576) }} MB{% elif n >= 1024 %}{{ '%.0f'|format(n / 1024) }} kB{% else %}{{ n }} B{% endif %}{% endmacro %}
+    {% macro num(v, e=None, d=3) %}{% if v is not none %}{{ ('%.' ~ d ~ 'f')|format(v) }}{% if e is not none %}<small> ± {{ '%.3f'|format(e) }}</small>{% endif %}{% else %}<span class="pl-faint">—</span>{% endif %}{% endmacro %}
+
+    <main class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}">
+        <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
+        <header class="kw-page-head">
+            <div>
+                <h1>{{ ap.name }}</h1>
+                <p class="pl-ws-sub"><span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span><span>{{ ap.n_images }} FITS</span><span>{{ ap.cfg.catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
+            </div>
+            <div class="kw-page-actions">
+                <span class="pl-state" id="plHeadState">
+                {% if ap.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
+                {% elif ap.status == 'done' %}<span class="kw-chip kw-chip-green">Done</span>
+                {% elif ap.status == 'stopped' %}<span class="kw-chip">Stopped</span>
+                {% elif ap.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if ap.status == 'failed' else 'Did not finish' }}</span>{% endif %}
+                </span>
+            </div>
+        </header>
+
+        <nav class="kw-tabbar pl-tabs" aria-label="Workspace">
+            <a class="kw-tab{% if tab == 'run' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}"{% if tab == 'run' %} aria-current="page"{% endif %}>Run</a>
+            <a class="kw-tab{% if tab == 'results' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results') }}"{% if tab == 'results' %} aria-current="page"{% endif %}>Results{% if ap.lightcurve_csv %} <span class="kw-n">{{ ap.n_rows }}</span>{% endif %}</a>
+            <a class="kw-tab{% if tab == 'legacy' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='legacy') }}"{% if tab == 'legacy' %} aria-current="page"{% endif %}>Earlier runs{% if ap.n_legacy %} <span class="kw-n">{{ ap.n_legacy }}</span>{% endif %}</a>
+        </nav>
+
+        {# ═════════════ Run ═════════════ #}
+        {% if tab == 'run' %}
+        <div class="pl-run-grid">
+            <section class="kw-panel pl-job" id="plJob" aria-labelledby="plJobTitle">
+                <div class="kw-panel-head">
+                    <h2 id="plJobTitle">Run AutoPhOT</h2>
+                    <div class="pl-job-actions">
+                        <span class="pl-job-state" id="plJobState" aria-live="polite"></span>
+                        <button type="button" class="kw-btn kw-btn-primary" id="plRun">Run</button>
+                    </div>
+                </div>
+                <p class="kw-panel-desc">Saves the settings, copies any new images from the image folder, then runs AutoPhOT on this server. When it meets a telescope or filter it does not know, it asks in the log; answer below.{% if ap.has_results or ap.status %} The current results move to Earlier runs first, so two runs never mix.{% endif %}</p>
+                {% if ap.result and ap.result.errors %}
+                {% for e in ap.result.errors %}<p class="pl-warn">{{ e }}</p>{% endfor %}
+                {% elif ap.status == 'incomplete' %}
+                <p class="pl-warn">The last run did not finish (it failed, was stopped, or the server restarted). Its log is below.</p>
+                {% endif %}
+                <pre class="pl-log" id="plLog" tabindex="0" aria-label="AutoPhOT log"{% if not ap.status %} hidden{% endif %}></pre>
+                <form class="pl-answer" id="plAnswer" hidden>
+                    <label for="plAnswerText">AutoPhOT is waiting for an answer</label>
+                    <div class="pl-inline">
+                        <input type="text" id="plAnswerText" name="text" maxlength="500" placeholder="Type the answer" spellcheck="false">
+                        <button class="kw-btn kw-btn-sm kw-btn-primary" type="submit">Send</button>
+                        <button class="kw-btn kw-btn-sm" type="button" data-default>Use default</button>
+                    </div>
+                </form>
+                <div class="pl-log-foot" id="plLogFoot"{% if not ap.status %} hidden{% endif %}>
+                    <a href="{{ url_for('private_area.pipeline_log', tid=ap.id) }}" target="_blank" rel="noopener">Full log</a>
+                    {% if ap.result %}<span>Last finished <span data-ts="{{ ap.result.time }}"></span> · {{ '%.0f'|format(ap.result.elapsed or 0) }} s</span>{% endif %}
+                </div>
+            </section>
+
+            <section class="kw-panel pl-settings" aria-labelledby="plSetTitle">
+                <div class="kw-panel-head"><h2 id="plSetTitle">Settings</h2></div>
+                {{ pl_form(ap.cfg, ap.id) }}
+            </section>
+
+            <section class="kw-panel pl-images" id="plImages" aria-labelledby="plImgTitle">
+                <div class="kw-panel-head">
+                    <h2 id="plImgTitle">Images</h2>
+                    <div class="pl-job-actions">
+                        <span class="kw-panel-meta" id="plImgCount"></span>
+                        <button type="button" class="kw-btn kw-btn-sm" id="plImport" hidden></button>
+                    </div>
+                </div>
+                <p class="kw-panel-desc">Copies in <code>{{ ap.images }}</code>, from <code>{{ ap.source or '—' }}</code>. AutoPhOT skips a frame whose header lacks TELESCOP, INSTRUME or FILTER.</p>
+                <div id="plImgBody"><div class="pl-skeleton" aria-hidden="true"><span></span><span></span><span></span></div></div>
+            </section>
+
+            <details class="kw-panel pl-all" id="plAll">
+                <summary class="kw-panel-head">
+                    <h2>All AutoPhOT settings</h2>
+                    <span class="pl-job-actions"><span class="kw-chip kw-chip-gold" id="plAllCount" hidden></span><span class="pl-chev" aria-hidden="true"></span></span>
+                </summary>
+                <p class="kw-panel-desc">Every setting in AutoPhOT's <code>databases/default_input.yml</code>, with its explanation. Only values you change are kept for this workspace; they are saved with the settings and before every run.</p>
+                <div class="pl-all-bar">
+                    <input type="search" id="plAllQ" placeholder="Search settings" aria-label="Search settings" autocomplete="off">
+                    <label class="pl-check"><input type="checkbox" id="plAllOnly"><span>Only changed</span></label>
+                </div>
+                <div id="plAllBody"><div class="pl-skeleton" aria-hidden="true"><span></span><span></span></div></div>
+                <div class="kw-panel-foot"><button type="button" class="kw-btn kw-btn-primary" id="plAllSave">Save settings</button></div>
+            </details>
+
+            <section class="kw-panel pl-danger">
+                <div class="kw-panel-head"><h2>Delete workspace</h2></div>
+                <p class="kw-panel-desc">Moves the copies, results, settings and log to <code>.deleted/</code> in the workspaces folder (not erased). The image folder is not touched.</p>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-danger" id="plDelete">Delete {{ ap.id }}</button>
+            </section>
+        </div>
+
+        {# ═════════════ Results ═════════════ #}
+        {% elif tab == 'results' %}
+        {% if legacy %}
+        <div class="pl-banner">
+            <span>Earlier run <b data-ts="{{ legacy.time }}">{{ legacy.id }}</b>, not the current results.</span>
+            <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='legacy') }}">All earlier runs</a>
+            <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_log', tid=ap.id, run=run) }}" target="_blank" rel="noopener">Log</a>
+        </div>
+        {% endif %}
+
+        {% if not listing %}
+        <section class="kw-panel"><div class="pl-empty"><b>No results yet</b>Run AutoPhOT and the light curve, figures and tables appear here.
+            <a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}">Go to Run</a></div></section>
+        {% else %}
+
+        {% if images and not rel %}
+        <section class="kw-panel" aria-labelledby="plStatTitle">
+            <div class="kw-panel-head"><h2 id="plStatTitle">Images measured</h2>
+                <span class="kw-chip {{ 'kw-chip-green' if not images.failed else 'kw-chip-gold' }}">{{ images.n_ok }} of {{ images.n_in }}</span></div>
+            {% if images.failed %}
+            <p class="kw-panel-desc">These have no result, so they are missing from the light curve:</p>
+            <div class="kw-table-wrap"><table class="kw-table pl-table">
+                <thead><tr><th>Image</th><th>Filter</th><th>Status</th><th>Why</th><th></th></tr></thead>
+                <tbody>
+                {% for f in images.failed %}
+                <tr><td class="pl-mono" title="{{ f.path }}">{{ f.rel or f.name }}</td><td>{{ f.filter or '—' }}</td>
+                    <td><span class="kw-chip kw-chip-red">{{ 'Skipped' if f.status == 'SKIPPED' else 'Failed' }}</span></td>
+                    <td class="pl-why">{% if f.hint %}<span>{{ f.hint }}</span>{% endif %}{% if f.errors %}<code>{{ f.errors[-1] }}</code>{% elif not f.hint %}<span class="pl-faint">No error message found; open the log.</span>{% endif %}</td>
+                    <td class="pl-acts">{% if f.log %}<a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.log, run=run) }}" target="_blank" rel="noopener">Log</a>{% endif %}
+                        {% if f.folder %}<a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', path=f.folder, run=run) }}">Folder</a>{% endif %}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        {% if phot and phot.rows %}
+        <section class="kw-panel" aria-labelledby="plPhotTitle">
+            <div class="kw-panel-head"><h2 id="plPhotTitle">Photometry</h2>
+                <div class="pl-job-actions">{% if phot.magsys %}<span class="kw-chip kw-chip-blue">{{ phot.magsys }}</span>{% endif %}
+                {% for f in phot.files %}<a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f, run=run) }}" target="_blank" rel="noopener">{{ f }}</a>{% endfor %}</div>
+            </div>
+            <p class="kw-panel-desc">One row per image. Detection follows AutoPhOT's S/N threshold; limits are the faintest magnitude recovered at that S/N by injecting artificial stars.</p>
+
+            <form class="pl-export" id="plExport" data-run="{{ run or '' }}">
+                <b>Light curve for import</b>
+                <label>Magnitude <select class="kw-select kw-select-sm" name="method"><option value="PSF">PSF</option><option value="AP">Aperture</option></select></label>
+                <label>Non-detections <select class="kw-select kw-select-sm" name="limit">{% for c, snr in phot.limits %}<option value="{{ '%g'|format(snr) }}">&gt; limit {{ '%g'|format(snr) }}σ</option>{% endfor %}</select></label>
+                <label class="pl-check"><input type="checkbox" name="header" checked><span>Header row</span></label>
+                <span class="pl-spacer"></span>
+                <button class="kw-btn kw-btn-sm" type="button" data-preview>Preview</button>
+                <button class="kw-btn kw-btn-sm kw-btn-primary" type="submit">Download .txt</button>
+                <p class="pl-hint pl-export-note">Columns: MJD, magnitude, error, filter, telescope; non-detections are written as &gt;limit with error nan. Without template subtraction each filter is marked “(w/o TS)” and the file is comma-separated. Upload it on the object's page in Kinder.</p>
+                <pre class="pl-export-pre" hidden></pre>
+            </form>
+
+            <div class="pl-bands">
+            {% for b, st in phot.bands|dictsort %}
+                <div class="pl-band"><b>{{ b }}</b>
+                    <span>{{ st.det }} / {{ st.n }} detected</span>
+                    {% for c, snr in phot.limits %}<span>Median limit {{ '%g'|format(snr) }}σ <b>{{ num(st.lim_median[loop.index0], d=2) }}</b></span>{% endfor %}
+                </div>
+            {% endfor %}
+            </div>
+
+            <div class="kw-table-wrap"><table class="kw-table pl-table pl-phot">
+                <thead><tr>
+                    <th>Date (UTC)</th><th>MJD</th><th>Filter</th><th>PSF mag</th><th>Aperture mag</th><th>S/N</th><th>Detected</th>
+                    {% for c, snr in phot.limits %}<th>Limit {{ '%g'|format(snr) }}<span class="pl-nocase">σ</span></th>{% endfor %}
+                    <th>Zeropoint</th><th>FWHM (px)</th><th>Airmass</th><th>Exp (s)</th><th></th>
+                </tr></thead>
+                <tbody>
+                {% for r in phot.rows %}
+                <tr class="{{ 'is-det' if r.det else 'is-nondet' }}">
+                    <td>{{ r.date }}</td><td>{{ num(r.mjd, d=5) }}</td><td><b>{{ r.filter }}</b></td>
+                    <td class="pl-mag">{{ num(r.psf, r.psf_err) }}</td><td class="pl-mag">{{ num(r.ap, r.ap_err) }}</td>
+                    <td>{{ num(r.snr, d=1) }}</td>
+                    <td>{% if r.det %}<span class="kw-chip kw-chip-green">Yes</span>{% else %}<span class="kw-chip">No</span>{% endif %}</td>
+                    {% for v in r.limits %}<td>{{ num(v, d=2) }}</td>{% endfor %}
+                    <td>{{ num(r.zp, r.zp_err) }}{% if r.zp is not none %}
+                        <span class="pl-zp {{ 'is-ok' if r.zp_ok else 'is-warn' }}" tabindex="0" role="note"
+                              aria-label="{{ 'Zeropoint reliable' if r.zp_ok else 'Zeropoint flagged' }}">{{ '✓' if r.zp_ok else '!' }}
+                            <span class="pl-zp-tip">{% if r.zp_ok %}AutoPhOT: zeropoint reliable{% else %}<b>AutoPhOT flagged this zeropoint</b>{% for fl in r.zp_flags %}<span>{{ zp_flag_text(fl) }}</span>{% else %}<span>No reason recorded</span>{% endfor %}{% endif %}{% if r.zp_n is not none %}<small>{{ '%d'|format(r.zp_n) }} calibrators{% if r.zp_neff is not none %} · N_eff {{ '%.0f'|format(r.zp_neff) }}{% endif %}</small>{% endif %}</span>
+                        </span>{% endif %}</td>
+                    <td>{{ num(r.fwhm, d=2) }}</td><td>{{ num(r.airmass, d=2) }}</td><td>{{ num(r.exptime, d=0) }}</td>
+                    <td>{% if r.folder %}<a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', path=r.folder, run=run) }}">Folder</a>{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+
+            {% for method, cl in phot.colors|dictsort(reverse=true) if cl %}
+            <h3 class="pl-sub">Colours ({{ method }})</h3>
+            <div class="kw-table-wrap"><table class="kw-table pl-table">
+                <thead><tr><th>Date (UTC)</th><th>MJD</th><th>Colour</th><th>Value</th></tr></thead>
+                <tbody>{% for c in cl %}<tr><td>{{ c.date[:19] }}</td><td>{{ num(c.mjd, d=3) }}</td><td><b>{{ c.color }}</b></td><td>{{ num(c.value, c.err) }}</td></tr>{% endfor %}</tbody>
+            </table></div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if not rel and phot %}
+        {% set lc_plots = listing.files|selectattr('kind', 'equalto', 'image')|selectattr('lightcurve')|list %}
+        {% if lc_plots %}
+        <section class="kw-panel" aria-labelledby="plLcTitle">
+            <div class="kw-panel-head"><h2 id="plLcTitle">Light curve</h2></div>
+            <div class="pl-gallery pl-gallery-lg">
+                {% for f in lc_plots %}<a href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run) }}" target="_blank" rel="noopener"><figure>
+                    <img src="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run) }}" alt="{{ f.name }}" loading="lazy"><figcaption>{{ f.name }}</figcaption></figure></a>{% endfor %}
+            </div>
+        </section>
+        {% endif %}
+        {% endif %}
+
+        <section class="kw-panel pl-browser" aria-labelledby="plFilesTitle">
+            <div class="kw-panel-head">
+                <h2 id="plFilesTitle">Files</h2>
+                <nav class="pl-crumbs" aria-label="Folder">
+                    <a href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', run=run) }}">{{ reduced.rsplit('/', 1)[-1] }}</a>
+                    {% for c in listing.crumbs %}<span aria-hidden="true">/</span><a href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', path=c.path, run=run) }}">{{ c.name }}</a>{% endfor %}
+                </nav>
+            </div>
+
+            {% if listing.dirs %}
+            <div class="pl-dirs">
+                {% for d in listing.dirs %}
+                <a class="pl-dir" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', path=d.path, run=run) }}">
+                    <b>{{ d.name }}</b><span>{{ d.n_files }} file{{ '' if d.n_files == 1 else 's' }} · {{ d.n_images }} figure{{ '' if d.n_images == 1 else 's' }}</span></a>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% set figs = listing.files|selectattr('kind', 'equalto', 'image')|list %}
+            {% if not rel and phot %}{% set figs = figs|rejectattr('lightcurve')|list %}{% endif %}
+            {% if figs %}
+            <h3 class="pl-sub">Figures <span class="pl-faint">{{ figs|length }}</span></h3>
+            <div class="pl-gallery">
+                {% for f in figs %}<a href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run) }}" target="_blank" rel="noopener"><figure>
+                    <img src="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run) }}" alt="{{ f.name }}" loading="lazy"><figcaption>{{ f.name }}</figcaption></figure></a>{% endfor %}
+            </div>
+            {% endif %}
+
+            {% set others = listing.files|rejectattr('kind', 'equalto', 'image')|list %}
+            {% if others %}
+            <h3 class="pl-sub">Other files <span class="pl-faint">{{ others|length }}</span></h3>
+            <div class="kw-table-wrap"><table class="kw-table pl-table">
+                <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead>
+                <tbody>
+                {% for f in others %}
+                <tr><td class="pl-mono">{{ f.name }}</td><td>{{ size(f.size) }}</td><td><span data-ts="{{ f.mtime }}"></span></td>
+                    <td class="pl-acts">{% if f.kind in ('text', 'csv', 'pdf') %}<a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run) }}" target="_blank" rel="noopener">Open</a>{% endif %}
+                        <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_file', tid=ap.id, rel=f.path, run=run, download=1) }}">Download</a></td></tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% endif %}
+            {% if not listing.dirs and not listing.files %}<p class="pl-faint">This folder is empty.</p>{% endif %}
+        </section>
+        {% endif %}
+
+        {# ═════════════ Earlier runs ═════════════ #}
+        {% else %}
+        <section class="kw-panel" aria-labelledby="plLegTitle">
+            <div class="kw-panel-head"><h2 id="plLegTitle">Earlier runs</h2><span class="kw-panel-meta">Newest 3 kept</span></div>
+            <p class="kw-panel-desc">Every run starts clean: the previous results, log and settings move here first. Open one to see it like the Results tab.</p>
+            {% if not runs %}
+            <div class="pl-empty"><b>No earlier runs</b>The current results move here the next time AutoPhOT runs.</div>
+            {% else %}
+            <div class="kw-table-wrap"><table class="kw-table pl-table">
+                <thead><tr><th>Run</th><th>Status</th><th>Images</th><th>Light curve</th><th>Catalog</th><th>Stacking</th><th>Subtraction</th><th>Changed settings</th><th>Size</th><th></th></tr></thead>
+                <tbody>
+                {% for r in runs %}
+                <tr>
+                    <td><a class="pl-mono" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', run=r.id) }}"><span data-ts="{{ r.time }}">{{ r.id }}</span></a>{% if r.elapsed %}<small class="pl-faint"> · {{ '%.0f'|format(r.elapsed) }} s</small>{% endif %}</td>
+                    <td>{% if r.finished %}<span class="kw-chip kw-chip-green">Done</span>{% else %}<span class="kw-chip kw-chip-red">Did not finish</span>{% endif %}</td>
+                    <td>{{ r.n_ok }}{% if r.n_fail %} <span class="kw-chip kw-chip-red">{{ r.n_fail }} failed</span>{% endif %}</td>
+                    <td>{{ r.n_rows }}</td>
+                    <td>{{ r.catalog or '—' }}</td>
+                    <td>{{ 'Yes' if r.stack else 'No' }}</td>
+                    <td>{{ r.sub_method if r.subtraction else 'No' }}</td>
+                    <td>{{ r.n_overrides }}</td>
+                    <td>{{ size(r.size) }}</td>
+                    <td class="pl-acts">
+                        <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results', run=r.id) }}">Open</a>
+                        <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_log', tid=ap.id, run=r.id) }}" target="_blank" rel="noopener">Log</a>
+                        <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-legacy-del="{{ r.id }}">Delete</button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            {% endif %}
+        </section>
+        {% endif %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
+</body>
+</html>
