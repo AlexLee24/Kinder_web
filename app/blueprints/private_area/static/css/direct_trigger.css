@@ -1,0 +1,87 @@
+/* Direct Trigger — built on the kw-* components in _theme.css. */
+body { background: var(--kw-bg, #0B0D14); }
+.dt-page { box-sizing: border-box; }
+.dt-page :is(input, select, textarea, button) { box-sizing: border-box; min-width: 0; max-width: 100%; }
+.dt-page .dt-grid > * { min-width: 0; }
+
+.dt-page .kw-page-head h1 { text-wrap: balance; }
+
+.dt-grid {
+    display: grid;
+    grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+@media (max-width: 900px) { .dt-grid { grid-template-columns: 1fr; } }
+
+/* ── Form ── */
+.dt-add { position: sticky; top: 84px; }
+@media (max-width: 900px) { .dt-add { position: static; } }
+.dt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.dt-row-name { grid-template-columns: 1fr 96px; }
+.dt-page .kw-field input, .dt-page .kw-field select { font-variant-numeric: tabular-nums; }
+.dt-optional { color: var(--kw-text-faint); }
+.dt-hint { margin: 2px 0 0; font-size: 0.76rem; color: var(--kw-text-muted); }
+.dt-exp-mode { align-self: flex-start; }
+
+.dt-name-field { position: relative; }
+.dt-suggest {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 20;
+    margin: 4px 0 0; padding: 4px; list-style: none;
+    max-height: 260px; overflow-y: auto;
+    border-radius: var(--kw-radius-md, 12px);
+    background: var(--kw-bg-elevated, #14171F);
+    border: 1px solid var(--kw-border-med);
+    box-shadow: var(--kw-glass-shadow);
+}
+.dt-suggest li {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 8px 10px; border-radius: 8px;
+    font-size: 0.84rem; cursor: pointer;
+}
+.dt-suggest li small { color: var(--kw-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dt-suggest li:hover, .dt-suggest li[aria-selected="true"] { background: var(--kw-accent-dim); color: var(--kw-accent); }
+
+.dt-filters { display: grid; gap: 8px; margin-top: 8px; }
+.dt-filter-rows { display: grid; gap: 6px; }
+.dt-filter-row { display: grid; grid-template-columns: 1fr 1fr 1fr 30px; gap: 6px; align-items: center; }
+.dt-filter-row :is(input, select) { min-height: 36px; font-variant-numeric: tabular-nums; }
+.dt-filter-head { display: grid; grid-template-columns: 1fr 1fr 1fr 30px; gap: 6px; font-size: 0.72rem; color: var(--kw-text-muted); }
+
+.dt-submit { width: 100%; min-height: 44px; margin-top: 4px; }
+.dt-msg { min-height: 1.2em; margin: 0 0 8px; font-size: 0.82rem; color: var(--kw-text-secondary); }
+.dt-msg.is-error { color: #FF8A80; }
+.dt-msg.is-ok { color: #4CD964; }
+
+/* ── List ── */
+.dt-list-actions { display: flex; align-items: center; gap: 10px; }
+.dt-table td { font-variant-numeric: tabular-nums; }
+.dt-table .dt-name { font-weight: 500; color: var(--kw-text-white); }
+.dt-table .dt-sub { display: block; margin-top: 2px; font-size: 0.74rem; color: var(--kw-text-muted); }
+.dt-table td:last-child { width: 1%; white-space: nowrap; text-align: right; }
+.dt-prio-Urgent { background: rgba(255, 69, 58, 0.14); color: #FF6B61; }
+.dt-prio-High { background: var(--kw-accent-dim); color: var(--kw-accent); }
+
+.dt-empty { padding: 28px 12px; text-align: center; color: var(--kw-text-muted); font-size: 0.88rem; line-height: 1.6; }
+.dt-empty b { display: block; margin-bottom: 4px; font-weight: 500; color: var(--kw-text-secondary); font-size: 0.95rem; }
+
+.dt-skeleton { display: grid; gap: 10px; padding: 6px 0; }
+.dt-skeleton span { height: 18px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); animation: dt-pulse 1.4s ease-in-out infinite; }
+.dt-skeleton span:nth-child(2) { width: 86%; }
+.dt-skeleton span:nth-child(3) { width: 64%; }
+@keyframes dt-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .dt-skeleton span { animation: none; } }
+
+/* ── Script ── */
+.dt-script {
+    width: 100%; min-height: 200px; resize: vertical;
+    padding: 12px 14px;
+    border-radius: var(--kw-radius-md, 12px);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--kw-border);
+    color: var(--kw-text-primary);
+    font: 0.8rem/1.55 var(--kw-font-mono);
+}
+.dt-send-row { align-items: center; }
+.dt-send-row .dt-msg { flex: 1 1 220px; margin: 0; }
+#dtSend.is-armed { background: #FF9F0A; color: #1A1408; }

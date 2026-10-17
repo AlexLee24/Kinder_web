@@ -6,7 +6,7 @@
 {% set _p = current_path or request.path or '' %}
 {% set _tools = ['/astronomy_tools', '/telescope_simulator', '/mount_3d', '/mount_torque', '/lc_plotter', '/exposure_time_calculator', '/games'] %}
 {% set _planners = ['/observation_planner', '/interactive_planner', '/finding_chart'] %}
-{% set _private = ['/detect', '/detect/archives', '/daily_trigger', '/epessto_support', '/documents', '/greatlab_info'] %}
+{% set _private = ['/detect', '/detect/archives', '/daily_trigger', '/direct_trigger', '/epessto_support', '/documents', '/greatlab_info'] %}
 <header id="kw-navbar" class="kw-header">
     <div class="kw-header-inner">
         <div class="kw-header-content">
@@ -72,6 +72,7 @@
                         <ul class="dropdown-content">
                             <li><a href="{{ url_for('detect.detect_results') }}" class="{{ 'active' if _p.startswith('/detect') }}">DETECT</a></li>
                             <li><a href="{{ url_for('private_area.daily_trigger') }}" class="{{ 'active' if _p == '/daily_trigger' }}">Daily Trigger</a></li>
+                            <li><a href="{{ url_for('private_area.direct_trigger') }}" class="{{ 'active' if _p == '/direct_trigger' }}">Direct Trigger</a></li>
                             <li><a href="{{ url_for('private_area.epessto_support_page') }}" class="{{ 'active' if _p == '/epessto_support' }}">ePessto++ Support Team</a></li>
                             <li><a href="{{ url_for('private_area.documents_list') }}" class="{{ 'active' if _p.startswith('/documents') }}">Documents</a></li>
                             <li><a href="{{ url_for('private_area.greatlab_info') }}" class="{{ 'active' if _p == '/greatlab_info' }}">Lab Info</a></li>
