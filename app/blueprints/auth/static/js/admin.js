@@ -2138,7 +2138,6 @@ function _renderScheduledJobs(jobs) {
         autophot_dir: 'Folder with autophot.py, e.g. /Users/alex-lee/UCD/autophot',
         autophot_python: 'Default: <AutoPhOT folder>/.venv/bin/python',
         autophot_runs: 'Default: autophot-runs next to the AutoPhOT folder',
-        autophot_source_root: 'Image folders typed on the Pipeline page must be inside this. Default: the parent of the workspaces folder',
     };
 
     function node(tag, cls, text) {

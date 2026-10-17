@@ -79,18 +79,99 @@
     const base = tid ? API + '/' + encodeURIComponent(tid) : '';
     let overrides = null;            // All settings: {key: one line of YAML}, only values that differ from the default
 
+    // ── Uploads: each FITS goes up in pieces under the server's request limit ──
+    const CHUNK = parseInt((document.querySelector('[data-chunk]') || {}).dataset?.chunk, 10) || 8 * 1024 * 1024;
+    const FITS_RE = /\.(fits|fit|fts)(\.fz|\.gz)?$/i;
+
+    function sizeText(n) {
+        return n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' kB';
+    }
+
+    async function uploadFile(wsBase, file, onProgress, template) {
+        let offset = 0;
+        do {
+            const piece = file.slice(offset, offset + CHUNK);
+            const q = new URLSearchParams({ name: file.name, offset: String(offset), total: String(file.size) });
+            if (template) q.set('template', template);
+            let res, data;
+            try {
+                res = await fetch(wsBase + '/upload?' + q, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/octet-stream' }, body: piece,
+                });
+                data = await res.json();
+            } catch (e) {
+                throw new Error(res ? 'Upload refused by the server (' + res.status + ').' : 'Network error during upload.');
+            }
+            if (!res.ok || !data.success) throw new Error(data.error || 'Upload failed.');
+            offset += piece.size;
+            if (onProgress) onProgress(offset / file.size);
+            if (data.done) return data.name;
+        } while (offset < file.size);
+        throw new Error('Upload did not finish.');
+    }
+
+    // Drop zone: keeps a list of chosen files with a row (name, size, progress, remove) for each.
+    function dropZone(root, onAdd) {
+        const input = root.querySelector('.pl-drop-input');
+        const zone = root.querySelector('.pl-drop-zone');
+        const list = root.querySelector('.pl-files');
+        const items = [];
+        function add(files) {
+            for (const file of files) {
+                if (items.some(it => it.file.name === file.name && it.state !== 'done')) continue;
+                const bar = el('span', { class: 'pl-bar' }, el('span'));
+                const note = el('small', { text: FITS_RE.test(file.name) ? sizeText(file.size) : 'Not a FITS file' });
+                const item = { file, state: FITS_RE.test(file.name) ? 'queued' : 'bad' };
+                const rm = el('button', { type: 'button', class: 'kw-icon-btn', 'aria-label': 'Remove ' + file.name, text: '×',
+                    onclick: () => { if (item.state === 'sending') return; items.splice(items.indexOf(item), 1); item.row.remove(); list.hidden = !items.length; } });
+                item.row = el('li', { class: item.state === 'bad' ? 'is-bad' : null }, el('span', { class: 'pl-mono', text: file.name }), note, bar, rm);
+                item.set = (state, text, frac) => {
+                    item.state = state;
+                    item.row.className = 'is-' + state;
+                    if (text != null) note.textContent = text;
+                    if (frac != null) bar.firstChild.style.width = Math.round(frac * 100) + '%';
+                    rm.hidden = state === 'sending' || state === 'done';
+                };
+                items.push(item);
+                list.append(item.row);
+            }
+            list.hidden = !items.length;
+            if (onAdd) onAdd(items);
+        }
+        input.addEventListener('change', () => { add(input.files); input.value = ''; });
+        ['dragenter', 'dragover'].forEach(t => zone.addEventListener(t, e => { e.preventDefault(); zone.classList.add('is-over'); }));
+        ['dragleave', 'drop'].forEach(t => zone.addEventListener(t, () => zone.classList.remove('is-over')));
+        zone.addEventListener('drop', e => { e.preventDefault(); add(e.dataTransfer.files); });
+        return {
+            items,
+            async send(wsBase) {
+                let ok = 0, failed = 0;
+                for (const it of items) {
+                    if (it.state !== 'queued' && it.state !== 'error') continue;
+                    it.set('sending', '0%', 0);
+                    try {
+                        await uploadFile(wsBase, it.file, f => it.set('sending', Math.round(f * 100) + '%', f));
+                        it.set('done', 'Uploaded', 1);
+                        ok++;
+                    } catch (err) { it.set('error', err.message); failed++; }
+                }
+                return { ok, failed };
+            },
+        };
+    }
+
     // ── Workspace form ────────────────────────────────────────────────────────
     function formBody(form) {
         const f = form.elements;
         const b = {
-            name: f.name.value.trim(), ra: f.ra.value.trim(), dec: f.dec.value.trim(), source: f.source.value.trim(),
-            catalog: f.catalog.value, ncpu: parseInt(f.ncpu.value, 10) || 1, top_only: f.top_only.checked,
+            name: f.name.value.trim(), ra: f.ra.value.trim(), dec: f.dec.value.trim(),
+            catalog: f.catalog.value, ncpu: parseInt(f.ncpu.value, 10) || 1,
             stack: f.stack.checked, stack_with_singles: f.stack_with_singles.checked,
             stack_align: f.stack_align.value, stack_combine: f.stack_combine.value, stack_sigma: parseFloat(f.stack_sigma.value) || 3,
             subtraction: f.subtraction.checked, sub_method: f.sub_method.value, ts_download: f.ts_download.value,
             ts_size: parseFloat(f.ts_size.value) || 10, ts_align: f.ts_align.value, ts_forceconv: f.ts_forceconv.value,
         };
-        if (form.dataset.tid && f.source.value.trim() === f.source.defaultValue.trim()) delete b.source;
         if (overrides) b.overrides = overrides;
         return b;
     }
@@ -106,21 +187,37 @@
             sync();
         });
 
+        const dropRoot = form.querySelector('[data-pl-drop]');
+        const drop = dropRoot ? dropZone(dropRoot) : null;
+        let created = null;              // {id, url} once the workspace exists; a retry only uploads
         form.addEventListener('submit', async e => {
             e.preventDefault();
             const btn = form.querySelector('button[type=submit]');
+            if (!editing && !created && !drop.items.some(it => it.state === 'queued')) {
+                say(msg, 'Add at least one FITS image.', 'error');
+                return;
+            }
             btn.disabled = true;
-            say(msg, editing ? 'Saving…' : 'Copying the images…');
             try {
                 if (editing) {
+                    say(msg, 'Saving…');
                     await api(base + '/save', formBody(form));
-                    form.elements.source.defaultValue = form.elements.source.value;
                     say(msg, 'Saved.', 'ok');
                     if (window.plReloadImages) window.plReloadImages();
                 } else {
-                    const r = await api(API + '/new', formBody(form));
-                    location.href = r.url;
-                    return;
+                    if (!created) {
+                        say(msg, 'Creating the workspace…');
+                        created = await api(API + '/new', formBody(form));
+                        form.querySelectorAll('input[name], select[name]').forEach(n => { n.disabled = true; });
+                    }
+                    say(msg, 'Uploading…');
+                    const r = await drop.send(API + '/' + encodeURIComponent(created.id));
+                    if (!r.failed) { location.href = created.url; return; }
+                    say(msg, r.failed + ' file' + (r.failed === 1 ? '' : 's') + ' failed. Fix or remove them and press the button again, or open the workspace.', 'error');
+                    btn.textContent = 'Retry upload';
+                    if (!form.querySelector('.pl-open-ws')) {
+                        btn.after(el('a', { class: 'kw-btn kw-btn-ghost pl-open-ws', href: created.url, text: 'Open workspace' }));
+                    }
                 }
             } catch (err) { say(msg, err.message, 'error'); }
             btn.disabled = false;
@@ -168,35 +265,9 @@
             btn.disabled = false;
         });
 
-        // Header check: AutoPhOT skips a frame missing TELESCOP, INSTRUME or FILTER
-        const scanBox = form.querySelector('.pl-scan');
-        form.querySelector('[data-scan]').addEventListener('click', async ev => {
-            const btn = ev.currentTarget;
-            const path = form.elements.source.value.trim();
-            if (!path) { say(msg, 'Enter the image folder first.', 'error'); return; }
-            btn.disabled = true;
-            scanBox.hidden = false;
-            scanBox.replaceChildren(el('div', { class: 'pl-skeleton', 'aria-hidden': 'true' }, el('span'), el('span')));
-            try {
-                const d = await api(API + '/scan?path=' + encodeURIComponent(path) + (form.elements.top_only.checked ? '' : '&recursive=1'));
-                scanBox.replaceChildren(headerSummary(d), headerTable(d.files));
-            } catch (err) {
-                scanBox.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message }));
-            }
-            btn.disabled = false;
-        });
     });
 
     const HEADER_KEYS = ['TELESCOP', 'INSTRUME', 'FILTER', 'DATE-OBS', 'EXPTIME'];
-
-    function headerSummary(d) {
-        return el('div', { class: 'pl-scan-sum' },
-            el('b', { text: d.n + ' FITS' }),
-            d.n_sub ? el('span', { class: 'kw-chip kw-chip-blue', text: d.n_sub + ' in subfolders, skipped' }) : null,
-            d.missing ? el('span', { class: 'kw-chip kw-chip-red', text: d.missing + ' missing TELESCOP / INSTRUME / FILTER' })
-                : (d.n ? el('span', { class: 'kw-chip kw-chip-green', text: 'Headers complete' }) : null),
-            d.n > d.files.length ? el('span', { class: 'pl-faint', text: 'First ' + d.files.length + ' shown' }) : null);
-    }
 
     function headerTable(files, rowExtra) {
         if (!files.length) return el('p', { class: 'pl-faint', text: 'No FITS here.' });
@@ -215,18 +286,19 @@
     // ── Images in the workspace ───────────────────────────────────────────────
     const imgBody = $('plImgBody');
     if (imgBody) {
-        const importBtn = $('plImport');
         const load = async () => {
             try {
                 const d = await api(base + '/images');
                 $('plImgCount').textContent = d.n + ' FITS';
-                importBtn.hidden = !d.n_new;
-                importBtn.textContent = 'Import ' + d.n_new + ' new file' + (d.n_new === 1 ? '' : 's');
                 d.files.forEach(f => { f.stack = d.stacks.indexOf(f.name) >= 0; });
                 const parts = [];
                 if (d.missing) parts.push(el('p', { class: 'pl-warn', text: d.missing + ' frame' + (d.missing === 1 ? '' : 's') + ' missing TELESCOP / INSTRUME / FILTER; AutoPhOT skips them.' }));
                 if (d.n_sub) parts.push(el('p', { class: 'pl-hint', text: d.n_sub + ' in subfolders, skipped.' }));
                 parts.push(headerTable(d.files, f => f.stack ? null : removeButton(f.name)));
+                if (d.templates.length) {
+                    parts.push(el('h3', { class: 'pl-sub', text: 'Templates' }), el('ul', { class: 'pl-tpl-list' },
+                        d.templates.map(t => el('li', {}, el('span', { class: 'pl-mono', text: t }), removeButton(t)))));
+                }
                 if (d.removed.length) {
                     parts.push(el('details', { class: 'pl-removed' },
                         el('summary', { text: d.removed.length + ' removed' }),
@@ -238,7 +310,6 @@
                                     catch (err) { imgBody.prepend(el('p', { class: 'pl-msg is-error', text: err.message })); }
                                 } })))));
                 }
-                if (!d.source_ok && d.source) parts.push(el('p', { class: 'pl-hint', text: 'The image folder is no longer reachable; the copies here are still used.' }));
                 imgBody.replaceChildren(...parts);
             } catch (err) {
                 imgBody.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message }));
@@ -252,12 +323,33 @@
             });
             return b;
         }
-        importBtn.addEventListener('click', async () => {
-            importBtn.disabled = true;
-            try { await api(base + '/import', {}); await load(); }
-            catch (err) { imgBody.prepend(el('p', { class: 'pl-msg is-error', text: err.message })); }
-            importBtn.disabled = false;
-        });
+        // New images: upload as soon as they are dropped or chosen
+        const addRoot = $('plAddFiles');
+        if (addRoot) {
+            let sending = false;
+            const zone = dropZone(addRoot, async () => {
+                if (sending) return;
+                sending = true;
+                while (zone.items.some(it => it.state === 'queued')) await zone.send(base);
+                sending = false;
+                load();
+            });
+        }
+        const tplBtn = $('plTplSend');
+        if (tplBtn) {
+            tplBtn.addEventListener('click', async () => {
+                const f = $('plTplFile').files[0], filt = $('plTplFilter').value.trim(), m = $('plTplMsg');
+                if (!filt || !f) { say(m, 'Enter the filter and choose a FITS file.', 'error'); return; }
+                tplBtn.disabled = true;
+                try {
+                    await uploadFile(base, f, frac => say(m, 'Uploading ' + Math.round(frac * 100) + '%'), filt);
+                    say(m, 'Template added.', 'ok');
+                    $('plTplFile').value = '';
+                    load();
+                } catch (err) { say(m, err.message, 'error'); }
+                tplBtn.disabled = false;
+            });
+        }
         window.plReloadImages = load;
         load();
     }

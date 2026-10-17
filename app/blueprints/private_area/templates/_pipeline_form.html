@@ -1,3 +1,16 @@
+{# Drop zone for FITS uploads; pipeline.js reads [data-pl-drop] #}
+{% macro pl_drop(id, label) %}
+<div class="pl-drop" data-pl-drop id="{{ id }}">
+    <input type="file" class="pl-drop-input" id="{{ id }}Input" multiple accept=".fits,.fit,.fts,.fz,.gz">
+    <label class="pl-drop-zone" for="{{ id }}Input">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+        <b>{{ label }}</b>
+        <span>Drop files here or choose them · .fits .fit .fts .fits.fz .fits.gz</span>
+    </label>
+    <ul class="pl-files" hidden></ul>
+</div>
+{% endmacro %}
+
 {# AutoPhOT workspace settings: new workspace (Pipeline page) and edit (Run tab); pipeline.js reads [data-pl-form] #}
 {% macro pl_form(cfg, tid='') %}
 <form class="pl-form" data-pl-form{% if tid %} data-tid="{{ tid }}"{% endif %} autocomplete="off" novalidate>
@@ -24,17 +37,13 @@
     </div>
     <p class="pl-hint">AutoPhOT measures at this position; the name is only a label. Pick a Kinder object to fill both.</p>
 
+    {% if not tid %}
     <div class="kw-field">
-        <label for="plSource{{ tid }}">Image folder</label>
-        <div class="pl-inline">
-            <input type="text" id="plSource{{ tid }}" name="source" value="{{ cfg.source or '' }}" maxlength="500"
-                   placeholder="{{ (source_root ~ '/…') if source_root else '/path/to/SN2026abc' }}" spellcheck="false"{% if not tid %} required{% endif %}>
-            <button type="button" class="kw-btn kw-btn-sm" data-scan>Check headers</button>
-        </div>
-        <p class="pl-hint">{% if tid %}Where the images came from. Changing it copies nothing; use Import below.{% else %}The FITS (and a <code>templates/</code> folder, if any) are copied into the workspace; this folder is never changed.{% endif %}{% if source_root %} Must be inside <code>{{ source_root }}</code>.{% endif %}</p>
-        <label class="pl-check"><input type="checkbox" name="top_only"{% if cfg.top_only is not defined or cfg.top_only %} checked{% endif %}><span>Only the FITS directly in this folder (skip subfolders)</span></label>
+        <span class="kw-label">Images</span>
+        {{ pl_drop('plNewFiles', 'Add FITS images') }}
+        <p class="pl-hint">Uploaded from this computer into the workspace when you create it. More images and templates can be added later.</p>
     </div>
-    <div class="pl-scan" hidden></div>
+    {% endif %}
 
     <div class="pl-row">
         <div class="kw-field">
@@ -100,7 +109,7 @@
                     {% for c in ts_forceconv %}<option value="{{ c }}"{% if (cfg.ts_forceconv or 'REF') == c %} selected{% endif %}>{{ conv[c] }}</option>{% endfor %}
                 </select></div>
         </div>
-        <p class="pl-hint">Own templates: one FITS per filter in <code>templates/&lt;filter&gt;_template/</code> of the image folder. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky. Without subtraction, exported filters are marked “(w/o TS)”.</p>
+        <p class="pl-hint">Own templates: upload one per filter under Images → Add a template. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky. Without subtraction, exported filters are marked “(w/o TS)”.</p>
     </fieldset>
 
     <p class="pl-msg" role="status" aria-live="polite"></p>
