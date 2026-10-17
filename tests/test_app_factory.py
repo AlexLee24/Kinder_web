@@ -24,8 +24,8 @@ def test_route_count_is_stable(app):
     # /api/profile/regenerate_api_key).
     # 252 with /avatar/<usr_id> (profile pictures served instead of inlined).
     # 254 with the installable app (2026-10: /sw.js, /offline).
-    # 261 with Direct Trigger (page + 6 API routes).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 261
+    # 261 with Direct Trigger (page + 6 API routes); 284 with Pipeline (6 pages + 15 API + 2 admin).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 284
 
 
 def test_duplicate_rules_keep_precedence(app):

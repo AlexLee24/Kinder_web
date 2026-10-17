@@ -561,6 +561,23 @@
                     <span id="cleanImagesStatus" class="settings-status"></span>
                 </article>
             </div>
+
+            <!-- Pipeline: where AutoPhOT lives on this server (admin.js → /admin/pipeline/settings) -->
+            <section class="kw-panel pipe-settings" id="pipelineSettings" aria-labelledby="h-pipeline">
+                <div class="kw-panel-head">
+                    <h2 id="h-pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M4 12h16"/><path d="M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/></svg>Pipeline · AutoPhOT</h2>
+                    <a href="/pipeline" class="kw-btn kw-btn-sm kw-btn-ghost">Open Pipeline →</a>
+                </div>
+                <p class="kw-panel-desc">Paths on this server. Leave a field empty to use <code>kinder.env</code> (<code>AUTOPHOT_DIR</code>, <code>AUTOPHOT_PYTHON</code>, <code>AUTOPHOT_RUNS</code>, <code>AUTOPHOT_SOURCE_ROOT</code>) or the default shown. AutoPhOT runs with its own Python and gets none of Kinder's secrets.</p>
+                <form id="pipelineForm" class="pipe-form" autocomplete="off" novalidate>
+                    <div class="pipe-rows" id="pipelineRows"><p class="pipe-loading">Loading…</p></div>
+                    <div class="pipe-foot">
+                        <button type="submit" class="kw-btn kw-btn-sm kw-btn-tinted" id="pipelineSave">Save</button>
+                        <button type="button" class="kw-btn kw-btn-sm" id="pipelineCheck">Check</button>
+                        <span id="pipelineStatus" class="settings-status" role="status" aria-live="polite"></span>
+                    </div>
+                </form>
+            </section>
         </section>
     </main>
 
