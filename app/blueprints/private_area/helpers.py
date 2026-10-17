@@ -101,10 +101,11 @@ def can_view_private_area():
 # ---------------------------------------------------------------------------
 # Per-page permission helpers
 # ---------------------------------------------------------------------------
-_PRIVATE_PAGES = ['daily_trigger', 'greatlab_info', 'epessto_support', 'documents']
+_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'greatlab_info', 'epessto_support', 'documents']
 
 _PRIVATE_PAGE_LABELS = {
     'daily_trigger': 'Daily Trigger',
+    'direct_trigger': 'Direct Trigger',
     'greatlab_info': 'Lab Info',
     'epessto_support': 'ePessto++ Support',
     'documents': 'Documents',

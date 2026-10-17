@@ -5,4 +5,4 @@ from flask import Blueprint
 private_area_bp = Blueprint('private_area', __name__, template_folder='templates', static_folder='static')
 
 # Topic modules register their routes on import (order = original registration order).
-from . import helpers, page_perms, daily_trigger, lab_info, epessto, documents, targets, debug, observation_logs  # noqa: E402,F401
+from . import helpers, page_perms, daily_trigger, lab_info, epessto, documents, targets, debug, observation_logs, direct_trigger  # noqa: E402,F401

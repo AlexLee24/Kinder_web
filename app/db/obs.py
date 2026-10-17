@@ -663,3 +663,77 @@ def delete_observation_log(log_id_or_name, obs_date: str | None = None,
     except Exception as e:
         logger.error("delete_observation_log %s: %s", log_id_or_name, e)
         return False
+
+
+# ---------------------------------------------------------------------------
+# obs.direct_trigger_targets — Direct Trigger list (tonight's change of plan)
+# ---------------------------------------------------------------------------
+
+_DIRECT_COLS = ("id, telescope, name, ra, dec, mag, priority, note, repeat_count, program, "
+                "auto_exp, filters, created_by, created_at, last_sent_at")
+
+
+def _direct_row(row) -> dict:
+    d = dict(row)
+    for k in ('created_at', 'last_sent_at'):
+        if d.get(k) is not None and hasattr(d[k], 'isoformat'):
+            d[k] = d[k].isoformat()
+    d['filters'] = d.get('filters') or []
+    return d
+
+
+def list_direct_trigger_targets(telescope: str | None = None) -> list[dict]:
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        if telescope:
+            cur.execute(f"SELECT {_DIRECT_COLS} FROM obs.direct_trigger_targets "
+                        "WHERE telescope = %s ORDER BY created_at, id", (telescope,))
+        else:
+            cur.execute(f"SELECT {_DIRECT_COLS} FROM obs.direct_trigger_targets "
+                        "ORDER BY telescope, created_at, id")
+        return [_direct_row(r) for r in cur.fetchall()]
+
+
+def add_direct_trigger_target(t: dict) -> dict | None:
+    import json as _json
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute(
+            "INSERT INTO obs.direct_trigger_targets "
+            "(telescope, name, ra, dec, mag, priority, note, repeat_count, program, auto_exp, filters, created_by) "
+            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {_DIRECT_COLS}",
+            (t['telescope'], t['name'], t['ra'], t['dec'], t.get('mag') or None,
+             t.get('priority') or 'Normal', t.get('note') or None, int(t.get('repeat_count') or 0),
+             t.get('program') or None, bool(t.get('auto_exp')),
+             _json.dumps(t.get('filters') or []), t.get('created_by')))
+        row = cur.fetchone()
+        conn.commit()
+    return _direct_row(row) if row else None
+
+
+def delete_direct_trigger_target(target_id: int) -> bool:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM obs.direct_trigger_targets WHERE id = %s", (target_id,))
+        deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def clear_direct_trigger_targets(telescope: str) -> int:
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM obs.direct_trigger_targets WHERE telescope = %s", (telescope,))
+        n = cur.rowcount
+        conn.commit()
+    return n
+
+
+def mark_direct_trigger_sent(ids: list[int]) -> None:
+    if not ids:
+        return
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE obs.direct_trigger_targets SET last_sent_at = now() WHERE id = ANY(%s)",
+                    (list(ids),))
+        conn.commit()

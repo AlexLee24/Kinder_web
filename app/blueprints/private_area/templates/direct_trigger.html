@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>Direct Trigger - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/direct_trigger.css') }}">
+    <meta name="description" content="Change tonight's observing plan and send it to the Control Room">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+
+    <main class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}">
+        <header class="kw-page-head">
+            <div>
+                <h1>Direct Trigger</h1>
+                <p>Change tonight's plan without touching the Daily Trigger list. Add targets, check the script, then send it to the Control Room.</p>
+            </div>
+            <div class="kw-page-actions">
+                <div class="kw-seg dt-scope" role="radiogroup" aria-label="Telescope">
+                    <button type="button" class="kw-seg-item" role="radio" data-tel="SLT">SLT <span class="kw-n" data-count="SLT">0</span></button>
+                    <button type="button" class="kw-seg-item" role="radio" data-tel="LOT">LOT <span class="kw-n" data-count="LOT">0</span></button>
+                </div>
+            </div>
+        </header>
+
+        <div class="dt-grid">
+            <!-- ── Add a target ── -->
+            <section class="kw-panel dt-add" aria-labelledby="dtAddTitle">
+                <div class="kw-panel-head">
+                    <h2 id="dtAddTitle"><span>Add to <span data-tel-label>SLT</span></span></h2>
+                </div>
+                <form id="dtForm" autocomplete="off" novalidate>
+                    <div class="dt-row dt-row-name">
+                        <div class="kw-field dt-name-field">
+                            <label for="dtName">Target</label>
+                            <input type="text" id="dtName" name="name" maxlength="64" required
+                                   placeholder="SN 2026abc, AT 2026xyz, EP…" spellcheck="false"
+                                   aria-autocomplete="list" aria-controls="dtSuggest">
+                            <ul class="dt-suggest" id="dtSuggest" role="listbox" hidden></ul>
+                        </div>
+                        <div class="kw-field">
+                            <label for="dtMag">Mag</label>
+                            <input type="text" id="dtMag" name="mag" maxlength="16" inputmode="decimal" placeholder="18.4">
+                        </div>
+                    </div>
+                    <div class="dt-row">
+                        <div class="kw-field">
+                            <label for="dtRa">RA</label>
+                            <input type="text" id="dtRa" name="ra" maxlength="40" required placeholder="h:m:s or deg" spellcheck="false">
+                        </div>
+                        <div class="kw-field">
+                            <label for="dtDec">Dec</label>
+                            <input type="text" id="dtDec" name="dec" maxlength="40" required placeholder="d:m:s or deg" spellcheck="false">
+                        </div>
+                    </div>
+                    <div class="dt-row">
+                        <div class="kw-field">
+                            <label for="dtPriority">Priority</label>
+                            <select id="dtPriority" name="priority" class="kw-select">
+                                {% for p in priorities %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="kw-field">
+                            <label for="dtRepeat">Repeat</label>
+                            <input type="number" id="dtRepeat" name="repeat_count" min="0" max="20" value="0">
+                        </div>
+                    </div>
+                    <div class="kw-field" id="dtProgramField" hidden>
+                        <label for="dtProgram">Program (LOT)</label>
+                        <input type="text" id="dtProgram" name="program" maxlength="32" placeholder="e.g. R01">
+                    </div>
+
+                    <div class="kw-field">
+                        <span class="kw-label" id="dtExpLabel">Exposure</span>
+                        <div class="kw-seg dt-exp-mode" role="radiogroup" aria-labelledby="dtExpLabel">
+                            <button type="button" class="kw-seg-item is-on" role="radio" aria-checked="true" data-mode="auto">Auto from mag</button>
+                            <button type="button" class="kw-seg-item" role="radio" aria-checked="false" data-mode="manual">Set filters</button>
+                        </div>
+                        <p class="dt-hint" id="dtAutoHint">Uses the Daily Trigger exposure table for the magnitude above (12–22).</p>
+                        <div class="dt-filters" id="dtFilters" hidden>
+                            <div class="dt-filter-rows" id="dtFilterRows"></div>
+                            <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="dtAddFilter">Add filter</button>
+                        </div>
+                    </div>
+
+                    <div class="kw-field">
+                        <label for="dtNote">Note in script <span class="dt-optional">optional</span></label>
+                        <input type="text" id="dtNote" name="note" maxlength="200" placeholder="Shown on the target's line for the observer">
+                    </div>
+
+                    <p class="dt-msg" id="dtFormMsg" role="status" aria-live="polite"></p>
+                    <button type="submit" class="kw-btn kw-btn-primary dt-submit" id="dtSubmit"><span>Add to <span data-tel-label>SLT</span> list</span></button>
+                </form>
+            </section>
+
+            <div class="kw-stack">
+                <!-- ── Tonight's list ── -->
+                <section class="kw-panel" aria-labelledby="dtListTitle">
+                    <div class="kw-panel-head">
+                        <h2 id="dtListTitle"><span>Tonight on <span data-tel-label>SLT</span></span></h2>
+                        <div class="dt-list-actions">
+                            <span class="kw-panel-meta" id="dtListMeta"></span>
+                            <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="dtClear" hidden>Clear list</button>
+                        </div>
+                    </div>
+                    <div id="dtListBody" aria-live="polite">
+                        <div class="dt-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>
+                    </div>
+                </section>
+
+                <!-- ── Script & send ── -->
+                <section class="kw-panel" aria-labelledby="dtSendTitle">
+                    <div class="kw-panel-head">
+                        <h2 id="dtSendTitle">Script</h2>
+                        <button type="button" class="kw-btn kw-btn-sm" id="dtPreview" disabled>Build script</button>
+                    </div>
+                    <p class="kw-panel-desc">Built from the list above. Sending posts the message, the ACP script and a visibility plot to the Control Room channel, and records the targets in the Observation Log.</p>
+                    <textarea id="dtScript" class="dt-script" readonly rows="10" placeholder="Build the script to check it before sending." aria-label="ACP script preview"></textarea>
+                    <div class="kw-panel-foot dt-send-row">
+                        <button type="button" class="kw-btn kw-btn-primary" id="dtSend" disabled><span>Send to <span data-tel-label>SLT</span></span></button>
+                        <button type="button" class="kw-btn kw-btn-ghost" id="dtCopy" disabled>Copy script</button>
+                        <p class="dt-msg" id="dtSendMsg" role="status" aria-live="polite"></p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/direct_trigger.js') }}"></script>
+</body>
+</html>

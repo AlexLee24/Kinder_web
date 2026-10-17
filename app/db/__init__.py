@@ -533,6 +533,28 @@ def _ensure_extra_tables():
                 ON obs.targets(active, name)
         """)
 
+        # obs.direct_trigger_targets — Direct Trigger: a short-lived list for
+        # changing tonight's plan, kept apart from the Daily Trigger targets.
+        _run("""
+            CREATE TABLE IF NOT EXISTS obs.direct_trigger_targets (
+                id           SERIAL PRIMARY KEY,
+                telescope    TEXT NOT NULL CHECK (telescope IN ('SLT', 'LOT')),
+                name         TEXT NOT NULL,
+                ra           TEXT NOT NULL,
+                dec          TEXT NOT NULL,
+                mag          TEXT,
+                priority     TEXT NOT NULL DEFAULT 'Normal',
+                note         TEXT,
+                repeat_count INTEGER NOT NULL DEFAULT 0,
+                program      TEXT,
+                auto_exp     BOOLEAN NOT NULL DEFAULT TRUE,
+                filters      JSONB,
+                created_by   TEXT,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                last_sent_at TIMESTAMPTZ
+            )
+        """)
+
         # transient.objects — name lookup used by _resolve_obj_id_with_prefix
         _run("""
             CREATE UNIQUE INDEX IF NOT EXISTS objects_name_idx
