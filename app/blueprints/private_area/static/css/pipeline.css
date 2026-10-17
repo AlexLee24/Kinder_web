@@ -299,3 +299,17 @@ body { background: var(--kw-bg, #0B0D14); }
 .pl-tpl-list { margin: 0; padding: 0; list-style: none; }
 .pl-tpl-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; font-size: 0.8rem; border-top: 1px solid var(--kw-hairline); }
 .pl-form-foot { gap: 8px; flex-wrap: wrap; }
+
+/* ── Telescopes ── */
+.pl-yaml {
+    width: 100%; min-height: 480px; resize: vertical;
+    padding: 12px 14px;
+    border-radius: var(--kw-radius-md, 12px);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--kw-border);
+    color: var(--kw-text-primary);
+    font: 0.78rem/1.55 var(--kw-font-mono);
+    tab-size: 2; white-space: pre; overflow: auto;
+}
+.pl-yaml.is-dirty { border-color: var(--kw-accent); }
+#plTelescopes .kw-panel-foot .pl-msg { flex: 1 1 220px; margin: 0; }

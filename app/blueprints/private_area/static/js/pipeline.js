@@ -560,6 +560,48 @@
         });
     });
 
+    // ── Telescopes: the shared telescope.yml ──────────────────────────────────
+    const telText = $('plTelText');
+    if (telText) {
+        const msg = $('plTelMsg');
+        let saved = telText.value;
+        const dirty = () => telText.value !== saved;
+        const sync = () => telText.classList.toggle('is-dirty', dirty());
+        telText.addEventListener('input', sync);
+        telText.addEventListener('keydown', e => {          // Tab indents instead of leaving the editor
+            if (e.key !== 'Tab' || e.shiftKey) return;
+            e.preventDefault();
+            telText.setRangeText('  ', telText.selectionStart, telText.selectionEnd, 'end');
+            sync();
+        });
+        window.addEventListener('beforeunload', e => { if (dirty()) { e.preventDefault(); e.returnValue = ''; } });
+        const val = v => (v == null || v === 'not_given_by_user')
+            ? el('span', { class: 'kw-chip kw-chip-red', text: 'not set' }) : el('span', { class: 'pl-mono', text: String(v) });
+        function table(rows) {
+            $('plTelCount').textContent = String(rows.length);
+            $('plTelTable').replaceChildren(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table' },
+                el('thead', {}, el('tr', {}, ['Telescope', 'Instrument', 'Pixel scale (″)', 'Gain', 'Read noise', 'Saturation', 'Filters'].map(h => el('th', { text: h })))),
+                el('tbody', {}, rows.map(r => el('tr', {},
+                    el('td', {}, el('b', { text: r.telescope })), el('td', { text: r.instrument }),
+                    el('td', {}, val(r.pixel_scale)), el('td', {}, val(r.gain)), el('td', {}, val(r.readnoise)), el('td', {}, val(r.saturate)),
+                    el('td', { text: r.filters.join(', ') || '—' })))))));
+        }
+        $('plTelSave').addEventListener('click', async ev => {
+            const btn = ev.currentTarget;
+            btn.disabled = true;
+            say(msg, 'Saving…');
+            try {
+                const r = await api('/api/pipeline/telescopes', { text: telText.value });
+                saved = telText.value;
+                sync();
+                if (r.rows) table(r.rows);
+                say(msg, r.changed ? 'Saved. Commit app/services/pipeline/telescope.yml to keep it on GitHub.' : 'No changes.', 'ok');
+            } catch (err) { say(msg, err.message, 'error'); }
+            btn.disabled = false;
+        });
+        $('plTelReset').addEventListener('click', () => { telText.value = saved; sync(); say(msg, ''); });
+    }
+
     // ── Light curve for import: preview, download ─────────────────────────────
     const exp = $('plExport');
     if (exp) {
