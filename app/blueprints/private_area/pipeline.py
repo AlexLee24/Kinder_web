@@ -118,6 +118,28 @@ def pipeline_reduction():
                            ready=False, checks=[], labels={}, workspaces=[], error='')
 
 
+@private_area_bp.route('/pipeline/telescopes')
+def pipeline_telescopes():
+    """The shared telescope.yml: what AutoPhOT knows about each telescope and instrument, editable."""
+    guard = _page_guard()
+    if guard:
+        return guard
+    return render_template('pipeline_telescopes.html', current_path='/pipeline', stages=pconfig.STAGES,
+                           rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET,
+                           repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
+
+
+@private_area_bp.route('/pipeline/telescopes/telescope.yml')
+def pipeline_telescopes_download():
+    guard = _page_guard()
+    if guard:
+        return guard
+    resp = Response(ap.telescope_text(), mimetype='text/plain')
+    resp.headers['Content-Disposition'] = 'attachment; filename="telescope.yml"'
+    resp.headers['Cache-Control'] = 'private, no-store'
+    return resp
+
+
 @private_area_bp.route('/pipeline/autophot/<tid>')
 def pipeline_workspace(tid):
     guard = _page_guard()
@@ -338,3 +360,10 @@ def pipeline_api_delete(tid):
 def pipeline_api_legacy_delete(tid):
     ap.delete_legacy(tid, str(_body().get('run') or ''))
     return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/pipeline/telescopes', methods=['POST'])
+@_api
+def pipeline_api_telescopes():
+    result = ap.save_telescope(_body().get('text', ''), user=_actor())
+    return jsonify({'success': True, **result, 'rows': ap.telescope_summary()})

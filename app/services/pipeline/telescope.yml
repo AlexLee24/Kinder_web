@@ -1,0 +1,381 @@
+2.5m:
+  INSTRUME:
+    SDSS:
+      Name: 2.5m+SDSS
+      airmass: not_given_by_user
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      g: g
+      gain: not_given_by_user
+      i: i
+      mjd: not_given_by_user
+      pixel_scale: 0.4
+      r: r
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+      u: u
+      z: z
+    SDSS Imaging Camera:
+      Name: 2.5m+SDSS Imaging Camera
+      airmass: not_given_by_user
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      mjd: not_given_by_user
+      pixel_scale: 0.396
+      r: r
+      readnoise: RDNOISE
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+Andor CCD/EMCCD (SDK2):
+  INSTRUME:
+    SLT:
+      Name: Andor CCD/EMCCD (SDK2)+SLT
+      airmass: not_given_by_user
+      date: DATE
+      exptime: not_given_by_user
+      filter_key_0: FILTER
+      g: g
+      gain: not_given_by_user
+      mjd: not_given_by_user
+      pixel_scale: 0.4
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+Blanco 4m:
+  INSTRUME:
+    DECam:
+      Name: Blanco 4m+DECam
+      airmass: not_given_by_user
+      date: not_given_by_user
+      exptime: not_given_by_user
+      filter_key_0: FILTER
+      filter_key_1: BANDS
+      g: g
+      gain: GAIN
+      i: i
+      mjd: not_given_by_user
+      pixel_scale: 0.1
+      r: r
+      readnoise: RDNOISE
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+CFHT 3.6m:
+  INSTRUME:
+    MegaPrime:
+      AIRMASS: AIRMASS
+      GAIN: GAIN
+      Name: CFHT 3.6m+MegaPrime
+      RDNOISE: RDNOISE
+      airmass: AIRMASS
+      date: DATE
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      g.MP9402: g
+      gain: GAIN
+      i.MP9703: i
+      mjd: MJD-OBS
+      pixel_scale: 0.187
+      r.MP9602: r
+      readnoise: RDNOISE
+      saturate: SATURATE
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+CTIO 4.0-m telescope:
+  INSTRUME:
+    DECam:
+      Name: CTIO 4.0-m telescope+DECam
+      airmass: AIRMASS
+      date: ODATEOBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      g DECam SDSS c0001 4720.0 1520.0: g
+      gain: GAIN
+      mjd: MJDREF
+      pixel_scale: 0.2634
+      r DECam SDSS c0002 6415.0 1480.0: r
+      readnoise: RDNOISEA
+      saturate: SATURATE
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+LOT:
+  INSTRUME:
+    Driver for Teledyne Princeton Instruments cameras:
+      Name: LOT+Driver for Teledyne Princeton Instruments cameras
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      gp_Astrodon_2019: g
+      ip_Astrodon_2019: i
+      mjd: MJD-OBS
+      pixel_scale: 0.34
+      readnoise: RMSNOISE
+      rp_Astrodon_2019: r
+      saturate: not_given_by_user
+      up_Astrodon_2017: u
+      zp_Astrodon_2019: z
+    LOT:
+      Name: LOT+LOT
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      gp_Astrodon_2019: g
+      ip_Astrodon_2019: i
+      mjd: MJD-OBS
+      pixel_scale: 0.34
+      readnoise: RMSNOISE
+      rp_Astrodon_2019: r
+      saturate: not_given_by_user
+      up_Astrodon_2017: u
+      zp_Astrodon_2019: z
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+PS1:
+  INSTRUME:
+    GPC1:
+      Name: PS1+GPC1
+      airmass: not_given_by_user
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      filter_key_1: FPA.FILTER
+      g: g
+      g.00000: g
+      gain: GAIN
+      i: i
+      i.00000: i
+      mjd: MJD-OBS
+      pixel_scale: 0.4
+      r: r
+      r.00000: r
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+      z: z
+      z.00000: z
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+SDSS:
+  INSTRUME:
+    LBC-BLUE:
+      Name: SDSS+LBC-BLUE
+      airmass: AIRMASS
+      date: DATE
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      mjd: not_given_by_user
+      pixel_scale: 0.4
+      r-SLOAN: r
+      readnoise: not_given_by_user
+      saturate: SATURATE
+    Imaging:
+      Name: SDSS+Imaging
+      pixel_scale: 0.396
+      filter_key_0: FILTER
+      gain: GAIN
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+      airmass: not_given_by_user
+      mjd: MJD-OBS
+      date: DATE-OBS
+      exptime: EXPTIME
+      r: r
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+SLT:
+  INSTRUME:
+    Andor CCD/EMCCD (SDK2):
+      Name: SLT+Andor CCD/EMCCD (SDK2)
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      gp_Astrodon_2018: g
+      ip_Astrodon_2018: i
+      mjd: MJD-OBS
+      pixel_scale: 0.76
+      readnoise: not_given_by_user
+      rp_Astrodon_2018: r
+      saturate: not_given_by_user
+      up: u
+      up_Astrodon_2018: u
+      zp_Astrodon_2018: z
+    SLT:
+      Name: SLT+SLT
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: GAIN
+      gp_Astrodon_2018: g
+      mjd: MJD-OBS
+      pixel_scale: 0.4
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+SkyMapper:
+  INSTRUME:
+    SG_32_Det:
+      Name: SkyMapper+SG_32_Det
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      g: g
+      gain: GAIN
+      i: i
+      mjd: MJD-OBS
+      pixel_scale: 0.5
+      r: r
+      readnoise: 5
+      saturate: SATURATE
+      u: u
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+Subaru:
+  INSTRUME:
+    Hyper Suprime-Cam:
+      Name: Subaru+Hyper Suprime-Cam
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      g: g
+      gain: T_GAIN1
+      mjd: MJD
+      pixel_scale: 0.4
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+Takahashi Mewlon300:
+  INSTRUME:
+    QHYCCD-Cameras-Capture:
+      Lum: r
+      Name: Takahashi Mewlon300+QHYCCD-Cameras-Capture
+      airmass: AIRMASS
+      date: DATE-OBS
+      exptime: EXPTIME
+      filter_key_0: FILTER
+      gain: EGAIN
+      mjd: not_given_by_user
+      pixel_scale: 0.4
+      r: r
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+  location:
+    alt: null
+    lat: null
+    lon: null
+    name: null
+NCU Lulin observatory:
+  INSTRUME:
+    SOPHIA 2048BX S/N 04396017:
+      Name: NCU Lulin observatory+SOPHIA 2048BX S/N 04396017
+      pixel_scale: 0.384
+      filter_key_0: FILTER
+      gain: GAIN
+      readnoise: RMSNOISE
+      saturate: not_given_by_user
+      airmass: AIRMASS
+      mjd: INTMJD
+      date: DATE
+      exptime: EXPTIME
+      rp_astrodon_2019: r
+      gp_astrodon_2019: g
+      up_astrodon_2017: u
+      ip_astrodon_2019: i
+      zp_astrodon_2019: z
+Lulin observatory, Taiwan:
+  INSTRUME:
+    Andor DZ936:
+      Name: Lulin observatory, Taiwan+Andor DZ936
+      pixel_scale: 0.79
+      filter_key_0: FILTER
+      gain: GAIN
+      readnoise: RMSNOISE
+      saturate: SWCREATE
+      airmass: AIRMASS
+      mjd: OBSMMJD
+      date: DATE-OBS
+      exptime: EXPOSURE
+      rp_astrodon_2018: r
+      gp_astrodon_2018: g
+      ip_astrodon_2018: i
+      zp_astrodon_2018: z
+      up_astrodon_2018: u
+LEGACY:
+  INSTRUME:
+    SURVEY:
+      Name: LEGACY+SURVEY
+      pixel_scale: 0.262
+      filter_key_0: FILTER
+      gain: not_given_by_user
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+      airmass: not_given_by_user
+      mjd: not_given_by_user
+      date: not_given_by_user
+      exptime: not_given_by_user
+      r: r
+      g: g
+      i: i
+PlaneWave Interface 4 (PWI4):
+  INSTRUME:
+    Moravian USB Camera 1 (64 bit):
+      Name: PlaneWave Interface 4 (PWI4)+Moravian USB Camera 1 (64 bit)
+      pixel_scale: 0.4
+      filter_key_0: FILTER
+      gain: EGAIN
+      readnoise: not_given_by_user
+      saturate: not_given_by_user
+      airmass: AIRMASS
+      mjd: MJD-AVG
+      date: DATE-OBS
+      exptime: EXPOSURE
+      g: g
+      r: r

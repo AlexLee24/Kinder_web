@@ -12,7 +12,9 @@ passes answers to AutoPhOT's questions and reads what it wrote.
     job.json      the current or last run (status, pid) — shared by all gunicorn workers
     .stdin        FIFO that becomes AutoPhOT's stdin, so any worker can send an answer
     web_run.log, result.json, exit.json, legacy/<time>/ (earlier runs)
-  Shared cache (telescope.yml, catalog queries): <runs>/.wdir/
+  Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is a link to
+  app/services/pipeline/telescope.yml, the one telescope/instrument list kept in git: every
+  workspace reads it, and AutoPhOT's answers and edits on the Telescopes page change it.
 """
 import contextlib
 import fcntl
@@ -34,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 REPO = Path(__file__).resolve().parents[3]
 RUNNER = REPO / 'scripts' / 'pipeline' / 'autophot_web_run.py'
+TELESCOPE_YML = Path(__file__).resolve().parent / 'telescope.yml'
+TELESCOPE_HISTORY_KEEP = 30
 
 TS_DOWNLOAD = ['panstarrs', 'legacy', 'sdss']          # surveys AutoPhOT can download templates from
 TS_DOWNLOAD_LABELS = {'panstarrs': 'Pan-STARRS', 'legacy': 'Legacy Survey', 'sdss': 'SDSS'}
@@ -575,6 +579,7 @@ def start(tid, user=''):
         with contextlib.suppress(FileNotFoundError):
             fifo.unlink()
         os.mkfifo(fifo, 0o600)
+        link_telescope_yml()
         (d / 'web_run.log').write_text(f'$ autophot {d.name}\n')
         log = open(d / 'web_run.log', 'a')           # append: answers written by the web page are kept
         rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
@@ -1141,3 +1146,99 @@ def resolve(name):
                     'dec': c.dec.to_string(u.deg, sep=':', precision=1, alwayssign=True, pad=True),
                     'source': src}
     raise NotFound(f'{name} was not found in SIMBAD, NED or VizieR.')
+
+
+# ── telescope.yml: one list for every workspace, kept in git ──
+
+TELESCOPE_FIELDS = {'Name', 'pixel_scale', 'gain', 'readnoise', 'saturate', 'airmass', 'mjd', 'date', 'exptime',
+                    'GAIN', 'RDNOISE', 'AIRMASS', 'SATURATE'}
+UNSET = 'not_given_by_user'
+
+
+def link_telescope_yml():
+    """Make <runs>/.wdir/telescope.yml a link to the repository copy, so AutoPhOT reads and writes that file.
+
+    A file already there (from before) is kept next to it as telescope.yml.bak-<time>."""
+    wdir = runs_root() / '.wdir'
+    wdir.mkdir(parents=True, exist_ok=True)
+    link = wdir / 'telescope.yml'
+    target = TELESCOPE_YML.resolve()
+    if link.is_symlink() and link.resolve() == target:
+        return
+    if link.exists() or link.is_symlink():
+        backup = wdir / f"telescope.yml.bak-{time.strftime('%Y%m%d-%H%M%S')}"
+        link.rename(backup)
+        logger.warning('pipeline: %s replaced by a link to %s (old file kept as %s)', link, target, backup.name)
+    link.symlink_to(target)
+
+
+def telescope_text():
+    try:
+        return TELESCOPE_YML.read_text()
+    except FileNotFoundError:
+        return ''
+
+
+def _telescope_rows(data):
+    rows = []
+    for tel, block in (data or {}).items():
+        for inst, cfg in ((block or {}).get('INSTRUME') or {}).items():
+            cfg = cfg or {}
+            filters = {k: v for k, v in cfg.items()
+                       if k not in TELESCOPE_FIELDS and not str(k).startswith('filter_key')}
+            rows.append({'telescope': str(tel), 'instrument': str(inst), 'pixel_scale': cfg.get('pixel_scale'),
+                         'gain': cfg.get('gain'), 'readnoise': cfg.get('readnoise'), 'saturate': cfg.get('saturate'),
+                         'filters': sorted({str(v) for v in filters.values()}), 'n_filter_names': len(filters)})
+    return rows
+
+
+def telescope_summary():
+    """Each telescope + instrument with the values that matter most; None when the file does not parse."""
+    import yaml
+    try:
+        return _telescope_rows(yaml.safe_load(telescope_text()) or {})
+    except yaml.YAMLError:
+        return None
+
+
+def save_telescope(text, user=''):
+    """Replace telescope.yml after checking it; the previous version goes to <runs>/.wdir/telescope_history/."""
+    import yaml
+    text = str(text or '').replace('\r\n', '\n')
+    if len(text) > 1024 * 1024:
+        raise PipelineError('telescope.yml is too large.')
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise PipelineError(f'Not valid YAML: {e}')
+    if not isinstance(data, dict) or not data:
+        raise PipelineError('telescope.yml must list telescopes (TELESCOP value: {INSTRUME: {...}}).')
+    for tel, block in data.items():
+        if not isinstance(block, dict) or not isinstance(block.get('INSTRUME'), dict):
+            raise PipelineError(f'{tel}: needs an INSTRUME block with one entry per instrument.')
+        for inst, cfg in block['INSTRUME'].items():
+            if not isinstance(cfg, dict):
+                raise PipelineError(f'{tel} / {inst}: must be key: value pairs.')
+    history = None
+    try:
+        if _running_count():
+            raise PipelineError('AutoPhOT is running and may add to telescope.yml; save when it has finished.')
+        history = runs_root() / '.wdir' / 'telescope_history'
+    except NotConfigured:
+        pass
+    if not text.endswith('\n'):
+        text += '\n'
+    old = telescope_text()
+    if old == text:
+        return {'changed': False}
+    if history and old:
+        history.mkdir(parents=True, exist_ok=True)
+        who = re.sub(r'[^A-Za-z0-9_.-]', '_', user.split('@')[0])[:30] or 'web'
+        (history / f"telescope-{time.strftime('%Y%m%d-%H%M%S')}-{who}.yml").write_text(old)
+        for stale in sorted(history.glob('telescope-*.yml'))[:-TELESCOPE_HISTORY_KEEP]:
+            stale.unlink(missing_ok=True)
+    tmp = TELESCOPE_YML.with_name(f'.telescope.yml.{os.getpid()}.tmp')
+    tmp.write_text(text)
+    os.replace(tmp, TELESCOPE_YML)
+    logger.info('pipeline: %s saved telescope.yml (%d telescopes)', user or '?', len(data))
+    return {'changed': True}

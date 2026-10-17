@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>Telescopes · Pipeline - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
+    {% include '_favicon.html' %}
+</head>
+<body>
+    {% include '_navbar.html' %}
+    {% macro val(v) %}{% if v is none or v == unset %}<span class="kw-chip kw-chip-red">not set</span>{% else %}<span class="pl-mono">{{ v }}</span>{% endif %}{% endmacro %}
+
+    <main class="kw-page pl-page" id="plTelescopes">
+        <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
+        <header class="kw-page-head">
+            <div>
+                <h1>Telescopes</h1>
+                <p>One <code>telescope.yml</code> for every workspace. AutoPhOT looks up each image by its TELESCOP and INSTRUME headers here; when it meets a new one, your answers in the run log are added to this file too.</p>
+            </div>
+            <div class="kw-page-actions">
+                <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_telescopes_download') }}">Download</a>
+            </div>
+        </header>
+
+        <section class="kw-panel" aria-labelledby="plTelTitle">
+            <div class="kw-panel-head">
+                <h2 id="plTelTitle">Instruments</h2>
+                <span class="kw-panel-meta" id="plTelCount">{{ rows|length if rows is not none else '' }}</span>
+            </div>
+            <p class="kw-panel-desc">Gain, read noise and saturation are header keywords or numbers. “Not set” means AutoPhOT falls back (gain 1 e⁻/ADU, no read noise, no saturation limit), which affects errors and saturated stars.</p>
+            <div id="plTelTable">
+            {% if rows is none %}
+                <p class="pl-msg is-error">telescope.yml does not parse; fix it below.</p>
+            {% elif not rows %}
+                <div class="pl-empty"><b>No instruments yet</b>AutoPhOT adds one the first time it meets a new telescope.</div>
+            {% else %}
+                <div class="kw-table-wrap"><table class="kw-table pl-table">
+                    <thead><tr><th>Telescope</th><th>Instrument</th><th>Pixel scale (″)</th><th>Gain</th><th>Read noise</th><th>Saturation</th><th>Filters</th></tr></thead>
+                    <tbody>
+                    {% for r in rows %}
+                    <tr><td><b>{{ r.telescope }}</b></td><td>{{ r.instrument }}</td><td>{{ val(r.pixel_scale) }}</td>
+                        <td>{{ val(r.gain) }}</td><td>{{ val(r.readnoise) }}</td><td>{{ val(r.saturate) }}</td>
+                        <td>{{ r.filters|join(', ') or '—' }}</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
+            {% endif %}
+            </div>
+        </section>
+
+        <section class="kw-panel" aria-labelledby="plTelEditTitle">
+            <div class="kw-panel-head"><h2 id="plTelEditTitle">Edit telescope.yml</h2></div>
+            <p class="kw-panel-desc">Saved to <code>{{ repo_path }}</code> in the Kinder repository, so the change can be committed to GitHub. The previous version is kept in the workspaces folder (<code>.wdir/telescope_history/</code>). Saving waits until no AutoPhOT run is going.</p>
+            <textarea id="plTelText" class="pl-yaml" spellcheck="false" autocomplete="off" aria-label="telescope.yml">{{ text }}</textarea>
+            <div class="kw-panel-foot">
+                <button type="button" class="kw-btn kw-btn-primary" id="plTelSave">Save</button>
+                <button type="button" class="kw-btn kw-btn-ghost" id="plTelReset">Undo changes</button>
+                <p class="pl-msg" id="plTelMsg" role="status" aria-live="polite"></p>
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
+</body>
+</html>
