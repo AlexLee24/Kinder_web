@@ -16,6 +16,7 @@ from app.services.astro.date_converter import (
     convert_common_date_to_jd,
 )
 from app.services.astro.coordinate_converter import (
+    normalize_decimal_degrees,
     convert_ra_hms_to_decimal,
     convert_ra_decimal_to_hms,
     convert_dec_dms_to_decimal,
@@ -329,8 +330,8 @@ def api_visibility_image():
         obs_date_f  = f"{date_clean[:4]}/{date_clean[4:6]}/{date_clean[6:]}"
         next_date_f = f"{next_d[:4]}/{next_d[4:6]}/{next_d[6:]}"
 
-        ra_c  = re.sub(r'[hH]', ':', re.sub(r'[mM]', ':', re.sub(r'[sS]', '', str(ra_raw)))).strip()
-        dec_c = re.sub(r'[dD°]', ':', re.sub(r"[mM′']", ':', re.sub(r'[sS″"]', '', str(dec_raw)))).strip()
+        ra_c  = re.sub(r'[hH]', ':', re.sub(r'[mM]', ':', re.sub(r'[sS]', '', normalize_decimal_degrees(ra_raw) or str(ra_raw)))).strip()
+        dec_c = re.sub(r'[dD°]', ':', re.sub(r"[mM′']", ':', re.sub(r'[sS″"]', '', normalize_decimal_degrees(dec_raw) or str(dec_raw)))).strip()
 
         ephem_target = obs.create_ephem_target(name, ra_c, dec_c)
 

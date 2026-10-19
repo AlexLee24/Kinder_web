@@ -5,6 +5,8 @@ from app.db.obs import (
     get_observation_targets,
     delete_observation_target,
     update_observation_target,
+    _parse_ra_deg,
+    _parse_dec_deg,
 )
 import logging
 from app.core.auth import login_required
@@ -12,6 +14,19 @@ from app.core.auth import login_required
 logger = logging.getLogger(__name__)
 from . import private_area_bp
 from .helpers import can_access_page
+
+
+def _coord_error(data):
+    """Return a user-facing error string if RA/Dec can't be parsed, else None."""
+    try:
+        _parse_ra_deg(data.get('ra'))
+    except (TypeError, ValueError):
+        return 'Invalid RA. Use hh:mm:ss.ss or decimal degrees (e.g. 159.6998).'
+    try:
+        _parse_dec_deg(data.get('dec'))
+    except (TypeError, ValueError):
+        return 'Invalid Dec. Use ±dd:mm:ss.ss or decimal degrees (e.g. -12.5).'
+    return None
 
 
 @private_area_bp.route('/api/targets', methods=['GET', 'POST'])
@@ -34,6 +49,9 @@ def api_observation_targets():
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid JSON body'}), 400
+        _err = _coord_error(data)
+        if _err:
+            return jsonify({'error': _err}), 400
         _telescope = (data.get('telescope') or '').strip().upper()
         _auto_exp = bool(data.get('auto_exposure', False))
         if _telescope == 'LOT':
@@ -102,7 +120,12 @@ def api_observation_target_update(target_id):
     if not (is_great_lab or is_admin):
         return jsonify({'error': 'Forbidden'}), 403
         
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid JSON body'}), 400
+    _err = _coord_error(data)
+    if _err:
+        return jsonify({'error': _err}), 400
     _tele_put = (data.get('telescope') or '').strip().upper()
     _auto_exp_put = bool(data.get('auto_exposure', False))
     if _tele_put == 'LOT':

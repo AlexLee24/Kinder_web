@@ -8,6 +8,7 @@ import math
 from datetime import date as _date
 from psycopg2 import extras
 from . import get_db_connection
+from app.services.astro.coordinate_converter import normalize_decimal_degrees
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def _parse_ra_deg(value) -> float:
     s = str(value).strip()
     if not s:
         raise ValueError('RA is required')
+    s = normalize_decimal_degrees(s) or s
 
     if ':' in s or (' ' in s and len(s.split()) == 3):
         parts = s.replace(':', ' ').split()
@@ -88,6 +90,7 @@ def _parse_dec_deg(value) -> float:
     s = str(value).strip()
     if not s:
         raise ValueError('Dec is required')
+    s = normalize_decimal_degrees(s) or s
 
     if ':' in s or (' ' in s and len(s.replace('+', '').replace('-', '').split()) == 3):
         is_neg = s.startswith('-')

@@ -1,6 +1,7 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — planner (split from astronomy_tools_routes.py)."""
 import os
 import re
+from app.services.astro.coordinate_converter import normalize_decimal_degrees
 import ephem
 import uuid
 import pytz
@@ -134,11 +135,11 @@ def generate_plot():
                 return jsonify({'error': f'RA and Dec are required for target {name}'}), 400
             
             try:
-                ra_clean = re.sub(r"[hH]", ":", str(ra))
+                ra_clean = re.sub(r"[hH]", ":", normalize_decimal_degrees(ra) or str(ra))
                 ra_clean = re.sub(r"[mM]", ":", ra_clean)
                 ra_clean = re.sub(r"[sS]", "", ra_clean).strip()
                 
-                dec_clean = re.sub(r"[dD°]", ":", str(dec))
+                dec_clean = re.sub(r"[dD°]", ":", normalize_decimal_degrees(dec) or str(dec))
                 dec_clean = re.sub(r"[mM′']", ":", dec_clean)
                 dec_clean = re.sub(r"[sS″\"]", "", dec_clean).strip()
                 
@@ -369,7 +370,7 @@ def visibility_data():
 
             try:
                 # Parse RA — support decimal degrees (e.g. 186.234) or H:M:S / HhMmSs formats
-                ra_str = str(ra).strip()
+                ra_str = normalize_decimal_degrees(ra) or str(ra).strip()
                 if not any(c in ra_str for c in [':', 'h', 'H']):
                     try:
                         ra_deg = float(ra_str)
@@ -384,7 +385,7 @@ def visibility_data():
                     ra_clean = re.sub(r"[sS]", "", ra_clean).strip()
 
                 # Parse Dec — support decimal degrees (e.g. -12.345) or D:M:S / DdMmSs formats
-                dec_str = str(dec).strip()
+                dec_str = normalize_decimal_degrees(dec) or str(dec).strip()
                 dec_core = dec_str.lstrip('+-')
                 if not any(c in dec_core for c in [':', 'd', 'D', '\u00b0']):
                     try:

@@ -1,3 +1,26 @@
+import re
+
+_DECIMAL_DEG_RE = re.compile(
+    r'^\s*([+\-\u2212]?\s*(?:\d+(?:\.\d*)?|\.\d+))\s*'
+    r'(?:\u00b0|deg|degs|degree|degrees|d)?\s*,?\s*$',
+    re.IGNORECASE,
+)
+
+
+def normalize_decimal_degrees(value):
+    """Return a plain decimal-degree string ("159.7", "-12.5") when *value* is a
+    decimal number optionally followed by a degree unit ("159.7°", "12.5 deg",
+    "−12.5d", "159.7,"); otherwise return None (e.g. sexagesimal input)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return str(value)
+    m = _DECIMAL_DEG_RE.match(str(value))
+    if not m:
+        return None
+    return m.group(1).replace('\u2212', '-').replace(' ', '')
+
+
 def convert_ra_hms_to_decimal(ra_hms):
     """Convert RA from HMS format to decimal degrees"""
     parts = ra_hms.replace(':', ' ').split()
