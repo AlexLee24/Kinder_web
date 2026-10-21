@@ -165,30 +165,10 @@ def generate_plot():
         except (ValueError, TypeError, IndexError):
             return jsonify({'error': 'Invalid location format'}), 400
         
-        try:
-            obs_date = str(int(date))
-            next_obs_date = str(int(date) + 1)
-            
-            obs_date_formatted = f"{obs_date[:4]}/{obs_date[4:6]}/{obs_date[6:]}"
-            next_obs_date_formatted = f"{next_obs_date[:4]}/{next_obs_date[4:6]}/{next_obs_date[6:]}"
-            
-            obs_start = ephem.Date(f'{obs_date_formatted} 17:00:00')
-            obs_end = ephem.Date(f'{next_obs_date_formatted} 09:00:00')
-            
-            obs_start_local_dt = obs.dt_naive_to_dt_aware(obs_start.datetime(), timezone_name)
-            obs_end_local_dt = obs.dt_naive_to_dt_aware(obs_end.datetime(), timezone_name)
-            
-        except Exception:
-            return jsonify({'error': 'Error processing dates'}), 400
-        
         plot_path = os.path.join(plot_folder, unique_filename)
         
         try:
-            obs.plot_night_observing_tracks(
-                target_list, obs_site, obs_start_local_dt, obs_end_local_dt, 
-                simpletracks=True, toptime='local', timezone='calculate', 
-                n_steps=1000, savepath=plot_path
-            )
+            obs.render_visibility_plot(target_list, obs_site, date, timezone_name, plot_path)
             
         except Exception:
             logger.exception('generate_plot: plotting failed')

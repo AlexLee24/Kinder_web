@@ -251,25 +251,5 @@ def generate_img(date, target_list, plot_path=None):
         plot_path = os.path.join(obs_img_dir, "Trigger_observing_tracks.jpg")
 
     lulin_obs = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-    sunset, twi_civil, twi_naut, twi_astro = obs.calculate_twilight_times(
-        lulin_obs, '2024/01/01 23:59:00'
-    )
-    next_obs_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).date()
-    obs_start = ephem.Date(f'{date} 17:00:00')
-    obs_end = ephem.Date(f'{next_obs_date} 09:00:00')
-
-    obs_start_local_dt = obs.dt_naive_to_dt_aware(obs_start.datetime(), 'Asia/Taipei')
-    obs_end_local_dt = obs.dt_naive_to_dt_aware(obs_end.datetime(), 'Asia/Taipei')
-
-    obs.plot_night_observing_tracks(
-        target_list,
-        lulin_obs,
-        obs_start_local_dt,
-        obs_end_local_dt,
-        simpletracks=True,
-        toptime='local',
-        timezone='calculate',
-        n_steps=1000,
-        savepath=plot_path
-    )
+    obs.render_visibility_plot(target_list, lulin_obs, date, 'Asia/Taipei', plot_path)
     return plot_path

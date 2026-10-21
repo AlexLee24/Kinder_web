@@ -800,7 +800,12 @@ def plot_observing_tracks(target_list, observer, obsstart, obsend, weights=None,
                 print(f"{target.name}, {transit_time_str}, Error：{e}")'''
 
         target_number = i + 1
-        label_str = f"{target_number}. {target.name} (RA: {target._ra}, DEC: {target._dec})"
+        # Moon distance at the moment the target is highest during the window
+        # (falls back to the window midpoint if it never rises).
+        peak_time = times_utc[int(np.argmax(alts))] if np.max(alts) > 0 else times_utc[len(times_utc) // 2]
+        moon_sep = moonsep_single(target, observer, peak_time.astimezone(pytz.utc).replace(tzinfo=None))
+        label_str = (f"{target_number}. {target.name} (RA: {target._ra}, DEC: {target._dec}, "
+                     f"Moon: {moon_sep:.0f}\N{DEGREE SIGN})")
         if simpletracks == True:
             line, = axin.plot(times_utc, alts, lw=1.5, label=label_str, zorder=5)
             number_color = line.get_color()
@@ -920,6 +925,37 @@ def plot_night_observing_tracks(target_list, observer, obsstart, obsend, weights
                           n_steps=n_steps, simpletracks=simpletracks, azcmap=azcmap,
                           light_fill=False, bgcolor=bgcolor, xaxisformatter=xaxisformatter,
                           figsize=figsize, dpi=dpi, savepath=savepath, showplot=showplot)
+
+# -----------------------------------------------------------------------------
+# Single entry point for every visibility JPG (triggers, planner page, public API,
+# GCN alerts). Change the look of the plot here / in plot_observing_tracks only.
+# -----------------------------------------------------------------------------
+def render_visibility_plot(target_list, observer, date_str, tz_name, savepath, n_steps=1000):
+    """
+    Render the night visibility plot (17:00 on date_str -> 09:00 next day, local
+    time in tz_name) for target_list as observed from observer, saved to savepath.
+
+    Parameters:
+        target_list (list): ephem targets.
+        observer (ephem.Observer): Observing site.
+        date_str (str): Local evening date, 'YYYY-MM-DD', 'YYYY/MM/DD' or 'YYYYMMDD'.
+        tz_name (str): IANA timezone name of the site (e.g. 'Asia/Taipei').
+        savepath (str): Output image path.
+        n_steps (int): Time resolution of the tracks.
+
+    Returns:
+        str: savepath
+    """
+    day = datetime.strptime(date_str.replace('/', '').replace('-', ''), '%Y%m%d').date()
+    next_day = day + timedelta(days=1)
+    start_local = dt_naive_to_dt_aware(ephem.Date(f'{day:%Y/%m/%d} 17:00:00').datetime(), tz_name)
+    end_local = dt_naive_to_dt_aware(ephem.Date(f'{next_day:%Y/%m/%d} 09:00:00').datetime(), tz_name)
+    plot_night_observing_tracks(
+        target_list, observer, start_local, end_local,
+        simpletracks=True, toptime='local', timezone='calculate',
+        n_steps=n_steps, savepath=savepath
+    )
+    return savepath
 
 # -----------------------------------------------------------------------------
 

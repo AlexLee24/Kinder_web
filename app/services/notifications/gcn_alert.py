@@ -203,15 +203,7 @@ def _generate_obs_plot(date, object_name, ra, dec):
     label  = f"{object_name}\nRA: {ra}\nDEC: {dec}"
     target = obs.create_ephem_target(label, ra, dec)
     lulin  = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-    obs.calculate_twilight_times(lulin, '2024/01/01 23:59:00')
-    next_date       = (datetime.strptime(date, '%Y-%m-%d') + timedelta(days=1)).date()
-    obs_start_local = obs.dt_naive_to_dt_aware(ephem.Date(f'{date} 17:00:00').datetime(), 'Asia/Taipei')
-    obs_end_local   = obs.dt_naive_to_dt_aware(ephem.Date(f'{next_date} 09:00:00').datetime(), 'Asia/Taipei')
-    obs.plot_night_observing_tracks(
-        [target], lulin, obs_start_local, obs_end_local,
-        simpletracks=True, toptime='local', timezone='calculate',
-        n_steps=1000, savepath=PLOT_PATH
-    )
+    obs.render_visibility_plot([target], lulin, date, 'Asia/Taipei', PLOT_PATH)
     return PLOT_PATH
 
 def _generate_slt_script(object_name, ra, dec):

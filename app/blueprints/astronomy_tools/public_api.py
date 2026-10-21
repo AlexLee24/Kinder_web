@@ -343,20 +343,11 @@ def api_visibility_image():
         lat_f = parse_coordinate(lat_raw)
         obs_site = obs.create_ephem_observer(name, lon_f, lat_f, alt_m)
 
-        obs_start = ephem.Date(f'{obs_date_f} 17:00:00')
-        obs_end   = ephem.Date(f'{next_date_f} 09:00:00')
-        start_loc = obs.dt_naive_to_dt_aware(obs_start.datetime(), timezone_name)
-        end_loc   = obs.dt_naive_to_dt_aware(obs_end.datetime(),   timezone_name)
-
         import tempfile
         with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tf:
             tmp_path = tf.name
         try:
-            obs.plot_night_observing_tracks(
-                [ephem_target], obs_site, start_loc, end_loc,
-                simpletracks=True, toptime='local', timezone='calculate',
-                n_steps=500, savepath=tmp_path,
-            )
+            obs.render_visibility_plot([ephem_target], obs_site, date_clean, timezone_name, tmp_path, n_steps=500)
             with open(tmp_path, 'rb') as fh:
                 img_bytes = fh.read()
         finally:

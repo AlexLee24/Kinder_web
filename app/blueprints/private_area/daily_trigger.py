@@ -151,20 +151,10 @@ def _render_trigger_visibility_image(telescope, targets):
 
     try:
         date_str = _trigger_day_key()
-        next_date = (datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=1)).date()
         lulin = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-        obs_start = ephem.Date(f'{date_str} 17:00:00')
-        obs_end = ephem.Date(f'{next_date} 09:00:00')
-        obs_start_local = obs.dt_naive_to_dt_aware(obs_start.datetime(), 'Asia/Taipei')
-        obs_end_local = obs.dt_naive_to_dt_aware(obs_end.datetime(), 'Asia/Taipei')
-
         tf = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
         tf.close()
-        obs.plot_night_observing_tracks(
-            target_list, lulin, obs_start_local, obs_end_local,
-            simpletracks=True, toptime='local', timezone='calculate',
-            n_steps=500, savepath=tf.name
-        )
+        obs.render_visibility_plot(target_list, lulin, date_str, 'Asia/Taipei', tf.name, n_steps=500)
         size = os.path.getsize(tf.name) if os.path.isfile(tf.name) else -1
         logger.info('render_trigger_visibility_image: rendered %s (%d bytes) for telescope=%s, %d target(s) plotted',
                     tf.name, size, telescope, len(target_list))
