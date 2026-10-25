@@ -17,7 +17,7 @@ PG_USER = os.getenv('PG_USER', 'postgres')
 PG_PASSWORD = os.getenv('PG_PASSWORD', '')
 
 BACKUP_DIR = str(_BACKUP_DIR_PATH)   # app/data/backups
-KEEP_DAYS = 15  # number of daily backups to keep per database
+KEEP_DAYS = 2   # daily backups kept per database (today and yesterday); older ones are deleted after each backup
 
 DATABASES = ['Kinder']
 
