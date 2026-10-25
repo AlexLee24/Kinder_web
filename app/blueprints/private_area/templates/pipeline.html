@@ -68,8 +68,15 @@
                 <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2><span class="kw-panel-meta">AutoPhOT</span></div>
                 <form class="pl-form pl-wizard" data-pl-form data-new autocomplete="off" novalidate>
                     <section class="pl-step" data-step="files">
-                        {{ pl_step(1, 'Images', 'A folder from your computer: every FITS in it and its subfolders. A subfolder called templates/ holds your templates.') }}
-                        {{ pl_drop('plNewFiles', 'Drop a folder of FITS') }}
+                        {{ pl_step(1, 'Images', 'Every FITS in a folder and its subfolders; a subfolder called templates/ holds your templates. FITS are kept ' ~ keep_days ~ ' days on the server, results stay.') }}
+                        {% if calibrated.ok %}
+                        <div class="pl-seg pl-src" role="radiogroup" aria-label="Where the images come from">
+                            <label class="pl-seg-item"><input type="radio" name="src" value="upload" checked><span>From this computer</span></label>
+                            <label class="pl-seg-item"><input type="radio" name="src" value="server"><span>Calibrated on the server</span></label>
+                        </div>
+                        {% endif %}
+                        <div data-src="upload">{{ pl_drop('plNewFiles', 'Drop a folder of FITS') }}</div>
+                        {% if calibrated.ok %}<div data-src="server" hidden><div class="pl-picker" data-picker data-pick-label="Use these frames"></div></div>{% endif %}
                         <div class="pl-scan" data-scan hidden></div>
                     </section>
                     <section class="pl-step" data-step="target">

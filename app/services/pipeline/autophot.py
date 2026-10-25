@@ -247,8 +247,12 @@ def _added(tid, rels, origin):
     cfg['removed'] = sorted(set(cfg.get('removed') or []) - set(rels))
     cfg['imported'] = time.time()
     cfg.setdefault('origins', {})
+    cfg.setdefault('added_at', {})
+    now = time.time()
     for r in rels:
         cfg['origins'][r] = origin
+        cfg['added_at'][r] = now                      # the 7-day clock (FITS_KEEP_DAYS) starts here
+    cfg['expired'] = [e for e in cfg.get('expired') or [] if e.get('name') not in rels]
     _write_json(tdir(tid) / 'target.json', cfg)
 
 
@@ -363,8 +367,12 @@ def save_target(tid, body, user=''):
         tid = target_id(body.get('workspace') or name)
         if not tid:
             raise PipelineError('Enter a target name.')
-        if (tdir(tid, must=False) / 'target.json').exists():
-            raise PipelineError(f'Workspace {tid} already exists.')
+        base_id, n = tid, 1
+        while tdir(tid, must=False).exists():           # same target again (another telescope, another season)
+            n += 1
+            tid = f'{base_id[:76]}_{n}'
+            if n > 99:
+                raise PipelineError(f'Workspace {base_id} already exists.')
     old = {} if creating else _read_json(tdir(tid) / 'target.json')
     catalog = _pick(body, old, 'catalog', CATALOGS, DEFAULT_CATALOG)
     sub_method = _pick(body, old, 'sub_method', SUB_METHODS, 'sfft')
@@ -433,8 +441,143 @@ def workspace_images(tid):
     origins = cfg.get('origins') or {}
     for f in out['files']:
         f['origin'] = origins.get(f['name'], '')
+        f['expires'] = _arrived(cfg, d, f['name']) + KEEP_SECONDS
+    for t in out['templates']:
+        t['expires'] = _arrived(cfg, d, t['name']) + KEEP_SECONDS
+    out['keep_days'] = config.FITS_KEEP_DAYS
+    out['expired'] = cfg.get('expired') or []
+    out['restorable'] = sum(1 for e in out['expired'] if str(e.get('origin', '')).startswith('calibrated:'))
     out['stacks'] = sorted(cfg.get('stacks') or {})
     return out
+
+
+# ── Retention: results stay, FITS go FITS_KEEP_DAYS after they arrive ──
+
+KEEP_SECONDS = config.FITS_KEEP_DAYS * 86400
+CLEANUP_EVERY = 3600              # at most one sweep an hour (scheduler job and page opens share it)
+
+
+def _is_fits_like(name):
+    n = name.lower()
+    return n.endswith(FITS_EXT) or (n.endswith('.unused') and n[:-7].endswith(FITS_EXT))
+
+
+def _arrived(cfg, images, rel):
+    """When a file in images/ arrived: recorded at upload / hand-over, else the file's own times."""
+    t = (cfg.get('added_at') or {}).get(rel)
+    if t:
+        return float(t)
+    try:
+        st = (images / rel).stat()
+        return max(st.st_mtime, st.st_ctime)
+    except OSError:
+        return time.time()
+
+
+def cleanup_expired(force=False):
+    """Delete every FITS older than FITS_KEEP_DAYS in every workspace that is not running:
+    frames and templates in images/ (by arrival), set-aside ones in .removed/, unfinished uploads,
+    and FITS AutoPhOT wrote in images_REDUCED/ and legacy/ (by date). Light curves, tables, figures,
+    logs and settings stay. Returns {'files', 'bytes'}; never raises."""
+    out = {'files': 0, 'bytes': 0}
+    try:
+        r = runs_root()
+        if not r.is_dir():
+            return out
+        stamp = r / '.wdir' / '.cleanup'
+        now = time.time()
+        if not force and stamp.exists() and now - stamp.stat().st_mtime < CLEANUP_EVERY:
+            return out
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        for d in sorted(r.iterdir()):
+            if d.is_dir() and not d.name.startswith('.') and TID_RE.fullmatch(d.name) and (d / 'target.json').is_file():
+                try:
+                    n, b = _cleanup_workspace(d, now)
+                    out['files'] += n
+                    out['bytes'] += b
+                except Exception:
+                    logger.exception('pipeline: cleanup of %s failed', d.name)
+        if out['files']:
+            logger.info('pipeline: deleted %d FITS (%.1f GB) older than %d days', out['files'], out['bytes'] / 1e9, config.FITS_KEEP_DAYS)
+    except NotConfigured:
+        pass
+    except Exception:
+        logger.exception('pipeline: FITS cleanup failed')
+    return out
+
+
+def _cleanup_workspace(d, now):
+    j = _read_json(d / 'job.json')
+    if j.get('status') == 'running' and _alive(j.get('pid')):
+        return 0, 0
+    cfg = _read_json(d / 'target.json')
+    images = d / 'images'
+    n = size = 0
+    expired = cfg.get('expired') or []
+    gone = []
+
+    def drop(p):
+        nonlocal n, size
+        try:
+            size += p.stat().st_size
+            p.unlink()
+            n += 1
+            return True
+        except OSError:
+            return False
+
+    if images.is_dir():
+        for p in sorted(images.rglob('*')):
+            if p.is_file() and _is_fits_like(p.name):
+                rel = str(p.relative_to(images))
+                if now - _arrived(cfg, images, rel) > KEEP_SECONDS and drop(p):
+                    gone.append(rel)
+                    expired.append({'name': rel, 'origin': (cfg.get('origins') or {}).get(rel, ''), 'at': now})
+    removed = d / '.removed'
+    if removed.is_dir():
+        for p in sorted(removed.rglob('*')):
+            if p.is_file() and _is_fits_like(p.name):
+                rel = str(p.relative_to(removed))
+                if now - _arrived(cfg, removed, rel) > KEEP_SECONDS and drop(p):
+                    cfg['removed'] = [x for x in cfg.get('removed') or [] if x != rel]
+    uploads = d / '.uploads'
+    if uploads.is_dir():
+        for p in uploads.iterdir():
+            if p.is_file() and now - p.stat().st_mtime > 86400:
+                drop(p)
+    outputs = [reduced_dir(cfg)] + ([x / 'images_REDUCED' for x in (d / 'legacy').iterdir() if x.is_dir()]
+                                    if (d / 'legacy').is_dir() else [])
+    for base in outputs:
+        if base.is_dir():
+            for p in base.rglob('*'):
+                if p.is_file() and _is_fits_like(p.name) and now - p.stat().st_mtime > KEEP_SECONDS:
+                    drop(p)
+    if gone or cfg.get('removed') != _read_json(d / 'target.json').get('removed'):
+        for rel in gone:
+            (cfg.get('added_at') or {}).pop(rel, None)
+        cfg['expired'] = expired[-2000:]
+        _write_json(d / 'target.json', cfg)
+    return n, size
+
+
+def restore_expired(tid):
+    """Copy again the deleted frames that came from Calibrated_Science (their source is still there)."""
+    from . import calibrated
+    _busy(tid)
+    cfg = _read_json(tdir(tid) / 'target.json')
+    paths, missing = [], []
+    for e in cfg.get('expired') or []:
+        origin = str(e.get('origin') or '')
+        if origin.startswith('calibrated:'):
+            try:
+                paths.append((calibrated.file_path(origin.split(':', 1)[1]), origin))
+            except PipelineError:
+                missing.append(e['name'])
+    added = []
+    for src, origin in paths:
+        added += add_files(tid, [src], origin=origin)['added']
+    return {'added': added, 'missing': missing}
 
 
 def _templates(d):
@@ -1005,36 +1148,118 @@ def photometry(tid, run=None):
 NO_TS_TAG = '_(w/o_TS)'       # appended to the telescope, no spaces, so every row stays 5 columns (e.g. SLT_(w/o_TS))
 
 
-def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
-    """Plain-text light curve for import, space-separated: MJD magnitude error filter telescope.
-    Non-detections are >limit (at limit σ) with error nan; spaces in telescope names become underscores.
-    An image measured without template subtraction (subtraction off, or it fell back to the frame)
-    gets _(w/o_TS) after its telescope; a subtracted one is just the telescope name."""
+def export_rows(tid, method='PSF', limit=3.0, run=None):
+    """The light curve as points: [{'mjd', 'magnitude', 'magnitude_error' (None = upper limit), 'upper',
+    'filter', 'telescope'}]. Non-detections are limits at `limit` σ. An image measured without template
+    subtraction (off, or it fell back to the frame) gets _(w/o_TS) after its telescope."""
     ph = photometry(tid, run)
     if not ph:
         raise NotFound('No results yet.')
     key = 'psf' if method.upper() == 'PSF' else 'ap'
     li = next((i for i, (_, snr) in enumerate(ph['limits']) if abs(snr - float(limit)) < 1e-6), None)
-    lines = []
+    out = []
     for r in ph['rows']:
         if r['mjd'] is None:
             continue
         mag, err = r[key], r[key + '_err']
         lim = r['limits'][li] if li is not None else None
         if r['det'] and mag is not None:
-            m, e = f'{mag:.3f}', f'{err:.3f}' if err is not None else 'nan'
+            point = {'magnitude': round(mag, 3), 'magnitude_error': round(err, 3) if err is not None else None, 'upper': False}
         elif lim is not None:
-            m, e = f'>{lim:.3f}', 'nan'
+            point = {'magnitude': round(lim, 3), 'magnitude_error': None, 'upper': True}
         else:
             continue
-        tel = (re.sub(r'\s+', '_', r['telescope']) or 'unknown') + ('' if r['ts'] else NO_TS_TAG)
-        lines.append((f"{r['mjd']:.5f}", m, e, re.sub(r'\s+', '_', r['filter']) or 'unknown', tel))
+        point.update(mjd=round(r['mjd'], 5), filter=re.sub(r'\s+', '_', r['filter']) or 'unknown',
+                     telescope=(re.sub(r'\s+', '_', r['telescope']) or 'unknown') + ('' if r['ts'] else NO_TS_TAG))
+        out.append(point)
+    return out
+
+
+def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
+    """Plain-text light curve for import, space-separated: MJD magnitude error filter telescope;
+    a limit is written >mag with error nan."""
+    lines = []
+    for pt in export_rows(tid, method, limit, run):
+        m = ('>' if pt['upper'] else '') + f"{pt['magnitude']:.3f}"
+        e = f"{pt['magnitude_error']:.3f}" if pt['magnitude_error'] is not None else 'nan'
+        lines.append((f"{pt['mjd']:.5f}", m, e, pt['filter'], pt['telescope']))
     head = ('MJD', 'magnitude', 'error', 'filter', 'telescope')
     widths = [max(len(x[i]) for x in lines + [head]) for i in range(5)]
 
     def fmt(row):
         return '  '.join(v.ljust(w) for v, w in zip(row, widths)).rstrip()
     return '\n'.join(([fmt(head)] if header else []) + [fmt(x) for x in lines]) + '\n'
+
+
+# ── Import into a Kinder object's photometry (the page asks three times first) ──
+
+def _import_args(body):
+    method = 'AP' if str(body.get('method') or 'PSF').upper() == 'AP' else 'PSF'
+    try:
+        limit = float(body.get('limit') or 3)
+    except (TypeError, ValueError):
+        limit = 3.0
+    run = str(body.get('run') or '') or None
+    with_limits = bool(body.get('with_limits', True))
+    return method, limit, run, with_limits
+
+
+def import_preview(tid, body):
+    """What an import would do: the object as Kinder knows it, the points, how many look like duplicates."""
+    from app.db.transient import TNSObjectDB
+    method, limit, run, with_limits = _import_args(body)
+    name = str(body.get('object') or '').strip()[:80]
+    if not name:
+        raise PipelineError('Enter the Kinder object.')
+    found = TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', ''))
+    if not found:
+        raise NotFound(f'{name} is not a Kinder object.')
+    points = [pt for pt in export_rows(tid, method, limit, run) if with_limits or not pt['upper']]
+    existing = TNSObjectDB.get_photometry(found)
+    have = {(round(float(e['mjd']), 4), str(e.get('filter') or ''), str(e.get('telescope') or '')) for e in existing if e.get('mjd') is not None}
+    dup = sum(1 for pt in points if (round(pt['mjd'], 4), pt['filter'], pt['telescope']) in have)
+    done = [i for i in _read_json(tdir(tid) / 'target.json').get('imports') or []
+            if i.get('object') == found and not i.get('undone') and i.get('run') == run and i.get('method') == method]
+    return {'object': found, 'points': points, 'n_existing': len(existing), 'n_duplicates': dup,
+            'already': done[-1] if done else None, 'method': method, 'limit': limit, 'run': run}
+
+
+def import_points(tid, body, user=''):
+    """Write the points into the object's photometry; `confirm` must repeat the object name exactly."""
+    from app.db.transient import TNSObjectDB
+    pv = import_preview(tid, body)
+    if str(body.get('confirm') or '').strip() != pv['object']:
+        raise PipelineError(f'Type {pv["object"]} to confirm.')
+    if not pv['points']:
+        raise PipelineError('No points to import.')
+    pts = [{k: pt[k] for k in ('mjd', 'magnitude', 'magnitude_error', 'filter', 'telescope')} for pt in pv['points']]
+    ids = TNSObjectDB.add_photometry_batch_ids(pv['object'], pts)
+    rec = {'id': time.strftime('%Y%m%d-%H%M%S'), 'time': time.time(), 'by': user, 'object': pv['object'],
+           'method': pv['method'], 'limit': pv['limit'], 'run': pv['run'], 'n_points': len(pts),
+           'n_inserted': len(ids), 'phot_ids': ids}
+    cfg = _read_json(tdir(tid) / 'target.json')
+    cfg['imports'] = (cfg.get('imports') or []) + [rec]
+    _write_json(tdir(tid) / 'target.json', cfg)
+    logger.info('pipeline: %s imported %d/%d points of %s into %s', user or '?', len(ids), len(pts), tid, pv['object'])
+    return {k: v for k, v in rec.items() if k != 'phot_ids'}
+
+
+def undo_import(tid, import_id, user=''):
+    """Delete exactly the points one import added (points that were already there are untouched)."""
+    from app.db.transient import TNSObjectDB
+    cfg = _read_json(tdir(tid) / 'target.json')
+    rec = next((i for i in cfg.get('imports') or [] if i.get('id') == import_id and not i.get('undone')), None)
+    if not rec:
+        raise NotFound('No such import.')
+    n = TNSObjectDB.delete_photometry_points(rec['object'], rec.get('phot_ids') or [])
+    rec.update(undone=time.time(), undone_by=user, n_deleted=n)
+    _write_json(tdir(tid) / 'target.json', cfg)
+    logger.info('pipeline: %s undid import %s of %s (%d points deleted from %s)', user or '?', import_id, tid, n, rec['object'])
+    return {'deleted': n, 'object': rec['object']}
+
+
+def imports(tid):
+    return [{k: v for k, v in i.items() if k != 'phot_ids'} for i in _read_json(tdir(tid) / 'target.json').get('imports') or []]
 
 
 # AutoPhOT zeropoint flags → plain sentences; unknown ones are shown as they are

@@ -473,6 +473,71 @@ class TNSObjectDB:
         return inserted
 
     @staticmethod
+    def resolve_object_name(name: str) -> str | None:
+        """The object's name as stored (accepts an AT/SN/… prefix), or None when there is no such object."""
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, name)
+            if obj_id is None:
+                return None
+            cur.execute("SELECT name FROM transient.objects WHERE obj_id = %s", (obj_id,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    @staticmethod
+    def add_photometry_batch_ids(object_name: str, points: list) -> list[int]:
+        """Like add_photometry_batch, in one transaction, returning the phot_id of every new row
+        (duplicates are skipped by phot_uniq) so the import can be undone."""
+        if not points:
+            return []
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return []
+            ids, max_mjd = [], None
+            for p in points:
+                mag = p.get('magnitude')
+                if mag is not None and float(mag) < 0:
+                    continue
+                cur.execute(
+                    "INSERT INTO transient.photometry "
+                    "(obj_id, name, \"MJD\", mag, mag_err, filter, source) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT ON CONSTRAINT phot_uniq DO NOTHING "
+                    "RETURNING phot_id",
+                    (obj_id, object_name, p['mjd'], mag, p.get('magnitude_error'),
+                     p.get('filter'), p.get('telescope') or 'Unknown')
+                )
+                row = cur.fetchone()
+                if row:
+                    ids.append(row[0])
+                    if max_mjd is None or p['mjd'] > max_mjd:
+                        max_mjd = p['mjd']
+            if max_mjd is not None:
+                _mjd_update(cur, obj_id, max_mjd)
+            conn.commit()
+        return ids
+
+    @staticmethod
+    def delete_photometry_points(object_name: str, point_ids: list) -> int:
+        """Delete these points of this object (ids of another object are left alone); refreshes last_phot_date."""
+        if not point_ids:
+            return 0
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return 0
+            cur.execute("DELETE FROM transient.photometry WHERE obj_id = %s AND phot_id = ANY(%s)",
+                        (obj_id, [int(i) for i in point_ids]))
+            deleted = cur.rowcount
+            cur.execute('SELECT MAX("MJD") FROM transient.photometry WHERE obj_id = %s', (obj_id,))
+            cur.execute("UPDATE transient.objects SET last_phot_date = %s WHERE obj_id = %s", (cur.fetchone()[0], obj_id))
+            conn.commit()
+        return deleted
+
+    @staticmethod
     def add_photometry_bulk(photometry_data):
         """Bulk insert: list of (object_name, mjd, magnitude, mag_err, filter, telescope)."""
         if not photometry_data:

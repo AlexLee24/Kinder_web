@@ -77,7 +77,12 @@
     }
 
     const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+    const sizeOf = x => (x.file ? x.file.size : x.size) || 0;
     const sizeText = n => n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' kB';
+    const daysLeft = t => {
+        const d = (t * 1000 - Date.now()) / 86400e3;
+        return d <= 0 ? 'soon' : d < 1 ? 'in ' + Math.max(1, Math.round(d * 24)) + ' h' : 'in ' + Math.round(d) + ' d';
+    };
     const bandSelect = (value, attrs) => el('select', Object.assign({ class: 'kw-select kw-select-sm' }, attrs || {}),
         el('option', { value: '', text: 'Filter…', selected: !value }), BANDS.map(b => el('option', { value: b, text: b, selected: b === value })));
 
@@ -284,7 +289,7 @@
         const nights = new Set(sci.map(i => nightOf(i.hdr)).filter(Boolean));
         const missing = sci.filter(i => i.hdr && !(i.hdr.TELESCOP && i.hdr.INSTRUME && (i.hdr.FILTER || i.hdr.FILTER1 || i.hdr.FILTNAME)));
         const unread = sci.filter(i => !i.hdr);
-        const bytes = sci.concat(tpl).reduce((a, i) => a + i.file.size, 0);
+        const bytes = sci.concat(tpl).reduce((a, i) => a + sizeOf(i), 0);
         const kids = [
             el('div', { class: 'pl-scan-head' },
                 el('b', { text: (scan.folder ? scan.folder + '/ · ' : '') + plural(sci.length, 'frame') }),
@@ -342,7 +347,7 @@
 
     // Upload a list [{file, up, template}] one after the other with one progress bar; returns {ok, failed: [{item, error}]}.
     async function uploadAll(wsBase, list, bar) {
-        const total = list.reduce((a, x) => a + x.file.size, 0) || 1;
+        const total = list.reduce((a, x) => a + sizeOf(x), 0) || 1;
         let sent = 0, ok = 0;
         const failed = [];
         bar.hidden = false;
@@ -354,9 +359,15 @@
             const x = list[k], start = sent;
             show(k, x.up);
             try {
-                x.result = await uploadFile(wsBase, x.file, x.up, n => { sent = start + n; show(k, x.up); }, x.template);
+                if (x.server) {                     // a calibrated frame already on the server: copied there
+                    x.result = await api(wsBase + '/add_calibrated', { path: x.server });
+                    sent = start + sizeOf(x);
+                    if (x.result.skipped && x.result.skipped.length) throw new Error(x.result.skipped[0] + ' is already in this workspace.');
+                } else {
+                    x.result = await uploadFile(wsBase, x.file, x.up, n => { sent = start + n; show(k, x.up); }, x.template);
+                }
                 ok++;
-            } catch (err) { failed.push({ item: x, error: err.message }); sent = start + x.file.size; }
+            } catch (err) { failed.push({ item: x, error: err.message }); sent = start + sizeOf(x); }
         }
         bar.querySelector('small').textContent = failed.length ? ok + ' uploaded, ' + failed.length + ' failed' : plural(ok, 'file') + ' uploaded';
         return { ok, failed };
@@ -442,6 +453,76 @@
             const items = r.ok ? await r.json() : [];
             return Array.isArray(items) ? items : [];
         } catch (err) { return []; }
+    }
+
+    // ── Calibrated frames on the server: search folders, tick frames ──────────
+    const CAL_API = '/api/pipeline/calibrated';
+    function picker(root, onPick) {
+        const label = root.dataset.pickLabel || 'Use these frames';
+        let qTimer = null;
+        async function showFolders(q) {
+            const search = el('input', { type: 'search', class: 'pl-ws-filter', placeholder: 'Search folders (target, night, telescope…)', value: q || '', 'aria-label': 'Search folders' });
+            const list = el('div', { class: 'pl-pick-list' }, el('p', { class: 'pl-hint', text: 'Loading…' }));
+            root.replaceChildren(search, list);
+            const load = async () => {
+                try {
+                    const d = await api(CAL_API + '/folders?q=' + encodeURIComponent(search.value.trim()));
+                    list.replaceChildren(...[(d.folders.length ? d.folders.map(f => el('button', { type: 'button', class: 'pl-pick-dir', onclick: () => showFolder(f.path, search.value) },
+                        el('b', { class: 'pl-mono', text: f.path + '/' }), el('span', { text: plural(f.n, 'FITS', 'FITS') }), el('span', { 'data-ts': String(f.mtime) })))
+                        : [el('p', { class: 'pl-faint', text: search.value.trim() ? 'No folder matches.' : 'No folders with FITS.' })]),
+                        d.more ? el('p', { class: 'pl-hint', text: d.more + ' more; narrow the search.' }) : null].flat().filter(Boolean));
+                    stamp(list);
+                } catch (err) { list.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message })); }
+            };
+            search.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 250); });
+            search.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+            load();
+        }
+        async function showFolder(path, q) {
+            root.replaceChildren(el('p', { class: 'pl-hint', text: 'Reading ' + path + '…' }));
+            let d;
+            try { d = await api(CAL_API + '/folder?path=' + encodeURIComponent(path)); }
+            catch (err) { root.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message })); return; }
+            const boxes = [];
+            const foot = el('span', { class: 'pl-faint' });
+            const go = el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: label });
+            const sync = () => {
+                const on = boxes.filter(b => b.box.checked);
+                foot.textContent = on.length + ' of ' + boxes.length + ' selected · ' + sizeText(on.reduce((a, b) => a + b.f.size, 0));
+                go.disabled = !on.length;
+                all.checked = on.length === boxes.length; all.indeterminate = on.length > 0 && on.length < boxes.length;
+            };
+            const all = el('input', { type: 'checkbox', 'aria-label': 'Select all', onchange: () => { boxes.forEach(b => { if (!b.f.error) b.box.checked = all.checked; }); sync(); } });
+            const rows = d.files.map(f => {
+                const cal = f.imagetyp && CAL_RE.test(f.imagetyp);
+                const box = el('input', { type: 'checkbox', checked: !f.error && !cal, disabled: !!f.error, onchange: sync, 'aria-label': f.name });
+                boxes.push({ box, f });
+                const h = f.header || {};
+                return el('tr', { class: cal || f.error ? 'is-skip' : null },
+                    el('td', {}, box), el('td', { class: 'pl-mono' }, f.name, cal ? el('span', { class: 'kw-chip', text: f.imagetyp }) : null),
+                    el('td', {}, f.band ? el('b', { text: f.band }) : el('span', { class: 'pl-faint', text: '?' }), f.raw && f.raw !== f.band ? el('small', { text: ' ' + f.raw }) : null),
+                    f.error ? el('td', { colspan: '4', class: 'is-miss', text: f.error }) : [
+                        el('td', { text: [h.TELESCOP, h.INSTRUME].filter(Boolean).join(' / ') || '—' }),
+                        el('td', { text: (h['DATE-OBS'] || '—').replace('T', ' ').slice(0, 19) }),
+                        el('td', { text: h.EXPTIME || '—' }), el('td', { text: h.OBJECT || '—' })]);
+            });
+            go.addEventListener('click', async () => {
+                const chosen = boxes.filter(b => b.box.checked).map(b => b.f);
+                go.disabled = true;
+                try { await onPick(chosen, d.path); } finally { go.disabled = false; }
+            });
+            root.replaceChildren(...[
+                el('div', { class: 'pl-pick-head' },
+                    el('button', { type: 'button', class: 'pl-link', text: '← All folders', onclick: () => showFolders(q) }),
+                    el('b', { class: 'pl-mono', text: d.path + '/' })),
+                el('div', { class: 'kw-table-wrap pl-pick-files' }, el('table', { class: 'kw-table pl-table pl-hdr' },
+                    el('thead', {}, el('tr', {}, el('th', {}, all), ['File', 'Filter', 'Telescope / instrument', 'Date (UTC)', 'Exp (s)', 'OBJECT'].map(t => el('th', { text: t })))),
+                    el('tbody', {}, rows))),
+                d.more ? el('p', { class: 'pl-hint', text: d.more + ' more FITS not listed (first 500).' }) : null,
+                el('div', { class: 'pl-pick-foot' }, foot, el('span', { class: 'pl-spacer' }), go)].filter(Boolean));
+            sync();
+        }
+        showFolders('');
     }
 
     // ── New workspace wizard ──────────────────────────────────────────────────
@@ -548,6 +629,35 @@
             renderPlan();
         });
 
+        // Source: this computer (drop) or calibrated frames on the server (picker); both end in the same scan
+        const srcSync = () => {
+            const src = (wizard.querySelector('input[name=src]:checked') || {}).value || 'upload';
+            wizard.querySelectorAll('[data-src]').forEach(n => { n.hidden = n.dataset.src !== src; });
+        };
+        wizard.addEventListener('change', e => { if (e.target.name === 'src') srcSync(); });
+        srcSync();
+        const pick = wizard.querySelector('[data-picker]');
+        if (pick) {
+            picker(pick, async (files, folder) => {
+                if (created) return;
+                const seen = {};
+                const items = files.map(f => {
+                    const up = seen[f.name] ? f.path.replace(/\//g, '__') : f.name;
+                    seen[f.name] = true;
+                    return { server: f.path, rel: f.name, name: f.name, up, size: f.size, kind: 'science', why: '',
+                        hdr: f.header || {}, band: f.band, raw: f.raw };
+                });
+                scan = { folder, items, other: [] };
+                scanBox.hidden = false;
+                scanBox.replaceChildren(...scanSummary(scan),
+                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Start over', onclick: () => { scan = null; scanBox.hidden = true; renderCoverage(); } }));
+                renderCoverage();
+                await prefillTarget();
+                renderPlan();
+                scanBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            });
+        }
+
         const tplDrop = cov.parentElement.querySelector('[data-pl-drop]');
         dropZone(tplDrop, async list => {
             const s = await scanFiles(list);
@@ -576,7 +686,7 @@
                     created = await api(API + '/new', formBody(wizard));
                     wizard.querySelectorAll('input, select').forEach(n => { n.disabled = true; });
                 }
-                const queue = sci.map(i => ({ file: i.file, up: i.up })).concat(tpl.map(t => ({ file: t.file, up: t.up.replace(/^tpl__/, ''), template: t.band })))
+                const queue = sci.map(i => ({ file: i.file, up: i.up, server: i.server, size: i.size })).concat(tpl.map(t => ({ file: t.file, up: t.up.replace(/^tpl__/, ''), template: t.band })))
                     .filter(x => !x.done);
                 say(msg, '');
                 const r = await uploadAll(API + '/' + encodeURIComponent(created.id), queue, bar);
@@ -630,7 +740,7 @@
             if (!d.files.length) parts.push(el('div', { class: 'pl-empty' }, el('b', { text: 'No frames yet' }), 'Drop a folder or FITS files above.'));
             else {
                 parts.push(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-hdr' },
-                    el('thead', {}, el('tr', {}, ['File', 'Filter', 'Telescope / instrument', 'Date (UTC)', 'Exp (s)'].map(h => el('th', { text: h })), el('th'))),
+                    el('thead', {}, el('tr', {}, ['File', 'Filter', 'Telescope / instrument', 'Date (UTC)', 'Exp (s)', 'Deleted'].map(h => el('th', { text: h })), el('th'))),
                     el('tbody', {}, d.files.map(f => el('tr', {},
                         el('td', { class: 'pl-mono' }, f.name, f.stack ? el('span', { class: 'kw-chip kw-chip-gold', text: 'stack' }) : null),
                         f.error ? el('td', { class: 'is-miss', colspan: '4', text: f.error }) : [
@@ -639,7 +749,20 @@
                             el('td', { class: !(f.TELESCOP && f.INSTRUME) ? 'is-miss' : null, text: (f.TELESCOP || 'TELESCOP missing') + ' / ' + (f.INSTRUME || 'INSTRUME missing') }),
                             el('td', { text: (f['DATE-OBS'] || '—').replace('T', ' ').slice(0, 19) }),
                             el('td', { text: f.EXPTIME || '—' })],
+                        el('td', { class: 'pl-faint', title: new Date(f.expires * 1000).toLocaleString(), text: daysLeft(f.expires) }),
                         el('td', { class: 'pl-acts' }, f.stack ? null : removeButton(f.name))))))));
+            }
+            if (d.expired.length) {
+                const restore = d.restorable ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy ' + d.restorable + ' again from the server',
+                    onclick: async ev => {
+                        ev.currentTarget.disabled = true;
+                        try { const r = await api(base + '/restore', {}); if (r.missing.length) fail(new Error(r.missing.length + ' no longer on the server.')); load(); }
+                        catch (err) { fail(err); ev.currentTarget.disabled = false; }
+                    } }) : null;
+                parts.push(el('details', { class: 'pl-removed pl-expired' },
+                    el('summary', { text: plural(d.expired.length, 'FITS', 'FITS') + ' deleted after ' + d.keep_days + ' days (results kept)' }),
+                    restore ? el('div', {}, el('span', { class: 'pl-faint', text: 'Frames that came from the calibrated folder can be copied again.' }), restore) : null,
+                    d.expired.slice(-200).reverse().map(e => el('div', {}, el('span', { class: 'pl-mono', text: e.name }), el('span', { class: 'pl-faint', 'data-ts': String(e.at) })))));
             }
             if (d.removed.length) {
                 parts.push(el('details', { class: 'pl-removed' },
@@ -652,6 +775,7 @@
                             } })))));
             }
             imgBody.replaceChildren(...parts);
+            stamp(imgBody);
         }
 
         function renderCoverage(d) {
@@ -665,10 +789,11 @@
                 const cell = !b ? el('span', { class: 'pl-faint', text: 'Filter unknown' })
                     : t ? el('span', { class: 'pl-tpl-cell' }, el('span', { class: 'pl-mono', text: t.name.split('/').pop() }), removeButton(t.name))
                         : el('span', { class: 'pl-tpl-cell' }, el('span', { class: 'kw-chip kw-chip-red', text: 'No template' }), addTemplateButton(b));
-                return el('tr', {}, el('td', {}, el('b', { text: b || '—' })), el('td', { text: c.n ? String(c.n) : '—' }), el('td', {}, cell));
+                return el('tr', {}, el('td', {}, el('b', { text: b || '—' })), el('td', { text: c.n ? String(c.n) : '—' }), el('td', {}, cell),
+                    el('td', { class: 'pl-faint', text: t ? daysLeft(t.expires) : '' }));
             });
             const kids = [el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-cov' },
-                el('thead', {}, el('tr', {}, el('th', { text: 'Filter' }), el('th', { text: 'Frames' }), el('th', { text: 'Template used' }))),
+                el('thead', {}, el('tr', {}, el('th', { text: 'Filter' }), el('th', { text: 'Frames' }), el('th', { text: 'Template used' }), el('th', { text: 'Deleted' }))),
                 el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: '3', class: 'pl-faint', text: 'Add frames first.' })))))];
             const aside = d.templates.filter(t => !t.active);
             if (aside.length) {
@@ -705,6 +830,16 @@
             }
         }
         reloadImages = load;
+
+        const serverPick = document.querySelector('#plFromServer [data-picker]');
+        if (serverPick) {
+            picker(serverPick, async files => {
+                const queue = files.map(f => ({ server: f.path, up: f.name, size: f.size }));
+                const r = await uploadAll(base, queue, $('plAddState'));
+                if (r.failed.length) fail(new Error(r.failed.map(x => x.item.up + ': ' + x.error).slice(0, 3).join(' · ')));
+                load();
+            });
+        }
 
         // Frames (and a templates/ subfolder) dropped on Images: upload at once
         const addState = $('plAddState');
@@ -974,6 +1109,97 @@
     document.querySelectorAll('[data-legacy-del]').forEach(b => {
         armable(b, 'Confirm', async () => {
             try { await api(base + '/legacy/delete', { run: b.dataset.legacyDel }); location.reload(); }
+            catch (err) { b.after(el('p', { class: 'pl-msg is-error', text: err.message })); }
+        });
+    });
+
+    // ── Import into a Kinder object: object → check the points → type the name ─
+    const imp = $('plImport');
+    if (imp) {
+        const openBtn = $('plImportOpen');
+        const steps = [...imp.querySelectorAll('[data-istep]')];
+        const msg = imp.querySelector('[data-msg]'), next = imp.querySelector('[data-next]'), back = imp.querySelector('[data-back]');
+        const obj = $('plImpObj'), confirm = $('plImpConfirm');
+        let step = 1, pv = null;
+        const body = () => ({ object: obj.value.trim(), method: $('plImpMethod').value, limit: $('plImpLimit').value,
+            with_limits: $('plImpLimits').checked, run: openBtn.dataset.run || '' });
+        function show(n) {
+            step = n;
+            steps.forEach(s => { s.hidden = +s.dataset.istep !== n; });
+            imp.querySelector('[data-step-label]').textContent = 'Step ' + n + ' of 3';
+            back.hidden = n === 1;
+            next.textContent = n === 1 ? 'Next' : n === 2 ? 'These points are right' : 'Import';
+            next.classList.toggle('kw-btn-danger', n === 3);
+            next.disabled = n === 3 && confirm.value.trim() !== (pv && pv.object);
+            say(msg, '');
+            (n === 1 ? obj : n === 3 ? confirm : next).focus();
+        }
+        const close = () => { imp.classList.remove('is-open'); document.body.style.overflow = ''; };
+        openBtn.addEventListener('click', () => {
+            obj.value = obj.value || openBtn.dataset.object;
+            confirm.value = '';
+            imp.classList.add('is-open');
+            document.body.style.overflow = 'hidden';
+            show(1);
+        });
+        imp.querySelector('[data-cancel]').addEventListener('click', close);
+        imp.addEventListener('click', e => { if (e.target === imp) close(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && imp.classList.contains('is-open')) close(); });
+        back.addEventListener('click', () => show(step - 1));
+        confirm.addEventListener('input', () => { next.disabled = confirm.value.trim() !== (pv && pv.object); });
+        confirm.addEventListener('keydown', e => { if (e.key === 'Enter' && !next.disabled) next.click(); });
+        obj.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); next.click(); } });
+        next.addEventListener('click', async () => {
+            next.disabled = true;
+            try {
+                if (step === 1) {
+                    say(msg, 'Checking…');
+                    pv = await api(base + '/import/preview', body());
+                    const nl = pv.points.filter(p => p.upper).length;
+                    imp.querySelector('[data-sum]').textContent = plural(pv.points.length, 'point') + ' (' + (pv.points.length - nl) + ' detections, ' + plural(nl, 'limit') + ') → '
+                        + pv.object + ', which has ' + plural(pv.n_existing, 'point') + (pv.n_duplicates ? '; about ' + pv.n_duplicates + ' of these are already there and will be skipped.' : '.');
+                    const al = imp.querySelector('[data-already]');
+                    al.hidden = !pv.already;
+                    if (pv.already) al.textContent = 'This light curve was already imported into ' + pv.object + ' on ' + new Date(pv.already.time * 1000).toLocaleString() + ' (' + pv.already.n_inserted + ' points). Importing again only adds points that are not there yet.';
+                    imp.querySelector('[data-rows]').replaceChildren(...pv.points.map(p => el('tr', { class: p.upper ? 'is-skip' : null },
+                        el('td', { text: p.mjd.toFixed(5) }), el('td', { text: (p.upper ? '>' : '') + p.magnitude.toFixed(3) }),
+                        el('td', { text: p.magnitude_error == null ? '—' : p.magnitude_error.toFixed(3) }), el('td', { text: p.filter }), el('td', { text: p.telescope }))));
+                    show(2);
+                } else if (step === 2) {
+                    imp.querySelector('[data-final]').textContent = 'Add ' + plural(pv.points.length, 'point') + ' to ' + pv.object + '?';
+                    confirm.value = '';
+                    show(3);
+                } else {
+                    say(msg, 'Importing…');
+                    const r = await api(base + '/import', Object.assign(body(), { object: pv.object, confirm: confirm.value.trim() }));
+                    say(msg, r.n_inserted + ' of ' + r.n_points + ' points added to ' + r.object + '.', 'ok');
+                    next.hidden = true; back.hidden = true;
+                    imp.querySelector('[data-cancel]').textContent = 'Close';
+                    imp.querySelector('[data-cancel]').addEventListener('click', () => location.reload(), { once: true });
+                    return;
+                }
+            } catch (err) { say(msg, err.message, 'error'); }
+            next.disabled = step === 3 && confirm.value.trim() !== (pv && pv.object);
+        });
+        // Kinder objects as you type
+        const box = imp.querySelector('.pl-suggest');
+        let t = null;
+        obj.addEventListener('input', () => {
+            clearTimeout(t);
+            const q = obj.value.trim();
+            if (q.length < 3) { box.hidden = true; return; }
+            t = setTimeout(async () => {
+                const items = await kinderObjects(q);
+                box.replaceChildren(...items.slice(0, 8).map(o => el('li', { role: 'option', onmousedown: ev => { ev.preventDefault(); obj.value = o.name; box.hidden = true; } },
+                    el('span', { text: o.name }), el('small', { text: o.ra + '  ' + o.dec }))));
+                box.hidden = !items.length;
+            }, 220);
+        });
+        obj.addEventListener('blur', () => setTimeout(() => { box.hidden = true; }, 150));
+    }
+    document.querySelectorAll('[data-import-undo]').forEach(b => {
+        armable(b, 'Remove them?', async () => {
+            try { await api(base + '/import/undo', { id: b.dataset.importUndo }); location.reload(); }
             catch (err) { b.after(el('p', { class: 'pl-msg is-error', text: err.message })); }
         });
     });

@@ -25,8 +25,9 @@ def test_route_count_is_stable(app):
     # 252 with /avatar/<usr_id> (profile pictures served instead of inlined).
     # 254 with the installable app (2026-10: /sw.js, /offline).
     # 261 with Direct Trigger (page + 6 API routes); 286 with Pipeline (8 pages + 15 API + 2 admin, Telescopes included);
-    # 287 with the Pipeline folder scan (classify API).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 287
+    # 287 with the Pipeline folder scan (classify API); 294 with Calibrated_Science (2), copy / restore (2)
+    # and import into Kinder objects (preview, import, undo).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 294
 
 
 def test_duplicate_rules_keep_precedence(app):

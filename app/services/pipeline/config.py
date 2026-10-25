@@ -20,7 +20,11 @@ SETTINGS = {
     'autophot_dir': ('AUTOPHOT_DIR', 'AutoPhOT folder'),
     'autophot_python': ('AUTOPHOT_PYTHON', 'AutoPhOT Python'),
     'autophot_runs': ('AUTOPHOT_RUNS', 'Workspaces folder'),
+    'calibrated_dir': ('CALIBRATED_SCIENCE_DIR', 'Calibrated science folder'),
 }
+# where the reduction pipeline on the production server writes calibrated frames, one folder per set
+DEFAULT_CALIBRATED = Path('/Users/greatlab/reduction_pipeline/Calibrated_Science')
+FITS_KEEP_DAYS = 7                # uploaded / copied FITS are deleted this long after they arrive; results stay
 
 # Pipeline stages, in order. A stage that is not ready is shown as planned.
 STAGES = [
@@ -54,7 +58,7 @@ def _path(value):
 
 
 def paths():
-    """{'autophot_dir', 'autophot_python', 'autophot_runs'} → Path or None."""
+    """{'autophot_dir', 'autophot_python', 'autophot_runs', 'calibrated_dir'} → Path or None."""
     stored = _stored()
     raw = {k: stored.get(k) or os.getenv(env, '').strip() for k, (env, _) in SETTINGS.items()}
     out = {k: _path(v) for k, v in raw.items()}
@@ -65,6 +69,8 @@ def paths():
         out['autophot_python'] = out['autophot_dir'] / '.venv' / 'bin' / 'python'
     if not out['autophot_runs']:
         out['autophot_runs'] = VENDORED_RUNS if vendored else out['autophot_dir'].parent / 'autophot-runs'
+    if not out['calibrated_dir']:
+        out['calibrated_dir'] = DEFAULT_CALIBRATED
     return out
 
 

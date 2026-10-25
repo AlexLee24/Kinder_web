@@ -49,6 +49,13 @@
                         <span class="kw-panel-meta" id="plImgCount"></span>
                     </div>
                     {{ pl_drop('plAddFiles', 'Add FITS', 'A folder or single files; a templates/ subfolder goes to Template subtraction') }}
+                    {% if calibrated.ok %}
+                    <details class="pl-more pl-from-server" id="plFromServer">
+                        <summary>Add calibrated frames from the server</summary>
+                        <div class="pl-picker" data-picker data-pick-label="Add to this workspace"></div>
+                    </details>
+                    {% endif %}
+                    <p class="pl-hint pl-keep">FITS stay {{ keep_days }} days after they arrive, then they are deleted; light curves, tables, figures and logs stay.</p>
                     <div class="pl-upload-state" id="plAddState" hidden><span class="pl-bar"><span></span></span><small></small></div>
                     <div id="plImgBody"><div class="pl-skeleton" aria-hidden="true"><span></span><span></span><span></span></div></div>
                 </section>
@@ -195,6 +202,29 @@
             </div>
             <p class="kw-panel-desc">One row per image. Detection follows AutoPhOT's S/N threshold; limits are the faintest magnitude recovered at that S/N by injecting artificial stars.</p>
 
+            {% if can_import or imports %}
+            <div class="pl-import">
+                <div class="pl-import-head">
+                    <b>Kinder object</b>
+                    <span class="pl-faint">Add this light curve to the object's photometry.</span>
+                    <span class="pl-spacer"></span>
+                    {% if can_import %}<button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plImportOpen" data-object="{{ ap.name }}" data-run="{{ run or '' }}">Import into Kinder…</button>
+                    {% else %}<span class="pl-faint">Admins can import.</span>{% endif %}
+                </div>
+                {% if imports %}
+                <ul class="pl-imports">
+                    {% for i in imports|reverse %}
+                    <li class="{{ 'is-undone' if i.undone }}">
+                        <span><span data-ts="{{ i.time }}"></span> · <a href="/object/{{ i.object }}">{{ i.object }}</a> · {{ i.n_inserted }} of {{ i.n_points }} points added ({{ i.method }}{% if i.run %}, earlier run {{ i.run }}{% endif %}){% if i.by %} · {{ i.by }}{% endif %}</span>
+                        {% if i.undone %}<span class="kw-chip">Undone, {{ i.n_deleted }} removed</span>
+                        {% elif can_import %}<button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-import-undo="{{ i.id }}" title="Remove the points this import added">Undo</button>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+            {% endif %}
+
             <form class="pl-export" id="plExport" data-run="{{ run or '' }}">
                 <b>Light curve for import</b>
                 <label>Magnitude <select class="kw-select kw-select-sm" name="method"><option value="PSF">PSF</option><option value="AP">Aperture</option></select></label>
@@ -333,6 +363,51 @@
         </section>
         {% endif %}
     </main>
+
+    {% if tab == 'results' and can_import and phot and phot.rows %}
+    <div class="kw-modal" id="plImport" role="dialog" aria-modal="true" aria-labelledby="plImportTitle">
+        <div class="kw-modal-card is-wide">
+            <div class="kw-modal-head"><h3 id="plImportTitle">Import into a Kinder object</h3><span class="pl-faint" data-step-label></span></div>
+            <div class="pl-istep" data-istep="1">
+                <div class="kw-field pl-name-field">
+                    <label for="plImpObj">Kinder object</label>
+                    <input type="text" id="plImpObj" maxlength="80" spellcheck="false" autocomplete="off">
+                    <ul class="pl-suggest" role="listbox" hidden></ul>
+                </div>
+                <div class="pl-row pl-row-3">
+                    <div class="kw-field"><label for="plImpMethod">Magnitude</label>
+                        <select id="plImpMethod" class="kw-select"><option value="PSF">PSF</option><option value="AP">Aperture</option></select></div>
+                    <div class="kw-field"><label for="plImpLimit">Non-detections</label>
+                        <select id="plImpLimit" class="kw-select">{% for c, snr in phot.limits %}<option value="{{ '%g'|format(snr) }}">&gt; limit {{ '%g'|format(snr) }}σ</option>{% endfor %}</select></div>
+                    <div class="kw-field"><span class="kw-label">Limits</span>
+                        <label class="pl-check"><input type="checkbox" id="plImpLimits" checked><span>Import them too</span></label></div>
+                </div>
+                <p class="pl-hint">Step 1 of 3: which object, and which magnitudes.</p>
+            </div>
+            <div class="pl-istep" data-istep="2" hidden>
+                <p class="pl-imp-sum" data-sum></p>
+                <p class="pl-warn" data-already hidden></p>
+                <div class="kw-table-wrap pl-imp-table"><table class="kw-table pl-table">
+                    <thead><tr><th>MJD</th><th>Magnitude</th><th>Error</th><th>Filter</th><th>Telescope</th></tr></thead>
+                    <tbody data-rows></tbody>
+                </table></div>
+                <p class="pl-hint">Step 2 of 3: check the points. Points already on the object (same MJD, filter and telescope) are skipped.</p>
+            </div>
+            <div class="pl-istep" data-istep="3" hidden>
+                <p class="pl-imp-sum" data-final></p>
+                <div class="kw-field"><label for="plImpConfirm">Type the object name to confirm</label>
+                    <input type="text" id="plImpConfirm" spellcheck="false" autocomplete="off"></div>
+                <p class="pl-hint">Step 3 of 3. This writes to the object's photometry; Undo in Results removes exactly these points again.</p>
+            </div>
+            <p class="pl-msg" data-msg role="status" aria-live="polite"></p>
+            <div class="kw-modal-actions">
+                <button type="button" class="kw-btn kw-btn-ghost" data-cancel>Cancel</button>
+                <button type="button" class="kw-btn" data-back hidden>Back</button>
+                <button type="button" class="kw-btn kw-btn-primary" data-next>Next</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
 </body>
