@@ -12,9 +12,9 @@ passes answers to AutoPhOT's questions and reads what it wrote.
     job.json      the current or last run (status, pid) — shared by all gunicorn workers
     .stdin        FIFO that becomes AutoPhOT's stdin, so any worker can send an answer
     web_run.log, result.json, exit.json, legacy/<time>/ (earlier runs)
-  Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is a link to
-  app/services/pipeline/telescope.yml, the one telescope/instrument list kept in git: every
-  workspace reads it, and AutoPhOT's answers and edits on the Telescopes page change it.
+  Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is this server's
+  telescope/instrument list (not in git), started from and topped up with the template
+  app/services/pipeline/telescope.yml; AutoPhOT's answers and the Telescopes page change it.
 """
 import contextlib
 import fcntl
@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 
 from . import config
+from . import filters as bands
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,8 @@ def root():
 def python():
     p = config.paths()['autophot_python']
     if not p or not p.is_file():
-        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run "uv sync" in {root()}.')
+        how = 'scripts/pipeline/setup_autophot.sh' if root() == config.VENDORED else f'"uv sync" in {root()}'
+        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run {how}.')
     return p
 
 
@@ -146,6 +148,7 @@ def _scan_dir(d, recursive):
     from astropy.io import fits
     files = _fits_in(d, recursive)
     n_sub = 0 if recursive else len(_fits_in(d, True)) - len(files)
+    db = bands.telescope_db(_telescope_file())
     out = []
     for p in files[:MAX_SCAN]:
         info = {'name': str(p.relative_to(d))}
@@ -158,6 +161,7 @@ def _scan_dir(d, recursive):
                 info[k] = str(h.get(k, '')) if h.get(k) is not None else ''
             if not info['FILTER']:
                 info['FILTER'] = ' / '.join(str(h[k]) for k in ('FILTER1', 'FILTER2') if h.get(k))
+            info['band'] = bands.band_of(h, db, p.name)[0] or ''
         except Exception as e:
             info['error'] = f'{type(e).__name__}: {e}'
         out.append(info)
@@ -177,14 +181,55 @@ def _upload_name(name):
     return n
 
 
+TEMPLATE_AUTO = 'auto'
+
+
+def _template_dir(tid, band):
+    if not FILTER_RE.fullmatch(band or ''):
+        raise PipelineError('Template filter: letters, digits, _ + - only (e.g. r, g, V).')
+    return images_dir(tid) / 'templates' / f'{band}_template'
+
+
 def _image_dest(tid, name, template_filter=''):
-    """Where a new file goes: images/<name>, or images/templates/<filter>_template/<name> for a template."""
+    """Where a new file goes: images/<name>, or images/templates/<filter>_template/<name>.fits for a template
+    (template_filter 'auto' is decided from the header once the file is here, see _place_template)."""
     base = images_dir(tid)
+    if template_filter == TEMPLATE_AUTO:
+        return base / 'templates' / '.incoming' / name
     if template_filter:
-        if not FILTER_RE.fullmatch(template_filter):
-            raise PipelineError('Template filter: letters, digits, _ + - only (e.g. r, gp, rp).')
-        return base / 'templates' / f'{template_filter}_template' / name
+        return _template_dir(tid, template_filter) / (bands.stem(name) + '.fits')
     return base / name
+
+
+def _place_template(tid, src, name, band=''):
+    """Put a template where AutoPhOT looks: templates/<filter>_template/<name>.fits (.fz / .gz unpacked).
+
+    AutoPhOT stops and asks when a filter has more than one template, so any earlier one of that
+    filter is set aside as <name>.fits.unused (shown on the page, can be removed). Returns (rel, band, how)."""
+    how = 'chosen'
+    if not band:
+        try:
+            band, how, raw = bands.band_of(bands.image_header(src), bands.telescope_db(_telescope_file()), name)
+        except Exception:
+            raise PipelineError(f'{name} is not a readable FITS image.')
+        if not band:
+            raise PipelineError(f'Could not tell the filter of {name}'
+                                + (f' (header FILTER = {raw})' if raw else ' (no filter in the header)')
+                                + '; choose it and upload again.')
+    dest_dir = _template_dir(tid, band)
+    dest = dest_dir / (bands.stem(name) + '.fits')
+    if dest.exists():
+        raise PipelineError(f'templates/{band}_template/{dest.name} is already in this workspace.')
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        bands.write_plain_fits(src, dest)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise PipelineError(f'{name} is not a readable FITS image.')
+    for other in sorted(dest_dir.glob('*.fits')):
+        if other != dest and not other.name.startswith('PSF_model_'):
+            other.rename(other.with_name(other.name + '.unused'))
+    return str(dest.relative_to(images_dir(tid))), band, how
 
 
 def _check_fits(path, label):
@@ -202,8 +247,12 @@ def _added(tid, rels, origin):
     cfg['removed'] = sorted(set(cfg.get('removed') or []) - set(rels))
     cfg['imported'] = time.time()
     cfg.setdefault('origins', {})
+    cfg.setdefault('added_at', {})
+    now = time.time()
     for r in rels:
         cfg['origins'][r] = origin
+        cfg['added_at'][r] = now                      # the 7-day clock (FITS_KEEP_DAYS) starts here
+    cfg['expired'] = [e for e in cfg.get('expired') or [] if e.get('name') not in rels]
     _write_json(tdir(tid) / 'target.json', cfg)
 
 
@@ -237,6 +286,11 @@ def upload_chunk(tid, name, offset, total, data, template_filter=''):
         return {'done': False, 'received': received}
     try:
         _check_fits(part, name)
+        if template_filter:
+            rel, band, how = _place_template(tid, part, name, '' if template_filter == TEMPLATE_AUTO else template_filter)
+            part.unlink(missing_ok=True)
+            _added(tid, [rel], 'upload')
+            return {'done': True, 'name': rel, 'band': band, 'how': how}
     except PipelineError:
         part.unlink(missing_ok=True)
         raise
@@ -265,8 +319,13 @@ def add_files(tid, paths, origin='reduction', move=False, template_filter=''):
         if not src.is_file():
             raise PipelineError(f'{src} not found.')
         _check_fits(src, name)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        (shutil.move if move else shutil.copy2)(str(src), str(dest))
+        if template_filter:
+            rel = _place_template(tid, src, name, '' if template_filter == TEMPLATE_AUTO else template_filter)[0]
+            if move:
+                src.unlink()
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            (shutil.move if move else shutil.copy2)(str(src), str(dest))
         added.append(rel)
     if added:
         _added(tid, added, origin)
@@ -308,8 +367,12 @@ def save_target(tid, body, user=''):
         tid = target_id(body.get('workspace') or name)
         if not tid:
             raise PipelineError('Enter a target name.')
-        if (tdir(tid, must=False) / 'target.json').exists():
-            raise PipelineError(f'Workspace {tid} already exists.')
+        base_id, n = tid, 1
+        while tdir(tid, must=False).exists():           # same target again (another telescope, another season)
+            n += 1
+            tid = f'{base_id[:76]}_{n}'
+            if n > 99:
+                raise PipelineError(f'Workspace {base_id} already exists.')
     old = {} if creating else _read_json(tdir(tid) / 'target.json')
     catalog = _pick(body, old, 'catalog', CATALOGS, DEFAULT_CATALOG)
     sub_method = _pick(body, old, 'sub_method', SUB_METHODS, 'sfft')
@@ -368,14 +431,185 @@ def workspace_images(tid):
     cfg = _read_json(tdir(tid) / 'target.json')
     d = images_dir(tid)
     out = _scan_dir(d, False) if d.is_dir() else {'path': str(d), 'n': 0, 'n_sub': 0, 'files': [], 'missing': 0}
-    tpl = d / 'templates'
-    out['templates'] = sorted(str(p.relative_to(d)) for p in tpl.rglob('*')
-                              if p.is_file() and p.name.lower().endswith(FITS_EXT)) if tpl.is_dir() else []
+    out['templates'] = _templates(d)
+    science = {}
+    for f in out['files']:
+        science[f.get('band') or ''] = science.get(f.get('band') or '', 0) + 1
+    active = {t['band'] for t in out['templates'] if t['active']}
+    out['coverage'] = [{'band': b, 'n': n, 'template': b in active} for b, n in sorted(science.items(), key=lambda x: (not x[0], x[0]))]
     out['removed'] = sorted(cfg.get('removed') or [])
     origins = cfg.get('origins') or {}
     for f in out['files']:
         f['origin'] = origins.get(f['name'], '')
+        f['expires'] = _arrived(cfg, d, f['name']) + KEEP_SECONDS
+    for t in out['templates']:
+        t['expires'] = _arrived(cfg, d, t['name']) + KEEP_SECONDS
+    out['keep_days'] = config.FITS_KEEP_DAYS
+    out['expired'] = cfg.get('expired') or []
+    out['restorable'] = sum(1 for e in out['expired'] if str(e.get('origin', '')).startswith('calibrated:'))
     out['stacks'] = sorted(cfg.get('stacks') or {})
+    return out
+
+
+# ── Retention: results stay, FITS go FITS_KEEP_DAYS after they arrive ──
+
+KEEP_SECONDS = config.FITS_KEEP_DAYS * 86400
+CLEANUP_EVERY = 3600              # at most one sweep an hour (scheduler job and page opens share it)
+
+
+def _is_fits_like(name):
+    n = name.lower()
+    return n.endswith(FITS_EXT) or (n.endswith('.unused') and n[:-7].endswith(FITS_EXT))
+
+
+def _arrived(cfg, images, rel):
+    """When a file in images/ arrived: recorded at upload / hand-over, else the file's own times."""
+    t = (cfg.get('added_at') or {}).get(rel)
+    if t:
+        return float(t)
+    try:
+        st = (images / rel).stat()
+        return max(st.st_mtime, st.st_ctime)
+    except OSError:
+        return time.time()
+
+
+def cleanup_expired(force=False):
+    """Delete every FITS older than FITS_KEEP_DAYS in every workspace that is not running:
+    frames and templates in images/ (by arrival), set-aside ones in .removed/, unfinished uploads,
+    and FITS AutoPhOT wrote in images_REDUCED/ and legacy/ (by date). Light curves, tables, figures,
+    logs and settings stay. Returns {'files', 'bytes'}; never raises."""
+    out = {'files': 0, 'bytes': 0}
+    try:
+        r = runs_root()
+        if not r.is_dir():
+            return out
+        stamp = r / '.wdir' / '.cleanup'
+        now = time.time()
+        if not force and stamp.exists() and now - stamp.stat().st_mtime < CLEANUP_EVERY:
+            return out
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.touch()
+        for d in sorted(r.iterdir()):
+            if d.is_dir() and not d.name.startswith('.') and TID_RE.fullmatch(d.name) and (d / 'target.json').is_file():
+                try:
+                    n, b = _cleanup_workspace(d, now)
+                    out['files'] += n
+                    out['bytes'] += b
+                except Exception:
+                    logger.exception('pipeline: cleanup of %s failed', d.name)
+        if out['files']:
+            logger.info('pipeline: deleted %d FITS (%.1f GB) older than %d days', out['files'], out['bytes'] / 1e9, config.FITS_KEEP_DAYS)
+    except NotConfigured:
+        pass
+    except Exception:
+        logger.exception('pipeline: FITS cleanup failed')
+    return out
+
+
+def _cleanup_workspace(d, now):
+    j = _read_json(d / 'job.json')
+    if j.get('status') == 'running' and _alive(j.get('pid')):
+        return 0, 0
+    cfg = _read_json(d / 'target.json')
+    images = d / 'images'
+    n = size = 0
+    expired = cfg.get('expired') or []
+    gone = []
+
+    def drop(p):
+        nonlocal n, size
+        try:
+            size += p.stat().st_size
+            p.unlink()
+            n += 1
+            return True
+        except OSError:
+            return False
+
+    if images.is_dir():
+        for p in sorted(images.rglob('*')):
+            if p.is_file() and _is_fits_like(p.name):
+                rel = str(p.relative_to(images))
+                if now - _arrived(cfg, images, rel) > KEEP_SECONDS and drop(p):
+                    gone.append(rel)
+                    expired.append({'name': rel, 'origin': (cfg.get('origins') or {}).get(rel, ''), 'at': now})
+    removed = d / '.removed'
+    if removed.is_dir():
+        for p in sorted(removed.rglob('*')):
+            if p.is_file() and _is_fits_like(p.name):
+                rel = str(p.relative_to(removed))
+                if now - _arrived(cfg, removed, rel) > KEEP_SECONDS and drop(p):
+                    cfg['removed'] = [x for x in cfg.get('removed') or [] if x != rel]
+    uploads = d / '.uploads'
+    if uploads.is_dir():
+        for p in uploads.iterdir():
+            if p.is_file() and now - p.stat().st_mtime > 86400:
+                drop(p)
+    outputs = [reduced_dir(cfg)] + ([x / 'images_REDUCED' for x in (d / 'legacy').iterdir() if x.is_dir()]
+                                    if (d / 'legacy').is_dir() else [])
+    for base in outputs:
+        if base.is_dir():
+            for p in base.rglob('*'):
+                if p.is_file() and _is_fits_like(p.name) and now - p.stat().st_mtime > KEEP_SECONDS:
+                    drop(p)
+    if gone or cfg.get('removed') != _read_json(d / 'target.json').get('removed'):
+        for rel in gone:
+            (cfg.get('added_at') or {}).pop(rel, None)
+        cfg['expired'] = expired[-2000:]
+        _write_json(d / 'target.json', cfg)
+    return n, size
+
+
+def restore_expired(tid):
+    """Copy again the deleted frames that came from Calibrated_Science (their source is still there)."""
+    from . import calibrated
+    _busy(tid)
+    cfg = _read_json(tdir(tid) / 'target.json')
+    paths, missing = [], []
+    for e in cfg.get('expired') or []:
+        origin = str(e.get('origin') or '')
+        if origin.startswith('calibrated:'):
+            try:
+                paths.append((calibrated.file_path(origin.split(':', 1)[1]), origin))
+            except PipelineError:
+                missing.append(e['name'])
+    added = []
+    for src, origin in paths:
+        added += add_files(tid, [src], origin=origin)['added']
+    return {'added': added, 'missing': missing}
+
+
+def _templates(d):
+    """templates/<filter>_template/*: [{'name', 'band', 'active'}]; .unused ones are kept aside by _place_template."""
+    tpl = d / 'templates'
+    out = []
+    if not tpl.is_dir():
+        return out
+    for p in sorted(tpl.rglob('*')):
+        n = p.name.lower()
+        if not p.is_file() or p.name.startswith(('.', 'PSF_model_')) or '.incoming' in p.parts:
+            continue
+        unused = n.endswith('.unused')
+        if not (unused and n[:-7].endswith(FITS_EXT)) and not n.endswith(FITS_EXT):
+            continue
+        rel = str(p.relative_to(d))
+        out.append({'name': rel, 'band': bands.band_of_folder(p.relative_to(tpl)) or '',
+                    'active': not unused and n.endswith('.fits')})
+    return out
+
+
+def classify(headers):
+    """Standard filter of FITS headers read by the page before upload: [{'name', 'band', 'how', 'raw'}]."""
+    db = bands.telescope_db(_telescope_file())
+    out = []
+    for h in (headers or [])[:5000]:
+        if not isinstance(h, dict):
+            continue
+        name = str(h.get('name') or '')[:300]
+        card = {str(k)[:8].upper(): str(v)[:80] for k, v in (h.get('header') or {}).items() if isinstance(k, str)}
+        band, how, raw = bands.band_of(card, db, name)
+        out.append({'name': name, 'band': band or bands.band_of_folder(name) or '', 'how': how or ('folder name' if bands.band_of_folder(name) else ''), 'raw': raw})
     return out
 
 
@@ -537,8 +771,24 @@ def job(tid):
     except OSError:
         j['log'] = ''
     j['waiting'] = j.get('status') == 'running' and _looks_like_prompt(j['log'])
+    j['progress'] = _progress(log)
     j.pop('pid', None)
     return j
+
+
+PROGRESS_RE = re.compile(rb'^\[(\d+)/(\d+)\]\s+\[(OK|FAIL)\]', re.M)
+
+
+def _progress(log):
+    """AutoPhOT's '[i/N] [OK|FAIL] image' lines → {'done', 'total', 'failed'}; None before the first image ends."""
+    try:
+        text = log.read_bytes()
+    except OSError:
+        return None
+    hits = PROGRESS_RE.findall(text)
+    if not hits:
+        return None
+    return {'done': len(hits), 'total': max(int(h[1]) for h in hits), 'failed': sum(h[2] == b'FAIL' for h in hits)}
 
 
 def _looks_like_prompt(log):
@@ -579,15 +829,17 @@ def start(tid, user=''):
         with contextlib.suppress(FileNotFoundError):
             fifo.unlink()
         os.mkfifo(fifo, 0o600)
-        link_telescope_yml()
+        sync_telescope_yml()
         (d / 'web_run.log').write_text(f'$ autophot {d.name}\n')
         log = open(d / 'web_run.log', 'a')           # append: answers written by the web page are kept
         rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
         wfd = os.open(fifo, os.O_WRONLY)             # kept open in the child, so stdin never hits EOF
         os.set_blocking(rfd, True)
         try:
-            proc = subprocess.Popen([str(py), '-u', str(RUNNER), str(d)], cwd=str(cwd), stdin=rfd, stdout=log,
-                                    stderr=subprocess.STDOUT, text=True, env=config.child_env(),
+            # cwd is the workspace, so whatever AutoPhOT drops in its working folder stays there;
+            # the runner imports AutoPhOT from AUTOPHOT_DIR
+            proc = subprocess.Popen([str(py), '-u', str(RUNNER), str(d)], cwd=str(d), stdin=rfd, stdout=log,
+                                    stderr=subprocess.STDOUT, text=True, env={**config.child_env(), 'AUTOPHOT_DIR': str(cwd)},
                                     start_new_session=True, pass_fds=(wfd,))
         except Exception:
             log.close()
@@ -863,6 +1115,7 @@ def photometry(tid, run=None):
             'zp_neff': _f(r.get('zp_psf_neff')), 'zp_n': _f(r.get('zp_psf_nsrc')),
             'fwhm': _f(r.get('image_fwhm')), 'airmass': _f(r.get('airmass')),
             'exptime': _f(r.get('exposure_time')), 'telescope': (r.get('telescope') or '').strip(),
+            'ts': _truthy(r.get('preformsubtractioned')),     # measured on the difference image (False when subtraction fell back to the frame)
         })
     rows.sort(key=lambda x: (x['mjd'] is None, x['mjd'] or 0))
     from astropy.time import Time  # AutoPhOT's date column holds MJD; UTC from MJD
@@ -892,43 +1145,121 @@ def photometry(tid, run=None):
     return {'rows': rows, 'limits': limits, 'bands': bands, 'colors': colors, 'magsys': ', '.join(magsys), 'files': files}
 
 
-NO_TS_LABEL = ' (w/o TS)'
+NO_TS_TAG = '_(w/o_TS)'       # appended to the telescope, no spaces, so every row stays 5 columns (e.g. SLT_(w/o_TS))
 
 
-def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
-    """Plain-text light curve for import: MJD magnitude error filter telescope.
-    Non-detections are >limit (at limit σ) with error nan; spaces in telescope names become underscores.
-    A run without template subtraction labels each filter "g (w/o TS)"; that label has spaces, so the
-    file is then comma-separated (Kinder's photometry upload reads both)."""
+def export_rows(tid, method='PSF', limit=3.0, run=None):
+    """The light curve as points: [{'mjd', 'magnitude', 'magnitude_error' (None = upper limit), 'upper',
+    'filter', 'telescope'}]. Non-detections are limits at `limit` σ. An image measured without template
+    subtraction (off, or it fell back to the frame) gets _(w/o_TS) after its telescope."""
     ph = photometry(tid, run)
     if not ph:
         raise NotFound('No results yet.')
-    no_ts = not run_paths(tid, run)['cfg'].get('subtraction')
     key = 'psf' if method.upper() == 'PSF' else 'ap'
     li = next((i for i, (_, snr) in enumerate(ph['limits']) if abs(snr - float(limit)) < 1e-6), None)
-    lines = []
+    out = []
     for r in ph['rows']:
         if r['mjd'] is None:
             continue
         mag, err = r[key], r[key + '_err']
         lim = r['limits'][li] if li is not None else None
         if r['det'] and mag is not None:
-            m, e = f'{mag:.3f}', f'{err:.3f}' if err is not None else 'nan'
+            point = {'magnitude': round(mag, 3), 'magnitude_error': round(err, 3) if err is not None else None, 'upper': False}
         elif lim is not None:
-            m, e = f'>{lim:.3f}', 'nan'
+            point = {'magnitude': round(lim, 3), 'magnitude_error': None, 'upper': True}
         else:
             continue
-        tel = re.sub(r'\s+', '_', r['telescope']) or 'unknown'
-        flt = (r['filter'] or 'unknown') + (NO_TS_LABEL if no_ts else '')
-        lines.append((f"{r['mjd']:.5f}", m, e, flt, tel))
+        point.update(mjd=round(r['mjd'], 5), filter=re.sub(r'\s+', '_', r['filter']) or 'unknown',
+                     telescope=(re.sub(r'\s+', '_', r['telescope']) or 'unknown') + ('' if r['ts'] else NO_TS_TAG))
+        out.append(point)
+    return out
+
+
+def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
+    """Plain-text light curve for import, space-separated: MJD magnitude error filter telescope;
+    a limit is written >mag with error nan."""
+    lines = []
+    for pt in export_rows(tid, method, limit, run):
+        m = ('>' if pt['upper'] else '') + f"{pt['magnitude']:.3f}"
+        e = f"{pt['magnitude_error']:.3f}" if pt['magnitude_error'] is not None else 'nan'
+        lines.append((f"{pt['mjd']:.5f}", m, e, pt['filter'], pt['telescope']))
     head = ('MJD', 'magnitude', 'error', 'filter', 'telescope')
     widths = [max(len(x[i]) for x in lines + [head]) for i in range(5)]
 
     def fmt(row):
-        if no_ts:
-            return ','.join(row)
         return '  '.join(v.ljust(w) for v, w in zip(row, widths)).rstrip()
     return '\n'.join(([fmt(head)] if header else []) + [fmt(x) for x in lines]) + '\n'
+
+
+# ── Import into a Kinder object's photometry (the page asks three times first) ──
+
+def _import_args(body):
+    method = 'AP' if str(body.get('method') or 'PSF').upper() == 'AP' else 'PSF'
+    try:
+        limit = float(body.get('limit') or 3)
+    except (TypeError, ValueError):
+        limit = 3.0
+    run = str(body.get('run') or '') or None
+    with_limits = bool(body.get('with_limits', True))
+    return method, limit, run, with_limits
+
+
+def import_preview(tid, body):
+    """What an import would do: the object as Kinder knows it, the points, how many look like duplicates."""
+    from app.db.transient import TNSObjectDB
+    method, limit, run, with_limits = _import_args(body)
+    name = str(body.get('object') or '').strip()[:80]
+    if not name:
+        raise PipelineError('Enter the Kinder object.')
+    found = TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', ''))
+    if not found:
+        raise NotFound(f'{name} is not a Kinder object.')
+    points = [pt for pt in export_rows(tid, method, limit, run) if with_limits or not pt['upper']]
+    existing = TNSObjectDB.get_photometry(found)
+    have = {(round(float(e['mjd']), 4), str(e.get('filter') or ''), str(e.get('telescope') or '')) for e in existing if e.get('mjd') is not None}
+    dup = sum(1 for pt in points if (round(pt['mjd'], 4), pt['filter'], pt['telescope']) in have)
+    done = [i for i in _read_json(tdir(tid) / 'target.json').get('imports') or []
+            if i.get('object') == found and not i.get('undone') and i.get('run') == run and i.get('method') == method]
+    return {'object': found, 'points': points, 'n_existing': len(existing), 'n_duplicates': dup,
+            'already': done[-1] if done else None, 'method': method, 'limit': limit, 'run': run}
+
+
+def import_points(tid, body, user=''):
+    """Write the points into the object's photometry; `confirm` must repeat the object name exactly."""
+    from app.db.transient import TNSObjectDB
+    pv = import_preview(tid, body)
+    if str(body.get('confirm') or '').strip() != pv['object']:
+        raise PipelineError(f'Type {pv["object"]} to confirm.')
+    if not pv['points']:
+        raise PipelineError('No points to import.')
+    pts = [{k: pt[k] for k in ('mjd', 'magnitude', 'magnitude_error', 'filter', 'telescope')} for pt in pv['points']]
+    ids = TNSObjectDB.add_photometry_batch_ids(pv['object'], pts)
+    rec = {'id': time.strftime('%Y%m%d-%H%M%S'), 'time': time.time(), 'by': user, 'object': pv['object'],
+           'method': pv['method'], 'limit': pv['limit'], 'run': pv['run'], 'n_points': len(pts),
+           'n_inserted': len(ids), 'phot_ids': ids}
+    cfg = _read_json(tdir(tid) / 'target.json')
+    cfg['imports'] = (cfg.get('imports') or []) + [rec]
+    _write_json(tdir(tid) / 'target.json', cfg)
+    logger.info('pipeline: %s imported %d/%d points of %s into %s', user or '?', len(ids), len(pts), tid, pv['object'])
+    return {k: v for k, v in rec.items() if k != 'phot_ids'}
+
+
+def undo_import(tid, import_id, user=''):
+    """Delete exactly the points one import added (points that were already there are untouched)."""
+    from app.db.transient import TNSObjectDB
+    cfg = _read_json(tdir(tid) / 'target.json')
+    rec = next((i for i in cfg.get('imports') or [] if i.get('id') == import_id and not i.get('undone')), None)
+    if not rec:
+        raise NotFound('No such import.')
+    n = TNSObjectDB.delete_photometry_points(rec['object'], rec.get('phot_ids') or [])
+    rec.update(undone=time.time(), undone_by=user, n_deleted=n)
+    _write_json(tdir(tid) / 'target.json', cfg)
+    logger.info('pipeline: %s undid import %s of %s (%d points deleted from %s)', user or '?', import_id, tid, n, rec['object'])
+    return {'deleted': n, 'object': rec['object']}
+
+
+def imports(tid):
+    return [{k: v for k, v in i.items() if k != 'phot_ids'} for i in _read_json(tdir(tid) / 'target.json').get('imports') or []]
 
 
 # AutoPhOT zeropoint flags → plain sentences; unknown ones are shown as they are
@@ -1148,61 +1479,140 @@ def resolve(name):
     raise NotFound(f'{name} was not found in SIMBAD, NED or VizieR.')
 
 
-# ── telescope.yml: one list for every workspace, kept in git ──
+# ── telescope.yml: the repository copy is the template; each server reads and writes its own copy ──
+#
+#   app/services/pipeline/telescope.yml   template, in git; AutoPhOT never writes it
+#   <runs>/.wdir/telescope.yml            this server's copy (not in git): AutoPhOT reads it and adds the
+#                                         telescopes it meets; the Telescopes page edits it
+# Whenever a Pipeline page opens (and before each run), telescopes, instruments and keys that are in the
+# template but missing here are added; nothing already here is changed (a value still 'not_given_by_user'
+# here counts as missing).
 
 TELESCOPE_FIELDS = {'Name', 'pixel_scale', 'gain', 'readnoise', 'saturate', 'airmass', 'mjd', 'date', 'exptime',
                     'GAIN', 'RDNOISE', 'AIRMASS', 'SATURATE'}
 UNSET = 'not_given_by_user'
+_tel_synced = {}                  # (template mtime, local mtime) of the last check in this process
 
 
-def link_telescope_yml():
-    """Make <runs>/.wdir/telescope.yml a link to the repository copy, so AutoPhOT reads and writes that file.
+def local_telescope_yml():
+    return runs_root() / '.wdir' / 'telescope.yml'
 
-    A file already there (from before) is kept next to it as telescope.yml.bak-<time>."""
-    wdir = runs_root() / '.wdir'
-    wdir.mkdir(parents=True, exist_ok=True)
-    link = wdir / 'telescope.yml'
-    target = TELESCOPE_YML.resolve()
-    if link.is_symlink() and link.resolve() == target:
-        return
-    if link.exists() or link.is_symlink():
-        backup = wdir / f"telescope.yml.bak-{time.strftime('%Y%m%d-%H%M%S')}"
-        link.rename(backup)
-        logger.warning('pipeline: %s replaced by a link to %s (old file kept as %s)', link, target, backup.name)
-    link.symlink_to(target)
+
+def _telescope_file():
+    """The file to read: this server's copy, or the template before there is one."""
+    try:
+        p = local_telescope_yml()
+    except NotConfigured:
+        return TELESCOPE_YML
+    return p if p.is_file() else TELESCOPE_YML
+
+
+def _add_missing(dst, src, path=()):
+    """Copy into dst what src has and dst lacks, recursively; returns what was added ('LOT / SOPHIA', 'LOT / SOPHIA / gain')."""
+    import copy
+    added = []
+    for k, v in src.items():
+        here = path + (str(k),)
+        if k not in dst or (dst[k] == UNSET and v != UNSET):
+            dst[k] = copy.deepcopy(v)
+            added.append(' / '.join(x for x in here if x != 'INSTRUME'))
+        elif isinstance(v, dict) and isinstance(dst[k], dict):
+            added += _add_missing(dst[k], v, here)
+    return added
+
+
+def _keep_history(text, who):
+    history = runs_root() / '.wdir' / 'telescope_history'
+    history.mkdir(parents=True, exist_ok=True)
+    (history / f"telescope-{time.strftime('%Y%m%d-%H%M%S')}-{who}.yml").write_text(text)
+    for stale in sorted(history.glob('telescope-*.yml'))[:-TELESCOPE_HISTORY_KEEP]:
+        stale.unlink(missing_ok=True)
+
+
+def sync_telescope_yml():
+    """Make sure this server has its own telescope.yml and add what the template has that it lacks.
+
+    Returns {'created': bool, 'added': [...]} ; never raises (a page must still open)."""
+    import yaml
+    out = {'created': False, 'added': []}
+    try:
+        wdir = runs_root() / '.wdir'
+        wdir.mkdir(parents=True, exist_ok=True)
+        local = wdir / 'telescope.yml'
+        with open(wdir / '.telescope.lock', 'a') as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                if local.is_symlink():                   # before: a link to the repository copy
+                    text = local.read_text() if local.exists() else ''
+                    local.unlink()
+                    local.write_text(text or TELESCOPE_YML.read_text())
+                    logger.warning('pipeline: %s was a link to the repository; now a copy of it on this server', local)
+                if not local.exists():
+                    shutil.copyfile(TELESCOPE_YML, local)
+                    out['created'] = True
+                    logger.info('pipeline: %s created from the template', local)
+                key = (TELESCOPE_YML.stat().st_mtime, local.stat().st_mtime)
+                if _tel_synced.get(str(local)) == key or _running_count():
+                    return out                           # nothing new, or AutoPhOT may be writing it
+                template = yaml.safe_load(TELESCOPE_YML.read_text()) or {}
+                old = local.read_text()
+                mine = yaml.safe_load(old) or {}
+                if not isinstance(template, dict) or not isinstance(mine, dict):
+                    return out
+                out['added'] = _add_missing(mine, template)
+                if out['added']:
+                    _keep_history(old, 'before-template')
+                    tmp = local.with_name(f'.telescope.yml.{os.getpid()}.tmp')
+                    tmp.write_text(yaml.safe_dump(mine, sort_keys=True, allow_unicode=True, default_flow_style=False))
+                    os.replace(tmp, local)
+                    logger.info('pipeline: added from the template to %s: %s', local, ', '.join(out['added'][:20]))
+                _tel_synced[str(local)] = (TELESCOPE_YML.stat().st_mtime, local.stat().st_mtime)
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+    except NotConfigured:
+        pass
+    except Exception:
+        logger.exception('pipeline: could not check telescope.yml against the template')
+    return out
 
 
 def telescope_text():
     try:
-        return TELESCOPE_YML.read_text()
+        return _telescope_file().read_text()
     except FileNotFoundError:
         return ''
 
 
-def _telescope_rows(data):
+def _telescope_rows(data, template=None):
     rows = []
     for tel, block in (data or {}).items():
         for inst, cfg in ((block or {}).get('INSTRUME') or {}).items():
             cfg = cfg or {}
+            in_template = template is None or inst in (((template.get(tel) or {}).get('INSTRUME')) or {})
             filters = {k: v for k, v in cfg.items()
                        if k not in TELESCOPE_FIELDS and not str(k).startswith('filter_key')}
             rows.append({'telescope': str(tel), 'instrument': str(inst), 'pixel_scale': cfg.get('pixel_scale'),
                          'gain': cfg.get('gain'), 'readnoise': cfg.get('readnoise'), 'saturate': cfg.get('saturate'),
-                         'filters': sorted({str(v) for v in filters.values()}), 'n_filter_names': len(filters)})
+                         'filters': sorted({str(v) for v in filters.values()}), 'n_filter_names': len(filters),
+                         'local_only': not in_template})
     return rows
 
 
 def telescope_summary():
-    """Each telescope + instrument with the values that matter most; None when the file does not parse."""
+    """Each telescope + instrument with the values that matter most (local_only: not in the template); None when it does not parse."""
     import yaml
     try:
-        return _telescope_rows(yaml.safe_load(telescope_text()) or {})
+        template = yaml.safe_load(TELESCOPE_YML.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        template = {}
+    try:
+        return _telescope_rows(yaml.safe_load(telescope_text()) or {}, template if isinstance(template, dict) else {})
     except yaml.YAMLError:
         return None
 
 
 def save_telescope(text, user=''):
-    """Replace telescope.yml after checking it; the previous version goes to <runs>/.wdir/telescope_history/."""
+    """Replace this server's telescope.yml after checking it; the previous version goes to <runs>/.wdir/telescope_history/."""
     import yaml
     text = str(text or '').replace('\r\n', '\n')
     if len(text) > 1024 * 1024:
@@ -1219,26 +1629,19 @@ def save_telescope(text, user=''):
         for inst, cfg in block['INSTRUME'].items():
             if not isinstance(cfg, dict):
                 raise PipelineError(f'{tel} / {inst}: must be key: value pairs.')
-    history = None
-    try:
-        if _running_count():
-            raise PipelineError('AutoPhOT is running and may add to telescope.yml; save when it has finished.')
-        history = runs_root() / '.wdir' / 'telescope_history'
-    except NotConfigured:
-        pass
+    if _running_count():
+        raise PipelineError('AutoPhOT is running and may add to telescope.yml; save when it has finished.')
+    sync_telescope_yml()                                 # this server's copy exists (not configured → NotConfigured below)
+    local = local_telescope_yml()
     if not text.endswith('\n'):
         text += '\n'
     old = telescope_text()
     if old == text:
         return {'changed': False}
-    if history and old:
-        history.mkdir(parents=True, exist_ok=True)
-        who = re.sub(r'[^A-Za-z0-9_.-]', '_', user.split('@')[0])[:30] or 'web'
-        (history / f"telescope-{time.strftime('%Y%m%d-%H%M%S')}-{who}.yml").write_text(old)
-        for stale in sorted(history.glob('telescope-*.yml'))[:-TELESCOPE_HISTORY_KEEP]:
-            stale.unlink(missing_ok=True)
-    tmp = TELESCOPE_YML.with_name(f'.telescope.yml.{os.getpid()}.tmp')
+    if old:
+        _keep_history(old, re.sub(r'[^A-Za-z0-9_.-]', '_', user.split('@')[0])[:30] or 'web')
+    tmp = local.with_name(f'.telescope.yml.{os.getpid()}.tmp')
     tmp.write_text(text)
-    os.replace(tmp, TELESCOPE_YML)
+    os.replace(tmp, local)
     logger.info('pipeline: %s saved telescope.yml (%d telescopes)', user or '?', len(data))
     return {'changed': True}

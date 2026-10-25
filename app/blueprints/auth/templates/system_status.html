@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>System - Kinder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    {% include '_favicon.html' %}
+</head>
+{#- Admin: server performance, disks and folder sizes (system_status.js polls /api/admin/system/status every 10 s). -#}
+<body class="kw-admin-body">
+    {% include '_navbar.html' %}
+    {% include '_admin_nav.html' %}
+
+    <main class="kw-page admin-page sys-page" id="sysPage">
+        <header class="kw-page-head">
+            <div>
+                <span class="kw-eyebrow">Admin</span>
+                <h1>System</h1>
+                <p>Performance of this server, its disks, and how much room Kinder, the Pipeline workspaces and the reduction pipeline take. Refreshes every 10 s; the trend lines start when this page opens.</p>
+            </div>
+            <div class="kw-page-actions">
+                <span class="sys-pill" id="sysState"><i></i><b>Loading…</b></span>
+                <button type="button" class="kw-btn kw-btn-sm" id="sysRefresh">Refresh</button>
+            </div>
+        </header>
+
+        <div class="kw-kpis sys-kpis" id="sysKpis"></div>
+
+        <div class="sys-grid">
+            <section class="kw-panel" aria-labelledby="sysHostT">
+                <div class="kw-panel-head"><h2 id="sysHostT">Host</h2><span class="kw-panel-meta" id="sysHostMeta"></span></div>
+                <div class="sys-gauges" id="sysGauges"></div>
+                <div class="sys-cores" id="sysCores" aria-label="CPU per core"></div>
+            </section>
+
+            <section class="kw-panel" aria-labelledby="sysDiskT">
+                <div class="kw-panel-head"><h2 id="sysDiskT">Disks</h2></div>
+                <div id="sysDisks"></div>
+            </section>
+
+            <section class="kw-panel" aria-labelledby="sysProcT">
+                <div class="kw-panel-head"><h2 id="sysProcT">Kinder server</h2></div>
+                <dl class="sys-facts" id="sysProc"></dl>
+            </section>
+
+            <section class="kw-panel" aria-labelledby="sysPipeT">
+                <div class="kw-panel-head"><h2 id="sysPipeT">Pipeline</h2><a class="kw-panel-meta" href="/pipeline">Open Pipeline →</a></div>
+                <dl class="sys-facts" id="sysPipe"></dl>
+            </section>
+        </div>
+
+        <section class="kw-panel sys-sizes" aria-labelledby="sysSizeT">
+            <div class="kw-panel-head">
+                <h2 id="sysSizeT">Folder sizes</h2>
+                <div class="sys-size-actions">
+                    <span class="kw-panel-meta" id="sysSizeMeta"></span>
+                    <button type="button" class="kw-btn kw-btn-sm" id="sysRecount">Recount now</button>
+                </div>
+            </div>
+            <p class="kw-panel-desc">Counted in the background (big folders take a while), at most every 30 minutes or when you press Recount.</p>
+            <div class="sys-size-groups" id="sysSizes"><p class="sys-muted">Not counted yet; the first count starts now.</p></div>
+        </section>
+
+        <section class="kw-panel" aria-labelledby="sysTopT">
+            <div class="kw-panel-head"><h2 id="sysTopT">Busiest processes on this machine</h2><span class="kw-panel-meta" id="sysTopMeta"></span></div>
+            <div class="sys-top">
+                <div><h3>Memory</h3><div class="kw-table-wrap"><table class="kw-table" id="sysTopMem"></table></div></div>
+                <div><h3>CPU</h3><div class="kw-table-wrap"><table class="kw-table" id="sysTopCpu"></table></div></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/system_status.js') }}"></script>
+</body>
+</html>

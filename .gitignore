@@ -6,7 +6,8 @@ app/blueprints/private_area/tutorials/.env
 # ---- runtime data (never commit) ----------------------------------------------
 app/data/
 app/log/
-app/vendor/
+app/vendor/*
+!app/vendor/autophot/
 app/blueprints/planners/ov_plot/*
 app/blueprints/basic/gallery_uploads/
 app/blueprints/private_area/data/

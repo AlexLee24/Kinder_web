@@ -1,0 +1,3290 @@
+"""Sky-background estimation and subtraction for AutoPHOT.
+
+Provides :class:`BackgroundSubtractor`, which estimates and removes the sky
+background from astronomical FITS images using iterative source masking,
+large mesh boxes, and spline interpolation.
+
+Key design choices
+------------------
+1. **Large box sizes** -- mesh_scale ~10 with a hard minimum of 64 px so
+   individual sources don't dominate a box.
+2. **Iterative source masking** -- 3-pass detect -> mask -> re-estimate cycle
+   that catches extended wings and faint field sources.
+3. **Large smoothing filter** -- scales as ``box_size // 2`` for a genuinely
+   smooth mesh.
+4. **Cubic spline zoom** -- photutils>=3 always resizes the background
+   mesh with a cubic spline, giving a continuous surface.
+5. **Aggressive dilation** -- ``dilate_factor=3``, 3 iterations to fully
+   exclude PSF halos.
+6. **Saturation masking** -- pixels near saturation are masked before
+   background estimation.
+7. **BiweightLocationBackground** -- resistant to outlier-contaminated boxes.
+8. **exclude_percentile (80 %)** -- photutils 3.0 keeps a mesh node while
+   MORE than (100 - p)% of the box pixels are usable, so p=80 still lets a
+   box with up to 80 % masked pixels contribute an estimate from its
+   surviving subset (sigma-clipped pixels count as masked).
+"""
+
+# TODO: Mask out regions where the pixel shares the same value as it's nearest nighbout. Also dilute this to avoid aretifacts at the edges
+
+
+# --- Standard Library ---
+import contextlib
+import io
+import logging
+import os
+import sys
+from functools import lru_cache
+from pathlib import Path
+from typing import Optional
+
+# --- Third-Party ---
+import matplotlib
+import numpy as np
+
+# Pick a non-interactive backend before pyplot import when running headless
+# (no DISPLAY). main.py sets Agg inside the pipeline, but this module can be
+# imported by workers before that call; interactive sessions keep their
+# configured backend.
+if os.name == "posix" and sys.platform != "darwin" and not os.environ.get("DISPLAY"):
+    try:
+        matplotlib.use("Agg", force=False)
+    except Exception:
+        pass
+
+import astropy.units as u
+import astropy.wcs as awcs
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import pandas as pd
+from astropy.convolution import Gaussian2DKernel, convolve
+from astropy.coordinates import SkyCoord
+from astropy.stats import (SigmaClip, gaussian_fwhm_to_sigma,
+                           sigma_clipped_stats)
+from astropy.visualization import ZScaleInterval
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from photutils.background import (Background2D, BiweightLocationBackground,
+                                  BiweightScaleBackgroundRMS, MedianBackground)
+
+from photutils.segmentation import detect_sources, detect_threshold
+from scipy.ndimage import (binary_dilation, distance_transform_edt,
+                           find_objects, gaussian_filter)
+from scipy.ndimage import label as ndi_label
+from scipy.ndimage import uniform_filter
+
+# --- Local ---
+from functions import (STATUS, biweight_sky_sigma, biweight_stdfunc,
+                       border_msg, log_step, log_warning_from_exception,
+                       photutils_n_threads, set_size)
+from plotting_utils import (apply_autophot_mplstyle, get_plot_ext,
+                            mask_legend_patch, overlay_mask_hatch)
+from wcs import get_wcs
+
+
+# ---------------------------------------------------------------------------
+# Helper: build a transparent-red overlay colormap
+# ---------------------------------------------------------------------------
+def _make_red_overlay_cmap(alpha: float = 0.5) -> mcolors.Colormap:
+    colors_rgba = np.zeros((256, 4))
+    colors_rgba[:, 0] = np.linspace(0, 1, 256)
+    colors_rgba[:, 3] = np.linspace(0, alpha, 256)
+    return mcolors.ListedColormap(colors_rgba)
+
+
+_RED_OVERLAY_CMAP = _make_red_overlay_cmap(alpha=0.5)
+
+# Loaded SavedModels are shared across BackgroundSubtractor instances: a new
+# subtractor is created per image/epoch and tf.saved_model.load costs ~5 s
+# each time.  Keyed by model directory.
+_MM_TF_MODEL_CACHE: dict = {}
+
+# MaxiMask classes (Paillassa, Bertin & Bouy 2020, arXiv:1907.08298)
+# unioned into the hardware-defects mask by default.  All true defect
+# and artifact classes are included - the CNN catches faint instances
+# the heuristic column/trail masks miss, and the union is free because
+# the model computes all classes in one pass.  Cosmic rays are
+# deliberately absent: astroscrappy (``cosmic_rays.remove_cmrays``) is
+# the single CR detector, and its mask is unioned into
+# ``hardware_defects_mask`` downstream in main.py (add "CR" back for
+# MaxiMask CR flagging).  BG/BBG are scene content and FR/NEB describe
+# sky structure and real signal, so they are never suitable as
+# defects.
+MAXIMASK_DEFECT_CLASSES = (
+    "HCL",
+    "DCL",
+    "HP",
+    "DP",
+    "P",
+    "TRL",
+    "SAT",
+    "SP",
+    "OV",
+)
+
+# Full names for the 14 MaxiMask classes (Paillassa et al. 2020,
+# arXiv:1907.08298), used in logs and the diagnostic-figure legend.
+_MAXIMASK_CLASS_NAMES = {
+    "CR": "cosmic rays",
+    "HCL": "hot columns/lines",
+    "DCL": "dead columns/lines/clusters",
+    "HP": "hot pixels",
+    "DP": "dead pixels",
+    "P": "persistence",
+    "TRL": "trails",
+    "FR": "residual fringing",
+    "NEB": "nebulosities",
+    "SAT": "saturated pixels",
+    "SP": "diffraction spikes",
+    "OV": "overscan",
+    "BBG": "bright background",
+    "BG": "background",
+}
+
+# Per-class colours for the Maximask_<base> diagnostic overlay.
+_MAXIMASK_CLASS_COLORS = {
+    "CR": "magenta",
+    "HCL": "orange",
+    "DCL": "cyan",
+    "HP": "red",
+    "DP": "yellow",
+    "P": "blue",
+    "TRL": "lime",
+    "FR": "tan",
+    "NEB": "green",
+    "SAT": "red",
+    "SP": "orchid",
+    "OV": "deepskyblue",
+    "BBG": "purple",
+    "BG": "gray",
+}
+
+
+# ---------------------------------------------------------------------------
+# Helper: filled circular structuring element (cached)
+# ---------------------------------------------------------------------------
+@lru_cache(maxsize=32)
+def _disk_structuring_element(r: int) -> np.ndarray:
+    y, x = np.ogrid[-r : r + 1, -r : r + 1]
+    return (x * x + y * y) <= r * r
+
+
+def _smooth_for_detection(
+    data: np.ndarray, sigma: float, fallback_kernel=None
+) -> np.ndarray:
+    """Gaussian-smooth *data* for source detection.
+
+    scipy's ``gaussian_filter`` is separable and matches the astropy 2-D
+    Gaussian convolution used previously to a small fraction of the pixel
+    noise, while being several times faster on megapixel frames (the gap
+    widens for large FWHM values).  Non-finite pixels are handled with the
+    same weight-normalized scheme astropy uses for
+    ``nan_treatment='interpolate'`` (convolution of the zeroed data and of
+    the finite-pixel weight map), so chip gaps and padded regions cannot
+    leak zeros into neighbouring detections.
+
+    ``fallback_kernel`` is the equivalent astropy ``Gaussian2DKernel``; it
+    is only used if the scipy path fails.
+    """
+    try:
+        finite = np.isfinite(data)
+        if finite.all():
+            return gaussian_filter(data, sigma=sigma, mode="nearest")
+        num = gaussian_filter(
+            np.where(finite, data, 0.0), sigma=sigma, mode="nearest"
+        )
+        den = gaussian_filter(finite.astype(np.float64), sigma=sigma, mode="nearest")
+        work = num / np.maximum(den, 1e-12)
+        work[~finite] = np.nan
+        return work
+    except Exception:
+        if fallback_kernel is None:
+            raise
+        return convolve(
+            data,
+            fallback_kernel,
+            boundary="extend",
+            nan_treatment="interpolate",
+            preserve_nan=True,
+            normalize_kernel=True,
+        )
+
+
+# Removed dead code _constant_region_mask function - was never used in the codebase
+
+
+@contextlib.contextmanager
+def _suppress_native_stderr():
+    """Redirect fd-level stderr to /dev/null.
+
+    TensorFlow's C++ runtime (absl) prints directly to the OS-level stderr
+    during ``import tensorflow`` and ``saved_model.load`` - CUDA probes,
+    oneDNN notices, "before absl::InitializeLog" warnings - bypassing
+    Python's logging entirely.  Scoped to the import/load so real Python
+    errors still surface through the normal exception path.
+    """
+    try:
+        sys.stderr.flush()
+        stderr_fd = sys.stderr.fileno()
+        saved_fd = os.dup(stderr_fd)
+    except Exception:
+        # No real OS fd (redirected/non-standard stream) - nothing to
+        # suppress, just run.
+        stderr_fd = saved_fd = None
+    if saved_fd is None:
+        yield
+        return
+    try:
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), stderr_fd)
+            yield
+    finally:
+        os.dup2(saved_fd, stderr_fd)
+        os.close(saved_fd)
+
+
+# =============================================================================
+# BackgroundSubtractor
+# =============================================================================
+class BackgroundSubtractor:
+    """
+    Estimate and subtract the sky background from an astronomical FITS image.
+
+    Uses iterative source masking, large mesh boxes, and spline interpolation
+    to produce a smooth background surface free of source/galaxy ghosts.
+    """
+
+    def __init__(self, config: dict):
+        """Initialise the subtractor with a pipeline configuration dict.
+
+        Parameters
+        ----------
+        config : dict
+            AutoPHOT configuration dictionary (``input_yaml``).
+        """
+        self.config = config
+
+        # True once MaxiMask inference has actually run on this image;
+        # distinguishes "MaxiMask is covering this frame" from merely
+        # being configured (e.g. diagnostic logs).
+        self.maximask_active = False
+        # Per-class masks from the last successful inference; None when
+        # MaxiMask is off or has not run yet.
+        self._maximask_class_masks = None
+
+        apply_autophot_mplstyle()
+
+        self.logger = logging.getLogger(__name__)
+
+    def _require_config_keys(self, keys) -> None:
+        """Fail fast when required config keys are absent.
+
+        Direct ``self.config[...]`` indexing deep in the pipeline otherwise
+        surfaces as a bare KeyError far from the actual misconfiguration.
+        """
+        if not isinstance(self.config, dict):
+            raise TypeError(
+                "BackgroundSubtractor config must be a dict, "
+                f"got {type(self.config).__name__}"
+            )
+        missing = [k for k in keys if k not in self.config]
+        if missing:
+            raise KeyError(
+                f"BackgroundSubtractor config missing required keys: {missing}"
+            )
+
+    def _cap_fwhm_for_background_mesh(
+        self, fwhm_pixels: Optional[float]
+    ) -> Optional[float]:
+        """
+        Limit FWHM used only for background mesh / mask sizing.
+
+        Very large measured FWHMs (bad SExtractor passes, nebulous fields) blow up
+        Background2D box sizes and RAM. Science photometry still uses the true
+        ImageFWHM from main.py; this cap is background-estimation only.
+        """
+        if fwhm_pixels is None:
+            return None
+        try:
+            fp = float(fwhm_pixels)
+        except (TypeError, ValueError):
+            return fwhm_pixels
+        if not np.isfinite(fp) or fp <= 0:
+            return fwhm_pixels
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        cap = float(cfg_bkg.get("max_fwhm_pixels", 15.0))
+        if not np.isfinite(cap) or cap <= 0:
+            return fp
+        if fp > cap:
+            self.logger.debug(
+                "Background mesh: capping FWHM %.2f -> %.2f px (background.max_fwhm_pixels=%.1f) to limit Background2D memory use.",
+                fp,
+                cap,
+                cap,
+            )
+            return cap
+        return fp
+
+    # -------------------------------------------------------------------------
+    # WCS helpers
+    # -------------------------------------------------------------------------
+    def get_rotation_angle(self, header) -> float:
+        """Return the image rotation angle in degrees from the WCS CD matrix."""
+        wcs = get_wcs(header)
+        if wcs is None:
+            self.logger.warning("No valid WCS - rotation angle assumed 0")
+            return 0.0
+        try:
+            if hasattr(wcs.wcs, "cd"):
+                cd = wcs.wcs.cd
+            else:
+                cd = wcs.wcs.cdelt[0] * wcs.wcs.pc
+            angle_rad = np.arctan2(cd[1][0], cd[0][0])
+            return np.degrees(angle_rad)
+        except Exception as exc:
+            log_warning_from_exception(
+                self.logger, "Could not compute rotation angle", exc
+            )
+            return 0.0
+
+    # -------------------------------------------------------------------------
+    # Galaxy masking
+    # -------------------------------------------------------------------------
+    def masked_simbad_galaxies(
+        self,
+        galaxies: pd.DataFrame,
+        image: np.ndarray,
+        header,
+        scale_factor: float = 2.0,
+    ) -> np.ndarray:
+        """
+        Build a boolean mask covering extended SIMBAD galaxies.
+
+        Parameters
+        ----------
+        scale_factor : float
+            Multiply galaxy semi-axes by this factor to ensure the full extent
+            (including faint outskirts) is masked.  Default 2.0 (was implicitly
+            1.0 in the original, which left galaxy wings unmasked).
+        """
+        required_cols = {
+            "RA",
+            "DEC",
+            "galdim_majaxis",
+            "galdim_minaxis",
+            "galdim_angle",
+        }
+        cols = set(galaxies.columns) if isinstance(galaxies, pd.DataFrame) else set()
+        missing_cols = sorted(required_cols - cols)
+        if missing_cols:
+            self.logger.warning(
+                "Galaxy catalog missing columns %s - skipping galaxy masking",
+                missing_cols,
+            )
+            return np.zeros_like(image, dtype=bool)
+        if header is None:
+            self.logger.warning("No header/WCS supplied - skipping galaxy masking")
+            return np.zeros_like(image, dtype=bool)
+        wcs = get_wcs(header)
+        if wcs is None:
+            self.logger.warning("Invalid WCS - skipping galaxy masking")
+            return np.zeros_like(image, dtype=bool)
+        rotation_angle = self.get_rotation_angle(header)
+
+        xy_pixel_scales = awcs.utils.proj_plane_pixel_scales(wcs)
+        # Add validation for pixel scale to prevent division by zero
+        if len(xy_pixel_scales) == 0:
+            self.logger.warning("Empty pixel scales from WCS, skipping galaxy masking")
+            return np.zeros_like(image, dtype=bool)
+        pix_scale_arcsec = xy_pixel_scales[0] * 3600.0
+        if pix_scale_arcsec <= 0 or not np.isfinite(pix_scale_arcsec):
+            self.logger.warning(
+                "Invalid pixel scale (%s), skipping galaxy masking", pix_scale_arcsec
+            )
+            return np.zeros_like(image, dtype=bool)
+
+        valid = (
+            pd.to_numeric(galaxies["galdim_majaxis"], errors="coerce").notna()
+            & (pd.to_numeric(galaxies["galdim_majaxis"], errors="coerce") > 0)
+            & pd.to_numeric(galaxies["galdim_minaxis"], errors="coerce").notna()
+            & (pd.to_numeric(galaxies["galdim_minaxis"], errors="coerce") > 0)
+        )
+        filtered_galaxies = galaxies[valid]
+        if len(filtered_galaxies) > 0:
+            self.logger.info("Masking %s galaxies from SIMBAD", len(filtered_galaxies))
+
+        mask = np.zeros(image.shape, dtype=bool)
+
+        if len(filtered_galaxies) == 0:
+            return mask
+
+        # Batch WCS conversion: convert all galaxy RA/Dec to pixel coords at once
+        # instead of per-galaxy wcs.world_to_pixel() calls
+        try:
+            ra_arr = filtered_galaxies["RA"].values.astype(float)
+            dec_arr = filtered_galaxies["DEC"].values.astype(float)
+            xpix_arr, ypix_arr = wcs.all_world2pix(ra_arr, dec_arr, 0)
+        except Exception as exc:
+            self.logger.warning(
+                "Batch WCS conversion failed, falling back to per-galaxy: %s", exc
+            )
+            xpix_arr = np.full(len(filtered_galaxies), np.nan)
+            ypix_arr = np.full(len(filtered_galaxies), np.nan)
+
+        delta = 1 if rotation_angle < 0 else -1
+        ny, nx = image.shape
+
+        for i, row in enumerate(filtered_galaxies.itertuples(index=False)):
+            try:
+                xpix = float(xpix_arr[i])
+                ypix = float(ypix_arr[i])
+                if not (np.isfinite(xpix) and np.isfinite(ypix)):
+                    # Fallback to per-galaxy WCS if batch failed for this row
+                    sky_pos = SkyCoord(ra=row.RA * u.deg, dec=row.DEC * u.deg)
+                    xpix, ypix = wcs.world_to_pixel(sky_pos)
+
+                # FIX: scale_factor ensures faint galaxy outskirts are masked.
+                maj_pix = scale_factor * (row.galdim_majaxis * 60.0) / pix_scale_arcsec
+                min_pix = scale_factor * (row.galdim_minaxis * 60.0) / pix_scale_arcsec
+
+                ellipse_angle = (
+                    90.0 + delta * (row.galdim_angle + rotation_angle)
+                ) % 360.0
+
+                theta = np.radians(ellipse_angle)
+                cos_t, sin_t = np.cos(-theta), np.sin(-theta)
+
+                # Compute ellipse mask only within the galaxy's bounding box
+                # (not the full image) to avoid O(N_galaxies * image_size) work
+                _margin = int(np.ceil(max(maj_pix, min_pix))) + 2
+                _x0 = max(0, int(xpix) - _margin)
+                _x1 = min(nx, int(xpix) + _margin + 1)
+                _y0 = max(0, int(ypix) - _margin)
+                _y1 = min(ny, int(ypix) + _margin + 1)
+                if _x1 <= _x0 or _y1 <= _y0:
+                    continue
+
+                _y_sub, _x_sub = np.mgrid[_y0:_y1, _x0:_x1]
+                x_rel = _x_sub - xpix
+                y_rel = _y_sub - ypix
+
+                x_rot = cos_t * x_rel - sin_t * y_rel
+                y_rot = sin_t * x_rel + cos_t * y_rel
+
+                mask[_y0:_y1, _x0:_x1] |= (x_rot / maj_pix) ** 2 + (
+                    y_rot / min_pix
+                ) ** 2 <= 1.0
+
+            except Exception as exc:
+                _gid = getattr(row, "MAIN_ID", "unknown")
+                self.logger.info(f"Error masking galaxy {_gid}: {exc}")
+
+        n_masked = np.sum(mask)
+        if n_masked > 0:
+            self.logger.info(
+                f"Galaxy mask excludes {n_masked} px "
+                f"({100.0 * n_masked / image.size if image.size > 0 else 0.0:.2f}%)"
+            )
+        return mask
+
+    # -------------------------------------------------------------------------
+    # Box / filter size estimation
+    # -------------------------------------------------------------------------
+    def _compute_box_sizes(
+        self,
+        image: np.ndarray,
+        mask,
+        fwhm_pixels: float = None,
+        mesh_scale: float = 10.0,
+        region_fraction_limit: float = 0.20,
+        min_box: int = 128,
+    ):
+        """
+        Derive Background2D box and smoothing-filter sizes from the image PSF.
+
+        Design rationale
+        ----------------
+        * mesh_scale = 6 -> boxes are ~6x FWHM.  Large enough that individual
+          sources don't dominate a box, but small enough that the mesh resolves
+          real sky gradients (vignetting, scattered light, etc.).
+        * min_box = 128, a standard survey bin size for good sky tracking.
+        * filter_size is 3 or 5 **mesh boxes** (NOT pixels!).  In Background2D
+          this is a median filter applied to the *mesh grid*, so filter_size=3
+          means a 3x3 box neighbourhood.  Values much larger than 5 flatten
+          the surface to a constant.
+        * photutils>=3 always resizes the mesh with a cubic spline zoom -
+          the filter_size just suppresses box-to-box noise in the mesh.
+        """
+        shape = image.shape
+
+        # --- Compute mesh (box) size ---
+        # Allow config to tighten/relax mesh behaviour.
+        cfg_bkg = (
+            self.config.get("background", {}) if isinstance(self.config, dict) else {}
+        )
+        fast_mode = bool(cfg_bkg.get("fast_mode", False))
+
+        # --- Estimate FWHM from autocorrelation ---
+        # In fast_mode, skip expensive FFT-based FWHM estimation if not provided
+        if fwhm_pixels is None:
+            if fast_mode:
+                # Use a sensible default to avoid costly autocorrelation
+                fwhm_pixels = 5.0
+            else:
+                min_dim = min(shape)
+                try:
+                    sample_size = min(128, min_dim // 2)
+                    cy, cx = shape[0] // 2, shape[1] // 2
+                    hs = sample_size // 2
+                    sample = image[cy - hs : cy + hs, cx - hs : cx + hs]
+                    sample = sample - np.nanmedian(sample)
+
+                    ac = np.fft.fftshift(
+                        np.abs(np.fft.ifft2(np.abs(np.fft.fft2(sample)) ** 2))
+                    )
+                    c0, c1 = np.array(ac.shape) // 2
+                    prof = ac[c0, c1:]
+                    half_max = prof[0] / 2.0
+                    half_idx = np.argmax(prof < half_max)
+                    fwhm_pixels = float(half_idx) if half_idx > 0 else 3.0
+                except Exception:
+                    fwhm_pixels = 3.0
+
+        mesh_min = float(cfg_bkg.get("mesh_scale_min", 4.0))
+        mesh_max = float(cfg_bkg.get("mesh_scale_max", 10.0))
+        mesh_scale = float(mesh_scale)
+        # In fast_mode, bias toward larger mesh scale for fewer, larger boxes
+        if fast_mode:
+            mesh_scale = min(mesh_max * 1.2, mesh_scale * 1.5)
+        mesh_scale = max(mesh_min, min(mesh_scale, mesh_max))
+
+        # In fast_mode, allow smaller min_box to reduce computation for small images
+        if fast_mode:
+            min_box = max(32, min_box // 2)
+
+        fwhm_pixels = self._cap_fwhm_for_background_mesh(fwhm_pixels)
+
+        base = max(min_box, int(mesh_scale * fwhm_pixels))
+        max_allowed = max(min_box, int(min(shape) * region_fraction_limit))
+        base = min(base, max_allowed)
+        base = base | 1  # force odd
+
+        # photutils>=3 handles edges with partial remainder boxes of
+        # arbitrary width - a 1-2 px remainder produces the noisiest mesh
+        # nodes on the whole image, right at the border.  Nudge base by a
+        # few pixels so each remainder is either 0 or a usable fraction.
+        def _remainder_penalty(b):
+            pen = 0.0
+            for dim in shape:
+                rem = dim % b
+                if 0 < rem < b / 3.0:
+                    pen += (b / 3.0 - rem) / b
+            return pen
+
+        if _remainder_penalty(base) > 0:
+            lo = max(3, min_box)
+            cands = [b for b in range(lo | 1, int(max_allowed) + 1, 2)]
+            if cands:
+                best = min(cands, key=lambda b: (_remainder_penalty(b), abs(b - base)))
+                if _remainder_penalty(best) < _remainder_penalty(base):
+                    base = best
+
+        box_size = (base, base)
+
+        # --- Compute smoothing filter size (in mesh-box units!) ---
+        # Background2D applies a median filter to the *grid of box estimates*.
+        # Here we favour a smooth global surface by default, but allow the
+        # user to dial this via background.mesh_filter_size_mesh_units. In
+        # fast_mode we default to a lighter filter (3x3 mesh boxes).
+        default_filter = 3 if fast_mode else 5
+        mesh_filter = int(cfg_bkg.get("mesh_filter_size_mesh_units", default_filter))
+        if mesh_filter < 3:
+            mesh_filter = 3
+        if mesh_filter % 2 == 0:
+            mesh_filter += 1
+        filter_size = mesh_filter
+
+        self.logger.debug(
+            "Background mesh: FWHM=%.2f px scale=%.1f box=%s filter=%d",
+            fwhm_pixels,
+            mesh_scale,
+            box_size,
+            filter_size,
+        )
+
+        return box_size, filter_size, fwhm_pixels
+
+    # -------------------------------------------------------------------------
+    # Source masking - ITERATIVE (the key fix for ghost elimination)
+    # -------------------------------------------------------------------------
+    def _make_source_mask(
+        self,
+        image: np.ndarray,
+        nsigma: float = 2.5,
+        npixels: int = 3,
+        fwhm_pixels: float = 3.0,
+        dilate_factor: float = 3.0,
+        n_iterations: int = 3,  # NEW: iterative masking
+        dilate_iterations: int = 3,  # NEW: configurable dilation iterations
+        max_mask_fraction: float = 0.45,
+        initial_mask: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Iteratively detect and mask sources.
+
+        The key improvement: a single-pass mask misses sources whose flux is
+        comparable to the (source-contaminated) background estimate.  By
+        iterating - detect sources -> estimate background -> subtract -> detect
+        again - we progressively reveal fainter sources and their wings.
+
+        Parameters
+        ----------
+        n_iterations : int
+            Number of detect-mask-reestimate cycles.  3 is usually sufficient.
+        dilate_factor : float
+            Dilation radius = dilate_factor x fwhm_pixels.  Raised to 3.0 to
+            cover PSF wings and diffuse halos that otherwise leak flux into
+            background boxes.
+        dilate_iterations : int
+            Number of binary_dilation iterations to apply. Higher values extend
+            masks further around sources for more complete masking.
+        max_mask_fraction : float
+            Upper bound on the total masked fraction.  When the dilated mask
+            would exceed this, the dilation radius is progressively shrunk
+            (fewer iterations, then smaller radius) so that all detected
+            sources are still masked (at least their cores) while preserving
+            enough background pixels for Background2D.  In dense fields this
+            prevents the dilation from consuming most of the image.
+        initial_mask : np.ndarray or None
+            Pixels already known to be bad (NaN/zero padding, saturation,
+            streaks). Seeded into the mask before the first iteration so
+            detection statistics and the internal residual updates exclude
+            them, and so they count against ``max_mask_fraction`` like the
+            final unioned mask does.
+        """
+        n_iterations = max(0, int(n_iterations))
+        # Guard against pathological or unknown FWHM values so the kernel
+        # construction never divides by zero or creates a degenerate kernel.
+        try:
+            fwhm_val = float(fwhm_pixels)
+        except Exception:
+            fwhm_val = 0.0
+        if not np.isfinite(fwhm_val) or fwhm_val <= 0:
+            fwhm_val = 3.0  # conservative fallback in pixels
+
+        sigma = fwhm_val * gaussian_fwhm_to_sigma
+        size = int(max(3.0, 4.0 * fwhm_val)) | 1
+        size = min(size, 61)  # cap at 61x61 to avoid runaway memory for large PSFs
+        kern = Gaussian2DKernel(sigma, x_size=size, y_size=size)
+        kern.normalize()
+
+        # Dilation radius for the iterative loop (per-iteration structuring
+        # elements are built at the point of use).
+        r_dilate = min(
+            max(2, int(dilate_factor * fwhm_pixels)), 30
+        )  # cap dilation radius
+
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        # Allow override of dilation parameters from config
+        dilate_factor = float(cfg_bkg.get("source_mask_dilate_factor", dilate_factor))
+        dilate_iterations = int(
+            cfg_bkg.get("source_mask_dilate_iterations", dilate_iterations)
+        )
+
+        # Inspired by the STScI notebook: convolve before thresholding so
+        # structured noise doesn't fragment detections into tiny islands.
+        use_convolved_detection = bool(cfg_bkg.get("source_mask_convolve", True))
+        # When True, only smooth on the first iteration (avoids N full-image convolves).
+        convolve_first_iter_only = bool(
+            cfg_bkg.get("source_mask_convolve_first_iter_only", True)
+        )
+        # Optional: update residual between iterations using a quick Background2D
+        # fit (closer to the notebook's "detect -> estimate -> subtract -> detect").
+        update_residual_with_background2d = bool(
+            cfg_bkg.get("source_mask_iterative_bkg_update", True)
+        )
+
+        if initial_mask is None:
+            mask = np.zeros(image.shape, dtype=bool)
+        else:
+            mask = np.asarray(initial_mask, dtype=bool)
+            if mask.shape != image.shape:
+                raise ValueError(
+                    f"initial_mask shape {mask.shape} != image shape {image.shape}"
+                )
+            mask = mask.copy()
+        # float32 is sufficient precision for iterative source-masking.
+        # Using float32 halves the memory footprint vs float64 (~64 MB saved
+        # for a 4096x4096 image).  Avoid an unconditional full copy when possible.
+        try:
+            residual = np.asarray(image, dtype=np.float32, copy=False)
+        except (TypeError, ValueError):
+            # NumPy <2.0 raises TypeError for copy= keyword; NumPy 2.0+ raises ValueError if copy cannot be avoided
+            residual = np.asarray(image, dtype=np.float32)
+
+        iteration = -1
+        for iteration in range(n_iterations):
+            try:
+                work = residual
+                if use_convolved_detection and (
+                    not convolve_first_iter_only or iteration == 0
+                ):
+                    try:
+                        # Smooth only for detection; do not change the data used
+                        # for Background2D later.  scipy's separable filter is
+                        # ~10x faster than the astropy 2-D convolution at
+                        # equal smoothing; the astropy kernel is the fallback.
+                        work = _smooth_for_detection(residual, sigma, kern)
+                    except Exception:
+                        work = residual
+
+                threshold = detect_threshold(work, n_sigma=nsigma, mask=mask)
+
+                # Use a small Gaussian filter kernel to suppress pixel noise
+                # before segmentation.  Newer versions of photutils expect
+                # this to be passed as "filter_kernel" (the legacy "kernel"
+                # keyword is no longer supported).
+                segm = detect_sources(
+                    work,
+                    threshold=threshold,
+                    n_pixels=npixels,
+                    connectivity=8,
+                )
+                if segm is None:
+                    break
+
+                new_mask = segm.data.astype(bool)
+                # Adaptive dilation: try the requested dilation radius, but if
+                # it pushes the total mask fraction above the budget, progressively
+                # shrink the radius so all detected sources are still masked (at
+                # least their cores) while preserving background pixels for
+                # Background2D.  In dense fields this prevents the mask from
+                # consuming most of the image.
+                #
+                # One O(N) Euclidean distance transform from the nearest source
+                # pixel replaces the repeated O(N * footprint) binary_dilation
+                # passes: dilating by a disk of radius R is exactly the set of
+                # pixels within R of a source, so each budget candidate is a
+                # cheap threshold of this one map (identical for single
+                # iterations; a sub-pixel approximation at the rim for the
+                # multi-iteration candidates).
+                target_frac = max_mask_fraction
+                best_new_mask = None
+                cur_r = r_dilate
+                cur_iters = dilate_iterations
+                dist_to_src = (
+                    distance_transform_edt(~new_mask) if np.any(new_mask) else None
+                )
+                n_mask_px = int(np.count_nonzero(mask))
+                while cur_r >= 1:
+                    if dist_to_src is None:
+                        trial_mask = new_mask
+                        trial_frac = (n_mask_px + 0) / mask.size
+                    else:
+                        trial_mask = dist_to_src <= float(cur_r * cur_iters)
+                        trial_frac = (
+                            n_mask_px
+                            + int(np.count_nonzero(trial_mask & ~mask))
+                        ) / mask.size
+                    if trial_frac <= target_frac:
+                        best_new_mask = trial_mask
+                        break
+                    # Reduce dilation: first try fewer iterations, then smaller radius
+                    if cur_iters > 1:
+                        cur_iters -= 1
+                    else:
+                        cur_r = cur_r // 2
+                        cur_iters = 1
+
+                if best_new_mask is None:
+                    # Even minimal dilation exceeds budget - use undilated cores
+                    best_new_mask = new_mask
+                    self.logger.info(
+                        "Source mask: even 1px dilation exceeds %.0f%% budget; "
+                        "using undilated source cores only.",
+                        target_frac * 100,
+                    )
+
+                new_mask = best_new_mask
+                combined = mask | new_mask
+
+                # Stop if we've hit the mask budget even with adaptive dilation.
+                frac = combined.mean()
+                if frac > max_mask_fraction:
+                    self.logger.info(
+                        f"Source mask at {frac:.1%} (limit {max_mask_fraction:.0%}) "
+                        f"- stopping at iteration {iteration + 1}"
+                    )
+                    mask = combined
+                    break
+
+                if np.array_equal(combined, mask):
+                    self.logger.debug(
+                        f"Source mask converged after {iteration + 1} iterations"
+                    )
+                    break
+                mask = combined
+
+                # Subtract a quick background estimate so the next iteration
+                # can detect fainter sources hidden under the sky gradient.
+                if iteration < n_iterations - 1:
+                    if update_residual_with_background2d:
+                        # Cheap and stable: coarse mesh, minimal smoothing.
+                        # This is intentionally best-effort; if it fails, fall
+                        # back to a flat-median subtraction.
+                        try:
+                            bkg = Background2D(
+                                image,
+                                mask=mask,
+                                box_size=(64, 64),
+                                filter_size=3,
+                                sigma_clip=SigmaClip(sigma=3.0, maxiters=5),
+                                bkg_estimator=MedianBackground(),
+                                bkg_rms_estimator=BiweightScaleBackgroundRMS(),
+                                exclude_percentile=90.0,
+                                n_threads=photutils_n_threads(self.config),
+                            )
+                            residual = image - np.asarray(bkg.background, dtype=float)
+                        except Exception:
+                            _, gmed, _ = sigma_clipped_stats(
+                                image, sigma=3.0, mask=mask
+                            )
+                            residual = image - float(gmed)
+                    else:
+                        # Use nanmedian for faster iteration (sigma_clipped_stats is expensive on large images)
+                        gmed = float(
+                            np.nanmedian(residual[~mask & np.isfinite(residual)])
+                        )
+                        residual = image - float(gmed)
+
+            except Exception as exc:
+                log_warning_from_exception(
+                    self.logger,
+                    f"Source mask iteration {iteration} failed",
+                    exc,
+                )
+                break
+
+        n_masked = np.sum(mask)
+        self.logger.debug(
+            "Source mask contains %d pixels (%.2f%% of the image) after %d iteration(s)",
+            n_masked,
+            100.0 * n_masked / image.size if image.size > 0 else 0.0,
+            min(iteration + 1, max(n_iterations, 1)),
+        )
+        return mask
+
+    # -------------------------------------------------------------------------
+    # Saturation mask (NEW - bright star ghosts)
+    # -------------------------------------------------------------------------
+    def _make_saturation_mask(
+        self,
+        image: np.ndarray,
+        saturate: float,
+        dilate_radius: int = 8,
+        saturate_frac: float | None = None,
+    ) -> np.ndarray:
+        """
+        Mask saturated pixels and their immediate surroundings.
+
+        Parameters
+        ----------
+        saturate_frac : float or None
+            Fraction of ``saturate`` at or above which a pixel is flagged
+            saturated.  Defaults to ``background.saturation_mask_frac`` from
+            config (0.90), or 0.90 when unset.
+        """
+        # A missing or nonpositive level cannot delimit real saturation;
+        # treating it literally would flag every pixel as saturated.
+        if not np.isfinite(saturate) or saturate <= 0:
+            return np.zeros(image.shape, dtype=bool)
+        if saturate_frac is None:
+            cfg_bkg = (
+                (self.config.get("background", {}) or {})
+                if isinstance(self.config, dict)
+                else {}
+            )
+            saturate_frac = float(
+                cfg_bkg.get("saturation_mask_frac", 0.90)
+            )
+        sat_mask = image >= saturate_frac * saturate
+        if np.any(sat_mask):
+            selem = _disk_structuring_element(dilate_radius)
+            sat_mask = binary_dilation(sat_mask, structure=selem, iterations=1)
+            self.logger.debug(
+                f"Saturation mask: {np.sum(sat_mask)} px "
+                f"({100.0 * np.sum(sat_mask) / image.size if image.size > 0 else 0.0:.2f}%)"
+            )
+        return sat_mask
+
+    # -------------------------------------------------------------------------
+    # Saturation streak / bleed mask (CCD bleed, diffraction spikes, curved trails)
+    # -------------------------------------------------------------------------
+    def _line_pixels(
+        self, cy: float, cx: float, angle_rad: float, half_length: int, ny: int, nx: int
+    ) -> tuple:
+        """Return (rr, cc) integer pixel indices along a straight line from center."""
+        dx = half_length * np.cos(angle_rad)
+        dy = half_length * np.sin(angle_rad)
+        n_pts = max(2, 2 * half_length)
+        t = np.linspace(-1, 1, n_pts)
+        yy = cy + t * dy
+        xx = cx + t * dx
+        rr = np.clip(np.round(yy).astype(int), 0, ny - 1)
+        cc = np.clip(np.round(xx).astype(int), 0, nx - 1)
+        return rr, cc
+
+    def _follow_streak_path(
+        self,
+        image: np.ndarray,
+        r0: int,
+        c0: int,
+        angle_rad: float,
+        max_steps: int,
+        flux_threshold: float,
+        cone_deg: float = 38.0,
+    ) -> tuple:
+        """
+        Follow a possibly curved streak by stepping toward the brightest pixel
+        in a narrow cone ahead. Returns (rr, cc) of all visited pixels.
+        """
+        ny, nx = image.shape
+        path_r, path_c = [r0], [c0]
+        r, c = float(r0), float(c0)
+        half_cone = np.deg2rad(cone_deg)
+        steps = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+        for _ in range(max_steps - 1):
+            dangles = np.array([0.0, half_cone, -half_cone], dtype=np.float64)
+            aa = angle_rad + dangles[:, None]
+            cos_a = np.cos(aa)
+            sin_a = np.sin(aa)
+            cn = np.round(c + cos_a * steps).astype(np.int64)
+            rn = np.round(r + sin_a * steps).astype(np.int64)
+            valid = (rn >= 0) & (rn < ny) & (cn >= 0) & (cn < nx)
+            # Important: np.where evaluates both branches, so we must avoid
+            # indexing `image[rn, cn]` with out-of-bounds indices even if
+            # `valid` would mask them. Clip first, then mask.
+            rn_clip = np.clip(rn, 0, ny - 1)
+            cn_clip = np.clip(cn, 0, nx - 1)
+            vals = image[rn_clip, cn_clip]
+            vals = np.where(valid, vals, -np.inf)
+            eligible = valid & (vals >= flux_threshold)
+            if not np.any(eligible):
+                break
+            masked = np.where(eligible, vals, -np.inf)
+            flat = int(np.argmax(masked))
+            bi, bj = np.unravel_index(flat, masked.shape)
+            r, c = float(rn[bi, bj]), float(cn[bi, bj])
+            path_r.append(int(r))
+            path_c.append(int(c))
+            if len(path_r) >= 2:
+                angle_rad = np.arctan2(path_r[-1] - path_r[-2], path_c[-1] - path_c[-2])
+        return np.asarray(path_r, dtype=np.int64), np.asarray(path_c, dtype=np.int64)
+
+    def _make_saturation_streak_mask(
+        self,
+        image: np.ndarray,
+        saturate: float,
+        saturate_frac: float | None = None,
+        bleed_half_length: int = 100,
+        use_principal_axis: bool = True,
+        follow_curved: bool = True,
+        streak_flux_frac: float = 0.08,
+    ) -> np.ndarray:
+        """
+        Mask streaks and bleed trails emanating from saturated pixels.
+
+        If follow_curved is True (default): for each saturated blob, follow the
+        streak along a path that can curve (e.g. tracking drift), by stepping
+        toward the brightest pixel in a narrow cone ahead. Handles non-straight
+        trails. If False, use straight-line extension along principal axes.
+
+        Parameters
+        ----------
+        saturate_frac : float or None
+            Fraction of ``saturate`` defining the saturated core.  Defaults to
+            ``background.saturation_mask_frac`` from config (0.90), or 0.90
+            when unset.
+        """
+        if not np.isfinite(saturate) or saturate <= 0 or not np.any(np.isfinite(image)):
+            return np.zeros_like(image, dtype=bool)
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        if saturate_frac is None:
+            saturate_frac = float(
+                cfg_bkg.get("saturation_mask_frac", 0.90)
+            )
+        sat_core = np.asarray(image >= (saturate_frac * saturate), dtype=bool)
+        if not np.any(sat_core):
+            return np.zeros_like(image, dtype=bool)
+        ny, nx = image.shape
+        streak_mask = np.zeros_like(image, dtype=bool)
+        half = max(1, int(bleed_half_length))
+        # Flux threshold for "still on streak" - lower to catch fainter tails
+        sigma = biweight_sky_sigma(image)
+        if not np.isfinite(sigma):
+            sigma = 0.0
+        background_level = float(np.nanmedian(image)) + 1.5 * sigma
+        min_thresh = streak_flux_frac * saturate  # must be above this to be a streak
+        max_thresh = 0.35 * saturate  # cap to avoid masking whole bright image
+        flux_thresh = float(np.clip(background_level, min_thresh, max_thresh))
+
+        # Log when clamping occurs for debugging
+        if background_level > max_thresh:
+            self.logger.debug(
+                "flux_thresh clamped to %.2e (background too bright)", max_thresh
+            )
+
+        struct = np.ones((3, 3), dtype=int)
+        labels, n_comp = ndi_label(sat_core, structure=struct)
+
+        blob_slices = find_objects(labels, int(n_comp))
+        # Performance guard: on crowded frames with many saturated stars the
+        # per-blob streak-following loop is O(n_blobs * max_steps).  Process
+        # only the largest blobs (a streak's core is its brightest part) and
+        # skip the rest; small saturated cores without trails add little
+        # background bias.
+        max_blobs = int(cfg_bkg.get("max_defect_blobs", 500))
+        if max_blobs > 0 and len(blob_slices) > max_blobs:
+            # Rank blobs by pixel count (largest first) and truncate.
+            sized = []
+            for j, sl in enumerate(blob_slices):
+                if sl is None:
+                    continue
+                sub_lbl = labels[sl]
+                sized.append((int((sub_lbl == j + 1).sum()), j))
+            sized.sort(reverse=True)
+            keep_idx = {j for _, j in sized[:max_blobs]}
+            blob_slices = [sl for j, sl in enumerate(blob_slices) if j in keep_idx]
+            self.logger.debug(
+                "Saturation streak mask: capping to %d of %d blobs (largest first).",
+                len(blob_slices), n_comp,
+            )
+        for idx, sl in enumerate(blob_slices, start=1):
+            if sl is None:
+                continue
+            sub_lbl = labels[sl]
+            blob = sub_lbl == idx
+            n_pix = int(blob.sum())
+            sub_streak = streak_mask[sl]
+            sub_streak[blob] = True
+            if n_pix < 2:
+                continue
+            rr, cc = np.nonzero(blob)
+            rr = rr + sl[0].start
+            cc = cc + sl[1].start
+            cy, cx = np.mean(rr), np.mean(cc)
+            r0, c0 = int(round(cy)), int(round(cx))
+            dr, dc = rr - cy, cc - cx
+            mrr = np.mean(dr * dr)
+            mcc = np.mean(dc * dc)
+            mrc = np.mean(dr * dc)
+            if np.abs(mrc) > 1e-10:
+                angle1 = 0.5 * np.arctan2(2 * mrc, mrr - mcc)
+            else:
+                angle1 = 0.0 if mrr >= mcc else np.pi / 2
+            angle2 = angle1 + np.pi / 2
+
+            if follow_curved:
+                # Principal axes + diagonals (8 directions) to catch oblique streaks
+                angles = [
+                    angle1,
+                    angle1 + np.pi,
+                    angle2,
+                    angle2 + np.pi,
+                    angle1 + np.pi / 4,
+                    angle1 + np.pi * 5 / 4,
+                    angle2 + np.pi / 4,
+                    angle2 + np.pi * 5 / 4,
+                ]
+                for angle in angles:
+                    pr, pc = self._follow_streak_path(
+                        image, r0, c0, angle, half, flux_thresh, cone_deg=38.0
+                    )
+                    streak_mask[pr, pc] = True
+            elif use_principal_axis:
+                for angle in (angle1, angle2):
+                    lr, lc = self._line_pixels(cy, cx, angle, half, ny, nx)
+                    streak_mask[lr, lc] = True
+            else:
+                # Fallback: row/column only (handled per full image below)
+                pass
+
+        if not use_principal_axis and not follow_curved:
+            # Row/column extension only
+            rows_with_sat = np.any(sat_core, axis=1)
+            for r in np.where(rows_with_sat)[0]:
+                cols = np.where(sat_core[r, :])[0]
+                if len(cols) == 0:
+                    continue
+                c1 = max(0, int(cols.min()) - half)
+                c2 = min(nx, int(cols.max()) + 1 + half)
+                streak_mask[r, c1:c2] = True
+            cols_with_sat = np.any(sat_core, axis=0)
+            for c in np.where(cols_with_sat)[0]:
+                rows = np.where(sat_core[:, c])[0]
+                if len(rows) == 0:
+                    continue
+                r1 = max(0, int(rows.min()) - half)
+                r2 = min(ny, int(rows.max()) + 1 + half)
+                streak_mask[r1:r2, c] = True
+            streak_mask |= sat_core
+        else:
+            streak_mask |= sat_core
+
+        # Widen slightly so streak edges are fully masked
+        streak_mask = binary_dilation(streak_mask, structure=struct, iterations=2)
+        n_streak = np.sum(streak_mask)
+        if n_streak > np.sum(sat_core):
+            self.logger.debug(
+                "Saturation streak/bleed mask: %d px (extended from %d saturated, curved=%s)",
+                n_streak,
+                int(np.sum(sat_core)),
+                follow_curved,
+            )
+        return streak_mask
+
+    # -------------------------------------------------------------------------
+    # Satellite trail mask (long thin ridges without requiring saturation)
+    # -------------------------------------------------------------------------
+    def _make_satellite_trail_mask(
+        self,
+        image: np.ndarray,
+        n_sigma: float = 3.0,
+        min_length_px: int = 40,
+        min_aspect_ratio: float = 5.0,
+        min_area_px: int = 100,
+        dilate_iterations: int = 2,
+        image_median: float | None = None,
+        image_sigma: float | None = None,
+    ) -> np.ndarray:
+        """
+        Mask satellite trails: long, thin linear features that need not be saturated.
+
+        Detects connected components above median + n_sigma * sigma (similar in
+        spirit to ASTA-style trail masks), then:
+
+        - removes tiny components (area < min_area_px),
+        - measures each remaining blob's principal axis to estimate length/width,
+        - keeps only long, thin blobs (length >= min_length_px and
+          length/width >= min_aspect_ratio),
+        - finally applies a small morphological dilation to connect segments.
+        """
+        img = np.asarray(image, dtype=float)
+        ny, nx = img.shape
+        # image_median / image_sigma let remove() share one full-image
+        # statistic pair with the other defect masks; computed here when a
+        # caller invokes the mask standalone.
+        med = (
+            float(image_median)
+            if image_median is not None
+            else float(np.nanmedian(img))
+        )
+        if image_sigma is not None:
+            sig = float(image_sigma)
+        else:
+            # Biweight scale resists the bright sources this mask is trying to
+            # find and stays continuous on heavily quantized (compressed) images.
+            sig = biweight_sky_sigma(img) if np.any(np.isfinite(img)) else 0.0
+        if sig <= 0:
+            return np.zeros_like(img, dtype=bool)
+        thresh = med + n_sigma * sig
+        bright = (img >= thresh) & np.isfinite(img)
+        if not np.any(bright):
+            return np.zeros_like(img, dtype=bool)
+
+        # Config for blob-count cap (shared with streak/column masks).
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        max_blobs = int(cfg_bkg.get("max_defect_blobs", 500))
+
+        struct = np.ones((3, 3), dtype=int)
+        labels, n_comp = ndi_label(bright, structure=struct)
+        trail_mask = np.zeros_like(img, dtype=bool)
+        n_trails = 0
+        min_area = max(3, min_area_px)
+        blob_slices = find_objects(labels, int(n_comp))
+        # Performance guard: cap blobs processed (largest first).
+        if max_blobs > 0 and len(blob_slices) > max_blobs:
+            sized = []
+            for j, sl in enumerate(blob_slices):
+                if sl is None:
+                    continue
+                sub_lbl = labels[sl]
+                sized.append((int((sub_lbl == j + 1).sum()), j))
+            sized.sort(reverse=True)
+            keep_idx = {j for _, j in sized[:max_blobs]}
+            blob_slices = [sl for j, sl in enumerate(blob_slices) if j in keep_idx]
+            self.logger.debug(
+                "Satellite trail mask: capping to %d of %d blobs (largest first).",
+                len(blob_slices), n_comp,
+            )
+        for idx, sl in enumerate(blob_slices, start=1):
+            if sl is None:
+                continue
+            sub_lbl = labels[sl]
+            blob = sub_lbl == idx
+            n_pix = int(blob.sum())
+            if n_pix < min_area:
+                continue
+            rr, cc = np.nonzero(blob)
+            rr = rr + sl[0].start
+            cc = cc + sl[1].start
+            cy, cx = np.mean(rr), np.mean(cc)
+            dr, dc = rr - cy, cc - cx
+            mrr = np.mean(dr * dr)
+            mcc = np.mean(dc * dc)
+            mrc = np.mean(dr * dc)
+            # Principal-axis angle from the column axis: theta =
+            # 0.5*atan2(2*Cov, Var_x - Var_y).  Reversing the variance
+            # difference rotates the measured axis by 90 deg, which swaps
+            # length and width and makes axis-aligned ridges (exactly
+            # vertical/horizontal trails) measure aspect < 1.
+            if np.abs(mrc) > 1e-12:
+                angle = 0.5 * np.arctan2(2 * mrc, mcc - mrr)
+            else:
+                angle = np.pi / 2 if mrr >= mcc else 0.0
+            cos_a, sin_a = np.cos(angle), np.sin(angle)
+            proj_major = dc * cos_a + dr * sin_a
+            proj_minor = -dc * sin_a + dr * cos_a
+            length = 2.0 * (float(np.max(np.abs(proj_major))) + 0.5)
+            width = 2.0 * (float(np.max(np.abs(proj_minor))) + 0.5)
+            width = max(width, 1.0)
+            if length >= min_length_px and (length / width) >= min_aspect_ratio:
+                sub_trail = trail_mask[sl]
+                sub_trail[blob] = True
+                n_trails += 1
+        if np.any(trail_mask):
+            trail_mask = binary_dilation(
+                trail_mask, structure=struct, iterations=dilate_iterations
+            )
+            self.logger.info(
+                "Satellite/trail mask: %d px (%d elongated component(s))",
+                int(np.sum(trail_mask)),
+                n_trails,
+            )
+        return trail_mask
+
+    # -------------------------------------------------------------------------
+    # Defect column/row mask (short axis-aligned ridges below trail limits)
+    # -------------------------------------------------------------------------
+    def _make_defect_column_mask(
+        self,
+        image: np.ndarray,
+        n_sigma: float = 3.0,
+        min_length_px: int = 12,
+        min_aspect_ratio: float = 3.0,
+        max_width_px: float = 3.0,
+        axis_tolerance_deg: float = 20.0,
+        dilate_iterations: int = 1,
+        image_median: float | None = None,
+        image_sigma: float | None = None,
+    ) -> np.ndarray:
+        """
+        Mask hot-pixel columns/rows: short, narrow, axis-aligned ridges that
+        _make_satellite_trail_mask misses because they fall below its
+        minimum length.
+
+        Same connected-component approach as the trail mask, but keeps only
+        blobs whose principal axis is nearly vertical or horizontal (within
+        axis_tolerance_deg) and thin (width <= max_width_px): genuine bad
+        columns/rows and pixel-aligned cosmic-ray clusters are
+        detector-aligned, while compact galaxies and star cores are not
+        elongated and diffraction spikes are already handled by the streak
+        mask.
+        """
+        img = np.asarray(image, dtype=float)
+        # image_median / image_sigma let remove() share one full-image
+        # statistic pair with the other defect masks.
+        med = (
+            float(image_median)
+            if image_median is not None
+            else float(np.nanmedian(img))
+        )
+        if image_sigma is not None:
+            sig = float(image_sigma)
+        else:
+            sig = biweight_sky_sigma(img) if np.any(np.isfinite(img)) else 0.0
+        if sig <= 0:
+            return np.zeros_like(img, dtype=bool)
+        thresh = med + n_sigma * sig
+        bright = (img >= thresh) & np.isfinite(img)
+        if not np.any(bright):
+            return np.zeros_like(img, dtype=bool)
+
+        # Config for blob-count cap (shared with streak/trail masks).
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        max_blobs = int(cfg_bkg.get("max_defect_blobs", 500))
+
+        struct = np.ones((3, 3), dtype=int)
+        labels, n_comp = ndi_label(bright, structure=struct)
+        col_mask = np.zeros_like(img, dtype=bool)
+        n_cols = 0
+        tol = np.radians(float(axis_tolerance_deg))
+        blob_slices = find_objects(labels, int(n_comp))
+        # Performance guard: cap blobs processed (largest first).
+        if max_blobs > 0 and len(blob_slices) > max_blobs:
+            sized = []
+            for j, sl in enumerate(blob_slices):
+                if sl is None:
+                    continue
+                sub_lbl = labels[sl]
+                sized.append((int((sub_lbl == j + 1).sum()), j))
+            sized.sort(reverse=True)
+            keep_idx = {j for _, j in sized[:max_blobs]}
+            blob_slices = [sl for j, sl in enumerate(blob_slices) if j in keep_idx]
+            self.logger.debug(
+                "Defect column mask: capping to %d of %d blobs (largest first).",
+                len(blob_slices), n_comp,
+            )
+        for idx, sl in enumerate(blob_slices, start=1):
+            if sl is None:
+                continue
+            blob = labels[sl] == idx
+            # A line needs at least min_length_px pixels; smaller blobs are
+            # ordinary compact sources.
+            if int(blob.sum()) < max(3, int(min_length_px)):
+                continue
+            rr, cc = np.nonzero(blob)
+            rr = rr + sl[0].start
+            cc = cc + sl[1].start
+            cy, cx = np.mean(rr), np.mean(cc)
+            dr, dc = rr - cy, cc - cx
+            mrr = np.mean(dr * dr)
+            mcc = np.mean(dc * dc)
+            mrc = np.mean(dr * dc)
+            if np.abs(mrc) > 1e-12:
+                angle = 0.5 * np.arctan2(2 * mrc, mcc - mrr)
+            else:
+                angle = np.pi / 2 if mrr >= mcc else 0.0
+            cos_a, sin_a = np.cos(angle), np.sin(angle)
+            proj_major = dc * cos_a + dr * sin_a
+            proj_minor = -dc * sin_a + dr * cos_a
+            length = 2.0 * (float(np.max(np.abs(proj_major))) + 0.5)
+            width = 2.0 * (float(np.max(np.abs(proj_minor))) + 0.5)
+            width = max(width, 1.0)
+            if (
+                length < min_length_px
+                or (length / width) < min_aspect_ratio
+                or width > max_width_px
+            ):
+                continue
+            # Axis-aligned only: the major axis must sit within the
+            # tolerance of the row or column direction.  Diagonal ridges
+            # stay the trail mask's job.
+            a = abs(angle) % np.pi
+            near_axis = (a <= tol) or (a >= np.pi - tol) or (abs(a - np.pi / 2) <= tol)
+            if not near_axis:
+                continue
+            sub_col = col_mask[sl]
+            sub_col[blob] = True
+            n_cols += 1
+        if np.any(col_mask):
+            col_mask = binary_dilation(
+                col_mask, structure=struct, iterations=dilate_iterations
+            )
+            self.logger.info(
+                "Defect column/row mask: %d px (%d axis-aligned " "component(s))",
+                int(np.sum(col_mask)),
+                n_cols,
+            )
+        return col_mask
+
+    # -------------------------------------------------------------------------
+    # MaxiMask deep-learning defect mask (optional)
+    # -------------------------------------------------------------------------
+    def _maximask_probabilities(
+        self, image: np.ndarray, batch_size: int, allow_gpu: bool
+    ):
+        """Run MaxiMask inference on an image.
+
+        Returns ``(probs, class_abbr, thresholds)`` where *probs* has shape
+        ``(nb_classes, ny, nx)`` of prior-modified probabilities, or None
+        when MaxiMask cannot run: missing tensorflow/maximask, image axes
+        below the 400 px inference tile, an all-zero frame, or an
+        inference failure.  The caller then keeps the heuristic defect
+        masks unchanged.
+
+        Inference stays in memory by calling ``process_image`` directly -
+        the file-level ``process_all`` would write a large
+        ``<image>.mask.fits`` beside the input.
+        """
+        ny, nx = image.shape
+        if ny <= 400 or nx <= 400:
+            self.logger.warning(
+                "use_maximask: image %dx%d too small for MaxiMask's 400 px "
+                "tiles; skipping",
+                nx,
+                ny,
+            )
+            return None
+        if not np.any(image):
+            return None
+
+        _cvd_prev = None
+        if not allow_gpu:
+            # CPU-only default: hide GPUs before TensorFlow initialises so
+            # the stage is safe on machines without drivers or with a GPU
+            # reserved for other work.  Assign (not setdefault): a shell
+            # CUDA_VISIBLE_DEVICES must not leak GPUs into a CPU-only
+            # stage.  The variable is restored in `finally` once TF's
+            # device list is pinned - leaving it cleared would hide the
+            # GPU from later GPU consumers in this process (e.g. the SFFT
+            # Cupy-backend subprocess).
+            _cvd_prev = os.environ.get("CUDA_VISIBLE_DEVICES")
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        # TensorFlow's C++/absl logging (oneDNN notes, cuInit probes, the
+        # "before absl::InitializeLog" warnings) is informational noise for
+        # a library call.  Level 3 keeps only errors; the fd-level redirect
+        # below covers the few native prints the level cannot reach.
+        os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+        try:
+            with _suppress_native_stderr():
+                import tensorflow as tf
+
+                if not allow_gpu:
+                    try:
+                        tf.config.set_visible_devices([], "GPU")
+                    except RuntimeError:
+                        # Devices were already initialised in this process; the
+                        # model still runs wherever TensorFlow placed it.
+                        pass
+                else:
+                    # TF's default is to reserve ~all device memory at first
+                    # use.  With several image workers pinned to the same GPU
+                    # (nGPU round-robin), the later processes then die in the
+                    # ROCm/CUDA runtime (hipblaslt 'out of memory' / SIGSEGV).
+                    # Growth mode allocates only what inference needs.
+                    try:
+                        for _gpu in tf.config.list_physical_devices("GPU"):
+                            tf.config.experimental.set_memory_growth(_gpu, True)
+                    except RuntimeError:
+                        # Devices already initialised; allocation policy is
+                        # whatever it was set to then.
+                        pass
+            try:
+                tf.get_logger().setLevel("ERROR")
+                import absl.logging
+
+                absl.logging.set_verbosity(absl.logging.ERROR)
+                absl.logging.set_stderrthreshold("error")
+            except Exception as exc:
+                self.logger.debug("absl log-level adjustment skipped: %s", exc)
+            # The maximask package logs config paths at INFO; noise in a
+            # library call.
+            logging.getLogger("maximask_and_maxitrack").setLevel(logging.WARNING)
+            import maximask_and_maxitrack.maximask.maximask as mm_inf_mod
+            from maximask_and_maxitrack import utils
+        except ImportError as exc:
+            self.logger.warning(
+                "use_maximask requested but %s - continuing without MaxiMask "
+                "(optional extra; install maximask-and-maxitrack and "
+                "tensorflow to enable)",
+                exc,
+            )
+            return None
+        finally:
+            if not allow_gpu:
+                # TF's visible-device list is already pinned (or the import
+                # failed entirely); restore the shell value so other GPU
+                # consumers keep working.
+                if _cvd_prev is None:
+                    os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+                else:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = _cvd_prev
+
+        try:
+            mm_dir = Path(utils.__file__).resolve().parent / "maximask"
+            nb = mm_inf_mod.MaxiMask_inference.nb_classes
+            class_flags = utils.read_config_file(
+                str(mm_dir / "config" / "classes.flags"), nb, self.logger
+            )
+            priors = utils.read_config_file(
+                str(mm_dir / "config" / "classes.priors"),
+                nb,
+                self.logger,
+                to_float=True,
+            )
+            thresholds = utils.read_config_file(
+                str(mm_dir / "config" / "classes.thresh"),
+                nb,
+                self.logger,
+                to_float=True,
+            )
+            mm_inf = mm_inf_mod.MaxiMask_inference(
+                None,
+                str(mm_dir / "model"),
+                class_flags,
+                priors,
+                None,
+                False,
+                batch_size,
+            )
+            model_key = str(mm_dir / "model")
+            tf_model = _MM_TF_MODEL_CACHE.get(model_key)
+            if tf_model is None:
+                with _suppress_native_stderr():
+                    tf_model = tf.saved_model.load(model_key)
+                _MM_TF_MODEL_CACHE[model_key] = tf_model
+            normed, _ = utils.image_norm(np.asarray(image, dtype=np.float32))
+            preds = np.zeros(normed.shape + (nb,), dtype=np.float32)
+            self.logger.info(
+                "Running MaxiMask inference (%s) - this takes ~1 min per "
+                "MPix on CPU",
+                "GPU" if allow_gpu else "CPU",
+            )
+            # process_image drives a tqdm bar with no verbosity switch and
+            # this tqdm predates TQDM_DISABLE; redirect Python-level stderr
+            # during the call.  tqdm binds sys.stderr at construction while
+            # logging handlers hold their original stream, so pipeline logs
+            # still print.
+            with contextlib.redirect_stderr(io.StringIO()):
+                mm_inf.process_image(normed, preds, tf_model)
+            return (
+                np.transpose(preds, (2, 0, 1)),
+                mm_inf_mod.MaxiMask_inference.class_abbr,
+                thresholds,
+            )
+        except Exception as exc:
+            self.logger.warning("MaxiMask inference failed: %s", exc)
+            return None
+
+    def _make_maximask_mask(self, image: np.ndarray) -> np.ndarray:
+        """Mask defects using the MaxiMask contaminant classes.
+
+        Reads the ``background.maximask_*`` config keys; returns an
+        all-False mask whenever the stage is disabled or cannot run so the
+        heuristic mask chain degrades gracefully.
+        """
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        classes = cfg_bkg.get("maximask_classes", list(MAXIMASK_DEFECT_CLASSES))
+        if isinstance(classes, str):
+            classes = [c.strip() for c in classes.split(",") if c.strip()]
+        # Batch-size effect is strongly non-monotonic on CPU: measured
+        # (14-core, TF 2.21, 64-tile frame) bs=4: 22 s, bs=8: 36 s,
+        # bs=16: 72 s, bs=32: 175 s.  Larger batches lose to memory traffic
+        # and serial post-ops inside the SavedModel graph.
+        batch_size = int(cfg_bkg.get("maximask_batch_size", 4))
+        dilate_iterations = int(cfg_bkg.get("maximask_dilate_iterations", 1))
+        allow_gpu = bool(cfg_bkg.get("maximask_allow_gpu", False))
+
+        # remove() is invoked several times per epoch on the same detector
+        # pixels, including after `image -= background_surface` mutates the
+        # array in place.  Cache the finished mask on a normalised signature
+        # (median/std-scaled, quantised subsample) so affine flux changes
+        # still hit the cache: defects do not move under subtraction.
+        sub = np.nan_to_num(np.asarray(image[::16, ::16], dtype=np.float64), nan=0.0)
+        _sc = np.std(sub) or 1.0
+        sig = (
+            image.shape,
+            np.round((sub - np.median(sub)) / _sc, 1).tobytes(),
+        )
+        if getattr(self, "_mm_sig", None) == sig:
+            self.logger.info(
+                "Reusing cached MaxiMask defect mask (unchanged detector pixels)"
+            )
+            return self._mm_mask
+        self._maximask_class_masks = None
+        self.logger.info(
+            "Using MaxiMask (Paillassa et al. 2020) to detect %s",
+            ", ".join(_MAXIMASK_CLASS_NAMES.get(c, c) for c in classes),
+        )
+        out = self._maximask_probabilities(image, batch_size, allow_gpu)
+        if out is None:
+            mask = np.zeros(image.shape, dtype=bool)
+            self._mm_sig, self._mm_mask = sig, mask
+            return mask
+        probs, class_abbr, thresholds = out
+        self.maximask_active = True
+
+        unknown = [c for c in classes if c not in class_abbr]
+        if unknown:
+            self.logger.warning(
+                "use_maximask: unknown class(es) %s ignored (valid: %s)",
+                unknown,
+                class_abbr,
+            )
+        mask = np.zeros(image.shape, dtype=bool)
+        class_masks = {}
+        for c in classes:
+            if c not in class_abbr:
+                continue
+            i = class_abbr.index(c)
+            cls_mask = probs[i] >= thresholds[i]
+            if cls_mask.any():
+                class_masks[c] = cls_mask
+            mask |= cls_mask
+        # Retained for the Maximask_<base> diagnostic figure; pre-dilation
+        # so the plot shows the network's raw per-class detections.
+        self._maximask_class_masks = class_masks
+
+        if dilate_iterations > 0 and np.any(mask):
+            mask = binary_dilation(
+                mask,
+                structure=np.ones((3, 3), dtype=int),
+                iterations=dilate_iterations,
+            )
+        self._maximask_mask = mask
+        self._mm_sig, self._mm_mask = sig, mask
+        self.logger.info(
+            "MaxiMask defect mask: %d px (%.2f%% of the image)",
+            int(np.sum(mask)),
+            100.0 * np.sum(mask) / image.size if image.size > 0 else 0.0,
+        )
+        return mask
+
+    # -------------------------------------------------------------------------
+    # Adaptive box resizing
+    # -------------------------------------------------------------------------
+    def _adaptive_box_for_mask(
+        self,
+        mask: np.ndarray,
+        init_box: tuple,
+        min_frac: float = 0.15,
+        min_box: int = 32,
+    ) -> tuple:
+        """Shrink the Background2D box until enough unmasked pixels remain.
+
+        Returns an odd-valued ``(bx, bx)`` box size.
+        """
+        valid = (~mask).astype(np.float32)
+        bx = max(1, int(init_box[0]))
+
+        global_unmasked = valid.mean()
+        if global_unmasked >= min_frac:
+            return (bx | 1, bx | 1)
+
+        while bx >= min_box:
+            cov = uniform_filter(valid, size=bx, mode="nearest")
+            if np.nanmedian(cov) >= min_frac:
+                return (bx | 1, bx | 1)
+            bx = int(bx * 0.75)
+
+        return (min_box | 1, min_box | 1)
+
+    # -------------------------------------------------------------------------
+    # Automatic field classification (sparse / crowded / nebulous)
+    # -------------------------------------------------------------------------
+    def _classify_field(
+        self,
+        image: np.ndarray,
+        mask: np.ndarray,
+        fwhm_pixels: float | None = None,
+        image_median: float | None = None,
+        image_sigma: float | None = None,
+    ) -> dict:
+        """
+        Classify the field regime and derive background parameters.
+
+        The classification is based on:
+        - bright_frac      : fraction of pixels > median + 4 * MAD  (crowding)
+        - large_scale_ratio: fraction of variance on large spatial scales
+                             (diffuse nebulosity / strong gradients)
+
+        ``image_median`` / ``image_sigma`` let ``remove()`` supply the
+        already-computed full-image median and biweight sigma when the
+        classified pixel subset (finite, unmasked) is identical to the one
+        those statistics were measured on; this skips a redundant
+        ``biweight_scale`` pass over every megapixel.
+        """
+        finite = np.isfinite(image) & ~mask
+        if not np.any(finite):
+            # Fallback to conservative defaults.
+            return {
+                "regime": "unknown",
+                "nsigma": 2.5,
+                "n_iterations": 3,
+                "dilate_factor": 2.5,  # Moderate dilation for balanced masking
+                "dilate_iterations": 2,  # 2 iterations for balanced masking
+                "mesh_scale": 6.0,
+                "exclude_percentile": 90.0,
+            }
+
+        data = image[finite]
+        if image_median is not None and image_sigma is not None:
+            med = float(image_median)
+            scatter = float(image_sigma)
+        else:
+            med = np.nanmedian(data)
+            scatter = biweight_sky_sigma(data)
+        if not np.isfinite(scatter) or scatter <= 0:
+            scatter = np.nanstd(data)
+            if not np.isfinite(scatter) or scatter <= 0:
+                scatter = 1.0
+
+        # Use a relatively high threshold so that only genuinely crowded
+        # fields (with many bright pixels) are flagged as such. A 4-sigma cut
+        # is much less sensitive to mild wings or a few bright stars than 3-sigma.
+        bright_thresh = med + 4.0 * scatter
+        bright_frac = float(np.mean(data > bright_thresh))
+
+        # Large-scale structure estimator: compare a heavily smoothed image
+        # to small-scale residuals.  High large_scale_ratio indicates strong
+        # nebulosity / gradients.
+        try:
+            if fwhm_pixels is not None:
+                sigma_smooth = max(3.0 * fwhm_pixels, 20.0)
+            else:
+                sigma_smooth = max(min(image.shape) / 50.0, 10.0)
+
+            img_finite = np.where(np.isfinite(image), image, med)
+            # Full-image gaussian_filter dominates CPU on large detectors; the
+            # large-scale ratio is a coarse regime flag, so a modest stride
+            # preserves the heuristic while cutting cost ~stride^2.
+            ny, nx = image.shape
+            max_dim = max(ny, nx)
+            stride = max(1, int(np.ceil(max_dim / 1024)))
+            if stride > 1:
+                img_s = img_finite[::stride, ::stride]
+                finite_s = finite[::stride, ::stride]
+                sigma_s = float(sigma_smooth) / float(stride)
+                smooth_s = gaussian_filter(
+                    img_s, sigma=max(sigma_s, 1.5), mode="nearest"
+                )
+                resid_s = img_s - smooth_s
+                std_smooth = np.nanstd(smooth_s[finite_s])
+                std_resid = np.nanstd(resid_s[finite_s])
+            else:
+                smooth = gaussian_filter(
+                    img_finite, sigma=float(sigma_smooth), mode="nearest"
+                )
+                resid = img_finite - smooth
+                std_smooth = np.nanstd(smooth[finite])
+                std_resid = np.nanstd(resid[finite])
+            large_scale_ratio = float(std_smooth / (std_smooth + std_resid + 1e-6))
+        except Exception:
+            large_scale_ratio = 0.0
+
+        # Heuristic regime classification.
+        regime = "sparse"
+        # Crowded only if a substantial fraction of all *unmasked* pixels lie
+        # above the 4-sigma threshold. This is intended to track the regime
+        # where genuine background pixels are scarce (image effectively filled
+        # with stellar profiles), not simply "many stars present".
+        cfg_bkg = (
+            self.config.get("background", {}) if isinstance(self.config, dict) else {}
+        )
+        fast_mode = bool(cfg_bkg.get("fast_mode", False))
+        crowded_bright_min = float(cfg_bkg.get("crowded_bright_frac_min", 0.40))
+        if bright_frac >= crowded_bright_min:
+            regime = "crowded"
+        if large_scale_ratio > 0.4:
+            regime = "nebulous" if regime == "sparse" else "crowded_nebulous"
+
+        self.logger.debug(
+            "Background regime=%s  bright_frac=%.3f  large_scale_ratio=%.3f",
+            regime,
+            bright_frac,
+            large_scale_ratio,
+        )
+
+        # Map regime -> tuned parameters. The dilate_factor values control how
+        # far masks expand around detected sources; use moderate values (2.0-3.0)
+        # for balanced masking that excludes source cores while preserving sky.
+        # dilate_iterations controls how many dilation passes to apply.
+        if regime == "sparse":
+            params = dict(
+                nsigma=3.0,
+                n_iterations=2,
+                dilate_factor=2.5,  # Moderate dilation for balanced masking
+                dilate_iterations=2,  # 2 iterations for balanced masking
+                mesh_scale=10.0,
+                exclude_percentile=90.0,
+            )
+        elif regime == "crowded":
+            params = dict(
+                nsigma=2.5,
+                n_iterations=3,
+                dilate_factor=2.5,  # Moderate dilation for balanced masking
+                dilate_iterations=2,  # 2 iterations for balanced masking
+                mesh_scale=8.0,
+                exclude_percentile=85.0,
+            )
+        elif regime == "nebulous":
+            params = dict(
+                nsigma=2.2,
+                n_iterations=3,
+                dilate_factor=2.5,  # Moderate dilation for balanced masking
+                dilate_iterations=2,  # 2 iterations for balanced masking
+                mesh_scale=8.0,
+                exclude_percentile=80.0,
+            )
+        else:  # crowded_nebulous or unknown complex regime
+            params = dict(
+                nsigma=2.2,
+                n_iterations=4,
+                dilate_factor=3.0,  # Slightly higher for complex fields
+                dilate_iterations=3,  # 3 iterations for complex fields
+                mesh_scale=7.0,
+                exclude_percentile=80.0,
+            )
+
+        # Fast mode: lighter masking and somewhat coarser mesh for speed.
+        if fast_mode:
+            self.logger.debug(
+                "Background: fast_mode=True - using lighter masking and coarser mesh for speed."
+            )
+            params["n_iterations"] = max(1, min(params["n_iterations"], 2))
+            params["dilate_factor"] = min(params["dilate_factor"], 3.0)
+            params["mesh_scale"] = max(5.0, params["mesh_scale"] * 0.8)
+
+        params["regime"] = regime
+        return params
+
+    # -------------------------------------------------------------------------
+    # Background2D estimation
+    # -------------------------------------------------------------------------
+    def _estimate_background(
+        self,
+        image: np.ndarray,
+        mask,
+        box_size: tuple,
+        filter_size: int,
+        exclude_percentile: float = 90.0,
+    ):
+        """
+        Fit a smooth sky-background surface with photutils Background2D.
+
+        Uses BiweightLocation (resists outlier boxes) and photutils's cubic
+        spline zoom (the only interpolator photutils>=3 supports).  On
+        failure, retries with progressively larger boxes before falling
+        back to a flat global-median surface.
+        """
+        # Try the requested box size, then progressively larger ones.
+        attempts = [
+            (box_size, filter_size, mask),
+        ]
+        # Fallback 1: double the box size (fewer, larger boxes = less noise-sensitive).
+        big = (box_size[0] * 2) | 1
+        attempts.append(((big, big), max(3, filter_size), mask))
+        # Fallback 2: minimal mask (NaN/saturation only) + large boxes (last resort before flat).
+        nan_only_mask = ~np.isfinite(image) if image is not None else None
+        attempts.append(((big, big), 3, nan_only_mask))
+
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        fast_mode = bool(cfg_bkg.get("fast_mode", False))
+        # photutils>=3 deprecated the Background2D interpolator kwarg and
+        # always resizes the mesh with a cubic spline zoom; the
+        # global_interpolator / global_interp_order config keys no longer
+        # have an effect.
+        global_interpolator = (
+            str(cfg_bkg.get("global_interpolator", "zoom")).strip().lower()
+        )
+        if global_interpolator != "zoom":
+            self.logger.debug(
+                "Background: global_interpolator=%r ignored - photutils>=3 "
+                "always uses cubic zoom.",
+                global_interpolator,
+            )
+        clip_maxiters = int(cfg_bkg.get("global_sigma_clip_maxiters", 10))
+        if fast_mode:
+            clip_maxiters = min(clip_maxiters, 5)
+        clip_maxiters = max(1, clip_maxiters)
+        for i, (bs, fs, m) in enumerate(attempts):
+            try:
+                bkg = Background2D(
+                    image,
+                    mask=m,
+                    box_size=bs,
+                    filter_size=fs,
+                    sigma_clip=SigmaClip(sigma=3.0, maxiters=clip_maxiters),
+                    bkg_estimator=BiweightLocationBackground(),
+                    bkg_rms_estimator=BiweightScaleBackgroundRMS(),
+                    exclude_percentile=float(exclude_percentile),
+                    n_threads=photutils_n_threads(self.config),
+                )
+
+                bkg_rms = np.asarray(bkg.background_rms, dtype=float)
+                rms_median = np.nanmedian(bkg_rms)
+                # Add validation for NaN median before using in floor calculation
+                if not np.isfinite(rms_median) or not np.any(np.isfinite(bkg_rms)):
+                    rms_median = 1.0  # Fallback to reasonable default
+                # More adaptive floor: use 10% of median instead of 50%
+                # This preserves more realistic noise variations while preventing zeros
+                rms_floor = max(rms_median * 0.1, 1e-6)
+                # Preserve NaNs for chip gaps, only clip finite values
+                bkg_rms = np.where(
+                    np.isfinite(bkg_rms), np.clip(bkg_rms, rms_floor, None), np.nan
+                )
+
+                # Log statistics for debugging
+                rms_mean = np.nanmean(bkg_rms)
+                rms_std = np.nanstd(bkg_rms)
+                self.logger.debug(
+                    "Background RMS statistics: median=%.3f, mean=%.3f, std=%.3f, floor=%.3f",
+                    rms_median,
+                    rms_mean,
+                    rms_std,
+                    rms_floor,
+                )
+
+                # Use the raw Background2D background map without any
+                # additional median or Gaussian post-processing so that
+                # execution time stays minimal.
+                bkg_data = np.asarray(bkg.background, dtype=np.float32)
+
+                self.logger.debug(
+                    "Attempt: %d | Box: %s | Filter: %d | Exclude: %.1f%%",
+                    i + 1,
+                    bs,
+                    fs,
+                    float(exclude_percentile),
+                )
+
+                bkg_median = float(
+                    np.nanmedian(bkg.background_median)
+                    if np.ndim(bkg.background_median)
+                    else bkg.background_median
+                )
+
+                if i > 0:
+                    self.logger.info(
+                        f"Background2D succeeded on attempt {i + 1} "
+                        f"(box_size={bs}, mask={'yes' if m is not None else 'no'})"
+                    )
+                return True, bkg_data, bkg_rms, bkg_median
+
+            except Exception as exc:
+                self.logger.warning(
+                    f"Background2D attempt {i + 1} failed (box={bs}): {exc}"
+                )
+                continue
+
+        # All attempts failed - flat fallback.
+        self.logger.warning("All Background2D attempts failed - using global stats")
+        gmean, gmed, _ = sigma_clipped_stats(image, sigma=3.0, mask=mask)
+        gstd = biweight_sky_sigma(image, mask=mask)
+        if not np.isfinite(gstd) or gstd <= 0:
+            gstd = float(_)
+        bkg_surface = np.full_like(image, gmed, dtype=np.float32)
+        bkg_rms = np.full_like(image, max(gstd, 1.0), dtype=np.float32)
+        return True, bkg_surface, bkg_rms, gmed
+
+    # -------------------------------------------------------------------------
+    # Saturation guard
+    # -------------------------------------------------------------------------
+    def _check_saturation(self, bkg_median: float, saturate: float) -> float:
+        """Disable saturation clipping if the background median is near saturation."""
+        # No valid level means nothing to clip against; return inf instead of
+        # propagating a NaN or a misleading 1e12 sentinel into the config.
+        if not np.isfinite(saturate) or saturate <= 0:
+            return np.inf
+        if bkg_median >= 0.95 * saturate:
+            self.logger.warning(
+                f"Background median [{bkg_median:.3e}] near saturation "
+                f"[{saturate:.3e}].  Disabling saturation clipping."
+            )
+            return 1e12
+        return saturate
+
+    def _estimate_effective_saturation(
+        self, image: np.ndarray, bkg_median: float, bkg_std: float
+    ) -> float:
+        """
+        Estimate the effective saturation level from image data when the header
+        SATURATE value is missing or unreasonably high.
+
+        Bright stars that are effectively saturated (flat-topped PSF, diffraction
+        spikes) have pixel peaks well below the formal saturation limit but still
+        produce artifacts.  We estimate the effective saturation as the peak of
+        the brightest stellar-like source, which is where diffraction spikes and
+        bleed trails start to appear.
+
+        Returns the estimated saturation level, or np.inf if no bright sources
+        are found.
+        """
+        finite = np.isfinite(image)
+        if not np.any(finite) or bkg_std <= 0:
+            return np.inf
+
+        # Find bright peaks: > 50 sigma above background
+        bright_thresh = bkg_median + 50.0 * bkg_std
+        bright = (image >= bright_thresh) & finite
+        if not np.any(bright):
+            return np.inf
+
+        # The effective saturation is approximately the brightest pixel value
+        # that appears in multiple pixels (a saturated star has a flat top).
+        # Use the 99.99th percentile of bright pixels as the effective saturation.
+        bright_vals = image[bright]
+        if len(bright_vals) < 5:
+            return float(np.max(bright_vals))
+
+        eff_sat = float(np.percentile(bright_vals, 99.99))
+        # Sanity: must be well above background
+        if eff_sat < bkg_median + 20.0 * bkg_std:
+            return np.inf
+
+        self.logger.info(
+            f"Estimated effective saturation: {eff_sat:.1f} ADU "
+            f"(from bright pixel percentile; bkg={bkg_median:.1f}, "
+            f"std={bkg_std:.1f}, n_bright={len(bright_vals)})"
+        )
+        return eff_sat
+
+    # -------------------------------------------------------------------------
+    # Figure saving helper
+    # -------------------------------------------------------------------------
+    def _save_figure(self, fig: plt.Figure, fpath: str, prefix: str) -> None:
+        """Save *fig* next to *fpath* with a titled prefix (e.g. ``Background_*.png``)."""
+        outdir = os.path.dirname(fpath)
+        if outdir and not os.path.exists(outdir):
+            os.makedirs(outdir, exist_ok=True)
+
+        base = os.path.splitext(os.path.basename(fpath))[0]
+        prefix_title = "_".join([p[:1].upper() + p[1:] for p in prefix.split("_")])
+        save_path_png = os.path.join(
+            outdir,
+            f"{prefix_title}_{base}{get_plot_ext(getattr(self, 'config', None))}",
+        )
+
+        fig.savefig(save_path_png, dpi=150, bbox_inches="tight", facecolor="white")
+        plt.close(fig)
+
+    # =========================================================================
+    # Public API: global background subtraction
+    # =========================================================================
+    def remove(
+        self,
+        image: np.ndarray,
+        header=None,
+        galaxies=None,
+        plot: bool = False,
+        mask: np.ndarray = None,
+        pixel_scale: float = None,
+        fwhm: float = None,
+        mask_simbad_galaxies: bool = False,
+    ) -> dict:
+        """
+        Estimate and subtract a global sky-background model.
+
+        The method now uses iterative source masking (3 passes), large mesh
+        boxes, spline interpolation, and saturation masking to produce a
+        genuinely smooth background surface without source/galaxy ghosts.
+        """
+        image = np.asarray(image)
+        if image.ndim != 2 or image.size == 0:
+            raise ValueError(
+                f"image must be a non-empty 2-D array, got shape {image.shape}"
+            )
+        if mask is not None and np.shape(mask) != image.shape:
+            raise ValueError(
+                f"mask shape {np.shape(mask)} != image shape {image.shape}"
+            )
+        self._require_config_keys(["saturate"] + (["fpath"] if plot else []))
+
+        if galaxies is None:
+            galaxies = []
+
+        self.logger.info(log_step("Background: sky & RMS"))
+
+        cfg_bkg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        fast_mode = bool(cfg_bkg.get("fast_mode", False))
+
+        # Treat near-zero values as invalid. The threshold is configurable
+        # because legitimately tiny nonzero flux can be meaningful on inputs
+        # like difference images.
+        zero_threshold = float(cfg_bkg.get("zero_threshold", 1e-29))
+        if not np.isfinite(zero_threshold) or zero_threshold < 0:
+            zero_threshold = 1e-29
+        if zero_threshold > 0:
+            image = np.where(np.abs(image) < zero_threshold, np.nan, image)
+
+        # ---- Build combined mask ----
+        _user_mask_provided = mask is not None
+        if mask is None:
+            mask = np.zeros(image.shape, dtype=bool)
+
+        nan_mask = ~np.isfinite(image)
+        zero_mask = image == 0.0
+
+        total = image.size
+        n_nan = int(np.count_nonzero(nan_mask))
+        if n_nan > 0:
+            self.logger.info(f"NaN pixels: {n_nan} ({100.0 * n_nan / total:.2f}%)")
+
+        # Derive FWHM in pixels (if provided); otherwise allow helper to estimate.
+        # background.fwhm_unit declares whether the input FWHM is already in
+        # pixels or in arcsec (needs pixel_scale to convert).  If pixel_scale
+        # is missing and the unit is arcsec, fall back to treating FWHM as
+        # pixels and log a warning rather than silently mis-sizing the mesh.
+        if fwhm is not None:
+            fwhm_unit = str(
+                cfg_bkg.get("fwhm_unit", "pixels")
+            ).strip().lower()
+            if fwhm_unit == "arcsec" and pixel_scale:
+                fwhm_pixels = float(fwhm) / float(pixel_scale)
+            elif fwhm_unit == "arcsec" and not pixel_scale:
+                self.logger.warning(
+                    "FWHM given in arcsec but no pixel_scale available; "
+                    "treating FWHM as pixels (mesh sizing may be off)."
+                )
+                fwhm_pixels = float(fwhm)
+            else:
+                fwhm_pixels = float(fwhm)
+        else:
+            fwhm_pixels = None
+        fwhm_pixels = self._cap_fwhm_for_background_mesh(fwhm_pixels)
+
+        # ---- Shared full-image sky statistics ----
+        # The regime classifier, the data-driven saturation estimate and the
+        # trail / defect-column masks all threshold on the same full-image
+        # median + biweight sigma.  biweight_scale is the most expensive
+        # scalar statistic on megapixel frames, so compute the pair once and
+        # pass it down instead of paying for it in every stage.
+        _saturate_cfg_raw = self.config["saturate"]
+        _needs_data_saturation = not (
+            np.isfinite(_saturate_cfg_raw) and _saturate_cfg_raw <= 0
+        ) and (not np.isfinite(_saturate_cfg_raw) or _saturate_cfg_raw > 1e8)
+        skip_trail = fast_mode and bool(
+            cfg_bkg.get("fast_mode_skip_trail_mask", True)
+        )
+        run_trail = bool(self.config.get("mask_satellite_trails", True)) and not (
+            skip_trail
+        )
+        run_columns = bool(cfg_bkg.get("mask_defect_columns", True))
+        # The classifier measures the median/sigma of the finite, unmasked
+        # pixels; that subset equals the finite pixels when the caller passed
+        # no mask and no exact-zero pixels exist, so it can reuse the pair.
+        _share_classify_stats = (not _user_mask_provided) and not np.any(zero_mask)
+        image_med = image_sig = None
+        if (
+            _needs_data_saturation
+            or run_trail
+            or run_columns
+            or _share_classify_stats
+        ):
+            _finite_vals = image[np.isfinite(image)]
+            if _finite_vals.size:
+                image_med = float(np.median(_finite_vals))
+                image_sig = biweight_sky_sigma(_finite_vals)
+            else:
+                # No usable sky pixels (e.g. fully non-finite frame); keep
+                # neutral values so callers degrade gracefully.
+                image_med = 0.0
+                image_sig = 0.0
+
+        # Classify field regime (sparse / crowded / nebulous) and derive
+        # dynamic parameters for masking and Background2D. If config marks
+        # the image as crowded, use crowded regime so background is crowd-safe.
+        regime_params = self._classify_field(
+            image,
+            mask | nan_mask | zero_mask,
+            fwhm_pixels=fwhm_pixels,
+            image_median=image_med if _share_classify_stats else None,
+            image_sigma=image_sig if _share_classify_stats else None,
+        )
+        if self.config.get("photometry", {}).get("crowded_field", False):
+            regime_params = {
+                "regime": "crowded",
+                "nsigma": 2.5,
+                "n_iterations": 3,
+                "dilate_factor": 2.5,  # Moderate dilation for balanced masking in crowded fields
+                "dilate_iterations": 2,  # 2 iterations for balanced masking
+                "mesh_scale": 5.0,
+                "exclude_percentile": 85.0,
+            }
+            self.logger.debug(
+                "Config crowded_field=True; using crowded background regime."
+            )
+        nsigma_src = regime_params["nsigma"]
+        n_iter_src = regime_params["n_iterations"]
+        dilate_factor = regime_params["dilate_factor"]
+        mesh_scale = regime_params["mesh_scale"]
+        exclude_percentile = regime_params["exclude_percentile"]
+
+        # Compute box and filter sizes using the regime-dependent mesh_scale.
+        box_size, filter_size, fwhm_pixels = self._compute_box_sizes(
+            image,
+            mask,
+            fwhm_pixels=fwhm_pixels,
+            mesh_scale=mesh_scale,
+        )
+
+        # ---- Saturation mask ----
+        # When the header SATURATE is unreasonably high (inf or > 1e8), the
+        # formal saturation mask never triggers.  This is common when the
+        # SATURATE keyword is missing or set to a placeholder value (1e10).
+        # In this case, estimate the effective saturation from the image data
+        # so that bright stars with diffraction spikes are still masked.
+        _saturate_for_mask = self.config["saturate"]
+        # A nonpositive SATURATE is unambiguously invalid: disable saturation
+        # masking outright rather than treating every pixel as saturated.
+        # Missing/placeholder values (inf or >1e8) still fall through to the
+        # data-driven estimate below.
+        _saturate_disabled = False
+        if np.isfinite(_saturate_for_mask) and _saturate_for_mask <= 0:
+            self.logger.warning(
+                "Nonpositive SATURATE (%s) - disabling saturation masking",
+                _saturate_for_mask,
+            )
+            _saturate_for_mask = np.inf
+            _saturate_disabled = True
+        if _needs_data_saturation:
+            _eff_sat = self._estimate_effective_saturation(
+                image, image_med, image_sig
+            )
+            if np.isfinite(_eff_sat) and _eff_sat > 0:
+                _saturate_for_mask = _eff_sat
+                # Also update config so the streak mask uses the same value.
+                # SIDE EFFECT: this mutates self.config["saturate"] for the
+                # lifetime of the BackgroundSubtractor instance; a second
+                # remove() call on a different image will see the updated
+                # value.  Callers that reuse one subtractor across images
+                # with different saturation levels should pass a fresh config
+                # dict or reset self.config["saturate"] between calls.
+                self.config["saturate"] = _eff_sat
+                self.logger.info(
+                    f"Using data-driven saturation ({_eff_sat:.1f} ADU) for "
+                    f"saturation/streak masks (header value was {_saturate_for_mask:.1e})."
+                )
+
+        sat_mask = self._make_saturation_mask(
+            image,
+            _saturate_for_mask,
+            saturate_frac=float(
+                cfg_bkg.get("saturation_mask_frac", 0.90)
+            ),
+        )
+        # ---- Saturation streak / bleed mask (avoid regions from saturated stars) ----
+        bleed_half = int(self.config.get("saturate_streak_bleed_half_length", 100))
+        use_pa = self.config.get("saturate_streak_principal_axis", True)
+        follow_curved = self.config.get("saturate_streak_follow_curved", True)
+        streak_flux_frac = float(self.config.get("saturate_streak_flux_frac", 0.08))
+        if bleed_half > 0:
+            streak_mask = self._make_saturation_streak_mask(
+                image,
+                _saturate_for_mask,
+                saturate_frac=float(
+                    cfg_bkg.get("saturation_mask_frac", 0.90)
+                ),
+                bleed_half_length=bleed_half,
+                use_principal_axis=use_pa,
+                follow_curved=follow_curved,
+                streak_flux_frac=streak_flux_frac,
+            )
+        else:
+            streak_mask = np.zeros_like(image, dtype=bool)
+
+        # ---- Satellite trail mask (long thin ridges, no saturation required) ----
+        trail_mask = np.zeros_like(image, dtype=bool)
+        if run_trail:
+            trail_n_sigma = float(self.config.get("satellite_trail_n_sigma", 3.0))
+            trail_min_length = int(self.config.get("satellite_trail_min_length_px", 40))
+            trail_min_aspect = float(
+                self.config.get("satellite_trail_min_aspect_ratio", 5.0)
+            )
+            trail_min_area = int(self.config.get("satellite_trail_min_area_px", 100))
+            trail_mask = self._make_satellite_trail_mask(
+                image,
+                n_sigma=trail_n_sigma,
+                min_length_px=trail_min_length,
+                min_aspect_ratio=trail_min_aspect,
+                min_area_px=trail_min_area,
+                dilate_iterations=2,
+                image_median=image_med,
+                image_sigma=image_sig,
+            )
+        elif skip_trail:
+            self.logger.debug(
+                "Background: fast_mode - skipping satellite trail mask (full-image labeling). Set background.fast_mode_skip_trail_mask: false to enable."
+            )
+
+        # ---- Defect column/row mask (short axis-aligned ridges) ----
+        # Hot-pixel columns and pixel-aligned cosmic-ray clusters are too
+        # short for the trail mask's minimum length but should never reach
+        # source detection or PSF candidate selection.
+        # These keys live under the ``background:`` YAML section; reading
+        # them from cfg_bkg (not self.config) is required for user settings
+        # to take effect.
+        column_mask = np.zeros_like(image, dtype=bool)
+        if run_columns:
+            column_mask = self._make_defect_column_mask(
+                image,
+                n_sigma=float(cfg_bkg.get("defect_column_n_sigma", 3.0)),
+                min_length_px=int(cfg_bkg.get("defect_column_min_length_px", 12)),
+                min_aspect_ratio=float(
+                    cfg_bkg.get("defect_column_min_aspect_ratio", 3.0)
+                ),
+                max_width_px=float(cfg_bkg.get("defect_column_max_width_px", 3.0)),
+                axis_tolerance_deg=float(
+                    cfg_bkg.get("defect_column_axis_tolerance_deg", 20.0)
+                ),
+                dilate_iterations=1,
+                image_median=image_med,
+                image_sigma=image_sig,
+            )
+
+        # ---- MaxiMask defect mask (optional deep-learning stage) ----
+        # Opt-in learned contaminant segmentation (arXiv:1907.08298).  The
+        # result is treated like the other hardware defects: seeded into
+        # the source mask and reported via hardware_defects_mask so PSF
+        # candidate exclusion and downstream photometry all respect it.
+        maximask_mask = np.zeros_like(image, dtype=bool)
+        if cfg_bkg.get("use_maximask", False):
+            maximask_mask = self._make_maximask_mask(image)
+
+        # ---- Iterative source mask ----
+        # Seed with the known-bad pixels so NaN/zero/saturated regions are
+        # excluded from detection statistics and the internal residual
+        # updates instead of only being unioned in afterwards.
+        max_mask_frac = float(cfg_bkg.get("source_mask_max_fraction", 0.45))
+        source_mask = self._make_source_mask(
+            image,
+            nsigma=nsigma_src,
+            npixels=5,
+            fwhm_pixels=fwhm_pixels if fwhm_pixels is not None else 3.0,
+            dilate_factor=dilate_factor,
+            n_iterations=n_iter_src,
+            dilate_iterations=regime_params.get("dilate_iterations", 3),
+            max_mask_fraction=max_mask_frac,
+            initial_mask=(
+                mask
+                | nan_mask
+                | zero_mask
+                | sat_mask
+                | streak_mask
+                | trail_mask
+                | column_mask
+                | maximask_mask
+            ),
+        )
+
+        # ---- SIMBAD galaxy mask (with expanded ellipses) ----
+        galaxy_mask = np.zeros(image.shape, dtype=bool)
+        if mask_simbad_galaxies and len(galaxies) > 0:
+            galaxy_mask = self.masked_simbad_galaxies(
+                galaxies,
+                image,
+                header,
+                scale_factor=2.0,
+            )
+
+        # Union of all mask layers.
+        mask = (
+            mask
+            | nan_mask
+            | source_mask
+            | galaxy_mask
+            | zero_mask
+            | sat_mask
+            | streak_mask
+            | trail_mask
+            | column_mask
+            | maximask_mask
+        )
+
+        masked_frac = mask.mean()
+        self.logger.debug("Masked fraction (total): %.1f%%", 100.0 * masked_frac)
+
+        # If essentially the entire image is saturated or masked, this frame is
+        # not usable for reliable background / photometry. Bail out early with
+        # a clear error instead of letting downstream steps fail in obscure ways.
+        sat_frac = float(np.mean(sat_mask)) if sat_mask is not None else 0.0
+        if sat_frac > 0.95:
+            self.logger.error(
+                "Image appears fully saturated (saturation mask covers %.2f%% of pixels); background estimation and photometry are not reliable. "
+                "Aborting background subtraction for this frame.",
+                100.0 * sat_frac,
+            )
+            raise RuntimeError(
+                "BackgroundSubtractor: image is effectively fully saturated; cannot "
+                "estimate a meaningful sky background."
+            )
+
+        # ---- Adaptive box size for heavily masked images ----
+        if masked_frac > 0.30:
+            new_box = self._adaptive_box_for_mask(mask, box_size)
+            if new_box != box_size:
+                self.logger.info("Adjusted box_size %s -> %s", box_size, new_box)
+                box_size = new_box
+
+        self.logger.debug("box_size=%s  filter_size=%s", box_size, filter_size)
+
+        # ---- Global fallback statistics (diagnostic only) ----
+        # This sigma-clipped biweight pass costs ~1 s on 3 MP frames and its
+        # results feed only the debug log; the retry chain inside
+        # _estimate_background computes its own statistics when it needs a
+        # flat fallback.  Skip it entirely unless DEBUG logging is active.
+        if self.logger.isEnabledFor(logging.DEBUG):
+            stats_maxiters = 3 if fast_mode else 5
+            gmean, gmed, gstd = sigma_clipped_stats(
+                image,
+                sigma=3.0,
+                mask=mask,
+                cenfunc=np.nanmedian,
+                stdfunc=biweight_stdfunc,
+                maxiters=stats_maxiters,
+            )
+            self.logger.debug(
+                f"Global stats: mean={gmean:.3e} med={gmed:.3e} std={gstd:.3e}"
+            )
+
+        # ---- Background estimation (with built-in retry chain) ----
+        success, bkg_surface, bkg_rms, bkg_median = self._estimate_background(
+            image,
+            mask,
+            box_size,
+            filter_size,
+            exclude_percentile=exclude_percentile,
+        )
+
+        # Optional: damp Background2D interpolation overshoot near masked regions.
+        # This reduces "bowls/rings" around bright sources/galaxy masks caused by
+        # spline/zoom interpolation across large masked holes.
+        try:
+            cfg_bkg = (
+                (self.config.get("background", {}) or {})
+                if isinstance(self.config, dict)
+                else {}
+            )
+            fast_mode = bool(cfg_bkg.get("fast_mode", False))
+            # Skip expensive edge flattening in fast_mode unless explicitly requested
+            do_flatten = bool(cfg_bkg.get("global_mask_edge_flatten", False))
+            if fast_mode and not cfg_bkg.get("global_mask_edge_flatten"):
+                do_flatten = False  # Default to False in fast_mode for speed
+            if do_flatten and mask is not None:
+                # Radius (px) around masks to replace with a smoothed estimate.
+                raw_r_flat = cfg_bkg.get("global_mask_edge_flatten_radius_px", None)
+                r_flat = float(raw_r_flat) if raw_r_flat is not None else 0.0
+                if not np.isfinite(r_flat) or r_flat <= 0:
+                    # Default: ~1 FWHM (>=2 px).
+                    r_flat = max(
+                        2.0, float(fwhm_pixels) if fwhm_pixels is not None else 3.0
+                    )
+
+                m = np.asarray(mask, dtype=bool)
+                bkg = np.asarray(bkg_surface, dtype=float)
+
+                # Distance-to-mask band without an expensive distance transform:
+                # just grow the mask by r_flat pixels and correct only the ring.
+                grow = binary_dilation(
+                    m, structure=_disk_structuring_element(int(np.ceil(r_flat)))
+                )
+                band = grow & (~m)
+
+                # Smooth background using only unmasked pixels.
+                # Use np.where to avoid a full copy: feed NaN only to the filter.
+                bkg_u = np.where(m, np.nan, bkg)
+                w = np.isfinite(bkg_u).astype(float)
+                # Gaussian smoothing + normalization by weights.
+                raw_sig = cfg_bkg.get("global_mask_edge_flatten_sigma_px", None)
+                sig = float(raw_sig) if raw_sig is not None else (float(r_flat) / 2.0)
+                sig = max(0.8, float(sig))
+                num = gaussian_filter(bkg_u, sigma=sig, mode="nearest")
+                den = gaussian_filter(w, sigma=sig, mode="nearest")
+                smooth = num / np.maximum(den, 1e-12)
+
+                if np.any(band) and np.any(np.isfinite(smooth[band])):
+                    # Only copy once (when we actually need to modify bkg).
+                    bkg = bkg.copy()
+                    bkg[band] = smooth[band]
+                    bkg_surface = bkg
+        except Exception as e:
+            self.logger.debug("Background edge flattening skipped: %s", e)
+
+        self.logger.log(
+            STATUS,
+            f"Background median={bkg_median:.3e} RMS={np.nanmean(bkg_rms):.3e}",
+        )
+
+        # ---- Subtract background ----
+        # Ensure background surface preserves NaNs from original image (chip gaps)
+        bkg_surface = np.where(np.isnan(image), np.nan, bkg_surface)
+        sub = image - bkg_surface
+        # SIDE EFFECT: may downgrade self.config["saturate"] to 1e12 (effectively
+        # disabling saturation clipping) when the background median is within
+        # 5% of the saturation level.  See _check_saturation().
+        self.config["saturate"] = self._check_saturation(
+            bkg_median, self.config["saturate"]
+        )
+
+        if plot:
+            self._plot_diagnostics(
+                image, bkg_surface, sub, bkg_rms, self.config["fpath"], mask
+            )
+            if cfg_bkg.get("use_maximask", False):
+                self._plot_maximask_diagnostics(image, self.config["fpath"])
+
+        # Defects for downstream:
+        # - NaN/inf (chip gaps / invalid data)
+        # - exact zeros (common "no data" pads after resampling/subtraction)
+        # - saturation cores and extended bleed/streaks/trails
+        # - detected sources (iterative source mask) - included so that PSF
+        #   building, aperture photometry, and injection-site selection all
+        #   receive a full "bad-pixel" mask rather than only the hardware defects.
+        #
+        # Treating zeros as defects is important: they are not reliable sky pixels
+        # and can contaminate PSF source selection and background statistics.
+        # hardware_defects_mask: pixel defects that are coordinate-frame-independent
+        # (NaN/zeros from chip gaps/resampling, saturation cores, bleed streaks,
+        # satellite trails, MaxiMask contaminants).  Safe to pass to downstream
+        # steps that operate on a geometrically different (e.g. SWarp-resampled)
+        # version of the same image.
+        # logical_or.reduce unions in place on one output array - a | b | c
+        # chain would allocate an image-size temporary per operator.
+        hardware_defects_mask = np.logical_or.reduce(
+            [
+                nan_mask,
+                zero_mask,
+                sat_mask,
+                streak_mask,
+                trail_mask,
+                column_mask,
+                maximask_mask,
+            ]
+        )
+
+        # defects_mask: adds the iterative source mask so that PSF building,
+        # aperture photometry, and injection-site selection on THIS SAME image all
+        # receive a full bad-pixel mask.  Do NOT pass this to steps that operate
+        # on a resampled copy of the image - source positions will have shifted.
+        defects_mask = hardware_defects_mask | source_mask
+
+        # After background subtraction, pixels that were exact zeros in the
+        # original image become (0 - bkg), which are no longer zero and therefore
+        # no longer caught by a downstream == 0 check.  Force them back to NaN so
+        # any code that relies on NaN to detect no-data padding still works.
+        sub[zero_mask] = np.nan
+
+        return {
+            "image": sub,
+            "background": bkg_surface,
+            "background_rms": bkg_rms,
+            "defects_mask": defects_mask,
+            "hardware_defects_mask": hardware_defects_mask,
+            "source_mask": source_mask,
+            # Raw (pre-dilation) SP-class pixels for source-level spike
+            # flagging in PSF selection; None when MaxiMask is off or
+            # found no spikes.
+            "maximask_spike_mask": (self._maximask_class_masks or {}).get("SP"),
+        }
+
+    # =========================================================================
+    # Public API: local background subtraction around a target
+    # =========================================================================
+    def remove_local_surface(
+        self,
+        image: np.ndarray,
+        x0: float,
+        y0: float,
+        box_half_size: int = 100,
+        fwhm_pixels: float = None,
+        exclude_inner_radius: float = None,
+        dilate_factor: float = 1,  # balanced: masks wings without over-masking
+        plot: bool = True,
+        precomputed_rms: np.ndarray | None = None,  # Optional pre-computed RMS map
+    ):
+        """
+        Fit and subtract a local 2-D background surface around a target.
+
+        Uses iterative masking and spline interpolation for a smooth result.
+
+        Returns
+        -------
+        image_sub, bkg_surface_local, bkg_rms_full, nn_meta
+
+        ``nn_meta`` is ``{"lift": float, "box": tuple|None}``: uniform DC added to
+        the subtracted cutout when ``local_nonnegative_target_offset`` is enabled
+        (``box`` is ``(y_min, y_max, x_min, x_max)`` in full-image indices). Use
+        this to revert that shift for analyses that must match the raw difference
+        image (e.g. injected limiting magnitude).
+        """
+        image = np.asarray(image)
+        if image.ndim != 2 or image.size == 0:
+            raise ValueError(
+                f"image must be a non-empty 2-D array, got shape {image.shape}"
+            )
+        if precomputed_rms is not None and np.shape(precomputed_rms) != image.shape:
+            raise ValueError(
+                f"precomputed_rms shape {np.shape(precomputed_rms)} "
+                f"!= image shape {image.shape}"
+            )
+        if plot:
+            self._require_config_keys(["fpath"])
+
+        ny, nx = image.shape
+        x0, y0 = int(np.round(x0)), int(np.round(y0))
+
+        if fwhm_pixels is None:
+            fwhm_pixels = 5.0
+        fwhm_pixels = self._cap_fwhm_for_background_mesh(fwhm_pixels)
+
+        if not (0 <= x0 < nx and 0 <= y0 < ny):
+            raise ValueError(
+                f"Target coordinates ({x0}, {y0}) outside image ({nx}x{ny})."
+            )
+        if box_half_size <= 0:
+            raise ValueError("box_half_size must be positive.")
+
+        # ---- Extract cutout ----
+        x_min = max(0, x0 - box_half_size)
+        x_max = min(nx, x0 + box_half_size)
+        y_min = max(0, y0 - box_half_size)
+        y_max = min(ny, y0 + box_half_size)
+        cutout = image[y_min:y_max, x_min:x_max]
+
+        # A fully non-finite cutout (chip gap, padded region) has nothing to
+        # fit. Skip the local model but still produce a usable full-image RMS
+        # map so downstream error estimates keep working.
+        if not np.any(np.isfinite(cutout)):
+            self.logger.warning(
+                "Local background: cutout at (%d, %d) is entirely non-finite; "
+                "leaving pixels unchanged",
+                x0,
+                y0,
+            )
+            image_sub = image.copy()
+            if precomputed_rms is not None:
+                bkg_rms_full = precomputed_rms
+            else:
+                full_mask = self._make_source_mask(
+                    image_sub,
+                    nsigma=3,
+                    npixels=5,
+                    fwhm_pixels=fwhm_pixels,
+                    dilate_factor=3.0,
+                    n_iterations=2,
+                    dilate_iterations=2,
+                    initial_mask=~np.isfinite(image_sub) | (image_sub == 0.0),
+                )
+                box_size_full, filter_size_full, _ = self._compute_box_sizes(
+                    image_sub, full_mask, fwhm_pixels
+                )
+                _, _, bkg_rms_full, _ = self._estimate_background(
+                    image_sub, full_mask, box_size_full, filter_size_full
+                )
+            nn_meta = {
+                "lift": 0.0,
+                "box": (int(y_min), int(y_max), int(x_min), int(x_max)),
+            }
+            return (
+                image_sub,
+                np.full(cutout.shape, np.nan, dtype=float),
+                bkg_rms_full,
+                nn_meta,
+            )
+
+        # ---- Local config overrides (optional) ----
+        # These live under the `background:` block in the YAML.
+        bcfg = (
+            (self.config.get("background", {}) or {})
+            if isinstance(self.config, dict)
+            else {}
+        )
+        # Mesh scale for local transient fits.  _compute_box_sizes clamps
+        # mesh_scale to [mesh_scale_min, mesh_scale_max] (4-10), so values
+        # below 4 are silently ignored - keep the honest effective default.
+        local_mesh_scale = float(bcfg.get("local_mesh_scale", 4.0))
+        local_region_fraction_limit = float(
+            bcfg.get("local_region_fraction_limit", 0.15)
+        )
+        local_min_box = int(bcfg.get("local_min_box", 6))
+        local_nsigma = float(bcfg.get("local_source_mask_nsigma", 5.0))
+        local_npixels = int(bcfg.get("local_source_mask_npixels", 7))
+        local_mask_iterations = int(bcfg.get("local_source_mask_iterations", 2))
+        # photutils 3.0 exclude_percentile semantics: a mesh node survives
+        # while MORE than (100 - p)% of the box pixels are usable, so p=95
+        # would let a 95%-masked box contribute an estimate from a few
+        # unclipped pixels.  80 matches the global-pass regimes.
+        local_exclude_percentile = float(bcfg.get("local_exclude_percentile", 80.0))
+        local_sigma = float(bcfg.get("local_sigma_clip", 3.0))
+        local_sigma_maxiters = int(bcfg.get("local_sigma_clip_maxiters", 10))
+        if bool(bcfg.get("fast_mode", False)):
+            local_mask_iterations = max(1, min(local_mask_iterations, 2))
+            local_sigma_maxiters = min(local_sigma_maxiters, 5)
+            self.logger.info(
+                "Local background: fast_mode - mask_iterations=%d sigma_clip_maxiters=%d",
+                local_mask_iterations,
+                local_sigma_maxiters,
+            )
+        local_filter_size_max = bcfg.get("local_filter_size_max", 3)
+        # photutils>=3 ignores the interpolator kwarg (always cubic zoom).
+        local_interpolator = str(bcfg.get("local_interpolator", "zoom")).strip().lower()
+        if local_interpolator != "zoom":
+            self.logger.debug(
+                "Local background: local_interpolator=%r ignored - "
+                "photutils>=3 always uses cubic zoom.",
+                local_interpolator,
+            )
+        # Allow background mesh override directly (finest control).
+        local_box_size_override = bcfg.get("local_box_size", None)
+        local_filter_size_override = bcfg.get("local_filter_size", None)
+
+        # Inner exclusion radius: optional. This masks the target core/PSF so it is
+        # not used for background estimation. Default is OFF unless explicitly
+        # requested by the caller (exclude_inner_radius passed in).
+        exclude_inner_radius = (
+            float(exclude_inner_radius) if exclude_inner_radius is not None else 0.0
+        )
+
+        # ---- Box/filter sizes for the cutout ----
+        # Use a smaller mesh_scale for local fits so the background model can
+        # follow oversubtracted / galaxy gradients around the target more
+        # closely, while still avoiding pixel-scale noise.
+        box_size, filter_size, _ = self._compute_box_sizes(
+            cutout,
+            mask=None,
+            fwhm_pixels=fwhm_pixels,
+            mesh_scale=local_mesh_scale,
+            region_fraction_limit=local_region_fraction_limit,
+            min_box=local_min_box,
+        )
+        fixed_local_box = False
+        if local_box_size_override is not None:
+            try:
+                box_size = int(local_box_size_override)
+                fixed_local_box = True
+            except (TypeError, ValueError) as e:
+                self.logger.debug(
+                    "Invalid local_box_size_override %r: %s", local_box_size_override, e
+                )
+        if local_filter_size_override is not None:
+            try:
+                filter_size = int(local_filter_size_override)
+            except (TypeError, ValueError) as e:
+                self.logger.debug(
+                    "Invalid local_filter_size_override %r: %s",
+                    local_filter_size_override,
+                    e,
+                )
+        else:
+            # Cap smoothing to avoid an overly blurred local surface.
+            try:
+                if local_filter_size_max is not None:
+                    filter_size = min(int(filter_size), int(local_filter_size_max))
+            except (TypeError, ValueError) as e:
+                self.logger.debug(
+                    "Invalid local_filter_size_max %r: %s", local_filter_size_max, e
+                )
+        # Background2D expects odd filter_size >= 1
+        try:
+            filter_size = max(1, int(filter_size))
+            if filter_size % 2 == 0:
+                filter_size += 1
+        except Exception:
+            filter_size = 1
+        self.logger.info(
+            "Local background: box_size=%s  filter_size=%s  mesh_scale=%.3g  exclude_inner_radius=%.3g px",
+            str(box_size),
+            str(filter_size),
+            float(local_mesh_scale),
+            float(exclude_inner_radius),
+        )
+
+        # ---- Source mask in cutout (iterative) ----
+        # Use a higher nsigma and fewer iterations here so the local mask is
+        # conservative, focusing on obvious compact sources and not broad
+        # background gradients.
+        source_mask = self._make_source_mask(
+            cutout,
+            nsigma=local_nsigma,
+            npixels=local_npixels,
+            fwhm_pixels=fwhm_pixels,
+            dilate_factor=dilate_factor,
+            n_iterations=local_mask_iterations,
+            dilate_iterations=2,  # Use 2 iterations for local cutout (less aggressive)
+            initial_mask=~np.isfinite(cutout) | (cutout == 0.0),
+        )
+
+        # Optional: mask the target core region explicitly.
+        if exclude_inner_radius and exclude_inner_radius > 0:
+            cy = float(y0 - y_min)
+            cx = float(x0 - x_min)
+            yy, xx = np.mgrid[0 : cutout.shape[0], 0 : cutout.shape[1]]
+            r2 = (xx - cx) ** 2 + (yy - cy) ** 2
+            source_mask |= r2 <= float(exclude_inner_radius) ** 2
+
+        # ---- Adaptive box size ----
+        if fixed_local_box:
+            self.logger.info(
+                "Local background: using fixed box_size=%s (no adaptive up-sizing).",
+                str(box_size),
+            )
+        else:
+            masked_frac = source_mask.mean()
+            if masked_frac > 0.30:
+                new_box = self._adaptive_box_for_mask(source_mask, box_size, min_box=16)
+                if new_box != box_size:
+                    self.logger.info(
+                        "Adjusted local box_size %s -> %s", box_size, new_box
+                    )
+                    box_size = new_box
+
+        # ---- Fit background on cutout ----
+        try:
+            bkg = Background2D(
+                cutout,
+                box_size=box_size,
+                filter_size=filter_size,
+                sigma_clip=SigmaClip(sigma=local_sigma, maxiters=local_sigma_maxiters),
+                bkg_estimator=BiweightLocationBackground(),
+                bkg_rms_estimator=BiweightScaleBackgroundRMS(),
+                mask=source_mask,
+                exclude_percentile=local_exclude_percentile,
+                n_threads=photutils_n_threads(self.config),
+            )
+            bkg_surface_local = bkg.background
+        except Exception as exc:
+            self.logger.warning(
+                f"Background2D failed on cutout: {exc} - using median fallback"
+            )
+            _, local_med, _ = sigma_clipped_stats(cutout, sigma=3.0, mask=source_mask)
+            bkg_surface_local = np.full_like(cutout, local_med, dtype=float)
+
+        # ---- Guard against negative "bowls" around the target ----
+        # The masked core is excluded from the mesh fit, so the model under it
+        # is pure interpolation; cubic interpolation can overshoot there and
+        # carve an artificial bowl/ring into the subtracted image.  Keep the
+        # interpolated surface (it integrates smoothly underneath the mask)
+        # but clip the central region to the plausible range of a reference
+        # ring just outside the exclusion.  Clipping only bounds overshoot;
+        # flattening to the ring level (the old approach) left a visible
+        # plateau bump at the target position.
+        if exclude_inner_radius and exclude_inner_radius > 0:
+            try:
+                cy = float(y0 - y_min)
+                cx = float(x0 - x_min)
+                yy, xx = np.mgrid[0 : cutout.shape[0], 0 : cutout.shape[1]]
+                rr = np.hypot(xx - cx, yy - cy)
+                rin = float(exclude_inner_radius)
+                ring_width = max(2.0, float(fwhm_pixels))
+
+                # Use a reference ring just outside the exclusion to estimate
+                # the local background level, but sample it slightly farther out
+                # to avoid the steepest interpolation curvature right at the edge.
+                ring_ref = (rr > (rin + ring_width)) & (rr <= (rin + 2.0 * ring_width))
+                ring_ref &= ~source_mask
+                ring_ref &= np.isfinite(bkg_surface_local) & np.isfinite(cutout)
+
+                r_flat = rin + ring_width
+                flat_region = rr <= float(r_flat)
+
+                if np.any(flat_region) and np.any(ring_ref):
+                    ring_vals = bkg_surface_local[ring_ref]
+                    ring_level = float(np.nanmedian(ring_vals))
+                    ring_mad = 1.4826 * float(
+                        np.nanmedian(np.abs(ring_vals - ring_level))
+                    )
+                    bkg_surface_local = np.asarray(bkg_surface_local, dtype=float)
+                    inner = bkg_surface_local[flat_region]
+                    inner = np.where(np.isfinite(inner), inner, ring_level)
+                    bkg_surface_local[flat_region] = np.clip(
+                        inner,
+                        ring_level - 3.0 * ring_mad,
+                        ring_level + 3.0 * ring_mad,
+                    )
+            except Exception as e:
+                self.logger.debug(
+                    "Local background flat-region correction skipped: %s", e
+                )
+
+        # ---- Subtract locally and insert back ----
+        bkg_surface_local = np.asarray(bkg_surface_local, dtype=float)
+        # Ensure background surface preserves NaNs from cutout (chip gaps)
+        bkg_surface_local = np.where(np.isnan(cutout), np.nan, bkg_surface_local)
+        corrected_cutout = np.asarray(cutout, dtype=float) - bkg_surface_local
+
+        # ---- Optional: raise corrected cutout to a floor statistic ----
+        # This is a target-photometry aid only. We can enforce either:
+        # - a floor on the *minimum* finite pixel (strong; clamps all negatives), or
+        # - a floor on the *median* of finite, non-masked pixels (gentler; keeps some negatives).
+        #
+        # We return `nn_meta` so downstream code can optionally track/revert the lift.
+        cutout_nonneg_lift = 0.0
+        nn_enabled_cfg = None
+        try:
+            # Default OFF: adding a DC lift inflates the Poisson term in
+            # calc_total_error on difference images, overestimating noise.
+            nn_enabled_cfg = bcfg.get("local_nonnegative_target_offset", False)
+            enforce_nn_cutout = bool(nn_enabled_cfg)
+        except Exception:
+            enforce_nn_cutout = False
+            nn_enabled_cfg = False
+        if enforce_nn_cutout:
+            try:
+                cut_floor = float(bcfg.get("local_cutout_min_value", 0.0))
+            except Exception:
+                cut_floor = 0.0
+            if not np.isfinite(cut_floor):
+                cut_floor = 0.0
+
+            try:
+                floor_stat = (
+                    str(bcfg.get("local_cutout_floor_stat", "median")).strip().lower()
+                )
+            except Exception:
+                floor_stat = "median"
+            if floor_stat not in {"median", "min"}:
+                floor_stat = "median"
+
+            # Optional: derive a floor from an annulus around the target.
+            # Requirement: local background median (background-like pixels) >= k * annulus_std.
+            # This is intended for difference images where local subtraction can drive the
+            # background near/below zero at the target.
+            annulus_std = np.nan
+            try:
+                ann_k = float(bcfg.get("local_cutout_annulus_sigma_mult", 5.0))
+            except Exception:
+                ann_k = 5.0
+            try:
+                ann_in_scale = float(
+                    bcfg.get("local_cutout_annulus_in_scale_fwhm", 3.0)
+                )
+            except Exception:
+                ann_in_scale = 3.0
+            try:
+                ann_width_scale = float(
+                    bcfg.get("local_cutout_annulus_width_scale_fwhm", 2.0)
+                )
+            except Exception:
+                ann_width_scale = 2.0
+
+            if np.isfinite(ann_k) and ann_k > 0:
+                try:
+                    cy = float(y0 - y_min)
+                    cx = float(x0 - x_min)
+                    yy, xx = np.mgrid[0 : cutout.shape[0], 0 : cutout.shape[1]]
+                    rr = np.hypot(xx - cx, yy - cy)
+                    rin = max(
+                        float(exclude_inner_radius or 0.0),
+                        ann_in_scale * float(fwhm_pixels),
+                    )
+                    rout = rin + max(1.0, ann_width_scale * float(fwhm_pixels))
+                    ann = (rr >= rin) & (rr <= rout)
+
+                    # Background-like pixels only: finite, unmasked, in annulus.
+                    ann_good = ann & (~source_mask) & np.isfinite(corrected_cutout)
+                    if np.any(ann_good):
+                        annulus_std = biweight_sky_sigma(
+                            corrected_cutout, mask=~ann_good
+                        )
+                except Exception:
+                    annulus_std = np.nan
+
+            if (
+                np.isfinite(annulus_std)
+                and annulus_std > 0
+                and np.isfinite(ann_k)
+                and ann_k > 0
+            ):
+                # Raise the floor requirement to satisfy the annulus sigma criterion.
+                cut_floor = max(float(cut_floor), float(ann_k) * float(annulus_std))
+
+            # Prefer to compute the statistic on background-like pixels:
+            # exclude masked sources and the explicitly excluded core.
+            finite = np.isfinite(corrected_cutout)
+            good = finite & (~source_mask)
+            if not np.any(good):
+                good = finite
+
+            if np.any(good):
+                if floor_stat == "min":
+                    stat_val = float(np.min(corrected_cutout[good]))
+                else:
+                    stat_val = float(np.nanmedian(corrected_cutout[good]))
+
+                if np.isfinite(stat_val) and stat_val < cut_floor:
+                    lift = cut_floor - stat_val
+                    corrected_cutout = corrected_cutout + lift
+                    bkg_surface_local = bkg_surface_local - lift
+                    cutout_nonneg_lift = float(lift)
+                    self.logger.debug(
+                        "Local background: lifted cutout by %.6g (%s >= %.6g on %d px)",
+                        lift,
+                        floor_stat,
+                        cut_floor,
+                        int(np.sum(good)),
+                    )
+        else:
+            # Make it unambiguous in logs when the DC bias/lift is disabled.
+            self.logger.debug("Local background: DC bias/lift disabled")
+        image_sub = image.copy()
+        image_sub[y_min:y_max, x_min:x_max] = corrected_cutout
+
+        # ---- Full-image RMS for downstream use ----
+        # Use image_sub (locally-corrected) so the RMS reflects the actual
+        # noise after local surface subtraction.  Using the original image
+        # would include residual background structure (e.g. from imperfect
+        # SFFT subtraction near host galaxies) as "noise", overestimating
+        # flux errors and underestimating SNR for the target.
+        if precomputed_rms is not None:
+            bkg_rms_full = precomputed_rms
+        else:
+            # The source mask only feeds the Background2D RMS estimate;
+            # skip the full-image detection pass when the caller supplied
+            # an RMS map.
+            full_mask = self._make_source_mask(
+                image_sub,
+                nsigma=3,
+                npixels=5,
+                fwhm_pixels=fwhm_pixels,
+                dilate_factor=3.0,
+                n_iterations=2,
+                dilate_iterations=2,  # Use 2 iterations for RMS estimation (less aggressive)
+                initial_mask=~np.isfinite(image_sub) | (image_sub == 0.0),
+            )
+            box_size_full, filter_size_full, _ = self._compute_box_sizes(
+                image_sub, full_mask, fwhm_pixels
+            )
+            _, _, bkg_rms_full, _ = self._estimate_background(
+                image_sub, full_mask, box_size_full, filter_size_full
+            )
+
+        if plot:
+            # For plotting, show only the conservative source mask (target
+            # region is not specially excluded).
+            self._plot_local_diagnostics(
+                cutout,
+                bkg_surface_local,
+                corrected_cutout,
+                self.config["fpath"],
+                source_mask,
+            )
+
+        nn_meta = {
+            "lift": float(cutout_nonneg_lift),
+            # Always return the box so callers can consistently reuse the same
+            # local-fit cutout for target photometry / limiting magnitude.
+            "box": (int(y_min), int(y_max), int(x_min), int(x_max)),
+        }
+        return image_sub, bkg_surface_local, bkg_rms_full, nn_meta
+
+    # =========================================================================
+    # Diagnostic plots
+    # =========================================================================
+    def _plot_diagnostics(
+        self,
+        image,
+        background,
+        subtracted,
+        rms,
+        fpath,
+        mask=None,
+    ) -> None:
+        """Save a 4-panel diagnostic plot (image, background, noise RMS, residual)."""
+        self._plot_image_row(
+            [image, background, rms, subtracted],
+            [
+                "Science [ADU]",
+                "Background [ADU]",
+                "Noise RMS [ADU]",
+                "Subtracted [ADU]",
+            ],
+            fpath,
+            "background",
+            mask=mask,
+        )
+
+    def _plot_maximask_diagnostics(self, image, fpath) -> None:
+        """Save the MaxiMask diagnostic figure (``Maximask_<base>``).
+
+        Single panel: the science image with each flagged class overlaid
+        in its own colour, the legend listing full class names and pixel
+        counts.  A figure is also written when the stage ran but flagged
+        nothing, so an empty mask is distinguishable from MaxiMask never
+        running.
+        """
+        class_masks = getattr(self, "_maximask_class_masks", None)
+        if class_masks is None:
+            return
+        apply_autophot_mplstyle()
+        interval = ZScaleInterval()
+        data = np.asarray(image)
+        img_h, img_w = data.shape
+        aspect = img_w / img_h
+        ax_h = 4.6
+        fig, ax = plt.subplots(
+            figsize=(ax_h * aspect * 1.12, ax_h),
+            constrained_layout=True,
+        )
+
+        vmin, vmax = self._safe_zlimits(data, interval)
+        cmap = plt.get_cmap("gray").copy()
+        cmap = cmap.with_extremes(bad="none")
+        ax.imshow(
+            data,
+            origin="lower",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            interpolation="none",
+        )
+        handles = []
+        for name, cls_mask in class_masks.items():
+            color = _MAXIMASK_CLASS_COLORS.get(name, "magenta")
+            overlay_mask_hatch(ax, cls_mask, color=color, fill_alpha=0.35, zorder=8)
+            handles.append(
+                mask_legend_patch(
+                    color=color,
+                    fill_alpha=0.35,
+                    label=f"{_MAXIMASK_CLASS_NAMES.get(name, name)} "
+                    f"({int(cls_mask.sum())} px)",
+                )
+            )
+        ax.set_xlabel("X [Pixel]", fontsize=9)
+        ax.set_ylabel("Y [Pixel]", fontsize=9)
+        if handles:
+            ax.legend(
+                handles=handles,
+                loc="upper right",
+                fontsize=7,
+                framealpha=0.6,
+                frameon=True,
+            )
+        elif not class_masks:
+            ax.text(
+                0.02,
+                0.02,
+                "no defects flagged",
+                transform=ax.transAxes,
+                fontsize=8,
+                color="w",
+                bbox={"facecolor": "k", "alpha": 0.5, "pad": 3},
+            )
+
+        self._save_figure(fig, fpath, "maximask")
+
+    def _plot_local_diagnostics(
+        self,
+        cutout,
+        background,
+        subtracted,
+        fpath,
+        mask=None,
+    ) -> None:
+        """Save a 3-panel local background diagnostic plot (cutout, background, subtracted)."""
+        self._plot_image_row(
+            [cutout, background, subtracted],
+            ["Science [ADU]", "Background [ADU]", "Subtracted [ADU]"],
+            fpath,
+            "local_background",
+            mask=mask,
+        )
+
+    def _plot_image_row(self, arrays, titles, fpath, prefix, mask=None) -> None:
+        """Save a row of equal-aspect image panels with per-panel colorbars."""
+        apply_autophot_mplstyle()
+        interval = ZScaleInterval()
+        n = len(arrays)
+
+        # Equal-aspect panels shrink inside mismatched figure cells, leaving
+        # gaps no wspace can remove. Size the figure from the image aspect so
+        # cells fit the data; the appended top colorbar adds ~18% cell height.
+        img_h, img_w = arrays[0].shape
+        aspect = img_w / img_h
+        ax_h = 3.6
+        cbar_overhead = 1.18
+        left, right, bottom, top = 0.045, 0.99, 0.09, 0.90
+        wspace = 0.05
+        fig_w = n * ax_h * aspect * (1 + wspace) / (right - left)
+        fig_h = ax_h * cbar_overhead / (top - bottom)
+
+        fig, axes = plt.subplots(1, n, figsize=(fig_w, fig_h))
+        fig.subplots_adjust(
+            left=left, right=right, top=top, bottom=bottom, wspace=wspace
+        )
+        axes = np.atleast_1d(axes)
+
+        for i, (ax, data, title) in enumerate(zip(axes, arrays, titles)):
+            vmin, vmax = self._safe_zlimits(data, interval)
+            # Non-finite regions get a transparent fill plus a hatch overlay.
+            cmap = plt.get_cmap("gray").copy()
+            cmap = cmap.with_extremes(bad="none")
+
+            im = ax.imshow(
+                data,
+                origin="lower",
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                interpolation="none",
+            )
+            overlay_mask_hatch(ax, ~np.isfinite(np.asarray(data)))
+            self._attach_colorbar(fig, ax, im, title)
+            ax.set_aspect("equal")
+            ax.set_xlabel("X [Pixel]", fontsize=9)
+            if i == 0:
+                ax.set_ylabel("Y [Pixel]", fontsize=9)
+            else:
+                ax.set_ylabel("")
+                ax.tick_params(axis="y", labelleft=False)
+
+            # Leftmost panel: overlay masked pixels with the shared hatch.
+            if (
+                i == 0
+                and mask is not None
+                and np.any(mask)
+                and mask.shape == data.shape
+            ):
+                overlay_mask_hatch(ax, mask, zorder=10)
+
+        handles = []
+        if (mask is not None and np.any(mask)) or any(
+            np.isnan(np.asarray(a)).any() for a in arrays
+        ):
+            handles.append(mask_legend_patch(label="Masked / NaN"))
+        if handles:
+            fig.legend(
+                handles=handles,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 1.0),
+                ncol=len(handles),
+                fontsize=8,
+                frameon=False,
+            )
+
+        self._save_figure(fig, fpath, prefix)
+
+    # -------------------------------------------------------------------------
+    # Private plot helpers
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def _safe_zlimits(data, interval):
+        """Return zscale limits for *data*, falling back to (0, 1) on error."""
+        try:
+            return interval.get_limits(data)
+        except Exception:
+            finite = data[np.isfinite(data)]
+            if finite.size:
+                return np.nanpercentile(finite, [5, 95])
+            return 0.0, 1.0
+
+    @staticmethod
+    def _attach_colorbar(fig, ax, im, label):
+        """Attach a horizontal colorbar above *ax* with the given *label*."""
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("top", size="5%", pad=0.05)
+        cbar = fig.colorbar(im, cax=cax, orientation="horizontal")
+        cbar.ax.xaxis.set_ticks_position("top")
+        cbar.ax.xaxis.set_label_position("top")
+        cbar.set_label(str(label))

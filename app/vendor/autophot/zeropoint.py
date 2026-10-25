@@ -1,0 +1,5695 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Zeropoint calibration utilities.
+
+This module cleans reference stars, measures magnitude offsets between
+instrumental and catalog photometry, and fits the offset with outlier
+rejection (MCMC mixture model, ODR, or RANSAC; optional sigma-clipping and
+colour-term estimation) to derive the final photometric zeropoint used by
+the pipeline.
+"""
+
+import logging
+# ---------------------------------------------------------------------------
+# Standard library
+# ---------------------------------------------------------------------------
+import os
+import sys
+import time
+import traceback
+import warnings
+from typing import Optional
+
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+# ---------------------------------------------------------------------------
+# Third-party
+# ---------------------------------------------------------------------------
+import numpy as np
+import pandas as pd
+from astropy.stats import mad_std, sigma_clip, sigma_clipped_stats
+from scipy.optimize import least_squares, minimize
+from scipy.stats import median_abs_deviation  # single source; avoids duplicate
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.linear_model import RANSACRegressor
+from sklearn.utils.validation import check_array, check_is_fitted, check_X_y
+
+# scipy.odr is deprecated since SciPy 1.17 (odrpack is the suggested
+# replacement); silence the import-time warning until the dependency moves.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    from scipy.odr import ODR, Model, RealData
+
+from scipy.special import logsumexp
+
+# ---------------------------------------------------------------------------
+# Local
+# ---------------------------------------------------------------------------
+from functions import (calculate_bins, log_step,
+                       normalize_photometric_filter_name, set_size, snr_err)
+from plotting_utils import (apply_autophot_mplstyle, get_alpha, get_color,
+                            get_line_width, get_marker_size, get_plot_ext,
+                            get_ransac_color, ransac_grid,
+                            ransac_legend_top_outside, ransac_savefig,
+                            safe_tight_layout)
+
+# ---------------------------------------------------------------------------
+# Module-level logger
+# ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
+
+# ===========================================================================
+# Module-level sklearn estimator
+# ===========================================================================
+
+
+class PenalisedSlopeRegressor(BaseEstimator, RegressorMixin):
+    """
+    Linear regressor whose slope is softly constrained to ``slope_constraint``
+    via an L-BFGS-B penalty.
+
+    Replaces the near-identical ``ConstantRegressor`` (used in
+    ``_robust_RANSAC_fit``) and ``ConstrainedSlopeRegressor`` (used in
+    ``fit_color_term``).  Both had the same loss function and fit/predict
+    logic; only the default ``slope_tolerance`` differed.
+
+    Parameters
+    ----------
+    slope_constraint : float   target slope value (default 0 -> constant fit)
+    slope_tolerance  : float   deviation from constraint before penalty kicks in
+    penalty_weight   : float   penalty multiplier
+    """
+
+    def __init__(
+        self,
+        slope_constraint: float = 0.0,
+        slope_tolerance: float = 0.5,
+        penalty_weight: float = 100.0,
+    ):
+        self.slope_constraint = slope_constraint
+        self.slope_tolerance = slope_tolerance
+        self.penalty_weight = penalty_weight
+
+    def fit(self, X, y):
+        X, y = check_X_y(X, y)
+        x_flat = X.flatten()
+
+        def _loss(params):
+            slope, intercept = params
+            residuals = y - (slope * x_flat + intercept)
+            mse = np.mean(residuals**2)
+            excess = max(0.0, abs(slope - self.slope_constraint) - self.slope_tolerance)
+            return mse + self.penalty_weight * excess
+
+        # Start exactly at the constrained slope so the penalty does not
+        # have to drag the iterate back from an arbitrary guess.
+        init = [
+            float(self.slope_constraint),
+            np.mean(y) - float(self.slope_constraint) * np.mean(x_flat),
+        ]
+        result = minimize(_loss, init, method="L-BFGS-B")
+        self.slope_, self.intercept_ = result.x
+        return self
+
+    def predict(self, X):
+        check_is_fitted(self)
+        X = check_array(X)
+        return self.slope_ * X.flatten() + self.intercept_
+
+
+class FixedSlopeRegressor(BaseEstimator, RegressorMixin):
+    """
+    Linear regressor with a hard-fixed slope; only the intercept is fit.
+
+    Unlike :class:`PenalisedSlopeRegressor` (soft penalty), the slope here
+    cannot drift off the target value, so the fitted relation is exactly
+    ``y = slope * x + intercept``.
+
+    Parameters
+    ----------
+    slope : float   fixed slope value (default 1 -> offset-only fit)
+    """
+
+    def __init__(self, slope: float = 1.0):
+        self.slope = slope
+
+    def fit(self, X, y):
+        X, y = check_X_y(X, y)
+        self.slope_ = float(self.slope)
+        self.intercept_ = float(np.mean(y - self.slope_ * X.flatten()))
+        return self
+
+    def predict(self, X):
+        check_is_fitted(self)
+        X = check_array(X)
+        return self.slope_ * X.flatten() + self.intercept_
+
+
+# ===========================================================================
+# zeropoint class
+# ===========================================================================
+
+
+class Zeropoint:
+    """
+    Photometric zeropoint calibration against a sequence-star catalog.
+
+    Public methods
+    --------------
+    clean()               - magnitude / SNR quality filter
+    get()                 - simple sigma-clipped offset measurement
+    fit_zeropoint()       - MCMC Bayesian fit (ZP vs m_inst)
+    estimate_zeropoint()  - sigma-clip histogram method
+    fit_color_term()      - WLS + sigma-clip colour-term fit
+    weighted_average()    - inverse-variance weighted mean
+    """
+
+    def _normalize_filter(self, filter_name: str) -> str:
+        """Normalize a filter name using the pipeline's canonical mapping."""
+        if not filter_name:
+            return filter_name
+        normalized = normalize_photometric_filter_name(filter_name)
+        if normalized and str(normalized).strip():
+            return str(normalized)
+        return filter_name
+
+    def __init__(self, input_yaml: dict):
+        self.input_yaml = input_yaml
+
+    # -----------------------------------------------------------------------
+    # Helpers
+    # -----------------------------------------------------------------------
+
+    def weighted_average(self, values, errors):
+        """
+        Deprecated: inverse-variance weighting is disabled by convention.
+
+        Returns the median and SE(median) from MAD, ignoring *errors*.
+        Kept only for backward compatibility with older call sites.
+        """
+        values = np.asarray(values, float)
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            return np.nan, np.nan
+        med = float(np.nanmedian(values))
+        mad = float(median_abs_deviation(values, nan_policy="omit"))
+        n = int(values.size)
+        se_med = (1.858 * mad / np.sqrt(n)) if n >= 2 else mad
+        return med, float(se_med)
+
+    def get_color_term_for_filter(self, filter_name: str):
+        """
+        Return (color_col1, color_col2) for the standard colour index of
+        *filter_name*.
+
+        Raises ValueError for unknown filters.
+        """
+        color_map = {
+            "u": ("u", "g"),
+            "g": ("g", "r"),
+            "r": ("g", "r"),
+            "i": ("r", "i"),
+            "z": ("i", "z"),
+            "J": ("J", "H"),
+            "H": ("J", "H"),
+            "K": ("H", "K"),
+            "U": ("U", "B"),
+            "B": ("B", "V"),
+            "V": ("B", "V"),
+            "R": ("V", "R"),
+            "I": ("R", "I"),
+        }
+        if filter_name not in color_map:
+            raise ValueError(f"No colour term defined for filter '{filter_name}'")
+        return color_map[filter_name]
+
+    def _fallback_zeropoint(self, catalog: pd.DataFrame, use_filter: str) -> dict:
+        """
+        Median-based zeropoint fallback used when too few sources survive
+        quality cuts.  Shared by fit_zeropoint() and estimate_zeropoint().
+
+        Returns
+        -------
+        zp_params : dict  keyed by 'AP' and 'PSF'
+        """
+        def _empty_entry():
+            return {
+                "zeropoint": np.nan,
+                "zeropoint_error": np.nan,
+                "zeropoint_error_stat": np.nan,
+                "zeropoint_scatter": np.nan,
+                "bootstrap_se": np.nan,
+                "n_eff": np.nan,
+                "n_sources": 0,
+                "n_inliers": 0,
+                "fit_method": "median_fallback",
+                "reliable": False,
+                "reliability_flags": ["no usable calibrators"],
+                "has_color_term": False,
+            }
+
+        zp_params = {}
+        if catalog is None or getattr(catalog, "empty", False) or len(catalog) == 0:
+            for flux_type in ["AP", "PSF"]:
+                zp_params[flux_type] = _empty_entry()
+            return zp_params
+        use_filter = self._normalize_filter(use_filter)
+        # Aperture correction is applied at photometry stage (main.py), not here.
+        # The zeropoint is calculated from raw instrumental fluxes/magnitudes.
+
+        for flux_type in ["AP", "PSF"]:
+            fcol = f"flux_{flux_type}"
+            if fcol not in catalog.columns or use_filter not in catalog.columns:
+                zp_params[flux_type] = _empty_entry()
+                continue
+
+            flux = np.asarray(catalog[fcol].values, float)
+            catmag = np.asarray(catalog[use_filter].values, float)
+
+            ok = np.isfinite(flux) & (flux > 0) & np.isfinite(catmag)
+            n_d = int(ok.sum())
+            mad_raw = np.nan
+            if n_d == 0:
+                median_zp = mad_zp = np.nan
+            else:
+                delta = catmag[ok] - (-2.5 * np.log10(flux[ok]))
+                delta = delta[np.isfinite(delta)]
+                n_d = len(delta)
+                median_zp = np.nanmedian(delta) if n_d else np.nan
+                mad_raw = (
+                    float(median_abs_deviation(delta, nan_policy="omit"))
+                    if n_d
+                    else np.nan
+                )
+                # SE(median) ~ 1.858 * MAD/sqrt(N); use MAD as fallback if N < 2
+                mad_zp = (1.858 * mad_raw / np.sqrt(n_d)) if n_d >= 2 else mad_raw
+                # Same N-scaled error floor as fit_zeropoint: a single-point
+                # MAD is 0, which would otherwise report error = 0.
+                if np.isfinite(mad_zp) and n_d >= 1:
+                    mad_zp = max(
+                        mad_zp, max(0.001, 0.02 * max(0, 5 - n_d) / 5.0)
+                    )
+
+            # Same field-level systematic term as fit_zeropoint.
+            mad_stat = mad_zp
+            _sys_zp = float(
+                (self.input_yaml.get("zeropoint", {}) or {}).get(
+                    "systematic_err", 0.0
+                )
+                or 0.0
+            )
+            if _sys_zp > 0 and np.isfinite(mad_zp):
+                mad_zp = float(np.hypot(mad_zp, _sys_zp))
+
+            _fb_flags = []
+            if not np.isfinite(median_zp):
+                _fb_flags.append("non-finite zeropoint")
+            zp_params[flux_type] = {
+                "zeropoint": median_zp,
+                "zeropoint_error": mad_zp,
+                "zeropoint_error_stat": mad_stat,
+                "zeropoint_scatter": (
+                    float(1.4826 * mad_raw)
+                    if np.isfinite(mad_raw)
+                    else np.nan
+                ),
+                "bootstrap_se": np.nan,
+                "n_eff": np.nan,
+                "n_sources": n_d,
+                "n_inliers": n_d,
+                "fit_method": "median_fallback",
+                "reliable": not _fb_flags,
+                "has_color_term": False,
+            }
+            if _fb_flags:
+                zp_params[flux_type]["reliability_flags"] = _fb_flags
+        return zp_params
+
+    @staticmethod
+    def _compute_delta_mag(flux, flux_err, catmag, catmag_err):
+        """
+        Convert flux -> instrumental mag, compute dmag = m_cat - m_inst.
+
+        Parameters
+        ----------
+        flux, flux_err, catmag, catmag_err : 1-D ndarrays (already finite-filtered)
+
+        Returns
+        -------
+        inst_mag, inst_mag_err, delta_mag, delta_mag_err : ndarrays
+        """
+        # Non-positive flux yields NaN instrumental magnitude (matching
+        # functions.py mag() behaviour).  Clipping to 1e-10 gives inst_mag=25
+        # which can survive 5-sigma clipping in small calibrator sets and bias
+        # the zeropoint by ~0.1-0.5 mag.
+        flux = np.asarray(flux, dtype=float)
+        flux_err = np.asarray(flux_err, dtype=float)
+        good = flux > 0
+        inst_mag = np.full_like(flux, np.nan)
+        inst_mag_err = np.full_like(flux_err, np.nan)
+        inst_mag[good] = -2.5 * np.log10(flux[good])
+        inst_mag_err[good] = (2.5 / np.log(10.0)) * (flux_err[good] / flux[good])
+        delta_mag = catmag - inst_mag
+        delta_mag_err = np.sqrt(inst_mag_err**2 + catmag_err**2)
+        return inst_mag, inst_mag_err, delta_mag, delta_mag_err
+
+    @staticmethod
+    def _photometry_positions(catalog, flux_type):
+        if catalog is None or catalog.empty:
+            return None
+
+        def _column_values(column):
+            if column not in catalog.columns:
+                return np.full(len(catalog), np.nan)
+            return pd.to_numeric(catalog[column], errors="coerce").to_numpy(
+                dtype=float
+            )
+
+        x_pix = _column_values("x_pix")
+        y_pix = _column_values("y_pix")
+        if str(flux_type).upper() == "PSF":
+            x_fit = _column_values("x_fit")
+            y_fit = _column_values("y_fit")
+            x_pix = np.where(np.isfinite(x_fit), x_fit, x_pix)
+            y_pix = np.where(np.isfinite(y_fit), y_fit, y_pix)
+        if not (np.isfinite(x_pix).any() and np.isfinite(y_pix).any()):
+            return None
+        return x_pix, y_pix
+
+    @staticmethod
+    def _apply_color_correction(
+        delta_mag,
+        clean_catalog,
+        vmask,
+        color1,
+        color2,
+        fixed_color_coeffs,  # (intercept, slope) linear / (intercept, slope, quad) quadratic / (breakpoints, slopes, intercept) piecewise
+        color_coeff_errors=None,
+        fit_mode="polynomial",
+        n_segments=1,
+    ):
+        """
+        Subtract the colour term from delta_mag and return the corrected array and
+        the propagated correction error. Supports linear, quadratic, and piecewise linear color terms.
+
+        Parameters
+        ----------
+        fixed_color_coeffs : tuple or None
+            For linear: (intercept, slope)
+            For quadratic: (intercept, slope, quad_coeff)
+            For piecewise (n=2): ((breakpoint,), (slope1, slope2), intercept)
+        color_coeff_errors : tuple or None
+            Corresponding errors for the coefficients
+        fit_mode : str
+            "polynomial" or "piecewise"
+        n_segments : int
+            Number of segments for piecewise fitting
+
+        Returns
+        -------
+        delta_corr, color_corr_err : ndarrays shaped like delta_mag
+        """
+        c1_vals = np.asarray(
+            clean_catalog[color1].values,
+            float,
+        )[vmask]
+        c2_vals = np.asarray(
+            clean_catalog[color2].values,
+            float,
+        )[vmask]
+
+        c1_err = np.asarray(
+            clean_catalog.get(
+                f"{color1}_err", pd.Series(0.0, index=clean_catalog.index)
+            ).values,
+            float,
+        )[vmask]
+        c2_err = np.asarray(
+            clean_catalog.get(
+                f"{color2}_err", pd.Series(0.0, index=clean_catalog.index)
+            ).values,
+            float,
+        )[vmask]
+
+        color_diff = c1_vals - c2_vals
+        sigma_color = np.sqrt(c1_err**2 + c2_err**2)
+
+        if fit_mode == "piecewise":
+            if n_segments == 2:
+                breakpoints, slopes, intercept = fixed_color_coeffs
+                bp = breakpoints[0]
+                slope1, slope2 = slopes
+
+                delta_corr = np.zeros_like(delta_mag)
+                color_corr_err = np.zeros_like(delta_mag)
+
+                mask1 = color_diff <= bp
+                mask2 = color_diff > bp
+
+                if color_coeff_errors is not None:
+                    bp_errs, slope_errs, intercept_err = color_coeff_errors
+                    slope1_err, slope2_err = slope_errs
+                    bp_err = float(bp_errs[0]) if len(bp_errs) > 0 else 0.0
+                else:
+                    slope1_err, slope2_err = None, None
+                    bp_err = 0.0
+
+                # Segment 1 correction with error propagation
+                # correction = slope1 * color_diff
+                # d(correction)/d(color_diff) = slope1
+                # d(correction)/d(slope1)     = color_diff
+                delta_corr[mask1] = delta_mag[mask1] - slope1 * color_diff[mask1]
+                term_color_measure1 = np.abs(slope1) * sigma_color[mask1]
+                if slope1_err is not None:
+                    term_color_slope1 = np.abs(slope1_err) * np.abs(color_diff[mask1])
+                    color_corr_err[mask1] = np.sqrt(
+                        term_color_measure1**2 + term_color_slope1**2
+                    )
+                else:
+                    color_corr_err[mask1] = term_color_measure1
+
+                # Segment 2 correction (account for continuity) with error propagation
+                # correction = slope2 * color_diff + (slope1 - slope2) * bp
+                #            = slope2 * (color_diff - bp) + slope1 * bp
+                # d(correction)/d(color_diff) = slope2
+                # d(correction)/d(slope2)     = color_diff - bp
+                # d(correction)/d(slope1)     = bp
+                # d(correction)/d(bp)         = slope1 - slope2
+                delta_corr[mask2] = delta_mag[mask2] - (
+                    slope2 * color_diff[mask2] + (slope1 - slope2) * bp
+                )
+                term_color_measure2 = np.abs(slope2) * sigma_color[mask2]
+                if slope2_err is not None:
+                    term_color_slope2 = np.abs(slope2_err) * np.abs(
+                        color_diff[mask2] - bp
+                    )
+                    # Slope1 contributes via the (slope1 - slope2) * bp continuity term
+                    term_color_slope1_seg2 = np.abs(slope1_err) * np.abs(bp)
+                    # Breakpoint uncertainty contributes via d(correction)/d(bp) = slope1 - slope2
+                    term_color_bp = np.abs(bp_err) * np.abs(slope1 - slope2)
+                    color_corr_err[mask2] = np.sqrt(
+                        term_color_measure2**2
+                        + term_color_slope2**2
+                        + term_color_slope1_seg2**2
+                        + term_color_bp**2
+                    )
+                else:
+                    color_corr_err[mask2] = term_color_measure2
+            else:
+                raise ValueError(
+                    f"Unsupported number of segments for piecewise fitting: {n_segments}"
+                )
+        elif fit_mode == "polynomial":
+            if len(fixed_color_coeffs) == 2:
+                # Linear color term
+                intercept, slope = fixed_color_coeffs
+                delta_corr = delta_mag - slope * color_diff
+
+                if color_coeff_errors is not None:
+                    intercept_err, slope_err = color_coeff_errors
+                    term_color_measure = abs(slope) * sigma_color
+                    term_color_slope = abs(slope_err) * np.abs(color_diff)
+                    color_corr_err = np.sqrt(
+                        term_color_measure**2 + term_color_slope**2
+                    )
+                else:
+                    color_corr_err = abs(slope) * sigma_color
+            elif len(fixed_color_coeffs) == 3:
+                # Quadratic color term
+                intercept, slope, quad = fixed_color_coeffs
+                delta_corr = delta_mag - (quad * color_diff**2 + slope * color_diff)
+
+                if color_coeff_errors is not None:
+                    intercept_err, slope_err, quad_err = color_coeff_errors
+                    # d(correction)/d(color) = 2*quad*color + slope
+                    d_correction = 2 * quad * color_diff + slope
+                    term_color_measure = np.abs(d_correction) * sigma_color
+                    term_color_slope = abs(slope_err) * np.abs(color_diff)
+                    term_color_quad = abs(quad_err) * color_diff**2
+                    color_corr_err = np.sqrt(
+                        term_color_measure**2 + term_color_slope**2 + term_color_quad**2
+                    )
+                else:
+                    d_correction = 2 * quad * color_diff + slope
+                    color_corr_err = np.abs(d_correction) * sigma_color
+            else:
+                raise ValueError(
+                    f"Unsupported number of polynomial coefficients: {len(fixed_color_coeffs)}"
+                )
+        else:
+            raise ValueError(f"Unknown fit_mode: {fit_mode!r}")
+
+        return delta_corr, color_corr_err
+
+    @staticmethod
+    def _representative_color_slope(coeffs, fit_mode):
+        """Return a scalar slope for backward-compatible logging/storage.
+
+        Polynomial coefficients are ``(intercept, slope[, quad])`` so the
+        slope is ``coeffs[1]``.  Piecewise coefficients are
+        ``(breakpoints, (slope1, slope2), intercept)`` so the representative
+        slope is the first segment's slope.  Returns 0.0 when unavailable.
+        """
+        try:
+            if coeffs is None or len(coeffs) < 2:
+                return 0.0
+        except TypeError:
+            return 0.0
+        term = coeffs[1]
+        if fit_mode == "piecewise" or isinstance(term, (tuple, list)):
+            try:
+                return float(term[0])
+            except (TypeError, ValueError, IndexError):
+                return 0.0
+        try:
+            return float(term)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _prepare_catalog(
+        self, catalog: pd.DataFrame, threshold: float, use_filter: str, min_sources: int
+    ):
+        """
+        Apply sky-clipping, SNR, and magnitude-error quality cuts.
+
+        Returns
+        -------
+        clean_catalog : DataFrame or None (None -> caller should use fallback)
+        """
+        df = catalog.copy()
+        if "sky" in df.columns:
+            sky_mask = sigma_clip(np.abs(df["sky"].values), sigma=5, maxiters=10)
+            df = df[~sky_mask.mask]
+        if "threshold" in df.columns:
+            df = df[df["threshold"] >= threshold]
+
+        err_col = f"{use_filter}_err"
+        if err_col not in df.columns:
+            logger.warning(
+                "_prepare_catalog: missing error column '%s'; cannot apply quality cuts.",
+                err_col,
+            )
+            return None
+        error_mask = np.asarray(df[err_col].values, float) < 0.5
+        clean = df[error_mask].copy()
+
+        if len(clean) < min_sources:
+            logger.warning(
+                f"Too few sources ({len(clean)} < {min_sources}) after quality cuts."
+            )
+            return None
+        return clean
+
+    def _finite_vmask(
+        self, clean_catalog: pd.DataFrame, flux_type: str, use_filter: str
+    ):
+        """
+        Boolean mask for rows with all required finite, positive values.
+
+        Returns
+        -------
+        (flux, flux_err, catmag, catmag_err, vmask) or None if < 2 rows survive
+        """
+        fcol = f"flux_{flux_type}"
+        ecol = f"flux_{flux_type}_err"
+        flux = np.asarray(clean_catalog[fcol].values, float)
+        flux_err = np.asarray(clean_catalog[ecol].values, float)
+        catmag = np.asarray(clean_catalog[use_filter].values, float)
+        catmag_err = np.asarray(clean_catalog[f"{use_filter}_err"].values, float)
+
+        # Aperture correction is applied at photometry stage (main.py), not here.
+        # The zeropoint is calculated from raw instrumental fluxes/magnitudes.
+
+        vmask = (
+            np.isfinite(flux)
+            & (flux > 0)
+            & np.isfinite(flux_err)
+            & (flux_err > 0)
+            & np.isfinite(catmag)
+            & np.isfinite(catmag_err)
+            & (catmag_err > 0)
+        )
+        if vmask.sum() < 2:
+            logger.warning(
+                "%s: only %s valid sources; skipping.", flux_type, vmask.sum()
+            )
+            return None
+
+        return (
+            flux[vmask],
+            flux_err[vmask],
+            catmag[vmask],
+            catmag_err[vmask],
+            vmask,
+        )
+
+    # -----------------------------------------------------------------------
+    # Public: quality filter
+    # -----------------------------------------------------------------------
+
+    def clean(
+        self,
+        sources: pd.DataFrame,
+        upperMaglimit: float = 11.0,
+        lowerMaglimit: float = None,
+        threshold_limit: float = 3.0,
+    ) -> pd.DataFrame:
+        """
+        Remove sources that are too bright, too faint, or have low SNR.
+
+        Parameters
+        ----------
+        sources       : input catalog
+        upperMaglimit : discard sources brighter than this (default 11)
+        lowerMaglimit : discard sources fainter than this; if None, read from
+                        ``input_yaml['zeropoint']['faint_mag_limit']`` with a
+                        fallback of 22.0 to avoid including very noisy catalog
+                        stars that inflate ZP scatter.
+        threshold_limit: minimum detection threshold (S/N proxy)
+
+        Returns
+        -------
+        cleaned_sources : DataFrame, or None on error
+        """
+        logger.info(log_step("Zeropoint: clean sequence stars"))
+
+        try:
+            # Resolve magnitude limits from config when not supplied explicitly.
+            zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+            if lowerMaglimit is None:
+                lowerMaglimit = float(zp_cfg.get("faint_mag_limit", 22.0))
+            # Also honour config bright limit if the caller left it at the default.
+            if upperMaglimit == 11.0:
+                upperMaglimit = float(zp_cfg.get("bright_mag_limit", 11.0))
+
+            filter_col = self.input_yaml.get("imageFilter")
+            filter_col = self._normalize_filter(filter_col)
+
+            # Keep only sources measured on THIS image: the sequence catalog
+            # can accumulate entries from earlier observations.
+            if sources is not None and len(sources) > 0:
+                has_ap = (
+                    sources["flux_AP"].notna()
+                    if "flux_AP" in sources.columns
+                    else pd.Series(False, index=sources.index)
+                )
+                has_psf = (
+                    sources["flux_PSF"].notna()
+                    if "flux_PSF" in sources.columns
+                    else pd.Series(False, index=sources.index)
+                )
+                has_any_flux = has_ap | has_psf
+                n_before = len(sources)
+                sources = sources[has_any_flux].copy()
+                n_after = len(sources)
+                if n_before - n_after > 0:
+                    logger.info(
+                        f"Filtered {n_before - n_after} sources with no flux measurements (AP or PSF); {n_after} remaining."
+                    )
+
+            # Drop sources flagged as overlapping masked defects (flag is set
+            # in main.py from a distance-transform of hardware_defects_mask):
+            # their fluxes can be biased even when the fit converged.  Done
+            # before the filter/threshold branches so it applies on every
+            # path, including magnitude-only cleans.
+            if zp_cfg.get("reject_defect_sources", True) and (
+                "defect_flag" in sources.columns
+            ):
+                _d = (
+                    pd.to_numeric(sources["defect_flag"], errors="coerce")
+                    .fillna(0)
+                    .astype(bool)
+                )
+                n_def = int(_d.sum())
+                if n_def > 0:
+                    sources = sources.loc[~_d].copy()
+                    logger.info(
+                        "Dropped %d defect-overlapping sources; %d remain.",
+                        n_def,
+                        len(sources),
+                    )
+
+            if not filter_col:
+                logger.warning(
+                    "No input_yaml.imageFilter provided; skipping sequence-star clean filter."
+                )
+                return sources
+            if sources is None:
+                return None
+
+            if filter_col not in sources.columns:
+                logger.warning(
+                    "Filter column '%s' not found in sources; skipping magnitude/colour clean.",
+                    filter_col,
+                )
+                return sources
+
+            # Newer SExtractor outputs use `snr` instead of `threshold`.
+            if "threshold" not in sources.columns:
+                if "snr" in sources.columns:
+                    sources = sources.copy()
+                    sources["threshold"] = sources["snr"]
+                    logger.info(
+                        "Using sources['snr'] as 'threshold' proxy for zeropoint cleaning."
+                    )
+                else:
+                    # Neither column: skip threshold-based SNR cuts entirely.
+                    logger.warning(
+                        "Missing both 'threshold' and 'snr' columns in sources; skipping threshold/SNR cleaning."
+                    )
+                    valid_mags = sources[filter_col].notna()
+                    cleaned = sources.loc[valid_mags].copy()
+                    logger.info(
+                        "%d sources remaining after magnitude-only clean", len(cleaned)
+                    )
+                    return cleaned
+
+            removed_parts: list[str] = []
+
+            valid_mags = sources[filter_col].notna()
+            n_missing = (~valid_mags).sum()
+            if n_missing > 0:
+                removed_parts.append(f"{n_missing} missing {filter_col}")
+
+            too_bright = sources[filter_col] < upperMaglimit
+            too_faint = sources[filter_col] > lowerMaglimit
+            n_brightness = (too_bright | too_faint).sum()
+            if n_brightness > 0:
+                removed_parts.append(
+                    f"{n_brightness} mag-range[{upperMaglimit:.1f}-{lowerMaglimit:.1f}]"
+                )
+
+            # 'threshold' is peak-pixel S/N, which undersells aperture S/N on
+            # oversampled images; gate on the better of the two so calibrators
+            # with real flux are not lost on well-oversampled data.
+            _thr_snr = pd.to_numeric(
+                sources["threshold"], errors="coerce"
+            ).to_numpy(dtype=float)
+            _aper_col = next(
+                (c for c in ("SNR", "snr_ap", "snr") if c in sources.columns),
+                None,
+            )
+            if _aper_col is not None:
+                _det_snr = np.fmax(
+                    _thr_snr,
+                    pd.to_numeric(
+                        sources[_aper_col], errors="coerce"
+                    ).to_numpy(dtype=float),
+                )
+            else:
+                _det_snr = _thr_snr
+            low_snr = _det_snr < threshold_limit
+            n_snr = low_snr.sum()
+            if n_snr > 0:
+                removed_parts.append(f"{n_snr} threshold<{threshold_limit:.0f}")
+
+            # Also enforce an explicit S/N cut on photometric SNR columns.
+            # Prefer aperture/PSF SNR (SNR, snr_ap, snr_psf) over peak pixel SNR (snr),
+            # since photometric SNR is the relevant quality metric for calibration.
+            for _snr_col in ("SNR", "snr_ap", "snr_psf", "snr"):
+                if _snr_col in sources.columns:
+                    _bad = sources[_snr_col] < 3.0
+                    n_bad = int(_bad.sum())
+                    if n_bad > 0:
+                        removed_parts.append(f"{n_bad} {_snr_col}<3")
+                        low_snr = low_snr | _bad
+                    break
+
+            # Reject likely saturated/non-linear calibrators when peak flux is available.
+            zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+            reject_nonlinear = bool(zp_cfg.get("reject_nonlinear_sources", True))
+            nonlin_peak_frac = float(zp_cfg.get("nonlinear_peak_frac", 0.85))
+            sat_peak_frac = float(zp_cfg.get("saturation_peak_frac", 0.99))
+            # Fallback must match main.py's saturation handling.
+            try:
+                from main import SATURATE_INTERNAL_FALLBACK
+            except ImportError:
+                SATURATE_INTERNAL_FALLBACK = np.inf
+            saturate_level = float(
+                self.input_yaml.get("saturate", SATURATE_INTERNAL_FALLBACK)
+            )
+            non_linear_mask = np.zeros(len(sources), dtype=bool)
+            saturated_mask = np.zeros(len(sources), dtype=bool)
+            # Match the column name fallback pattern used in psf.py build()
+            _peak_col = next(
+                (c for c in ["peak_flux", "peak", "FLUX_MAX"] if c in sources.columns),
+                None,
+            )
+            if (
+                reject_nonlinear
+                and _peak_col is not None
+                and np.isfinite(saturate_level)
+                and saturate_level > 0
+            ):
+                peak_flux = np.asarray(sources[_peak_col], float)
+                finite_peak = np.isfinite(peak_flux)
+                saturated_mask = finite_peak & (
+                    peak_flux >= sat_peak_frac * saturate_level
+                )
+                non_linear_mask = finite_peak & (
+                    peak_flux >= nonlin_peak_frac * saturate_level
+                )
+                n_sat = int(np.count_nonzero(saturated_mask))
+                n_nonlin = int(np.count_nonzero(non_linear_mask & ~saturated_mask))
+                if n_sat > 0:
+                    removed_parts.append(f"{n_sat} saturated")
+                if n_nonlin > 0:
+                    removed_parts.append(f"{n_nonlin} non-linear")
+
+            # Reject sources with bad SExtractor FLAGS (blended, truncated, etc.)
+            zp_max_flags = int(zp_cfg.get("max_flags", 2))
+            flags_mask = np.zeros(len(sources), dtype=bool)
+            for _flags_col in ("flags", "FLAGS", "flags_normal"):
+                if _flags_col in sources.columns:
+                    _f = (
+                        pd.to_numeric(sources[_flags_col], errors="coerce")
+                        .fillna(0)
+                        .astype(int)
+                    )
+                    flags_mask = flags_mask | (_f > zp_max_flags)
+                    break
+            n_flags = int(flags_mask.sum())
+            if n_flags > 0:
+                removed_parts.append(f"{n_flags} FLAGS>{zp_max_flags}")
+
+            # Reject sources with anomalous FWHM (extended galaxies, blends,
+            # cosmic rays).  The FWHM column is transferred from SExtractor
+            # detections in main.py.  We sigma-clip on FWHM using MAD to
+            # identify the stellar locus and reject outliers in both
+            # directions (too broad = extended/blended, too narrow = CR/hot pixel).
+            fwhm_sigma = float(zp_cfg.get("fwhm_reject_sigma", 3.0))
+            fwhm_min_src = int(zp_cfg.get("fwhm_reject_min_sources", 4))
+            fwhm_min_keep = int(zp_cfg.get("fwhm_reject_min_keep", 3))
+            fwhm_mask = np.zeros(len(sources), dtype=bool)
+            if fwhm_sigma > 0 and "fwhm" in sources.columns:
+                _fwhm_vals = pd.to_numeric(sources["fwhm"], errors="coerce")
+                _fwhm_finite = np.isfinite(_fwhm_vals) & (_fwhm_vals > 0)
+                _n_fwhm = int(_fwhm_finite.sum())
+                if _n_fwhm >= fwhm_min_src:
+                    from functions import fwhm_outlier_clip
+
+                    fwhm_mask, _med_fwhm, _sig_eff = fwhm_outlier_clip(
+                        _fwhm_vals.to_numpy(dtype=float), sigma=fwhm_sigma
+                    )
+                    n_fwhm_rej = int(fwhm_mask.sum())
+                    # Keep-floor: never let the clip starve the fit;
+                    # a sparse inlier set still fits a zeropoint.
+                    if (
+                        n_fwhm_rej > 0
+                        and len(sources) - n_fwhm_rej < fwhm_min_keep
+                    ):
+                        logger.debug(
+                            "Skipping FWHM rejection: would leave %d "
+                            "calibrators (< %d).",
+                            len(sources) - n_fwhm_rej,
+                            fwhm_min_keep,
+                        )
+                        fwhm_mask = np.zeros(len(sources), dtype=bool)
+                        n_fwhm_rej = 0
+                    if n_fwhm_rej > 0:
+                        _fwhm_lo = _med_fwhm - fwhm_sigma * _sig_eff
+                        _fwhm_hi = _med_fwhm + fwhm_sigma * _sig_eff
+                        removed_parts.append(f"{n_fwhm_rej} FWHM-outlier")
+                        logger.debug(
+                            "FWHM rejection window: %.1f-sigma outside "
+                            "[%.2f, %.2f] px (median=%.2f px, sigma_eff=%.2f px).",
+                            fwhm_sigma,
+                            _fwhm_lo,
+                            _fwhm_hi,
+                            _med_fwhm,
+                            _sig_eff,
+                        )
+                else:
+                    logger.debug(
+                        "Only %d sources with valid FWHM; skipping FWHM-based "
+                        "rejection (need >= %d).",
+                        _n_fwhm,
+                        fwhm_min_src,
+                    )
+
+            # Reject sources with pathological PSF-fit quality (blends,
+            # non-converged fits, CRs).  Upper-tail MAD clip on each
+            # available diagnostic; |cfit| is used because centroid bias
+            # is bad in either direction.  A source that failed PSF
+            # fitting is a suspect calibrator even if aperture
+            # photometry looks clean.
+            psf_q_sigma = float(zp_cfg.get("psf_fit_reject_sigma", 4.0))
+            psf_q_mask = np.zeros(len(sources), dtype=bool)
+            if psf_q_sigma > 0:
+                for _qc, _use_abs in (
+                    ("qfit", False),
+                    ("cfit", True),
+                    ("reduced_chi2", False),
+                ):
+                    if _qc not in sources.columns:
+                        continue
+                    _qv = pd.to_numeric(sources[_qc], errors="coerce").to_numpy(
+                        dtype=float
+                    )
+                    if _use_abs:
+                        _qv = np.abs(_qv)
+                    _qfin = np.isfinite(_qv)
+                    if int(_qfin.sum()) < fwhm_min_src:
+                        continue
+                    _v = _qv[_qfin]
+                    _qmed = float(np.nanmedian(_v))
+                    _qmad = float(mad_std(_v))
+                    if not np.isfinite(_qmad) or _qmad <= 0:
+                        # Identical values: sigma_clip returns an empty
+                        # mask on zero MAD, so any deviation is flagged.
+                        _qmad = 1e-6
+                    _bad = _v > _qmed + psf_q_sigma * _qmad
+                    psf_q_mask[np.flatnonzero(_qfin)[_bad]] = True
+                n_psfq = int(psf_q_mask.sum())
+                if (
+                    n_psfq > 0
+                    and len(sources) - n_psfq < fwhm_min_keep
+                ):
+                    logger.debug(
+                        "Skipping PSF-fit-quality rejection: would leave %d "
+                        "calibrators (< %d).",
+                        len(sources) - n_psfq,
+                        fwhm_min_keep,
+                    )
+                    psf_q_mask = np.zeros(len(sources), dtype=bool)
+                    n_psfq = 0
+                if n_psfq > 0:
+                    removed_parts.append(f"{n_psfq} PSF-fit-outlier")
+
+            mask = (
+                valid_mags
+                & (sources[filter_col] >= upperMaglimit)
+                & (sources[filter_col] <= lowerMaglimit)
+                & (~low_snr)
+                & (~non_linear_mask)
+                & (~saturated_mask)
+                & (~flags_mask)
+                & (~fwhm_mask)
+                & (~psf_q_mask)
+            )
+            cleaned = sources.loc[mask].copy()
+            detail = f" (removed: {', '.join(removed_parts)})" if removed_parts else ""
+            logger.info(
+                "ZP cleaning: %d -> %d sources%s",
+                len(sources),
+                len(cleaned),
+                detail,
+            )
+            return cleaned
+
+        except Exception as exc:
+            logger.error("Error in clean(): %s\n%s", exc, traceback.format_exc())
+            return None
+
+    # -----------------------------------------------------------------------
+    # Public: simple sigma-clipped offset
+    # -----------------------------------------------------------------------
+
+    def get(
+        self,
+        sources: pd.DataFrame,
+        useMean: bool = True,
+        useMedian: bool = False,
+        weighted_average: bool = False,
+    ):
+        """
+        Measure the photometric zeropoint offset via sigma-clipped statistics.
+
+        Returns
+        -------
+        (sources, output_zp) : (DataFrame, dict)
+        """
+        logger.info(log_step("Zeropoint: offset vs catalog"))
+
+        methods = ["AP"] + (["PSF"] if "flux_PSF" in sources.columns else [])
+        method_labels = {"AP": "Aperture", "PSF": "PSF"}
+        output_zp = {}
+
+        image_filter = self.input_yaml["imageFilter"]
+        image_filter = self._normalize_filter(image_filter)
+
+        mag_col = sources[image_filter]
+        mag_err_col = sources[f"{image_filter}_err"]
+
+        for method in methods:
+            try:
+                src = sources.copy()
+
+                if method == "PSF":
+                    if "flags" in src.columns:
+                        before = len(src)
+                        src = src[src["flags"] <= 0]
+                        logger.info("Removed %s flagged sources", before - len(src))
+
+                    if "qfit" in src.columns:
+                        before = len(src)
+                        qfit_clip = sigma_clip(
+                            src["qfit"],
+                            sigma=3,
+                            sigma_lower=np.inf,
+                            maxiters=5,
+                            masked=True,
+                            cenfunc=np.nanmedian,
+                            stdfunc=mad_std,
+                        )
+                        src = src[~qfit_clip.mask]
+                        logger.info("Removed %s qfit outliers", before - len(src))
+
+                inst_mag = src[f"inst_{image_filter}_{method}"]
+                snr = src["SNR"]
+                error_snr = snr_err(snr)
+
+                zp = (mag_col.loc[src.index] - inst_mag).values
+                zp_err = np.sqrt(error_snr**2 + mag_err_col.loc[src.index].values ** 2)
+
+                zp_col = f"zp_{image_filter}_{method}"
+                zp_err_col = f"{zp_col}_err"
+                src[zp_col] = zp
+                src[zp_err_col] = zp_err
+
+                mask = ~np.isfinite(zp)
+                clip1 = sigma_clip(
+                    mag_col.loc[src.index].values, sigma=5, masked=True, maxiters=10
+                )
+                mask |= clip1.mask
+                clip2 = sigma_clip(
+                    np.asarray(zp),
+                    sigma=5,
+                    masked=True,
+                    maxiters=10,
+                    cenfunc=np.nanmedian,
+                    stdfunc=mad_std,
+                )
+                mask |= clip2.mask
+
+                n_bad = int(mask.sum())
+                if n_bad:
+                    logger.info(
+                        f"[{method_labels[method]}] Removing {n_bad} non-finite/outlier sources"
+                    )
+
+                valid = ~mask
+                n_valid = int(np.sum(valid))
+                zp_arr = np.asarray(zp)
+                zp_err_arr = np.asarray(zp_err)
+                if weighted_average:
+                    image_zp, image_zp_err = self.weighted_average(
+                        zp_arr[valid], zp_err_arr[valid]
+                    )
+                else:
+                    image_zp, _, mad_val = sigma_clipped_stats(
+                        zp_arr[valid],
+                        sigma=3.0,
+                        cenfunc=np.nanmedian,
+                        stdfunc=mad_std,
+                    )
+                    # mad_std already returns 1.4826*MAD (a sigma estimate),
+                    # so SE(median) = 1.2533 * mad_std / sqrt(N).  Using the
+                    # raw-MAD factor 1.858 here double-counts the scaling and
+                    # inflates the error by 1.48x.  For N < 2 the MAD is 0,
+                    # so fall back to the per-source propagated error.
+                    if n_valid >= 2:
+                        image_zp_err = float(1.2533 * mad_val / np.sqrt(n_valid))
+                    elif n_valid == 1:
+                        image_zp_err = float(zp_err_arr[valid][0])
+                    else:
+                        image_zp_err = np.nan
+
+                # Same field-level systematic term as fit_zeropoint:
+                # correlated calibration systematics do not average down
+                # with N and are invisible to the scatter-based error.
+                _sys_zp = float(
+                    (self.input_yaml.get("zeropoint", {}) or {}).get(
+                        "systematic_err", 0.0
+                    )
+                    or 0.0
+                )
+                if _sys_zp > 0 and np.isfinite(image_zp_err):
+                    image_zp_err = float(np.hypot(image_zp_err, _sys_zp))
+
+                src[f"mask_{method}"] = mask
+                sources.loc[src.index, src.columns] = src
+                output_zp[method] = [image_zp, image_zp_err]
+                logger.info(
+                    f"[{method_labels[method]}] ZP = {image_zp:.3f} +/- {image_zp_err:.3f}"
+                )
+
+            except Exception as exc:
+                logger.error(
+                    f"Error in get() for {method}: {exc}\n{traceback.format_exc()}"
+                )
+
+        return sources, output_zp
+
+    # -----------------------------------------------------------------------
+    # ODR fit helper: proper X and Y error handling for slope=1 fits
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _crude_mode(values):
+        """
+        Crude-mode center of a 1-D sample: median of the densest
+        fixed-width histogram bin.
+
+        A plain median sits between loci when the sample splits close to
+        50/50; the densest bin lands on the dominant population.  Used to
+        seed the iterative sigma clip in _odr_slope1_fit.
+        """
+        v = np.asarray(values, float)
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            return np.nan
+        if v.size < 8:
+            return float(np.median(v))
+        iqr = np.subtract(*np.percentile(v, [75, 25]))
+        bin_w = max(0.1, iqr / 4.0)
+        edges = np.arange(
+            float(v.min()) - bin_w, float(v.max()) + 2 * bin_w, bin_w
+        )
+        counts, edges = np.histogram(v, bins=edges)
+        peak = int(np.argmax(counts))
+        sel = (v >= edges[peak]) & (v <= edges[peak + 1])
+        if not np.any(sel):
+            return float(np.median(v))
+        return float(np.median(v[sel]))
+
+    @staticmethod
+    def _bootstrap_se(values, n_boot, rng):
+        """
+        Nonparametric standard error of the sample median from seeded
+        bootstrap resamples.
+
+        For a symmetric unimodal locus this recovers SE(median) =
+        1.2533*sigma/sqrt(N); on skewed or multimodal loci - where the
+        MAD-based scale misjudges the distribution - it reports the
+        actual estimator variability, so it makes an honest floor for
+        the fitted ZP error.
+        """
+        v = np.asarray(values, float)
+        v = v[np.isfinite(v)]
+        if v.size < 2 or n_boot <= 0 or rng is None:
+            return np.nan
+        boot = v[rng.integers(0, v.size, (int(n_boot), v.size))]
+        return float(np.std(np.median(boot, axis=1)))
+
+    @staticmethod
+    def _block_bootstrap_se(resid, xpos, ypos):
+        """
+        Spatial block-bootstrap standard error of the ZP mean.
+
+        Calibrator residuals that vary smoothly across the detector
+        (patchy flats, PSF variation, mis-registration) are spatially
+        correlated: neighbouring calibrators carry the same deviation
+        and do not provide independent measurements, so the naive
+        sigma/sqrt(N) error understates the true calibration
+        uncertainty.  Partitioning the field into contiguous blocks
+        and measuring the dispersion of the block means folds the
+        intra-block correlation into the standard error (Kunsch 1989;
+        Carlstein 1986).  On iid residuals the estimate recovers
+        sigma/sqrt(N).
+
+        The estimate depends on block size relative to the
+        correlation length, so the maximum over two grid resolutions
+        (G = 2 and G = 3) is returned.
+
+        Returns
+        -------
+        (se, n_eff) : block-bootstrap standard error of the mean and
+            the implied effective calibrator count
+            (sigma_MAD/se)^2, capped at N.  NaN when unusable.
+        """
+        r = np.asarray(resid, float)
+        xp = np.asarray(xpos, float)
+        yp = np.asarray(ypos, float)
+        ok = np.isfinite(r) & np.isfinite(xp) & np.isfinite(yp)
+        r, xp, yp = r[ok], xp[ok], yp[ok]
+        n = r.size
+        if n < 8 or np.ptp(xp) <= 0 or np.ptp(yp) <= 0:
+            return np.nan, np.nan
+        sig = 1.4826 * np.nanmedian(np.abs(r - np.nanmedian(r)))
+        if not np.isfinite(sig) or sig <= 0:
+            return np.nan, np.nan
+        best = np.nan
+        for g in (2, 3):
+            if n < g * g * 2:
+                continue
+            ix = np.clip(
+                ((xp - xp.min()) / np.ptp(xp) * g).astype(int), 0, g - 1
+            )
+            iy = np.clip(
+                ((yp - yp.min()) / np.ptp(yp) * g).astype(int), 0, g - 1
+            )
+            blocks = ix * g + iy
+            means = np.array(
+                [r[blocks == b].mean() for b in np.unique(blocks)]
+            )
+            nb = means.size
+            if nb < 2:
+                continue
+            se_g = float(np.std(means, ddof=1) / np.sqrt(nb))
+            if np.isfinite(se_g) and (not np.isfinite(best) or se_g > best):
+                best = se_g
+        if not np.isfinite(best) or best <= 0:
+            return np.nan, np.nan
+        return best, float(min(n, (sig / best) ** 2))
+
+    def _odr_slope1_fit(
+        self,
+        x,
+        y,
+        x_err,
+        y_err,
+        max_iter: int = 100,
+        min_points: int = 2,
+    ):
+        """
+        Orthogonal Distance Regression fit for y = x + ZP (slope=1 constraint).
+
+        This properly accounts for errors in both X (m_inst) and Y (m_cal).
+        For a line with slope=1, the perpendicular distance is:
+            d_perp = (y - x - ZP) / sqrt(2)
+
+        The variance in the perpendicular direction is:
+            sigma^2_perp = (sigma^2_x + sigma^2_y) / 2
+
+        We minimize the weighted sum: chi^2 = Sigma (y_i - x_i - ZP)^2 / (sigma^2_x + sigma^2_y)
+
+        For a fixed slope the ODR solution reduces to the inverse-variance
+        weighted mean of delta - the maximum-likelihood estimator for a
+        constant (the SCAMP instrumental-calibration convention; a
+        clipped median is the common alternative, which the iterative
+        clip approximates).  Outlier rejection is an iterative sigma
+        clip seeded at a crude mode, capped at ``sigma_clip_max``, and
+        the reported error is chi^2/dof-inflated when the residuals
+        exceed the formal per-source errors.
+
+        Parameters
+        ----------
+        x, y : array-like
+            Data points (instrumental mag, catalog mag)
+        x_err, y_err : array-like
+            1-sigma uncertainties in x and y
+        max_iter : int
+            Maximum ODR iterations
+        min_points : int
+            Minimum points required for fit
+
+        Returns
+        -------
+        (zp, zp_err, inlier_mask) : (float, float, ndarray)
+            Zeropoint, its uncertainty, and boolean inlier mask
+        """
+        x = np.asarray(x, float)
+        y = np.asarray(y, float)
+        x_err = np.asarray(x_err, float)
+        y_err = np.asarray(y_err, float)
+        n_input = len(x)
+
+        finite = (
+            np.isfinite(x) & np.isfinite(y) & np.isfinite(x_err) & np.isfinite(y_err)
+        )
+        if finite.sum() < min_points:
+            logger.warning(
+                "ODR: insufficient points (%s < %s)", finite.sum(), min_points
+            )
+            return np.nan, np.nan, np.zeros(n_input, dtype=bool)
+
+        x, y = x[finite], y[finite]
+        x_err, y_err = x_err[finite], y_err[finite]
+
+        # Model: y = x + ZP  =>  delta = y - x = ZP (constant)
+        # Weights = 1 / (y_err^2 + x_err^2) account for the total uncertainty
+        # in the direction perpendicular to the slope=1 line.
+        delta = y - x
+        var_perp = x_err**2 + y_err**2
+
+        # Add systematic variance floor (same as MCMC BUG 147).
+        # Per-source errors may not capture field-dependent systematics.
+        med_delta = np.nanmedian(delta)
+        mad_delta = np.nanmedian(np.abs(delta - med_delta)) * 1.4826
+        if mad_delta < 1e-6:
+            mad_delta = np.nanstd(delta)
+        var_perp_raw = var_perp.copy()
+        _med_var_perp = float(np.median(var_perp))
+        _sys_floor = max(0.0, mad_delta**2 - _med_var_perp)
+        if _sys_floor > 0:
+            var_perp = var_perp + _sys_floor
+            logger.debug(
+                "ODR: added systematic floor %.4f mag^2 (sigma=%.4f mag) "
+                "to var_perp (MAD=%.4f)",
+                _sys_floor,
+                np.sqrt(_sys_floor),
+                mad_delta,
+            )
+
+        # DEBUG: input stats for diagnosing large errors
+        logger.debug(
+            f"ODR INPUT: n={len(x)}, x_err median={np.nanmedian(x_err):.4f}, "
+            f"x_err range=[{np.nanmin(x_err):.4f}, {np.nanmax(x_err):.4f}], "
+            f"y_err median={np.nanmedian(y_err):.4f}, "
+            f"y_err range=[{np.nanmin(y_err):.4f}, {np.nanmax(y_err):.4f}]"
+        )
+
+        # Iterative outlier rejection: deterministic analogue of RANSAC.
+        zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+        sigma_clip_max = float(zp_cfg.get("sigma_clip_max", 0.5))
+        inlier_mask_local = np.ones(len(delta), dtype=bool)
+        # Anchor on the densest locus, not the median: near ~50%
+        # contamination the median lands between loci while the crude
+        # mode sits on the dominant population.
+        zp = self._crude_mode(delta)
+
+        for iteration in range(max_iter):
+            n_before = inlier_mask_local.sum()
+
+            # Residuals around the CURRENT estimate: on iteration 0 this
+            # is the mode seed, so the first clip already gates around
+            # the dominant locus instead of a mean that contamination
+            # has dragged off it.
+            residuals = delta - zp
+            med_res = np.nanmedian(residuals[inlier_mask_local])
+            mad_res = (
+                np.nanmedian(np.abs(residuals[inlier_mask_local] - med_res)) * 1.4826
+            )
+
+            if mad_res < 1e-6:  # identical points: nothing to clip
+                break
+
+            # Cap the clip width (sigmaMax-style): an unbounded MAD on
+            # contaminated data inflates the acceptance window until no
+            # outlier is ever rejected.  The gate uses the RAW median
+            # per-source variance - the floored variance carries the MAD
+            # back into the gate and defeats the clip.
+            mad_clip = mad_res
+            if sigma_clip_max > 0 and mad_res > sigma_clip_max:
+                mad_clip = sigma_clip_max
+                logger.debug(
+                    "ODR: clip sigma capped at %.3f (raw MAD %.3f)",
+                    sigma_clip_max,
+                    mad_res,
+                )
+            threshold = 3.0 * np.sqrt(
+                mad_clip**2 + np.median(var_perp_raw)
+            )
+            prev_mask = inlier_mask_local
+            inlier_mask_local = np.abs(residuals) < threshold
+
+            n_after = inlier_mask_local.sum()
+
+            if n_after < min_points:
+                logger.warning(
+                    "ODR: too few inliers after clipping (%s), reverting to iteration %s",
+                    n_after,
+                    iteration,
+                )
+                # Revert to the previous iteration's mask so the fit below
+                # still uses >= min_points sources rather than the too-
+                # strict mask or an unconditional all-points fallback.
+                inlier_mask_local = prev_mask
+                break
+
+            # Re-centre on the surviving locus for the next iteration.
+            delta_in = delta[inlier_mask_local]
+            var_in = var_perp[inlier_mask_local]
+            weights = 1.0 / np.clip(var_in, 1e-12, None)
+            weights = weights / weights.sum() if weights.sum() > 0 else weights
+            zp = np.average(delta_in, weights=weights)
+
+            if n_after == n_before and np.array_equal(
+                inlier_mask_local, prev_mask
+            ):
+                logger.debug("ODR converged at iteration %s", iteration + 1)
+                break
+
+        if inlier_mask_local.sum() < min_points:
+            logger.warning(
+                "ODR: insufficient inliers (%s), using all points",
+                inlier_mask_local.sum(),
+            )
+            inlier_mask_local = np.ones(len(delta), dtype=bool)
+
+        delta_in = delta[inlier_mask_local]
+
+        # Refit the excess-variance floor on the converged locus: the
+        # pre-clip floor used the all-points MAD, which contaminating
+        # outliers inflate, giving every surviving point too much
+        # variance and a too-conservative weighting.  The inlier floor
+        # is the actual intrinsic scatter of the calibration
+        # population: sigma_int^2 = MAD_in^2 - median(var_perp_in).
+        _mad_odr_in = (
+            np.nanmedian(np.abs(delta_in - np.nanmedian(delta_in))) * 1.4826
+        )
+        _med_var_in_raw = float(np.median(var_perp_raw[inlier_mask_local]))
+        _sys_floor_in = max(0.0, _mad_odr_in**2 - _med_var_in_raw)
+        var_in = var_perp_raw[inlier_mask_local] + _sys_floor_in
+
+        # Keep unnormalized weights: the error formula below needs w_sum.
+        w_raw = 1.0 / np.clip(var_in, 1e-12, None)
+        w_sum = w_raw.sum()
+        weights = w_raw / w_sum if w_sum > 0 else w_raw
+        zp = np.average(delta_in, weights=weights)
+
+        # ZP uncertainty from weighted standard error formula:
+        # sigma^2 = 1 / Sigma(1/sigma^2_i) = 1 / w_sum
+        var_zp = 1.0 / w_sum if w_sum > 0 else np.nan
+        zp_err = np.sqrt(var_zp)
+
+        # Inflate zp_err by sqrt(chi2/dof) when the residuals exceed the
+        # formal per-source errors (unexplained variance).
+        residuals = delta_in - zp
+        chi2 = np.sum((residuals**2) / var_in)
+        dof = len(delta_in) - 1
+
+        # DEBUG: intermediate values for error diagnosis
+        logger.debug(
+            f"ODR DEBUG: n_inliers={len(delta_in)}, w_sum={w_sum:.2f}, "
+            f"var_zp={var_zp:.6f}, zp_err_before_scale={np.sqrt(var_zp):.6f}, "
+            f"chi2={chi2:.2f}, dof={dof}, chi2/dof={chi2/max(dof,1):.2f}"
+        )
+
+        if dof > 0 and chi2 / dof > 1.0:
+            scale = np.sqrt(chi2 / dof)
+            zp_err *= scale
+            logger.debug("ODR DEBUG: scaled zp_err by %.2f -> %.4f", scale, zp_err)
+
+        # Map back to original input length (including non-finite points)
+        full_mask = np.zeros(n_input, dtype=bool)
+        full_mask[np.flatnonzero(finite)[inlier_mask_local]] = True
+
+        logger.info(
+            "ODR: ZP=%.4f +/- %.4f (%s/%s inliers, chi^2/dof=%.2f)",
+            zp,
+            zp_err,
+            inlier_mask_local.sum(),
+            len(delta),
+            chi2 / max(dof, 1),
+        )
+
+        return zp, zp_err, full_mask
+
+    # -----------------------------------------------------------------------
+    # MCMC convergence diagnostics
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _gelman_rubin(chain):
+        """Compute Gelman-Rubin R-hat for a single parameter.
+
+        Parameters
+        ----------
+        chain : ndarray, shape (n_steps, n_walkers)
+            Walker chains for one parameter (emcee ``get_chain()`` layout,
+            already sliced to a single parameter).
+
+        Returns
+        -------
+        rhat : float
+            R-hat statistic.  <1.01 indicates convergence.  Returns NaN
+            if the chain is too short or degenerate.
+        """
+        n_steps, n_walkers = chain.shape
+        if n_walkers < 2 or n_steps < 2:
+            return np.nan
+        # Per-walker means and variances reduce over steps (axis=0)
+        walker_means = np.mean(chain, axis=0)
+        walker_vars = np.var(chain, axis=0, ddof=1)
+        # Between-walker variance
+        B = n_steps * np.var(walker_means, ddof=1)
+        # Within-walker variance
+        W = np.mean(walker_vars)
+        if W <= 0:
+            return np.nan
+        # Pooled variance estimate
+        var_hat = (n_steps - 1) / n_steps * W + B / n_steps
+        rhat = np.sqrt(var_hat / W)
+        return float(rhat)
+
+    # -----------------------------------------------------------------------
+    # Magnitude-dependent ZP check
+    # -----------------------------------------------------------------------
+
+    def _magnitude_dependent_zp_check(
+        self,
+        inst_mag: np.ndarray,
+        delta_mag: np.ndarray,
+        inlier_mask: np.ndarray,
+        delta_mag_err: Optional[np.ndarray] = None,
+        n_bins: int = 5,
+        min_per_bin: int = 3,
+        max_zp_trend_mag: float = 0.05,
+    ) -> dict:
+        """
+        Check for magnitude-dependent ZP trends by binning calibrators in
+        instrumental magnitude and measuring ZP in each bin.
+
+        A flat ZP vs m_inst locus (slope consistent with 0) is required for
+        the slope=1 fit assumption.  A significant trend means the zeropoint
+        is magnitude-dependent - the signature of detector non-linearity,
+        an unapplied colour term, or PSF model mismatch that varies with
+        source brightness.  The trend is reported per flux type and folded
+        into reliability flags by the caller.
+
+        Parameters
+        ----------
+        inst_mag : ndarray
+            Instrumental magnitudes of calibrators.
+        delta_mag : ndarray
+            m_cal - m_inst deltas.
+        inlier_mask : ndarray
+            Boolean inlier mask from the ZP fit.
+        delta_mag_err : ndarray or None
+            Per-delta uncertainties (for weighted bin means).
+        n_bins : int
+            Number of magnitude bins (default 5).
+        min_per_bin : int
+            Minimum sources required in a bin to use it (default 3).
+        max_zp_trend_mag : float
+            Maximum allowed |ZP trend| per magnitude (default 0.05 mag/mag).
+            A trend larger than this, or a slope >3 sigma from zero, is
+            flagged as magnitude-dependent ZP.
+
+        Returns
+        -------
+        dict with keys:
+          zps_per_bin : list of (mag_center, zp, zp_err, n) tuples
+          trend_slope : float or nan  (mag ZP change per mag inst)
+          trend_slope_err : float or nan
+          trend_significant : bool
+          flags : list of str
+        """
+        result = {
+            "zps_per_bin": [],
+            "trend_slope": np.nan,
+            "trend_slope_err": np.nan,
+            "trend_significant": False,
+            "flags": [],
+        }
+
+        x = np.asarray(inst_mag, float)
+        y = np.asarray(delta_mag, float)
+        mask = np.asarray(inlier_mask, bool)
+        if delta_mag_err is not None:
+            yerr = np.asarray(delta_mag_err, float)
+        else:
+            yerr = None
+
+        ok = mask & np.isfinite(x) & np.isfinite(y)
+        if yerr is not None:
+            ok &= np.isfinite(yerr) & (yerr > 0)
+        if int(ok.sum()) < min_per_bin * 2:
+            result["flags"].append(
+                f"too few inliers ({int(ok.sum())}) for magnitude-dependent ZP check"
+            )
+            return result
+
+        x_in, y_in = x[ok], y[ok]
+        yerr_in = yerr[ok] if yerr is not None else None
+
+        # Equal-count bins so sparse faint end still gets a bin.
+        n_ok = int(ok.sum())
+        n_bins_eff = min(n_bins, max(2, n_ok // min_per_bin))
+        if n_bins_eff < 2:
+            result["flags"].append(
+                f"too few inliers ({n_ok}) for {n_bins} magnitude bins"
+            )
+            return result
+
+        bin_edges = np.percentile(x_in, np.linspace(0, 100, n_bins_eff + 1))
+        bin_edges[0] = np.nextafter(bin_edges[0], -np.inf)
+        bin_edges[-1] = np.nextafter(bin_edges[-1], np.inf)
+        bin_idx = np.digitize(x_in, bin_edges) - 1
+        bin_idx = np.clip(bin_idx, 0, n_bins_eff - 1)
+
+        bin_centers = []
+        bin_zps = []
+        bin_zp_errs = []
+        bin_ns = []
+
+        for b in range(n_bins_eff):
+            sel = bin_idx == b
+            if int(sel.sum()) < min_per_bin:
+                continue
+            yb = y_in[sel]
+            if yerr_in is not None:
+                eb = yerr_in[sel]
+                w = 1.0 / np.clip(eb**2, 1e-12, None)
+                zp_b = float(np.average(yb, weights=w))
+                zp_err_b = float(np.sqrt(1.0 / w.sum()))
+            else:
+                zp_b = float(np.nanmedian(yb))
+                mad_b = float(median_abs_deviation(yb, nan_policy="omit"))
+                nb = int(sel.sum())
+                zp_err_b = float(1.858 * mad_b / np.sqrt(nb)) if nb >= 2 else mad_b
+                if np.isfinite(zp_err_b) and nb >= 1:
+                    zp_err_b = max(
+                        zp_err_b, max(0.001, 0.02 * max(0, 5 - nb) / 5.0)
+                    )
+            xc = float(np.median(x_in[sel]))
+            bin_centers.append(xc)
+            bin_zps.append(zp_b)
+            bin_zp_errs.append(zp_err_b)
+            bin_ns.append(int(sel.sum()))
+            result["zps_per_bin"].append((xc, zp_b, zp_err_b, int(sel.sum())))
+
+        if len(bin_centers) < 2:
+            result["flags"].append(
+                f"only {len(bin_centers)} populated magnitude bins; "
+                "trend check skipped"
+            )
+            return result
+
+        # Linear trend: ZP vs m_inst.  Weighted by 1/zp_err^2.
+        bc = np.asarray(bin_centers, float)
+        bz = np.asarray(bin_zps, float)
+        be = np.asarray(bin_zp_errs, float)
+        w = 1.0 / np.clip(be**2, 1e-12, None)
+
+        # Weighted least squares: y = a*x + b
+        Aw = np.vstack([bc, np.ones_like(bc)]).T * np.sqrt(w)[:, None]
+        yw = bz * np.sqrt(w)
+        try:
+            coef, _, _, _ = np.linalg.lstsq(Aw, yw, rcond=None)
+            slope, intercept = float(coef[0]), float(coef[1])
+        except np.linalg.LinAlgError:
+            result["flags"].append("magnitude trend fit failed (singular matrix)")
+            return result
+
+        # Slope error from covariance.
+        resid = bz - (slope * bc + intercept)
+        chi2 = float(np.sum(w * resid**2))
+        dof = max(1, len(bc) - 2)
+        sigma2 = chi2 / dof
+        cov = np.linalg.inv(Aw.T @ Aw) * sigma2
+        slope_err = float(np.sqrt(max(cov[0, 0], 0)))
+
+        result["trend_slope"] = slope
+        result["trend_slope_err"] = slope_err
+
+        # Significance: slope != 0 at >3 sigma, or |slope| > max_zp_trend_mag.
+        trend_sig = (
+            abs(slope) / slope_err if slope_err > 0 else np.inf
+        )
+        result["trend_significant"] = bool(
+            (np.isfinite(slope_err) and slope_err > 0 and trend_sig > 3.0)
+            or abs(slope) > max_zp_trend_mag
+        )
+
+        if result["trend_significant"]:
+            result["flags"].append(
+                f"magnitude-dependent ZP: trend={slope:+.4f} +/- "
+                f"{slope_err:.4f} mag/mag "
+                f"({trend_sig:.1f} sigma from zero; "
+                f"|slope| > {max_zp_trend_mag} mag/mag threshold)"
+            )
+
+        return result
+
+    # -----------------------------------------------------------------------
+    # MCMC fit helper (default): Bayesian fitting with X,Y errors
+    # -----------------------------------------------------------------------
+
+    def _mcmc_fit(
+        self,
+        x,
+        y,
+        x_err,
+        y_err,
+        n_walkers: int = 32,
+        n_burn: int = 500,
+        n_steps: int = 1000,
+        outlier_sigma: float = 3.0,
+        min_points: int = 2,
+        robust: bool = True,
+        V_out: float = 1.0,
+        max_steps: int = 10000,
+        tau_factor: float = 10.0,
+        adaptive: bool = True,
+        min_autocorr_N: int = 100,
+        random_state: int | None = None,
+    ):
+        """
+        MCMC fit for y = x + ZP (slope=1 constraint) with proper X,Y errors.
+
+        Uses the emcee ensemble sampler for posterior estimation.
+        Following the methodology from:
+        https://github.com/nikhil-sarin/2Derrors
+
+        The robust mixture model is the Hogg, Bovy & Lang (2010,
+        arXiv:1008.4686) formulation: each point is a mixture of a
+        "good" component and a "bad" (outlier) component with a mixing
+        fraction.  Our prior caps f_out at 0.5 - tighter than HBL's
+        uniform [0,1] - so the narrow component stays identifiable as
+        the majority locus; V_out is data-adaptive ((3*MAD)^2) rather
+        than fitted.
+
+        Supports two modes:
+
+        **robust=True (default):** Gaussian mixture model with in-model outlier
+        handling. Each data point is modeled as a mixture of a main component
+        (tight Gaussian around ZP with variance = sigma^2_perp) and an outlier
+        component (broad Gaussian with variance = sigma^2_perp + V_out).
+
+        Parameters: [ZP, f_out]
+        - f_out = outlier fraction (prior: uniform [0, 0.5])
+        - V_out = outlier variance scale (fixed, default 1.0 mag^2)
+
+        Likelihood (mixture):
+            L_i = (1-f_out) * N(ZP, sigma^2_perp) + f_out * N(ZP, sigma^2_perp + V_out)
+
+        **robust=False:** Single Gaussian likelihood (pre-clip outliers).
+            log L = -0.5 * Sigma[(y_i - x_i - ZP)^2 / sigma^2_perp_i] - 0.5 * Sigma log(sigma^2_perp_i)
+
+        Parameters
+        ----------
+        x, y : array-like
+            Data points (instrumental mag, catalog mag)
+        x_err, y_err : array-like
+            1-sigma uncertainties in x and y
+        n_walkers : int
+            Number of MCMC walkers
+        n_burn : int
+            Burn-in steps
+        n_steps : int
+            Initial production steps per batch. The sampler runs in batches and
+            checks convergence after each batch until the chain length exceeds
+            ``tau_factor * tau`` for all parameters.
+        outlier_sigma : float
+            Sigma-clipping threshold for pre-MCMC outlier rejection (robust=False only)
+        min_points : int
+            Minimum points required for fit
+        robust : bool
+            If True, use Gaussian mixture model for in-model outlier handling.
+            If False, use single Gaussian with pre-MCMC sigma-clipping.
+        V_out : float
+            Outlier variance scale in mag^2 (only used when robust=True).
+            Default 1.0 mag^2 gives ~1 mag outlier scatter.
+        max_steps : int
+            Hard cap on total production steps to prevent infinite runtime
+            (default 10000).
+        tau_factor : float
+            Convergence criterion: stop when chain length > tau_factor * tau
+            for all parameters (default 10, following emcee recommendations).
+        adaptive : bool
+            If True (default), automatically increase batch size
+            until convergence is achieved. If False, uses fixed n_steps.
+            Recommended to keep True for production use.
+        min_autocorr_N : int
+            Minimum number of steps before starting convergence checks
+            (default 100).
+        random_state : int or None
+            Seed for walker initialisation and the emcee sampler's internal
+            generator.  emcee 3.1 has no ``seed`` kwarg - it snapshots the
+            global np.random state at construction and then evolves its own
+            generator - so we assign a seeded RandomState to
+            ``sampler.random_state`` directly.  The same input then yields a
+            bit-identical zeropoint across runs; None keeps the old
+            non-deterministic behaviour.
+
+        Notes
+        -----
+        **Error model**: Both x and y errors are propagated via the
+        perpendicular variance ``var_perp = x_err^2 + y_err^2``, which is
+        the correct combination for a slope=1 model where ``delta = y - x``.
+
+        **Convergence**: Three diagnostics are evaluated after each batch:
+        1. Gelman-Rubin R-hat (between/within walker variance ratio)
+        2. Autocorrelation time (chain length > tau_factor * tau)
+        3. Posterior mean stability between consecutive batches
+
+        Convergence is declared when R-hat < 1.01 for all parameters AND
+        at least one other diagnostic agrees, or when autocorrelation and
+        posterior stability both agree.  This is more reliable than any
+        single diagnostic alone.
+
+        Returns
+        -------
+        (zp, zp_err, inlier_mask) : (float, float, ndarray)
+            Zeropoint (median), its uncertainty (percentile-based), and boolean inlier mask
+        """
+        try:
+            import emcee
+
+            logging.getLogger("emcee.autocorr").setLevel(logging.ERROR)
+        except ImportError:
+            logger.warning("emcee not available, falling back to ODR")
+            return self._odr_slope1_fit(x, y, x_err, y_err, min_points=min_points)
+
+        x = np.asarray(x, float)
+        y = np.asarray(y, float)
+        x_err = np.asarray(x_err, float)
+        y_err = np.asarray(y_err, float)
+        n_input = len(x)
+
+        finite = (
+            np.isfinite(x) & np.isfinite(y) & np.isfinite(x_err) & np.isfinite(y_err)
+        )
+        if finite.sum() < min_points:
+            logger.warning(
+                "MCMC: insufficient points (%s < %s)", finite.sum(), min_points
+            )
+            return np.nan, np.nan, np.zeros(n_input, dtype=bool)
+
+        x, y = x[finite], y[finite]
+        x_err, y_err = x_err[finite], y_err[finite]
+
+        # Model: y = x + ZP  =>  delta = y - x = ZP (constant)
+        delta = y - x
+        var_perp = x_err**2 + y_err**2
+
+        # Median-based starting point.
+        med_delta = np.nanmedian(delta)
+        mad_delta = np.nanmedian(np.abs(delta - med_delta)) * 1.4826
+        if mad_delta < 1e-6:
+            mad_delta = np.nanstd(delta)
+
+        # Capture the RAW per-source scale before the systematic floor:
+        # after flooring, median(var_perp) ~ MAD^2 by construction, so a
+        # cleanliness test against it passes on arbitrarily contaminated
+        # data (the 2025-08-07 ZTF-i epoch fast-pathed on MAD = 1.4 mag).
+        _med_err_raw = float(np.sqrt(np.median(var_perp)))
+        _w_raw = 1.0 / np.clip(var_perp, 1e-12, None)
+        _w_sum_raw = float(np.sum(_w_raw))
+        _max_wfrac = float(np.max(_w_raw) / _w_sum_raw) if _w_sum_raw > 0 else 1.0
+
+        zp_spread = max(1.0, 5 * mad_delta)  # Broad prior
+
+        # BUG 144: Make V_out data-adaptive instead of fixed 1.0 mag^2.
+        # The outlier variance scale should be proportional to the data's
+        # intrinsic scatter. A fixed V_out=1.0 is ~80x larger than MAD^2
+        # for typical data (MAD~0.1 mag), making the outlier component so
+        # broad that it barely discriminates outliers from inliers.
+        # Use V_out = max((3*MAD)^2, 0.01) so the outlier sigma is ~3x
+        # the inlier scatter, providing meaningful outlier separation.
+        V_out_eff = max((3.0 * mad_delta) ** 2, 0.01)
+        if V_out_eff != V_out:
+            logger.debug(
+                "MCMC V_out adjusted: %.4f -> %.4f (MAD=%.4f mag)",
+                V_out,
+                V_out_eff,
+                mad_delta,
+            )
+
+        # BUG 147: Add systematic variance floor to var_perp.
+        # Per-source measurement errors (even after chi2 scaling) don't
+        # capture field-dependent systematics: PSF variation across the
+        # field, catalog magnitude errors, blending, etc.  When MAD^2 >
+        # median(var_perp), the inlier component is too narrow and real
+        # inliers with legitimate scatter get classified as outliers.
+        # Add a constant floor so the inlier width matches the observed
+        # scatter, preserving relative weighting between sources.
+        _med_var_perp = float(np.median(var_perp))
+        # Estimate the locus scatter on a mode-anchored clip, not the
+        # full sample: contaminating outliers inflate the all-points
+        # MAD, which widens the inlier component and blurs the
+        # mixture's inlier/outlier discrimination.
+        _mad_locus = mad_delta
+        _c0 = self._crude_mode(delta)
+        if np.isfinite(_c0):
+            _m0 = np.nanmedian(np.abs(delta - _c0)) * 1.4826
+            if np.isfinite(_m0) and _m0 > 1e-6:
+                _pre = np.abs(delta - _c0) < 3.0 * _m0
+                if _pre.sum() >= max(3, len(delta) // 4):
+                    _dp = delta[_pre]
+                    _mp = (
+                        np.nanmedian(np.abs(_dp - np.nanmedian(_dp))) * 1.4826
+                    )
+                    if np.isfinite(_mp) and _mp > 1e-6:
+                        _mad_locus = _mp
+        _sys_floor = max(0.0, _mad_locus**2 - _med_var_perp)
+        if _sys_floor > 0:
+            var_perp = var_perp + _sys_floor
+            logger.debug(
+                "MCMC: added systematic floor %.4f mag^2 (sigma=%.4f mag) "
+                "to var_perp (locus MAD=%.4f, median var_perp=%.6f -> %.6f)",
+                _sys_floor,
+                np.sqrt(_sys_floor),
+                _mad_locus,
+                _med_var_perp,
+                float(np.median(var_perp)),
+            )
+
+        # Fast-path: if the data is clean (MAD within expected scatter and
+        # no strong outliers), a weighted mean is equivalent to the MCMC
+        # posterior mean but ~100x faster.  Skip emcee entirely.
+        # Eligibility is judged on the RAW per-source errors - the floored
+        # variance is ~MAD^2 by construction so a test against it is
+        # circular.  Two extra guards: an absolute MAD cap (calibrator
+        # scatter beyond ~0.3 mag is pathological regardless of claimed
+        # errors) and a weight-concentration limit (one or two tiny-error
+        # sources must not carry the whole mean).
+        _weighted_mean = np.average(delta, weights=1.0 / np.clip(var_perp, 1e-12, None))
+        _weighted_err = np.sqrt(1.0 / np.sum(1.0 / np.clip(var_perp, 1e-12, None)))
+        _max_resid = np.max(np.abs(delta - _weighted_mean))
+        _zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+        _fast_mad_cap = float(_zp_cfg.get("fast_path_max_mad", 0.3))
+        if (
+            mad_delta < min(1.5 * _med_err_raw, _fast_mad_cap)
+            and _max_resid < 4.0 * _med_err_raw
+            and _max_wfrac < 0.5
+            and len(delta) >= 5
+        ):
+            logger.info(
+                "ZP fast-path: clean data (MAD=%.4f, max_resid=%.4f vs "
+                "raw med_err=%.4f); weighted mean used instead of MCMC",
+                mad_delta,
+                _max_resid,
+                _med_err_raw,
+            )
+            # chi^2 inflation keeps the reported error honest when the
+            # floored per-source errors understate the observed scatter.
+            _chi2_f = float(np.sum((delta - _weighted_mean) ** 2 / var_perp))
+            _dof_f = max(1, len(delta) - 1)
+            if _chi2_f > _dof_f:
+                _weighted_err = float(_weighted_err * np.sqrt(_chi2_f / _dof_f))
+            inlier_mask_fast = np.abs(delta - _weighted_mean) < 4.0 * np.sqrt(var_perp)
+            if not np.any(inlier_mask_fast):
+                # Near-zero per-source errors can make the 4-sigma gate
+                # reject every point; an empty mask is useless downstream.
+                inlier_mask_fast = np.ones(len(delta), dtype=bool)
+            full_mask_fast = np.zeros(n_input, dtype=bool)
+            full_mask_fast[np.flatnonzero(finite)[inlier_mask_fast]] = True
+            return float(_weighted_mean), float(_weighted_err), full_mask_fast
+
+        # Shared by both modes below.  BUG 145: data-adaptive walker
+        # initialization spread - a fixed 0.01 mag is too tight for data
+        # with 0.1+ mag scatter and causes slow burn-in.
+        zp_init_spread = max(0.01, 0.1 * mad_delta)
+        rng = np.random.default_rng(random_state)
+
+        if robust:
+            # ================================================================
+            # MIXTURE MODE: Gaussian mixture model with in-model outliers
+            # ================================================================
+            # No pre-MCMC sigma-clip is needed: the mixture likelihood handles
+            # outliers internally via f_out.  Use the median of ALL points for the
+            # initial guess (median tolerates ~50 % contamination).
+            zp_guess = med_delta
+
+            ndim = 2
+
+            def log_prior(theta):
+                zp, f_out = theta
+                if abs(zp - zp_guess) > zp_spread:
+                    return -np.inf
+                if f_out < 0.0 or f_out > 0.5:
+                    return -np.inf
+                return 0.0
+
+            def log_likelihood(theta):
+                zp, f_out = theta
+                resid = delta - zp
+
+                # Main component: tight Gaussian (log-space)
+                logL_main = -0.5 * (
+                    (resid**2) / var_perp + np.log(2 * np.pi * var_perp)
+                )
+
+                # Outlier component: broad Gaussian (var_perp + V_out_eff)
+                var_out = var_perp + V_out_eff
+                logL_out = -0.5 * ((resid**2) / var_out + np.log(2 * np.pi * var_out))
+
+                # BUG 143: Use logsumexp for numerically stable mixture likelihood.
+                # The old approach (np.exp then np.log with clip) underflows for
+                # points with large residuals and small var_perp.
+                logL_mix = logsumexp(
+                    np.stack(
+                        [
+                            np.log1p(-f_out) + logL_main,  # log((1-f_out) * L_main)
+                            np.log(f_out) + logL_out,  # log(f_out * L_out)
+                        ]
+                    ),
+                    axis=0,
+                )
+                return np.sum(logL_mix)
+
+            def log_probability(theta):
+                lp = log_prior(theta)
+                if not np.isfinite(lp):
+                    return -np.inf
+                return lp + log_likelihood(theta)
+
+            # Initialize walkers with boundary-aware rejection sampling.
+            # The old code used 0.05 +/- 0.02 for f_out, which easily produced
+            # negative values that gave log_prior = -inf and stalled walkers.
+            n_walkers_eff = min(n_walkers, max(8, len(delta) // 2))
+            n_walkers_eff = max(n_walkers_eff, 8)  # emcee needs >= 2*ndim walkers
+
+            pos = np.empty((n_walkers_eff, ndim), float)
+            for i in range(n_walkers_eff):
+                for _ in range(100):
+                    trial_zp = zp_guess + zp_init_spread * rng.standard_normal()
+                    trial_fout = 0.05 + 0.02 * rng.standard_normal()
+                    if abs(trial_zp - zp_guess) < zp_spread and 0.0 < trial_fout < 0.5:
+                        pos[i] = [trial_zp, trial_fout]
+                        break
+                else:
+                    # Fallback: clamp to interior
+                    pos[i] = [zp_guess, 0.05]
+
+            sampler = emcee.EnsembleSampler(n_walkers_eff, ndim, log_probability)
+            if random_state is not None:
+                # emcee 3.1 snapshots the global np.random state at
+                # construction; seeding it after the fact via the public
+                # random_state setter makes the whole run reproducible.
+                # RandomState seeds must be < 2**32.
+                sampler.random_state = np.random.RandomState(
+                    int(random_state) % (2**32)
+                ).get_state()
+
+            sampler.run_mcmc(pos, n_burn, progress=False)
+            sampler.reset()
+
+            # ---- Adaptive production: run in batches until convergence ----
+            # Multi-diagnostic convergence: R-hat (Gelman-Rubin) + autocorrelation
+            # time + posterior mean stability.  R-hat is more reliable on short
+            # chains than autocorrelation time alone, and posterior stability
+            # catches cases where both formal diagnostics are noisy.
+            total_steps = 0
+            batch_size = min(n_steps, 500)
+            tau_max_old = np.inf
+            converged = False
+            prev_posterior_mean = None
+
+            while total_steps < max_steps:
+                sampler.run_mcmc(None, batch_size, progress=False)
+                total_steps += batch_size
+
+                # Need enough steps for any diagnostic to be meaningful
+                if total_steps < min_autocorr_N:
+                    continue
+
+                # --- Diagnostic 1: Gelman-Rubin R-hat ---
+                chain = sampler.get_chain()
+                rhat_zp = self._gelman_rubin(chain[:, :, 0])
+                rhat_fout = self._gelman_rubin(chain[:, :, 1])
+                rhat_ok = (
+                    np.isfinite(rhat_zp)
+                    and rhat_zp < 1.01
+                    and np.isfinite(rhat_fout)
+                    and rhat_fout < 1.01
+                )
+
+                # --- Diagnostic 2: Autocorrelation time ---
+                tau_est = np.nan
+                tau_ok = False
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        tau_arr = sampler.get_autocorr_time(quiet=True)
+                    tau_est = float(np.nanmean(tau_arr))
+                    if np.isfinite(tau_est) and tau_est > 0:
+                        if adaptive:
+                            new_batch_size = int(min(10 * tau_est, 2000))
+                            if (
+                                new_batch_size > batch_size
+                                and new_batch_size < max_steps - total_steps
+                            ):
+                                batch_size = new_batch_size
+                        tau_ok = total_steps > tau_factor * tau_est
+                        if tau_est > 1e-10:
+                            tau_stable = abs(tau_est - tau_max_old) / tau_est < 0.1
+                        else:
+                            tau_stable = False
+                    else:
+                        tau_stable = False
+                except Exception:
+                    tau_stable = False
+
+                # --- Diagnostic 3: Posterior mean stability ---
+                flat_chain = chain.reshape(-1, ndim)
+                posterior_mean = float(np.mean(flat_chain[:, 0]))
+                posterior_stable = False
+                if prev_posterior_mean is not None and np.isfinite(posterior_mean):
+                    posterior_stable = abs(
+                        posterior_mean - prev_posterior_mean
+                    ) < 0.001 * max(mad_delta, 0.01)
+                prev_posterior_mean = posterior_mean
+
+                # --- Combined convergence: require R-hat + at least one other ---
+                if rhat_ok and (tau_ok or posterior_stable):
+                    converged = True
+                    logger.info(
+                        f"[ZP MCMC] Converged at {total_steps} steps "
+                        f"(R-hat: ZP={rhat_zp:.4f}, f_out={rhat_fout:.4f}; "
+                        f"tau={tau_est:.1f}, tau_ok={tau_ok}, "
+                        f"posterior_stable={posterior_stable})"
+                    )
+                    break
+
+                # Also accept convergence if tau is stable AND posterior is stable
+                # (handles cases where R-hat is noisy but other diagnostics agree)
+                if tau_ok and tau_stable and posterior_stable:
+                    converged = True
+                    logger.info(
+                        f"[ZP MCMC] Converged at {total_steps} steps "
+                        f"(tau stable + posterior stable; R-hat: ZP={rhat_zp:.4f})"
+                    )
+                    break
+
+                tau_max_old = tau_est if np.isfinite(tau_est) else tau_max_old
+
+                if total_steps % 2000 == 0:
+                    logger.debug(
+                        f"[ZP MCMC] Progress: {total_steps} steps, "
+                        f"R-hat={rhat_zp:.4f}/{rhat_fout:.4f}, "
+                        f"tau={tau_est:.1f}, posterior_mean={posterior_mean:.4f}"
+                    )
+
+            # Log acceptance fraction and final tau (following PSF fitter)
+            acc = float(np.mean(sampler.acceptance_fraction))
+            tau_arr = None
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    tau_arr = sampler.get_autocorr_time(quiet=True)
+                tau_est = float(np.nanmean(tau_arr))
+                logger.debug("[ZP MCMC] acc=%.3f  tau~%.1f", acc, tau_est)
+            except Exception:
+                logger.debug("[ZP MCMC] acc=%.3f", acc)
+
+            if not 0.15 <= acc <= 0.8:
+                logger.warning(
+                    "[ZP MCMC] Suboptimal acceptance; consider tuning n_walkers"
+                )
+
+            # Warn if max_steps reached without convergence (following PSF fitter)
+            if not converged and adaptive:
+                logger.warning(
+                    f"[ZP MCMC] Reached max_steps ({max_steps}) without full convergence; "
+                    f"results may be unreliable"
+                )
+
+            # Thin by autocorrelation time when available (following PSF fitter)
+            if tau_arr is not None and np.any(np.isfinite(tau_arr)):
+                tau_max = float(np.nanmax(tau_arr))
+                thin = max(1, int(np.ceil(tau_max / 2)))
+            else:
+                thin = 1
+                tau_max = np.nan
+
+            samples = sampler.get_chain(flat=True, thin=thin)
+            zp_samples = samples[:, 0]
+            f_out_samples = samples[:, 1]
+
+            # Warn on low effective sample size.  ESS is the *unthinned*
+            # chain length over tau - thinning by tau/2 already removes the
+            # autocorrelation, so dividing the thinned count by tau again
+            # underestimates ESS by ~thin/2.
+            _n_raw = len(sampler.get_chain(flat=True))
+            n_eff = _n_raw / tau_max if tau_max >= 1 else _n_raw
+            if n_eff < 200:
+                logger.warning(
+                    f"ZP MCMC low ESS: n_eff ~ {n_eff:.0f} "
+                    f"(chain {_n_raw}, tau ~ {tau_max:.1f})"
+                )
+
+            # Percentile-based error (16/50/84) to capture asymmetry
+            zp = np.median(zp_samples)
+            zp_p16 = np.percentile(zp_samples, 16)
+            zp_p84 = np.percentile(zp_samples, 84)
+            zp_err_lo = zp - zp_p16
+            zp_err_hi = zp_p84 - zp
+            zp_err = max(zp_err_lo, zp_err_hi)  # Conservative symmetric error
+            f_out = np.median(f_out_samples)
+            # Release chain and sampler - the sampler object retains the full
+            # chain internally (n_walkers x n_steps x n_params) even after
+            # get_chain(); freeing it now prevents accumulation across images.
+            del samples, zp_samples, f_out_samples, sampler
+
+            # Compute posterior probability of each point being an inlier
+            # Use the effective V_out for consistency with the likelihood
+            resid = delta - zp
+            logL_main = -0.5 * (resid**2 / var_perp + np.log(2 * np.pi * var_perp))
+            var_out = var_perp + V_out_eff
+            logL_out = -0.5 * (resid**2 / var_out + np.log(2 * np.pi * var_out))
+
+            # P(inlier | data) via logsumexp for stability
+            logL_inlier = np.log1p(-f_out) + logL_main
+            logL_outlier = np.log(f_out) + logL_out
+            log_norm = logsumexp(np.stack([logL_inlier, logL_outlier]), axis=0)
+            p_inlier = np.exp(logL_inlier - log_norm)
+
+            # Inliers: points with high probability of belonging to main component
+            inlier_threshold = 0.5
+            final_mask = p_inlier > inlier_threshold
+
+            logger.info(
+                f"MCMC (robust): ZP={zp:.4f} +/- {zp_err:.4f}, "
+                f"f_out={f_out:.3f} ({final_mask.sum()}/{len(delta)} inliers, "
+                f"n_walkers={n_walkers_eff}, n_steps={total_steps})"
+            )
+
+        else:
+            # ================================================================
+            # STANDARD MODE: Single Gaussian with pre-clip outliers
+            # ================================================================
+            # Pre-MCMC sigma-clip is required here because the single-Gaussian
+            # likelihood has no in-model outlier component.
+            inlier_mask = np.abs(delta - med_delta) < outlier_sigma * mad_delta
+            if inlier_mask.sum() < min_points:
+                inlier_mask = np.ones(len(delta), dtype=bool)
+
+            delta_in = delta[inlier_mask]
+            var_in = var_perp[inlier_mask]
+            zp_guess = np.average(delta_in, weights=1.0 / np.clip(var_in, 1e-12, None))
+
+            def log_prior(zp):
+                if abs(zp - zp_guess) < zp_spread:
+                    return 0.0
+                return -np.inf
+
+            def log_likelihood(zp):
+                resid = delta_in - zp
+                return -0.5 * np.sum((resid**2) / var_in + np.log(2 * np.pi * var_in))
+
+            def log_probability(zp):
+                lp = log_prior(zp)
+                if not np.isfinite(lp):
+                    return -np.inf
+                return lp + log_likelihood(zp)
+
+            n_walkers_eff = min(n_walkers, max(4, len(delta_in) // 2))
+            n_walkers_eff = max(n_walkers_eff, 4)
+
+            pos = np.empty((n_walkers_eff, 1), float)
+            for i in range(n_walkers_eff):
+                for _ in range(100):
+                    trial = zp_guess + zp_init_spread * rng.standard_normal()
+                    if abs(trial - zp_guess) < zp_spread:
+                        pos[i] = trial
+                        break
+                else:
+                    pos[i] = zp_guess
+            sampler = emcee.EnsembleSampler(n_walkers_eff, 1, log_probability)
+            if random_state is not None:
+                sampler.random_state = np.random.RandomState(
+                    int(random_state) % (2**32)
+                ).get_state()
+
+            sampler.run_mcmc(pos, n_burn, progress=False)
+            sampler.reset()
+
+            # ---- Adaptive production: run in batches until convergence ----
+            # Multi-diagnostic convergence (same as mixture mode, 1-parameter)
+            total_steps = 0
+            batch_size = min(n_steps, 500)
+            tau_max_old = np.inf
+            converged = False
+            prev_posterior_mean = None
+            while total_steps < max_steps:
+                sampler.run_mcmc(None, batch_size, progress=False)
+                total_steps += batch_size
+                if total_steps < min_autocorr_N:
+                    continue
+
+                # Diagnostic 1: R-hat
+                chain = sampler.get_chain()
+                rhat_zp = self._gelman_rubin(chain[:, :, 0])
+                rhat_ok = np.isfinite(rhat_zp) and rhat_zp < 1.01
+
+                # Diagnostic 2: Autocorrelation
+                tau_ok = False
+                tau_stable = False
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        tau_arr = sampler.get_autocorr_time(quiet=True)
+                    tau_max = float(np.nanmax(tau_arr))
+                    if np.all(tau_arr * tau_factor < total_steps):
+                        tau_ok = True
+                        if tau_max > 1e-10:
+                            tau_stable = abs(tau_max - tau_max_old) / tau_max < 0.1
+                    tau_max_old = tau_max if np.isfinite(tau_max) else tau_max_old
+                except Exception:
+                    pass
+
+                # Diagnostic 3: Posterior stability
+                flat_chain = chain.reshape(-1, 1)
+                posterior_mean = float(np.mean(flat_chain[:, 0]))
+                posterior_stable = False
+                if prev_posterior_mean is not None and np.isfinite(posterior_mean):
+                    posterior_stable = abs(
+                        posterior_mean - prev_posterior_mean
+                    ) < 0.001 * max(mad_delta, 0.01)
+                prev_posterior_mean = posterior_mean
+
+                # Convergence: R-hat + one other, or tau + posterior stable
+                if rhat_ok and (tau_ok or posterior_stable):
+                    converged = True
+                    logger.info(
+                        f"[ZP MCMC std] Converged at {total_steps} steps "
+                        f"(R-hat={rhat_zp:.4f}, tau_ok={tau_ok}, "
+                        f"posterior_stable={posterior_stable})"
+                    )
+                    break
+                if tau_ok and tau_stable and posterior_stable:
+                    converged = True
+                    logger.info(
+                        f"[ZP MCMC std] Converged at {total_steps} steps "
+                        f"(tau stable + posterior stable; R-hat={rhat_zp:.4f})"
+                    )
+                    break
+
+            if not converged:
+                logger.warning(
+                    f"MCMC did not converge within {total_steps} steps; "
+                    f"results may be unreliable."
+                )
+
+            # Thin by autocorrelation time when available
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    tau_arr = sampler.get_autocorr_time(quiet=True)
+                tau_max = float(np.nanmax(tau_arr))
+                thin = max(1, int(np.ceil(tau_max / 2)))
+            except Exception:
+                thin = 1
+                tau_max = np.nan
+
+            samples = sampler.get_chain(flat=True, thin=thin)
+            zp = float(np.median(samples))
+            zp_p16 = float(np.percentile(samples, 16))
+            zp_p84 = float(np.percentile(samples, 84))
+            zp_err_lo = zp - zp_p16
+            zp_err_hi = zp_p84 - zp
+            zp_err = max(zp_err_lo, zp_err_hi)  # Conservative symmetric error
+
+            # ESS on the unthinned chain - thinning already removed the
+            # autocorrelation, so dividing the thinned count by tau again
+            # underestimates ESS by ~thin/2.
+            _n_raw = len(sampler.get_chain(flat=True))
+            n_eff = _n_raw / tau_max if tau_max >= 1 else _n_raw
+            if n_eff < 200:  # ESS floor raised 100 -> 200 for reliability
+                logger.warning(
+                    f"ZP MCMC (standard) low ESS: n_eff ~ {n_eff:.0f} "
+                    f"(chain {_n_raw}, tau ~ {tau_max:.1f})"
+                )
+            del samples, sampler
+
+            residuals = delta - zp
+            med_res = np.nanmedian(residuals[inlier_mask])
+            mad_res = np.nanmedian(np.abs(residuals[inlier_mask] - med_res)) * 1.4826
+            if mad_res < 1e-6:
+                mad_res = np.nanstd(residuals[inlier_mask])
+            threshold = outlier_sigma * np.sqrt(mad_res**2 + np.median(var_perp))
+            final_mask = np.abs(residuals) < threshold
+            f_out = 1.0 - final_mask.mean()
+
+            logger.info(
+                f"MCMC (standard): ZP={zp:.4f} +/- {zp_err:.4f} "
+                f"({final_mask.sum()}/{len(delta)} inliers, f_out={f_out:.3f}, n_steps={total_steps})"
+            )
+
+        # Zero inliers is a model failure, not a data property: in mixture
+        # mode f_out can pin at its 0.5 prior cap so p_inlier <= 0.5 for
+        # every point, and in standard mode a zero clip threshold can do
+        # the same.  Keep all finite points so the joint inlier mask and
+        # diagnostic plots still work.
+        if not np.any(final_mask):
+            logger.warning(
+                "MCMC classified all %s points as outliers; keeping all "
+                "finite points as inliers instead.",
+                len(delta),
+            )
+            final_mask = np.ones(len(delta), dtype=bool)
+
+        # BUG 146: Map back to original input length (including non-finite points).
+        # Previously used len(x) which is the filtered length, not the original.
+        full_mask = np.zeros(n_input, dtype=bool)
+        full_mask[np.flatnonzero(finite)[final_mask]] = True
+
+        return zp, zp_err, full_mask
+
+    # -----------------------------------------------------------------------
+    # RANSAC outlier-rejection fit helper
+    # -----------------------------------------------------------------------
+
+    def _robust_RANSAC_fit(
+        self,
+        x_indep,
+        delta_mag,
+        w_mag,
+        x_err=None,
+        slope: float = 0.0,
+        slope_err: float = 0.0,
+        slope_tolerance: float = 0.5,
+        penalty_weight: float = 100.0,
+        max_trials: int = 1000,
+        ransac_min_samples: int = 2,
+        random_state: int = 42,
+    ):
+        """
+        Fit delta_mag = ZP (constant) vs *x_indep* with RANSAC outlier rejection
+        and an inverse-variance weighted mean on the inlier set.
+
+        Parameters
+        ----------
+        x_indep   : independent variable (instrumental mag or colour)
+        delta_mag : dependent variable  (m_ref - m_inst[+/-colour])
+        w_mag     : inverse-variance weights
+        x_err     : optional uncertainty on x_indep
+        slope     : forced slope value (0 -> constant)
+        slope_err : uncertainty on the slope (passed through to covariance)
+        max_trials, ransac_min_samples, random_state : RANSAC settings
+
+        Returns
+        -------
+        (ZP, slope, inlier_mask, cov) : (float, float, ndarray, ndarray)
+        """
+        logger.info("Starting RANSAC constant fit (robust errors).")
+
+        x = np.asarray(x_indep, float)
+        y = np.asarray(delta_mag, float)
+        w0 = np.asarray(w_mag, float)
+        x_err = np.zeros_like(x) if x_err is None else np.asarray(x_err, float)
+
+        orig_size = len(x)
+
+        # Quality filter: finite values, positive weights, error <= 0.5 mag.
+        # NOTE: weights are still used internally for RANSAC conditioning, but we do not
+        # propagate weighted errors as output uncertainties.
+        mag_err = 1.0 / np.sqrt(np.clip(w0, 1e-12, None))
+        finite = (
+            np.isfinite(x)
+            & np.isfinite(y)
+            & np.isfinite(w0)
+            & (w0 > 0)
+            & np.isfinite(x_err)
+            & (mag_err <= 0.5)
+        )
+        x, y, w0, x_err, mag_err = (
+            x[finite],
+            y[finite],
+            w0[finite],
+            x_err[finite],
+            mag_err[finite],
+        )
+        keep_idx = np.where(finite)[0]
+        logger.info("Filtered %s/%s points.", len(x), orig_size)
+
+        # Trivial fallback for very sparse data (median and SE from MAD).
+        if len(x) < 3:
+            yv = y[np.isfinite(y)]
+            ZP = float(np.nanmedian(yv)) if yv.size else np.nan
+            mad0 = (
+                float(median_abs_deviation(yv, nan_policy="omit"))
+                if yv.size
+                else np.nan
+            )
+            n0 = int(yv.size)
+            zp_se = (1.858 * mad0 / np.sqrt(n0)) if n0 >= 2 else mad0
+            # zp_se (MAD/sqrt(N)) already captures measurement noise in the
+            # observed scatter.  For N >= 2, use it directly.  For N == 1,
+            # MAD = 0, so fall back to the per-source measurement error
+            # (sqrt(x_err^2 + y_err^2) = perpendicular uncertainty).
+            if n0 >= 2 and np.isfinite(zp_se) and zp_se > 0:
+                total_zp_err = float(zp_se)
+            else:
+                y_err_finite = mag_err[np.isfinite(y)]
+                x_err_finite = x_err[np.isfinite(y)]
+                mean_var_perp = (
+                    float(np.nanmedian(x_err_finite**2 + y_err_finite**2))
+                    if x_err_finite.size
+                    else 0.0
+                )
+                total_zp_err = (
+                    float(np.sqrt(mean_var_perp)) if mean_var_perp > 0 else float(zp_se)
+                )
+            full = np.zeros(orig_size, dtype=bool)
+            full[keep_idx] = True
+            return ZP, slope, full, np.diag([total_zp_err**2, slope_err**2])
+
+        # Y-errors from weights for ODR.
+        mag_err = 1.0 / np.sqrt(np.clip(w0, 1e-12, None))
+
+        # ODR accounts for errors in both X and Y; the slope-1 fit runs with
+        # iterative outlier rejection.
+        logger.info("Using ODR fit with robust outlier rejection (X,Y errors).")
+
+        # y = m_cat (catalog magnitude), x = m_inst (instrumental magnitude)
+        # delta_mag = m_cat - m_inst, so m_cat = delta_mag + m_inst
+        y_cal = y + x
+        y_err = mag_err
+
+        ZP, zp_std, inlier_mask = self._odr_slope1_fit(
+            x,
+            y_cal,
+            x_err,
+            y_err,
+            max_iter=10,  # Iterative sigma clipping
+            min_points=ransac_min_samples,
+        )
+
+        # inlier_mask indexes the finite-filtered arrays; map back to input.
+        full_mask = np.zeros(orig_size, dtype=bool)
+        full_mask[keep_idx] = inlier_mask
+
+        logger.info(
+            "ODR: %s/%s inliers, ZP=%.4f +/- %.4f",
+            inlier_mask.sum(),
+            len(x),
+            ZP,
+            zp_std,
+        )
+
+        # If ODR fails or rejects too many points, fall back to simple median
+        if not np.isfinite(ZP) or inlier_mask.sum() < 2:
+            logger.warning(
+                "ODR failed or found too few inliers; falling back to median."
+            )
+            yv = y[np.isfinite(y)]
+            ZP = float(np.nanmedian(yv)) if yv.size else np.nan
+            mad0 = (
+                float(median_abs_deviation(yv, nan_policy="omit"))
+                if yv.size
+                else np.nan
+            )
+            n0 = int(yv.size)
+            zp_se = (1.858 * mad0 / np.sqrt(n0)) if n0 >= 2 else mad0
+            # zp_se (MAD/sqrt(N)) already captures measurement noise.
+            # For N >= 2, use it directly.  For N == 1, fall back to
+            # per-source perpendicular uncertainty.
+            if n0 >= 2 and np.isfinite(zp_se) and zp_se > 0:
+                zp_std = float(zp_se)
+            else:
+                mean_var_perp = (
+                    float(np.nanmedian(x_err**2 + mag_err**2)) if x_err.size else 0.0
+                )
+                zp_std = (
+                    float(np.sqrt(mean_var_perp)) if mean_var_perp > 0 else float(zp_se)
+                )
+            full_mask = np.zeros(orig_size, dtype=bool)
+            full_mask[keep_idx] = True
+            return ZP, slope, full_mask, np.diag([zp_std**2, slope_err**2])
+
+        # If ODR rejects >50% of points, warn but keep the result
+        if inlier_mask.sum() < 0.5 * len(x) and len(x) > 10:
+            logger.warning(
+                "ODR rejected >50% of points (%s/%s); consider checking data quality",
+                inlier_mask.sum(),
+                len(x),
+            )
+
+        # zp_std already includes X-error propagation from ODR; no refit needed.
+        cov = np.diag([zp_std**2, slope_err**2])
+
+        logger.info("ZP = %.4f +/- %.4f (ODR fit with X,Y errors)", ZP, zp_std)
+        return ZP, slope, full_mask, cov
+
+    # -----------------------------------------------------------------------
+    # Public: RANSAC-based zeropoint fit
+    # -----------------------------------------------------------------------
+
+    def fit_zeropoint(
+        self,
+        catalog: pd.DataFrame,
+        threshold: float = 3.0,
+        max_trials: int = 4000,
+        ransac_min_samples: int = 2,
+        n_jobs: int | None = 1,
+        random_state: int | None = 42,
+        min_sources: int = 1,
+        fixed_color_coeffs=None,
+        fixed_color_coeff_errors=None,
+        fit_mode="polynomial",
+        n_segments=1,
+        fit_method="mcmc",  # "mcmc" (default), "odr", or "ransac"
+    ):
+        """
+        Fit ZP = m_cat - m_inst[+/-c*(c1-c2)] vs m_inst via MCMC, ODR, or RANSAC.
+        Supports linear, quadratic, and piecewise linear color terms.
+
+        Notes
+        -----
+        Conventions follow the standard photometric-calibration practice:
+
+        - Slope-1 fit of ``delta = m_cat - m_inst`` with iterative
+          sigma-clipping seeded at a crude mode and capped at
+          ``sigma_clip_max``.
+        - ``zeropoint_error`` is the statistical error on the mean
+          (formal weighted-mean error, chi^2/dof-inflated when residuals
+          exceed claimed errors - the SCAMP convention - floored at
+          SE(median) of the inlier locus) folded in quadrature with
+          ``zeropoint.systematic_err`` for field-correlated
+          calibration systematics.
+        - ``zeropoint_scatter`` is sigmaMAD = 1.4826*MAD of the inlier
+          deltas, the robust dispersion of the calibration locus.
+        - ``zeropoint_error_stat`` keeps the pre-systematic component.
+
+        Parameters
+        ----------
+        fit_method : str
+            "mcmc" for Bayesian MCMC (default), "odr" for Orthogonal Distance
+            Regression, or "ransac" for RANSAC-based outlier rejection.
+            MCMC provides posterior estimates with proper X,Y errors.
+        fixed_color_coeffs : tuple or None
+            For linear: (intercept, slope)
+            For quadratic: (intercept, slope, quad_coeff)
+            For piecewise (n=2): ((breakpoint,), (slope1, slope2), intercept)
+        fixed_color_coeff_errors : tuple or None
+            Corresponding errors for the coefficients
+        fit_mode : str
+            "polynomial" or "piecewise"
+        n_segments : int
+            Number of segments for piecewise fitting
+
+        Returns
+        -------
+        (clean_catalog, fit_params) : (DataFrame, dict)
+        """
+        t0 = time.time()
+        fit_params = {"AP": {}, "PSF": {}}
+        logger.info("Fitting zeropoints vs m_inst.")
+
+        try:
+            fpath = self.input_yaml.get("fpath", "")
+            base_name = os.path.splitext(os.path.basename(fpath))[0] or "zeropoint"
+            write_dir = os.path.dirname(fpath) or "."
+            use_filter = self.input_yaml.get("imageFilter")
+            use_filter = self._normalize_filter(use_filter)
+
+            # Allow fit_method/random_state override from config
+            zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+            fit_method = zp_cfg.get("fit_method", fit_method)
+            _rs = zp_cfg.get("random_state", random_state)
+            random_state = int(_rs) if _rs is not None else None
+
+            if not use_filter:
+                raise ValueError("Missing 'imageFilter' in input YAML.")
+
+            required = [
+                "flux_AP",
+                "flux_AP_err",
+                use_filter,
+                f"{use_filter}_err",
+            ]
+            missing = [c for c in required if c not in catalog.columns]
+            if missing:
+                raise KeyError(f"Missing columns: {missing}")
+
+            # PSF photometry may not be available (e.g. too few isolated
+            # sources for ePSF build).  Add NaN placeholder columns so the
+            # PSF fitting loop below is skipped gracefully via _finite_vmask.
+            for _psf_col in ("flux_PSF", "flux_PSF_err"):
+                if _psf_col not in catalog.columns:
+                    catalog[_psf_col] = np.nan
+
+            try:
+                color1, color2 = self.get_color_term_for_filter(use_filter)
+                has_color_term = (color1 in catalog.columns) and (
+                    color2 in catalog.columns
+                )
+            except Exception:
+                has_color_term, color1, color2 = False, None, None
+
+            clean_catalog = self._prepare_catalog(
+                catalog, threshold, use_filter, min_sources
+            )
+            if clean_catalog is None:
+                fit_params = self._fallback_zeropoint(catalog, use_filter)
+                return catalog, fit_params
+
+            from plotting_utils import (apply_autophot_mplstyle,
+                                        get_ransac_color, ransac_grid,
+                                        ransac_savefig,
+                                        set_mag_axes_inverted_xy)
+
+            plt.ioff()
+            apply_autophot_mplstyle()
+            fig, ax = plt.subplots(1, 1, figsize=set_size(540, 1))
+            inlier_masks_full = {
+                k: np.zeros(len(clean_catalog), dtype=bool) for k in ["AP", "PSF"]
+            }
+            colors = {
+                "AP": get_ransac_color("zeropoint_ap"),
+                "PSF": get_ransac_color("zeropoint_psf"),
+            }
+            labels = {"AP": "Aperture", "PSF": "PSF"}
+            global_xmins, global_xmaxs, global_ymins, global_ymaxs = [], [], [], []
+
+            for flux_type in ["AP", "PSF"]:
+                _calibrator_xy = self._photometry_positions(
+                    clean_catalog, flux_type
+                )
+                pack = self._finite_vmask(clean_catalog, flux_type, use_filter)
+                if pack is None:
+                    continue
+                flux, flux_err, catmag_v, catmag_err_v, vmask = pack
+
+                inst_mag, inst_mag_err, delta_mag, delta_mag_err = (
+                    self._compute_delta_mag(flux, flux_err, catmag_v, catmag_err_v)
+                )
+
+                # Colour correction with full error propagation (catalog + colour-term slope).
+                color_corr_err = np.zeros_like(delta_mag)
+                _median_color = 0.0
+                _color_scatter = 0.0
+                _cal_mag_min = np.nan
+                _cal_mag_max = np.nan
+                _cal_mag_med = np.nan
+                if has_color_term and fixed_color_coeffs is not None:
+                    delta_mag, color_corr_err = self._apply_color_correction(
+                        delta_mag,
+                        clean_catalog,
+                        vmask,
+                        color1,
+                        color2,
+                        fixed_color_coeffs,
+                        fixed_color_coeff_errors,
+                        fit_mode=fit_mode,
+                        n_segments=n_segments,
+                    )
+                    # Store color statistics for target calibration (BUG 155)
+                    _c1 = np.asarray(clean_catalog[color1].values, float)[vmask]
+                    _c2 = np.asarray(clean_catalog[color2].values, float)[vmask]
+                    _color_diff = _c1 - _c2
+                    _finite_color = _color_diff[np.isfinite(_color_diff)]
+                    if _finite_color.size > 0:
+                        _median_color = float(np.nanmedian(_finite_color))
+                        _color_scatter = float(
+                            median_abs_deviation(_finite_color, nan_policy="omit")
+                        )
+                    # Calibrator magnitude range: report so users can tell
+                    # whether the target lies inside the calibration locus.
+                    # Extrapolation beyond the calibrator magnitude range is
+                    # a leading source of zeropoint systematic error.
+                    _inst_finite = inst_mag[np.isfinite(inst_mag)]
+                    if _inst_finite.size > 0:
+                        _cal_mag_min = float(np.min(_inst_finite))
+                        _cal_mag_max = float(np.max(_inst_finite))
+                        _cal_mag_med = float(np.median(_inst_finite))
+
+                # Select fitting method: MCMC (default), ODR, or RANSAC.
+                # Use a per-flux-type copy so the auto-fallback doesn't leak
+                # from AP into PSF (e.g. AP has < 15 sources -> ODR, but PSF
+                # may have >= 15 and should still use MCMC).
+                #
+                # yerr is the uncertainty in y = m_cal = catmag (after colour
+                # correction).  The fitters compute var_perp = x_err^2 + yerr^2
+                # where x_err = inst_mag_err, so yerr must NOT contain
+                # inst_mag_err (otherwise it is double-counted).  The correct
+                # yerr is sqrt(catmag_err^2 + color_corr_err^2), NOT
+                # sqrt(delta_mag_err^2 + color_corr_err^2) because
+                # delta_mag_err already includes inst_mag_err.
+                yerr = np.sqrt(catmag_err_v**2 + color_corr_err**2)
+                n_sources = len(inst_mag)
+                fit_method_this = fit_method
+
+                # Auto-fallback to ODR for small source counts (MCMC unreliable with N < 15)
+                if fit_method_this.lower() == "mcmc" and n_sources < 15:
+                    logger.info(
+                        f"Small calibrator pool ({n_sources} sources): using ODR instead of MCMC for reliable convergence"
+                    )
+                    fit_method_this = "odr"
+
+                if fit_method_this.lower() == "mcmc":
+                    zp_mcmc_cfg = self.input_yaml.get("zeropoint", {}) or {}
+                    ZP, zp_std, inlier_short = self._mcmc_fit(
+                        inst_mag,
+                        inst_mag + delta_mag,  # y = m_cal
+                        inst_mag_err,  # x_err
+                        yerr,  # y_err
+                        adaptive=True,  # Enable adaptive convergence
+                        n_walkers=int(zp_mcmc_cfg.get("mcmc_n_walkers", 32)),
+                        n_burn=int(zp_mcmc_cfg.get("mcmc_n_burn", 500)),
+                        n_steps=int(zp_mcmc_cfg.get("mcmc_n_steps", 1000)),
+                        max_steps=int(zp_mcmc_cfg.get("mcmc_max_steps", 10000)),
+                        tau_factor=float(zp_mcmc_cfg.get("mcmc_tau_factor", 10.0)),
+                        random_state=random_state,
+                    )
+                    # Build dummy cov matrix for compatibility
+                    cov = (
+                        np.diag([zp_std**2, 0.0])
+                        if np.isfinite(zp_std)
+                        else np.diag([np.nan, 0.0])
+                    )
+                elif fit_method_this.lower() == "odr":
+                    ZP, zp_std, inlier_short = self._odr_slope1_fit(
+                        inst_mag,
+                        inst_mag + delta_mag,  # y = m_cal
+                        inst_mag_err,  # x_err
+                        yerr,  # y_err
+                    )
+                    # Build dummy cov matrix for compatibility
+                    cov = (
+                        np.diag([zp_std**2, 0.0])
+                        if np.isfinite(zp_std)
+                        else np.diag([np.nan, 0.0])
+                    )
+                else:
+                    # RANSAC path: median-based ZP after outlier rejection.
+                    weights = 1.0 / (yerr**2 + 1e-12)
+                    ZP, _, inlier_short, cov = self._robust_RANSAC_fit(
+                        inst_mag,
+                        delta_mag,
+                        weights,
+                        x_err=inst_mag_err,
+                        max_trials=max_trials,
+                        ransac_min_samples=ransac_min_samples,
+                        random_state=random_state,
+                    )
+                    zp_std = float(np.sqrt(np.clip(cov[0, 0], 0, np.inf)))
+
+                # A fitter can legally return an all-False inlier mask (the
+                # MCMC mixture when f_out pins at its prior cap, or any
+                # fitter on insufficient finite points).  An empty inlier
+                # set breaks the plotting and filtering below, so fall back
+                # to all finite sources - the same recovery ODR applies
+                # internally.
+                inlier_short = (
+                    np.asarray(inlier_short, dtype=bool)
+                    if inlier_short is not None
+                    else np.zeros(0, dtype=bool)
+                )
+                if inlier_short.size != n_sources or not np.any(inlier_short):
+                    logger.warning(
+                        f"[{flux_type}] {fit_method_this} fit returned no "
+                        f"usable inlier mask (N={n_sources}); treating all "
+                        "finite sources as inliers."
+                    )
+                    inlier_short = np.ones(n_sources, dtype=bool)
+
+                # Small-sample error floor: for N < 5 calibrators, formal ODR/MCMC
+                # errors can be misleadingly small because they don't capture
+                # field-dependent systematics (PSF variation, catalog zero-point
+                # offsets, blending).  Apply the same floor as estimate_zeropoint:
+                # 0.02 mag for N=1, decreasing to 0.001 mag for N >= 5.
+                _n_inl = (
+                    int(np.sum(inlier_short)) if inlier_short is not None else n_sources
+                )
+                if _n_inl < 5 and np.isfinite(zp_std):
+                    _zp_floor = max(0.001, 0.02 * max(0, (5 - _n_inl)) / 5.0)
+                    if zp_std < _zp_floor:
+                        logger.warning(
+                            f"[{flux_type}] Small calibrator sample (N={_n_inl}): "
+                            f"inflating ZP error from {zp_std:.4f} to floor {_zp_floor:.4f} mag "
+                            f"to account for unmodeled systematics."
+                        )
+                        zp_std = float(_zp_floor)
+
+                # Absolute error floor at any N (same 0.001 mag floor
+                # estimate_zeropoint applies): a formal error below a
+                # millimagnitude claims a precision no single-epoch
+                # calibration can justify.
+                if np.isfinite(zp_std) and zp_std < 0.001:
+                    zp_std = 0.001
+
+                # Scatter floor on the reported error: a formal error
+                # tighter than the scatter-based standard error is not
+                # believable - inverse-variance errors collapse when a
+                # few tiny-error sources dominate the sum.  (2025-08-07
+                # ZTF-i reported +/-0.021 mag with an inlier MAD of 1.4.)
+                # The floor is SE(median) = 1.2533*sigma/sqrt(N) =
+                # 1.858*MAD/sqrt(N) (Kendall & Stuart): the same scale
+                # estimate_zeropoint/_fallback_zeropoint/get() report, so
+                # every estimator path bottoms out at the same error for
+                # the same locus.  25% above the mean SE, which is the
+                # conservative direction for a robust location estimate.
+                _d_in = np.asarray(delta_mag)[inlier_short]
+                _d_in = _d_in[np.isfinite(_d_in)]
+                _mad_in = (
+                    float(median_abs_deviation(_d_in, nan_policy="omit"))
+                    if _d_in.size >= 2
+                    else np.nan
+                )
+                if _d_in.size >= 2 and np.isfinite(zp_std):
+                    _scatter_se = 1.858 * _mad_in / np.sqrt(_d_in.size)
+                    if np.isfinite(_scatter_se) and zp_std < _scatter_se:
+                        logger.info(
+                            f"[{flux_type}] ZP error raised from {zp_std:.4f} "
+                            f"to scatter floor {_scatter_se:.4f} mag "
+                            f"(inlier MAD={_mad_in:.3f}, N={_d_in.size})"
+                        )
+                        zp_std = float(_scatter_se)
+
+                # Bootstrap check of the statistical error
+                # (nonparametric): resample the inlier locus and take
+                # the SE of the bootstrap medians.  For a clean
+                # symmetric locus this equals SE(median); skewed or
+                # multimodal loci - where the MAD-based scale
+                # misjudges the distribution - produce a larger,
+                # honest floor.
+                _n_boot = int(zp_cfg.get("bootstrap_resamples", 512) or 0)
+                _se_boot = np.nan
+                if _d_in.size >= 8 and _n_boot > 0 and np.isfinite(zp_std):
+                    _se_boot = self._bootstrap_se(
+                        _d_in, _n_boot, np.random.default_rng(random_state)
+                    )
+                    if np.isfinite(_se_boot) and zp_std < _se_boot:
+                        logger.debug(
+                            f"[{flux_type}] ZP error raised from {zp_std:.4f} "
+                            f"to bootstrap SE {_se_boot:.4f} mag "
+                            f"({_n_boot} resamples)"
+                        )
+                        zp_std = float(_se_boot)
+
+                # Spatially-correlated calibrator residuals deflate
+                # the effective sample size: when the zeropoint varies
+                # smoothly across the field, neighbouring calibrators
+                # carry the same deviation and are not independent
+                # measurements.  The block-bootstrap SE folds that
+                # correlation in; it is noisy at small N, so it only
+                # floors the error when it clearly exceeds the iid
+                # scatter SE (1.5x gate ~ several times its own
+                # sampling noise) rather than chasing block-partition
+                # jitter.
+                _se_sp = np.nan
+                _n_eff = np.nan
+                if (
+                    _calibrator_xy is not None
+                    and _d_in.size >= 8
+                    and np.isfinite(ZP)
+                    and np.isfinite(_mad_in)
+                    and _mad_in > 0
+                    and np.isfinite(zp_std)
+                ):
+                    _pos_idx = np.flatnonzero(vmask)[inlier_short]
+                    _se_sp, _n_eff = self._block_bootstrap_se(
+                        np.asarray(delta_mag)[inlier_short] - ZP,
+                        _calibrator_xy[0][_pos_idx],
+                        _calibrator_xy[1][_pos_idx],
+                    )
+                    _se_iid = 1.4826 * _mad_in / np.sqrt(_d_in.size)
+                    if (
+                        np.isfinite(_se_sp)
+                        and _se_sp > 1.5 * _se_iid
+                        and zp_std < _se_sp
+                    ):
+                        logger.info(
+                            f"[{flux_type}] ZP error raised from "
+                            f"{zp_std:.4f} to {_se_sp:.4f} mag: "
+                            f"calibrator residuals spatially correlated "
+                            f"(N_eff={_n_eff:.0f} of {_d_in.size})"
+                        )
+                        zp_std = float(_se_sp)
+
+                # Field-level systematic term: the statistical error above
+                # only reflects per-source dispersion about the locus.
+                # Calibration systematics that correlate across the field
+                # (reference-catalog ties, bandpass mismatch, flat-field
+                # residuals) do not average down with N and are invisible
+                # to the scatter floor, so they enter in quadrature here.
+                # Both components are reported separately below.
+                zp_stat_err = zp_std
+
+                # Colour-term coefficient uncertainty: the colour correction
+                # (delta_corr = delta_mag - slope * colour_diff) shifts the
+                # ZP by -slope * median_colour.  Uncertainty in the fitted
+                # slope/intercept therefore propagates into the ZP error.
+                # Added in quadrature (conservative; coefficient errors are
+                # typically negatively correlated, so this overstates slightly).
+                if (
+                    has_color_term
+                    and fixed_color_coeff_errors is not None
+                    and len(fixed_color_coeff_errors) >= 2
+                    and np.isfinite(_median_color)
+                ):
+                    _ct_intercept_err, _ct_slope_err = (
+                        fixed_color_coeff_errors[0],
+                        fixed_color_coeff_errors[1],
+                    )
+                    _ct_err_sq = _ct_intercept_err**2 + (
+                        _ct_slope_err * _median_color
+                    ) ** 2
+                    _ct_err = float(np.sqrt(max(_ct_err_sq, 0.0)))
+                    if _ct_err > 0 and np.isfinite(zp_std):
+                        zp_std = float(np.hypot(zp_std, _ct_err))
+                        logger.debug(
+                            f"[{flux_type}] ZP error raised by colour-term "
+                            f"coefficient uncertainty: "
+                            f"intercept_err={_ct_intercept_err:.4f}, "
+                            f"slope_err={_ct_slope_err:.4f}, "
+                            f"median_color={_median_color:.3f} -> "
+                            f"+{_ct_err:.4f} mag"
+                        )
+
+                _sys_zp = float(zp_cfg.get("systematic_err", 0.0) or 0.0)
+                if _sys_zp > 0 and np.isfinite(zp_std):
+                    zp_std = float(np.hypot(zp_std, _sys_zp))
+
+                fit_params[flux_type].update(
+                    {
+                        "zeropoint": ZP,
+                        "zeropoint_error": zp_std,
+                        "zeropoint_error_stat": zp_stat_err,
+                        "zeropoint_scatter": (
+                            float(1.4826 * _mad_in)
+                            if np.isfinite(_mad_in)
+                            else np.nan
+                        ),
+                        "bootstrap_se": _se_boot,
+                        "n_eff": _n_eff,
+                        "n_sources": int(n_sources),
+                        "n_inliers": int(np.sum(inlier_short)),
+                        "fit_method": fit_method_this,
+                        "has_color_term": bool(
+                            has_color_term and fixed_color_coeffs is not None
+                        ),
+                        "calibrator_mag_min": _cal_mag_min,
+                        "calibrator_mag_max": _cal_mag_max,
+                        "calibrator_mag_median": _cal_mag_med,
+                    }
+                )
+                if has_color_term and fixed_color_coeffs is not None:
+                    # Extract slope for backwards compatibility (piecewise
+                    # stores a (slope1, slope2) tuple at index 1).
+                    slope_for_params = self._representative_color_slope(
+                        fixed_color_coeffs, fit_mode
+                    )
+                    slope_err_for_params = self._representative_color_slope(
+                        fixed_color_coeff_errors, fit_mode
+                    )
+                    fit_params[flux_type].update(
+                        {
+                            "color_term": slope_for_params,
+                            "color_term_error": slope_err_for_params,
+                            "color1": color1,
+                            "color2": color2,
+                            "median_color": _median_color,
+                            "color_scatter": _color_scatter,
+                        }
+                    )
+
+                # Per-method ZP/err/N/slope are rendered as a table by the
+                # caller (see the "Zeropoint" ascii_table in main.py).
+
+                if n_sources < 5:
+                    logger.warning(
+                        f"[{flux_type}] Very few calibrator sources (N={n_sources}); "
+                        f"ZP may be unreliable. Target photometry scatter likely."
+                    )
+
+                # ---- Plot: m_inst vs m_cal = m_inst + dmag (slope-1 locus y = x + ZP) ----
+                m_cal = inst_mag + delta_mag
+                m_cal_err = yerr
+                in_x = inst_mag[inlier_short]
+                m_cal_in = m_cal[inlier_short]
+                in_e = m_cal_err[inlier_short]
+
+                ax.errorbar(
+                    in_x,
+                    m_cal_in,
+                    xerr=inst_mag_err[inlier_short],
+                    yerr=in_e,
+                    fmt="o",
+                    ms=get_marker_size("medium"),
+                    color=colors[flux_type],
+                    ecolor="lightgrey",
+                    alpha=get_alpha("dark"),
+                    capsize=get_marker_size("medium") / 4,
+                    elinewidth=0.5,
+                    label=f"{labels[flux_type]} inliers [{inlier_short.sum()}]",
+                )
+                out_mask = ~inlier_short
+                if out_mask.any():
+                    ax.errorbar(
+                        inst_mag[out_mask],
+                        m_cal[out_mask],
+                        xerr=inst_mag_err[out_mask],
+                        yerr=m_cal_err[out_mask],
+                        fmt="x",
+                        ms=get_marker_size("medium"),
+                        color=get_ransac_color("outliers"),
+                        ecolor="lightgrey",
+                        alpha=get_alpha("medium"),
+                        capsize=get_marker_size("medium") / 4,
+                        elinewidth=0.5,
+                        label=f"{labels[flux_type]} outliers [{out_mask.sum()}]",
+                    )
+
+                xs = np.linspace(in_x.min() - 0.5, in_x.max() + 0.5, 200)
+                ys1 = xs + ZP
+                if np.isfinite(ZP) and np.isfinite(zp_std):
+                    ax.plot(
+                        xs,
+                        ys1,
+                        "--",
+                        color=colors[flux_type],
+                        lw=get_line_width("medium"),
+                        label=(
+                            f"{flux_type} ZP={ZP:.3f} +/- {zp_std:.3f} "
+                            f"(N={n_sources})  (m_cal = m_inst + ZP, slope=1)"
+                        ),
+                    )
+                    ax.fill_between(
+                        xs,
+                        xs + ZP - zp_std,
+                        xs + ZP + zp_std,
+                        color=colors[flux_type],
+                        alpha=get_alpha("very_light"),
+                    )
+                    _line_lo = float(np.min(ys1)) - 2.0 * float(zp_std)
+                    _line_hi = float(np.max(ys1)) + 2.0 * float(zp_std)
+                else:
+                    _line_lo, _line_hi = np.inf, -np.inf
+
+                # ---- Diagnostic: free-slope linear fit to quantify slope deviation ----
+                # Fit y = a*x + b (no slope=1 constraint) on the same inliers.
+                # Weights = 1 / (x_err^2 + y_err^2) (perpendicular variance, same as ZP fit).
+                _in_x = np.asarray(in_x, float)
+                _in_y = np.asarray(m_cal_in, float)
+                _in_xe = np.asarray(inst_mag_err[inlier_short], float)
+                _in_ye = np.asarray(in_e, float)
+                _w = 1.0 / np.clip(_in_xe**2 + _in_ye**2, 1e-12, None)
+                _ys_free = None
+                _fit_ok = (
+                    np.isfinite(_in_x).all()
+                    and np.isfinite(_in_y).all()
+                    and np.isfinite(_w).all()
+                    and len(_in_x) >= 3
+                )
+                if _fit_ok:
+                    # Point estimate: Huber-loss fit on whitened residuals
+                    # (sqrt(w) * (a*x + b - y)), so a single discrepant
+                    # calibrator cannot pull the slope the way plain WLS
+                    # lets it.  Slope error: seeded bootstrap over the
+                    # inliers (zeropoint.bootstrap_resamples /
+                    # random_state) -- with ~10 points the chi2-rescaled
+                    # covariance understates the real uncertainty.  Plain
+                    # WLS is the fallback if the Huber fit fails.
+                    _sqrt_w = np.sqrt(_w)
+
+                    def _huber_line(xv, yv, wv):
+                        _sw = np.sqrt(wv)
+
+                        def _pres(p):
+                            return _sw * (xv * p[0] + p[1] - yv)
+
+                        _p0 = np.array(
+                            [1.0, float(np.median(yv - xv))]
+                        )
+                        _r = least_squares(
+                            _pres, _p0, loss="huber", f_scale=1.0
+                        )
+                        if not _r.success or not np.isfinite(_r.x).all():
+                            return None
+                        return float(_r.x[0]), float(_r.x[1])
+
+                    _A = np.vstack([_in_x, np.ones_like(_in_x)]).T
+                    _sl_ok = False
+                    try:
+                        _rc = _huber_line(_in_x, _in_y, _w)
+                        if _rc is None:
+                            raise RuntimeError("Huber fit unavailable")
+                        _slope_free, _intercept_free = _rc
+                        _n_boot_sl = int(
+                            zp_cfg.get("bootstrap_resamples", 512) or 0
+                        )
+                        _boot = []
+                        if _n_boot_sl > 0:
+                            _rng_sl = np.random.default_rng(random_state)
+                            _nsl = len(_in_x)
+                            for _bi in range(_n_boot_sl):
+                                _idx = _rng_sl.integers(0, _nsl, _nsl)
+                                try:
+                                    _cb = _huber_line(
+                                        _in_x[_idx],
+                                        _in_y[_idx],
+                                        _w[_idx],
+                                    )
+                                except Exception:
+                                    _cb = None
+                                if _cb is not None:
+                                    _boot.append(_cb[0])
+                        if len(_boot) >= 10:
+                            _boot = np.asarray(_boot)
+                            _slope_err = float(
+                                1.4826
+                                * np.median(
+                                    np.abs(_boot - np.median(_boot))
+                                )
+                            )
+                        else:
+                            _slope_err = np.nan
+                        if not np.isfinite(_slope_err) or _slope_err <= 0:
+                            raise RuntimeError("bootstrap SE unavailable")
+                        _sl_ok = True
+                    except Exception:
+                        # Whiten by sqrt(w): lstsq(W@A, W@y) instead applies
+                        # the inverse-variance weights twice (effective
+                        # 1/sigma^4), so the line tracks only the few
+                        # brightest calibrators.
+                        try:
+                            _coef, _resid, _rank, _sv = np.linalg.lstsq(
+                                _sqrt_w[:, None] * _A,
+                                _sqrt_w * _in_y,
+                                rcond=None,
+                            )
+                            _slope_free, _intercept_free = float(
+                                _coef[0]
+                            ), float(_coef[1])
+                            # Covariance: (A^T W A)^-1 * sigma^2_resid
+                            _AtWA = _A.T @ (_w[:, None] * _A)
+                            _pred = _A @ _coef
+                            _chi2 = float(
+                                np.sum(_w * (_in_y - _pred) ** 2)
+                            )
+                            _dof = max(1, len(_in_x) - 2)
+                            _sigma2_resid = _chi2 / _dof
+                            _cov_free = np.linalg.inv(_AtWA) * _sigma2_resid
+                            _slope_err = float(np.sqrt(_cov_free[0, 0]))
+                            _sl_ok = True
+                        except Exception as _e:
+                            logger.debug(
+                                f"[{flux_type}] Free-slope diagnostic fit "
+                                f"failed: {_e}"
+                            )
+                    if _sl_ok:
+                        _dev = _slope_free - 1.0
+                        _ys_free = _slope_free * xs + _intercept_free
+                        ax.plot(
+                            xs,
+                            _ys_free,
+                            ":",
+                            color=colors[flux_type],
+                            lw=get_line_width("thin"),
+                            alpha=0.7,
+                            label=f"{labels[flux_type]} free slope={_slope_free:.3f}+/-{_slope_err:.3f}",
+                        )
+                        _slope_sig = (
+                            abs(_dev) / _slope_err
+                            if np.isfinite(_slope_err) and _slope_err > 0
+                            else np.nan
+                        )
+                        logger.debug(
+                            f"[{flux_type}] Free-slope fit: slope={_slope_free:.4f}+/-{_slope_err:.4f} "
+                            f"(deviation from 1: {_dev:+.4f}, {_slope_sig:.1f} sigma)"
+                        )
+                        fit_params[flux_type]["free_slope"] = _slope_free
+                        fit_params[flux_type]["free_slope_err"] = _slope_err
+                        fit_params[flux_type]["free_intercept"] = _intercept_free
+
+                # Magnitude-dependent ZP check: bin calibrators in
+                # instrumental magnitude and measure ZP in each bin.
+                # A significant trend means the slope=1 assumption fails
+                # at some magnitudes (non-linearity, unapplied colour term,
+                # PSF model brightness dependence).
+                _md_cfg = zp_cfg.get("magnitude_dependent_zp", {}) or {}
+                _md_enabled = bool(_md_cfg.get("enabled", True))
+                _md_n_bins = int(_md_cfg.get("n_bins", 5))
+                _md_min_per_bin = int(_md_cfg.get("min_per_bin", 3))
+                _md_max_trend = float(
+                    _md_cfg.get("max_zp_trend_mag", 0.05)
+                )
+                if (
+                    _md_enabled
+                    and np.isfinite(ZP)
+                    and int(np.sum(inlier_short)) >= _md_min_per_bin * 2
+                ):
+                    _md_result = self._magnitude_dependent_zp_check(
+                        inst_mag[inlier_short],
+                        delta_mag[inlier_short],
+                        inlier_short[inlier_short]
+                        if inlier_short.dtype == bool
+                        else inlier_short,
+                        delta_mag_err=None,
+                        n_bins=_md_n_bins,
+                        min_per_bin=_md_min_per_bin,
+                        max_zp_trend_mag=_md_max_trend,
+                    )
+                    fit_params[flux_type]["mag_dependent_zp"] = (
+                        _md_result["trend_slope"]
+                    )
+                    fit_params[flux_type][
+                        "mag_dependent_zp_err"
+                    ] = _md_result["trend_slope_err"]
+                    fit_params[flux_type][
+                        "mag_dependent_zp_significant"
+                    ] = _md_result["trend_significant"]
+                    fit_params[flux_type]["mag_dependent_zp_bins"] = (
+                        _md_result["zps_per_bin"]
+                    )
+                fit_params[flux_type]["reliable"] = True
+
+                global_xmins.append(xs[0])
+                global_xmaxs.append(xs[-1])
+                _em = float(np.nanmean(in_e)) if np.size(in_e) else 0.0
+                _ymin_cands = [
+                    float(m_cal_in.min()) - _em,
+                    _line_lo,
+                ]
+                _ymax_cands = [
+                    float(m_cal_in.max()) + _em,
+                    _line_hi,
+                ]
+                if _ys_free is not None:
+                    # A deviating free-slope line would otherwise clip
+                    # at the axes and look like it tracks the points.
+                    _ymin_cands.append(float(np.min(_ys_free)))
+                    _ymax_cands.append(float(np.max(_ys_free)))
+                global_ymins.append(min(_ymin_cands))
+                global_ymaxs.append(max(_ymax_cands))
+
+                full_mask = np.zeros(len(clean_catalog), dtype=bool)
+                full_mask[np.flatnonzero(vmask)] = inlier_short
+                inlier_masks_full[flux_type] = full_mask
+
+            # AP vs PSF consistency: two independent flux measurements of
+            # the same stars must agree on the zeropoint once they are on
+            # the same flux scale.  flux_AP is measured at the finite
+            # science aperture, flux_PSF at effectively infinite radius, so
+            # ZP_AP = ZP_true + ap_corr by construction (ap_corr <= 0: the
+            # aperture misses flux).  Comparing the raw ZPs fires whenever
+            # |ap_corr| > 3 sigma - noise, not signal - so place ZP_AP on
+            # the total scale first and fold ap_corr_err into the combined
+            # error.
+            _zp_ap = fit_params.get("AP", {}).get("zeropoint", np.nan)
+            _zp_psf = fit_params.get("PSF", {}).get("zeropoint", np.nan)
+            # Compare on the statistical error component: the configured
+            # field-level systematic folded into zeropoint_error is
+            # common-mode between two measurements of the same stars and
+            # cancels in the difference - using the total error here would
+            # dilute a real AP/PSF split.
+            _e_ap = fit_params.get("AP", {}).get(
+                "zeropoint_error_stat",
+                fit_params.get("AP", {}).get("zeropoint_error", np.nan),
+            )
+            _e_psf = fit_params.get("PSF", {}).get(
+                "zeropoint_error_stat",
+                fit_params.get("PSF", {}).get("zeropoint_error", np.nan),
+            )
+            if np.all(np.isfinite([_zp_ap, _zp_psf, _e_ap, _e_psf])):
+                # Bridge the two flux scales with the per-star offset
+                # d_i = inst_PSF - inst_AP measured on shared inliers.
+                # flux_PSF is normalised on the ePSF build cutout
+                # (photutils >=3.0 dropped norm_radius) and flux_AP at
+                # the science aperture radius, so the image's own
+                # calibrators are the only reliable way to learn the
+                # delivered AP-to-PSF scale.  On a healthy pair of fits
+                # ZP_AP - ZP_PSF == median(d_i).
+                _delta_emp = np.nan
+                _se_delta = np.nan
+                _ap_corr = float(
+                    self.input_yaml.get("aperture_correction", 0.0) or 0.0
+                )
+                if not np.isfinite(_ap_corr):
+                    _ap_corr = 0.0
+                _shared = inlier_masks_full.get("AP", np.zeros(
+                    len(clean_catalog), bool
+                )) & inlier_masks_full.get("PSF", np.zeros(
+                    len(clean_catalog), bool
+                ))
+                if (
+                    int(_shared.sum()) >= 5
+                    and "flux_AP" in clean_catalog.columns
+                    and "flux_PSF" in clean_catalog.columns
+                ):
+                    _fa = clean_catalog["flux_AP"].to_numpy(dtype=float)[
+                        _shared
+                    ]
+                    _fps = clean_catalog["flux_PSF"].to_numpy(dtype=float)[
+                        _shared
+                    ]
+                    _okf = (
+                        np.isfinite(_fa)
+                        & np.isfinite(_fps)
+                        & (_fa > 0)
+                        & (_fps > 0)
+                    )
+                    if int(_okf.sum()) >= 5:
+                        _d = -2.5 * np.log10(_fps[_okf] / _fa[_okf])
+                        _delta_emp = float(np.median(_d))
+                        _se_delta = float(
+                            1.2533
+                            * mad_std(_d)
+                            / np.sqrt(float(_d.size))
+                        )
+                        _se_delta = max(_se_delta, 0.001)
+                        for _m in ("AP", "PSF"):
+                            _fp = fit_params.get(_m) or {}
+                            if "zeropoint" not in _fp:
+                                continue
+                            _fp["ap_psf_offset"] = _delta_emp
+                            _fp["ap_psf_offset_err"] = _se_delta
+                            _fp["ap_psf_offset_n"] = int(_okf.sum())
+
+                # Robust AP/PSF combined zeropoint: when both estimates are
+                # available and agree (or disagree within tolerance), compute
+                # an inverse-variance weighted combination on the common
+                # (PSF/total) flux scale.  The combined ZP is more precise
+                # than either alone and provides a cross-check when one
+                # estimator is quietly biased.
+                _zp_combined = np.nan
+                _zp_combined_err = np.nan
+                _zp_combined_n = 0
+                if np.all(np.isfinite([_zp_ap, _zp_psf, _e_ap, _e_psf])):
+                    # Place both on the PSF (total flux) scale using the
+                    # measured shared-star offset as the bridge.
+                    _zp_ap_on_psf = _zp_ap - _delta_emp if np.isfinite(
+                        _delta_emp
+                    ) else _zp_ap - _ap_corr
+                    _e_ap_on_psf = np.sqrt(_e_ap**2 + _se_delta**2) if np.isfinite(
+                        _se_delta
+                    ) else _e_ap
+                    # Weight by inverse variance; downweight the noisier
+                    # estimator (typically AP on crowded fields).
+                    _w_ap = 1.0 / max(_e_ap_on_psf**2, 1e-12)
+                    _w_psf = 1.0 / max(_e_psf**2, 1e-12)
+                    _w_sum = _w_ap + _w_psf
+                    _zp_combined = (
+                        _w_ap * _zp_ap_on_psf + _w_psf * _zp_psf
+                    ) / _w_sum
+                    _zp_combined_err = float(np.sqrt(1.0 / _w_sum))
+                    _zp_combined_n = 2
+                    # Floor the combined error at the scatter SE so it
+                    # doesn't claim sub-millimag precision from two points.
+                    _d_in_all = []
+                    for _m in ("AP", "PSF"):
+                        _fp2 = fit_params.get(_m) or {}
+                        if "zeropoint_scatter" in _fp2 and np.isfinite(
+                            _fp2["zeropoint_scatter"]
+                        ):
+                            _d_in_all.append(_fp2["zeropoint_scatter"])
+                    if _d_in_all:
+                        # The scatter SE of the median for a normal sample is
+                        # 1.2533*sigma/sqrt(N).  ``_d_in_all`` holds
+                        # ``zeropoint_scatter``, which is already sigma-scaled
+                        # (1.4826*MAD), so the 1.2533 factor alone is correct;
+                        # the old 1.858 (=1.2533*1.4826) double-counted the
+                        # MAD->sigma constant and inflated the floor by 1.4826x.
+                        _scatter_se = 1.2533 * np.median(
+                            _d_in_all
+                        ) / np.sqrt(max(_n_inl, 1))
+                        if np.isfinite(_scatter_se) and _zp_combined_err < _scatter_se:
+                            _zp_combined_err = float(_scatter_se)
+                    fit_params["COMBINED"] = {
+                        "zeropoint": _zp_combined,
+                        "zeropoint_error": _zp_combined_err,
+                        "zeropoint_error_stat": _zp_combined_err,
+                        "zeropoint_scatter": float(
+                            np.median(_d_in_all)
+                        )
+                        if _d_in_all
+                        else np.nan,
+                        "bootstrap_se": np.nan,
+                        "n_eff": np.nan,
+                        "n_sources": int(_n_inl),
+                        "n_inliers": int(_n_inl),
+                        "fit_method": "ap_psf_combined",
+                        "has_color_term": bool(
+                            has_color_term
+                            and fixed_color_coeffs is not None
+                        ),
+                        "ap_zp": _zp_ap,
+                        "ap_zp_err": _e_ap,
+                        "psf_zp": _zp_psf,
+                        "psf_zp_err": _e_psf,
+                        "ap_psf_offset": _delta_emp
+                        if np.isfinite(_delta_emp)
+                        else np.nan,
+                        "ap_psf_offset_err": _se_delta
+                        if np.isfinite(_se_delta)
+                        else np.nan,
+                        "ap_psf_offset_n": int(_okf.sum())
+                        if "_okf" in dir()
+                        else 0,
+                        "reliable": True,
+                    }
+
+            if global_xmins:
+                xr = max(global_xmaxs) - min(global_xmins)
+                yr = max(global_ymaxs) - min(global_ymins)
+                ax.set_xlim(
+                    min(global_xmins) - 0.05 * xr, max(global_xmaxs) + 0.05 * xr
+                )
+                ax.set_ylim(min(global_ymins) - 0.1 * yr, max(global_ymaxs) + 0.1 * yr)
+
+            y_label = rf"Catalog $m_{{\mathrm{{cal,{use_filter}}}}}$ [mag]"
+            if has_color_term and fixed_color_coeffs is not None:
+                slope_for_display = self._representative_color_slope(
+                    fixed_color_coeffs, fit_mode
+                )
+                sign = r" + " if slope_for_display <= 0 else r" - "
+                y_label += (
+                    rf" (after colour term{sign}{abs(slope_for_display):.2f} "
+                    rf"$(m_{{\mathrm{{cal,{color1}}}}} - m_{{\mathrm{{cal,{color2}}}}})$)"
+                )
+            ax.set_xlabel(
+                rf"Instrumental Magnitude $m_{{\mathrm{{inst,{use_filter}}}}}$ [mag]"
+            )
+            ax.set_ylabel(y_label)
+            ransac_grid(ax)
+            # Declutter: scatter (inlier/outlier) entries stay in the legend
+            # above the axes; the fit results are shown as two frameless
+            # legends -- zeropoints top-left, fitted slopes bottom-right.
+            from matplotlib.container import ErrorbarContainer as _EBC
+            from matplotlib.lines import Line2D as _L2D
+
+            _handles, _labels_leg = ax.get_legend_handles_labels()
+            _data_h = [_h for _h in _handles if isinstance(_h, _EBC)]
+            _data_l = [
+                _l for _h, _l in zip(_handles, _labels_leg) if isinstance(_h, _EBC)
+            ]
+            if _data_h:
+                _leg_top = ax.legend(
+                    _data_h,
+                    _data_l,
+                    loc="lower center",
+                    bbox_to_anchor=(0.5, 1.0),
+                    frameon=False,
+                    ncol=2,
+                    fontsize=8,
+                )
+                ax.add_artist(_leg_top)
+
+            _zp_h, _zp_l, _slope_h, _slope_l = [], [], [], []
+            for _ft in ("PSF", "AP"):
+                _fp = fit_params.get(_ft) or {}
+                _zp = _fp.get("zeropoint", np.nan)
+                _zp_err = _fp.get("zeropoint_error", np.nan)
+                if np.isfinite(_zp) and np.isfinite(_zp_err):
+                    _zp_h.append(
+                        _L2D(
+                            [0],
+                            [0],
+                            color=colors[_ft],
+                            ls="--",
+                            lw=get_line_width("medium"),
+                        )
+                    )
+                    _zp_l.append(
+                        f"{labels[_ft]} zeropoint (slope = 1) = "
+                        f"{_zp:.3f} +/- {_zp_err:.3f} [mag]"
+                    )
+                _fs = _fp.get("free_slope", np.nan)
+                _fs_err = _fp.get("free_slope_err", np.nan)
+                if np.isfinite(_fs) and np.isfinite(_fs_err):
+                    _slope_h.append(
+                        _L2D(
+                            [0],
+                            [0],
+                            color=colors[_ft],
+                            ls=":",
+                            lw=get_line_width("thin"),
+                        )
+                    )
+                    _slope_l.append(
+                        f"{labels[_ft]} fitted slope = "
+                        f"{_fs:.3f} +/- {_fs_err:.3f} [mag/mag]"
+                    )
+            if _zp_h:
+                _leg_zp = ax.legend(
+                    _zp_h,
+                    _zp_l,
+                    loc="upper left",
+                    frameon=False,
+                    fontsize=8,
+                )
+                ax.add_artist(_leg_zp)
+            if _slope_h:
+                ax.legend(
+                    _slope_h,
+                    _slope_l,
+                    loc="lower right",
+                    frameon=False,
+                    fontsize=8,
+                )
+            set_mag_axes_inverted_xy(ax)
+
+            ransac_savefig(
+                fig,
+                os.path.join(
+                    write_dir, f"Zeropoint_{base_name}{get_plot_ext(self.input_yaml)}"
+                ),
+            )
+            plt.close(fig)
+
+            # Build joint inlier mask only from flux types that actually
+            # contributed inliers.  Use OR (not AND) so that a source which is
+            # an AP inlier but a PSF outlier (or vice-versa) is still kept.
+            # The MCMC/ODR fit already rejects outliers internally;
+            # removing them from the catalog here would double-penalise PSF
+            # sources that have larger scatter than AP.
+            valid_masks = [m for m in inlier_masks_full.values() if np.any(m)]
+            if valid_masks:
+                joint_mask = np.logical_or.reduce(valid_masks)
+                n_before = len(clean_catalog)
+                clean_catalog = clean_catalog[joint_mask]
+                n_removed = n_before - len(clean_catalog)
+                if n_removed > 0:
+                    logger.info(
+                        "fit_zeropoint: kept %s/%s sources (OR of AP/PSF inlier masks; %s removed as outliers in both).",
+                        len(clean_catalog),
+                        n_before,
+                        n_removed,
+                    )
+            else:
+                logger.warning(
+                    "fit_zeropoint: no inliers from any flux type; returning unfiltered clean_catalog."
+                )
+
+            logger.debug("[fit_zeropoint] Done in %.3fs", time.time() - t0)
+            return clean_catalog, fit_params
+
+        except Exception as exc:
+            exc_type, _, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            logger.error(
+                f"fit_zeropoint failed: {exc_type.__name__} in "
+                f"{fname}:{exc_tb.tb_lineno}: {exc}"
+            )
+            return catalog, fit_params
+
+    # -----------------------------------------------------------------------
+    # Public: sigma-clip histogram estimate
+    # -----------------------------------------------------------------------
+
+    def estimate_zeropoint(
+        self,
+        catalog: pd.DataFrame,
+        threshold: float = 5.0,
+        sigma_clip_sigma: float = 3.5,
+        sigma_clip_maxiters: int = 10,
+        min_sources: int = 1,
+        fixed_color_coeffs=None,
+        fixed_color_coeff_errors=None,
+        fit_mode="polynomial",
+        n_segments=1,
+    ):
+        """
+        Estimate ZP via sigma-clipped median of (m_ref - m_inst).
+        Produces a combined histogram PDF for AP and PSF.
+        Supports linear, quadratic, and piecewise linear color terms.
+
+        Notes
+        -----
+        Same conventions as fit_zeropoint: the reported
+        ``zeropoint_error`` is SE(median) = 1.858*MAD/sqrt(N) (the
+        1.2533*sigma/sqrt(N) asymptotic standard error of the median)
+        folded in quadrature with ``zeropoint.systematic_err``, and
+        ``zeropoint_scatter`` reports sigmaMAD of the inlier locus.
+        The N<10 inflation factor on SE(median) is a heuristic - the
+        MAD-based SE has no closed small-sample form - not a t-correction.
+
+        Parameters
+        ----------
+        fixed_color_coeffs : tuple or None
+            For linear: (intercept, slope)
+            For quadratic: (intercept, slope, quad_coeff)
+            For piecewise (n=2): ((breakpoint,), (slope1, slope2), intercept)
+        fixed_color_coeff_errors : tuple or None
+            Corresponding errors for the coefficients
+        fit_mode : str
+            "polynomial" or "piecewise"
+        n_segments : int
+            Number of segments for piecewise fitting
+
+        Returns
+        -------
+        (clean_catalog, zp_params) : (DataFrame, dict)
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+
+            t0 = time.time()
+            zp_params = {"AP": {}, "PSF": {}}
+            logger.info("Estimating zeropoint via sigma clipping.")
+
+            try:
+                if (
+                    catalog is None
+                    or getattr(catalog, "empty", False)
+                    or len(catalog) == 0
+                ):
+                    logger.warning(
+                        "estimate_zeropoint: catalog is None/empty; returning NaN zeropoint."
+                    )
+                    return catalog, self._fallback_zeropoint(
+                        catalog, self.input_yaml.get("imageFilter")
+                    )
+
+                fpath = self.input_yaml.get("fpath", "")
+                base_name = os.path.splitext(os.path.basename(fpath))[0] or "zeropoint"
+                write_dir = os.path.dirname(fpath) or "."
+                use_filter = self.input_yaml.get("imageFilter")
+                use_filter = self._normalize_filter(use_filter)
+                if not use_filter:
+                    raise ValueError("Missing 'imageFilter' in input YAML.")
+
+                required = [
+                    "flux_AP",
+                    "flux_AP_err",
+                    use_filter,
+                    f"{use_filter}_err",
+                ]
+                missing = [c for c in required if c not in catalog.columns]
+                if missing:
+                    # If filter columns are missing, go directly to fallback
+                    zp_params = self._fallback_zeropoint(catalog, use_filter)
+                    return catalog, zp_params
+
+                # PSF photometry may not be available (e.g. too few isolated
+                # sources for ePSF build).  Add NaN placeholder columns so the
+                # PSF pass below is skipped gracefully via _finite_vmask -
+                # same convention as fit_zeropoint.
+                for _psf_col in ("flux_PSF", "flux_PSF_err"):
+                    if _psf_col not in catalog.columns:
+                        catalog[_psf_col] = np.nan
+
+                zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+
+                try:
+                    color1, color2 = self.get_color_term_for_filter(use_filter)
+                    has_color_term = (color1 in catalog.columns) and (
+                        color2 in catalog.columns
+                    )
+                except Exception:
+                    has_color_term, color1, color2 = False, None, None
+
+                clean_catalog = self._prepare_catalog(
+                    catalog, threshold, use_filter, min_sources
+                )
+                if clean_catalog is None:
+                    zp_params = self._fallback_zeropoint(catalog, use_filter)
+                    return catalog, zp_params
+
+                apply_autophot_mplstyle()
+                fig_hist, ax_hist = plt.subplots(1, 1, figsize=set_size(540, 1))
+                colors = {
+                    "AP": get_ransac_color("zeropoint_hist_ap"),
+                    "PSF": get_ransac_color("zeropoint_hist_psf"),
+                }
+                labels_base = {"AP": "Aperture", "PSF": "PSF"}
+                inlier_masks_full = {
+                    k: np.zeros(len(clean_catalog), dtype=bool) for k in ["AP", "PSF"]
+                }
+                # Track global x-range for plot padding
+                x_min = np.inf
+                x_max = -np.inf
+                # Track global y-range so top markers don't overlap histograms
+                y_max = 0.0
+
+                # Aperture correction is applied at photometry stage (main.py), not during ZP calculation.
+                # The following is for visualization only: show what the ZP would be with aperture correction.
+                ap_corr_mag = float(
+                    self.input_yaml.get("aperture_correction", 0.0) or 0.0
+                )
+                ap_corr_err_mag = float(
+                    self.input_yaml.get("aperture_correction_err", 0.0) or 0.0
+                )
+
+                for flux_type in ["AP", "PSF"]:
+                    _calibrator_xy = self._photometry_positions(
+                        clean_catalog, flux_type
+                    )
+                    pack = self._finite_vmask(clean_catalog, flux_type, use_filter)
+                    if pack is None:
+                        zp_params[flux_type] = {
+                            "zeropoint": np.nan,
+                            "zeropoint_error": np.nan,
+                            "zeropoint_error_stat": np.nan,
+                            "zeropoint_scatter": np.nan,
+                            "bootstrap_se": np.nan,
+                            "n_eff": np.nan,
+                            "n_sources": 0,
+                            "n_inliers": 0,
+                            "fit_method": "sigma_clip",
+                            "reliable": False,
+                            "reliability_flags": ["no finite calibrators"],
+                            "has_color_term": False,
+                        }
+                        continue
+
+                    flux, flux_err, catmag_v, catmag_err_v, vmask = pack
+                    _, _, delta_mag, delta_mag_err = self._compute_delta_mag(
+                        flux, flux_err, catmag_v, catmag_err_v
+                    )
+
+                    delta_no_corr = delta_mag.copy()  # before colour correction
+                    delta_no_corr_err = delta_mag_err.copy()
+
+                    if has_color_term and fixed_color_coeffs is not None:
+                        zp_no_corr = float(
+                            np.nanmedian(delta_no_corr[np.isfinite(delta_no_corr)])
+                        )
+                        std_no_corr = float(
+                            median_abs_deviation(
+                                delta_no_corr[np.isfinite(delta_no_corr)],
+                                nan_policy="omit",
+                            )
+                        )
+                        # Extract slope for logging (second element in tuple)
+                        if fit_mode == "piecewise" and n_segments == 2:
+                            slope_for_log = fixed_color_coeffs[1][0]  # First slope
+                        else:
+                            slope_for_log = (
+                                fixed_color_coeffs[1]
+                                if len(fixed_color_coeffs) >= 2
+                                else 0.0
+                            )
+                        logger.info(
+                            f"[{flux_type}] Before color correction: ZP={zp_no_corr:.3f}, "
+                            f"std={std_no_corr:.3f}, color_term={slope_for_log:.4f}"
+                        )
+
+                        delta_mag, color_corr_err = self._apply_color_correction(
+                            delta_mag,
+                            clean_catalog,
+                            vmask,
+                            color1,
+                            color2,
+                            fixed_color_coeffs,
+                            fixed_color_coeff_errors,
+                            fit_mode=fit_mode,
+                            n_segments=n_segments,
+                        )
+                        # Propagate colour-correction uncertainty into delta_mag_err.
+                        delta_mag_err = np.sqrt(delta_mag_err**2 + color_corr_err**2)
+                        # Store color statistics for target calibration (BUG 155)
+                        _c1 = np.asarray(clean_catalog[color1].values, float)[vmask]
+                        _c2 = np.asarray(clean_catalog[color2].values, float)[vmask]
+                        _color_diff_est = _c1 - _c2
+                        _finite_color_est = _color_diff_est[
+                            np.isfinite(_color_diff_est)
+                        ]
+                        if _finite_color_est.size > 0:
+                            _median_color_est = float(np.nanmedian(_finite_color_est))
+                            _color_scatter_est = float(
+                                median_abs_deviation(
+                                    _finite_color_est, nan_policy="omit"
+                                )
+                            )
+                        else:
+                            _median_color_est = 0.0
+                            _color_scatter_est = 0.0
+
+                    finite_mask = np.isfinite(delta_mag) & np.isfinite(delta_mag_err)
+                    delta_mag = delta_mag[finite_mask]
+                    delta_mag_err = delta_mag_err[finite_mask]
+                    delta_no_corr = delta_no_corr[finite_mask]
+                    delta_no_corr_err = delta_no_corr_err[finite_mask]
+                    # Keep the full finite distribution (pre sigma-clip) for plotting.
+                    delta_mag_full = delta_mag.copy()
+
+                    # Track which vmask sources survive finite filtering
+                    vmask_finite_idx = np.flatnonzero(vmask)[finite_mask]
+                    if len(delta_mag) == 0:
+                        logger.warning(
+                            f"{flux_type}: no finite delta_mag after masking; skipping."
+                        )
+                        zp_params[flux_type] = {
+                            "zeropoint": np.nan,
+                            "zeropoint_error": np.nan,
+                            "zeropoint_error_stat": np.nan,
+                            "zeropoint_scatter": np.nan,
+                            "bootstrap_se": np.nan,
+                            "n_eff": np.nan,
+                            "n_sources": 0,
+                            "n_inliers": 0,
+                            "fit_method": "sigma_clip",
+                            "reliable": False,
+                            "reliability_flags": ["no finite calibrators"],
+                            "has_color_term": False,
+                        }
+                        continue
+
+                    clipped = sigma_clip(
+                        delta_mag,
+                        sigma=sigma_clip_sigma,
+                        maxiters=sigma_clip_maxiters,
+                        cenfunc=np.nanmedian,
+                        stdfunc=mad_std,
+                    )
+                    inlier_mask = ~clipped.mask
+                    inlier_deltas = clipped.data[inlier_mask]
+                    inlier_delta_err = delta_mag_err[inlier_mask]
+
+                    # Track which catalog sources survive sigma clipping
+                    vmask_sigma_idx = vmask_finite_idx[inlier_mask]
+
+                    finite2 = np.isfinite(inlier_deltas) & np.isfinite(inlier_delta_err)
+                    inlier_deltas = inlier_deltas[finite2]
+                    inlier_delta_err = inlier_delta_err[finite2]
+                    # Update to account for finite2 filtering
+                    vmask_sigma_idx = vmask_sigma_idx[finite2]
+
+                    if len(inlier_deltas) == 0:
+                        logger.warning(
+                            f"{flux_type}: no inliers after sigma clipping; skipping."
+                        )
+                        zp_params[flux_type] = {
+                            "zeropoint": np.nan,
+                            "zeropoint_error": np.nan,
+                            "zeropoint_error_stat": np.nan,
+                            "zeropoint_scatter": np.nan,
+                            "bootstrap_se": np.nan,
+                            "n_eff": np.nan,
+                            "n_sources": 0,
+                            "n_inliers": 0,
+                            "fit_method": "sigma_clip",
+                            "reliable": False,
+                            "reliability_flags": ["no sigma-clip inliers"],
+                            "has_color_term": False,
+                        }
+                        continue
+
+                    # Median central value (stable against residual outliers
+                    # and imperfect error modelling).
+                    zp_final = float(np.nanmedian(inlier_deltas))
+
+                    n_inl = len(inlier_deltas)
+                    mad_zp = float(
+                        median_abs_deviation(inlier_deltas, nan_policy="omit")
+                    )
+                    # SE(median) ~ 1.858 * MAD/sqrt(N) (1.253*sigma/sqrt(N), sigma~1.4826*MAD)
+                    se_median = (
+                        (1.858 * mad_zp / np.sqrt(n_inl)) if n_inl >= 2 else mad_zp
+                    )
+
+                    # Small-sample inflation: for N < 10, MAD-based scatter
+                    # estimates are unstable and systematically underestimate the
+                    # true zeropoint uncertainty.  Apply a correction factor that
+                    # smoothly decreases from 1.5x (N=2) to 1.0x (N>=10).
+                    if n_inl < 10:
+                        small_n_factor = 1.0 + 0.5 * max(0, (10 - n_inl)) / 8.0
+                        se_median *= small_n_factor
+                        logger.warning(
+                            f"[{flux_type}] Small calibrator sample (N={n_inl}): "
+                            f"inflating ZP scatter by {small_n_factor:.2f}x "
+                            f"to account for unstable MAD estimate."
+                        )
+
+                    # Per-source measurement uncertainty: average of propagated errors
+                    # (flux_err + catmag_err + color_corr_err) already in inlier_delta_err
+                    mean_per_source_err = (
+                        float(np.nanmedian(inlier_delta_err))
+                        if len(inlier_delta_err) > 0
+                        else 0.0
+                    )
+
+                    # Total zeropoint error: se_median (1.858 * MAD / sqrt(N))
+                    # already captures the observed scatter, which includes
+                    # per-source measurement noise.  Adding mean_per_source_err
+                    # in quadrature would double-count it, and taking max()
+                    # would overestimate by ~sqrt(N) since mean_per_source_err
+                    # is a per-source quantity, not a ZP-level quantity.
+                    # For N >= 2, se_median is the correct ZP uncertainty.
+                    # For N == 1, MAD = 0 (no scatter), so fall back to the
+                    # per-source measurement error.
+                    if n_inl >= 2:
+                        zp_err = float(se_median)
+                    else:
+                        zp_err = float(mean_per_source_err)
+
+                    # Error floor scales with sample size: 0.001 mag for N >= 20,
+                    # up to 0.02 mag for N < 5.  The floor prevents misleadingly
+                    # small errors when few sources are available.
+                    zp_floor = (
+                        max(0.001, 0.02 * max(0, (5 - n_inl)) / 5.0)
+                        if n_inl < 5
+                        else 0.001
+                    )
+                    zp_err = max(zp_err, zp_floor)
+
+                    # Nonparametric bootstrap check (same floor as
+                    # fit_zeropoint): the SE of the bootstrap medians
+                    # captures estimator variability on skewed or
+                    # multimodal loci that the MAD scale misjudges.
+                    _se_boot = np.nan
+                    _se_sp = np.nan
+                    _n_eff = np.nan
+                    _n_boot = int(
+                        zp_cfg.get("bootstrap_resamples", 512) or 0
+                    )
+                    if n_inl >= 8 and _n_boot > 0:
+                        _se_boot = self._bootstrap_se(
+                            inlier_deltas,
+                            _n_boot,
+                            np.random.default_rng(
+                                zp_cfg.get("random_state", 42)
+                            ),
+                        )
+                        if np.isfinite(_se_boot) and zp_err < _se_boot:
+                            zp_err = float(_se_boot)
+
+                    # Spatial block-bootstrap (same as fit_zeropoint):
+                    # calibrators sharing a smooth field-dependent
+                    # deviation are not independent measurements, so
+                    # their correlated SE floors the error when it
+                    # clearly exceeds the iid scatter SE.
+                    if (
+                        _calibrator_xy is not None
+                        and n_inl >= 8
+                        and np.isfinite(mad_zp)
+                        and mad_zp > 0
+                    ):
+                        _se_sp, _n_eff = self._block_bootstrap_se(
+                            inlier_deltas - zp_final,
+                            _calibrator_xy[0][vmask_sigma_idx],
+                            _calibrator_xy[1][vmask_sigma_idx],
+                        )
+                        _se_iid = 1.4826 * mad_zp / np.sqrt(n_inl)
+                        if (
+                            np.isfinite(_se_sp)
+                            and _se_sp > 1.5 * _se_iid
+                            and zp_err < _se_sp
+                        ):
+                            zp_err = float(_se_sp)
+
+                    # Same field-level systematic term as fit_zeropoint:
+                    # correlated calibration systematics do not average
+                    # down with N, so they enter in quadrature on top of
+                    # the statistical component.
+                    zp_stat = zp_err
+                    _sys_zp = float(
+                        zp_cfg.get("systematic_err", 0.0) or 0.0
+                    )
+                    if _sys_zp > 0 and np.isfinite(zp_err):
+                        zp_err = float(np.hypot(zp_err, _sys_zp))
+
+                    logger.debug(
+                        "[%s] ZP error breakdown: SE_median=%.4f, mean_src_err=%.4f, combined=%.4f (N=%d, MAD=%.4f)",
+                        flux_type,
+                        se_median,
+                        mean_per_source_err,
+                        zp_err,
+                        n_inl,
+                        mad_zp,
+                    )
+
+                    zp_params[flux_type].update(
+                        {
+                            "zeropoint": zp_final,
+                            "zeropoint_error": zp_err,
+                            "zeropoint_error_stat": zp_stat,
+                            "zeropoint_scatter": (
+                                float(1.4826 * mad_zp)
+                                if np.isfinite(mad_zp)
+                                else np.nan
+                            ),
+                            "bootstrap_se": _se_boot,
+                            "n_eff": _n_eff,
+                            "n_sources": n_inl,
+                            "n_inliers": n_inl,
+                            "fit_method": "sigma_clip",
+                            "reliable": True,
+                            "has_color_term": bool(
+                                has_color_term and fixed_color_coeffs is not None
+                            ),
+                        }
+                    )
+                    if has_color_term and fixed_color_coeffs is not None:
+                        # Extract slope for backwards compatibility (piecewise
+                        # stores a (slope1, slope2) tuple at index 1).
+                        slope_for_params = self._representative_color_slope(
+                            fixed_color_coeffs, fit_mode
+                        )
+                        slope_err_for_params = self._representative_color_slope(
+                            fixed_color_coeff_errors, fit_mode
+                        )
+                        zp_params[flux_type].update(
+                            {
+                                "color_term": slope_for_params,
+                                "color_term_error": slope_err_for_params,
+                                "color1": color1,
+                                "color2": color2,
+                                "median_color": _median_color_est,
+                                "color_scatter": _color_scatter_est,
+                            }
+                        )
+
+                    logger.info(
+                        "[%s] Zeropoint: %.3f +/- %.3f mag (N=%d, MAD=%.4f)",
+                        flux_type,
+                        zp_final,
+                        zp_err,
+                        n_inl,
+                        mad_zp,
+                    )
+
+                    # ---- Histogram (colour-corrected) ----------------------
+                    # Use auto binning (Freedman-Diaconis) for all catalogs.
+                    bin_edges = np.histogram_bin_edges(inlier_deltas, bins="fd")
+                    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                    width = bin_edges[1] - bin_edges[0]
+                    counts, _ = np.histogram(
+                        inlier_deltas, bins=bin_edges, density=True
+                    )
+                    try:
+                        y_max = max(float(y_max), float(np.nanmax(counts)))
+                    except Exception:
+                        pass
+
+                    # n_inliers = number of unique catalog sources surviving all cuts
+                    # vmask_sigma_idx contains the catalog indices of sources that survive all filtering steps
+                    n_sources_used = len(vmask_sigma_idx)
+
+                    # DEBUG: per-stage source counts, for diagnosing discrepancies.
+                    logger.debug(
+                        f"[{flux_type}] Source counts: vmask={vmask.sum()}, "
+                        f"finite_mask={finite_mask.sum()}, inlier_mask={inlier_mask.sum()}, "
+                        f"finite2={finite2.sum()}, final={n_sources_used}"
+                    )
+
+                    _corr_tag = (
+                        "color corr., "
+                        if (has_color_term and fixed_color_coeffs is not None)
+                        else ""
+                    )
+                    ax_hist.bar(
+                        bin_centers,
+                        counts,
+                        width=width,
+                        color=colors[flux_type],
+                        edgecolor="none",
+                        alpha=0.8,
+                        zorder=4,
+                        label=(
+                            f"{labels_base[flux_type]} ({_corr_tag}N={n_sources_used})"
+                            f"||ZP = {zp_final:.3f} \u00b1 {zp_err:.3f}"
+                        ),
+                    )
+                    # Errorbar marker at top of plot (xerr = zeropoint_error).
+                    # Use a blended transform: x in data units, y in axes fraction.
+                    try:
+                        y_ax = 0.95
+                        if np.isfinite(zp_final) and np.isfinite(zp_err) and zp_err > 0:
+                            ax_hist.errorbar(
+                                [zp_final],
+                                [y_ax],
+                                xerr=[zp_err],
+                                fmt="o",
+                                markersize=3,
+                                color=colors[flux_type],
+                                elinewidth=0.5,
+                                capsize=3 / 4,
+                                alpha=0.95,
+                                zorder=20,
+                                transform=ax_hist.get_xaxis_transform(),
+                                clip_on=False,
+                            )
+                    except Exception:
+                        pass
+
+                    # Update global x-range for padding (use the actual inlier deltas)
+                    try:
+                        d_lo = float(np.nanmin(inlier_deltas))
+                        d_hi = float(np.nanmax(inlier_deltas))
+                        if np.isfinite(d_lo) and np.isfinite(d_hi):
+                            x_min = min(x_min, d_lo)
+                            x_max = max(x_max, d_hi)
+                    except Exception:
+                        pass
+
+                    # Optional: also show the aperture-corrected AP zeropoint distribution as
+                    # a separate (step) histogram for visualization when an aperture correction
+                    # was measured.
+                    if (
+                        flux_type == "AP"
+                        and np.isfinite(ap_corr_mag)
+                        and ap_corr_mag != 0.0
+                    ):
+                        try:
+                            inlier_apcorr = inlier_deltas - float(ap_corr_mag)
+                            # Use the same bin width as the inlier histogram, shifted in x.
+                            # Reuse the capped bin_edges from above to maintain consistency.
+                            be_apcorr = bin_edges - float(ap_corr_mag)
+                            ct_apcorr, _ = np.histogram(
+                                inlier_apcorr, bins=be_apcorr, density=True
+                            )
+                            bc_apcorr = (be_apcorr[:-1] + be_apcorr[1:]) / 2.0
+                            try:
+                                y_max = max(float(y_max), float(np.nanmax(ct_apcorr)))
+                            except Exception:
+                                pass
+                            # Propagate aperture-correction uncertainty into the error reported for the
+                            # corrected zeropoint marker/legend.
+                            xerr_corr = float(zp_err)
+                            if np.isfinite(ap_corr_err_mag) and ap_corr_err_mag > 0:
+                                xerr_corr = float(
+                                    np.sqrt(
+                                        float(zp_err) ** 2 + float(ap_corr_err_mag) ** 2
+                                    )
+                                )
+                            ax_hist.hist(
+                                inlier_apcorr,
+                                bins=be_apcorr,
+                                density=True,
+                                histtype="step",
+                                linestyle="--",
+                                linewidth=1.4,
+                                color=colors["AP"],
+                                alpha=0.85,
+                                zorder=5,
+                                label=(
+                                    f"{labels_base['AP']} (+ap corr., N={n_sources_used})"
+                                    f"||ZP = {(zp_final - ap_corr_mag):.3f} \u00b1 {xerr_corr:.3f}"
+                                ),
+                            )
+                            # Errorbar marker at top of plot for the aperture-corrected distribution.
+                            try:
+                                x_corr = float(zp_final - ap_corr_mag)
+                                y_ax = 0.95
+                                if (
+                                    np.isfinite(x_corr)
+                                    and np.isfinite(xerr_corr)
+                                    and xerr_corr > 0
+                                ):
+                                    ax_hist.errorbar(
+                                        [x_corr],
+                                        [y_ax],
+                                        xerr=[xerr_corr],
+                                        fmt="o",
+                                        markersize=3,
+                                        color=colors["AP"],
+                                        elinewidth=0.5,
+                                        capsize=3 / 4,
+                                        alpha=0.95,
+                                        zorder=20,
+                                        transform=ax_hist.get_xaxis_transform(),
+                                        clip_on=False,
+                                    )
+                            except Exception:
+                                pass
+                            d_lo = float(np.nanmin(inlier_apcorr))
+                            d_hi = float(np.nanmax(inlier_apcorr))
+                            if np.isfinite(d_lo) and np.isfinite(d_hi):
+                                x_min = min(x_min, d_lo)
+                                x_max = max(x_max, d_hi)
+                        except Exception:
+                            pass
+
+                    # ---- Histogram (without colour correction) -------------
+                    if has_color_term and fixed_color_coeffs is not None:
+                        dnc = delta_no_corr[np.isfinite(delta_no_corr)]
+                        # Track which vmask_finite_idx sources are finite in delta_no_corr
+                        vmask_nc_finite_idx = vmask_finite_idx[
+                            np.isfinite(delta_no_corr)
+                        ]
+
+                        clipped_nc = sigma_clip(
+                            dnc,
+                            sigma=sigma_clip_sigma,
+                            maxiters=sigma_clip_maxiters,
+                            cenfunc=np.nanmedian,
+                            stdfunc=mad_std,
+                        )
+                        inl_nc = clipped_nc.data[~clipped_nc.mask]
+                        inl_nc = inl_nc[np.isfinite(inl_nc)]
+
+                        # Track which catalog sources survive sigma clipping
+                        vmask_nc_sigma_idx = vmask_nc_finite_idx[~clipped_nc.mask]
+                        # Update to account for final finite filter
+                        vmask_nc_sigma_idx = vmask_nc_sigma_idx[np.isfinite(inl_nc)]
+                        n_sources_nc = len(vmask_nc_sigma_idx)
+
+                        if len(inl_nc) > 0:
+                            # Use auto binning (Freedman-Diaconis) for all catalogs.
+                            be_nc = np.histogram_bin_edges(inl_nc, bins="fd")
+                            bc_nc = (be_nc[:-1] + be_nc[1:]) / 2
+                            w_nc = be_nc[1] - be_nc[0]
+                            ct_nc, _ = np.histogram(inl_nc, bins=be_nc, density=True)
+                            zp_nc = float(np.nanmedian(inl_nc))
+                            std_nc = float(
+                                median_abs_deviation(inl_nc, nan_policy="omit")
+                            )
+                            try:
+                                y_max = max(float(y_max), float(np.nanmax(ct_nc)))
+                            except Exception:
+                                pass
+
+                            ax_hist.bar(
+                                bc_nc,
+                                ct_nc,
+                                width=w_nc,
+                                color="none",
+                                edgecolor=colors[flux_type],
+                                linewidth=0.5,
+                                alpha=0.6,
+                                zorder=3,
+                                label=(
+                                    f"{labels_base[flux_type]} (no corr., N={n_sources_nc})"
+                                    f"||ZP = {zp_nc:.3f} \u00b1 {std_nc:.3f}"
+                                ),
+                            )
+                            try:
+                                d_lo = float(np.nanmin(inl_nc))
+                                d_hi = float(np.nanmax(inl_nc))
+                                if np.isfinite(d_lo) and np.isfinite(d_hi):
+                                    x_min = min(x_min, d_lo)
+                                    x_max = max(x_max, d_hi)
+                            except Exception:
+                                pass
+
+                    full_mask = np.zeros(len(clean_catalog), dtype=bool)
+                    full_mask[vmask_sigma_idx] = True
+                    inlier_masks_full[flux_type] = full_mask
+
+                # Ensure histogram does not fill the full plot: pad xlim by at least 0.1 mag.
+                if np.isfinite(x_min) and np.isfinite(x_max):
+                    pad = 0.1
+                    ax_hist.set_xlim(x_min - pad, x_max + pad)
+                # Add headroom so top markers (y=0.95 axes fraction) sit above distributions.
+                if np.isfinite(y_max) and y_max > 0:
+                    ax_hist.set_ylim(0.0, float(y_max) / 0.9)
+
+                ax_hist.set_xlabel("Zeropoint [mag]")
+                ax_hist.set_ylabel("Density")
+                ransac_grid(ax_hist)
+                for patch in ax_hist.patches:
+                    patch.set_zorder(3)
+
+                # Split the "left_text||right_text" labels into two legends:
+                # descriptions above the axes (as before) and the ZP values in
+                # the top-left of the plot.
+                _handles, _labels = ax_hist.get_legend_handles_labels()
+                _left_labels, _right_labels = [], []
+                for _lbl in _labels:
+                    if "||" in _lbl:
+                        _l, _r = _lbl.split("||", 1)
+                    else:
+                        _l, _r = _lbl, ""
+                    _left_labels.append(_l.strip())
+                    _right_labels.append(_r.strip())
+                _leg_top = ax_hist.legend(
+                    _handles,
+                    _left_labels,
+                    loc="lower center",
+                    bbox_to_anchor=(0.5, 1.01),
+                    borderaxespad=0.0,
+                    frameon=False,
+                    fontsize="small",
+                    ncol=2,
+                    handlelength=1.2,
+                    handletextpad=0.4,
+                    columnspacing=0.8,
+                )
+                ax_hist.add_artist(_leg_top)
+                # ZP-value legend: invisible handles so only the text shows.
+                _zp_handles = [mpatches.Patch(color="none") for _r in _right_labels]
+                ax_hist.legend(
+                    _zp_handles,
+                    _right_labels,
+                    loc="upper left",
+                    frameon=False,
+                    fontsize="small",
+                    handlelength=0,
+                    handletextpad=0,
+                )
+                safe_tight_layout(fig_hist)
+                os.makedirs(write_dir, exist_ok=True)
+                ransac_savefig(
+                    fig_hist,
+                    os.path.join(
+                        write_dir,
+                        f"Zeropoint_Hist_{base_name}{get_plot_ext(self.input_yaml)}",
+                    ),
+                )
+                plt.close(fig_hist)
+
+                # Combine inliers only over flux types that actually had
+                # valid measurements, to avoid emptying the catalog when
+                # only AP or PSF is present.
+                # Use OR (not AND) for consistency with fit_zeropoint: a source
+                # that is an AP inlier but a PSF outlier (or vice-versa) should
+                # still be kept.  The sigma-clipping already handles outliers;
+                # removing them from the catalog here would double-penalise PSF
+                # sources that have larger scatter than AP.
+                valid_masks = [m for m in inlier_masks_full.values() if np.any(m)]
+                if valid_masks:
+                    joint_mask = np.logical_or.reduce(valid_masks)
+                    clean_catalog = clean_catalog[joint_mask]
+                else:
+                    logger.warning(
+                        "No inliers from any flux type; returning unfiltered clean_catalog."
+                    )
+
+                return clean_catalog, zp_params
+
+            except Exception as exc:
+                exc_type, _, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                logger.error(
+                    f"estimate_zeropoint failed: {exc_type.__name__} in "
+                    f"{fname}:{exc_tb.tb_lineno}: {exc}"
+                )
+                zp_params = self._fallback_zeropoint(
+                    catalog, self.input_yaml.get("imageFilter")
+                )
+                return catalog, zp_params
+
+    # -----------------------------------------------------------------------
+    # Public: colour-term fit
+    # -----------------------------------------------------------------------
+
+    def _plot_piecewise_color_term(
+        self,
+        xi,
+        yi,
+        xe,
+        ye,
+        coefficients,
+        coefficient_errors,
+        n_segments,
+        color1,
+        color2,
+        use_filter,
+        inlier_mask=None,
+        overall_method="RANSAC",
+        output_dir=None,
+    ):
+        """Generate color term plot for piecewise linear fitting."""
+        import os
+
+        import matplotlib.pyplot as plt
+        from matplotlib.gridspec import GridSpec
+
+        plt.ioff()
+        apply_autophot_mplstyle()
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=set_size(540, 2.0), sharex=True)
+        # Space for the legend that sits above ax2 (ransac_legend_top_outside).
+        fig.subplots_adjust(hspace=0.3)
+
+        inlier_color = get_ransac_color("color_term_piece")
+        outlier_color = get_ransac_color("outliers")
+        fit_color = get_ransac_color("fit")
+        err_color = get_ransac_color("error_band")
+
+        # Top panel: uncorrected data
+        if inlier_mask is not None:
+            _out_mask_p = ~inlier_mask
+            if _out_mask_p.any():
+                ax1.errorbar(
+                    xi[_out_mask_p],
+                    yi[_out_mask_p],
+                    xerr=xe[_out_mask_p],
+                    yerr=ye[_out_mask_p],
+                    fmt="x",
+                    ms=get_marker_size("medium"),
+                    color=outlier_color,
+                    ecolor="lightgrey",
+                    alpha=get_alpha("medium"),
+                    capsize=get_marker_size("medium") / 4,
+                    elinewidth=0.5,
+                    label=f"Outliers [{_out_mask_p.sum()}]",
+                )
+            ax1.errorbar(
+                xi[inlier_mask],
+                yi[inlier_mask],
+                xerr=xe[inlier_mask],
+                yerr=ye[inlier_mask],
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label=f"Inliers [{inlier_mask.sum()}]",
+            )
+        else:
+            ax1.errorbar(
+                xi,
+                yi,
+                xerr=xe,
+                yerr=ye,
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label="Data",
+            )
+
+        x_plot = np.linspace(xi.min() * 0.95, xi.max() * 1.05, 200)
+        if n_segments == 2:
+            breakpoints, slopes, intercept = coefficients
+            bp = breakpoints[0]
+            slope1, slope2 = slopes
+
+            if coefficient_errors is not None and len(coefficient_errors) == 3:
+                bp_err = coefficient_errors[0][0] if coefficient_errors[0] else 0.0
+                slope1_err = (
+                    coefficient_errors[1][0] if len(coefficient_errors[1]) > 0 else 0.0
+                )
+                slope2_err = (
+                    coefficient_errors[1][1] if len(coefficient_errors[1]) > 1 else 0.0
+                )
+                # coefficient_errors[2] may be a tuple with (intercept_err, cov1, cov2) or just intercept_err
+                if isinstance(coefficient_errors[2], tuple):
+                    intercept_err = (
+                        coefficient_errors[2][0]
+                        if len(coefficient_errors[2]) > 0
+                        else 0.0
+                    )
+                    cov1 = (
+                        coefficient_errors[2][1]
+                        if len(coefficient_errors[2]) > 1
+                        else None
+                    )
+                    cov2 = (
+                        coefficient_errors[2][2]
+                        if len(coefficient_errors[2]) > 2
+                        else None
+                    )
+                else:
+                    intercept_err = (
+                        coefficient_errors[2] if coefficient_errors[2] else 0.0
+                    )
+                    cov1 = cov2 = None
+            else:
+                bp_err = slope1_err = slope2_err = intercept_err = 0.0
+                cov1 = cov2 = None
+
+            y_plot = np.zeros_like(x_plot)
+            mask1 = x_plot <= bp
+            mask2 = x_plot > bp
+            y_plot[mask1] = intercept + slope1 * x_plot[mask1]
+            y_plot[mask2] = (intercept + slope1 * bp) + slope2 * (x_plot[mask2] - bp)
+
+            # Error bands use full covariance propagation:
+            # var(y) = x^2*var(slope) + var(intercept) + 2x*cov(slope,intercept)
+            y_err = np.zeros_like(x_plot)
+
+            x1_seg = x_plot[mask1]
+            if cov1 is not None and np.any(np.isfinite(cov1)):
+                var_y1 = x1_seg**2 * cov1[0, 0] + cov1[1, 1] + 2 * x1_seg * cov1[0, 1]
+                y_err[mask1] = np.sqrt(np.clip(var_y1, 0, None))
+            else:
+                # Fallback: no covariance, sum in quadrature
+                y_err[mask1] = np.sqrt((slope1_err * x1_seg) ** 2 + intercept_err**2)
+
+            # Segment 2 error band is evaluated at x relative to the breakpoint.
+            x2_seg = x_plot[mask2] - bp
+            intercept2 = intercept + slope1 * bp  # Effective intercept at breakpoint
+            # Approximate error on intercept2 from segment1 parameters
+            if cov1 is not None and np.any(np.isfinite(cov1)):
+                var_int2 = cov1[1, 1] + bp**2 * cov1[0, 0] + 2 * bp * cov1[0, 1]
+                int2_err = np.sqrt(max(0, var_int2))
+            else:
+                int2_err = np.sqrt(intercept_err**2 + (slope1_err * bp) ** 2)
+
+            if cov2 is not None and np.any(np.isfinite(cov2)):
+                var_y2 = x2_seg**2 * cov2[0, 0] + cov2[1, 1] + 2 * x2_seg * cov2[0, 1]
+                # Add variance from intercept2 error (independent approximation)
+                var_y2 += int2_err**2
+                y_err[mask2] = np.sqrt(np.clip(var_y2, 0, None))
+            else:
+                y_err[mask2] = np.sqrt((slope2_err * x2_seg) ** 2 + int2_err**2)
+
+            y_plot_upper = y_plot + y_err
+            y_plot_lower = y_plot - y_err
+
+            label_text = f"Piecewise {overall_method}: bp={bp:.3f}\u00b1{bp_err:.3f}, slope1={slope1:.3f}\u00b1{slope1_err:.3f}, slope2={slope2:.3f}\u00b1{slope2_err:.3f}"
+
+            ax1.plot(
+                x_plot,
+                y_plot,
+                color=fit_color,
+                linestyle="--",
+                lw=get_line_width("medium"),
+                label=label_text,
+            )
+            ax1.fill_between(
+                x_plot,
+                y_plot_lower,
+                y_plot_upper,
+                color=err_color,
+                alpha=get_alpha("very_light"),
+                label="Error band",
+            )
+            ax1.axvline(
+                bp,
+                color=err_color,
+                linestyle=":",
+                lw=get_line_width("thin"),
+                alpha=0.6,
+                label=f"Breakpoint: {bp:.3f}",
+            )
+
+        ax1.set_xlim(xi.min() - 0.1 * np.ptp(xi), xi.max() + 0.1 * np.ptp(xi))
+        ax1.set_ylim(yi.min() - 0.1 * np.ptp(yi), yi.max() + 0.1 * np.ptp(yi))
+        ax1.set_ylabel(
+            rf"$m_\mathrm{{cal,{color1}}} - m_\mathrm{{inst,{use_filter}}}$ [mag]"
+        )
+        ransac_grid(ax1)
+        ransac_legend_top_outside(ax1, ncol=2)
+
+        # Bottom panel: color corrected data
+        if n_segments == 2:
+            breakpoints, slopes, intercept = coefficients
+            bp = breakpoints[0]
+            slope1, slope2 = slopes
+
+            yi_corrected = np.zeros_like(yi)
+            ye_corrected = np.zeros_like(ye)
+
+            mask1 = xi <= bp
+            mask2 = xi > bp
+
+            yi_corrected[mask1] = yi[mask1] - slope1 * xi[mask1]
+            ye_corrected[mask1] = np.sqrt(ye[mask1] ** 2 + (slope1 * xe[mask1]) ** 2)
+
+            # Segment 2 correction includes the (slope1 - slope2)*bp continuity term.
+            yi_corrected[mask2] = yi[mask2] - (
+                slope2 * xi[mask2] + (slope1 - slope2) * bp
+            )
+            ye_corrected[mask2] = np.sqrt(ye[mask2] ** 2 + (slope2 * xe[mask2]) ** 2)
+
+        std_uncorrected = float(median_abs_deviation(yi, nan_policy="omit"))
+        std_corrected = float(median_abs_deviation(yi_corrected, nan_policy="omit"))
+
+        if inlier_mask is not None:
+            _out_mask_p2 = ~inlier_mask
+            if np.any(_out_mask_p2):
+                ax2.errorbar(
+                    xi[_out_mask_p2],
+                    yi_corrected[_out_mask_p2],
+                    xerr=xe[_out_mask_p2],
+                    yerr=ye_corrected[_out_mask_p2],
+                    fmt="x",
+                    ms=get_marker_size("medium"),
+                    color=outlier_color,
+                    ecolor="lightgrey",
+                    alpha=get_alpha("medium"),
+                    capsize=get_marker_size("medium") / 4,
+                    elinewidth=0.5,
+                    label=f"Outliers corrected [{_out_mask_p2.sum()}]",
+                )
+            ax2.errorbar(
+                xi[inlier_mask],
+                yi_corrected[inlier_mask],
+                xerr=xe[inlier_mask],
+                yerr=ye_corrected[inlier_mask],
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label=f"Corrected inliers [{np.sum(inlier_mask)}]",
+            )
+        else:
+            ax2.errorbar(
+                xi,
+                yi_corrected,
+                xerr=xe,
+                yerr=ye_corrected,
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label="Corrected data",
+            )
+
+        ax2.axhline(
+            np.median(yi_corrected),
+            color=err_color,
+            linestyle=":",
+            lw=get_line_width("thin"),
+            alpha=0.5,
+        )
+        ax2.set_xlabel(
+            rf"$m_\mathrm{{cal,{color1}}} - m_\mathrm{{cal,{color2}}}$ [mag]"
+        )
+        ax2.set_ylabel("Color-Corrected Zeropoint [mag]")
+        ransac_grid(ax2)
+        ransac_legend_top_outside(ax2, ncol=2)
+
+        # Window on the inlier median +/- 5*std so outliers do not squash it.
+        if inlier_mask is not None:
+            median_val = np.median(yi_corrected[inlier_mask])
+            std_val = np.std(yi_corrected[inlier_mask])
+            y_min = median_val - 5 * std_val
+            y_max = median_val + 5 * std_val
+            ax2.set_ylim(y_min, y_max)
+        else:
+            median_val = np.median(yi_corrected)
+            std_val = np.std(yi_corrected)
+            y_min = median_val - 5 * std_val
+            y_max = median_val + 5 * std_val
+            ax2.set_ylim(y_min, y_max)
+
+        fpath = self.input_yaml.get("fpath", "")
+        if output_dir is None:
+            write_dir = os.path.dirname(fpath) or "."
+        else:
+            write_dir = output_dir
+        base_name = os.path.splitext(os.path.basename(fpath))[0] or "color_term"
+        plot_file = os.path.join(
+            write_dir,
+            f"Color_Term_Piecewise_{base_name}{get_plot_ext(self.input_yaml)}",
+        )
+        ransac_savefig(fig, plot_file)
+        plt.close(fig)
+        logger.debug("fit_color_term: saved piecewise color term plot to %s", plot_file)
+
+    def _fit_piecewise_linear(self, x, y, x_err, y_err, n_segments, outlier_sigma=3.0):
+        """
+        Fit piecewise linear color term with n segments using weighted least
+        squares with sigma-clip outlier rejection.
+
+        For n segments, there are n-1 breakpoints. Each segment is a linear fit.
+        Segments are continuous at breakpoints.
+
+        Parameters
+        ----------
+        outlier_sigma : float
+            Sigma-clipping threshold for outlier rejection
+
+        Returns
+        -------
+        (coefficients, coefficient_errors, inlier_mask, method) : (tuple, tuple, ndarray, str)
+            coefficients: (breakpoints, slopes, intercept)
+                breakpoints: tuple of n-1 breakpoint x-values
+                slopes: tuple of n slopes
+                intercept: single intercept (first segment intercept)
+            coefficient_errors: corresponding errors
+            inlier_mask: boolean array indicating which points are inliers
+            method: fitting method used
+        """
+
+        def weighted_linear_fit(x_seg, y_seg, yerr_seg):
+            """Fit y = slope*x + intercept with weights = 1/yerr^2.
+            Returns (slope, intercept, slope_err, intercept_err, cov)"""
+            # Zero or invalid errors would give infinite weights.
+            valid = (
+                (yerr_seg > 0)
+                & np.isfinite(yerr_seg)
+                & np.isfinite(x_seg)
+                & np.isfinite(y_seg)
+            )
+            if valid.sum() < 2:
+                return np.nan, np.nan, np.nan, np.nan, np.full((2, 2), np.nan)
+
+            x_v, y_v, ye_v = x_seg[valid], y_seg[valid], yerr_seg[valid]
+            weights = 1.0 / ye_v**2
+
+            # Weighted least squares via numpy.polyfit (degree 1)
+            # polyfit returns highest power first: [slope, intercept]
+            try:
+                coeffs, cov = np.polyfit(x_v, y_v, 1, w=np.sqrt(weights), cov=True)
+            except Exception:
+                # cov=True can fail on degenerate inputs; rebuild an
+                # approximate covariance from the residuals instead.
+                coeffs = np.polyfit(x_v, y_v, 1, w=np.sqrt(weights))
+                resid = y_v - (coeffs[0] * x_v + coeffs[1])
+                chi2 = np.sum(weights * resid**2)
+                dof = len(x_v) - 2
+                if dof > 0:
+                    scale = max(1.0, chi2 / dof)
+                else:
+                    scale = 1.0
+                # Approximate covariance: scale * (X^T W X)^{-1}
+                X = np.vstack([x_v, np.ones(len(x_v))]).T
+                W = np.diag(weights)
+                XtWX = X.T @ W @ X
+                try:
+                    cov = scale * np.linalg.inv(XtWX)
+                except Exception:
+                    cov = np.full((2, 2), np.nan)
+
+            slope, intercept = coeffs[0], coeffs[1]
+            if np.any(np.isfinite(cov)):
+                slope_err = np.sqrt(max(0, cov[0, 0]))
+                intercept_err = np.sqrt(max(0, cov[1, 1]))
+            else:
+                slope_err = intercept_err = np.nan
+
+            return slope, intercept, slope_err, intercept_err, cov
+
+        def sigma_clip_segment(
+            x_seg, y_seg, yerr_seg, sigma=outlier_sigma, max_iter=10
+        ):
+            """Iterative sigma clipping for a segment."""
+            mask = np.ones(len(x_seg), dtype=bool)
+            for _ in range(max_iter):
+                slope, intercept, _, _, _ = weighted_linear_fit(
+                    x_seg[mask], y_seg[mask], yerr_seg[mask]
+                )
+                if not np.isfinite(slope):
+                    break
+                pred = slope * x_seg + intercept
+                resid = y_seg - pred
+                mad = np.median(np.abs(resid[mask] - np.median(resid[mask]))) * 1.4826
+                if mad < 1e-12:
+                    break
+                new_mask = np.abs(resid) < sigma * mad
+                if new_mask.sum() == mask.sum():
+                    break
+                mask = new_mask
+                if mask.sum() < 2:
+                    mask = np.ones(len(x_seg), dtype=bool)
+                    break
+            return mask
+
+        # Sort by x: the breakpoint grid search below assumes ordered data.
+        sort_idx = np.argsort(x)
+        x_sorted = x[sort_idx]
+        y_sorted = y[sort_idx]
+        x_err_sorted = x_err[sort_idx]
+        y_err_sorted = y_err[sort_idx]
+
+        if n_segments == 2:
+            # Need enough points for two fitted segments.
+            if len(x) < 8:
+                logger.warning(
+                    "fit_color_term: insufficient data (%s points) for piecewise fitting, falling back to linear",
+                    len(x),
+                )
+                slope, intercept, slope_err, intercept_err, cov = weighted_linear_fit(
+                    x, y, y_err
+                )
+                return (
+                    ((), (slope,), intercept),
+                    ((), (slope_err,), intercept_err),
+                    np.ones(len(x), dtype=bool),
+                    "linear",
+                )
+
+            # Grid search for the optimal single breakpoint on the full data.
+            x_min, x_max = x_sorted.min(), x_sorted.max()
+            x_range = x_max - x_min
+            search_min = x_min + 0.05 * x_range
+            search_max = x_max - 0.05 * x_range
+
+            def objective(bp):
+                """Objective function: weighted chi-squared"""
+                mask1 = x_sorted <= bp
+                mask2 = x_sorted > bp
+
+                if np.sum(mask1) < 3 or np.sum(mask2) < 3:
+                    return 1e10
+
+                # Segment 1
+                x1, y1, ye1 = x_sorted[mask1], y_sorted[mask1], y_err_sorted[mask1]
+                slope1, intercept1, _, _, _ = weighted_linear_fit(x1, y1, ye1)
+                if not np.isfinite(slope1):
+                    return 1e10
+                resid1 = y1 - (slope1 * x1 + intercept1)
+                chi2_1 = np.sum((resid1 / ye1) ** 2)
+
+                # Segment 2
+                x2, y2, ye2 = x_sorted[mask2], y_sorted[mask2], y_err_sorted[mask2]
+                slope2, intercept2, _, _, _ = weighted_linear_fit(x2, y2, ye2)
+                if not np.isfinite(slope2):
+                    return 1e10
+                resid2 = y2 - (slope2 * x2 + intercept2)
+                chi2_2 = np.sum((resid2 / ye2) ** 2)
+
+                return chi2_1 + chi2_2
+
+            try:
+                bp_candidates = np.linspace(search_min, search_max, 50)
+                best_bp = bp_candidates[0]
+                best_score = 1e10
+
+                for bp in bp_candidates:
+                    score = objective(bp)
+                    if score < best_score:
+                        best_score = score
+                        best_bp = bp
+
+                optimal_bp = best_bp
+                logger.info(
+                    "fit_color_term: grid search found optimal breakpoint at %.3f",
+                    optimal_bp,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "fit_color_term: breakpoint optimization failed (%s), falling back to linear",
+                    exc,
+                )
+                slope, intercept, slope_err, intercept_err, cov = weighted_linear_fit(
+                    x, y, y_err
+                )
+                return (
+                    ((), (slope,), intercept),
+                    ((), (slope_err,), intercept_err),
+                    np.ones(len(x), dtype=bool),
+                    "linear",
+                )
+
+            # Each segment gets its own WLS + sigma-clip pass.
+            mask1 = x_sorted <= optimal_bp
+            mask2 = x_sorted > optimal_bp
+
+            # Segment 1
+            x1, y1 = x_sorted[mask1], y_sorted[mask1]
+            ye1 = y_err_sorted[mask1]
+            inlier_mask1 = sigma_clip_segment(x1, y1, ye1)
+            slope1, intercept1, slope1_err, intercept1_err, cov1 = weighted_linear_fit(
+                x1[inlier_mask1], y1[inlier_mask1], ye1[inlier_mask1]
+            )
+            method1 = "WLS"
+            logger.info(
+                "fit_color_term: segment 1 WLS: %s/%s inliers",
+                np.sum(inlier_mask1),
+                len(x1),
+            )
+
+            # Segment 2
+            x2, y2 = x_sorted[mask2], y_sorted[mask2]
+            ye2 = y_err_sorted[mask2]
+            inlier_mask2 = sigma_clip_segment(x2, y2, ye2)
+            slope2, intercept2, slope2_err, intercept2_err, cov2 = weighted_linear_fit(
+                x2[inlier_mask2], y2[inlier_mask2], ye2[inlier_mask2]
+            )
+            method2 = "WLS"
+            logger.info(
+                "fit_color_term: segment 2 WLS: %s/%s inliers",
+                np.sum(inlier_mask2),
+                len(x2),
+            )
+
+            if inlier_mask1.sum() < 2 or inlier_mask2.sum() < 2:
+                logger.warning(
+                    "fit_color_term: insufficient inliers (seg1: %s, seg2: %s), falling back to linear",
+                    inlier_mask1.sum(),
+                    inlier_mask2.sum(),
+                )
+                slope, intercept, slope_err, intercept_err, cov = weighted_linear_fit(
+                    x, y, y_err
+                )
+                return (
+                    ((), (slope,), intercept),
+                    ((), (slope_err,), intercept_err),
+                    np.ones(len(x), dtype=bool),
+                    "linear",
+                )
+
+            # Coefficients: intercept from segment 1, slopes from both
+            coefficients = ((optimal_bp,), (slope1, slope2), intercept1)
+
+            # Error estimates from weighted least squares covariance
+            bp_err = x_range * 0.05  # Rough estimate: 5% of range
+            # Store intercept_err, cov1, cov2 for proper error propagation in plots
+            coefficient_errors = (
+                (bp_err,),
+                (slope1_err, slope2_err),
+                (intercept1_err, cov1, cov2),
+            )
+
+            combined_inlier_mask_sorted = np.zeros(len(x_sorted), dtype=bool)
+            combined_inlier_mask_sorted[mask1] = inlier_mask1
+            combined_inlier_mask_sorted[mask2] = inlier_mask2
+            # Unsort to match original data order
+            inlier_mask = np.zeros(len(x), dtype=bool)
+            inlier_mask[sort_idx] = combined_inlier_mask_sorted
+
+            overall_method = "WLS"
+
+            logger.info(
+                f"fit_color_term: piecewise linear: breakpoint={optimal_bp:.3f}, "
+                f"slope1={slope1:.4f}+/-{slope1_err:.4f}, slope2={slope2:.4f}+/-{slope2_err:.4f}, "
+                f"intercept={intercept1:.4f}+/-{intercept1_err:.4f}"
+            )
+
+            return coefficients, coefficient_errors, inlier_mask, overall_method
+        else:
+            # For n > 2, fall back to linear
+            logger.warning(
+                "fit_color_term: n_segments=%s not yet implemented, falling back to linear",
+                n_segments,
+            )
+            slope, intercept, slope_err, intercept_err, cov = weighted_linear_fit(
+                x, y, y_err
+            )
+            return (
+                ((), (slope,), intercept),
+                ((), (slope_err,), intercept_err),
+                np.ones(len(x), dtype=bool),
+                "WLS",
+            )
+
+    def fit_color_term(self, catalog: pd.DataFrame):
+        """
+        Fit the colour term c in ZP(m_inst) = a + c*(col1 - col2) via
+        weighted least squares (WLS) with iterative sigma-clipping for outlier
+        rejection. Can also fit quadratic: a + b*x + c*x^2, or piecewise
+        linear with n segments.
+
+        Returns
+        -------
+        (coefficients, coefficient_errors) : (tuple, tuple)
+            For linear: (intercept, slope), (intercept_err, slope_err)
+            For quadratic: (intercept, slope, quad_coeff), (intercept_err, slope_err, quad_coeff_err)
+            For piecewise linear (n segments): (breakpoints, slopes, intercept), (breakpoint_errs, slope_errs, intercept_err)
+            Returns (None, None) on failure.
+        """
+        try:
+            if catalog is None or getattr(catalog, "empty", False) or len(catalog) == 0:
+                logger.warning("fit_color_term: catalog is None/empty; skipping.")
+                return None, None
+
+            use_filter = self.input_yaml.get("imageFilter")
+            use_filter = self._normalize_filter(use_filter)
+            if not use_filter:
+                raise ValueError("Missing 'imageFilter' in input YAML.")
+
+            color1, color2 = self.get_color_term_for_filter(use_filter)
+
+            phot_cfg = self.input_yaml.get("photometry", {}) or {}
+            n_segments = int(phot_cfg.get("color_term_n_segments", 1))
+            poly_order = int(phot_cfg.get("color_term_poly_order", 1))
+
+            # n_segments > 1 overrides poly_order
+            if n_segments > 1:
+                logger.info(
+                    "fit_color_term: using piecewise linear with %s segments",
+                    n_segments,
+                )
+                fit_mode = "piecewise"
+            else:
+                if poly_order not in [1, 2]:
+                    logger.warning(
+                        "fit_color_term: invalid poly_order %s, using 1 (linear)",
+                        poly_order,
+                    )
+                    poly_order = 1
+                logger.info(
+                    "fit_color_term: using polynomial order %s (%s)",
+                    poly_order,
+                    "linear" if poly_order == 1 else "quadratic",
+                )
+                fit_mode = "polynomial"
+
+            zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+            ct_threshold = float(zp_cfg.get("color_term_threshold", 5.0))
+            ct_mag_err_limit = float(zp_cfg.get("color_term_mag_err_limit", 0.32))
+
+            df = catalog.copy()
+            if "sky" in df.columns:
+                sky_mask = sigma_clip(np.abs(df["sky"].values), sigma=5, maxiters=10)
+                df = df[~sky_mask.mask]
+            if "threshold" in df.columns:
+                df = df[df["threshold"] >= ct_threshold]
+
+            clean = df[df[f"{use_filter}_err"] < ct_mag_err_limit].copy()
+
+            required = [
+                use_filter,
+                f"{use_filter}_err",
+                color1,
+                color2,
+                f"{color1}_err",
+                f"{color2}_err",
+                "flux_AP",
+                "flux_AP_err",
+            ]
+            missing = [c for c in required if c not in clean.columns]
+            if missing:
+                raise KeyError(f"Missing columns: {missing}")
+
+            flux_ap = np.asarray(clean["flux_AP"], float)
+            flux_err = np.asarray(clean["flux_AP_err"], float)
+            x = np.asarray(clean[color1] - clean[color2], float)
+            y = np.asarray(clean[use_filter], float) - (-2.5 * np.log10(flux_ap))
+            x_err = np.sqrt(
+                clean[f"{color1}_err"] ** 2 + clean[f"{color2}_err"] ** 2
+            ).values
+            # NaN for non-positive fluxes (same convention as functions.mag)
+            flux_ap_safe = flux_ap.copy()
+            flux_ap_safe[flux_ap_safe <= 0] = np.nan
+            y_err = np.sqrt(
+                clean[f"{use_filter}_err"] ** 2
+                + (2.5 / np.log(10) * flux_err / flux_ap_safe) ** 2
+            ).values
+
+            finite = (
+                np.isfinite(x)
+                & np.isfinite(y)
+                & np.isfinite(x_err)
+                & np.isfinite(y_err)
+                & (flux_ap > 0)
+            )
+            x, y, x_err, y_err = x[finite], y[finite], x_err[finite], y_err[finite]
+            flux_ap, flux_err = flux_ap[finite], flux_err[finite]
+
+            # S/N >= 5 keeps the fit away from noise-dominated points.
+            flux_err_safe = np.maximum(flux_err, 1e-10)
+            snr = np.abs(flux_ap) / flux_err_safe
+            snr_mask = snr >= 5
+            n_before_snr = len(x)
+            x, y, x_err, y_err = (
+                x[snr_mask],
+                y[snr_mask],
+                x_err[snr_mask],
+                y_err[snr_mask],
+            )
+            flux_ap, flux_err = flux_ap[snr_mask], flux_err[snr_mask]
+            n_after_snr = len(x)
+            if n_before_snr - n_after_snr > 0:
+                logger.info(
+                    "fit_color_term: removed %s sources with S/N < 5",
+                    n_before_snr - n_after_snr,
+                )
+
+            logger.info(
+                f"fit_color_term: color distribution before filtering: "
+                f"min={x.min():.3f}, max={x.max():.3f}, median={np.median(x):.3f}, "
+                f"n_sources={len(x)}"
+            )
+
+            zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
+            extreme_color_sigma = zp_cfg.get("extreme_color_sigma", 2.5)
+
+            if fit_mode == "piecewise":
+                coefficients, coefficient_errors, inlier_mask, overall_method = (
+                    self._fit_piecewise_linear(x, y, x_err, y_err, n_segments)
+                )
+
+                # If fallback returned linear, switch to polynomial flow
+                if overall_method == "linear":
+                    logger.info(
+                        "fit_color_term: piecewise fallback returned linear fit; switching to polynomial flow."
+                    )
+                    fit_mode = "polynomial"
+                    poly_order = 1
+                else:
+                    xi, yi, xe, ye = x, y, x_err, y_err
+                    n_in = np.sum(inlier_mask)
+                    x_range = float(np.ptp(x))
+
+                    # Plot is saved next to the input file.
+                    self._plot_piecewise_color_term(
+                        xi,
+                        yi,
+                        xe,
+                        ye,
+                        coefficients,
+                        coefficient_errors,
+                        n_segments,
+                        color1,
+                        color2,
+                        use_filter,
+                        inlier_mask,
+                        overall_method,
+                    )
+
+                    return coefficients, coefficient_errors
+            else:
+                # Polynomial path.
+                if extreme_color_sigma is not None:
+                    try:
+                        extreme_color_sigma = float(extreme_color_sigma)
+                        if extreme_color_sigma > 0 and len(x) > 10:
+                            color_clipped = sigma_clip(
+                                x, sigma=extreme_color_sigma, maxiters=5
+                            )
+                            n_extreme = np.sum(color_clipped.mask)
+                            if n_extreme > 0:
+                                logger.info(
+                                    f"fit_color_term: removing {n_extreme} extreme color sources "
+                                    f"(beyond {extreme_color_sigma} sigma in color space)"
+                                )
+                                x, y, x_err, y_err = (
+                                    x[~color_clipped.mask],
+                                    y[~color_clipped.mask],
+                                    x_err[~color_clipped.mask],
+                                    y_err[~color_clipped.mask],
+                                )
+                    except Exception as exc:
+                        logger.warning(
+                            "fit_color_term: extreme color filtering failed: %s", exc
+                        )
+
+            # 1. Pre-fit sigma clip removes extreme outliers before RANSAC.
+            try:
+                ols_slope_pre = np.polyfit(x, y, 1)[0]
+                ols_intercept_pre = np.median(y - ols_slope_pre * x)
+                ols_resid_pre = y - (ols_slope_pre * x + ols_intercept_pre)
+                pre_clip = sigma_clip(ols_resid_pre, sigma=5, maxiters=3, masked=True)
+                n_pre_outliers = np.sum(pre_clip.mask)
+                if n_pre_outliers > 0:
+                    logger.info(
+                        "fit_color_term: pre-fit clipping removed %s extreme outliers",
+                        n_pre_outliers,
+                    )
+                    x, y, x_err, y_err = (
+                        x[~pre_clip.mask],
+                        y[~pre_clip.mask],
+                        x_err[~pre_clip.mask],
+                        y_err[~pre_clip.mask],
+                    )
+            except Exception as exc:
+                logger.debug("fit_color_term: pre-fit clipping skipped: %s", exc)
+
+            _min_sources_cfg = int(zp_cfg.get("min_source_no", 5))
+            min_sources = max(
+                3, _min_sources_cfg
+            )  # Hard floor of 3 for statistical validity
+            if _min_sources_cfg < 3:
+                logger.debug(
+                    f"fit_color_term: min_source_no={_min_sources_cfg} is below minimum (3); using 3."
+                )
+            min_color_range = 0.05  # mag
+            if len(x) < min_sources:
+                logger.warning(
+                    f"fit_color_term: too few sources ({len(x)} < {min_sources})."
+                )
+                return (0.0, 0.0), (0.0, 0.0)
+            x_range = float(np.ptp(x))
+            if x_range < min_color_range:
+                logger.warning(
+                    f"fit_color_term: colour range too small ({x_range:.3f} mag)."
+                )
+                return (0.0, 0.0), (0.0, 0.0)
+
+            # 2. Stratified color check: warn when a colour quartile is
+            #    nearly empty (edge points would dominate the slope).
+            try:
+                color_percentiles = np.percentile(x, [0, 25, 50, 75, 100])
+                bin_counts = []
+                for i in range(len(color_percentiles) - 1):
+                    lo, hi = color_percentiles[i], color_percentiles[i + 1]
+                    if i == len(color_percentiles) - 2:  # Last bin includes upper edge
+                        count = np.sum((x >= lo) & (x <= hi))
+                    else:
+                        count = np.sum((x >= lo) & (x < hi))
+                    bin_counts.append(count)
+                min_per_bin = min(bin_counts)
+                if min_per_bin < 3:
+                    logger.warning(
+                        f"fit_color_term: poor color coverage (min {min_per_bin} sources per quartile). "
+                        "Results may be unreliable."
+                    )
+            except Exception as exc:
+                logger.debug(
+                    "fit_color_term: stratified sampling check skipped: %s", exc
+                )
+
+            # 3. RANSAC fit with a penalty-constrained slope.
+            if poly_order == 1:
+                X_poly = x[:, None]
+            else:
+                X_poly = np.column_stack([x**2, x])
+
+            inlier_mask = None
+            n_inliers = 0
+
+            # Density-based downsampling: dense clusters would otherwise
+            # dominate the RANSAC consensus set and bias the fit.
+            try:
+                if len(x) > 100:  # only worthwhile with enough points
+                    # Local density from the nearest-neighbor distance.
+                    from scipy.spatial import KDTree
+
+                    kdtree = KDTree(x[:, None])
+                    distances, _ = kdtree.query(
+                        x[:, None], k=2
+                    )  # k=1 is the point itself
+                    local_density = 1.0 / (distances[:, 1] + 1e-10)
+
+                    density_threshold = np.percentile(local_density, 75)
+                    dense_mask = local_density > density_threshold
+
+                    if np.sum(dense_mask) > 10:
+                        # Halve the dense-region count; keep all sparse points.
+                        dense_indices = np.where(dense_mask)[0]
+                        rng = np.random.default_rng(42)  # seeded for reproducibility
+                        keep_dense = rng.choice(
+                            dense_indices, size=len(dense_indices) // 2, replace=False
+                        )
+                        sparse_indices = np.where(~dense_mask)[0]
+
+                        downsample_indices = np.concatenate(
+                            [keep_dense, sparse_indices]
+                        )
+                        x_orig, y_orig, x_err_orig, y_err_orig = (
+                            x.copy(),
+                            y.copy(),
+                            x_err.copy(),
+                            y_err.copy(),
+                        )
+                        x, y, x_err, y_err = (
+                            x_orig[downsample_indices],
+                            y_orig[downsample_indices],
+                            x_err_orig[downsample_indices],
+                            y_err_orig[downsample_indices],
+                        )
+                        X_poly = (
+                            np.column_stack([x**2, x])
+                            if poly_order == 2
+                            else x[:, None]
+                        )
+                        logger.info(
+                            "fit_color_term: downsampled %s dense points to %s to avoid cluster bias",
+                            len(dense_indices),
+                            len(keep_dense),
+                        )
+            except Exception as exc:
+                logger.debug("fit_color_term: density downsampling skipped: %s", exc)
+
+            # Single seed for speed (was 5 seeds)
+            ransac = RANSACRegressor(
+                PenalisedSlopeRegressor(
+                    slope_constraint=0.0,
+                    slope_tolerance=0.5,
+                    penalty_weight=100.0,
+                ),
+                residual_threshold=0.15,  # Increased from 0.1 to prevent overfitting
+                max_trials=500,  # Reduced from 2000 for speed
+                min_samples=max(
+                    10, int(0.5 * len(x))
+                ),  # Increased from 20% to 50% to prevent overfitting
+                random_state=42,
+            )
+            ransac.fit(X_poly, y)
+            inlier_mask = ransac.inlier_mask_
+            n_inliers = np.sum(inlier_mask)
+
+            if inlier_mask is None or n_inliers < 5:
+                logger.warning(
+                    "fit_color_term: robust fit failed to find sufficient inliers, using all points"
+                )
+                inlier_mask = np.ones(len(x), dtype=bool)
+                n_inliers = len(x)
+
+            logger.info("fit_color_term: robust fit found %s inliers", n_inliers)
+
+            min_inlier_frac = 0.25
+            min_inliers = max(5, int(len(x) * min_inlier_frac))
+
+            if n_inliers < min_inliers:
+                logger.warning(
+                    "fit_color_term: inliers %s < %s (%s%), using sigma-clip fallback",
+                    n_inliers,
+                    min_inliers,
+                    int(100 * min_inlier_frac),
+                )
+                # Sigma-clip fallback
+                r0 = y - np.nanmedian(y)
+                clipped = sigma_clip(
+                    r0,
+                    sigma=3.0,
+                    maxiters=5,
+                    cenfunc=np.nanmedian,
+                    stdfunc=mad_std,
+                )
+                inlier_mask = ~clipped.mask
+                if np.sum(inlier_mask) >= 5:
+                    n_inliers = np.sum(inlier_mask)
+                else:
+                    logger.warning(
+                        "fit_color_term: sigma-clip also found too few inliers, using all points"
+                    )
+                    inlier_mask = np.ones(len(x), dtype=bool)
+
+            xi, yi = x[inlier_mask], y[inlier_mask]
+            xe, ye = x_err[inlier_mask], y_err[inlier_mask]
+            n_in = int(np.sum(inlier_mask))
+
+            # Initial fit on inliers for ODR initialization
+            if poly_order == 1:
+                initial_slope, initial_intercept = np.polyfit(xi, yi, 1)
+            else:
+                quad_coeffs = np.polyfit(xi, yi, 2)
+                initial_quad, initial_slope, initial_intercept = quad_coeffs
+
+            # ODR for error-in-variables refinement.
+            if poly_order == 1:
+                # Linear model: y = slope * x + intercept
+                odr_out = ODR(
+                    RealData(xi, yi, sx=xe, sy=ye),
+                    Model(lambda B, x: B[0] * x + B[1]),
+                    beta0=[initial_slope, initial_intercept],
+                ).run()
+                coefficients = (
+                    float(odr_out.beta[1]),
+                    float(odr_out.beta[0]),
+                )  # (intercept, slope)
+                if odr_out.cov_beta is not None and np.all(
+                    np.isfinite(odr_out.cov_beta)
+                ):
+                    coefficient_errors = (
+                        np.sqrt(odr_out.cov_beta[1, 1]),
+                        np.sqrt(odr_out.cov_beta[0, 0]),
+                    )
+                else:
+                    coefficient_errors = (np.nan, np.nan)
+            else:
+                # Quadratic model: y = a*x^2 + b*x + c
+                # Use polynomial fit as initial guess
+                poly_coeffs = np.polyfit(xi, yi, 2)
+                odr_out = ODR(
+                    RealData(xi, yi, sx=xe, sy=ye),
+                    Model(lambda B, x: B[0] * x**2 + B[1] * x + B[2]),
+                    beta0=poly_coeffs,
+                ).run()
+                coefficients = (
+                    float(odr_out.beta[2]),
+                    float(odr_out.beta[1]),
+                    float(odr_out.beta[0]),
+                )  # (intercept, slope, quad)
+                if odr_out.cov_beta is not None and np.all(
+                    np.isfinite(odr_out.cov_beta)
+                ):
+                    coefficient_errors = (
+                        np.sqrt(odr_out.cov_beta[2, 2]),
+                        np.sqrt(odr_out.cov_beta[1, 1]),
+                        np.sqrt(odr_out.cov_beta[0, 0]),
+                    )
+                else:
+                    coefficient_errors = (np.nan, np.nan, np.nan)
+
+            if fit_mode == "polynomial" and poly_order == 1:
+                logger.info(
+                    f"fit_color_term: fitted linear color term: slope={coefficients[1]:.4f}, intercept={coefficients[0]:.4f}, "
+                    f"n_inliers={n_in}, color_range={x_range:.3f} mag"
+                )
+            elif fit_mode == "polynomial" and poly_order == 2:
+                logger.info(
+                    f"fit_color_term: fitted quadratic color term: quad={coefficients[2]:.4f}, slope={coefficients[1]:.4f}, intercept={coefficients[0]:.4f}, "
+                    f"n_inliers={n_in}, color_range={x_range:.3f} mag"
+                )
+
+            # Quadratic first: drop to linear when the x^2 term is
+            # negligible or not significant at 2-sigma.
+            if fit_mode == "polynomial" and poly_order == 2:
+                _quad_sig = (
+                    np.isfinite(coefficient_errors[2])
+                    and coefficient_errors[2] > 0
+                    and abs(coefficients[2]) < 2.0 * coefficient_errors[2]
+                )
+                if abs(coefficients[2]) < 0.01 or _quad_sig:
+                    logger.info(
+                        f"fit_color_term: quadratic coefficient {coefficients[2]:.4f} +/- {coefficient_errors[2]:.4f} "
+                        f"is negligible (< 0.01) or not significant (< 2-sigma); "
+                        "falling back to linear fit"
+                    )
+                    coefficients = (coefficients[0], coefficients[1])
+                    coefficient_errors = (coefficient_errors[0], coefficient_errors[1])
+                    poly_order = 1
+
+            # Apply the color term only when it is well measured.
+            # A poorly-constrained slope injects noise into the ZP rather
+            # than removing a real systematic, so require all of:
+            #   (1) enough inliers for a meaningful slope (>= 10),
+            #   (2) |slope| >= 3 * slope_err (marginal ~2-sigma slopes on
+            #       production data frequently degraded the ZP),
+            #   (3) the correction demonstrably reduces the residual
+            #       scatter (corrected MAD < uncorrected MAD),
+            #   (4) |slope| >= 0.01 (negligible absolute effect).
+            if fit_mode == "polynomial" and poly_order == 1:
+                _slope = coefficients[1]
+                _slope_err = coefficient_errors[1]
+                _sig_ok = (
+                    np.isfinite(_slope_err)
+                    and _slope_err > 0
+                    and abs(_slope) >= 3.0 * _slope_err
+                )
+                _resid_corr = yi - (coefficients[0] + _slope * xi)
+                _mad_before = mad_std(yi, ignore_nan=True)
+                _mad_after = mad_std(_resid_corr, ignore_nan=True)
+                _improves = (
+                    np.isfinite(_mad_after)
+                    and np.isfinite(_mad_before)
+                    and _mad_after < _mad_before
+                )
+                if n_in < 10 or not _sig_ok or not _improves or abs(_slope) < 0.01:
+                    logger.info(
+                        "fit_color_term: linear slope %.4f +/- %.4f rejected "
+                        "(n_inliers=%d, |slope|/err=%.1f, MAD %.3f -> %.3f); "
+                        "returning 0 to avoid adding noise",
+                        _slope,
+                        _slope_err,
+                        n_in,
+                        (
+                            abs(_slope) / _slope_err
+                            if np.isfinite(_slope_err) and _slope_err > 0
+                            else -1.0
+                        ),
+                        _mad_before,
+                        _mad_after,
+                    )
+                    return (0.0, 0.0), (0.0, 0.0)
+
+            # Aliases for plotting.  After a quadratic->linear fallback the
+            # coefficients tuple is 2 elements, so guard the quadratic read
+            # on length, not just on poly_order.
+            plot_intercept = coefficients[0]
+            plot_slope = coefficients[1]
+            plot_quad = (
+                coefficients[2] if poly_order == 2 and len(coefficients) > 2 else 0.0
+            )
+
+            # ---- Plot ------------------------------------------------------
+            plt.ioff()
+            apply_autophot_mplstyle()
+            fig, (ax1, ax2) = plt.subplots(
+                2, 1, figsize=set_size(540, 2.0), sharex=True
+            )
+            # Space for the legend that sits above ax2 (ransac_legend_top_outside).
+            fig.subplots_adjust(hspace=0.3)
+
+            inlier_color = get_ransac_color("color_term")
+            outlier_color = get_ransac_color("outliers")
+            fit_color = get_ransac_color("fit")
+            err_color = get_ransac_color("error_band")
+
+            # Top panel: uncorrected data - inliers and outliers
+            _out_mask = ~inlier_mask
+            if _out_mask.any():
+                ax1.errorbar(
+                    x[_out_mask],
+                    y[_out_mask],
+                    xerr=x_err[_out_mask],
+                    yerr=y_err[_out_mask],
+                    fmt="x",
+                    ms=get_marker_size("medium"),
+                    color=outlier_color,
+                    ecolor="lightgrey",
+                    alpha=get_alpha("medium"),
+                    capsize=get_marker_size("medium") / 4,
+                    elinewidth=0.5,
+                    label=f"Outliers [{_out_mask.sum()}]",
+                )
+            ax1.errorbar(
+                xi,
+                yi,
+                xerr=xe,
+                yerr=ye,
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label=f"Inliers [{np.sum(inlier_mask)}]",
+            )
+
+            x_plot = np.linspace(xi.min() * 0.95, xi.max() * 1.05, 200)
+            if poly_order == 1:
+                y_plot = plot_intercept + plot_slope * x_plot
+                label_text = (
+                    f"Linear: slope={plot_slope:.3f} \u00b1 {coefficient_errors[1]:.3f}"
+                )
+            else:
+                y_plot = plot_intercept + plot_slope * x_plot + plot_quad * x_plot**2
+                label_text = f"Quad: quad={plot_quad:.3f}, slope={plot_slope:.3f}"
+
+            ax1.plot(
+                x_plot,
+                y_plot,
+                color=fit_color,
+                linestyle="--",
+                lw=get_line_width("medium"),
+                label=label_text,
+            )
+
+            pad = 0.25
+
+            def _padded_lim(arr):
+                lo, hi = arr.min(), arr.max()
+                delta = hi - lo
+                return lo - pad * delta, hi + pad * delta
+
+            ax1.set_xlim(*_padded_lim(xi))
+            ax1.set_ylim(*_padded_lim(yi))
+            ax1.set_ylabel(
+                rf"$m_\mathrm{{cal,{color1}}} - m_\mathrm{{inst,{use_filter}}}$ [mag]"
+            )
+            ransac_grid(ax1)
+            ransac_legend_top_outside(ax1, ncol=2)
+
+            # Bottom panel: color corrected data (should be flat)
+            if poly_order == 1:
+                yi_corrected = yi - plot_slope * xi
+                ye_corrected = np.sqrt(ye**2 + (plot_slope * xe) ** 2)
+            else:
+                yi_corrected = yi - (plot_quad * xi**2 + plot_slope * xi)
+                ye_corrected = np.sqrt(
+                    ye**2 + ((2 * plot_quad * xi + plot_slope) * xe) ** 2
+                )
+            std_uncorrected = float(median_abs_deviation(yi, nan_policy="omit"))
+            std_corrected = float(median_abs_deviation(yi_corrected, nan_policy="omit"))
+
+            ax2.errorbar(
+                xi,
+                yi_corrected,
+                xerr=xe,
+                yerr=ye_corrected,
+                fmt="o",
+                ms=get_marker_size("medium"),
+                color=inlier_color,
+                ecolor="lightgrey",
+                alpha=get_alpha("dark"),
+                capsize=get_marker_size("medium") / 4,
+                elinewidth=0.5,
+                label=f"Corrected inliers [{np.sum(inlier_mask)}]",
+            )
+
+            y_plot_corrected = np.full_like(x_plot, plot_intercept)
+            _intercept_err = (
+                coefficient_errors[0]
+                if (coefficient_errors and np.isfinite(coefficient_errors[0]))
+                else 0.0
+            )
+            ax2.fill_between(
+                x_plot,
+                y_plot_corrected - _intercept_err,
+                y_plot_corrected + _intercept_err,
+                color=err_color,
+                alpha=get_alpha("very_light"),
+            )
+            ax2.plot(
+                x_plot,
+                y_plot_corrected,
+                color=fit_color,
+                linestyle="-",
+                lw=get_line_width("medium"),
+                label=f"Flat  (intercept = {plot_intercept:.3f})",
+            )
+
+            ax2.set_ylim(*_padded_lim(yi_corrected))
+            ax2.set_xlabel(
+                rf"$m_\mathrm{{cal,{color1}}} - m_\mathrm{{cal,{color2}}}$ [mag]"
+            )
+            ax2.set_ylabel(
+                rf"Corrected $m_\mathrm{{cal,{color1}}} - m_\mathrm{{inst,{use_filter}}}$ [mag]"
+            )
+            ransac_grid(ax2)
+            ransac_legend_top_outside(ax2, ncol=2)
+
+            fpath = self.input_yaml.get("fpath", "")
+            base_name = os.path.splitext(os.path.basename(fpath))[0] or "color_term"
+            write_dir = os.path.dirname(fpath) or "."
+            ransac_savefig(
+                fig,
+                os.path.join(
+                    write_dir, f"Color_Term_{base_name}{get_plot_ext(self.input_yaml)}"
+                ),
+            )
+            plt.close(fig)
+
+            return coefficients, coefficient_errors
+
+        except Exception as exc:
+            exc_type, _, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            logger.error(
+                f"fit_color_term failed: {exc_type.__name__} in "
+                f"{fname}:{exc_tb.tb_lineno}: {exc}"
+            )
+            return None, None

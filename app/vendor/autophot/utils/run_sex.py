@@ -1,0 +1,1813 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+SExtractor wrapper for point-source detection and FWHM estimation.
+Author: Sean Brennan
+Date: October 24, 2025
+
+- Accepts custom background and RMS maps (FITS files or 2D arrays)
+- FWHM from iterative sigma clipping over the detected source catalog
+- Filters non-point, saturated, and edge sources; handles crowded fields
+- Builds a matched convolution kernel when a FWHM estimate is available
+- Drops unmeasurable sources rather than reporting NaN FWHM
+"""
+
+import logging
+import os
+import shutil
+from typing import Union
+import subprocess
+import tempfile
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Optional, Tuple, List, Set, Dict
+
+import numpy as np
+import pandas as pd
+from astropy.io import fits
+from astropy.stats import sigma_clip
+from astropy.table import Table
+from scipy.spatial import cKDTree
+
+from functions import (
+    STATUS,
+    fwhm_outlier_clip,
+    log_step,
+    log_warning_from_exception,
+)
+from wcs import get_wcs
+
+logger = logging.getLogger(__name__)
+
+# Cached path to a working SExtractor binary (avoids repeated subprocess checks).
+_SEXTRACTOR_EXE: Optional[str] = None
+_SEXTRACTOR_VERSION: tuple = (0, 0, 0)
+_SEXTRACTOR_PROBE_FAILED: bool = False
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def _parse_sextractor_version(version_str: str) -> tuple:
+    """Parse a SExtractor version string into a comparable tuple."""
+    import re
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", version_str)
+    if m:
+        return tuple(int(x) for x in m.groups())
+    return (0, 0, 0)
+
+
+def get_sextractor_executable() -> Optional[str]:
+    """
+    Resolve and cache a working SExtractor binary (`sex` or `sextractor` on PATH).
+
+    SExtractor < 2.25.0 has a critical bug: it cannot handle NaN pixels in
+    images, computing background=-nan and detecting 0 sources.  This affects
+    ZTF reference images (which have ~3% NaN pixels from chip gaps) and any
+    image with NaN-masked borders.  We therefore prefer the newest available
+    SExtractor on PATH, requiring version >= 2.25.0 for NaN handling.
+
+    Returns:
+        Absolute path to the executable, or None if not found / not working.
+    """
+    global _SEXTRACTOR_EXE, _SEXTRACTOR_VERSION, _SEXTRACTOR_PROBE_FAILED
+    if _SEXTRACTOR_EXE is not None:
+        return _SEXTRACTOR_EXE
+    if _SEXTRACTOR_PROBE_FAILED:
+        return None
+
+    candidates = []
+    for name in ("sex", "sextractor"):
+        # Search all PATH entries, not just the first hit
+        for search_dir in os.environ.get("PATH", "").split(os.pathsep):
+            candidate = os.path.join(search_dir, name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                candidates.append(candidate)
+
+    best_path = None
+    best_version = (0, 0, 0)
+    for path in candidates:
+        try:
+            result = subprocess.run(
+                [path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode != 0:
+                continue
+            version_str = (result.stdout + result.stderr).strip()
+            version = _parse_sextractor_version(version_str)
+            if version > best_version:
+                best_version = version
+                best_path = path
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            continue
+
+    if best_path is not None:
+        _SEXTRACTOR_EXE = best_path
+        _SEXTRACTOR_VERSION = best_version
+        if best_version < (2, 25, 0):
+            logger.warning(
+                "SExtractor %s.%s.%s at %s does not handle NaN pixels correctly; "
+                "images with NaN borders will produce 0 detections. "
+                "Install SExtractor >= 2.25.0 for robust NaN handling.",
+                *best_version, best_path,
+            )
+        else:
+            logger.debug(
+                "SExtractor %s.%s.%s executable detected: %s",
+                *best_version, best_path,
+            )
+        return best_path
+
+    _SEXTRACTOR_PROBE_FAILED = True
+    logger.error(
+        "SExtractor not found. Install SExtractor and ensure `sex` or `sextractor` is on PATH."
+    )
+    return None
+
+
+def reset_sextractor_executable_cache() -> None:
+    """
+    Reset the cached SExtractor executable path and probe-failed flag.
+    Call this if SExtractor is installed after the pipeline has already started.
+    """
+    global _SEXTRACTOR_EXE, _SEXTRACTOR_VERSION, _SEXTRACTOR_PROBE_FAILED
+    _SEXTRACTOR_EXE = None
+    _SEXTRACTOR_VERSION = (0, 0, 0)
+    _SEXTRACTOR_PROBE_FAILED = False
+    logger.info("SExtractor executable cache cleared.")
+
+
+def is_sextractor_installed() -> bool:
+    """
+    Check if SExtractor is installed and accessible in the system path.
+
+    Returns:
+        bool: True if SExtractor is found, False otherwise.
+    """
+    return get_sextractor_executable() is not None
+
+
+def _nan_filled_copy(fits_path: Path, temp_dir: Path) -> Path:
+    """Write a non-finite-free copy of *fits_path* for SExtractor < 2.25.0.
+
+    Old SExtractor builds a NaN background map when any input pixel is
+    non-finite and detects nothing.  Non-finite pixels are replaced by the
+    finite median so the pixel grid - and therefore catalog coordinates -
+    is unchanged.  Returns the original path when no fill is needed.
+    """
+    fits_path = Path(fits_path)
+    with fits.open(fits_path, memmap=True) as hdul:
+        data = hdul[0].data
+        if data is None:
+            return fits_path
+        arr = np.asarray(data)
+        bad = ~np.isfinite(arr)
+        if not bad.any():
+            return fits_path
+        good = ~bad
+        fill = float(np.median(arr[good])) if good.any() else 0.0
+        cleaned = np.where(bad, fill, arr).astype(np.float32)
+        header = hdul[0].header.copy()
+    # Keep the original stem: derived catalog names (<stem>_PYSEx_CAT.cat)
+    # are looked up by downstream SCAMP/IDC consumers.
+    out_path = Path(temp_dir) / fits_path.name
+    if out_path.resolve() == fits_path.resolve():
+        out_path = Path(temp_dir) / f"{fits_path.stem}_nanfilled.fits"
+    fits.writeto(out_path, cleaned, header, overwrite=True)
+    logger.info(
+        "SExtractor < 2.25.0 cannot handle non-finite pixels: %s has %d - "
+        "running detection on a median-filled copy.",
+        fits_path.name,
+        int(bad.sum()),
+    )
+    return out_path
+
+
+def nan_filled_copy_for_detection(fits_path, temp_dir) -> Path:
+    """Return a detection-safe copy of *fits_path* for this SExtractor version.
+
+    SExtractor < 2.25.0 produces an empty catalog when the input contains
+    non-finite pixels, so callers that run ``sex`` directly (e.g. IDC
+    distortion correction) should detect on the median-filled copy this
+    returns.  With SExtractor >= 2.25.0, or when the image is already
+    finite, the original path is returned unchanged.
+    """
+    get_sextractor_executable()
+    if _SEXTRACTOR_VERSION >= (2, 25, 0):
+        return Path(fits_path)
+    return _nan_filled_copy(Path(fits_path), Path(temp_dir))
+
+
+def scale_multiplier_from_config(config: dict) -> float:
+    """
+    Factor used to convert measured FWHM (px) into pipeline ``scale`` (cutout/box size).
+
+    Reads ``source_detection.scale_multipler`` (historic YAML spelling) or
+    ``source_detection.scale_multiplier``, then top-level ``scale_multiplier``.
+    Default 4.0 matches legacy AutoPHoT when the YAML key was never wired up.
+    """
+    if not isinstance(config, dict):
+        return 4.0
+    sd = config.get("source_detection") or {}
+    if isinstance(sd, dict):
+        for key in ("scale_multipler", "scale_multiplier"):
+            v = sd.get(key)
+            if v is not None:
+                try:
+                    return max(0.5, float(v))
+                except (TypeError, ValueError):
+                    pass
+    v = config.get("scale_multiplier")
+    if v is not None:
+        try:
+            return max(0.5, float(v))
+        except (TypeError, ValueError):
+            pass
+    return 4.0
+
+
+def clamp_scale_from_config(config: dict, scale_px: float) -> int:
+    """
+    Clamp a computed runtime ``scale`` (pixels) to configured min/max bounds.
+
+    Reads:
+    - source_detection.scale_min_px
+    - source_detection.scale_max_px
+
+    Returns an integer scale >= 1.
+    """
+    try:
+        sd = (config.get("source_detection") or {}) if isinstance(config, dict) else {}
+        min_px = int(sd.get("scale_min_px", 11))
+        max_px = int(sd.get("scale_max_px", 300))
+        min_px = max(1, min_px)
+        max_px = max(min_px, max_px)
+        s = int(round(float(scale_px)))
+        return max(min_px, min(max_px, s))
+    except Exception:
+        try:
+            return max(1, int(round(float(scale_px))))
+        except Exception:
+            return 11
+
+
+@contextmanager
+def temp_directory_context(base_dir: Optional[str] = None):
+    """
+    Context manager for creating and cleaning up a temporary directory.
+
+    Args:
+        base_dir (str, optional): Base directory for the temporary directory. Defaults to system temp.
+
+    Yields:
+        Path: Path to the temporary directory.
+    """
+    temp_dir = tempfile.TemporaryDirectory(prefix="PYSEx_", dir=base_dir)
+    try:
+        yield Path(temp_dir.name)
+    finally:
+        temp_dir.cleanup()
+
+
+def _write_fits_array_to_file(array: np.ndarray, path: Path) -> None:
+    """
+    Write a 2D numpy array to a FITS file.
+
+    Args:
+        array (np.ndarray): 2D array to write.
+        path (Path): Destination path for the FITS file.
+    """
+    from functions import safe_fits_write
+    safe_fits_write(str(path), array, fits.Header())
+
+
+# =============================================================================
+# Core Class: SExtractorWrapper
+# =============================================================================
+
+
+class SExtractorWrapper:
+    """
+    Runs SExtractor for point-source detection and FWHM estimation.
+    Custom background/RMS maps improve detection in crowded fields.
+    """
+
+    def __init__(self, config: dict) -> None:
+        """
+        Args:
+            config (dict): Configuration parameters for SExtractor.
+        """
+        self.config = config
+        # FWHM uncertainty (SE of median), set by calculate_robust_fwhm().
+        self.fwhm_err = np.nan
+        # FWHM estimated inside filter_sextractor_sources from the
+        # quality-filtered bright-source subset; run() prefers it over a
+        # pooled median that faint/junk sources drag low on sparse fields.
+        self.last_fwhm_est = np.nan
+        # sextractor_nthreads may live top-level or under wcs.* in the YAML.
+        _wcs_cfg = config.get("wcs") or {}
+        try:
+            cfg_threads = int(
+                config.get(
+                    "sextractor_nthreads",
+                    _wcs_cfg.get("sextractor_nthreads", 4),
+                )
+            )
+        except (TypeError, ValueError):
+            cfg_threads = 4
+        if cfg_threads < 1:
+            logger.warning(
+                "sextractor_nthreads=%d is invalid; using 1.", cfg_threads
+            )
+            self.n_threads = 1
+        elif cfg_threads < 4:
+            logger.info(
+                "sextractor_nthreads=%d requested; note minimum recommended is 4 for performance.",
+                cfg_threads,
+            )
+            self.n_threads = cfg_threads
+        else:
+            self.n_threads = cfg_threads
+
+    # --- Helper Methods ---
+
+    def _create_conv_file(self, temp_dir: Path, fwhm_pixels: float = 5.0) -> Path:
+        """
+        Create a convolution file for SExtractor.
+        If fwhm_pixels is provided and > 0, optimize the kernel for the given FWHM.
+        Otherwise, use a default 3x3 kernel.
+
+        Args:
+            temp_dir (Path): Path to the temporary directory.
+            fwhm_pixels (float): FWHM in pixels, used to optimize the kernel size.
+
+        Returns:
+            Path: Path to the created convolution file.
+        """
+
+        logger.debug(
+            "Creating convolution kernel with FWHM: %.1f pixels", fwhm_pixels
+        )
+
+        if fwhm_pixels > 0:
+            # FWHM bounds 1.0-15 px. The 1.0 px floor (was 2.5) keeps the
+            # kernel narrow enough for undersampled images (ZTF ~1.8 px);
+            # a broader kernel costs detection sensitivity.
+            fp = float(max(1.0, min(fwhm_pixels, 15.0)))
+            kernel_size = max(3, int(np.ceil(fp * 3)))
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Ensure odd size
+            kernel_size = min(kernel_size, 21)  # SExtractor hard limit
+            center = kernel_size // 2
+            sigma = fp / 2.355  # FWHM = 2.355 * sigma
+            # ogrid returns two broadcastable arrays (not one ndarray); subtract center after unpack.
+            yy, xx = np.ogrid[0:kernel_size, 0:kernel_size]
+            kernel = np.exp(
+                -0.5 * ((xx - center) ** 2 + (yy - center) ** 2) / (sigma**2)
+            )
+            header_lines = (
+                "CONV NORM",
+                f"# {kernel_size}x{kernel_size} convolution mask with FWHM = {fp:.1f} pixels",
+            )
+            row_strs = (" ".join(f"{v:.6f}" for v in row) for row in kernel)
+            conv_text = "\n".join((*header_lines, *row_strs))
+        else:
+            conv_text = """CONV NORM
+# 3x3 convolution mask with FWHM = 2 pixels
+1 2 1
+2 4 2
+1 2 1"""
+        conv_path = temp_dir / "point_source.conv"
+        with open(conv_path, "w") as f:
+            f.write(conv_text.strip() + "\n")
+        return conv_path
+
+    def _create_param_file(self, temp_dir: Path, params: list) -> Path:
+        """
+        Create a parameter file for SExtractor.
+
+        Args:
+            temp_dir (Path): Path to the temporary directory.
+            params (list): List of parameters to include in the file.
+
+        Returns:
+            Path: Path to the created parameter file.
+        """
+        param_path = temp_dir / "PYSEx.param"
+        with open(param_path, "w") as f:
+            f.write("\n".join(params))
+        return param_path
+
+    def _create_config_file(self, temp_dir: Path, config_dict: dict) -> Path:
+        """
+        Create a configuration file for SExtractor.
+
+        Args:
+            temp_dir (Path): Path to the temporary directory.
+            config_dict (dict): Dictionary of configuration key-value pairs.
+
+        Returns:
+            Path: Path to the created configuration file.
+        """
+        config_path = temp_dir / "default.sex"
+        with open(config_path, "w") as f:
+            for key, value in config_dict.items():
+                f.write(f"{key} {value}\n")
+        return config_path
+
+    # --- Core Methods ---
+
+    def calculate_robust_fwhm(
+        self,
+        fwhm_values: np.ndarray,
+        n_iterations: Optional[int] = None,
+    ) -> float:
+        """
+        Median FWHM after iterative sigma clipping.
+
+        Args:
+            fwhm_values (np.ndarray): Array of FWHM values.
+            n_iterations (int, optional): Sigma-clipping iterations; if None, uses
+                ``photometry.fwhm_sigma_clip_maxiters`` from config (default 15).
+
+        Returns:
+            float: Median FWHM of the clipped values.
+        """
+        if n_iterations is None:
+            phot = self.config.get("photometry") or {}
+            try:
+                n_iterations = int(phot.get("fwhm_sigma_clip_maxiters", 15))
+            except (TypeError, ValueError):
+                n_iterations = 15
+        n_iterations = max(1, int(n_iterations))
+        # SExtractor writes error sentinels (FWHM_IMAGE = 0 or -99) for bad
+        # fits; they would contaminate the clipped median.
+        fwhm_values = fwhm_values[np.isfinite(fwhm_values) & (fwhm_values > 0)]
+        if len(fwhm_values) == 0:
+            fallback = float(self.config.get("fwhm_fallback_pixels", 3.0))
+            logger.warning(
+                "No valid FWHM values after filtering error values; "
+                "falling back to %.2f pixels.",
+                fallback,
+            )
+            return fallback
+        # Adaptive sigma: use 2.5 for small samples (< 20) where 3.0 sigma
+        # clipping is too aggressive and can remove real outliers that are
+        # actually the dominant population.
+        _sigma = 2.5 if len(fwhm_values) < 20 else 3.0
+        # MAD-based clip floored at 10% of the median: the std that
+        # sigma_clip measures is inflated by the very outliers it should
+        # remove, so on contaminated pools (a few galaxies among bright
+        # stars) the outliers survive and drag the median.  The floor also
+        # prevents a defect-dominated MAD collapse from flagging the real
+        # stellar locus.
+        _out_mask, _med, _sig_eff = fwhm_outlier_clip(
+            fwhm_values, sigma=_sigma
+        )
+        if np.isfinite(_med):
+            _in = fwhm_values[~_out_mask]
+            fwhm_value = float(np.median(_in)) if _in.size else _med
+            _n_clipped = int(_in.size)
+        else:
+            clipped = sigma_clip(
+                fwhm_values, sigma=_sigma, maxiters=n_iterations
+            )
+            fwhm_value = float(np.ma.median(clipped))
+            _n_clipped = int(np.ma.count(clipped))
+            _in = np.asarray(clipped)
+        # FWHM uncertainty: SE of the median (1.858 * MAD / sqrt(N)).
+        # Stored on the instance for callers that need it.
+        if _n_clipped >= 2:
+            _fwhm_mad = float(np.median(np.abs(_in - fwhm_value)))
+            self.fwhm_err = float(1.858 * _fwhm_mad / np.sqrt(_n_clipped))
+        else:
+            self.fwhm_err = np.nan
+        # Guard against pathological estimates (all zeros, NaNs, etc.).
+        if not np.isfinite(fwhm_value) or fwhm_value <= 0.0:
+            fallback = float(self.config.get("fwhm_fallback_pixels", 3.0))
+            logger.warning(
+                "Robust FWHM estimate is non-positive or invalid (%.3f); falling back to %.2f pixels.",
+                fwhm_value,
+                fallback,
+            )
+            return fallback
+        return fwhm_value
+
+    def _estimate_fwhm_from_catalog(
+        self,
+        sources: pd.DataFrame,
+        fwhm_col: str = "FWHM_IMAGE",
+        relaxed_cuts: bool = False,
+        use_fwhm_fallback: float = 0.0,
+    ) -> float:
+        """Estimate the image FWHM from a SExtractor catalog.
+
+        Shared logic for return_raw, return_full_table, and filter_sextractor_sources.
+        Filters SExtractor error values, applies FWHM range cut (adaptive for
+        undersampled images), sharpness cut, and high-SNR preference before
+        calling calculate_robust_fwhm.
+
+        Args:
+            sources: DataFrame with SExtractor columns (FWHM_IMAGE, SNR_WIN, SHARPNESS).
+            fwhm_col: Column name for FWHM values.
+            relaxed_cuts: If True, use wider FWHM/sharpness bounds.
+            use_fwhm_fallback: Fallback FWHM if no valid sources found.
+
+        Returns:
+            float: Estimated FWHM in pixels.
+        """
+        if fwhm_col not in sources.columns or len(sources) == 0:
+            return float(use_fwhm_fallback) if use_fwhm_fallback > 0 else 8.5
+
+        fwhm_subset = sources.copy()
+        fwhm_vals = pd.to_numeric(fwhm_subset[fwhm_col], errors="coerce")
+
+        # Filter SExtractor error values (0, -99, NaN)
+        fwhm_subset = fwhm_subset[fwhm_vals > 0]
+        fwhm_vals = fwhm_vals[fwhm_vals > 0]
+        if len(fwhm_subset) == 0:
+            return float(use_fwhm_fallback) if use_fwhm_fallback > 0 else 8.5
+
+        # FWHM range cut
+        if relaxed_cuts:
+            fwhm_lo, fwhm_hi = 0.5, 150.0
+        else:
+            _fwhm_est_early = float(fwhm_vals.median())
+            fwhm_lo = 0.8 if _fwhm_est_early < 2.0 else 1.1
+            fwhm_hi = 100.0
+        fwhm_subset = fwhm_subset[(fwhm_vals > fwhm_lo) & (fwhm_vals < fwhm_hi)]
+
+        # Sharpness cut
+        if "SHARPNESS" in fwhm_subset.columns:
+            sharp_lo, sharp_hi = (0.1, 1.2) if relaxed_cuts else (0.2, 1.0)
+            sharp_vals = pd.to_numeric(fwhm_subset["SHARPNESS"], errors="coerce").fillna(1.0)
+            fwhm_subset = fwhm_subset[(sharp_vals > sharp_lo) & (sharp_vals < sharp_hi)]
+
+        # Profile-concentration cut: extended sources (galaxies, blended
+        # defects) have a half-light radius large for their FWHM and pull
+        # the clipped median high.  A point source sits at ~0.5-0.7x; the
+        # bound stays generous so only obvious non-pointlike rows go.
+        # Keep-floor of 3: an unusual catalog never starves the estimate.
+        if "FLUX_RADIUS" in fwhm_subset.columns:
+            _fr_vals = pd.to_numeric(fwhm_subset["FLUX_RADIUS"], errors="coerce")
+            _fw_vals = pd.to_numeric(fwhm_subset[fwhm_col], errors="coerce")
+            with np.errstate(divide="ignore", invalid="ignore"):
+                _prof = _fr_vals / _fw_vals.where(_fw_vals > 0)
+            _prof_max = float(
+                (self.config.get("photometry") or {}).get(
+                    "fwhm_flux_radius_max_frac", 1.3
+                )
+            )
+            _prof_keep = (_prof <= _prof_max) | _prof.isna()
+            if _prof_max <= 0:
+                _prof_keep = pd.Series(True, index=fwhm_subset.index)
+            if int(_prof_keep.sum()) >= 3:
+                n_prof = int((~_prof_keep).sum())
+                if n_prof > 0:
+                    logger.debug(
+                        "FWHM estimate: rejected %d extended sources "
+                        "(FLUX_RADIUS/FWHM > %.2f)",
+                        n_prof, _prof_max,
+                    )
+                fwhm_subset = fwhm_subset[_prof_keep]
+
+        # Stellar concentration prefilter: a point source concentrates
+        # ~1/(2 pi sigma^2) of its flux in the peak pixel; compact
+        # defects are far peakier and carry high S/N, so without this
+        # cut they can dominate the FWHM median on junk-rich fields.
+        _pk_col = next(
+            (c for c in ("FLUX_MAX", "peak_flux") if c in fwhm_subset.columns),
+            None,
+        )
+        _ap_col = next(
+            (
+                c
+                for c in ("FLUX_AUTO", "FLUX_APER", "flux_AP")
+                if c in fwhm_subset.columns
+            ),
+            None,
+        )
+        _pk_frac = float(
+            (self.config.get("photometry") or {}).get(
+                "fwhm_peak_concentration_max", 3.0
+            )
+        )
+        if _pk_col is not None and _ap_col is not None and _pk_frac > 0:
+            _pk_v = pd.to_numeric(fwhm_subset[_pk_col], errors="coerce")
+            _ap_v = pd.to_numeric(fwhm_subset[_ap_col], errors="coerce")
+            _fw_v = pd.to_numeric(fwhm_subset[fwhm_col], errors="coerce")
+            with np.errstate(divide="ignore", invalid="ignore"):
+                _pk_r = _pk_v / _ap_v.where(_ap_v > 0)
+            _sg = float(np.nanmedian(_fw_v[_fw_v > 0])) / 2.355
+            if np.isfinite(_sg) and _sg > 0:
+                _pk_lim = _pk_frac / (2.0 * np.pi * _sg**2)
+                _pk_keep = (_pk_r <= _pk_lim) | _pk_r.isna()
+                if int(_pk_keep.sum()) >= 3:
+                    n_pk = int((~_pk_keep).sum())
+                    if n_pk > 0:
+                        logger.debug(
+                            "FWHM estimate: rejected %d peaky non-stellar "
+                            "sources (peak/flux > %.3f)",
+                            n_pk, _pk_lim,
+                        )
+                    fwhm_subset = fwhm_subset[_pk_keep]
+
+        # High-SNR preference
+        snr_col = "SNR_WIN" if "SNR_WIN" in fwhm_subset.columns else (
+            "SNR" if "SNR" in fwhm_subset.columns else None
+        )
+        if snr_col is not None:
+            high_snr = fwhm_subset[pd.to_numeric(fwhm_subset[snr_col], errors="coerce") >= 10.0]
+            if len(high_snr) >= 5:
+                fwhm_subset = high_snr
+
+        if len(fwhm_subset) > 0:
+            return self.calculate_robust_fwhm(fwhm_subset[fwhm_col].values)
+        else:
+            return self.calculate_robust_fwhm(sources[fwhm_col].values)
+
+    def filter_sextractor_sources(
+        self,
+        sources: pd.DataFrame,
+        header: fits.Header,
+        fwhm_est: Optional[float] = None,
+        saturation: Optional[float] = None,
+        flags: int = 2,
+        masked_sources: Optional[pd.DataFrame] = None,
+        snr_limit: float = 3.0,
+        NMAX: Optional[int] = 1000,  # Maximum allowed number of sources
+        n_grid: int = 10,  # Number of grid cells along each axis for spatial downsampling
+        relaxed_cuts: bool = False,  # If True, keep more sources (wider FWHM range, for matching)
+        bad_region_mask: Optional[
+            np.ndarray
+        ] = None,  # Mask for chip gaps / constant-value regions
+    ) -> pd.DataFrame:
+        """
+        Filter SExtractor sources to exclude non-point sources, saturated sources, and edge sources.
+        If the final number of sources exceeds NMAX, downsample spatially to ensure uniform coverage.
+        When relaxed_cuts is True, use wider FWHM bounds to retain more sources (e.g. for matching).
+
+        Args:
+            sources (pd.DataFrame): SExtractor source catalog (with renamed columns).
+            header (fits.Header): FITS header for image dimensions.
+            fwhm_est (float, optional): Estimated FWHM in pixels. If None, estimated from the catalog.
+            saturation (float, optional): Saturation limit in ADU.
+            flags (int, optional): Maximum allowed SExtractor flag value. Defaults to 2.
+            masked_sources (pd.DataFrame, optional): Sources to exclude by position.
+            snr_limit (float, optional): Minimum SNR threshold. Defaults to 3.0.
+            NMAX (int, optional): Maximum number of sources to return. If None, no downsampling.
+            n_grid (int, optional): Number of grid cells for spatial downsampling. Defaults to 10.
+            relaxed_cuts (bool, optional): If True, use wider FWHM bounds to retain more sources. Defaults to False.
+            bad_region_mask (np.ndarray, optional): Boolean mask of pixels to reject
+                (e.g. chip gaps, dead areas, constant-value borders). Sources whose
+                positions fall inside the mask are dropped early.
+
+        Returns:
+            pd.DataFrame: Filtered (and optionally downsampled) source catalog.
+        """
+
+        start = time.time()
+        # Reset so a stale estimate from a previous call is never reused
+        # when this call returns early.
+        self.last_fwhm_est = np.nan
+        if sources.empty:
+            logger.warning("SExtractor catalog is empty. Skipping filtering.")
+            return sources
+
+        n0 = len(sources)
+        logger.debug("Initial source count: %s", n0)
+        cut_counts: Dict[str, int] = {}
+
+        def _note_cut(label: str, count: int) -> None:
+            cut_counts[label] = cut_counts.get(label, 0) + int(count)
+        # Expose the raw detection count back through the config so that callers
+        # (e.g. crowded-field heuristics in main.py) can distinguish between the
+        # total detections and the filtered/downsampled subset used for FWHM.
+        try:
+            phot_cfg = self.config.setdefault("photometry", {})
+            phot_cfg["last_source_detection_raw_count"] = int(n0)
+            # Store raw catalog for isolation checks against all detections
+            phot_cfg["last_raw_sex_catalog"] = sources.copy()
+        except Exception:
+            # Config is best-effort; never break filtering if this fails.
+            pass
+
+        # --- Step 1: Drop sources inside bad regions (chip gaps / no-flux borders) ---
+        if (
+            bad_region_mask is not None
+            and "x_pix" in sources.columns
+            and "y_pix" in sources.columns
+        ):
+            ny, nx = bad_region_mask.shape
+            x_idx = np.clip(np.rint(sources["x_pix"].values).astype(int), 0, nx - 1)
+            y_idx = np.clip(np.rint(sources["y_pix"].values).astype(int), 0, ny - 1)
+            in_bad = bad_region_mask[y_idx, x_idx]
+            n_bad = int(in_bad.sum())
+            if n_bad > 0:
+                sources = sources[~in_bad].copy()
+                _note_cut("bad-region", n_bad)
+                logger.debug(
+                    f"Rejected {n_bad} sources inside constant-value / chip-gap regions"
+                )
+
+        # --- Step 2: FWHM sanity cut (relaxed_cuts keeps more for matching) ---
+        # Keep a copy so we can fall back if this cut is too aggressive.
+        sources_before_fwhm = sources.copy()
+        # Filter SExtractor error values (FWHM_IMAGE = 0 or -99 for bad fits)
+        # These contaminate FWHM estimation and should never be kept.
+        _sex_err_mask = (sources["fwhm"] <= 0) | ~np.isfinite(sources["fwhm"])
+        if _sex_err_mask.any():
+            sources = sources[~_sex_err_mask].copy()
+            n_inv_fwhm = int(_sex_err_mask.sum())
+            _note_cut("invalid-fwhm", n_inv_fwhm)
+            logger.debug(
+                "Rejected %d sources with invalid FWHM (<=0 or non-finite)",
+                n_inv_fwhm,
+            )
+        if relaxed_cuts:
+            fwhm_lo, fwhm_hi = 0.5, 150.0
+        else:
+            # Lower FWHM cut from 1.1 to 0.8 for undersampled images where
+            # the true FWHM can be ~1.0 px. SExtractor FWHM_IMAGE is quantized
+            # but values >= 0.8 are still real detections.
+            _fwhm_est_early = float(np.nanmedian(sources["fwhm"].values)) if len(sources) > 0 else 3.0
+            fwhm_lo = 0.8 if _fwhm_est_early < 2.0 else 1.1
+            fwhm_hi = 100.0
+        mask = (sources["fwhm"] <= fwhm_lo) | (sources["fwhm"] >= fwhm_hi)
+        n_rejected_fwhm = int(mask.sum())
+        sources = sources[~mask].copy()
+        if n_rejected_fwhm > 0:
+            _note_cut("fwhm", n_rejected_fwhm)
+            logger.debug(
+                f"Rejected {n_rejected_fwhm} sources outside FWHM range [{fwhm_lo}, {fwhm_hi}]"
+            )
+        # If this removed everything (or nearly everything), disable the FWHM cut
+        # for this image rather than returning an empty catalogue.
+        if len(sources) == 0 and n0 > 0:
+            logger.warning(
+                "FWHM filter removed all sources (n=%d). Disabling FWHM cut for this image.",
+                n0,
+            )
+            sources = sources_before_fwhm
+
+        # --- Step 3: SNR cut ---
+        snr_ok = sources["snr"].to_numpy() > snr_limit
+        n_after_snr = int((~snr_ok).sum())
+        sources = sources.loc[snr_ok].copy()
+        if n_after_snr > 0:
+            _note_cut("low-snr", n_after_snr)
+            logger.debug("Rejected %s low-SNR sources (SNR < %.1f)", n_after_snr, snr_limit)
+
+        # --- Step 3b: FLAGS cut (before FWHM estimation) ---
+        # Apply FLAGS early so flagged/blended sources don't inflate the FWHM.
+        if "flags" in sources.columns:
+            n_flagged = int((sources["flags"] > flags).sum())
+            sources = sources[sources["flags"] <= flags].copy()
+            if n_flagged > 0:
+                _note_cut("flags", n_flagged)
+                logger.debug(
+                    "Rejected %d sources with FLAGS > %d", n_flagged, flags
+                )
+
+        # --- Step 3c: SHARPNESS cut (before FWHM estimation) ---
+        # Apply sharpness cut BEFORE FWHM estimation so that cosmic rays
+        # (which have anomalous sharpness) don't bias the FWHM median.
+        # Previously this was Step 7 (after FWHM estimation), allowing CRs
+        # to inflate/deflate the FWHM estimate even though they would later
+        # be rejected.
+        if "sharpness" in sources.columns:
+            sharp_lo, sharp_hi = (0.1, 1.2) if relaxed_cuts else (0.2, 1.0)
+            sharp_vals = pd.to_numeric(sources["sharpness"], errors="coerce")
+            sharp_bad = (sharp_vals <= sharp_lo) | (sharp_vals >= sharp_hi)
+            sharp_bad = sharp_bad.fillna(False)
+            n_sharp = int(sharp_bad.sum())
+            if n_sharp > 0:
+                sources = sources[~sharp_bad].copy()
+                _note_cut("sharpness", n_sharp)
+                logger.debug(
+                    f"Pre-FWHM sharpness cut: rejected {n_sharp} sources "
+                    f"(SHARPNESS outside [{sharp_lo}, {sharp_hi}])"
+                )
+
+        # --- Step 3d: FLUX_RADIUS cut (cosmic ray rejection before FWHM) ---
+        # Cosmic rays have very small FLUX_RADIUS (half-light radius < 1 px)
+        # regardless of image FWHM.  Rejecting them before FWHM estimation
+        # prevents CRs from biasing the FWHM median low.
+        if "flux_radius" in sources.columns and len(sources) > 0:
+            _fr_vals = pd.to_numeric(sources["flux_radius"], errors="coerce")
+            _fr_finite = _fr_vals.notna() & (_fr_vals > 0)
+            if _fr_finite.any() and _fr_finite.sum() >= 5:
+                _fr_med = float(np.nanmedian(_fr_vals[_fr_finite]))
+                _fr_min = max(0.5, 0.3 * _fr_med)
+                _fr_bad = _fr_finite & (_fr_vals < _fr_min)
+                n_fr = int(_fr_bad.sum())
+                if n_fr > 0 and (~_fr_bad).sum() >= 5:
+                    sources = sources[~_fr_bad].copy()
+                    _note_cut("cr-like", n_fr)
+                    logger.debug(
+                        f"Pre-FWHM FLUX_RADIUS cut: rejected {n_fr} CR-like "
+                        f"sources (FLUX_RADIUS < {_fr_min:.2f} px, median={_fr_med:.2f})"
+                    )
+
+        # --- Step 3e: Extended-profile cut (galaxy rejection before FWHM) ---
+        # A point source's half-light radius is ~0.5-0.7x its FWHM;
+        # galaxies and extended defects run systematically larger and
+        # would bias the FWHM median high.  Applied before FWHM
+        # estimation for the same reason as the sharpness cut above.
+        # This replaces stellarity (CLASS_STAR), which is uncalibrated
+        # on some cameras.
+        if "flux_radius" in sources.columns and len(sources) > 0:
+            _fr_hi = pd.to_numeric(sources["flux_radius"], errors="coerce")
+            _fw_hi = pd.to_numeric(sources["fwhm"], errors="coerce")
+            with np.errstate(divide="ignore", invalid="ignore"):
+                _prof_hi = _fr_hi / _fw_hi.where(_fw_hi > 0)
+            _prof_max_hi = float(
+                (self.config.get("photometry") or {}).get(
+                    "fwhm_flux_radius_max_frac", 1.3
+                )
+            )
+            _prof_bad_hi = (_prof_hi > _prof_max_hi).fillna(False)
+            if _prof_max_hi <= 0:
+                _prof_bad_hi = pd.Series(False, index=sources.index)
+            n_prof_hi = int(_prof_bad_hi.sum())
+            if n_prof_hi > 0 and int((~_prof_bad_hi).sum()) >= 5:
+                sources = sources[~_prof_bad_hi].copy()
+                _note_cut("extended", n_prof_hi)
+                logger.debug(
+                    f"Pre-FWHM profile cut: rejected {n_prof_hi} extended "
+                    f"sources (FLUX_RADIUS/FWHM > {_prof_max_hi:.2f})"
+                )
+
+        # --- Step 4: Estimate FWHM if needed ---
+        if fwhm_est is None and len(sources) > 0:
+            # Stellar concentration prefilter: a point source concentrates
+            # only ~1/(2 pi sigma^2) of its flux in the peak pixel, so
+            # peak/aperture-flux is small for real seeing (~0.01-0.05).
+            # Compact defects (hot pixels, CR spikes, noise blobs) are far
+            # peakier AND carry high S/N, so without this cut they dominate
+            # the FWHM median on junk-rich fields.
+            fwhm_sources = sources
+            _pk_max_frac = float(
+                (self.config.get("photometry") or {}).get(
+                    "fwhm_peak_concentration_max", 3.0
+                )
+            )
+            if (
+                _pk_max_frac > 0
+                and "peak_flux" in sources.columns
+                and "flux_AP" in sources.columns
+                and "fwhm" in sources.columns
+            ):
+                _pk = pd.to_numeric(sources["peak_flux"], errors="coerce")
+                _ap = pd.to_numeric(sources["flux_AP"], errors="coerce")
+                _fw = pd.to_numeric(sources["fwhm"], errors="coerce")
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    _pk_ratio = _pk / _ap.where(_ap > 0)
+                _sig0 = float(np.nanmedian(_fw[_fw > 0])) / 2.355
+                if np.isfinite(_sig0) and _sig0 > 0:
+                    _pk_lim = _pk_max_frac / (2.0 * np.pi * _sig0**2)
+                    _pk_ok = (_pk_ratio <= _pk_lim) | _pk_ratio.isna()
+                    if int(_pk_ok.sum()) >= 5:
+                        n_pk = int((~_pk_ok).sum())
+                        if n_pk > 0:
+                            _note_cut("peaky", n_pk)
+                            logger.debug(
+                                "Pre-FWHM concentration cut: rejected %d "
+                                "peaky non-stellar sources (peak/flux > "
+                                "%.3f)",
+                                n_pk, _pk_lim,
+                            )
+                        fwhm_sources = sources[_pk_ok]
+
+            # Use only high-S/N sources for FWHM estimation to avoid bias
+            # from faint sources where SExtractor underestimates FWHM_IMAGE
+            # (truncated profiles at low S/N produce artificially small FWHM).
+            fwhm_snr_min = 10.0
+            if "snr" in fwhm_sources.columns:
+                high_snr = fwhm_sources[fwhm_sources["snr"] >= fwhm_snr_min]
+            else:
+                high_snr = fwhm_sources
+            fwhm_sources = high_snr if len(high_snr) >= 5 else fwhm_sources
+            fwhm_est = self.calculate_robust_fwhm(fwhm_sources["fwhm"].values)
+            fwhm_std = np.nanstd(fwhm_sources["fwhm"].values)
+            logger.log(
+                STATUS,
+                f"Estimated FWHM: {fwhm_est:.2f} pixels (sigma = {fwhm_std:.2f} pixels, "
+                f"from {len(fwhm_sources)} sources, SNR >= {fwhm_snr_min if len(high_snr) >= 5 else 3.0})"
+            )
+
+        # Record the estimate actually used here (bright-source subset when
+        # possible) so run() can prefer it over a clipped median of the full
+        # filtered pool - that median collapses onto faint, noise-truncated
+        # sources on sparse junk-rich fields (observed 4.18 px where the
+        # true PSF was ~7.8 px on a sparse GROND field).
+        try:
+            self.last_fwhm_est = (
+                float(fwhm_est) if fwhm_est is not None else float("nan")
+            )
+        except (TypeError, ValueError):
+            self.last_fwhm_est = float("nan")
+
+        # --- Step 5: Drop sources near masked positions ---
+        if (
+            masked_sources is not None
+            and fwhm_est is not None
+        ):
+            if isinstance(masked_sources, Table):
+                ms_df = masked_sources.to_pandas()
+            else:
+                ms_df = masked_sources
+
+            mask_coords = np.empty((0, 2), dtype=np.float64)
+            if ms_df is not None and len(ms_df) > 0:
+                match_radius = float(fwhm_est)
+                mask_coords = ms_df[["x_pix", "y_pix"]].to_numpy(dtype=np.float64)
+                # Filter out NaN/Inf coordinates before cKDTree
+                finite_mask = np.all(np.isfinite(mask_coords), axis=1)
+                mask_coords = mask_coords[finite_mask]
+                if len(mask_coords) < len(finite_mask):
+                    logger.debug(
+                        "Filtered %d non-finite mask coordinates before cKDTree",
+                        len(finite_mask) - len(mask_coords)
+                    )
+
+            if len(mask_coords) > 0:
+                coords = sources[["x_pix", "y_pix"]].to_numpy(dtype=np.float64)
+                # Filter out NaN/Inf source coordinates before cKDTree
+                finite_coords_mask = np.all(np.isfinite(coords), axis=1)
+                coords = coords[finite_coords_mask]
+                if len(coords) < len(finite_coords_mask):
+                    logger.debug(
+                        "Filtered %d non-finite source coordinates before cKDTree",
+                        len(finite_coords_mask) - len(coords)
+                    )
+                if len(coords) == 0:
+                    logger.debug("No finite source coordinates, skipping masked region filtering")
+                    return sources
+                tree = cKDTree(mask_coords)
+                # Inf distance if no neighbor within match_radius
+                try:
+                    dist, _ = tree.query(
+                        coords,
+                        k=1,
+                        distance_upper_bound=match_radius,
+                        workers=-1,
+                    )
+                except TypeError:
+                    dist, _ = tree.query(
+                        coords, k=1, distance_upper_bound=match_radius
+                    )
+                near_masked = np.isfinite(dist)
+                removed_near_masked = int(near_masked.sum())
+                sources = sources.loc[~near_masked].copy()
+                if removed_near_masked > 0:
+                    _note_cut("near-mask", removed_near_masked)
+                    logger.debug(
+                        "Rejected %d sources within %.2f pixels of masked regions",
+                        removed_near_masked,
+                        match_radius,
+                    )
+
+        # --- Step 7: Sharpness cut (relaxed range when relaxed_cuts) ---
+        if "sharpness" in sources.columns:
+            sharp_lo, sharp_hi = (0.1, 1.2) if relaxed_cuts else (0.2, 1.0)
+            mask = (sources["sharpness"] <= sharp_lo) | (
+                sources["sharpness"] >= sharp_hi
+            )
+            rejected_sharp = mask.sum()
+            sources = sources[~mask].copy()
+            if rejected_sharp > 0:
+                _note_cut("sharpness", rejected_sharp)
+                logger.debug(
+                    f"Rejected {rejected_sharp} sources based on sharpness (range [{sharp_lo}, {sharp_hi}])"
+            )
+
+        # --- Step 8: Saturation cut ---
+        if saturation is not None and "peak_flux" in sources.columns:
+            n_saturated = len(sources[sources["peak_flux"] >= 0.99 * saturation])
+            sources = sources[sources["peak_flux"] < 0.99 * saturation].copy()
+            if n_saturated > 0:
+                _note_cut("saturated", n_saturated)
+                logger.debug(
+                    f"Rejected {n_saturated} saturated sources (peak_flux >= 0.99 x saturation)"
+                )
+
+        # --- Step 9: Edge cut ---
+        x_max, y_max = header.get("NAXIS1", 0), header.get("NAXIS2", 0)
+        margin = 5
+        mask = (
+            (sources["x_pix"] <= margin)
+            | (sources["x_pix"] >= x_max - margin)
+            | (sources["y_pix"] <= margin)
+            | (sources["y_pix"] >= y_max - margin)
+        )
+        edge_rejected = mask.sum()
+        sources = sources[~mask].copy()
+        if edge_rejected > 0:
+            _note_cut("edge", edge_rejected)
+            logger.debug(
+                f"Rejected {edge_rejected} sources within {margin} pixels of the image edge"
+            )
+
+        # --- Step 10: Spatial Downsampling if needed ---
+        if NMAX is not None and len(sources) > NMAX:
+            _note_cut("downsampled", len(sources) - NMAX)
+            x_pix = sources["x_pix"].values
+            y_pix = sources["y_pix"].values
+
+            x_bins = np.linspace(0, x_max, n_grid + 1)
+            y_bins = np.linspace(0, y_max, n_grid + 1)
+
+            # Left-inclusive bins so every source lands in exactly one cell.
+            x_indices = np.clip(np.digitize(x_pix, x_bins[1:-1]), 0, n_grid - 1)
+            y_indices = np.clip(np.digitize(y_pix, y_bins[1:-1]), 0, n_grid - 1)
+
+            grid_ids = y_indices * n_grid + x_indices
+
+            # Sort each cell by SNR descending so index 0 is the brightest.
+            groups = {
+                gid: grp.sort_values(by="snr", ascending=False)
+                for gid, grp in sources.groupby(grid_ids)
+            }
+
+            rng = np.random.default_rng(42)
+            cells = np.array(list(groups.keys()), dtype=int)
+            rng.shuffle(cells)
+
+            selected_idx: List[int] = []
+            selected_set: Set[int] = set()
+
+            # First pass: take the best source from each non-empty cell to
+            # guarantee at least one source per region, up to NMAX.
+            for cell in cells:
+                grp = groups[cell]
+                if grp.empty:
+                    continue
+                ix = grp.index[0]
+                selected_idx.append(ix)
+                selected_set.add(ix)
+                if len(selected_idx) >= NMAX:
+                    break
+
+            # Additional passes: take 2nd-best, 3rd-best, ... from each cell
+            # (skipping already-chosen rows) until NMAX is reached or no more
+            # candidates remain. This keeps the spatial distribution uniform
+            # instead of over-sampling crowded regions.
+            k = 1
+            while len(selected_idx) < NMAX:
+                added = 0
+                for cell in cells:
+                    grp = groups[cell]
+                    if len(grp) <= k:
+                        continue
+                    idx = int(grp.index[k])
+                    if idx in selected_set:
+                        continue
+                    selected_idx.append(idx)
+                    selected_set.add(idx)
+                    added += 1
+                    if len(selected_idx) >= NMAX:
+                        break
+                if added == 0:
+                    break
+
+            # Sparse cells may leave slots open; fill with the globally
+            # highest-SNR sources not already selected.
+            if len(selected_idx) < NMAX:
+                remaining = sources.drop(index=selected_idx).sort_values(
+                    by="snr", ascending=False
+                )
+                need = max(0, NMAX - len(selected_idx))
+                extra = list(remaining.index[:need])
+                selected_idx.extend(extra)
+
+            sources = (
+                sources.loc[selected_idx]
+                .sort_values(by="snr", ascending=False)
+                .head(NMAX)
+            )
+            logger.debug(
+                f"Downsampled catalogue to {NMAX} sources using a {n_grid} x {n_grid} spatial grid"
+            )
+
+        # --- Wrap up ---
+        # As a final safety net, if all sources have been removed by the
+        # filtering steps but we started with a non-empty catalogue, fall back
+        # to the pre-FWHM-cut catalogue so that downstream code always has
+        # something to work with.
+        if len(sources) == 0 and n0 > 0:
+            logger.warning(
+                "All sources removed by filtering pipeline; returning unfiltered catalogue prior to FWHM cut."
+            )
+            sources = sources_before_fwhm
+
+        sources = sources.reset_index(drop=True)
+        elapsed = time.time() - start
+        if cut_counts:
+            logger.info(
+                "Source cuts: %d -> %d kept (%s)",
+                n0,
+                len(sources),
+                ", ".join(f"{k}={v}" for k, v in cut_counts.items()),
+            )
+        logger.debug(
+            f"Filtering completed in {elapsed:.3f} s "
+            f"(retained {len(sources)} of {n0} initial sources)"
+        )
+        return sources
+
+    # --- Main Execution ---
+
+    def run(
+        self,
+        fits_path: str,
+        psf_path: Optional[str] = None,
+        fits_ref: Optional[str] = None,
+        catalog_type: str = "FITS_LDAC",
+        gain_key: str = "GAIN",
+        satur_key: str = "SATURATE",
+        pixel_scale: float = 0,
+        seeing_fwhm: float = 1.0,
+        back_type: str = "AUTO",
+        back_value: float = 0.0,
+        back_size: int = 64,
+        back_filtersize: int = 3,
+        back_pearson: float = 3.5,
+        backphoto_type: str = "LOCAL",
+        backphoto_thick: int = 24,
+        back_filtthresh: float = 0.0,
+        use_filt: bool = True,
+        detect_thresh: float = 2.0,
+        analysis_thresh: float = 2.0,
+        detect_minarea: int = 5,
+        detect_maxarea: int = 0,
+        deblend_nthresh: int = 64,
+        deblend_mincont: float = 0.005,
+        clean: str = "Y",
+        phot_apertures: float = 5.0,
+        negative_corr: bool = True,
+        checkimage_type: str = "NONE",
+        vignet: Optional[Tuple[int, int]] = None,
+        stamp_imgsize: Optional[int] = None,
+        flags: int = 2,
+        mdir: Optional[str] = None,
+        verbose_type: str = "QUIET",
+        verbose_level: int = 2,
+        default_scale: int = 15,
+        masked_sources: Optional[Table] = None,
+        weight_path: Optional[str] = None,
+        use_FWHM: float = 0.0,
+        crowded: Optional[bool] = None,
+        use_for_matching: bool = False,
+        return_raw: bool = False,
+        return_full_table: bool = False,
+    ) -> Tuple[float, Optional[Union[pd.DataFrame, Table]], int]:
+        """
+        Run SExtractor to detect point sources and estimate FWHM.
+        If use_FWHM is provided as a positive float, use it to optimize the convolution kernel.
+        If weight_path is provided, use it as a weight map for SExtractor.
+
+        Args:
+            fits_path (str): Path to the input FITS file.
+            psf_path (str, optional): Path to the PSF file. Defaults to None.
+            fits_ref (str, optional): Path to the reference FITS file. Defaults to None.
+            catalog_type (str, optional): Output catalog type. Defaults to "FITS_LDAC".
+            gain_key (str, optional): FITS header key for gain. Defaults to "GAIN".
+            satur_key (str, optional): FITS header key for saturation. Defaults to "SATURATE".
+            pixel_scale (float, optional): Pixel scale in arcsec/pixel. Defaults to 0.
+            seeing_fwhm (float, optional): Estimated seeing FWHM in arcsec. Defaults to 2.0.
+            back_type (str, optional): Background type (AUTO or MANUAL). Defaults to "AUTO".
+            back_value (float, optional): Background value. Defaults to 0.0.
+            back_size (int, optional): Background mesh size. Defaults to 64.
+            back_filtersize (int, optional): Background filter size. Defaults to 3.
+            back_pearson (float, optional): Pearson's factor for background estimation. Defaults to 3.5.
+            backphoto_type (str, optional): Background photo type (GLOBAL or LOCAL). Defaults to "LOCAL".
+            backphoto_thick (int, optional): Thickness of the background LOCAL annulus. Defaults to 24.
+            back_filtthresh (float, optional): Threshold above which the background-map filter operates. Defaults to 0.0.
+            use_filt (bool, optional): Use convolution filter. Defaults to True.
+            detect_thresh (float, optional): Detection threshold. Defaults to 2.0.
+            analysis_thresh (float, optional): Analysis threshold. Defaults to 2.0.
+            detect_minarea (int, optional): Minimum detection area. Defaults to 5.
+            return_raw (bool, optional): If True, return raw astropy Table instead of pandas DataFrame. Defaults to False.
+            detect_maxarea (int, optional): Maximum detection area. Defaults to 0.
+            deblend_nthresh (int, optional): Deblending threshold. Defaults to 64.
+            deblend_mincont (float, optional): Deblending minimum contrast. Defaults to 0.005.
+            clean (str, optional): Cleaning option. Defaults to "Y".
+            phot_apertures (float, optional): Photometric apertures. Defaults to 5.0.
+            negative_corr (bool, optional): Apply negative correlation. Defaults to True.
+            checkimage_type (str, optional): Check image type. Defaults to "NONE".
+            return_full_table (bool, optional): If True, return full SExtractor table with all columns without renaming. Defaults to False.
+            vignet (tuple, optional): Vignet size. Defaults to None.
+            stamp_imgsize (int, optional): Stamp image size. Defaults to None.
+            flags (int, optional): Maximum allowed SExtractor flag value. Defaults to 2.
+            mdir (str, optional): Directory for temporary files. Defaults to None.
+            verbose_type (str, optional): Verbosity type. Defaults to "QUIET".
+            verbose_level (int, optional): Verbosity level. Defaults to 2.
+            default_scale (int, optional): Default scale for FWHM. Defaults to 15.
+            masked_sources (Table, optional): Sources to mask. Defaults to None.
+            weight_path (str, optional): Path to the weight map file. Defaults to None.
+            use_FWHM (float, optional): FWHM in pixels to use for convolution kernel optimization. Defaults to 0.0.
+            crowded (bool, optional): If True, use parameters tuned for crowded fields: tighter deblending,
+                smaller back mesh, lower detection threshold, and force `BACKPHOTO_TYPE=GLOBAL`.
+                If None, taken from config["photometry"]["crowded_field"] or config["template_subtraction"]["sextractor_crowded"].
+            use_for_matching (bool, optional): If True, retain more sources (no NMAX, lower SNR, relaxed FWHM) for matching.
+
+        Returns:
+            tuple: (fwhm, sources, scale)
+        """
+        VALID_CATALOG_TYPES = {"FITS_1.0", "FITS_LDAC", "ASCII", "ASCII_HEAD", "ASCII_SKYCAT", "ASCII_VOTABLE"}
+        if catalog_type not in VALID_CATALOG_TYPES:
+            raise ValueError(
+                f"Invalid catalog_type={catalog_type!r}. "
+                f"Must be one of: {sorted(VALID_CATALOG_TYPES)}"
+            )
+        if get_sextractor_executable() is None:
+            raise RuntimeError("SExtractor is not installed.")
+        if crowded is None:
+            # Crowded if photometry or template_subtraction request it (aligns with SFFT crowded).
+            crowded = bool(
+                self.config.get("photometry", {}).get("crowded_field", False)
+            ) or bool(
+                self.config.get("template_subtraction", {}).get(
+                    "sextractor_crowded", False
+                )
+            )
+        if crowded:
+            logger.info(
+                "Using SExtractor crowded-field parameters (forcing BACKPHOTO_TYPE=GLOBAL, tighter deblending, smaller back mesh)."
+            )
+        fits_path = Path(fits_path)
+        if not fits_path.exists():
+            raise FileNotFoundError(f"FITS file not found: {fits_path}")
+        if psf_path is not None:
+            psf_path = Path(psf_path)
+            if not psf_path.exists():
+                raise FileNotFoundError(f"PSF file not found: {psf_path}")
+        if weight_path is not None:
+            weight_path = Path(weight_path)
+            if not weight_path.exists():
+                raise FileNotFoundError(f"Weight map file not found: {weight_path}")
+
+        with temp_directory_context(base_dir=mdir) as temp_dir:
+            # Resolve binary inside this block so the command always has a defined path
+            # (cached by get_sextractor_executable; fail-fast already ran above).
+            sextractor_bin = get_sextractor_executable()
+            if sextractor_bin is None:
+                raise RuntimeError("SExtractor is not installed.")
+            mode_label = "crowded" if crowded else "default"
+            logger.info(
+                log_step(f"SExtractor: {fits_path.name} ({mode_label})")
+            )
+            # Single open: one mmap/read pass for header + data (bad-region mask).
+            with fits.open(fits_path, memmap=True) as hdul:
+                hdu0 = hdul[0]
+                header = hdu0.header.copy()  # copy header before HDUList closes
+                phot_cfg_early = self.config.get("photometry") or {}
+                if phot_cfg_early.get("sextractor_reject_constant_regions", True):
+                    raw_data = hdu0.data
+                    image_data = raw_data.astype(np.float32) if raw_data.dtype.kind != 'f' else raw_data
+                else:
+                    image_data = None
+            try:
+                gain = float(header.get(gain_key, 1.0))
+            except (TypeError, ValueError):
+                gain = 1.0
+            # gain<=0 (or non-finite) poisons SExtractor's flux-error noise
+            # model; fall back to the same default as a missing key.
+            if not np.isfinite(gain) or gain <= 0:
+                gain = 1.0
+            saturation_raw = header.get(satur_key, 60000)
+            try:
+                saturation = float(saturation_raw)
+                # SExtractor rejects inf/NaN or non-positive SATUR_LEVEL values
+                if not np.isfinite(saturation) or saturation <= 0:
+                    saturation = 60000
+                # A placeholder-scale value (1e10/1e30 "no limit" sentinels)
+                # is not a detector level; treating it as such would cap it to
+                # 65535 and wrongly flag bright-but-unsaturated pixels on
+                # frames whose true ceiling is unknown.  Use the same default
+                # as a missing key instead.
+                try:
+                    from functions import SATURATE_SENTINEL_MIN
+                except ImportError:
+                    SATURATE_SENTINEL_MIN = 1e8
+                if saturation >= SATURATE_SENTINEL_MIN:
+                    logger.info(
+                        "SATURATE=%s is a no-limit placeholder; using default %d for SExtractor",
+                        saturation_raw, 60000,
+                    )
+                    saturation = 60000
+                # Cap at reasonable maximum (65535 = max for 16-bit unsigned)
+                # Header values like 1e30 cause "SATUR_LEVEL keyword out of range"
+                max_saturation = 65535
+                if saturation > max_saturation:
+                    logger.warning(
+                        "Saturation value %s from header exceeds SExtractor maximum; capping at %d",
+                        saturation, max_saturation
+                    )
+                    saturation = max_saturation
+            except (TypeError, ValueError):
+                saturation = 60000
+            # Format as integer string if whole number (SExtractor prefers this)
+            if float(saturation).is_integer():
+                saturation = int(saturation)
+            logger.debug(
+                "SExtractor saturation: raw=%r, parsed=%s, satur_key=%s",
+                saturation_raw, saturation, satur_key,
+            )
+
+            if _SEXTRACTOR_VERSION < (2, 25, 0):
+                # Chip gaps / masked borders stored as NaN make old
+                # SExtractor produce an empty catalog; detect on a
+                # median-filled copy instead (pixel grid is unchanged).
+                fits_path = _nan_filled_copy(fits_path, temp_dir)
+                if fits_ref is not None:
+                    fits_ref = _nan_filled_copy(Path(fits_ref), temp_dir)
+
+            fwhm_for_kernel = float(use_FWHM)
+            if not np.isfinite(fwhm_for_kernel) or fwhm_for_kernel <= 0:
+                # Prefer the runtime-measured config fwhm; the header value can
+                # be stale from a previous run or an instrument default.
+                for v in (
+                    self.config.get("fwhm"),
+                    header.get("FWHM"),
+                    header.get("fwhm"),
+                ):
+                    try:
+                        vv = float(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if np.isfinite(vv) and vv > 0:
+                        fwhm_for_kernel = vv
+                        break
+            if fwhm_for_kernel > 0:
+                logger.debug(
+                    "Using FWHM = %.1f pixels to construct the SExtractor convolution kernel",
+                    fwhm_for_kernel,
+                )
+                phot_apertures = 1.7 * fwhm_for_kernel
+
+                # Reduce DETECT_MINAREA for undersampled images.
+                # Undersampled PSFs (FWHM < 2.5 px) occupy only ~2-3 pixels,
+                # so the default MINAREA=5 can miss real point sources.
+                _us_thresh_sex = float(
+                    (self.config.get("photometry", {}) or {}).get(
+                        "undersampled_fwhm_threshold", 2.5
+                    )
+                )
+                if fwhm_for_kernel < _us_thresh_sex and not crowded:
+                    _orig_minarea = int(detect_minarea)
+                    if fwhm_for_kernel < 1.5:
+                        detect_minarea = max(1, min(detect_minarea, 1))
+                    else:
+                        detect_minarea = max(1, min(detect_minarea, 2))
+                    if detect_minarea < _orig_minarea:
+                        logger.info(
+                            "Undersampled image (FWHM=%.2f px < %.1f threshold): "
+                            "reducing DETECT_MINAREA from %d to %d",
+                            fwhm_for_kernel, _us_thresh_sex,
+                            _orig_minarea, detect_minarea,
+                        )
+
+            conv_path = (
+                self._create_conv_file(temp_dir, fwhm_pixels=fwhm_for_kernel)
+                if use_filt
+                else None
+            )
+
+            # SExtractor parameters
+            params = [
+                "XWIN_IMAGE",
+                "YWIN_IMAGE",
+                "FLUX_AUTO",
+                "FLUXERR_AUTO",
+                "FWHM_IMAGE",
+                "ELLIPTICITY",
+                "SNR_WIN",
+                "FLAGS",
+                "FLUX_MAX",
+                "A_IMAGE",
+                "B_IMAGE",
+                "THETA_IMAGE",
+                "MU_MAX",
+                "ISOAREA_IMAGE",
+                "FLUX_RADIUS",
+                "ERRAWIN_IMAGE",
+                "ERRBWIN_IMAGE",
+                "ERRTHETAWIN_IMAGE",
+            ]
+            if vignet is not None:
+                params.append(f"VIGNET({vignet[0]},{vignet[1]})")
+            param_path = self._create_param_file(temp_dir, params)
+
+            # SExtractor configuration
+            config_dict = {
+                "CATALOG_TYPE": catalog_type,
+                "VERBOSE_TYPE": verbose_type,
+                "NTHREADS": str(self.n_threads),
+                "GAIN": str(gain),
+                "SATUR_LEVEL": str(saturation),
+                "PIXEL_SCALE": str(pixel_scale),
+                "BACK_TYPE": back_type,
+                "BACK_VALUE": str(back_value),
+                "BACK_SIZE": str(back_size),
+                "BACK_FILTERSIZE": str(back_filtersize),
+                "BACK_PEARSON": str(back_pearson),
+                "BACKPHOTO_TYPE": backphoto_type,
+                "BACKPHOTO_THICK": str(backphoto_thick),
+                "BACK_FILTTHRESH": str(back_filtthresh),
+                "DETECT_THRESH": str(detect_thresh),
+                "ANALYSIS_THRESH": str(analysis_thresh),
+                "DETECT_MINAREA": str(detect_minarea),
+                "DETECT_MAXAREA": str(detect_maxarea),
+                "DEBLEND_NTHRESH": str(deblend_nthresh),
+                "DEBLEND_MINCONT": str(deblend_mincont),
+                "CHECKIMAGE_TYPE": checkimage_type,
+                "SEEING_FWHM": str(seeing_fwhm),
+                "PHOT_APERTURES": str(phot_apertures),
+                "FILTER": "Y" if use_filt else "N",
+                "CLEAN": clean,
+                "CLEAN_PARAM": "1.0",
+                "PHOT_AUTOPARAMS": "2.5,3.5",
+                "MAG_ZEROPOINT": "0.0",
+            }
+            if crowded:
+                # Crowded fields: GLOBAL background photo plus thresholds and
+                # deblending aligned with SFFT defaults to reduce biased detections.
+                config_dict.update(
+                    {
+                        "BACKPHOTO_TYPE": "GLOBAL",
+                        "BACK_SIZE": "64",
+                        "BACK_FILTERSIZE": "3",
+                        "DETECT_THRESH": "5.0",
+                        "ANALYSIS_THRESH": "5.0",
+                        "DETECT_MINAREA": "5",
+                        "DEBLEND_NTHRESH": "64",
+                        "DEBLEND_MINCONT": "0.005",
+                    }
+                )
+
+            # MAP_RMS weight map; WEIGHT_GAIN/RESCALE_WEIGHTS stay at defaults.
+            if weight_path is not None:
+                config_dict.update(
+                    {
+                        "WEIGHT_TYPE": "MAP_RMS",
+                        "WEIGHT_IMAGE": str(weight_path),
+                    }
+                )
+
+            if conv_path is not None:
+                config_dict["FILTER_NAME"] = str(conv_path)
+            if psf_path is not None:
+                config_dict["PSF_NAME"] = str(psf_path)
+
+            config_path = self._create_config_file(temp_dir, config_dict)
+
+            base_name = fits_path.stem
+            catalog_path = temp_dir / f"{base_name}_PYSEx_CAT.fits"
+
+            cmd = [
+                sextractor_bin,
+                str(fits_path),
+                "-c",
+                str(config_path),
+                "-CATALOG_NAME",
+                str(catalog_path),
+                "-PARAMETERS_NAME",
+                str(param_path),
+            ]
+            if fits_ref is not None:
+                # SExtractor dual-image mode: first argument must be "ref.fits,sci.fits" as one token
+                cmd[1] = f"{fits_ref},{fits_path}"
+            if checkimage_type != "NONE":
+                check_image_path = temp_dir / f"{base_name}_PYSEx_CHECK.fits"
+                cmd.extend(["-CHECKIMAGE_NAME", str(check_image_path)])
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode != 0:
+                raise RuntimeError(f"SExtractor failed: {result.stderr}")
+
+            if not catalog_path.exists():
+                raise FileNotFoundError("SExtractor did not produce an output catalog.")
+            tbhdu = 2 if catalog_type == "FITS_LDAC" else 1
+            sources = Table.read(catalog_path, hdu=tbhdu, format="fits")
+            if len(sources) == 0:
+                logger.warning("No sources detected by SExtractor.")
+                return 0.0, None, default_scale
+            
+            if return_raw and catalog_type == "FITS_LDAC" and mdir:
+                # The .cat copy happens after filtering below so SCAMP gets
+                # the filtered table, not the raw detections.
+                dest_path = Path(mdir) / f"{base_name}_PYSEx_CAT.cat"
+
+            if return_raw:
+                sources_df = sources.to_pandas()
+                initial_count = len(sources_df)
+                if use_for_matching or crowded:
+                    nmax = None
+                    effective_snr_limit = self.config.get("photometry", {}).get(
+                        "sextractor_snr_min_matching", 1.5
+                    )
+                    relaxed_cuts = use_for_matching
+                else:
+                    nmax = self.config.get("photometry", {}).get("sextractor_nmax", 1000)
+                    effective_snr_limit = 3.0
+                    relaxed_cuts = False
+                
+                # For matching/alignment catalogs, skip SNR and FLAGS filtering.
+                # SCAMP applies its own SN_THRESHOLDS; passing all detections
+                # maximizes alignment anchors (especially extended sources).
+                if not use_for_matching:
+                    if "SNR_WIN" in sources_df.columns:
+                        sources_df = sources_df[sources_df["SNR_WIN"] >= effective_snr_limit]
+                    if "FLAGS" in sources_df.columns:
+                        sources_df = sources_df[sources_df["FLAGS"] <= flags]
+
+                if nmax is not None and len(sources_df) > nmax:
+                    sources_df = sources_df.nlargest(nmax, "FLUX_AUTO")
+
+                sources = Table.from_pandas(sources_df)
+                logger.debug(
+                    "Filtered from %d to %d sources (raw mode)",
+                    initial_count,
+                    len(sources),
+                )
+                # SCAMP needs columns SExtractor did not produce; patch them in.
+                if catalog_type == "FITS_LDAC" and mdir:
+                    dest_path = Path(mdir) / f"{base_name}_PYSEx_CAT.cat"
+                    with fits.open(catalog_path, mode='update') as hdul:
+                        table = sources
+                        if 'XWIN_WORLD' not in table.colnames and 'XWIN_IMAGE' in table.colnames:
+                            try:
+                                # Use get_wcs so SIP/TPV projection codes are normalized
+                                # and distortion is applied consistently with the rest
+                                # of the pipeline (astropy.WCS alone can ignore SIP if
+                                # CTYPE is not TAN-SIP/TPV).
+                                wcs = get_wcs(fits.getheader(fits_path))
+                                if wcs is not None:
+                                    # SExtractor uses 1-based pixel coordinates (FITS convention)
+                                    # astropy WCS pixel_to_world expects 0-based numpy convention
+                                    x_coords = np.asarray(table['XWIN_IMAGE'], float) - 1.0
+                                    y_coords = np.asarray(table['YWIN_IMAGE'], float) - 1.0
+                                    world_coords = wcs.pixel_to_world(x_coords, y_coords)
+                                    table['XWIN_WORLD'] = world_coords.ra.deg
+                                    table['YWIN_WORLD'] = world_coords.dec.deg
+                                    table['X_WORLD'] = world_coords.ra.deg
+                                    table['Y_WORLD'] = world_coords.dec.deg
+                                    table['ALPHA_J2000'] = world_coords.ra.deg
+                                    table['DELTA_J2000'] = world_coords.dec.deg
+                            except Exception as e:
+                                logger.warning("Could not compute world coordinates: %s", e)
+                        if 'MAG_AUTO' not in table.colnames:
+                            if 'MAG_APER' in table.colnames:
+                                table['MAG_AUTO'] = table['MAG_APER']
+                            else:
+                                if 'FLUX_AUTO' in table.colnames:
+                                    flux_safe = np.asarray(table['FLUX_AUTO'], float)
+                                    flux_safe[flux_safe <= 0] = np.nan
+                                    table['MAG_AUTO'] = -2.5 * np.log10(flux_safe)
+                                else:
+                                    table['MAG_AUTO'] = 0.0
+                        if 'MAGERR_AUTO' not in table.colnames:
+                            if 'MAGERR_APER' in table.colnames:
+                                table['MAGERR_AUTO'] = table['MAGERR_APER']
+                            else:
+                                table['MAGERR_AUTO'] = 0.1
+                        # Error columns: SCAMP expects ERR*WIN_IMAGE/_WORLD.
+                        if 'ERRAWIN_IMAGE' not in table.colnames:
+                            if 'FWHM_IMAGE' in table.colnames:
+                                table['ERRAWIN_IMAGE'] = table['FWHM_IMAGE'] * 0.1
+                            else:
+                                table['ERRAWIN_IMAGE'] = 0.1
+                        if 'ERRBWIN_IMAGE' not in table.colnames:
+                            table['ERRBWIN_IMAGE'] = table['ERRAWIN_IMAGE']
+                        if 'ERRX2WIN_IMAGE' not in table.colnames:
+                            table['ERRX2WIN_IMAGE'] = table['ERRAWIN_IMAGE'] ** 2
+                        if 'ERRY2WIN_IMAGE' not in table.colnames:
+                            table['ERRY2WIN_IMAGE'] = table['ERRAWIN_IMAGE'] ** 2
+                        if 'ERRTHETAWIN_IMAGE' not in table.colnames:
+                            table['ERRTHETAWIN_IMAGE'] = 0.1
+                        if 'ERRX2WIN_WORLD' not in table.colnames:
+                            table['ERRX2WIN_WORLD'] = table['ERRX2WIN_IMAGE']
+                        if 'ERRY2WIN_WORLD' not in table.colnames:
+                            table['ERRY2WIN_WORLD'] = table['ERRY2WIN_IMAGE']
+                        # *_WORLD columns need deg/pixel: use the run()
+                        # pixel_scale (arcsec/pixel) when supplied, else the
+                        # image WCS, else a generic wide-field fallback.
+                        if pixel_scale and pixel_scale > 0:
+                            pixel_scale_deg = float(pixel_scale) / 3600.0
+                        else:
+                            pixel_scale_deg = 0.1585 / 3600.0
+                            try:
+                                from astropy.wcs.utils import proj_plane_pixel_scales
+
+                                _pwcs = get_wcs(fits.getheader(fits_path))
+                                if _pwcs is not None:
+                                    pixel_scale_deg = float(
+                                        np.mean(proj_plane_pixel_scales(_pwcs.celestial))
+                                    )
+                            except Exception:
+                                pass
+                        if 'ERRA_WORLD' not in table.colnames:
+                            table['ERRA_WORLD'] = table['ERRAWIN_IMAGE'] * pixel_scale_deg
+                        if 'ERRDEC_WORLD' not in table.colnames:
+                            table['ERRDEC_WORLD'] = table['ERRAWIN_IMAGE'] * pixel_scale_deg
+                        if 'ERRB_WORLD' not in table.colnames:
+                            table['ERRB_WORLD'] = table['ERRBWIN_IMAGE'] * pixel_scale_deg
+                        if 'ERRX2_WORLD' not in table.colnames:
+                            table['ERRX2_WORLD'] = table['ERRX2WIN_WORLD']
+                        if 'ERRY2_WORLD' not in table.colnames:
+                            table['ERRY2_WORLD'] = table['ERRY2WIN_WORLD']
+                        hdul[2].data = table.as_array()
+                    shutil.copy2(catalog_path, dest_path)
+                    logger.debug("Copied FITS-LDAC catalog to %s", dest_path)
+                # Calculate FWHM from point-source-quality subset before returning.
+                # The full sources_df (SNR+FLAGS filtered) is returned for SCAMP,
+                # but FWHM must be estimated from point sources only to avoid
+                # inflation by extended sources/galaxies.
+                if "FWHM_IMAGE" in sources_df.columns:
+                    fwhm_est = self._estimate_fwhm_from_catalog(
+                        sources_df, fwhm_col="FWHM_IMAGE",
+                        relaxed_cuts=relaxed_cuts,
+                        use_fwhm_fallback=float(use_FWHM) if use_FWHM > 0 else 8.5,
+                    )
+                else:
+                    fwhm_est = float(use_FWHM) if use_FWHM > 0 else 8.5
+                return fwhm_est, sources, default_scale
+
+            # Rename columns for compatibility (unless return_full_table is True)
+            newcols = [
+                "x_pix",
+                "y_pix",
+                "flux_AP",
+                "flux_AP_err",
+                "fwhm",
+                "roundness",
+                "snr",
+                "flags",
+                "peak_flux",
+                "a",
+                "b",
+                "theta",
+                "mu_max",
+                "area",
+                "flux_radius",
+                "erra_win",
+                "errb_win",
+                "errtheta_win",
+            ]
+            sources = sources.to_pandas()
+            
+            # return_full_table skips renaming/coordinate conversion but still
+            # gets the light SNR/FLAGS filter and nmax cap.
+            if return_full_table:
+                logger.info("Returning full SExtractor table with all columns (no renaming)")
+                initial_count = len(sources)
+                if use_for_matching or crowded:
+                    nmax = None
+                    effective_snr_limit = self.config.get("photometry", {}).get(
+                        "sextractor_snr_min_matching", 1.5
+                    )
+                    relaxed_cuts = use_for_matching
+                else:
+                    nmax = self.config.get("photometry", {}).get("sextractor_nmax", 1000)
+                    effective_snr_limit = 3.0
+                    relaxed_cuts = False
+                
+                # Matching catalogs skip SNR/FLAGS; SCAMP vetoes them itself.
+                if not use_for_matching:
+                    if "SNR_WIN" in sources.columns:
+                        sources = sources[sources["SNR_WIN"] >= effective_snr_limit]
+                    if "FLAGS" in sources.columns:
+                        sources = sources[sources["FLAGS"] <= flags]
+
+                if nmax is not None and len(sources) > nmax:
+                    sources = sources.nlargest(nmax, "FLUX_AUTO")
+                
+                logger.debug(
+                    "Filtered from %d to %d sources (full table mode)",
+                    initial_count,
+                    len(sources),
+                )
+                # Calculate FWHM from point-source-quality subset
+                if "FWHM_IMAGE" in sources.columns:
+                    fwhm_est = self._estimate_fwhm_from_catalog(
+                        sources, fwhm_col="FWHM_IMAGE",
+                        relaxed_cuts=relaxed_cuts,
+                        use_fwhm_fallback=float(use_FWHM) if use_FWHM > 0 else 8.5,
+                    )
+                else:
+                    fwhm_est = float(use_FWHM) if use_FWHM > 0 else 8.5
+                return fwhm_est, sources, default_scale
+            
+            # Handle optional VIGNET column before renaming fixed columns
+            if vignet is not None and len(sources.columns) == len(newcols) + 1:
+                # VIGNET is always appended last by SExtractor
+                vignet_data = sources.iloc[:, -1]
+                sources = sources.iloc[:, :len(newcols)]
+                sources.columns = newcols
+                sources["vignet"] = vignet_data
+            elif len(sources.columns) == len(newcols):
+                sources.columns = newcols
+            elif len(sources.columns) == len(newcols) - 1:
+                # SExtractor 2.5.0 doesn't support ERRTHETAWIN_IMAGE;
+                # drop the last column name and map by position.
+                logger.info(
+                    "SExtractor output has %d columns (expected %d); "
+                    "assuming ERRTHETAWIN_IMAGE is unsupported by this SExtractor version.",
+                    len(sources.columns), len(newcols),
+                )
+                _short_cols = newcols[:-1]
+                sources.columns = _short_cols
+                sources["errtheta_win"] = np.nan
+            else:
+                logger.warning(
+                    "SExtractor output has %d columns but expected %d; skipping column rename to avoid data corruption.",
+                    len(sources.columns),
+                    len(newcols),
+                )
+
+            # SExtractor uses 1-based pixel coordinates; convert to 0-based
+            if "x_pix" in sources.columns:
+                sources["x_pix"] -= 1
+                sources["y_pix"] -= 1
+            else:
+                # Column rename was skipped; cannot proceed with this catalog.
+                logger.warning(
+                    "SExtractor column mismatch unresolved; returning empty catalog."
+                )
+                _fallback_fwhm = float(use_FWHM) if use_FWHM > 0 else 8.5
+                return _fallback_fwhm, sources.iloc[0:0], default_scale
+
+            # Matching/crowded catalogs keep more sources (no cap, lower SNR).
+            initial_count = len(sources)
+            if use_for_matching or crowded:
+                nmax = None
+                effective_snr_limit = self.config.get("photometry", {}).get(
+                    "sextractor_snr_min_matching", 2.0
+                )
+                relaxed_cuts = use_for_matching
+            else:
+                nmax = self.config.get("photometry", {}).get("sextractor_nmax", 1000)
+                effective_snr_limit = 3.0
+                relaxed_cuts = False
+            # Constant-region rejection can remove real stars on very smooth
+            # backgrounds; photometry.sextractor_reject_constant_regions=False
+            # disables it.
+            bad_region_mask = None
+            phot_cfg_run = self.config.get("photometry") or {}
+            if phot_cfg_run.get("sextractor_reject_constant_regions", True):
+                # NOTE: _constant_region_mask is not implemented in
+                # background.py, so this stays off until it is.
+                bad_region_mask = None
+            else:
+                logger.info(
+                    "photometry.sextractor_reject_constant_regions=False: skipping constant-region source rejection"
+                )
+
+            sources = self.filter_sextractor_sources(
+                sources,
+                header,
+                masked_sources=masked_sources,
+                NMAX=nmax,
+                snr_limit=effective_snr_limit,
+                relaxed_cuts=relaxed_cuts,
+                bad_region_mask=bad_region_mask,
+            )
+
+            final_count = len(sources)
+            if final_count == 0:
+                logger.warning("[ERROR] All sources filtered out")
+                return 0.0, None, default_scale
+
+            # Prefer the FWHM estimated inside filter_sextractor_sources:
+            # it is measured on the bright (SNR >= 10) subset after the
+            # point-source prefilters, while a clipped median over the
+            # whole filtered pool collapses onto faint/junk sources on
+            # sparse fields.
+            _filt_fwhm = self.last_fwhm_est
+            if np.isfinite(_filt_fwhm) and _filt_fwhm > 0:
+                fwhm = float(_filt_fwhm)
+            else:
+                fwhm_values = sources["fwhm"].values
+                fwhm = self.calculate_robust_fwhm(fwhm_values)
+            scale_multiplier = scale_multiplier_from_config(self.config)
+            # Legacy behavior: `default_scale` is a hard floor when the
+            # FWHM-based scale is too small.
+            raw_scale = max(float(scale_multiplier) * float(fwhm), float(default_scale))
+            scale = clamp_scale_from_config(self.config, raw_scale)
+            logger.log(
+                STATUS,
+                "Detected %d/%d point sources | robust FWHM %.2f px | scale %.1f px (FWHM x %.2f)",
+                final_count,
+                initial_count,
+                fwhm,
+                scale,
+                scale_multiplier,
+            )
+            return fwhm, sources, scale

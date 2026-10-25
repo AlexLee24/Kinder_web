@@ -1,5 +1,5 @@
 """Kinder Pipeline 的 AutoPhOT 執行檔：用 AutoPhOT 自己的 Python 跑（app/services/pipeline/autophot.py 呼叫），
-工作目錄是 AutoPhOT 的資料夾。不要用 Kinder 的 .venv。
+AutoPhOT 的資料夾由環境變數 AUTOPHOT_DIR 給（沒給就用工作目錄），工作目錄是工作區。不要用 Kinder 的 .venv。
 
   python autophot_web_run.py <工作區資料夾>
 工作區的 target.json 是網頁存的設定；跑完把輸出位置寫進 result.json，結束碼寫進 exit.json
@@ -116,8 +116,9 @@ def make_stacks(cfg_in, tdir):
 
 def main():
     tdir = Path(sys.argv[1]).resolve()
-    if os.getcwd() not in sys.path:                  # AutoPhOT 的模組（autophot、prepare、lightcurve）在工作目錄
-        sys.path.insert(1, os.getcwd())
+    ap_dir = os.environ.get('AUTOPHOT_DIR') or os.getcwd()     # AutoPhOT 的模組（autophot、prepare、lightcurve）在這裡
+    if ap_dir not in sys.path:
+        sys.path.insert(1, ap_dir)
     cfg_in = json.loads((tdir / 'target.json').read_text())
 
     from autophot import AutomatedPhotometry

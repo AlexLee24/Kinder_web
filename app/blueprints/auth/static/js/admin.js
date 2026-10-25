@@ -2135,9 +2135,10 @@ function _renderScheduledJobs(jobs) {
     const rows = document.getElementById('pipelineRows');
     const status = document.getElementById('pipelineStatus');
     const hints = {
-        autophot_dir: 'Folder with autophot.py, e.g. /Users/alex-lee/UCD/autophot',
-        autophot_python: 'Default: <AutoPhOT folder>/.venv/bin/python',
-        autophot_runs: 'Default: autophot-runs next to the AutoPhOT folder',
+        autophot_dir: 'Default: app/vendor/autophot (the copy in this repository)',
+        autophot_python: 'Default: <AutoPhOT folder>/.venv/bin/python (scripts/pipeline/setup_autophot.sh)',
+        autophot_runs: 'Default: app/data/autophot-runs (or autophot-runs next to a custom AutoPhOT folder)',
+        calibrated_dir: 'Default: /Users/greatlab/reduction_pipeline/Calibrated_Science (read only)',
     };
 
     function node(tag, cls, text) {

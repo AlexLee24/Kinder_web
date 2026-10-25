@@ -1,0 +1,754 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Cosmic ray removal via astroscrappy or ccdproc.cosmicray_lacosmic.
+
+Bright, saturated and non-finite pixels are masked out before detection so
+star cores are not mistaken for CRs; the CR mask is then dilated and
+hole-filled so CR wings do not leak into photometry.
+Author: Sean Brennan
+"""
+
+# --- Standard Library Imports ---
+import logging
+import os
+import warnings
+
+# --- Third-Party Imports ---
+import numpy as np
+import astroscrappy
+from typing import Optional, Sequence, Tuple
+from scipy.ndimage import binary_dilation, binary_fill_holes
+import matplotlib.pyplot as plt
+from astropy.visualization import ZScaleInterval
+from skimage.morphology import disk
+
+from functions import log_warning_from_exception
+
+
+# --- Main Class ---
+class RemoveCosmicRays:
+    """
+    A class to handle cosmic ray removal from astronomical images using astroscrappy or ccdproc.cosmicray_lacosmic.
+    Includes background estimation, masking, visualization, and improved mask dilation with hole filling.
+    """
+
+    def __init__(
+        self,
+        input_yaml: str,
+        fpath: str,
+        image: np.ndarray,
+        header: dict,
+        use_lacosmic: bool = False,
+    ):
+        """
+        Initialize the cosmic ray removal process.
+
+        Args:
+            input_yaml: Configuration dictionary.
+            fpath: Path to the FITS file.
+            image: Image data as a numpy array.
+            header: FITS header as a dictionary.
+            use_lacosmic: Flag to use L.A.Cosmic algorithm (default: False).
+        """
+        self.input_yaml = input_yaml
+        self.fpath = fpath
+        self.image = image
+        self.header = header
+        self.use_lacosmic = use_lacosmic
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    # --- Mask Creation ---
+    def _create_mask(self, image: np.ndarray, satlevel: float = np.inf) -> np.ndarray:
+        """
+        Create a mask for saturated, bright, and non-finite pixels.
+
+        This mask is passed to astroscrappy/ccdproc as ``inmask`` to
+        **protect** these pixels from being flagged as cosmic rays.
+        Without this protection, bright star cores can be misidentified
+        as CRs and replaced with local median values, which destroys the
+        PSF shape and corrupts all downstream photometry.
+
+        Args:
+            image: Input image as a numpy array.
+            satlevel: Saturation level (default: infinity).
+
+        Returns:
+            Boolean mask: True = protect this pixel (skip CR detection).
+        """
+        sat_mask = image > satlevel
+        # MAD-based sigma instead of np.std - cosmic rays and bright stars
+        # inflate std, making the mask ineffective at catching the very
+        # pixels it should protect.
+        finite = image[np.isfinite(image)]
+        if finite.size == 0:
+            return sat_mask
+        med = np.median(finite)
+        mad = np.median(np.abs(finite - med))
+        robust_sigma = 1.4826 * mad if mad > 0 else np.std(finite)
+        # Guard against degenerate case: if all pixels are identical (or
+        # nearly so), robust_sigma can be 0, which would make bright_mask
+        # match everything above the median.  Use a small floor to prevent
+        # masking half the image.
+        if robust_sigma <= 0:
+            robust_sigma = 1.0
+        bright_mask = image > (med + 5 * robust_sigma)
+
+        # The bright_mask is intended to protect EXTENDED bright sources
+        # (star cores) from being flagged as CRs and replaced with median
+        # values, which would destroy the PSF.  A single bright pixel above
+        # the threshold is equally likely to be a cosmic ray as a star
+        # core -- protecting it prevents its detection.
+        #
+        # A real star core is a smooth, extended source: multiple connected
+        # bright pixels.  A CR is a sharp, isolated spike: typically 1-3
+        # connected pixels.  We protect only connected bright regions with
+        # >= 4 pixels -- this excludes single-pixel CRs while still catching
+        # compact star cores.  For a compact star (FWHM ~2-3 px) with only
+        # 2-3 pixels above the 5*sigma threshold, the algorithm should be
+        # able to distinguish it from a CR using the PSF model -- the risk
+        # of misidentifying a compact star is lower than the risk of
+        # missing real CRs.
+        from scipy import ndimage as _ndi
+        _bright_labels, _n_bright = _ndi.label(bright_mask)
+        if _n_bright > 0:
+            _bright_sizes = np.asarray(
+                _ndi.sum(bright_mask, _bright_labels, range(1, _n_bright + 1)),
+                dtype=int,
+            )
+            # Only protect bright regions with >= 4 connected pixels.
+            # Single/double/triple-pixel bright spots are likely CRs or
+            # hot pixels and should NOT be protected -- they need to be
+            # checked by the CR detection algorithm.
+            _min_star_pixels = 4
+            _big_labels = np.isin(
+                _bright_labels,
+                np.where(_bright_sizes >= _min_star_pixels)[0] + 1,
+            )
+            bright_mask = _big_labels
+        else:
+            # No bright regions at all -- nothing to protect.
+            bright_mask = np.zeros_like(bright_mask)
+
+        # Also protect non-finite pixels (NaN/inf) so astroscrappy doesn't
+        # attempt to detect/clean them -- they are chip gaps or bad pixels,
+        # not cosmic rays.
+        nan_mask = ~np.isfinite(image)
+        return sat_mask | bright_mask | nan_mask
+
+    # --- Protection of Known Sources (e.g. the transient target) ---
+    def _protect_positions_mask(
+        self,
+        positions: Optional[Sequence[Tuple[float, float]]],
+        radius_px: float,
+        psf_fwhm: float,
+    ) -> Optional[np.ndarray]:
+        """
+        Build a boolean disk mask around each finite, in-frame position.
+
+        An undersampled isolated point source (e.g. a faint transient) can
+        be misread as a cosmic-ray cluster: flagging it erases real flux
+        through median interpolation, and its defect mask is nulled in the
+        difference image, so the target is never measured.  Pixels inside
+        these disks are added to the detector ``inmask`` and are therefore
+        never flagged and never interpolated.
+
+        Args:
+            positions: Iterable of (x, y) pixel positions to protect.
+            radius_px: Protection radius in pixels.  Non-positive or
+                non-finite values fall back to ``max(3, 2 * psf_fwhm)``.
+            psf_fwhm: PSF FWHM in pixels, used for the fallback radius.
+
+        Returns:
+            Boolean mask (True = protect) or None when no valid position
+            is inside the frame.
+        """
+        if not positions:
+            return None
+        try:
+            r = float(radius_px)
+        except (TypeError, ValueError):
+            r = 0.0
+        if not np.isfinite(r) or r <= 0:
+            try:
+                r = 2.0 * float(psf_fwhm)
+            except (TypeError, ValueError):
+                r = 0.0
+            if not np.isfinite(r) or r <= 0:
+                r = 6.0
+            r = max(3.0, r)
+        # A runaway FWHM estimate must not shield a large patch from CR
+        # detection: only the sharp core (a few FWHM across) is flaggable,
+        # so 25 px covers every realistic PSF core with room to spare.
+        r = min(r, 25.0)
+
+        ny, nx = self.image.shape
+        out = np.zeros((ny, nx), dtype=bool)
+        n_used = 0
+        for pos in positions:
+            try:
+                px, py = float(pos[0]), float(pos[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if not (np.isfinite(px) and np.isfinite(py)):
+                continue
+            if not (0.0 <= px < nx and 0.0 <= py < ny):
+                continue
+            x0 = max(0, int(px - r))
+            x1 = min(nx, int(px + r) + 1)
+            y0 = max(0, int(py - r))
+            y1 = min(ny, int(py + r) + 1)
+            ys, xs = np.ogrid[y0:y1, x0:x1]
+            out[y0:y1, x0:x1] |= (xs - px) ** 2 + (ys - py) ** 2 <= r * r
+            n_used += 1
+
+        if n_used == 0:
+            return None
+        self.logger.info(
+            "Protecting %d known position(s) from CR detection "
+            "(radius %.1f px, %d px total).",
+            n_used,
+            r,
+            int(np.count_nonzero(out)),
+        )
+        return out
+
+    # --- Cosmic Ray Mask Dilation and Hole Filling ---
+    def dilate_cosmic_ray_mask(
+        self,
+        cr_mask: np.ndarray,
+        fwhm_pixels: float,
+        dilate_factor: float = 1.0,
+        iterations: int = 2,
+        fill_holes: bool = True,
+    ) -> np.ndarray:
+        """
+        Dilate a cosmic ray mask using a circular kernel and optionally fill enclosed holes.
+
+        Args:
+            cr_mask: Boolean mask of cosmic ray pixels.
+            fwhm_pixels: FWHM of the PSF in pixels.
+            dilate_factor: Scaling factor for the dilation radius (default: 1.0).
+            iterations: Number of dilation iterations (default: 2).
+            fill_holes: If True, fill enclosed holes after dilation (default: True).
+
+        Returns:
+            Processed boolean mask as a numpy array.
+        """
+        try:
+            # The dilation should cover the CR pixel plus a small margin to
+            # catch residual wings/bleed, NOT the full PSF diameter.  Cosmic
+            # rays are narrow (1-3 px); dilating by the full FWHM (especially
+            # with iterations=2) masks enormous regions around each CR,
+            # excluding real sources.  Cap the radius at 5 px regardless of
+            # FWHM -- this covers CR wings without masking nearby sources.
+            r = max(1, min(5, int(dilate_factor * fwhm_pixels)))
+
+            selem = disk(r)
+
+            dilated_mask = binary_dilation(
+                cr_mask, structure=selem, iterations=iterations
+            )
+
+            if fill_holes:
+                dilated_mask = binary_fill_holes(dilated_mask)
+
+            return dilated_mask
+
+        except Exception as e:
+            log_warning_from_exception(
+                self.logger, "Cosmic ray mask dilation failed", e
+            )
+            return cr_mask  # Return original mask on failure
+
+    # --- Visualization ---
+    def plot_comparison(
+        self,
+        original: np.ndarray,
+        cleaned: np.ndarray,
+        cr_mask: np.ndarray,
+        title: str = "Cosmic Ray Removal",
+        dilation_size: int = 2,
+    ):
+        """
+        Plot a side-by-side comparison of the original and cleaned images.
+        The left panel shows the original image with cosmic-ray-contaminated
+        pixels highlighted in red; the right panel shows the cleaned image.
+
+        Args:
+            original: Original image (before cosmic ray removal).
+            cleaned: Cleaned image (after cosmic ray removal).
+            cr_mask: Boolean mask of cosmic ray pixels.
+            title: Title for the plot (default: "Cosmic Ray Removal").
+            dilation_size: Size of dilation for marking cosmic ray regions (default: 2).
+        """
+        fpath = self.input_yaml.get("fpath", "")
+        image_filter = self.input_yaml.get("imageFilter", "")
+        if not fpath or not image_filter:
+            raise ValueError("Missing 'fpath' or 'imageFilter' in input_yaml.")
+        base = os.path.splitext(os.path.basename(fpath))[0]
+        write_dir = os.path.dirname(fpath)
+
+        from plotting_utils import (
+            apply_autophot_mplstyle,
+            get_plot_ext,
+            mask_legend_patch,
+            overlay_mask_hatch,
+        )
+
+        apply_autophot_mplstyle()
+
+        # Equal-aspect panels shrink inside mismatched figure cells,
+        # leaving gaps no wspace can remove. Size the figure from the
+        # image aspect; each fig.colorbar steals ~9% of its panel's cell
+        # (fraction + pad) for the vertical bar.
+        img_h, img_w = original.shape
+        aspect = img_w / img_h
+        ax_h = 3.2
+        ax_w = ax_h * aspect
+        cell_w = ax_w / (1.0 - 0.046 - 0.04)
+        gap_in = 0.35
+        left_in, right_in = 0.62, 0.15
+        bottom_in, top_in = 0.55, 0.80
+        fig_w = left_in + 2.0 * cell_w + gap_in + right_in
+        fig_h = bottom_in + ax_h + top_in
+        fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h))
+        fig.subplots_adjust(
+            left=left_in / fig_w,
+            right=(left_in + 2.0 * cell_w + gap_in) / fig_w,
+            bottom=bottom_in / fig_h,
+            top=(bottom_in + ax_h) / fig_h,
+            wspace=gap_in / cell_w,
+        )
+
+        # --- Apply zscale for optimal contrast ---
+        zscale = ZScaleInterval()
+        vmin, vmax = zscale.get_limits(original)
+
+        # --- Left panel: original with CR pixels in red ---
+        # Mask CR pixels so they show as the "bad" colour (red) in the colormap
+        original_masked = np.ma.array(original, mask=cr_mask)
+        cmap_orig = plt.get_cmap("gray").copy()
+        cmap_orig = cmap_orig.with_extremes(bad="none")
+        im0 = axes[0].imshow(
+            original_masked,
+            cmap=cmap_orig,
+            origin="lower",
+            vmin=vmin,
+            vmax=vmax,
+        )
+        overlay_mask_hatch(axes[0], cr_mask)
+        n_cr = int(np.count_nonzero(cr_mask))
+        axes[0].set_title(
+            f"Original ({n_cr:,} CR pixels)", fontsize=9
+        )
+        _cb0 = fig.colorbar(im0, ax=axes[0], orientation="vertical", fraction=0.046, pad=0.04)
+        _cb0.set_label("ADU", fontsize=8)
+
+        # --- Right panel: cleaned image ---
+        cmap_clean = plt.get_cmap("gray").copy()
+        cmap_clean = cmap_clean.with_extremes(bad="none")
+        im1 = axes[1].imshow(
+            cleaned,
+            cmap=cmap_clean,
+            origin="lower",
+            vmin=vmin,
+            vmax=vmax,
+        )
+        overlay_mask_hatch(axes[1], ~np.isfinite(np.asarray(cleaned)))
+        axes[1].set_title("Cleaned", fontsize=9)
+        # Both panels share the same y extent; repeat labels add clutter.
+        axes[1].tick_params(axis="y", labelleft=False)
+        _cb1 = fig.colorbar(im1, ax=axes[1], orientation="vertical", fraction=0.046, pad=0.04)
+        _cb1.set_label("ADU", fontsize=8)
+
+        # --- Finalize ---
+        fig.suptitle(title, fontsize=10)
+        # The hatched overlay marks CR-masked and non-finite pixels.
+        fig.legend(
+            handles=[
+                mask_legend_patch(label="Cosmic ray / NaN pixels")
+            ],
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.94),
+            ncol=1,
+            fontsize=8,
+            frameon=False,
+        )
+
+        png_path = os.path.join(write_dir, f"Cosmic_Rays_{base}{get_plot_ext(self.input_yaml)}")
+        fig.savefig(
+            png_path, bbox_inches="tight", dpi=150, facecolor="white"
+        )
+        plt.close(fig)
+
+    # --- Cosmic Ray Removal ---
+    def remove(
+        self,
+        bkg: Optional[np.ndarray] = None,
+        bkg_rms: Optional[np.ndarray] = None,
+        invar: Optional[np.ndarray] = None,
+        mask: Optional[np.ndarray] = None,
+        satlevel: float = np.inf,
+        gain: float = 1.0,
+        readnoise: Optional[float] = None,
+        psf_fwhm: float = 3,
+        sigclip: float = 4.5,
+        sigfrac: float = 0.3,
+        objlim: float = 10.0,
+        dilate_factor: float = 1.0,
+        dilate_iterations: int = 2,
+        defect_margin_px: float = 2.0,
+        protect_positions: Optional[Sequence[Tuple[float, float]]] = None,
+        protect_radius_px: float = 0.0,
+        plot: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Remove cosmic rays via astroscrappy or ccdproc.cosmicray_lacosmic, protecting bright/saturated/NaN pixels through ``inmask``.
+
+        Args:
+            bkg: Background image to subtract (same shape as self.image).
+            bkg_rms: Background RMS (same shape as self.image).
+            invar: Variance map (noise squared, same shape as self.image); in counts^2.
+            mask: Input mask (same shape as self.image).
+            satlevel: Saturation level (default: inf).
+            gain: Detector gain (default: 1.0).
+            readnoise: Read noise (default: from header or 6.5).
+            psf_fwhm: PSF FWHM in pixels (default: 3.0).
+            sigclip: Detection threshold for cosmic rays (default: 7.0).
+            sigfrac: Fraction of pixels used for detection (default: 0.3).
+            objlim: Object detection threshold (default: 10.0).
+            dilate_factor: Dilation radius as fraction of FWHM for the
+                source-exclusion mask (default: 1.0).
+            dilate_iterations: Dilation iterations for the source-exclusion
+                mask (default: 2).
+            defect_margin_px: Fixed pixel margin around flagged pixels for the
+                defect mask (default: 2.0).  The defect mask marks pixels that
+                are not real data and is used for subtraction/aperture masks;
+                the much larger dilated mask is a source-exclusion halo.
+            protect_positions: Pixel positions (x, y) that must never be
+                flagged or cleaned - typically the transient target and any
+                additional fit targets.  An undersampled isolated point
+                source can read as a cosmic-ray cluster to L.A.Cosmic; a
+                flag erases real flux via median interpolation and lands in
+                the defect mask that is nulled in the difference image.
+            protect_radius_px: Radius (pixels) of the protective disk around
+                each ``protect_positions`` entry.  Non-positive falls back
+                to max(3, 2 * psf_fwhm).
+            plot: If True, plot a side-by-side comparison (default: True).
+
+        Returns:
+            Tuple of (cleaned image, dilated exclusion mask, defect mask)
+            as numpy arrays.
+        """
+        self.logger.info("Starting cosmic ray removal")
+
+        # --- Input Validation (must precede any array operation) ---
+        if not isinstance(self.image, np.ndarray):
+            self.logger.error("Input image must be a numpy array")
+            _empty = np.zeros_like(self.image, dtype=bool)
+            return self.image, _empty, _empty
+
+        # Preserve all non-finite pixels (chip gaps, bad pixels), not just
+        # NaN: an inf left in the frame would otherwise reach astroscrappy.
+        nan_mask = ~np.isfinite(self.image)
+
+        # Work in float64 so the CR step does not quantize inputs that are
+        # already higher precision; the rest of the pipeline measures in
+        # float64 anyway.  Repaired pixels are interpolants, so the output
+        # must stay floating point even for integer inputs.
+        _out_dtype = (
+            np.float64 if self.image.dtype == np.float64 else np.float32
+        )
+        self.image = self.image.astype(np.float64)
+
+        if invar is not None:
+            invar = invar.astype(np.float64)
+        if bkg is not None:
+            bkg = bkg.astype(np.float64)
+        if bkg_rms is not None:
+            bkg_rms = bkg_rms.astype(np.float64)
+
+        # --- Read Noise Handling ---
+        if readnoise is None:
+            # A junk-string RDNOISE (MaxIm-style writers store text in
+            # numeric keys) must not abort the whole CR step.
+            try:
+                readnoise = float(self.header.get("RDNOISE", 6.5))
+            except (TypeError, ValueError):
+                self.logger.warning(
+                    "Invalid RDNOISE header value %r; using 6.5.",
+                    self.header.get("RDNOISE"),
+                )
+                readnoise = 6.5
+        if not np.isfinite(readnoise):
+            readnoise = 6.5
+        elif readnoise < 0.0:
+            readnoise = 0.0
+
+        # --- Masking ---
+        # The mask protects pixels from CR detection: masked pixels are
+        # skipped by astroscrappy/ccdproc, preserving star cores and PSF
+        # shape.  Without this, bright star cores can be flagged as CRs
+        # and replaced with median values.
+        if mask is None:
+            mask = self._create_mask(self.image, satlevel)
+        else:
+            if mask.shape != self.image.shape:
+                self.logger.warning("Mask shape doesn't match image. Ignoring mask.")
+                mask = self._create_mask(self.image, satlevel)
+
+        # Protect known-source positions (typically the transient target)
+        # from flagging and cleaning.  Pixels under these disks are added
+        # to the detector inmask, so the source keeps its real flux.
+        _protect = self._protect_positions_mask(
+            protect_positions, protect_radius_px, psf_fwhm
+        )
+        if _protect is not None:
+            mask = np.asarray(mask, dtype=bool) | _protect
+
+        _n_protected = int(np.count_nonzero(mask))
+        _frac_protected = _n_protected / mask.size
+        self.logger.debug(
+            "Protecting %d pixels (%.2f%%) from CR detection "
+            "(saturated/bright/NaN).",
+            _n_protected, _frac_protected * 100,
+        )
+        if _frac_protected > 0.5:
+            self.logger.warning(
+                "Over 50%% of pixels are masked -- CR detection will be "
+                "severely limited. Check satlevel and image quality."
+            )
+
+        # --- Variance map (astroscrappy/ccdproc expect variance = sigma^2 in counts^2) ---
+        if invar is None:
+            from photutils.utils import calc_total_error
+
+            if bkg_rms is None:
+                # When no background RMS is provided, use a constant floor
+                # based on read noise rather than zeros.  Zero RMS would
+                # produce Poisson-only variance, underestimating noise in
+                # low-signal regions and causing false CR detections.
+                bkg_rms = np.full_like(
+                    self.image, float(readnoise) / max(gain, 1.0),
+                    dtype=np.float64,
+                )
+            else:
+                bkg_rms = np.asarray(bkg_rms, dtype=np.float64)
+                if np.any(np.isnan(bkg_rms)):
+                    _finite_median = float(np.nanmedian(bkg_rms))
+                    if not np.isfinite(_finite_median) or _finite_median <= 0:
+                        _finite_median = 1.0
+                    bkg_rms = np.where(np.isfinite(bkg_rms), bkg_rms, _finite_median)
+            # calc_total_error expects *background-subtracted* data for the
+            # Poisson term (source_variance = max(data, 0) / gain).  self.image
+            # still contains the sky level here (global background subtraction
+            # happens later in main.py), and bkg_rms already includes the sky
+            # Poisson + read noise.  Passing the raw image would therefore
+            # double-count the sky variance -- inflating sigma by up to ~sqrt(2)
+            # in the sky-dominated regime and desensitising CR detection.
+            # Subtract the supplied background surface (or a scalar median sky
+            # estimate) so only source photons enter the Poisson term.
+            if bkg is not None:
+                _poisson_data = self.image - bkg
+            else:
+                _finite_img = self.image[np.isfinite(self.image)]
+                _sky_est = (
+                    float(np.median(_finite_img)) if _finite_img.size else 0.0
+                )
+                _poisson_data = self.image - _sky_est
+            sigma = calc_total_error(_poisson_data, bkg_rms, effective_gain=gain)
+            invar = np.asarray(sigma, dtype=np.float64) ** 2
+            self.logger.debug("Computed variance map from total error.")
+
+        # --- Saturation level units ---
+        # astroscrappy/ccdproc convert the data to electrons internally
+        # (gain is passed below), so the saturation threshold they compare
+        # against must also be in electrons.  SATURATE from the header is in
+        # ADU, hence the multiplication by gain.  ``_create_mask`` above used
+        # the ADU value directly, which is correct for the raw frame.
+        try:
+            _satlevel_electrons = float(satlevel) * float(gain)
+        except (TypeError, ValueError):
+            _satlevel_electrons = satlevel
+
+        # --- PSF Size Calculation ---
+        psf_size = int(np.ceil(3 * psf_fwhm))
+        if psf_size % 2 == 0:
+            psf_size += 1  # Ensure it's odd
+        self.logger.debug("Using PSF size: %s (FWHM: %.1f pixels)", psf_size, psf_fwhm)
+
+        # --- Run cosmic ray removal ---
+        # ccdproc is only needed for the lacosmic path; keep the import lazy
+        # so the (default) astroscrappy path works without it installed.
+        _use_lacosmic = self.use_lacosmic
+        if _use_lacosmic:
+            try:
+                # Optional runtime dependency (declared in requirements.txt /
+                # environment.yml); only needed on the lacosmic path.
+                from ccdproc import (  # type: ignore  # pyrefly: ignore[missing-import]
+                    cosmicray_lacosmic,
+                )
+            except ImportError as exc:
+                self.logger.warning(
+                    "ccdproc not available (%s); falling back to astroscrappy.",
+                    exc,
+                )
+                _use_lacosmic = False
+        try:
+            if _use_lacosmic:
+                self.logger.info(
+                    "Using ccdproc.cosmicray_lacosmic for cosmic ray removal"
+                )
+                # cosmicray_lacosmic takes no inmask kwarg: the exclusion
+                # mask travels on the CCDData.mask attribute.  A CCDData
+                # input also returns a single object (mask updated in
+                # place), not astroscrappy's (crmask, cleanarr) tuple.
+                import astropy.units as _u
+                from astropy.nddata import CCDData as _CCDData
+
+                _ccd = _CCDData(
+                    np.asarray(self.image, dtype=np.float64),
+                    unit=_u.adu,
+                    mask=np.asarray(mask, dtype=bool),
+                )
+                _out = cosmicray_lacosmic(
+                    _ccd,
+                    sigclip=sigclip,
+                    sigfrac=sigfrac,
+                    objlim=objlim,
+                    gain=gain,
+                    readnoise=readnoise,
+                    satlevel=_satlevel_electrons,
+                    pssl=0.0,
+                    niter=4,
+                    sepmed=True,
+                    cleantype="meanmask",
+                    fsmode="median",
+                    psfmodel="gauss",
+                    psffwhm=psf_fwhm,
+                    psfsize=psf_size,
+                    psfk=None,
+                    psfbeta=4.765,
+                    verbose=False,
+                    gain_apply=False,
+                    inbkg=bkg,
+                    invar=invar,
+                )
+                clean_image = np.asarray(
+                    _out.data if hasattr(_out, "data") else _out[0],
+                    dtype=np.float64,
+                )
+                # The returned mask unions the input mask with detected CRs;
+                # strip the input exclusion so cr_mask is detections only.
+                _out_mask = np.asarray(
+                    _out.mask if hasattr(_out, "mask") else _out[1],
+                    dtype=bool,
+                )
+                cr_mask = _out_mask & ~np.asarray(mask, dtype=bool)
+            else:
+                self.logger.debug("Using astroscrappy for cosmic ray removal")
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    # astroscrappy's Cython kernels are typed to float32
+                    # buffers; the working arrays are float64.
+                    cr_mask, clean_image = astroscrappy.detect_cosmics(
+                        np.asarray(self.image, dtype=np.float32),
+                        inmask=np.asarray(mask, dtype=bool),
+                        gain=gain,
+                        inbkg=(
+                            None if bkg is None else np.asarray(bkg, np.float32)
+                        ),
+                        invar=(
+                            None
+                            if invar is None
+                            else np.asarray(invar, np.float32)
+                        ),
+                        readnoise=readnoise,
+                        satlevel=_satlevel_electrons,
+                        sepmed=True,
+                        cleantype="medmask",
+                        fsmode="median",
+                        psfmodel="gauss",
+                        psffwhm=psf_fwhm,
+                        sigclip=sigclip,
+                        sigfrac=sigfrac,
+                        objlim=objlim,
+                        verbose=False,
+                    )
+                # cleanarr is returned in same units as input (counts/ADU); do not divide by gain
+
+            # --- Post-processing: Dilate and fill holes in the cosmic ray mask ---
+            processed_mask = self.dilate_cosmic_ray_mask(
+                cr_mask,
+                fwhm_pixels=psf_fwhm,
+                dilate_factor=dilate_factor,
+                iterations=dilate_iterations,
+                fill_holes=True,
+            )
+
+            # Defect mask for pixel-invalidation paths (subtraction,
+            # aperture masks): flagged pixels plus a small fixed margin for
+            # repair bleed.  The FWHM-scale processed_mask is a
+            # source-exclusion halo; most of its area is valid data and must
+            # not be nulled in the difference image.
+            defect_mask = np.asarray(cr_mask, dtype=bool).copy()
+            _margin = int(np.ceil(max(0.0, float(defect_margin_px))))
+            if _margin > 0 and np.any(defect_mask):
+                defect_mask = binary_dilation(defect_mask, structure=disk(_margin))
+                defect_mask = binary_fill_holes(defect_mask)
+
+            # --- Log Results ---
+            n_cr_raw = np.count_nonzero(cr_mask)
+            n_cr = np.count_nonzero(processed_mask)
+            total_pixels = self.image.size
+            cr_fraction = n_cr / total_pixels
+
+            if cr_fraction > 0.02:
+                self.logger.warning(
+                    f"High cosmic ray fraction: {cr_fraction:.2%}. Check parameters."
+                )
+            self.logger.debug(
+                f"Detected {n_cr_raw:,} CR pixels, dilated to {n_cr:,} "
+                f"({cr_fraction:.2%} of image for source exclusion; "
+                f"defect mask: {int(np.count_nonzero(defect_mask)):,} px)"
+            )
+
+            # --- Plot Comparison ---
+            if plot:
+                try:
+                    self.plot_comparison(self.image, clean_image, processed_mask)
+                except Exception as plot_err:
+                    self.logger.warning("CR comparison plot failed: %s", plot_err)
+
+            # --- Update Header ---
+            method = (
+                "ccdproc.cosmicray_lacosmic" if _use_lacosmic else "astroscrappy"
+            )
+            self.header["CRAY_RMD"] = (True, "Cosmic rays removed; skip CR step on rerun")
+            self.header.add_history(f"Cosmic ray removal: {n_cr_raw} pixels cleaned (dilated mask: {n_cr})")
+            self.header["CRPIXELS"] = (n_cr_raw, "Cosmic ray pixels removed")
+            self.header["CRMETHOD"] = (method, "Cosmic ray removal method")
+            self.header["CRSTATUS"] = ("success", "Cosmic ray removal successful")
+            self.header["CRPARAMS"] = (
+                f"sigclip={sigclip}, sigfrac={sigfrac}, psffwhm={psf_fwhm:.2f}, "
+                f"objlim={objlim}, readnoise={readnoise}, gain={gain}",
+                "Parameters used for cosmic ray removal",
+            )
+
+            # --- Return the cleaned image and masks ---
+            # Restore NaNs (chip gaps) after cosmic ray removal and match
+            # the input's precision (float64 in, float64 out).
+            clean_image[nan_mask] = np.nan
+            return (
+                clean_image.astype(_out_dtype, copy=False),
+                processed_mask,
+                defect_mask,
+            )
+
+        # --- Error Handling ---
+        except Exception as e:
+            self.logger.error("Cosmic ray removal failed: %s", e)
+            self.header["CRSTATUS"] = ("failed", "Cosmic ray removal failed")
+            _empty = np.zeros_like(self.image, dtype=bool)
+            return self.image, _empty, _empty

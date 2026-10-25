@@ -91,6 +91,7 @@ _SCHEDULED_JOBS = {
     'daily_target_mag_update':      ('Update Target Mags',        'Daily 05:00 UTC',  'cron',     {'hour': 5,  'minute': 0}),
     'daily_retire_stale_followups': ('Retire Stale Follow-ups',   'Daily 05:30 UTC',  'cron',     {'hour': 5,  'minute': 30}),
     'daily_host_redshift_sync':     ('Host Redshift Sync',        'Daily 06:00 UTC',  'cron',     {'hour': 6,  'minute': 0}),
+    'pipeline_fits_cleanup':        ('Pipeline FITS Cleanup',     'Every 60 min',     'interval', {'minutes': 60}),
     'db_monitor':                   ('DB Health Monitor',         'Every 10 min',     'interval', {'minutes': 10}),
     'db_recycle':                   ('DB Connection Recycle',     'Every 30 min',     'interval', {'minutes': 30}),
     'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min',     'interval', {'minutes': 30}),

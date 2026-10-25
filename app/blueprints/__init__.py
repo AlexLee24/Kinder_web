@@ -19,7 +19,7 @@ registered first handles the request (today: ``/api/profile/join_group`` and
 
 def register_blueprints(app):
     """Register all blueprints with the Flask app (same order as before the refactor)."""
-    from .auth import auth_bp, admin_bp, web_log_bp, database_status_bp
+    from .auth import auth_bp, admin_bp, web_log_bp, database_status_bp, system_status_bp
     from .astronomy_tools import astronomy_tools_bp
     from .marshal import marshal_bp, objects_bp
     from .web_api import web_api_bp
@@ -42,5 +42,6 @@ def register_blueprints(app):
     app.register_blueprint(detect_bp)
     app.register_blueprint(web_log_bp)
     app.register_blueprint(database_status_bp)
+    app.register_blueprint(system_status_bp)
     app.register_blueprint(games_bp)
     app.register_blueprint(planners_bp)

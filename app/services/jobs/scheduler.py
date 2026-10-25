@@ -89,6 +89,7 @@ def start_background_jobs(app) -> bool:
     from app.blueprints.detect.cache import prewarm_detect_page_cache
     from app.services.astro.spectral_lines import warm_cache_async as _warm_spec_lines
     from app.services.jobs import scheduler_state as _sched_state
+    from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
 
     if not acquire_background_lock():
         print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
@@ -106,6 +107,7 @@ def start_background_jobs(app) -> bool:
         _scheduler.add_job(_tracked('daily_host_redshift_sync', sync_host_redshifts),         'cron', hour=6, minute=0,  id='daily_host_redshift_sync')
         _scheduler.add_job(_tracked('db_monitor', _db_check_and_alert),                       'interval', minutes=10,   id='db_monitor')
         _scheduler.add_job(_tracked('db_recycle', _db_recycle),                               'interval', minutes=30,   id='db_recycle')
+        _scheduler.add_job(_tracked('pipeline_fits_cleanup', _pipeline_cleanup),              'interval', minutes=60,   id='pipeline_fits_cleanup')  # Pipeline FITS older than 7 days
         _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm', kwargs={'app_obj': app})  # needs the app: no request context in the scheduler thread
         if _detect_pipeline.ENABLED:
             # DETECT re-screens every Follow-up object once a day (M from the latest light

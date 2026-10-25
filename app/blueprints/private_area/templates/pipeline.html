@@ -11,13 +11,13 @@
 </head>
 <body>
     {% include '_navbar.html' %}
-    {% from '_pipeline_form.html' import pl_form with context %}
+    {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options with context %}
 
     <main class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
         <header class="kw-page-head">
             <div>
                 <h1>Pipeline</h1>
-                <p>Turn images from any telescope into a calibrated light curve. Upload the FITS from your computer; each workspace keeps them on the server with everything the tools write.</p>
+                <p>Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, builds a workspace on the server and runs AutoPhOT there.</p>
             </div>
             <div class="kw-page-actions">
                 <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes') }}">Telescopes</a>
@@ -65,8 +65,39 @@
         {% else %}
         <div class="pl-home">
             <section class="kw-panel pl-new" aria-labelledby="plNewTitle">
-                <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2></div>
-                {{ pl_form({}) }}
+                <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2><span class="kw-panel-meta">AutoPhOT</span></div>
+                <form class="pl-form pl-wizard" data-pl-form data-new autocomplete="off" novalidate>
+                    <section class="pl-step" data-step="files">
+                        {{ pl_step(1, 'Images', 'Every FITS in a folder and its subfolders; a subfolder called templates/ holds your templates. FITS are kept ' ~ keep_days ~ ' days on the server, results stay.') }}
+                        {% if calibrated.ok %}
+                        <div class="pl-seg pl-src" role="radiogroup" aria-label="Where the images come from">
+                            <label class="pl-seg-item"><input type="radio" name="src" value="upload" checked><span>From this computer</span></label>
+                            <label class="pl-seg-item"><input type="radio" name="src" value="server"><span>Calibrated on the server</span></label>
+                        </div>
+                        {% endif %}
+                        <div data-src="upload">{{ pl_drop('plNewFiles', 'Drop a folder of FITS') }}</div>
+                        {% if calibrated.ok %}<div data-src="server" hidden><div class="pl-picker" data-picker data-pick-label="Use these frames"></div></div>{% endif %}
+                        <div class="pl-scan" data-scan hidden></div>
+                    </section>
+                    <section class="pl-step" data-step="target">
+                        {{ pl_step(2, 'Target') }}
+                        {{ pl_target({}) }}
+                    </section>
+                    <section class="pl-step" data-step="ts">
+                        {{ pl_step(3, 'Template subtraction') }}
+                        {{ pl_ts({}) }}
+                    </section>
+                    <details class="pl-step pl-step-more">
+                        <summary>{{ pl_step(4, 'Options', 'Calibration catalog, parallel images, stacking') }}<span class="pl-chev" aria-hidden="true"></span></summary>
+                        {{ pl_options({}) }}
+                    </details>
+                    <footer class="pl-wizard-foot">
+                        <div class="pl-plan" data-plan hidden></div>
+                        <div class="pl-progress" data-progress hidden><span class="pl-bar"><span></span></span><small></small></div>
+                        <p class="pl-msg" role="status" aria-live="polite"></p>
+                        <div class="pl-form-foot"><button class="kw-btn kw-btn-primary" type="submit">Create workspace</button></div>
+                    </footer>
+                </form>
             </section>
 
             <section class="kw-panel pl-list" aria-labelledby="plListTitle">
@@ -76,31 +107,30 @@
                 </div>
                 {% if error %}<p class="pl-msg is-error">{{ error }}</p>{% endif %}
                 {% if not workspaces %}
-                <div class="pl-empty"><b>No workspaces yet</b>Create one and upload the FITS images from your computer.</div>
+                <div class="pl-empty"><b>No workspaces yet</b>Drop a folder of FITS under New workspace to make the first one.</div>
                 {% else %}
-                <ul class="pl-ws-list">
-                    {% for w in workspaces %}
-                    <li class="pl-ws">
+                {% if workspaces|length > 6 %}<input type="search" class="pl-ws-filter" id="plWsFilter" placeholder="Filter workspaces" aria-label="Filter workspaces" autocomplete="off">{% endif %}
+                <ul class="pl-ws-list" id="plWsList">
+                    {% for w in workspaces|sort(attribute='updated', reverse=true) %}
+                    <li class="pl-ws" data-name="{{ (w.name ~ ' ' ~ w.id)|lower }}">
                         <a class="pl-ws-main" href="{{ url_for('private_area.pipeline_workspace', tid=w.id) }}">
                             <span class="pl-ws-top">
                                 <b>{{ w.name }}</b>
                                 {% if w.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
                                 {% elif w.status == 'done' %}<span class="kw-chip kw-chip-green">Done</span>
                                 {% elif w.status == 'stopped' %}<span class="kw-chip">Stopped</span>
-                                {% elif w.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if w.status == 'failed' else 'Did not finish' }}</span>{% endif %}
+                                {% elif w.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if w.status == 'failed' else 'Did not finish' }}</span>
+                                {% else %}<span class="kw-chip">Not run</span>{% endif %}
                             </span>
                             <span class="pl-ws-meta">
                                 <span>{{ w.n_images }} FITS</span>
-                                {% if w.lightcurve_csv %}<span>{{ w.n_rows }} light-curve point{{ '' if w.n_rows == 1 else 's' }}</span>{% endif %}
+                                {% if w.lightcurve_csv %}<span>{{ w.n_rows }} point{{ '' if w.n_rows == 1 else 's' }}</span>{% endif %}
+                                {% if w.cfg.subtraction %}<span>{{ 'Survey templates' if w.cfg.ts_download else 'Own templates' }}</span>{% endif %}
                                 <span class="pl-mono">{{ w.cfg.ra }} {{ w.cfg.dec }}</span>
-                                {% if w.updated %}<span data-ts="{{ w.updated }}"></span>{% endif %}
                             </span>
-                            {% if w.id != w.name %}<span class="pl-ws-id pl-mono">{{ w.id }}</span>{% endif %}
+                            <span class="pl-ws-foot">{% if w.id != w.name %}<span class="pl-mono">{{ w.id }}</span>{% endif %}{% if w.updated %}<span data-ts="{{ w.updated }}"></span>{% endif %}</span>
                         </a>
-                        <div class="pl-ws-actions">
-                            <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=w.id, tab='run') }}">Run</a>
-                            <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_workspace', tid=w.id, tab='results') }}">Results</a>
-                        </div>
+                        <svg class="pl-ws-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
                     </li>
                     {% endfor %}
                 </ul>

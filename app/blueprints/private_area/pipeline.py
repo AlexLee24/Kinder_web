@@ -24,6 +24,7 @@ from flask import (
 
 from app.core import rate_limit
 from app.services.pipeline import autophot as ap
+from app.services.pipeline import calibrated
 from app.services.pipeline import config as pconfig
 
 from . import private_area_bp
@@ -97,6 +98,8 @@ def pipeline():
     ready, checks = _setup()
     workspaces, error = [], ''
     if ready:
+        ap.sync_telescope_yml()                          # template telescopes this server lacks are added
+        ap.cleanup_expired()                             # FITS older than FITS_KEEP_DAYS (at most hourly)
         try:
             workspaces = ap.targets()
         except ap.PipelineError as e:
@@ -106,7 +109,8 @@ def pipeline():
                            workspaces=workspaces, error=error, upload_chunk=_upload_chunk(),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
-                           ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV)
+                           ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, calibrated=calibrated.status(),
+                           keep_days=pconfig.FITS_KEEP_DAYS)
 
 
 @private_area_bp.route('/pipeline/reduction')
@@ -120,13 +124,18 @@ def pipeline_reduction():
 
 @private_area_bp.route('/pipeline/telescopes')
 def pipeline_telescopes():
-    """The shared telescope.yml: what AutoPhOT knows about each telescope and instrument, editable."""
+    """This server's telescope.yml (topped up from the template in git): what AutoPhOT knows, editable."""
     guard = _page_guard()
     if guard:
         return guard
+    synced = ap.sync_telescope_yml()
+    try:
+        local = str(ap.local_telescope_yml())
+    except ap.NotConfigured:
+        local = ''
     return render_template('pipeline_telescopes.html', current_path='/pipeline', stages=pconfig.STAGES,
-                           rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET,
-                           repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
+                           rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET, synced=synced,
+                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
 
 
 @private_area_bp.route('/pipeline/telescopes/telescope.yml')
@@ -135,7 +144,7 @@ def pipeline_telescopes_download():
     if guard:
         return guard
     resp = Response(ap.telescope_text(), mimetype='text/plain')
-    resp.headers['Content-Disposition'] = 'attachment; filename="telescope.yml"'
+    resp.headers['Content-Disposition'] = 'attachment; filename="telescope.yml"'  # this server's copy
     resp.headers['Cache-Control'] = 'private, no-store'
     return resp
 
@@ -148,6 +157,8 @@ def pipeline_workspace(tid):
     ready, _ = _setup()
     if not ready:
         return redirect(url_for('private_area.pipeline'))
+    ap.sync_telescope_yml()
+    ap.cleanup_expired()
     try:
         info = ap.info(tid)
     except ap.NotFound:
@@ -156,7 +167,7 @@ def pipeline_workspace(tid):
     if tab not in TABS:
         abort(404)
     ctx = {'ap': info, 'tab': tab, 'run': None, 'legacy': None, 'listing': None, 'phot': None, 'images': None,
-           'rel': '', 'runs': []}
+           'rel': '', 'runs': [], 'imports': []}
     if tab == 'results':
         run = request.args.get('run') or None
         rel = request.args.get('path', '').strip('/')
@@ -175,13 +186,16 @@ def pipeline_workspace(tid):
             ctx['images'] = ap.image_status(tid, run) if not rel else None
         except ap.NotFound:
             abort(404)
+        ctx['imports'] = ap.imports(tid)
     elif tab == 'legacy':
         ctx['runs'] = ap.legacy_runs(tid)
     return render_template('pipeline_workspace.html', current_path='/pipeline', zp_flag_text=ap.zp_flag_text,
                            upload_chunk=_upload_chunk(),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
-                           ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, **ctx)
+                           ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, calibrated=calibrated.status(),
+                           keep_days=pconfig.FITS_KEEP_DAYS, can_import=bool((session.get('user') or {}).get('is_admin')),
+                           **ctx)
 
 
 @private_area_bp.route('/pipeline/autophot/<tid>/file/<path:rel>')
@@ -257,6 +271,16 @@ def pipeline_api_resolve():
     if not rate_limit.allow(f'pipeline-resolve:{_actor()}', 30, 300):
         return jsonify({'success': False, 'error': 'Too many look-ups; wait a few minutes.'}), 429
     return jsonify({'success': True, **ap.resolve(request.args.get('name', ''))})
+
+
+@private_area_bp.route('/api/pipeline/autophot/classify', methods=['POST'])
+@_api
+def pipeline_api_classify():
+    """Standard filter of the headers the page read from a folder before uploading it."""
+    headers = _body().get('headers')
+    if not isinstance(headers, list):
+        raise ap.PipelineError('Invalid request.')
+    return jsonify({'success': True, 'files': ap.classify(headers)})
 
 
 @private_area_bp.route('/api/pipeline/autophot/new', methods=['POST'])
@@ -367,3 +391,63 @@ def pipeline_api_legacy_delete(tid):
 def pipeline_api_telescopes():
     result = ap.save_telescope(_body().get('text', ''), user=_actor())
     return jsonify({'success': True, **result, 'rows': ap.telescope_summary()})
+
+
+# ── Calibrated frames on this server (reduction pipeline output) ──
+
+@private_area_bp.route('/api/pipeline/calibrated/folders')
+@_api
+def pipeline_api_calibrated_folders():
+    return jsonify({'success': True, **calibrated.folders(request.args.get('q', ''))})
+
+
+@private_area_bp.route('/api/pipeline/calibrated/folder')
+@_api
+def pipeline_api_calibrated_folder():
+    return jsonify({'success': True, **calibrated.folder(request.args.get('path', ''))})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/add_calibrated', methods=['POST'])
+@_api
+def pipeline_api_add_calibrated(tid):
+    """Copy one calibrated frame into the workspace (the page sends them one by one, with progress)."""
+    rel = str(_body().get('path') or '')
+    result = ap.add_files(tid, [calibrated.file_path(rel)], origin='calibrated:' + rel)
+    return jsonify({'success': True, **result})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/restore', methods=['POST'])
+@_api
+def pipeline_api_restore(tid):
+    result = ap.restore_expired(tid)
+    logger.info('pipeline: %s copied %d expired frames back into %s', _actor(), len(result['added']), tid)
+    return jsonify({'success': True, **result})
+
+
+# ── Import into a Kinder object (admins, like uploads on the object page) ──
+
+def _import_guard():
+    user = session.get('user') or {}
+    if not user.get('is_admin'):
+        raise ap.PipelineError('Only admins can add photometry to Kinder objects.')
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/import/preview', methods=['POST'])
+@_api
+def pipeline_api_import_preview(tid):
+    _import_guard()
+    return jsonify({'success': True, **ap.import_preview(tid, _body())})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/import', methods=['POST'])
+@_api
+def pipeline_api_import(tid):
+    _import_guard()
+    return jsonify({'success': True, **ap.import_points(tid, _body(), user=_actor())})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/import/undo', methods=['POST'])
+@_api
+def pipeline_api_import_undo(tid):
+    _import_guard()
+    return jsonify({'success': True, **ap.undo_import(tid, str(_body().get('id') or ''), user=_actor())})
