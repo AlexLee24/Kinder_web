@@ -97,6 +97,7 @@ def pipeline():
     ready, checks = _setup()
     workspaces, error = [], ''
     if ready:
+        ap.sync_telescope_yml()                          # template telescopes this server lacks are added
         try:
             workspaces = ap.targets()
         except ap.PipelineError as e:
@@ -120,13 +121,18 @@ def pipeline_reduction():
 
 @private_area_bp.route('/pipeline/telescopes')
 def pipeline_telescopes():
-    """The shared telescope.yml: what AutoPhOT knows about each telescope and instrument, editable."""
+    """This server's telescope.yml (topped up from the template in git): what AutoPhOT knows, editable."""
     guard = _page_guard()
     if guard:
         return guard
+    synced = ap.sync_telescope_yml()
+    try:
+        local = str(ap.local_telescope_yml())
+    except ap.NotConfigured:
+        local = ''
     return render_template('pipeline_telescopes.html', current_path='/pipeline', stages=pconfig.STAGES,
-                           rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET,
-                           repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
+                           rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET, synced=synced,
+                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
 
 
 @private_area_bp.route('/pipeline/telescopes/telescope.yml')
@@ -135,7 +141,7 @@ def pipeline_telescopes_download():
     if guard:
         return guard
     resp = Response(ap.telescope_text(), mimetype='text/plain')
-    resp.headers['Content-Disposition'] = 'attachment; filename="telescope.yml"'
+    resp.headers['Content-Disposition'] = 'attachment; filename="telescope.yml"'  # this server's copy
     resp.headers['Cache-Control'] = 'private, no-store'
     return resp
 
@@ -148,6 +154,7 @@ def pipeline_workspace(tid):
     ready, _ = _setup()
     if not ready:
         return redirect(url_for('private_area.pipeline'))
+    ap.sync_telescope_yml()
     try:
         info = ap.info(tid)
     except ap.NotFound:

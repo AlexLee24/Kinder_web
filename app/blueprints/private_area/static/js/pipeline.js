@@ -1009,7 +1009,8 @@
             $('plTelTable').replaceChildren(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table' },
                 el('thead', {}, el('tr', {}, ['Telescope', 'Instrument', 'Pixel scale (″)', 'Gain', 'Read noise', 'Saturation', 'Filters'].map(h => el('th', { text: h })))),
                 el('tbody', {}, rows.map(r => el('tr', {},
-                    el('td', {}, el('b', { text: r.telescope })), el('td', { text: r.instrument }),
+                    el('td', {}, el('b', { text: r.telescope })),
+                    el('td', {}, r.instrument, r.local_only ? el('span', { class: 'kw-chip kw-chip-gold', title: 'Not in the template in git', text: 'This server' }) : null),
                     el('td', {}, val(r.pixel_scale)), el('td', {}, val(r.gain)), el('td', {}, val(r.readnoise)), el('td', {}, val(r.saturate)),
                     el('td', { text: r.filters.join(', ') || '—' })))))));
         }
@@ -1022,7 +1023,7 @@
                 saved = telText.value;
                 sync();
                 if (r.rows) table(r.rows);
-                say(msg, r.changed ? 'Saved. Commit app/services/pipeline/telescope.yml to keep it on GitHub.' : 'No changes.', 'ok');
+                say(msg, r.changed ? 'Saved on this server.' : 'No changes.', 'ok');
             } catch (err) { say(msg, err.message, 'error'); }
             btn.disabled = false;
         });

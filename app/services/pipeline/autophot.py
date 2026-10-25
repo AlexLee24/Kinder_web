@@ -12,9 +12,9 @@ passes answers to AutoPhOT's questions and reads what it wrote.
     job.json      the current or last run (status, pid) — shared by all gunicorn workers
     .stdin        FIFO that becomes AutoPhOT's stdin, so any worker can send an answer
     web_run.log, result.json, exit.json, legacy/<time>/ (earlier runs)
-  Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is a link to
-  app/services/pipeline/telescope.yml, the one telescope/instrument list kept in git: every
-  workspace reads it, and AutoPhOT's answers and edits on the Telescopes page change it.
+  Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is this server's
+  telescope/instrument list (not in git), started from and topped up with the template
+  app/services/pipeline/telescope.yml; AutoPhOT's answers and the Telescopes page change it.
 """
 import contextlib
 import fcntl
@@ -148,7 +148,7 @@ def _scan_dir(d, recursive):
     from astropy.io import fits
     files = _fits_in(d, recursive)
     n_sub = 0 if recursive else len(_fits_in(d, True)) - len(files)
-    db = bands.telescope_db(TELESCOPE_YML)
+    db = bands.telescope_db(_telescope_file())
     out = []
     for p in files[:MAX_SCAN]:
         info = {'name': str(p.relative_to(d))}
@@ -209,7 +209,7 @@ def _place_template(tid, src, name, band=''):
     how = 'chosen'
     if not band:
         try:
-            band, how, raw = bands.band_of(bands.image_header(src), bands.telescope_db(TELESCOPE_YML), name)
+            band, how, raw = bands.band_of(bands.image_header(src), bands.telescope_db(_telescope_file()), name)
         except Exception:
             raise PipelineError(f'{name} is not a readable FITS image.')
         if not band:
@@ -458,7 +458,7 @@ def _templates(d):
 
 def classify(headers):
     """Standard filter of FITS headers read by the page before upload: [{'name', 'band', 'how', 'raw'}]."""
-    db = bands.telescope_db(TELESCOPE_YML)
+    db = bands.telescope_db(_telescope_file())
     out = []
     for h in (headers or [])[:5000]:
         if not isinstance(h, dict):
@@ -686,7 +686,7 @@ def start(tid, user=''):
         with contextlib.suppress(FileNotFoundError):
             fifo.unlink()
         os.mkfifo(fifo, 0o600)
-        link_telescope_yml()
+        sync_telescope_yml()
         (d / 'web_run.log').write_text(f'$ autophot {d.name}\n')
         log = open(d / 'web_run.log', 'a')           # append: answers written by the web page are kept
         rfd = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)
@@ -1254,61 +1254,140 @@ def resolve(name):
     raise NotFound(f'{name} was not found in SIMBAD, NED or VizieR.')
 
 
-# ── telescope.yml: one list for every workspace, kept in git ──
+# ── telescope.yml: the repository copy is the template; each server reads and writes its own copy ──
+#
+#   app/services/pipeline/telescope.yml   template, in git; AutoPhOT never writes it
+#   <runs>/.wdir/telescope.yml            this server's copy (not in git): AutoPhOT reads it and adds the
+#                                         telescopes it meets; the Telescopes page edits it
+# Whenever a Pipeline page opens (and before each run), telescopes, instruments and keys that are in the
+# template but missing here are added; nothing already here is changed (a value still 'not_given_by_user'
+# here counts as missing).
 
 TELESCOPE_FIELDS = {'Name', 'pixel_scale', 'gain', 'readnoise', 'saturate', 'airmass', 'mjd', 'date', 'exptime',
                     'GAIN', 'RDNOISE', 'AIRMASS', 'SATURATE'}
 UNSET = 'not_given_by_user'
+_tel_synced = {}                  # (template mtime, local mtime) of the last check in this process
 
 
-def link_telescope_yml():
-    """Make <runs>/.wdir/telescope.yml a link to the repository copy, so AutoPhOT reads and writes that file.
+def local_telescope_yml():
+    return runs_root() / '.wdir' / 'telescope.yml'
 
-    A file already there (from before) is kept next to it as telescope.yml.bak-<time>."""
-    wdir = runs_root() / '.wdir'
-    wdir.mkdir(parents=True, exist_ok=True)
-    link = wdir / 'telescope.yml'
-    target = TELESCOPE_YML.resolve()
-    if link.is_symlink() and link.resolve() == target:
-        return
-    if link.exists() or link.is_symlink():
-        backup = wdir / f"telescope.yml.bak-{time.strftime('%Y%m%d-%H%M%S')}"
-        link.rename(backup)
-        logger.warning('pipeline: %s replaced by a link to %s (old file kept as %s)', link, target, backup.name)
-    link.symlink_to(target)
+
+def _telescope_file():
+    """The file to read: this server's copy, or the template before there is one."""
+    try:
+        p = local_telescope_yml()
+    except NotConfigured:
+        return TELESCOPE_YML
+    return p if p.is_file() else TELESCOPE_YML
+
+
+def _add_missing(dst, src, path=()):
+    """Copy into dst what src has and dst lacks, recursively; returns what was added ('LOT / SOPHIA', 'LOT / SOPHIA / gain')."""
+    import copy
+    added = []
+    for k, v in src.items():
+        here = path + (str(k),)
+        if k not in dst or (dst[k] == UNSET and v != UNSET):
+            dst[k] = copy.deepcopy(v)
+            added.append(' / '.join(x for x in here if x != 'INSTRUME'))
+        elif isinstance(v, dict) and isinstance(dst[k], dict):
+            added += _add_missing(dst[k], v, here)
+    return added
+
+
+def _keep_history(text, who):
+    history = runs_root() / '.wdir' / 'telescope_history'
+    history.mkdir(parents=True, exist_ok=True)
+    (history / f"telescope-{time.strftime('%Y%m%d-%H%M%S')}-{who}.yml").write_text(text)
+    for stale in sorted(history.glob('telescope-*.yml'))[:-TELESCOPE_HISTORY_KEEP]:
+        stale.unlink(missing_ok=True)
+
+
+def sync_telescope_yml():
+    """Make sure this server has its own telescope.yml and add what the template has that it lacks.
+
+    Returns {'created': bool, 'added': [...]} ; never raises (a page must still open)."""
+    import yaml
+    out = {'created': False, 'added': []}
+    try:
+        wdir = runs_root() / '.wdir'
+        wdir.mkdir(parents=True, exist_ok=True)
+        local = wdir / 'telescope.yml'
+        with open(wdir / '.telescope.lock', 'a') as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            try:
+                if local.is_symlink():                   # before: a link to the repository copy
+                    text = local.read_text() if local.exists() else ''
+                    local.unlink()
+                    local.write_text(text or TELESCOPE_YML.read_text())
+                    logger.warning('pipeline: %s was a link to the repository; now a copy of it on this server', local)
+                if not local.exists():
+                    shutil.copyfile(TELESCOPE_YML, local)
+                    out['created'] = True
+                    logger.info('pipeline: %s created from the template', local)
+                key = (TELESCOPE_YML.stat().st_mtime, local.stat().st_mtime)
+                if _tel_synced.get(str(local)) == key or _running_count():
+                    return out                           # nothing new, or AutoPhOT may be writing it
+                template = yaml.safe_load(TELESCOPE_YML.read_text()) or {}
+                old = local.read_text()
+                mine = yaml.safe_load(old) or {}
+                if not isinstance(template, dict) or not isinstance(mine, dict):
+                    return out
+                out['added'] = _add_missing(mine, template)
+                if out['added']:
+                    _keep_history(old, 'before-template')
+                    tmp = local.with_name(f'.telescope.yml.{os.getpid()}.tmp')
+                    tmp.write_text(yaml.safe_dump(mine, sort_keys=True, allow_unicode=True, default_flow_style=False))
+                    os.replace(tmp, local)
+                    logger.info('pipeline: added from the template to %s: %s', local, ', '.join(out['added'][:20]))
+                _tel_synced[str(local)] = (TELESCOPE_YML.stat().st_mtime, local.stat().st_mtime)
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+    except NotConfigured:
+        pass
+    except Exception:
+        logger.exception('pipeline: could not check telescope.yml against the template')
+    return out
 
 
 def telescope_text():
     try:
-        return TELESCOPE_YML.read_text()
+        return _telescope_file().read_text()
     except FileNotFoundError:
         return ''
 
 
-def _telescope_rows(data):
+def _telescope_rows(data, template=None):
     rows = []
     for tel, block in (data or {}).items():
         for inst, cfg in ((block or {}).get('INSTRUME') or {}).items():
             cfg = cfg or {}
+            in_template = template is None or inst in (((template.get(tel) or {}).get('INSTRUME')) or {})
             filters = {k: v for k, v in cfg.items()
                        if k not in TELESCOPE_FIELDS and not str(k).startswith('filter_key')}
             rows.append({'telescope': str(tel), 'instrument': str(inst), 'pixel_scale': cfg.get('pixel_scale'),
                          'gain': cfg.get('gain'), 'readnoise': cfg.get('readnoise'), 'saturate': cfg.get('saturate'),
-                         'filters': sorted({str(v) for v in filters.values()}), 'n_filter_names': len(filters)})
+                         'filters': sorted({str(v) for v in filters.values()}), 'n_filter_names': len(filters),
+                         'local_only': not in_template})
     return rows
 
 
 def telescope_summary():
-    """Each telescope + instrument with the values that matter most; None when the file does not parse."""
+    """Each telescope + instrument with the values that matter most (local_only: not in the template); None when it does not parse."""
     import yaml
     try:
-        return _telescope_rows(yaml.safe_load(telescope_text()) or {})
+        template = yaml.safe_load(TELESCOPE_YML.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        template = {}
+    try:
+        return _telescope_rows(yaml.safe_load(telescope_text()) or {}, template if isinstance(template, dict) else {})
     except yaml.YAMLError:
         return None
 
 
 def save_telescope(text, user=''):
-    """Replace telescope.yml after checking it; the previous version goes to <runs>/.wdir/telescope_history/."""
+    """Replace this server's telescope.yml after checking it; the previous version goes to <runs>/.wdir/telescope_history/."""
     import yaml
     text = str(text or '').replace('\r\n', '\n')
     if len(text) > 1024 * 1024:
@@ -1325,26 +1404,19 @@ def save_telescope(text, user=''):
         for inst, cfg in block['INSTRUME'].items():
             if not isinstance(cfg, dict):
                 raise PipelineError(f'{tel} / {inst}: must be key: value pairs.')
-    history = None
-    try:
-        if _running_count():
-            raise PipelineError('AutoPhOT is running and may add to telescope.yml; save when it has finished.')
-        history = runs_root() / '.wdir' / 'telescope_history'
-    except NotConfigured:
-        pass
+    if _running_count():
+        raise PipelineError('AutoPhOT is running and may add to telescope.yml; save when it has finished.')
+    sync_telescope_yml()                                 # this server's copy exists (not configured → NotConfigured below)
+    local = local_telescope_yml()
     if not text.endswith('\n'):
         text += '\n'
     old = telescope_text()
     if old == text:
         return {'changed': False}
-    if history and old:
-        history.mkdir(parents=True, exist_ok=True)
-        who = re.sub(r'[^A-Za-z0-9_.-]', '_', user.split('@')[0])[:30] or 'web'
-        (history / f"telescope-{time.strftime('%Y%m%d-%H%M%S')}-{who}.yml").write_text(old)
-        for stale in sorted(history.glob('telescope-*.yml'))[:-TELESCOPE_HISTORY_KEEP]:
-            stale.unlink(missing_ok=True)
-    tmp = TELESCOPE_YML.with_name(f'.telescope.yml.{os.getpid()}.tmp')
+    if old:
+        _keep_history(old, re.sub(r'[^A-Za-z0-9_.-]', '_', user.split('@')[0])[:30] or 'web')
+    tmp = local.with_name(f'.telescope.yml.{os.getpid()}.tmp')
     tmp.write_text(text)
-    os.replace(tmp, TELESCOPE_YML)
+    os.replace(tmp, local)
     logger.info('pipeline: %s saved telescope.yml (%d telescopes)', user or '?', len(data))
     return {'changed': True}

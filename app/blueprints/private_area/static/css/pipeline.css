@@ -391,3 +391,5 @@ body { background: var(--kw-bg, #0B0D14); }
 /* ── Results summary ── */
 .pl-kpis { margin-bottom: 16px; }
 .pl-kpis .kw-kpi b small { font-size: 0.5em; color: var(--kw-text-muted); }
+.pl-tel-local { margin: 0 0 10px; }
+#plTelTable td .kw-chip { margin-left: 6px; }
