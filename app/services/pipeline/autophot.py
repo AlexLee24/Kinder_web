@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 
 from . import config
+from . import filters as bands
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,8 @@ def root():
 def python():
     p = config.paths()['autophot_python']
     if not p or not p.is_file():
-        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run "uv sync" in {root()}.')
+        how = 'scripts/pipeline/setup_autophot.sh' if root() == config.VENDORED else f'"uv sync" in {root()}'
+        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run {how}.')
     return p
 
 
@@ -146,6 +148,7 @@ def _scan_dir(d, recursive):
     from astropy.io import fits
     files = _fits_in(d, recursive)
     n_sub = 0 if recursive else len(_fits_in(d, True)) - len(files)
+    db = bands.telescope_db(TELESCOPE_YML)
     out = []
     for p in files[:MAX_SCAN]:
         info = {'name': str(p.relative_to(d))}
@@ -158,6 +161,7 @@ def _scan_dir(d, recursive):
                 info[k] = str(h.get(k, '')) if h.get(k) is not None else ''
             if not info['FILTER']:
                 info['FILTER'] = ' / '.join(str(h[k]) for k in ('FILTER1', 'FILTER2') if h.get(k))
+            info['band'] = bands.band_of(h, db, p.name)[0] or ''
         except Exception as e:
             info['error'] = f'{type(e).__name__}: {e}'
         out.append(info)
@@ -177,14 +181,55 @@ def _upload_name(name):
     return n
 
 
+TEMPLATE_AUTO = 'auto'
+
+
+def _template_dir(tid, band):
+    if not FILTER_RE.fullmatch(band or ''):
+        raise PipelineError('Template filter: letters, digits, _ + - only (e.g. r, g, V).')
+    return images_dir(tid) / 'templates' / f'{band}_template'
+
+
 def _image_dest(tid, name, template_filter=''):
-    """Where a new file goes: images/<name>, or images/templates/<filter>_template/<name> for a template."""
+    """Where a new file goes: images/<name>, or images/templates/<filter>_template/<name>.fits for a template
+    (template_filter 'auto' is decided from the header once the file is here, see _place_template)."""
     base = images_dir(tid)
+    if template_filter == TEMPLATE_AUTO:
+        return base / 'templates' / '.incoming' / name
     if template_filter:
-        if not FILTER_RE.fullmatch(template_filter):
-            raise PipelineError('Template filter: letters, digits, _ + - only (e.g. r, gp, rp).')
-        return base / 'templates' / f'{template_filter}_template' / name
+        return _template_dir(tid, template_filter) / (bands.stem(name) + '.fits')
     return base / name
+
+
+def _place_template(tid, src, name, band=''):
+    """Put a template where AutoPhOT looks: templates/<filter>_template/<name>.fits (.fz / .gz unpacked).
+
+    AutoPhOT stops and asks when a filter has more than one template, so any earlier one of that
+    filter is set aside as <name>.fits.unused (shown on the page, can be removed). Returns (rel, band, how)."""
+    how = 'chosen'
+    if not band:
+        try:
+            band, how, raw = bands.band_of(bands.image_header(src), bands.telescope_db(TELESCOPE_YML), name)
+        except Exception:
+            raise PipelineError(f'{name} is not a readable FITS image.')
+        if not band:
+            raise PipelineError(f'Could not tell the filter of {name}'
+                                + (f' (header FILTER = {raw})' if raw else ' (no filter in the header)')
+                                + '; choose it and upload again.')
+    dest_dir = _template_dir(tid, band)
+    dest = dest_dir / (bands.stem(name) + '.fits')
+    if dest.exists():
+        raise PipelineError(f'templates/{band}_template/{dest.name} is already in this workspace.')
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        bands.write_plain_fits(src, dest)
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise PipelineError(f'{name} is not a readable FITS image.')
+    for other in sorted(dest_dir.glob('*.fits')):
+        if other != dest and not other.name.startswith('PSF_model_'):
+            other.rename(other.with_name(other.name + '.unused'))
+    return str(dest.relative_to(images_dir(tid))), band, how
 
 
 def _check_fits(path, label):
@@ -237,6 +282,11 @@ def upload_chunk(tid, name, offset, total, data, template_filter=''):
         return {'done': False, 'received': received}
     try:
         _check_fits(part, name)
+        if template_filter:
+            rel, band, how = _place_template(tid, part, name, '' if template_filter == TEMPLATE_AUTO else template_filter)
+            part.unlink(missing_ok=True)
+            _added(tid, [rel], 'upload')
+            return {'done': True, 'name': rel, 'band': band, 'how': how}
     except PipelineError:
         part.unlink(missing_ok=True)
         raise
@@ -265,8 +315,13 @@ def add_files(tid, paths, origin='reduction', move=False, template_filter=''):
         if not src.is_file():
             raise PipelineError(f'{src} not found.')
         _check_fits(src, name)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        (shutil.move if move else shutil.copy2)(str(src), str(dest))
+        if template_filter:
+            rel = _place_template(tid, src, name, '' if template_filter == TEMPLATE_AUTO else template_filter)[0]
+            if move:
+                src.unlink()
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            (shutil.move if move else shutil.copy2)(str(src), str(dest))
         added.append(rel)
     if added:
         _added(tid, added, origin)
@@ -368,14 +423,50 @@ def workspace_images(tid):
     cfg = _read_json(tdir(tid) / 'target.json')
     d = images_dir(tid)
     out = _scan_dir(d, False) if d.is_dir() else {'path': str(d), 'n': 0, 'n_sub': 0, 'files': [], 'missing': 0}
-    tpl = d / 'templates'
-    out['templates'] = sorted(str(p.relative_to(d)) for p in tpl.rglob('*')
-                              if p.is_file() and p.name.lower().endswith(FITS_EXT)) if tpl.is_dir() else []
+    out['templates'] = _templates(d)
+    science = {}
+    for f in out['files']:
+        science[f.get('band') or ''] = science.get(f.get('band') or '', 0) + 1
+    active = {t['band'] for t in out['templates'] if t['active']}
+    out['coverage'] = [{'band': b, 'n': n, 'template': b in active} for b, n in sorted(science.items(), key=lambda x: (not x[0], x[0]))]
     out['removed'] = sorted(cfg.get('removed') or [])
     origins = cfg.get('origins') or {}
     for f in out['files']:
         f['origin'] = origins.get(f['name'], '')
     out['stacks'] = sorted(cfg.get('stacks') or {})
+    return out
+
+
+def _templates(d):
+    """templates/<filter>_template/*: [{'name', 'band', 'active'}]; .unused ones are kept aside by _place_template."""
+    tpl = d / 'templates'
+    out = []
+    if not tpl.is_dir():
+        return out
+    for p in sorted(tpl.rglob('*')):
+        n = p.name.lower()
+        if not p.is_file() or p.name.startswith(('.', 'PSF_model_')) or '.incoming' in p.parts:
+            continue
+        unused = n.endswith('.unused')
+        if not (unused and n[:-7].endswith(FITS_EXT)) and not n.endswith(FITS_EXT):
+            continue
+        rel = str(p.relative_to(d))
+        out.append({'name': rel, 'band': bands.band_of_folder(p.relative_to(tpl)) or '',
+                    'active': not unused and n.endswith('.fits')})
+    return out
+
+
+def classify(headers):
+    """Standard filter of FITS headers read by the page before upload: [{'name', 'band', 'how', 'raw'}]."""
+    db = bands.telescope_db(TELESCOPE_YML)
+    out = []
+    for h in (headers or [])[:5000]:
+        if not isinstance(h, dict):
+            continue
+        name = str(h.get('name') or '')[:300]
+        card = {str(k)[:8].upper(): str(v)[:80] for k, v in (h.get('header') or {}).items() if isinstance(k, str)}
+        band, how, raw = bands.band_of(card, db, name)
+        out.append({'name': name, 'band': band or bands.band_of_folder(name) or '', 'how': how or ('folder name' if bands.band_of_folder(name) else ''), 'raw': raw})
     return out
 
 
@@ -537,8 +628,24 @@ def job(tid):
     except OSError:
         j['log'] = ''
     j['waiting'] = j.get('status') == 'running' and _looks_like_prompt(j['log'])
+    j['progress'] = _progress(log)
     j.pop('pid', None)
     return j
+
+
+PROGRESS_RE = re.compile(rb'^\[(\d+)/(\d+)\]\s+\[(OK|FAIL)\]', re.M)
+
+
+def _progress(log):
+    """AutoPhOT's '[i/N] [OK|FAIL] image' lines → {'done', 'total', 'failed'}; None before the first image ends."""
+    try:
+        text = log.read_bytes()
+    except OSError:
+        return None
+    hits = PROGRESS_RE.findall(text)
+    if not hits:
+        return None
+    return {'done': len(hits), 'total': max(int(h[1]) for h in hits), 'failed': sum(h[2] == b'FAIL' for h in hits)}
 
 
 def _looks_like_prompt(log):
@@ -586,8 +693,10 @@ def start(tid, user=''):
         wfd = os.open(fifo, os.O_WRONLY)             # kept open in the child, so stdin never hits EOF
         os.set_blocking(rfd, True)
         try:
-            proc = subprocess.Popen([str(py), '-u', str(RUNNER), str(d)], cwd=str(cwd), stdin=rfd, stdout=log,
-                                    stderr=subprocess.STDOUT, text=True, env=config.child_env(),
+            # cwd is the workspace, so whatever AutoPhOT drops in its working folder stays there;
+            # the runner imports AutoPhOT from AUTOPHOT_DIR
+            proc = subprocess.Popen([str(py), '-u', str(RUNNER), str(d)], cwd=str(d), stdin=rfd, stdout=log,
+                                    stderr=subprocess.STDOUT, text=True, env={**config.child_env(), 'AUTOPHOT_DIR': str(cwd)},
                                     start_new_session=True, pass_fds=(wfd,))
         except Exception:
             log.close()
@@ -863,6 +972,7 @@ def photometry(tid, run=None):
             'zp_neff': _f(r.get('zp_psf_neff')), 'zp_n': _f(r.get('zp_psf_nsrc')),
             'fwhm': _f(r.get('image_fwhm')), 'airmass': _f(r.get('airmass')),
             'exptime': _f(r.get('exposure_time')), 'telescope': (r.get('telescope') or '').strip(),
+            'ts': _truthy(r.get('preformsubtractioned')),     # measured on the difference image (False when subtraction fell back to the frame)
         })
     rows.sort(key=lambda x: (x['mjd'] is None, x['mjd'] or 0))
     from astropy.time import Time  # AutoPhOT's date column holds MJD; UTC from MJD
@@ -892,18 +1002,17 @@ def photometry(tid, run=None):
     return {'rows': rows, 'limits': limits, 'bands': bands, 'colors': colors, 'magsys': ', '.join(magsys), 'files': files}
 
 
-NO_TS_LABEL = ' (w/o TS)'
+NO_TS_TAG = '_(w/o_TS)'       # appended to the telescope, no spaces, so every row stays 5 columns (e.g. SLT_(w/o_TS))
 
 
 def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
-    """Plain-text light curve for import: MJD magnitude error filter telescope.
+    """Plain-text light curve for import, space-separated: MJD magnitude error filter telescope.
     Non-detections are >limit (at limit σ) with error nan; spaces in telescope names become underscores.
-    A run without template subtraction labels each filter "g (w/o TS)"; that label has spaces, so the
-    file is then comma-separated (Kinder's photometry upload reads both)."""
+    An image measured without template subtraction (subtraction off, or it fell back to the frame)
+    gets _(w/o_TS) after its telescope; a subtracted one is just the telescope name."""
     ph = photometry(tid, run)
     if not ph:
         raise NotFound('No results yet.')
-    no_ts = not run_paths(tid, run)['cfg'].get('subtraction')
     key = 'psf' if method.upper() == 'PSF' else 'ap'
     li = next((i for i, (_, snr) in enumerate(ph['limits']) if abs(snr - float(limit)) < 1e-6), None)
     lines = []
@@ -918,15 +1027,12 @@ def export_text(tid, method='PSF', limit=3.0, header=True, run=None):
             m, e = f'>{lim:.3f}', 'nan'
         else:
             continue
-        tel = re.sub(r'\s+', '_', r['telescope']) or 'unknown'
-        flt = (r['filter'] or 'unknown') + (NO_TS_LABEL if no_ts else '')
-        lines.append((f"{r['mjd']:.5f}", m, e, flt, tel))
+        tel = (re.sub(r'\s+', '_', r['telescope']) or 'unknown') + ('' if r['ts'] else NO_TS_TAG)
+        lines.append((f"{r['mjd']:.5f}", m, e, re.sub(r'\s+', '_', r['filter']) or 'unknown', tel))
     head = ('MJD', 'magnitude', 'error', 'filter', 'telescope')
     widths = [max(len(x[i]) for x in lines + [head]) for i in range(5)]
 
     def fmt(row):
-        if no_ts:
-            return ','.join(row)
         return '  '.join(v.ljust(w) for v, w in zip(row, widths)).rstrip()
     return '\n'.join(([fmt(head)] if header else []) + [fmt(x) for x in lines]) + '\n'
 

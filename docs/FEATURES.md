@@ -36,7 +36,7 @@
 | 啟動指令（重構前） | 開發：`uv run python app/main.py`（`DEBUG=True` 時背景工作全部停用）。正式：於 `app/` 目錄執行 `gunicorn --workers 4 --worker-class gthread --threads 4 --bind 127.0.0.1:8000 main:app`（`kinder.env` 註解），前方有 HTTPS 反向代理，公開網址 `https://kinder.astro.ncu.edu.tw` |
 | 設定 | `kinder.env`（git-ignored，鍵名見 §7）；`modules/config.py` 的 `Config` 單例 |
 | 資料庫 | PostgreSQL `Kinder`，schema：`auth`、`transient`、`obs`、`cat`（見 §8） |
-| 內嵌第三方 | `app/modules/CASTOR/`：曝光時間計算引擎，**獨立 git clone**（`https://github.com/AlexLee24/CASTOR.git`，git-ignored）。`app/modules/DETECT/function/`：DETECT 交叉比對 / host rule / 篩選 pipeline 的 rsync 副本（`scripts/sync_detect.sh`，git 追蹤，`DETECT/VERSION` 記來源） |
+| 內嵌第三方 | `app/modules/CASTOR/`：曝光時間計算引擎，**獨立 git clone**（`https://github.com/AlexLee24/CASTOR.git`，git-ignored）。`app/modules/DETECT/function/`：DETECT 交叉比對 / host rule / 篩選 pipeline 的 rsync 副本（`scripts/sync_detect.sh`，git 追蹤，`DETECT/VERSION` 記來源）。`app/vendor/autophot/`：AutoPhOT（MIT）的 rsync 副本，Pipeline 頁用它自己的 Python 跑（`scripts/sync_autophot.sh` 同步、`scripts/pipeline/setup_autophot.sh` 建 `.venv`，git 追蹤，`autophot/VERSION` 記來源） |
 | 外部服務 | Google OAuth、TNS（下載 CSV、API 查詢）、QUB ATLAS / Pan-STARRS（Playwright 登入抓光度）、ALeRCE（ZTF / LSST）、NED、NOIRLab / Legacy Survey / DSS / PS1 / VizieR / SIMBAD（尋星圖與 DETECT）、NIST ASD（譜線）、Slack（Daily Trigger、GCN）、SMTP（告警、邀請信）、SFD dust maps（GitHub 下載） |
 | 日誌 | `app/log/YYYY-MM-DD.log`（UTC+8 換檔、保留 7 天、15 MiB 上限）；`print()` 亦導入日誌 |
 

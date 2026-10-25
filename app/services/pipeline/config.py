@@ -1,13 +1,19 @@
 """Where the pipeline tools live on this server.
 
 Admins set the paths in Admin → Operations → Pipeline (auth.system_settings); an
-empty setting falls back to the environment (kinder.env), then to a default next
-to AutoPhOT. Nothing here imports AutoPhOT: it runs in its own Python.
+empty setting falls back to the environment (kinder.env), then to the AutoPhOT copy
+kept in this repository (app/vendor/autophot, scripts/sync_autophot.sh) with its own
+Python (scripts/pipeline/setup_autophot.sh) and workspaces in app/data/autophot-runs.
+Nothing here imports AutoPhOT: it runs in its own Python.
 """
 import os
 import subprocess
 import time
 from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[3]
+VENDORED = REPO / 'app' / 'vendor' / 'autophot'          # tracked in git, see app/vendor/README.md
+VENDORED_RUNS = REPO / 'app' / 'data' / 'autophot-runs'   # git-ignored
 
 # setting key → (environment variable, label shown in the admin panel)
 SETTINGS = {
@@ -52,10 +58,13 @@ def paths():
     stored = _stored()
     raw = {k: stored.get(k) or os.getenv(env, '').strip() for k, (env, _) in SETTINGS.items()}
     out = {k: _path(v) for k, v in raw.items()}
-    if out['autophot_dir'] and not out['autophot_python']:
+    vendored = not out['autophot_dir']
+    if vendored:
+        out['autophot_dir'] = VENDORED
+    if not out['autophot_python']:
         out['autophot_python'] = out['autophot_dir'] / '.venv' / 'bin' / 'python'
-    if out['autophot_dir'] and not out['autophot_runs']:
-        out['autophot_runs'] = out['autophot_dir'].parent / 'autophot-runs'
+    if not out['autophot_runs']:
+        out['autophot_runs'] = VENDORED_RUNS if vendored else out['autophot_dir'].parent / 'autophot-runs'
     return out
 
 
@@ -80,7 +89,8 @@ def check(probe_python=True):
     ok, detail = False, 'Not set'
     if py:
         if not py.is_file():
-            detail = f'{py} does not exist (run "uv sync" in the AutoPhOT folder)'
+            detail = (f'{py} does not exist (run scripts/pipeline/setup_autophot.sh)' if d == VENDORED
+                      else f'{py} does not exist (run "uv sync" in the AutoPhOT folder)')
         elif not os.access(py, os.X_OK):
             detail = f'{py} is not executable'
         elif probe_python:

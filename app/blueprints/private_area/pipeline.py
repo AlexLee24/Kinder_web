@@ -259,6 +259,16 @@ def pipeline_api_resolve():
     return jsonify({'success': True, **ap.resolve(request.args.get('name', ''))})
 
 
+@private_area_bp.route('/api/pipeline/autophot/classify', methods=['POST'])
+@_api
+def pipeline_api_classify():
+    """Standard filter of the headers the page read from a folder before uploading it."""
+    headers = _body().get('headers')
+    if not isinstance(headers, list):
+        raise ap.PipelineError('Invalid request.')
+    return jsonify({'success': True, 'files': ap.classify(headers)})
+
+
 @private_area_bp.route('/api/pipeline/autophot/new', methods=['POST'])
 @_api
 def pipeline_api_new():
