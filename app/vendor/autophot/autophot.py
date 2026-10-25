@@ -1,0 +1,3637 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""High-level AutoPHOT driver: orchestrates per-image photometry runs."""
+
+# Force BLAS/OpenMP to 1 thread before any scientific imports (avoids exhausting
+# process/thread limits on HPC when using multiprocessing; OpenBLAS defaults to 128).
+import os
+
+for _env in (
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ[_env] = "1"
+
+import sys
+import time
+import copy
+import gc
+import logging
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional, Iterable, Tuple
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from difflib import get_close_matches
+
+import numpy as np
+import pandas as pd
+import yaml
+import matplotlib.pyplot as plt
+import re
+
+# Optional heavy dependencies.
+# These are only required for parts of the pipeline (e.g. SIMBAD/TNS helpers).
+# Keeping them optional allows lightweight utilities (like list_parameters) to be
+# imported without requiring the full astronomy stack.
+try:
+    from astroquery.simbad import Simbad  # type: ignore
+except Exception:  # pragma: no cover
+    Simbad = None  # type: ignore
+
+try:
+    from astropy.coordinates import SkyCoord  # type: ignore
+    from astropy import units as u  # type: ignore
+except Exception:  # pragma: no cover
+    SkyCoord = None  # type: ignore
+    u = None  # type: ignore
+
+# Module-level flag to optionally silence user-facing logging
+QUIET_MODE = False
+
+# Cache the parsed default schema so config validation is fast.
+_DEFAULT_INPUT_SCHEMA_CACHE: Optional[dict] = None
+
+
+def _get_default_input_schema() -> dict:
+    """
+    Load and cache the default configuration schema from `databases/default_input.yml`.
+
+    This is used to validate that driver scripts (e.g. `run_autophot.py`) only set
+    keys that exist in the pipeline's declared configuration.
+    """
+    global _DEFAULT_INPUT_SCHEMA_CACHE, QUIET_MODE
+    if _DEFAULT_INPUT_SCHEMA_CACHE is not None:
+        return _DEFAULT_INPUT_SCHEMA_CACHE
+
+    prior_quiet = QUIET_MODE
+    QUIET_MODE = True  # suppress log spam while loading the schema
+    try:
+        # Prefer the pipeline loader when available; otherwise fall back to
+        # reading the default YAML directly (useful for minimal envs).
+        try:
+            _DEFAULT_INPUT_SCHEMA_CACHE = AutomatedPhotometry.load()
+        except Exception:
+            here = os.path.dirname(os.path.abspath(__file__))
+            default_input_path = os.path.join(here, "databases", "default_input.yml")
+            with open(default_input_path, "r") as f:
+                data = yaml.safe_load(f) or {}
+            _DEFAULT_INPUT_SCHEMA_CACHE = data.get("default_input", data)
+    finally:
+        QUIET_MODE = prior_quiet
+    return _DEFAULT_INPUT_SCHEMA_CACHE
+
+
+def list_parameters(
+    *,
+    contains: str | None = None,
+    max_rows: int | None = None,
+    include_null: bool = False,
+    show_internal_params: bool = False,
+    format: str = "cli",
+    width: int | None = None,
+    wrap: bool = False,
+) -> list[dict]:
+    """
+    Print (and return) the configuration parameters accepted by AutoPhOT.
+
+    This reads `databases/default_input.yml` as text to preserve line numbers and
+    presents a flattened key list with defaults.
+
+    Examples
+    --------
+    >>> from autophot import list_parameters
+    >>> list_parameters(contains="aperture_size")
+    >>> list_parameters(show_internal_params=True)
+    """
+    import os
+    import yaml
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    yml_path = os.path.join(here, "databases", "default_input.yml")
+    with open(yml_path, "r") as f:
+        lines = f.read().splitlines()
+
+    parsed = yaml.safe_load("\n".join(lines)) or {}
+    root = parsed.get("default_input", parsed)
+
+    def _format_default(v) -> str:
+        """Format a YAML default value for human-readable display."""
+        if v is None:
+            return "null"
+        if isinstance(v, str):
+            return repr(v)
+        return str(v)
+
+    def _is_set_internally(desc: str) -> bool:
+        """
+        Heuristic: treat 'Runtime:' and '(set internally)' markers as internal-only.
+        """
+        d = (desc or "").lower()
+        return ("runtime:" in d) or ("set internally" in d)
+
+    def _is_per_image(path: str, desc: str) -> bool:
+        """
+        Best-effort flag for values that are populated/updated per FITS image.
+
+        In AutoPhOT, these are typically the 'Runtime:' fields and header-derived
+        fallbacks (exposure_time, gain, fwhm, etc.).
+        """
+        p = str(path or "")
+        d = (desc or "").lower()
+        if ("runtime:" in d) or ("set internally" in d) or ("runtime fallback" in d):
+            return True
+        # Known per-image fields even when the YAML comment is terse.
+        per_image_keys = {
+            "fpath",
+            "write_dir",
+            "imageFilter",
+            "exposure_time",
+            "gain",
+            "read_noise",
+            "pixel_scale",
+            "fwhm",
+            "science_fwhm",
+            "saturate",
+            "scale",
+        }
+        return p in per_image_keys
+
+    def _is_required(path: str) -> bool:
+        """
+        Best-effort required-key flag for a typical AutoPhOT run.
+
+        These are the keys most workflows must provide (directly or indirectly)
+        for the pipeline to do meaningful work.
+        """
+        required = {
+            "fits_dir",
+            "wdir",
+            "catalog.use_catalog",
+            "target_ra",
+            "target_dec",
+        }
+        return str(path or "") in required
+
+    entries: list[dict] = []
+    stack: list[tuple[int, str]] = []  # (indent_spaces, key)
+
+    # YAML keys in this config are simple tokens ([A-Za-z0-9_]); the regex
+    # stays minimal on purpose.
+    key_re = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9_]+)\s*:\s*(?P<rest>.*)$")
+    for idx0, raw in enumerate(lines):
+        m = key_re.match(raw)
+        if not m:
+            continue
+        indent = len(m.group("indent").replace("\t", "    "))
+        key = str(m.group("key")).strip()
+        rest = str(m.group("rest")).strip()
+        value_part, comment_part = rest, ""
+        if "#" in rest:
+            value_part, comment_part = rest.split("#", 1)
+            value_part = value_part.strip()
+            comment_part = comment_part.strip()
+        type_hint = ""
+        desc = ""
+        if comment_part:
+            # Prefer the human description after '---' when present.
+            # Example: "float --- Aperture radius ..." -> "Aperture radius ..."
+            if "---" in comment_part:
+                lhs, rhs = comment_part.split("---", 1)
+                type_hint = lhs.strip()
+                desc = rhs.strip()
+            else:
+                # Some entries only include a type hint (eg: "# bool").
+                type_hint = comment_part.strip()
+                desc = ""
+
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        stack.append((indent, key))
+
+        # Only record scalar-ish leaves (skip pure dict headers like "photometry:").
+        if value_part == "" or value_part.endswith(":"):
+            continue
+        if value_part.startswith("#"):
+            # No explicit value present (comment-only line).
+            continue
+
+        path_parts = [k for _, k in stack]
+        if path_parts and path_parts[0] == "default_input":
+            path_parts = path_parts[1:]
+        path = ".".join(path_parts)
+
+        cur = root
+        for p in path_parts:
+            if isinstance(cur, dict) and p in cur:
+                cur = cur[p]
+            else:
+                cur = None
+                break
+
+        if cur is None and not include_null:
+            # Still include if the YAML line explicitly sets null? (cur is None
+            # for both missing and null; we disambiguate by checking "null" token).
+            if not re.search(r"\bnull\b", rest, flags=re.IGNORECASE):
+                continue
+
+        start_line = idx0 + 1
+        end_line = start_line + 1 if (idx0 + 1 < len(lines) and lines[idx0 + 1].strip() == "") else start_line
+
+        entries.append(
+            {
+                "path": path,
+                "default": cur,
+                "default_str": _format_default(cur),
+                "description": desc,
+                "type_hint": type_hint,
+                "set_internally": _is_set_internally(desc),
+                "per_image": _is_per_image(path, desc),
+                "required": _is_required(path),
+                "file": yml_path,
+                "start_line": start_line,
+                "end_line": end_line,
+            }
+        )
+
+    if contains:
+        needle = str(contains).strip().lower()
+        entries = [e for e in entries if needle in e["path"].lower()]
+
+    if not bool(show_internal_params):
+        entries = [e for e in entries if not bool(e.get("set_internally"))]
+
+    # Sort for stable output (group runtime-set parameters together).
+    def _sort_key(e: dict) -> tuple:
+        p = str(e.get("path") or "")
+        sec = p.split(".", 1)[0] if "." in p else "top"
+        runtime_or_top = bool(e.get("set_internally")) or sec == "top"
+        runtime_bucket = 0 if runtime_or_top else 1
+        sec_sort = "runtime/top" if runtime_or_top else sec
+        # Within each section, list required keys first for readability.
+        req_rank = 0 if bool(e.get("required")) else 1
+        return (runtime_bucket, sec_sort, req_rank, p)
+
+    entries.sort(key=_sort_key)
+    if max_rows is not None:
+        entries = entries[: max(0, int(max_rows))]
+
+    fmt = str(format or "cli").strip().lower()
+    if fmt in {"md", "markdown"}:
+        print("AutoPhOT accepted parameters (from default_input.yml)")
+        for e in entries:
+            rel_file = os.path.relpath(e["file"], here)
+            desc = (e.get("description") or "").strip()
+            t = (e.get("type_hint") or "").strip()
+            info = desc
+            if t and desc:
+                info = f"{t} - {desc}"
+            elif t and not desc:
+                info = t
+            desc_str = f" - {desc}" if desc else ""
+            print(
+                f"- **{e['path']}** `@{rel_file}` ({e['start_line']}-{e['end_line']})  "
+                f"[default: {e['default_str']}]{desc_str}"
+            )
+        return entries
+
+    import shutil
+    import textwrap
+
+    # Table width:
+    # - If `width` is set: use it exactly (can be wider than the terminal).
+    # - Else: use detected terminal width.
+    term_w = int(getattr(shutil.get_terminal_size(fallback=(120, 24)), "columns", 120))
+    if width is not None:
+        term_w = max(80, int(width))
+    else:
+        term_w = max(80, term_w)
+
+    rel_file = os.path.relpath(yml_path, here)
+    title = f"AutoPhOT parameters (from {rel_file})"
+    print(title)
+    print("-" * min(len(title), term_w))
+    if not entries:
+        print("(no matches)")
+        return entries
+
+    # Add explicit TYPE + PER-IMAGE + REQUIRED columns so users don't have to infer these.
+    type_w = 12
+    per_w = 8
+    req_w = 8
+
+    # Column widths (leave room for wrapped description).
+    #
+    # Two modes:
+    # - wrap=True  : keep columns bounded so DESCRIPTION remains visible.
+    # - wrap=False : use "natural" widths (longest entry) so rows do not wrap;
+    #               this is intended for sideways scrolling.
+    sep = "  "
+    nat_key_w = max(3, max(len(str(e.get("path") or "")) for e in entries))
+    nat_def_w = max(7, max(len(str(e.get("default_str") or "")) for e in entries))
+    nat_type_w = max(4, max(len(str(e.get("type_hint") or "")) for e in entries))
+
+    if not wrap:
+        key_w = nat_key_w
+        def_w = nat_def_w
+        type_w = max(type_w, nat_type_w)
+        min_desc_w = 0
+        desc_w = max(20, term_w - (key_w + def_w + type_w + per_w + len(sep) * 4))
+    else:
+        def_w = min(22, nat_def_w)
+        def_w = max(10, def_w)
+        min_desc_w = 28
+        max_key_w_by_term = term_w - def_w - type_w - per_w - len(sep) * 4 - min_desc_w
+        key_w = min(60, nat_key_w, max(18, max_key_w_by_term))
+        key_w = max(18, key_w)
+        desc_w = max(min_desc_w, term_w - (key_w + def_w + type_w + per_w + len(sep) * 4))
+    header = (
+        f"{'KEY'.ljust(key_w)}{sep}"
+        f"{'DEFAULT'.ljust(def_w)}{sep}"
+        f"{'TYPE'.ljust(type_w)}{sep}"
+        f"{'PER-IMG'.ljust(per_w)}{sep}"
+        f"{'REQ'.ljust(req_w)}{sep}"
+        f"{'DESCRIPTION'}"
+    )
+    # Do not truncate to `term_w`; allow very wide lines so terminals that
+    # support horizontal scrolling can scroll sideways.
+    print(header)
+    print("-" * len(header))
+
+    def _section_of(path: str) -> str:
+        s = str(path or "").strip()
+        if not s:
+            return "other"
+        return s.split(".", 1)[0] if "." in s else "top"
+
+    last_section = None
+    for e in entries:
+        section = _section_of(e.get("path", ""))
+        if bool(e.get("set_internally")) or section == "top":
+            section = "runtime/top"
+        if section != last_section:
+            if last_section is not None:
+                print("-" * len(header))
+            # Section headings in the same === TITLE === style as the logs.
+            section_title = str(section).replace("_", " ").upper()
+            if border_msg:
+                print(border_msg(section_title))
+            else:
+                print(f"=== {section_title} ===")
+            print("")
+            last_section = section
+
+        desc = (e.get("description") or "").strip()
+        t = (e.get("type_hint") or "").strip()
+        # If the YAML doesn't include a type hint, infer a best-effort type from
+        # the default value.
+        if not t:
+            dv = e.get("default", None)
+            if dv is None:
+                t = "null"
+            elif isinstance(dv, bool):
+                t = "bool"
+            elif isinstance(dv, int) and not isinstance(dv, bool):
+                t = "int"
+            elif isinstance(dv, float):
+                t = "float"
+            elif isinstance(dv, (list, tuple)):
+                t = "list"
+            elif isinstance(dv, dict):
+                t = "dict"
+            elif isinstance(dv, str):
+                t = "str"
+            else:
+                t = type(dv).__name__
+        type_str = t
+        per_flag = "Y" if bool(e.get("per_image")) else "N"
+        req_flag = "Y" if bool(e.get("required")) else "N"
+        # Keep description text clean; per-image status is in the PER-IMG column.
+        info = desc
+        if wrap:
+            key_lines = (
+                textwrap.wrap(
+                    e["path"],
+                    width=key_w,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                or [""]
+            )
+            desc_lines = (
+                textwrap.wrap(
+                    info,
+                    width=desc_w,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+                if info
+                else [""]
+            )
+        else:
+            key_lines = [e["path"]]
+            desc_lines = [info]
+
+        n_lines = max(len(key_lines), len(desc_lines))
+        for i in range(n_lines):
+            k = key_lines[i] if i < len(key_lines) else ""
+            d = desc_lines[i] if i < len(desc_lines) else ""
+            if i == 0:
+                line = (
+                    f"{k.ljust(key_w)}{sep}"
+                    f"{e['default_str'][:def_w].ljust(def_w)}{sep}"
+                    f"{type_str[:type_w].ljust(type_w)}{sep}"
+                    f"{per_flag.ljust(per_w)}{sep}"
+                    f"{req_flag.ljust(req_w)}{sep}"
+                    f"{d}"
+                )
+            else:
+                line = (
+                    f"{k.ljust(key_w)}{sep}"
+                    f"{'':{def_w}}{sep}"
+                    f"{'':{type_w}}{sep}"
+                    f"{'':{per_w}}{sep}"
+                    f"{'':{req_w}}{sep}"
+                    f"{d}"
+                )
+            print(line)
+    return entries
+
+
+# Backward/typo-friendly alias (requested): from autophot import list_paramters
+def list_paramters(**kwargs):  # noqa: N802
+    """Backward-compatible alias for :func:`list_parameters`."""
+    return list_parameters(**kwargs)
+
+
+def _find_unknown_config_paths(
+    config: dict, schema: dict, prefix: str = ""
+) -> list[str]:
+    """
+    Return a list of unknown key paths present in `config` but not in `schema`.
+
+    Notes
+    -----
+    - This validates keys only (not value types), because YAML defaults use
+      `null`/None in several places where the expected type depends on later
+      pipeline logic.
+    - Validation is recursive for nested dicts.
+    """
+    unknown: list[str] = []
+    if not isinstance(config, dict) or not isinstance(schema, dict):
+        return unknown
+
+    for key, value in config.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if str(key).startswith("_"):
+            continue
+        if not prefix and key in {"variable_sources", "name_prefix", "objname"}:
+            continue
+        if key not in schema:
+            unknown.append(path)
+            continue
+        schema_value = schema[key]
+        if isinstance(value, dict) and isinstance(schema_value, dict):
+            unknown.extend(
+                _find_unknown_config_paths(value, schema_value, prefix=path)
+            )
+
+    return unknown
+
+# These imports pull in the full scientific stack (e.g. scikit-image). Keep them
+# optional so lightweight utilities (like list_parameters) can be imported in
+# minimal environments.
+_IMPORT_ERROR_AUTOPHOT_DEPS: Exception | None = None
+try:
+    from functions import (  # type: ignore
+        AutophotYaml,
+        ascii_card,
+        ascii_kv,
+        border_msg,
+        cap_console_lines,
+        ConsoleLevelFilter,
+        STATUS,
+        log_status,
+        verbose_to_console_level,
+        ColoredLevelFormatter,
+        concatenate_csv_files,
+        log_step,
+        log_exception,
+        canonical_target_name,
+        print_progress_bar,
+        resolve_verbose_level,
+        sanitize_photometric_filters,
+        silence_noisy_loggers,
+        verbose_to_log_level,
+    )
+    from prepare import Prepare  # type: ignore
+except Exception as _exc:  # pragma: no cover
+    # If the normal import fails (e.g. in Spyder where sys.path may not
+    # contain the package directory), fall back to importing from the
+    # same directory as this file.
+    _fallback_dir = os.path.dirname(os.path.abspath(__file__))
+    if _fallback_dir not in sys.path:
+        sys.path.insert(0, _fallback_dir)
+    try:
+        from functions import (  # type: ignore
+            AutophotYaml,
+            ascii_card,
+            ascii_kv,
+            border_msg,
+            cap_console_lines,
+            ConsoleLevelFilter,
+            STATUS,
+            log_status,
+            verbose_to_console_level,
+            ColoredLevelFormatter,
+            concatenate_csv_files,
+            log_step,
+            log_exception,
+            canonical_target_name,
+            print_progress_bar,
+            resolve_verbose_level,
+            sanitize_photometric_filters,
+            silence_noisy_loggers,
+            verbose_to_log_level,
+        )
+        from prepare import Prepare  # type: ignore
+    except Exception as _exc2:
+        _IMPORT_ERROR_AUTOPHOT_DEPS = _exc2
+        log_step = None  # type: ignore
+        border_msg = None  # type: ignore
+        ConsoleLevelFilter = None  # type: ignore
+        cap_console_lines = None  # type: ignore
+        STATUS = 25  # type: ignore
+        log_status = None  # type: ignore
+        verbose_to_console_level = verbose_to_log_level  # type: ignore
+        ascii_card = None  # type: ignore
+        ascii_kv = None  # type: ignore
+        ColoredLevelFormatter = None  # type: ignore
+        AutophotYaml = None  # type: ignore
+        concatenate_csv_files = None  # type: ignore
+        print_progress_bar = None  # type: ignore
+        log_exception = None  # type: ignore
+        sanitize_photometric_filters = None  # type: ignore
+        silence_noisy_loggers = lambda *a, **k: None  # type: ignore
+        resolve_verbose_level = lambda v: 1  # type: ignore
+        verbose_to_log_level = lambda v: logging.INFO  # type: ignore
+        Prepare = None  # type: ignore
+
+
+# =============================================================================
+# =============================================================================
+# #
+# =============================================================================
+# =============================================================================
+# --- Logging / subprocess helpers ---
+def _log(message: str) -> None:
+    """
+    Logs a message using the logging module if handlers are configured,
+    otherwise prints to stdout. When QUIET_MODE is True, messages are
+    suppressed to avoid very noisy output during multi-file processing.
+    """
+    if QUIET_MODE:
+        return
+    logger = logging.getLogger(__name__)
+    if logger.handlers:
+        # Driver messages are user-facing progress; STATUS shows them in
+        # normal mode without leaking per-image INFO diagnostics.
+        logger.log(STATUS, message)
+    else:
+        # Fallback for environments without configured logging handlers.
+        if not QUIET_MODE:
+            print(message, flush=True)
+
+
+def _log_always(message: str) -> None:
+    """
+    Log a message that should be visible even in QUIET_MODE (parallel mode).
+    Used for failures, final summaries, and other critical output.
+    """
+    logger = logging.getLogger(__name__)
+    if logger.handlers:
+        logger.warning(message)
+    else:
+        # flush=True: when stdout is piped (tee, batch logs) print() is
+        # block-buffered and the parallel progress counter would lag.
+        print(message, flush=True)
+
+
+def _child_gpu_env(env: dict, gpu_ordinal: int) -> dict:
+    """Pin a child process to one GPU.
+
+    When the parent already runs under a device mask (e.g. Slurm sets
+    ``CUDA_VISIBLE_DEVICES``/``ROCR_VISIBLE_DEVICES`` for ``--gres=gpu``),
+    ``gpu_ordinal`` indexes into *that* visible set; otherwise it is a
+    physical device index.  ROCR/CUDA visibility vars are set so the
+    choice applies to HIP-runtime consumers (CuPy, TF-ROCm) as well as
+    any NVIDIA-side consumers (TF-CUDA reads CUDA_VISIBLE_DEVICES).
+    """
+    parent_mask = (
+        env.get("HIP_VISIBLE_DEVICES")
+        or env.get("ROCR_VISIBLE_DEVICES")
+        or env.get("CUDA_VISIBLE_DEVICES")
+        or ""
+    ).strip()
+    if parent_mask:
+        ids = [t for t in parent_mask.split(",") if t.strip() != ""]
+        device = ids[gpu_ordinal % len(ids)] if ids else str(gpu_ordinal)
+    else:
+        device = str(gpu_ordinal)
+    for _var in (
+        "ROCR_VISIBLE_DEVICES",
+        "CUDA_VISIBLE_DEVICES",
+    ):
+        env[_var] = device
+    # HIP_VISIBLE_DEVICES indexes the *post-ROCR-filtered* set: after
+    # ROCR narrows visibility to a single device, that device is HIP
+    # index 0.  Writing the physical id would double-filter - ROCR
+    # renumbers the survivor to 0, then HIP selects an out-of-range
+    # index -> hipErrorNoDevice, silently falling back to CPU.
+    env["HIP_VISIBLE_DEVICES"] = "0"
+    return env
+
+
+def _run_main_subprocess(
+    python_executable: str,
+    autophot_exe: str,
+    filename: str,
+    input_file: str,
+    is_template: bool,
+    suppress_output: bool = False,
+    gpu_ordinal: Optional[int] = None,
+) -> Tuple[str, int]:
+    """
+    Run the low-level photometry pipeline (main.py) on a single FITS file.
+
+    Returns (filename, return_code) so callers can detect failures.
+
+    suppress_output must be passed explicitly: ProcessPoolExecutor workers
+    do not reliably inherit module state (spawn/forkserver re-import the
+    module, resetting QUIET_MODE), so reading QUIET_MODE here would leak
+    child output to the terminal on non-fork platforms.
+    """
+    if not os.path.exists(input_file):
+        if not suppress_output:
+            _log(
+                f"[ERROR] Input YAML snapshot is missing: {input_file}\n"
+                "It looks like it was deleted mid-run. Re-run the pipeline to regenerate it."
+            )
+        return filename, 2
+    args = [python_executable, autophot_exe, "-f", filename, "-c", input_file]
+    if is_template:
+        args.append("-temp")
+
+    # In parallel mode the child's stdout/stderr go to DEVNULL so nothing
+    # reaches the terminal; each main.py still writes its own per-image
+    # LOG_<base>.log. The parent prints a [i/N] counter line per completion.
+    from subprocess import DEVNULL
+
+    kwargs = {"check": False, "text": True}
+    if suppress_output:
+        kwargs.update({"stdout": DEVNULL, "stderr": DEVNULL})
+    if gpu_ordinal is not None:
+        kwargs["env"] = _child_gpu_env(os.environ.copy(), gpu_ordinal)
+
+    try:
+        result = subprocess.run(args, **kwargs)
+        return filename, result.returncode
+    except Exception:
+        return filename, 1
+
+
+def _positive_scale(value):
+    """True when *value* parses to a positive pixel scale."""
+    try:
+        return float(value) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _scan_image_footprints(file_list, band_map=None, pixscale_fallback=None):
+    """
+    Build per-image descriptors for ``Catalog.find_optimized_catalog``.
+
+    Each entry carries ``path``, ``band`` (resolved by check_filters, else
+    None), ``wcs`` (astropy WCS or None), ``shape`` ((ny, nx) or None),
+    and ``pixscale`` (arcsec/pix or None) so footprint sizing still works
+    on images with no usable WCS.  Header reads are cached by get_header;
+    a missing/failed WCS leaves wcs=None so the optimizer falls back to
+    field-level counts.
+    """
+    from functions import get_header as _get_header
+    from wcs import get_wcs as _get_wcs
+    from catalog import _pixscale_arcsec
+
+    band_map = band_map or {}
+    infos = []
+    for fpath in file_list or []:
+        info = {
+            "path": fpath,
+            "band": None,
+            "wcs": None,
+            "shape": None,
+            "pixscale": pixscale_fallback,
+        }
+        try:
+            hdr = _get_header(fpath)
+            if hdr is not None:
+                info["wcs"] = _get_wcs(hdr, silent=True)
+                if info["wcs"] is None:
+                    info["pixscale"] = (
+                        _pixscale_arcsec(hdr) or pixscale_fallback
+                    )
+                nx, ny = hdr.get("NAXIS1"), hdr.get("NAXIS2")
+                if nx and ny:
+                    info["shape"] = (int(ny), int(nx))
+                    if info["wcs"] is not None:
+                        # clean() uses array_shape to size its angular
+                        # pre-filter when target coords are absent.
+                        try:
+                            info["wcs"].array_shape = info["shape"]
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        info["band"] = band_map.get(os.path.abspath(fpath)) or band_map.get(
+            fpath
+        )
+        infos.append(info)
+    return infos
+
+
+# =============================================================================
+# =============================================================================
+# #
+# =============================================================================
+# =============================================================================
+def find_variable_sources(
+    ra_deg: float, dec_deg: float, radius_arcmin: int = 10
+) -> pd.DataFrame:
+    """
+    Query SIMBAD for variable/interesting sources in sky region.
+
+    Args:
+        ra_deg (float): Right ascension (J2000 degrees)
+        dec_deg (float): Declination (J2000 degrees)
+        radius_arcmin (int): Search radius (arcminutes)
+
+    Returns:
+        pd.DataFrame: Sources with RA, DEC, OTYPE, separation, size info
+    """
+    t0 = time.perf_counter()
+
+    # SIMBAD query config (timeout-protected)
+    Simbad.reset_votable_fields()
+    Simbad.add_votable_fields(
+        "otype",
+        "ra",
+        "dec",
+        "main_id",
+        "galdim_majaxis",
+        "galdim_minaxis",
+        "galdim_angle",
+    )
+
+    original_timeout = getattr(Simbad, "TIMEOUT", 10)
+    original_row_limit = getattr(Simbad, "ROW_LIMIT", 1000)
+
+    Simbad.TIMEOUT = 30
+    Simbad.ROW_LIMIT = 500
+
+    centre_coord = SkyCoord(
+        ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs"
+    )
+    _log(
+        f"Querying SIMBAD within {radius_arcmin}' of "
+        f"{centre_coord.to_string('hmsdms')}."
+    )
+
+    object_types = {
+        "V*": "Variable Star",
+        "Pu*": "Pulsating",
+        "Er*": "Eruptive",
+        "Ir*": "Irregular",
+        "BY*": "BY Dra",
+        "RS*": "RS CVn",
+        "Fl*": "Flare",
+        "Ro*": "Rotating",
+        "Ce*": "Cepheid",
+        "RR*": "RR Lyr",
+        "dS*": "delta Sct",
+        "LP*": "Long Period",
+        "Mi*": "Mira",
+        "TT*": "T Tauri",
+        "Or*": "Orion Var",
+        "CV*": "Cataclysmic",
+        "DN*": "Dwarf Nova",
+        "NL*": "Nova-like",
+        "No*": "Nova",
+        "SN*": "Supernova",
+        "AM*": "Polar",
+        "DQ*": "Int Polar",
+        "G": "Galaxy",
+        "GiG": "Int Galaxy",
+        "SBG": "Starburst",
+        "AGN": "AGN",
+        "SyG": "Seyfert",
+        "LIN": "LINER",
+        "QSO": "Quasar",
+        "BLL": "BL Lac",
+        "Em*": "Emission*",
+        "Be*": "Be Star",
+        "XB*": "X-ray Bin",
+        "X": "X-ray",
+        "PN": "P Nebula",
+        "HII": "HII Region",
+    }
+
+    query_start = time.perf_counter()
+    result = None
+
+    try:
+        result = Simbad.query_region(centre_coord, radius=radius_arcmin * u.arcmin)
+        query_time = time.perf_counter() - query_start
+
+        if query_time > 25:
+            _log(
+                f"SIMBAD query completed in {query_time:.1f}s; "
+                "consider a smaller search radius for faster performance."
+            )
+
+    except Exception as exc:
+        _log(
+            f"SIMBAD query failed after {time.perf_counter() - query_start:.1f}s: {exc}"
+        )
+        result = None
+
+    Simbad.TIMEOUT = original_timeout
+    Simbad.ROW_LIMIT = original_row_limit
+
+    if result is None or len(result) == 0:
+        total_time = time.perf_counter() - t0
+        _log(f"No SIMBAD sources found in search region ({total_time:.1f}s).")
+        return pd.DataFrame(
+            columns=[
+                "RA",
+                "DEC",
+                "OTYPE",
+                "MAIN_ID",
+                "OTYPE_LABEL",
+                "OTYPE_opt",
+                "separation_arcmin",
+                "size_arcmin",
+            ]
+        )
+
+    df = result.to_pandas()
+
+    ra_col = next((col for col in ["RA_d", "ra"] if col in df.columns), None)
+    dec_col = next((col for col in ["DEC_d", "dec"] if col in df.columns), None)
+
+    if ra_col and dec_col:
+        df = df.rename(columns={ra_col: "RA", dec_col: "DEC"})
+    else:
+        _log("SIMBAD result does not contain usable RA/DEC columns; aborting.")
+        return pd.DataFrame()
+
+    # Numeric conversion with error handling
+    df["RA"] = pd.to_numeric(df["RA"], errors="coerce")
+    df["DEC"] = pd.to_numeric(df["DEC"], errors="coerce")
+    df = df.dropna(subset=["RA", "DEC"])
+
+    if df.empty:
+        return pd.DataFrame()
+
+    # Standardize OTYPE column
+    otype_col = next((col for col in ["otype", "OTYPE"] if col in df.columns), None)
+    if otype_col:
+        df["OTYPE"] = df[otype_col]
+    else:
+        df["OTYPE"] = np.nan
+
+    # Filter to interesting object types
+    df["OTYPE_opt"] = df["OTYPE"]
+    df = df[df["OTYPE_opt"].isin(object_types)].copy()
+
+    if df.empty:
+        _log(
+            f"No SIMBAD sources matched the configured object types "
+            f"({time.perf_counter() - t0:.1f}s)."
+        )
+        return pd.DataFrame()
+
+    # ENRICHMENT: SEPARATION, SIZE, LABELS
+    df["OTYPE_LABEL"] = df["OTYPE_opt"].map(object_types)
+
+    # FIX: Create Quantity arrays explicitly for SkyCoord
+    ra_qty = df["RA"].astype(float) * u.deg
+    dec_qty = df["DEC"].astype(float) * u.deg
+
+    # source_coords = SkyCoord(ra=ra_qty, dec=dec_qty, frame="icrs")
+    # separations = centre_coord.separation(source_coords).to(u.arcmin).value
+    # df["separation_arcmin"] = separations
+
+    # Parse angular size (major axis in arcmin)
+    def parse_size(dim):
+        """Extract the first numeric value from a dimension string (arcmin)."""
+        if pd.isna(dim) or not dim:
+            return np.nan
+        try:
+            return float(re.search(r"[\d.]+", str(dim)).group())
+        except Exception:
+            return np.nan
+
+    size_col = next(
+        (col for col in ["galdim_majaxis", "dim"] if col in df.columns), None
+    )
+    if size_col:
+        df["size_arcmin"] = df[size_col].apply(parse_size)
+    else:
+        df["size_arcmin"] = np.nan
+
+    # FINAL CLEANUP AND SORTING
+    out_cols = [
+        "RA",
+        "DEC",
+        "OTYPE",
+        "MAIN_ID",
+        "OTYPE_LABEL",
+        "OTYPE_opt",
+        "separation_arcmin",
+        "size_arcmin",
+    ]
+    available_cols = [col for col in out_cols if col in df.columns]
+
+    if "MAIN_ID" not in df.columns and "main_id" in df.columns:
+        df["MAIN_ID"] = df["main_id"]
+    elif "MAIN_ID" not in df.columns:
+        df["MAIN_ID"] = ""
+
+    # Replace generic SIMBAD type codes (e.g. "G", "AGN", "QSO") with
+    # IAU-style coordinate designations so plot labels are meaningful.
+    _generic_types = {"G", "AGN", "QSO", "BLL", "SyG", "LIN", "GiG", "SBG",
+                      "X", "HII", "PN", "Em*", "Be*"}
+    def _iau_name(ra_deg, dec_deg):
+        """Build an IAU-style designation JHHMMSS+/-DDMMSS from coordinates."""
+        from astropy.coordinates import SkyCoord as _SC
+        import astropy.units as _u
+        _c = _SC(ra=ra_deg * _u.deg, dec=dec_deg * _u.deg, frame="icrs")
+        _ra_hms = _c.ra.hms
+        _dec_dms = _c.dec.dms
+        _sign = "+" if _dec_dms.d >= 0 else "-"
+        return (f"J{int(_ra_hms.h):02d}{int(_ra_hms.m):02d}{int(_ra_hms.s):02d}"
+                f"{_sign}{abs(int(_dec_dms.d)):02d}{int(abs(_dec_dms.m)):02d}{int(abs(_dec_dms.s)):02d}")
+
+    if "MAIN_ID" in df.columns and "RA" in df.columns and "DEC" in df.columns:
+        for idx in df.index:
+            _mid = str(df.at[idx, "MAIN_ID"]).strip()
+            if _mid in _generic_types or _mid == "" or _mid.lower() == "nan":
+                try:
+                    df.at[idx, "MAIN_ID"] = _iau_name(
+                        float(df.at[idx, "RA"]), float(df.at[idx, "DEC"])
+                    )
+                except Exception:
+                    pass
+
+    result_df = df[available_cols].reset_index(drop=True)
+
+    # SUMMARY STATISTICS
+    total_time = time.perf_counter() - t0
+    _log(
+        f"SIMBAD variable-source query finished in {total_time:.1f}s "
+        f"(server time: {query_time:.1f}s)."
+    )
+
+    if not result_df.empty:
+        top_types = result_df["OTYPE_LABEL"].value_counts().head()
+        summary = ", ".join(f"{otype} ({count})" for otype, count in top_types.items())
+        _log(f"Most common SIMBAD object types in field: {summary}")
+
+    return result_df
+
+
+def prepare_template_directory(
+    fits_dir: str,
+    filters: Optional[Iterable[str]] = None,
+    include_legacy_p_folders: bool = False,
+    confirm_before_continue: bool = True,
+) -> Dict[str, List[str]]:
+    """
+    Create the expected template folder structure under ``<fits_dir>/templates``.
+
+    Parameters
+    ----------
+    fits_dir : str
+        Root science-image directory used by AutoPHoT.
+    filters : iterable[str], optional
+        Filter list to build. If None, defaults to the supported families:
+        UBVRI, ugriz, and JHK.
+    include_legacy_p_folders : bool, optional
+        If True, also create legacy Pan-STARRS style folders for ugriz
+        (e.g. ``rp_template``) for backward compatibility. Defaults to False.
+    confirm_before_continue : bool, optional
+        If True (default), prompt the user after creating directories:
+        "template folder created, do you want to continue?"
+        This gives the user a chance to place template FITS files first.
+
+    Returns
+    -------
+    dict
+        Summary with keys:
+        - ``templates_root``: absolute path to templates directory
+        - ``created``: directories created during this call
+        - ``existing``: directories already present
+        - ``requested_filters``: normalized filters used
+    """
+    if fits_dir is None or str(fits_dir).strip() == "":
+        raise ValueError("fits_dir must be a valid directory path.")
+
+    fits_root = Path(str(fits_dir)).expanduser().resolve()
+    templates_root = fits_root / "templates"
+    templates_root.mkdir(parents=True, exist_ok=True)
+
+    default_filters = ["U", "B", "V", "R", "I", "u", "g", "r", "i", "z", "J", "H", "K"]
+    use_filters = list(filters) if filters is not None else default_filters
+    normalized_filters, dropped_filters = sanitize_photometric_filters(use_filters)
+    if dropped_filters:
+        _log(
+            "Ignoring unsupported/non-filter values while preparing templates: "
+            + ", ".join(sorted(set(str(v) for v in dropped_filters)))
+        )
+    if not normalized_filters:
+        raise ValueError(
+            "No supported filters provided. Supported families are UBVRI, ugriz, and JHK."
+        )
+
+    created_dirs: List[str] = []
+    existing_dirs: List[str] = []
+
+    for band in normalized_filters:
+        preferred_dir = templates_root / f"{band}_template"
+        if preferred_dir.exists():
+            existing_dirs.append(str(preferred_dir))
+        else:
+            preferred_dir.mkdir(parents=True, exist_ok=True)
+            created_dirs.append(str(preferred_dir))
+
+        if include_legacy_p_folders and band in {"u", "g", "r", "i", "z"}:
+            legacy_dir = templates_root / f"{band}p_template"
+            if legacy_dir.exists():
+                existing_dirs.append(str(legacy_dir))
+            else:
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                created_dirs.append(str(legacy_dir))
+
+    _log(log_step(f"Template directory prepared: {templates_root}"))
+    _log(
+        "Template folder summary: "
+        f"created={len(created_dirs)} existing={len(existing_dirs)} "
+        f"filters={','.join(normalized_filters)}"
+    )
+
+    if confirm_before_continue:
+        prompt = (
+            f"\nTemplate folder created at: {templates_root}\n"
+            "Please place your template FITS files in the appropriate subfolders.\n"
+            "Do you want to continue? [y/N]: "
+        )
+        try:
+            answer = input(prompt).strip().lower()
+        except EOFError:
+            answer = "y"
+        if answer not in {"y", "yes"}:
+            raise RuntimeError(
+                "Stopped by user after template directory creation. "
+                "Add your templates, then rerun when ready."
+            )
+
+    return {
+        "templates_root": str(templates_root),
+        "created": created_dirs,
+        "existing": existing_dirs,
+        "requested_filters": normalized_filters,
+    }
+
+
+def inspect_telescope(
+    fits_dir: str,
+    wdir: Optional[str] = None,
+    recursive: bool = False,
+    dry_run: bool = False,
+    verbose: bool = False,
+    filter_key: Optional[str] = None,
+    gain_key: str = "GAIN",
+    rn_key: str = "RDNOISE",
+    sat_key: str = "SATURATE",
+    exptime_key: str = "EXPTIME",
+    mjd_key: str = "MJD-OBS",
+    date_key: str = "DATE-OBS",
+    airmass_key: str = "AIRMASS",
+) -> Optional[dict]:
+    """
+    Scan a folder of FITS images and build / update ``telescope.yml``.
+
+    For every unique (TELESCOP, INSTRUME) combination discovered, the function:
+
+    - auto-detects the filter header key (FILTER, FILTER1, ...)
+    - records every raw filter value seen (as identity mappings - edit the
+      right-hand side to the appropriate catalog band name afterwards)
+    - derives the pixel scale (arcsec/pixel) from the image WCS
+    - records which FITS header keywords are present for gain, readnoise,
+      saturate, exptime, MJD, date, and airmass
+
+    The result is written to ``<wdir>/telescope.yml`` (default: ``fits_dir``).
+    If the file already exists it is **deep-merged**: existing user values are
+    kept and only missing keys are added.
+
+    Parameters
+    ----------
+    fits_dir : str
+        Folder containing FITS images (``.fits``, ``.fts``, ``.fit``,
+        optionally gzip-compressed).
+    wdir : str, optional
+        Directory where ``telescope.yml`` is written.
+        Defaults to ``fits_dir``.
+    recursive : bool
+        Scan sub-folders as well (default False).
+    dry_run : bool
+        If True, print the generated YAML to stdout without writing anything.
+    verbose : bool
+        If True, print a per-file diagnostic line.
+    filter_key : str, optional
+        Force a specific FITS header keyword for the filter name.
+        When None (default), the first non-empty key from
+        FILTER / FILTER1 / FILTER2 / FILTERID / INSFILTE / FILTNAM1 is used.
+    gain_key : str
+        FITS header keyword for the gain (default ``GAIN``).
+    rn_key : str
+        FITS header keyword for read noise (default ``RDNOISE``).
+    sat_key : str
+        FITS header keyword for the saturation level (default ``SATURATE``).
+    exptime_key : str
+        FITS header keyword for exposure time (default ``EXPTIME``).
+    mjd_key : str
+        FITS header keyword for the Modified Julian Date (default ``MJD-OBS``).
+    date_key : str
+        FITS header keyword for the observation date (default ``DATE-OBS``).
+    airmass_key : str
+        FITS header keyword for airmass (default ``AIRMASS``).
+
+    Returns
+    -------
+    dict or None
+        The merged telescope configuration that was (or would be) written,
+        or ``None`` if no valid images were found.
+
+    Examples
+    --------
+    >>> from autophot import inspect_telescope
+    >>> inspect_telescope("/data/2024-06-01/")          # writes telescope.yml next to the images
+    >>> inspect_telescope("/data/2024-06-01/", dry_run=True)   # preview only
+    >>> inspect_telescope("/data/", recursive=True, wdir="/data/_REDUCED/")
+    """
+    import copy as _copy
+    import numpy as _np
+    import yaml as _yaml
+    from astropy.io import fits as _fits
+
+    _FITS_EXTENSIONS = (".fits", ".fit", ".fts", ".fits.gz", ".fit.gz", ".fts.gz")
+    _FILTER_CANDIDATES = ["FILTER", "FILTER1", "FILTER2", "FILTERID", "INSFILTE", "FILTNAM1"]
+    _AVOID_FILTERS = {"clear", "open", "none", "", "n/a"}
+
+    log_it = logging.getLogger(__name__)
+
+    # ---- helpers ----
+    def _find_files(d, rec):
+        """Return sorted FITS file paths in directory *d* (optionally recursive)."""
+        out = []
+        if rec:
+            for root, _, names in os.walk(d):
+                for n in names:
+                    if any(n.lower().endswith(e) for e in _FITS_EXTENSIONS):
+                        out.append(os.path.join(root, n))
+        else:
+            for n in os.listdir(d):
+                if any(n.lower().endswith(e) for e in _FITS_EXTENSIONS):
+                    out.append(os.path.join(d, n))
+        return sorted(out)
+
+    def _read_header(fpath):
+        """Read the first FITS header containing TELESCOP from *fpath*."""
+        with _fits.open(fpath, ignore_missing_end=True, memmap=False) as hdul:
+            hdul.verify("silentfix+ignore")
+            for hdu in hdul:
+                if any(k.upper() == "TELESCOP" for k in hdu.header.keys()):
+                    return hdu.header.copy()
+            return hdul[0].header.copy()
+
+    def _pixel_scale(header):
+        """Return pixel scale in arcsec/pixel from the WCS in *header*."""
+        try:
+            from astropy.wcs import WCS, utils as wcsutils
+            with _np.errstate(all="ignore"):
+                wcs_obj = WCS(header, naxis=2)
+                scales = wcsutils.proj_plane_pixel_scales(wcs_obj)
+                if scales is not None and len(scales) > 0:
+                    ps = float(scales[0]) * 3600.0
+                    if _np.isfinite(ps) and 0 < ps <= 20:
+                        return round(ps, 4)
+        except Exception:
+            pass
+        return None
+
+    def _hval(header, key, default=None):
+        """Safely read *key* from *header*, returning *default* on failure."""
+        try:
+            if key and key in header:
+                return header[key]
+        except Exception:
+            pass
+        return default
+
+    def _read_filter(header, forced_key):
+        """Find the filter value and keyword from *header* using candidate keys."""
+        candidates = ([forced_key] + _FILTER_CANDIDATES) if forced_key else _FILTER_CANDIDATES
+        for key in candidates:
+            val = _hval(header, key)
+            if val is not None and str(val).strip().lower() not in _AVOID_FILTERS:
+                return str(val).strip(), key
+        return None, None
+
+    def _deep_merge(base, override):
+        """Recursively merge *override* into *base* (in-place)."""
+        for k, v in override.items():
+            if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+                _deep_merge(base[k], v)
+            else:
+                base[k] = v
+        return base
+
+    def _load_yml(path):
+        """Load a YAML file, returning an empty dict if the file is missing."""
+        if os.path.isfile(path):
+            with open(path) as f:
+                return _yaml.safe_load(f) or {}
+        return {}
+
+    def _write_yml(path, data):
+        """Write *data* to a YAML file, creating parent directories as needed."""
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w") as f:
+            _yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    # ---- main logic ----
+    fits_dir = os.path.abspath(str(fits_dir))
+    if not os.path.isdir(fits_dir):
+        raise ValueError(f"fits_dir does not exist: {fits_dir!r}")
+
+    wdir_path = os.path.abspath(str(wdir)) if wdir else fits_dir
+    yml_path = os.path.join(wdir_path, "telescope.yml")
+
+    files = _find_files(fits_dir, recursive)
+    if not files:
+        log_it.warning("inspect_telescope: no FITS files found in %s", fits_dir)
+        return None
+
+    log_it.info("inspect_telescope: scanning %d file(s) in %s", len(files), fits_dir)
+
+    seen: dict = {}
+    skipped = 0
+
+    for fpath in files:
+        try:
+            header = _read_header(fpath)
+        except Exception as exc:
+            log_it.debug("Cannot read %s: %s", fpath, exc)
+            skipped += 1
+            continue
+
+        tele = _hval(header, "TELESCOP")
+        inst = _hval(header, "INSTRUME")
+        if not tele or not inst:
+            if verbose:
+                log_it.info("  SKIP (no TELESCOP/INSTRUME): %s", os.path.basename(fpath))
+            skipped += 1
+            continue
+
+        tele, inst = str(tele).strip(), str(inst).strip()
+        fval, fhdr_key = _read_filter(header, filter_key)
+        ps = _pixel_scale(header)
+
+        if (tele, inst) not in seen:
+            seen[(tele, inst)] = {
+                "filters": {}, "filter_header_key": None, "pixel_scales": [],
+                "gain_keys": set(), "rn_keys": set(), "sat_keys": set(),
+                "exptime_keys": set(), "mjd_keys": set(), "date_keys": set(),
+                "airmass_keys": set(), "gain_val": None, "rn_val": None,
+            }
+        rec = seen[(tele, inst)]
+
+        if fval:
+            rec["filters"][fval] = rec["filters"].get(fval, 0) + 1
+        if fhdr_key and rec["filter_header_key"] is None:
+            rec["filter_header_key"] = fhdr_key
+        if ps is not None:
+            rec["pixel_scales"].append(ps)
+
+        for attr, kw in [
+            ("gain_keys", gain_key), ("rn_keys", rn_key), ("sat_keys", sat_key),
+            ("exptime_keys", exptime_key), ("mjd_keys", mjd_key),
+            ("date_keys", date_key), ("airmass_keys", airmass_key),
+        ]:
+            if kw and kw in header:
+                rec[attr].add(kw)
+
+        if rec["gain_val"] is None:
+            try:
+                rec["gain_val"] = float(_hval(header, gain_key, _np.nan))
+            except (TypeError, ValueError):
+                pass
+        if rec["rn_val"] is None:
+            try:
+                rec["rn_val"] = float(_hval(header, rn_key, _np.nan))
+            except (TypeError, ValueError):
+                pass
+
+        if verbose:
+            log_it.info(
+                "  %-40s  TELESCOP=%-20s INSTRUME=%-15s FILTER=%-8s ps=%s",
+                os.path.basename(fpath), tele, inst,
+                fval or "?", f'{ps:.3f}"' if ps else "N/A",
+            )
+
+    if skipped:
+        log_it.info("inspect_telescope: skipped %d file(s).", skipped)
+
+    if not seen:
+        log_it.warning("inspect_telescope: no valid telescope/instrument entries found.")
+        return None
+
+    existing = _load_yml(yml_path)
+    new_data: dict = _copy.deepcopy(existing)
+
+    for (tele, inst), rec in seen.items():
+        filter_hdr = rec["filter_header_key"] or "FILTER"
+        ps_list = rec["pixel_scales"]
+        ps_med = float(_np.median(ps_list)) if ps_list else None
+
+        def _best_key(found_set, default):
+            return next(iter(found_set), default)
+
+        inst_block: dict = {
+            "filter_key_0": filter_hdr,
+            "mjd": _best_key(rec["mjd_keys"], mjd_key),
+            "date": _best_key(rec["date_keys"], date_key),
+            "gain": _best_key(rec["gain_keys"], gain_key),
+            "saturate": _best_key(rec["sat_keys"], sat_key),
+            "readnoise": _best_key(rec["rn_keys"], rn_key),
+            "airmass": _best_key(rec["airmass_keys"], airmass_key),
+            "exptime": _best_key(rec["exptime_keys"], exptime_key),
+        }
+        if ps_med is not None:
+            inst_block["pixel_scale"] = round(ps_med, 4)
+        for fv in sorted(rec["filters"]):
+            if fv not in inst_block:
+                inst_block[fv] = fv  # placeholder; edit RHS to catalog band name
+
+        tele_block = new_data.setdefault(tele, {})
+        ib = tele_block.setdefault("INSTRUME", {})
+        existing_inst = ib.get(inst, {})
+        if not isinstance(existing_inst, dict):
+            existing_inst = {}
+        for k, v in inst_block.items():
+            if k not in existing_inst:
+                existing_inst[k] = v
+        ib[inst] = existing_inst
+
+        log_it.info(
+            "inspect_telescope: %-20s / %-15s  filters=[%s]  pixel_scale=%s",
+            tele, inst,
+            ", ".join(sorted(rec["filters"])) or "(none)",
+            f'{ps_med:.4f}"' if ps_med else "N/A",
+        )
+
+    if dry_run:
+        print("\n# ---- telescope.yml (dry-run, not written) ----")
+        print(_yaml.dump(new_data, default_flow_style=False, sort_keys=False, allow_unicode=True))
+        print("# -----------------------------------------------")
+        return new_data
+
+    _write_yml(yml_path, new_data)
+    log_it.info("inspect_telescope: telescope.yml written to %s", yml_path)
+    if existing:
+        log_it.info("inspect_telescope: existing entries preserved; new keys merged in.")
+    return new_data
+
+
+def _run_transient_color_correction(default_input, output_loc, reduced_loc, log):
+    """Optional post-step: color-correct the transient light curve.
+
+    Applies each image's zeropoint color term using the transient's own
+    paired color-index observations (same telescope + instrument within
+    postprocessing.color_correction_dt days), writing
+    *_colorcorrected.csv next to the light curve.  Failures are logged
+    and never fatal.
+    """
+    try:
+        pp_cfg = default_input.get("postprocessing", {}) or {}
+        if not pp_cfg.get("transient_color_correction", False):
+            return
+        dt = float(pp_cfg.get("color_correction_dt", 1.0))
+        max_err = float(pp_cfg.get("color_correction_max_err", 0.5))
+        from color_correction import correct_lightcurve
+
+        out = correct_lightcurve(
+            output_loc, reduced_dir=reduced_loc, dt=dt, max_err=max_err
+        )
+        if out:
+            log(f"Color-corrected light curve: {out}")
+    except Exception as exc:
+        log(f"[WARNING] Transient color correction skipped: {exc}")
+
+
+def __getattr__(name: str):
+    """
+    Resolve common misspellings for public module symbols.
+
+    This allows typo-tolerant imports like:
+        from autophot import prepapre_template_directory
+    by dynamically mapping to the closest public callable/class.
+    """
+    if not isinstance(name, str) or not name or name.startswith("_"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    public_symbols = {
+        k: v
+        for k, v in globals().items()
+        if not k.startswith("_") and (callable(v) or isinstance(v, type))
+    }
+    if name in public_symbols:
+        return public_symbols[name]
+
+    matches = get_close_matches(name, list(public_symbols.keys()), n=1, cutoff=0.72)
+    if matches:
+        target = matches[0]
+        logging.getLogger(__name__).warning(
+            "Interpreting unknown symbol '%s' as '%s'.",
+            name,
+            target,
+        )
+        return public_symbols[target]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# =============================================================================
+# =============================================================================
+# #
+# =============================================================================
+# =============================================================================
+# --- Automated Photometry Pipeline ---
+class AutomatedPhotometry:
+    """
+    Orchestrates the photometry pipeline for a target dataset.
+    Handles template download, reduction, and light curve generation.
+    """
+
+    @staticmethod
+    def load() -> dict:
+        """
+        Loads default input settings from the project YAML configuration.
+
+        Returns:
+            dict: Parsed configuration dictionary.
+        """
+        t0 = time.perf_counter()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        default_input_path = os.path.join(script_dir, "databases", "default_input.yml")
+        default_input = AutophotYaml(default_input_path, "default_input").load()
+
+        # Ensure expected nested sections exist so driver scripts can safely override
+        # settings without needing repetitive setdefault() calls.
+        for _k in (
+            "preprocessing",
+            "photometry",
+            "templates",
+            "wcs",
+            "catalog",
+            "cosmic_rays",
+            "fitting",
+            "source_detection",
+            "limiting_magnitude",
+            "alignment",
+            "template_subtraction",
+            "background",
+            "zeropoint",
+            "error",
+            "psf",
+            "target_photometry",
+        ):
+            if default_input.get(_k) is None:
+                default_input[_k] = {}
+
+        # Common preprocessing defaults used by main.py
+        default_input["preprocessing"].setdefault("trim_image", 0)
+
+        _log(border_msg("Configuration"))
+        _log(f"Configuration loaded in {time.perf_counter() - t0:.3f} seconds.")
+        return default_input
+
+    @staticmethod
+    def run_photometry(
+        default_input: dict,
+        do_photometry: bool = True,
+        debug: int = 0,
+    ) -> str:
+        """
+        Executes the photometry pipeline based on the provided configuration.
+
+        Args:
+            default_input (dict): Configuration dictionary for the pipeline.
+            do_photometry (bool): If True, runs reductions before concatenation.
+            debug (int): If > 0, only process that many science images (templates
+                are always processed). If 0, process all science images.
+
+        Returns:
+            str: Path to the aggregated light curve CSV.
+        """
+        global QUIET_MODE
+        # Start clean: a previous call that raised mid-run would otherwise
+        # leave QUIET_MODE stuck on and silence this call's logging.
+        QUIET_MODE = False
+
+        # Batch driver context: no plot may pop a GUI window, here or in
+        # the per-image subprocesses (children inherit the env flag).
+        from plotting_utils import force_headless_plots
+
+        force_headless_plots()
+
+        # Deep-copy the input configuration to prevent modifications from
+        # persisting across multiple calls to run_photometry()
+        default_input = copy.deepcopy(default_input)
+        
+        t0 = time.perf_counter()
+        gc.collect()
+
+        # Determine how many CPU workers to use for *image-level* parallelism.
+        # Priority: explicit config key, then environment override, then 1.
+        env_ncpu = os.environ.get("AUTOPHOT_NCPU")
+        cfg_ncpu = default_input.get("nCPU")
+        try:
+            n_cpu = (
+                int(env_ncpu)
+                if env_ncpu is not None
+                else int(cfg_ncpu) if cfg_ncpu is not None else 1
+            )
+        except (TypeError, ValueError):
+            n_cpu = 1
+        if n_cpu < 1:
+            n_cpu = 1
+        # How many GPUs to spread image-level workers across (round-robin).
+        # Priority: env AUTOPHOT_NGPU, then config key nGPU, else 1.
+        # nGPU=0 disables pinning (children inherit the ambient device mask).
+        env_ngpu = os.environ.get("AUTOPHOT_NGPU")
+        cfg_ngpu = default_input.get("nGPU")
+        try:
+            n_gpu = (
+                int(env_ngpu)
+                if env_ngpu is not None
+                else int(cfg_ngpu) if cfg_ngpu is not None else 1
+            )
+        except (TypeError, ValueError):
+            n_gpu = 1
+        if n_gpu < 0:
+            n_gpu = 0
+        parallel_files = n_cpu > 1
+
+        if parallel_files:
+            # Suppress this orchestrator's chatter in multi-file mode; the per-image
+            # main.py processes still handle their own detailed logging.
+            QUIET_MODE = True
+
+            # Additionally, raise the level of any stream handlers attached to the
+            # root logger so that INFO/DEBUG messages are not printed to screen.
+            root_logger = logging.getLogger()
+            for handler in list(root_logger.handlers):
+                try:
+                    # Only adjust stream-like handlers (stdout / stderr); leave file
+                    # handlers untouched so logs can still be written to disk.
+                    if getattr(handler, "stream", None) is not None:
+                        handler.setLevel(logging.WARNING)
+                except Exception:
+                    continue
+
+            # Warn on CPU oversubscription: image-level workers multiply
+            # any within-image parallelism (aperture / limiting-magnitude
+            # worker loops are per subprocess).
+            _phot_cfg = default_input.get("photometry") or {}
+            _lim_cfg = default_input.get("limiting_magnitude") or {}
+            _per_image_jobs = max(
+                int(_phot_cfg.get("aperture_n_jobs", 1) or 1),
+                int(_lim_cfg.get("n_jobs", 1) or 1),
+            )
+            _total_slots = n_cpu * _per_image_jobs
+            _cpu_count = os.cpu_count() or 1
+            if _total_slots > _cpu_count:
+                _log_always(
+                    f"[WARNING] nCPU={n_cpu} with per-image jobs={_per_image_jobs} "
+                    f"requests {_total_slots} workers on {_cpu_count} CPUs. "
+                    "Oversubscription can slow runs or exhaust process/thread "
+                    "limits - lower nCPU or the per-image n_jobs settings."
+                )
+
+        # Normalise paths and close open figures
+        fits_dir = default_input.get("fits_dir") or ""
+        if isinstance(fits_dir, str) and fits_dir.endswith("/"):
+            fits_dir = fits_dir[:-1]
+            default_input["fits_dir"] = fits_dir
+
+        # Clear module-level caches to ensure independence between image runs
+        # This prevents state contamination when processing multiple images
+        try:
+            from limits import _flux_for_mag_cached
+            _flux_for_mag_cached.cache_clear()
+        except Exception:
+            pass
+        try:
+            from background import _disk_structuring_element
+            _disk_structuring_element.cache_clear()
+        except Exception:
+            pass
+
+        plt.close("all")
+
+        # ------------------------------------------------------------------
+        # Config validation: fail fast on typos/unknown keys from driver scripts
+        # ------------------------------------------------------------------
+        strict_validation_raw = os.environ.get("AUTOPHOT_STRICT_CONFIG", "1")
+        strict_validation = str(strict_validation_raw).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        }
+        try:
+            from functions import check_input_config, format_config_errors
+        except Exception:
+            check_input_config = format_config_errors = None
+        if check_input_config is not None:
+            _report = check_input_config(default_input)
+            for _dep_key, _dep_new in _report["deprecated"]:
+                _log_always(
+                    f"[WARNING] Deprecated config key {_dep_key}: "
+                    f"rename to {_dep_new} (still honoured)."
+                )
+            for _rm_key in _report.get("removed", []):
+                _log_always(
+                    f"[WARNING] Removed config key {_rm_key}: "
+                    f"no longer used; safe to delete from input.yaml."
+                )
+            _errs = format_config_errors(_report, source="driver configuration")
+            if _errs:
+                if strict_validation:
+                    raise KeyError(_errs)
+                _log_always(f"[WARNING] {_errs}")
+        elif strict_validation:
+            schema = _get_default_input_schema()
+            unknown_paths = _find_unknown_config_paths(default_input, schema)
+            if unknown_paths:
+                unique_sorted = sorted(set(unknown_paths))
+                raise KeyError(
+                    "Unknown AutoPHOT config keys detected. "
+                    "These were found in the driver-provided configuration but "
+                    "do not exist in `databases/default_input.yml`:\n  - "
+                    + "\n  - ".join(unique_sorted)
+                )
+
+        # ------------------------------------------------------------------
+        # Optional Gaia custom catalog build from user transmission curves.
+        #
+        # New convention:
+        # - Users may set `catalog.use_catalog` (scalar or mapping) to "gaia_custom"
+        #   for the filter(s) they want calibrated using a Gaia curve-map catalog.
+        # - When "gaia_custom" is requested, AutoPhOT requires
+        #   `catalog.transmission_curve_map` (and/or `catalog.curve_map_svo`) and will
+        #   build/reuse a single custom
+        #   catalog CSV, then transparently route "gaia_custom" -> "custom" using
+        #   `catalog.catalog_custom_fpath`.
+        # - Plain "gaia" continues to use the standard Gaia photometry path with
+        #   no curve-map build.
+        # ------------------------------------------------------------------
+        catalog_cfg = default_input.setdefault("catalog", {}) or {}
+
+        def _is_gaia_custom_token(v) -> bool:
+            if v is None:
+                return False
+            return str(v).strip().lower() in {"gaia_custom", "gaia-custom", "gaiacustom"}
+
+        use_catalog_cfg = catalog_cfg.get("use_catalog", None)
+        gaia_custom_requested = False
+        gaia_custom_groups = []
+        if _is_gaia_custom_token(use_catalog_cfg):
+            gaia_custom_requested = True
+            gaia_custom_groups = ["*"]
+        elif isinstance(use_catalog_cfg, dict):
+            for k, v in use_catalog_cfg.items():
+                if _is_gaia_custom_token(v):
+                    gaia_custom_requested = True
+                    gaia_custom_groups.append(str(k))
+
+        if gaia_custom_requested and do_photometry:
+            from functions import parse_supported_filter_group_key, normalize_photometric_filter_name
+
+            curve_map = catalog_cfg.get("transmission_curve_map", None)
+            if curve_map is None or curve_map == {}:
+                raise ValueError(
+                    "catalog.use_catalog requests 'gaia_custom', but catalog.transmission_curve_map is not set. "
+                    "Provide a band->curve-path mapping, e.g. {'g':'/path/g.dat','r':'/path/r.dat','i':'/path/i.dat'}."
+                )
+            if not isinstance(curve_map, dict):
+                raise TypeError(
+                    "catalog.transmission_curve_map must be a dictionary of band->curve path, "
+                    "e.g. {'g': '/path/g.dat', 'r': '/path/r.dat'}."
+                )
+
+            # Determine which bands must be present in curve_map based on the mapping keys.
+            required_bands = set()
+            if gaia_custom_groups == ["*"]:
+                # Global gaia_custom: require all curve_map keys (user-defined).
+                required_bands = {str(k) for k in curve_map.keys()}
+            else:
+                for g in gaia_custom_groups:
+                    bands = parse_supported_filter_group_key(g)
+                    if bands:
+                        required_bands.update(bands)
+                    else:
+                        # allow single-band keys (e.g. "g")
+                        nb = normalize_photometric_filter_name(g)
+                        if nb is not None:
+                            required_bands.add(nb)
+                        else:
+                            # If it's a non-standard token, we can't infer required curves.
+                            # Continue; the build will still use whatever is in curve_map.
+                            pass
+
+            missing = sorted([b for b in required_bands if b not in curve_map])
+            if missing:
+                raise ValueError(
+                    "catalog.use_catalog requests 'gaia_custom' for bands requiring transmission_curve_map entries, "
+                    f"but these are missing from catalog.transmission_curve_map: {missing}"
+                )
+
+            work_dir = default_input.get("fits_dir") or ""
+            out_dir_name = "_" + str(default_input.get("outdir_name", "REDUCED"))
+            out_dir_base = os.path.basename(work_dir) + out_dir_name
+            out_dir = os.path.join(os.path.dirname(work_dir), out_dir_base)
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            curve_catalog_csv = os.path.join(out_dir, "GAIA_CurveMap_Catalog.csv")
+
+            # Store the custom catalog path; downstream uses it when resolving "custom".
+            catalog_cfg["catalog_custom_fpath"] = curve_catalog_csv
+
+            # Rewrite gaia_custom -> custom (scalar or mapping) so the rest of the
+            # pipeline doesn't need to special-case gaia_custom.
+            if _is_gaia_custom_token(use_catalog_cfg):
+                catalog_cfg["use_catalog"] = "custom"
+            elif isinstance(use_catalog_cfg, dict):
+                new_map = {}
+                for k, v in use_catalog_cfg.items():
+                    new_map[k] = ("custom" if _is_gaia_custom_token(v) else v)
+                catalog_cfg["use_catalog"] = new_map
+
+            default_input["catalog"] = catalog_cfg
+
+            target_ra = default_input.get("target_ra", None)
+            target_dec = default_input.get("target_dec", None)
+            if target_ra is None or target_dec is None:
+                # If coordinates are not set explicitly, try TNS lookup
+                # using target_name before failing curve-map catalog build.
+                # Create a temporary Prepare instance for TNS lookup
+                try:
+                    temp_prepare = Prepare(default_input=default_input)
+                    tns_coords = temp_prepare.check_tns()
+                    default_input.update(
+                        {
+                            "target_ra": tns_coords["radeg"],
+                            "target_dec": tns_coords["decdeg"],
+                            "name_prefix": tns_coords.get("name_prefix"),
+                            "objname": tns_coords.get("objname"),
+                        }
+                    )
+                    target_ra = default_input.get("target_ra", None)
+                    target_dec = default_input.get("target_dec", None)
+                    _log(
+                        "Resolved target coordinates from TNS for gaia_custom build: "
+                        f"RA={float(target_ra):.6f}, Dec={float(target_dec):.6f}"
+                    )
+                except Exception as e:
+                    _log(f"TNS lookup failed: {e}")
+                    pass
+            if target_ra is None or target_dec is None:
+                raise ValueError(
+                    "catalog.use_catalog requests 'gaia_custom', but target_ra/target_dec are missing. "
+                    "Please set both coordinates in degrees, or provide target_name "
+                    "with working TNS credentials or a SIMBAD-resolvable name."
+                )
+
+            radius_deg = float(
+                catalog_cfg.get(
+                    "gaia_xp_radius_deg",
+                    catalog_cfg.get("catalog_radius", 0.25),
+                )
+            )
+            max_sources = int(
+                catalog_cfg.get(
+                    "gaia_curve_map_max_sources",
+                    catalog_cfg.get("gaia_xp_max_sources", 100),
+                )
+            )
+            curve_order = str(
+                catalog_cfg.get(
+                    "gaia_curve_map_order_by",
+                    catalog_cfg.get("gaia_xp_order_by", "distance"),
+                )
+            ).strip().lower()
+            svo_curve_map = catalog_cfg.get("curve_map_svo", None)
+
+            _log(log_step("Gaia custom catalog (gaia_custom) curve map"))
+            _log(
+                f"RA={float(target_ra):.6f}, Dec={float(target_dec):.6f}, "
+                f"radius={radius_deg:.4f} deg, max_sources={max_sources}, "
+                f"order_by={curve_order}, bands={sorted(required_bands) if required_bands else 'curve_map keys'}"
+            )
+            from autophot_gaia_curves import build_custom_catalog
+
+            # The builder decides whether the on-disk catalog can be reused;
+            # a cached file with fewer rows than gaia_xp_min_sources or a
+            # narrower query cone is rebuilt automatically.
+            build_custom_catalog(
+                ra_deg=float(target_ra),
+                dec_deg=float(target_dec),
+                radius_deg=radius_deg,
+                max_sources=max_sources,
+                curves={str(k): str(v) for k, v in curve_map.items()},
+                out_csv=curve_catalog_csv,
+                svo_filters=(
+                    {str(k): str(v) for k, v in svo_curve_map.items()}
+                    if isinstance(svo_curve_map, dict) and len(svo_curve_map) > 0
+                    else None
+                ),
+                gaia_query_pause_before_sec=float(
+                    catalog_cfg.get("gaia_archive_query_pause_before_sec", 0.25)
+                ),
+                gaia_query_pause_after_sec=float(
+                    catalog_cfg.get("gaia_archive_query_pause_after_sec", 0.25)
+                ),
+                gaia_xp_batch_size=int(catalog_cfg.get("gaia_xp_batch_size", 200)),
+                gaia_xp_batch_pause_sec=float(
+                    catalog_cfg.get("gaia_xp_batch_pause_sec", 0.5)
+                ),
+                gaia_archive_max_retries=int(
+                    catalog_cfg.get("gaia_archive_max_retries", 3)
+                ),
+                gaia_archive_retry_base_delay_sec=float(
+                    catalog_cfg.get("gaia_archive_retry_base_delay_sec", 2.0)
+                ),
+                gaia_xp_order_by=curve_order,
+                gaia_xp_show_progress=bool(
+                    catalog_cfg.get("gaia_xp_show_progress", False)
+                ),
+                gaia_nearest_prefetch_factor=int(
+                    catalog_cfg.get("gaia_nearest_prefetch_factor", 50)
+                ),
+                gaia_nearest_prefetch_min=int(
+                    catalog_cfg.get("gaia_nearest_prefetch_min", 200)
+                ),
+                gaia_nearest_prefetch_max=int(
+                    catalog_cfg.get("gaia_nearest_prefetch_max", 10000)
+                ),
+                gaia_xp_min_sources=int(
+                    catalog_cfg.get("gaia_xp_min_sources", 25)
+                ),
+                gaia_xp_max_radius_deg=float(
+                    catalog_cfg.get("gaia_xp_max_radius_deg", 1.0)
+                ),
+                gaia_xp_grow_factor=float(
+                    catalog_cfg.get("gaia_xp_grow_factor", 1.5)
+                ),
+            )
+            logging.getLogger(__name__).debug(
+                "Gaia curve-map catalog written: %s",
+                curve_catalog_csv,
+            )
+
+        # Initialise preparation helper
+        prepare_db = Prepare(default_input=default_input)
+
+        # Validate catalog configuration only if doing photometry
+        # (skip checks when just recovering files and creating output table)
+        available_filters = []
+        if do_photometry:
+            available_filters = prepare_db.check_catalog()
+
+        # ------------------------------------------------------------------
+        # Credentials: prefer environment variables via autophot_tokens, then YAML.
+        # This keeps secrets out of YAML and allows HPC/CI configuration.
+        # ------------------------------------------------------------------
+        try:
+            # Optional local override file (gitignored) for convenience.
+            # If absent, fall back to environment-variable resolution in autophot_tokens.
+            try:
+                import autophot_tokens_local as autophot_tokens  # type: ignore
+            except Exception:
+                import autophot_tokens  # type: ignore
+
+            default_input.setdefault("wcs", {})
+            default_input.setdefault("catalog", {})
+            wcs_cfg = default_input.get("wcs") or {}
+            cat_cfg = default_input.get("catalog") or {}
+
+            def _env_first(*names):
+                for n in names:
+                    v = os.getenv(n)
+                    if v is not None and str(v).strip() != "":
+                        return str(v).strip()
+                return None
+
+            def _env_int_first(*names):
+                v = _env_first(*names)
+                if v is None:
+                    return None
+                try:
+                    return int(v)
+                except Exception:
+                    return None
+
+            # TNS credentials
+            # Treat empty-string values as "missing" so user overrides don't
+            # accidentally block token resolution.
+            for k in ("TNS_BOT_ID", "TNS_BOT_NAME", "TNS_BOT_API"):
+                cur = wcs_cfg.get(k)
+                is_missing = cur is None or (isinstance(cur, str) and cur.strip() == "")
+                if is_missing:
+                    v = getattr(autophot_tokens, k, None)
+                    if v is None:
+                        # Fallback to environment variables directly in case
+                        # autophot_tokens module values are stale/cached.
+                        if k == "TNS_BOT_ID":
+                            v = _env_int_first("TNS_BOT_ID")
+                        elif k == "TNS_BOT_NAME":
+                            v = _env_first("TNS_BOT_NAME")
+                        elif k == "TNS_BOT_API":
+                            v = _env_first("TNS_BOT_API", "TNS_BOT_API_KEY")
+                    if v is not None:
+                        if isinstance(v, str):
+                            v = v.strip()
+                        if not (isinstance(v, str) and v == ""):
+                            wcs_cfg[k] = v
+            default_input["wcs"] = wcs_cfg
+
+            # MAST CasJobs credentials (Refcat)
+            # Treat empty-string values as "missing" and normalize types so
+            # downstream libraries always receive clean strings.
+            wsid_cur = cat_cfg.get("MASTcasjobs_wsid")
+            if wsid_cur is None or (
+                isinstance(wsid_cur, str) and wsid_cur.strip() == ""
+            ):
+                v = getattr(autophot_tokens, "MASTcasjobs_wsid", None)
+                if v is None:
+                    v = _env_int_first("MASTCASJOBS_WSID")
+                if v is not None:
+                    v = str(v).strip()
+                    if v != "":
+                        cat_cfg["MASTcasjobs_wsid"] = v
+
+            pwd_cur = cat_cfg.get("MASTcasjobs_pwd")
+            if pwd_cur is None or (isinstance(pwd_cur, str) and pwd_cur.strip() == ""):
+                v = getattr(autophot_tokens, "MASTcasjobs_pwd", None)
+                if v is None:
+                    v = _env_first("MASTCASJOBS_PWD")
+                if v is not None:
+                    v = str(v).strip()
+                    if v != "":
+                        cat_cfg["MASTcasjobs_pwd"] = v
+            default_input["catalog"] = cat_cfg
+        except Exception:
+            # Tokens module is optional; leave config as-is.
+            pass
+
+        # Resolve paths and interpreter
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        autophot_exe = os.path.join(current_dir, "main.py")
+        python_executable = sys.executable
+
+        if do_photometry:
+            _log(border_msg("AutoPhOT Photometry Run") if border_msg else log_step("AutoPhOT photometry run"))
+            _log("Report any issues at: https://github.com/Astro-Sean/autophot/issues")
+
+            # List of available filters (excluding error columns)
+            filt_list = [
+                f
+                for f in available_filters
+                if "_err" not in f and f not in ["RA", "DEC"]
+            ]
+            _log(f"Available filters: {', '.join(sorted(filt_list))}")
+
+            # Optional: Enrich target metadata from TNS
+            try:
+                _log(border_msg("TNS check") if border_msg else log_step("TNS check"))
+                tns_coords = prepare_db.check_tns()
+                default_input.update(
+                    {
+                        "target_ra": tns_coords["radeg"],
+                        "target_dec": tns_coords["decdeg"],
+                        "name_prefix": tns_coords["name_prefix"],
+                        "objname": tns_coords["objname"],
+                    }
+                )
+            except Exception:
+                # Provide a clean, user-friendly message instead of exposing
+                # low-level exceptions (e.g. missing 'radeg', network errors).
+                if (
+                    default_input.get("target_ra") is not None
+                    and default_input.get("target_dec") is not None
+                ):
+                    _log(
+                        "[WARNING] TNS lookup skipped; using target_ra/target_dec "
+                        "values from the configuration."
+                    )
+                else:
+                    _log(
+                        "[ERROR] Cannot proceed: no TNS access, no target_name, "
+                        "and no fallback RA/Dec provided in the configuration."
+                    )
+                    print(
+                        "\n"
+                        + (
+                            ascii_card(
+                                "ERROR: cannot proceed without target coordinates",
+                                [
+                                    "You must provide one of:",
+                                    "  1. target_name + TNS API credentials (in wcs: TNS_BOT_ID, etc.)",
+                                    "  2. target_ra and target_dec coordinates manually",
+                                    "  3. target_name with RA/Dec fallback (if TNS fails)",
+                                    "",
+                                    "Add to your input:",
+                                    "   autophot_input['target_ra'] = <RA in degrees>",
+                                    "   autophot_input['target_dec'] = <Dec in degrees>",
+                                ],
+                            )
+                            if ascii_card
+                            else "ERROR: Cannot proceed without target coordinates."
+                        )
+                        + "\n"
+                    )
+                    sys.exit("Stopped: No target coordinates provided.")
+
+            # ------------------------------------------------------------------
+            # Additional targets: resolve names/coords and de-duplicate against
+            # the primary target.  The resolved list is stored in the input
+            # dict so per-image subprocesses (main.py) can use it directly.
+            # ------------------------------------------------------------------
+            try:
+                from additional_targets import resolve_additional_targets
+                _additional = resolve_additional_targets(
+                    default_input, prepare_db=prepare_db
+                )
+                default_input["_additional_targets_resolved"] = _additional
+                if _additional:
+                    _log(
+                        log_step(
+                            f"Additional targets ({len(_additional)}): "
+                            + ", ".join(t["name"] for t in _additional)
+                        )
+                    )
+                else:
+                    default_input["_additional_targets_resolved"] = []
+            except Exception as _at_exc:
+                _log(f"[WARNING] Additional-target resolution failed: {_at_exc}")
+                default_input["_additional_targets_resolved"] = []
+
+            # Clean and validate input files
+            file_list = prepare_db.clean()
+            if not default_input.get("skip_file_check", False):
+                file_list = prepare_db.check_files(flist=file_list)
+
+                if len(file_list) == 0:
+                    _log(
+                        log_step("No images left after validation; skipping photometry")
+                    )
+                    do_photometry = False
+                else:
+                    if default_input.get("validate_fits_headers", False):
+                        file_list = prepare_db.validate_fits_headers(flist=file_list)
+                        if len(file_list) == 0:
+                            _log(
+                                log_step("No images left after header validation; skipping photometry")
+                            )
+                            do_photometry = False
+                    if do_photometry:
+                        file_list, required_filters = prepare_db.check_filters(
+                            flist=file_list, available_filters=available_filters
+                        )
+            else:
+                required_filters = available_filters
+
+            if do_photometry:
+                required_filters = list(set(required_filters))
+
+                # Template handling and optional downloads
+                template_folder = os.path.join(default_input["fits_dir"], "templates")
+                ts_cfg = default_input.get("template_subtraction", {})
+                # Backward compatibility: older configs used `get_PS1_template: True`.
+                # Prefer the newer `download_templates: <kind>` selector.
+                if not ts_cfg.get("download_templates", False) and ts_cfg.get(
+                    "get_PS1_template", False
+                ):
+                    ts_cfg["download_templates"] = "panstarrs"
+                if ts_cfg.get("download_templates", False) and ts_cfg.get(
+                    "do_subtraction", False
+                ):
+                    download_kind = ts_cfg["download_templates"]
+                    size_default = ts_cfg.get("templates_size", 10)
+                    if download_kind is True:
+                        download_kind = "panstarrs"
+
+                    filters_str = ", ".join(sorted(required_filters)) if required_filters else "None"
+                    _log(
+                        f"Downloading templates for science image filters: {filters_str}"
+                    )
+
+                    if download_kind == "panstarrs":
+                        _log(log_step("Download templates: Pan-STARRS"))
+                        from templates import download_panstarrs_template
+
+                        for f in required_filters:
+                            download_panstarrs_template(
+                                ra=default_input["target_ra"],
+                                dec=default_input["target_dec"],
+                                size=size_default,
+                                template_folder=template_folder,
+                                band=f,
+                            )
+                    elif download_kind == "sdss":
+                        _log(log_step("Download templates: SDSS"))
+                        from templates import download_sdss_template
+
+                        for f in required_filters:
+                            download_sdss_template(
+                                ra=default_input["target_ra"],
+                                dec=default_input["target_dec"],
+                                size=size_default,
+                                template_folder=template_folder,
+                                f=f,
+                            )
+                    elif download_kind == "legacy":
+                        _log(
+                            log_step("Download templates: Legacy Surveys")
+                        )
+                        from templates import download_legacy_template
+
+                        for f in required_filters:
+                            download_legacy_template(
+                                ra=default_input["target_ra"],
+                                dec=default_input["target_dec"],
+                                size=size_default,
+                                template_folder=template_folder,
+                                band=f,
+                            )
+                    elif download_kind == "2mass":
+                        _log(log_step("Download templates: 2MASS"))
+                        from templates import download_2mass_template
+
+                        for f in required_filters:
+                            download_2mass_template(
+                                ra=default_input["target_ra"],
+                                dec=default_input["target_dec"],
+                                size=ts_cfg.get("templates_size", 10),
+                                template_folder=template_folder,
+                                band=f,
+                            )
+
+                # Discover and validate template files if subtraction is enabled
+                template_file_list = []
+                if ts_cfg.get("do_subtraction", False):
+                    # Only prepare templates for filters actually needed by science images
+                    # This avoids unnecessary template preparation for unused filters
+                    template_required_filters = required_filters
+                    logger = logging.getLogger(__name__)
+                    logger.info(
+                        "Looking for templates for science image filters: %s",
+                        ", ".join(sorted(template_required_filters)) if template_required_filters else "None"
+                    )
+                    template_file_list = prepare_db.find_templates(
+                        required_filters=template_required_filters
+                    )
+                    template_file_list = prepare_db.check_files(
+                        flist=template_file_list, template_files=True
+                    )
+                    if default_input.get("validate_fits_headers", False):
+                        template_file_list = prepare_db.validate_fits_headers(
+                            flist=template_file_list, template_files=True
+                        )
+                    template_file_list, _ = prepare_db.check_filters(
+                        flist=template_file_list, available_filters=available_filters
+                    )
+                    # Re-run telescope header check on science + templates so template images
+                    # with TELESCOP/INSTRUME are included in the telescope database
+                    if template_file_list and not default_input.get(
+                        "skip_file_check", False
+                    ):
+                        combined = list(file_list) + list(template_file_list)
+                        combined_checked = prepare_db.check_files(
+                            flist=combined, template_files=True
+                        )
+                        template_folder_norm = os.path.normpath(template_folder)
+                        file_list = [
+                            f
+                            for f in combined_checked
+                            if os.path.normpath(f).startswith(template_folder_norm)
+                            is False
+                        ]
+                        template_file_list = [
+                            f
+                            for f in combined_checked
+                            if os.path.normpath(f).startswith(template_folder_norm)
+                        ]
+
+                # Prepare output directory and save input snapshot
+                backup_yaml = copy.deepcopy(default_input)
+                # If template subtraction was requested but no valid template
+                # files were found, fall back to non-template photometry.
+                if ts_cfg.get("do_subtraction", False) and not template_file_list:
+                    _log(
+                        "[WARNING] template_subtraction.do_subtraction=True "
+                        "but no template files were found or passed checks. "
+                        "Proceeding with non-template photometry only."
+                    )
+                    backup_yaml.setdefault("template_subtraction", {})[
+                        "do_subtraction"
+                    ] = False
+                work_dir = backup_yaml["fits_dir"]
+                new_dir = "_" + backup_yaml["outdir_name"]
+                base_dir = os.path.basename(work_dir)
+                work_loc = base_dir + new_dir
+                new_output_dir = os.path.join(os.path.dirname(work_dir), work_loc)
+                Path(new_output_dir).mkdir(parents=True, exist_ok=True)
+
+                # Resolve wdir to an absolute path so the catalog cache
+                # directory is stable across the os.chdir() that main.py does
+                # per-image.  Without this, wdir='.' resolves to different
+                # directories before/after chdir, causing cache misses and
+                # redundant Gaia archive downloads.
+                _raw_wdir = backup_yaml.get("wdir", ".")
+                backup_yaml["wdir"] = os.path.abspath(_raw_wdir)
+
+                # Normalize target_name to match what main.py does, so the
+                # catalog cache directory is consistent between pre-fetch and
+                # per-image processing.  Without this, the pre-fetch saves the
+                # cached catalog under e.g. "sn2026yos/" but main.py looks for
+                # it under "2026yos/", causing a cache miss and redundant Gaia
+                # archive downloads.
+                backup_yaml["target_name"] = canonical_target_name(
+                    backup_yaml
+                )
+
+                # Pre-download reference catalog(s) once, before the per-image loop.
+                # main.py will find the cached CSV and skip re-downloading.
+                _log(border_msg("Reference Photometric Catalog") if border_msg else log_step("Reference photometric catalog (pre-download)"))
+                try:
+                    from catalog import (
+                        Catalog as _Catalog,
+                        AUTO_OPTIMIZE_CATALOGS as _AUTO_CATALOGS,
+                        AUTO_OPTIMIZE_EXCLUDED as _AUTO_EXCLUDED,
+                        plot_optimized_catalog_coverage as _plot_coverage,
+                        _footprints_from_image_infos as _mk_footprints,
+                        _footprint_region,
+                        _fmt_region,
+                    )
+                    from functions import parse_supported_filter_group_key
+                    _cat = _Catalog(input_yaml=backup_yaml)
+                    _use_cat = backup_yaml.get("catalog", {}).get("use_catalog")
+
+                    def _fmt_use_catalog(m):
+                        """Compact band->catalog string, e.g.
+                        'g,r -> skymapper; B -> apass'."""
+                        if not isinstance(m, dict):
+                            return str(m)
+                        _rev = {}
+                        for _b, _c in m.items():
+                            if _c is None:
+                                continue
+                            _rev.setdefault(str(_c).strip(), []).append(str(_b))
+                        return "; ".join(
+                            f"{','.join(sorted(_bs))} -> {_c}"
+                            for _c, _bs in sorted(_rev.items())
+                        )
+
+                    _available_catalogs = [
+                        "gaia", "pan_starrs", "sdss", "apass",
+                        "2mass", "legacy", "refcat", "skymapper",
+                    ]
+                    _target_coords = SkyCoord(
+                        backup_yaml["target_ra"],
+                        backup_yaml["target_dec"],
+                        unit=(u.deg, u.deg), frame="icrs",
+                    )
+
+                    # Configured pixel scale (arcsec/pix) - lets footprint
+                    # sizing work on images whose headers carry no WCS.
+                    _cfg_scale = backup_yaml.get("pixel_scale") or (
+                        backup_yaml.get("wcs") or {}
+                    ).get("pixel_scale_arcsec") or (
+                        backup_yaml.get("wcs") or {}
+                    ).get("pixel_scale")
+
+                    # Image footprint descriptors - filled by the optimizer
+                    # scan, or lazily before the pre-fetch so the catalog
+                    # cone can be sized to cover the detectors.
+                    _image_infos = None
+
+                    # "auto": scan every image footprint, download all
+                    # feasible catalogs once, and keep the best backend
+                    # per band as a use_catalog mapping.  The resolved
+                    # mapping is cached next to the catalog CSVs so a
+                    # restarted run skips the scan entirely; delete the
+                    # file to force a fresh optimization.
+                    _auto_mode = (
+                        isinstance(_use_cat, str)
+                        and _use_cat.strip().lower() == "auto"
+                    )
+                    _opt = None
+                    _opt_cache = None
+                    # Per-catalog query regions from the optimizer scan
+                    # (fresh or recovered from the yml cache).  Reusing
+                    # them keeps the pre-fetch hitting the scan's cache
+                    # files instead of re-querying over a different box.
+                    _scan_regions = {}
+                    if _auto_mode:
+                        _opt_cache = os.path.join(
+                            backup_yaml["wdir"],
+                            "catalog_queries",
+                            f"{backup_yaml.get('target_name', 'target')}"
+                            "_optimized_catalog.yml",
+                        )
+                        _use_cat = None
+                        if os.path.exists(_opt_cache):
+                            try:
+                                with open(_opt_cache) as _fh:
+                                    _cached = yaml.safe_load(_fh) or {}
+                                _cached_map = _cached.get("use_catalog")
+                                if isinstance(_cached_map, dict) and _cached_map:
+                                    _need = {
+                                        str(b) for b in required_filters
+                                    }
+                                    _have = {
+                                        str(k) for k in _cached_map
+                                    }
+                                    if _need <= _have or "default" in _cached_map:
+                                        _use_cat = _cached_map
+                                        if isinstance(
+                                            _cached.get("regions"), dict
+                                        ):
+                                            _scan_regions = _cached[
+                                                "regions"
+                                            ]
+                                        _log(
+                                            "  use_catalog=auto: reusing "
+                                            "cached selection "
+                                            f"{_fmt_use_catalog(_cached_map)}"
+                                        )
+                                        _log(
+                                            f"    cache: {_opt_cache} "
+                                            f"({_cached.get('n_images', '?')} "
+                                            "images; delete to re-scan)"
+                                        )
+                                    else:
+                                        _log(
+                                            f"  Cached auto selection "
+                                            f"misses band(s) "
+                                            f"{sorted(_need - _have)}; "
+                                            f"re-optimizing."
+                                        )
+                            except Exception as _ce:
+                                _log(
+                                    f"  [WARNING] Could not read auto "
+                                    f"catalog cache ({_ce}); "
+                                    f"re-optimizing."
+                                )
+                        if _use_cat is None:
+                            try:
+                                _image_infos = _scan_image_footprints(
+                                    file_list,
+                                    getattr(prepare_db, "file_filter_map", {}),
+                                    pixscale_fallback=_cfg_scale,
+                                )
+                                _log(
+                                    "  use_catalog=auto: scanning "
+                                    f"{len(_image_infos)} image footprint(s) "
+                                    "to pick the best catalog per band"
+                                )
+                                _opt = _cat.find_optimized_catalog(
+                                    target_coords=_target_coords,
+                                    images=_image_infos,
+                                    bands=required_filters,
+                                    target_name=backup_yaml.get(
+                                        "target_name", "target"
+                                    ),
+                                    outdir=new_output_dir,
+                                )
+                                _use_cat = _opt.get("use_catalog") or "gaia"
+                                if isinstance(_opt.get("regions"), dict):
+                                    _scan_regions = _opt["regions"]
+                                # Winners, report and plot paths are already
+                                # logged by find_optimized_catalog - only the
+                                # resolved mapping and a compact skip summary
+                                # belong here.
+                                _log(
+                                    "  Auto-selected catalog(s): "
+                                    f"{_fmt_use_catalog(_use_cat)}"
+                                )
+                                if _opt.get("skipped"):
+                                    _log(
+                                        "  Skipped: "
+                                        + "; ".join(
+                                            f"{k} ({str(v).splitlines()[0]})"
+                                            for k, v in _opt["skipped"].items()
+                                        )
+                                    )
+                                if isinstance(_use_cat, dict):
+                                    try:
+                                        Path(
+                                            os.path.dirname(_opt_cache)
+                                        ).mkdir(parents=True, exist_ok=True)
+                                        with open(_opt_cache, "w") as _fh:
+                                            yaml.safe_dump(
+                                                {
+                                                    "use_catalog": {
+                                                        str(k): str(v)
+                                                        for k, v in _use_cat.items()
+                                                    },
+                                                    "bands": [
+                                                        str(b)
+                                                        for b in required_filters
+                                                    ],
+                                                    "n_images": len(
+                                                        _image_infos
+                                                    ),
+                                                    "target_ra": float(
+                                                        backup_yaml["target_ra"]
+                                                    ),
+                                                    "target_dec": float(
+                                                        backup_yaml["target_dec"]
+                                                    ),
+                                                    # Persist the query
+                                                    # regions the scan
+                                                    # used so restarted
+                                                    # runs hit the same
+                                                    # CSV cache keys.
+                                                    "regions": {
+                                                        str(k): v
+                                                        for k, v in (
+                                                            _scan_regions
+                                                            or {}
+                                                        ).items()
+                                                    },
+                                                },
+                                                _fh,
+                                                sort_keys=True,
+                                            )
+                                        _log(
+                                            "  Cached auto selection: "
+                                            f"{_opt_cache} "
+                                            "(delete to force re-scan)"
+                                        )
+                                    except Exception as _we:
+                                        _log(
+                                            f"  [WARNING] Could not cache "
+                                            f"optimized catalog selection "
+                                            f"({_we})"
+                                        )
+                            except Exception as _oe:
+                                _log(
+                                    f"  [WARNING] Catalog optimization failed "
+                                    f"({_oe}); falling back to 'gaia'."
+                                )
+                                _use_cat = "gaia"
+                        backup_yaml.setdefault("catalog", {})[
+                            "use_catalog"
+                        ] = _use_cat
+
+                    if isinstance(_use_cat, dict):
+                        _unique_cats = sorted(set(
+                            v for v in _use_cat.values()
+                            if v is not None and str(v).strip() != ""
+                        ))
+                    elif _use_cat is not None and str(_use_cat).strip() != "":
+                        _unique_cats = [str(_use_cat).strip()]
+                    else:
+                        _unique_cats = []
+
+                    if not _unique_cats:
+                        _log(
+                            ascii_card(
+                                "No photometric catalog selected",
+                                [
+                                    f"Target: RA={backup_yaml['target_ra']:.6f} deg, "
+                                    f"Dec={backup_yaml['target_dec']:.6f} deg",
+                                    "",
+                                    "A reference catalog is required for photometric calibration.",
+                                    "Set 'catalog.use_catalog' in your YAML to one of:",
+                                ]
+                                + [f"  - {_alt}" for _alt in _available_catalogs],
+                            )
+                            if ascii_card
+                            else "No photometric catalog selected."
+                        )
+                        _log("")
+                        sys.exit(0)
+                    # Auto-select GaiaXPy photometric systems based on required filters.
+                    # SDSS_Std covers u,g,r,i,z; JKC_Std covers U,B,V,R,I.
+                    # Only request the systems needed to avoid unnecessary archive queries.
+                    # Only run this when a Gaia-based catalog is selected - refcat, sdss,
+                    # pan_starrs, 2mass, legacy, skymapper don't use Gaia XP spectra.
+                    _gaia_catalogs = {"gaia", "apass"}
+                    # Case-sensitive matching: SDSS bands are lowercase, JKC are uppercase.
+                    # Computed unconditionally so a fallback onto a Gaia-backed
+                    # catalog during pre-fetch can re-enable the XP systems.
+                    _req_set = {str(f).strip() for f in required_filters}
+                    _auto_phot_systems = []
+                    if _req_set & {"u", "g", "r", "i", "z"}:
+                        _auto_phot_systems.append("SDSS_Std")
+                    if _req_set & {"U", "B", "V", "R", "I"}:
+                        _auto_phot_systems.append("JKC_Std")
+                    _needs_gaia_xp = any(
+                        str(c).lower() in _gaia_catalogs for c in _unique_cats
+                    )
+                    if _needs_gaia_xp:
+                        if _auto_phot_systems:
+                            backup_yaml.setdefault("catalog", {})["gaia_xp_photometric_systems"] = _auto_phot_systems
+                            _log(
+                                "  GaiaXPy photometric systems: "
+                                f"{', '.join(_auto_phot_systems)} "
+                                f"(filters: {', '.join(sorted(_req_set))})"
+                            )
+                    else:
+                        # Non-Gaia catalog: disable GaiaXPy to avoid unnecessary archive queries.
+                        backup_yaml.setdefault("catalog", {})["gaia_xp_photometric_systems"] = []
+                        _log(
+                            "  Skipping GaiaXPy: no selected catalog "
+                            "needs Gaia XP spectra"
+                        )
+
+                    # Per-band query regions: every band's images get a
+                    # region centred on the footprint bounding box (not the
+                    # target, so offset pointings do not inflate it) and
+                    # bounded by catalog.region_* config.  Each catalog is
+                    # then queried over the union of the bands it serves -
+                    # in auto mode the optimizer already did this, so its
+                    # regions are reused to keep the CSV cache keys
+                    # identical to the scan's.
+                    if _image_infos is None:
+                        try:
+                            _image_infos = _scan_image_footprints(
+                                file_list,
+                                getattr(prepare_db, "file_filter_map", {}),
+                                pixscale_fallback=_cfg_scale,
+                            )
+                        except Exception:
+                            _image_infos = []
+                    _cat_bounds = backup_yaml.get("catalog", {}) or {}
+
+                    def _cfg_region(key, default):
+                        try:
+                            v = float(_cat_bounds.get(key, default))
+                        except (TypeError, ValueError):
+                            return float(default)
+                        return v if np.isfinite(v) else float(default)
+
+                    _rb = dict(
+                        margin=_cfg_region("region_margin", 1.1),
+                        min_arcmin=_cfg_region("region_min_arcmin", 2.0),
+                        max_arcmin=_cfg_region("region_max_arcmin", 60.0),
+                        default_arcmin=10.0,
+                    )
+                    _bands_req = [str(b) for b in required_filters]
+                    _band_regions = {
+                        b: _footprint_region(
+                            _image_infos, [b], _target_coords, **_rb
+                        )
+                        for b in _bands_req
+                    }
+                    for _b, _br in _band_regions.items():
+                        _log(
+                            f"  {_b}-band coverage region: "
+                            f"{_fmt_region(_br)}"
+                        )
+                    _global_region = _footprint_region(
+                        _image_infos, None, _target_coords, **_rb
+                    )
+                    _prefetch_radius = _global_region["radius_arcmin"]
+
+                    _regions_by_cat = {}
+
+                    def _region_for_catalog(cname):
+                        """Union region over the bands mapped to `cname`
+                        (empty mapping -> all required bands)."""
+                        key = _cat._normalize_catalog_name(str(cname))
+                        if key not in _regions_by_cat:
+                            _bs = []
+                            if isinstance(_use_cat, dict):
+                                for _k, _v in _use_cat.items():
+                                    if (
+                                        str(_v).strip().lower() != key
+                                        or _v is None
+                                    ):
+                                        continue
+                                    _kl = str(_k).strip().lower()
+                                    if _kl in {"default", "*", "all"}:
+                                        continue
+                                    _exp = parse_supported_filter_group_key(
+                                        str(_k)
+                                    )
+                                    _bs.extend(
+                                        _exp if _exp else [str(_k)]
+                                    )
+                            _regions_by_cat[key] = _footprint_region(
+                                _image_infos,
+                                _bs or _bands_req,
+                                _target_coords,
+                                **_rb,
+                            )
+                        return _regions_by_cat[key]
+
+                    def _resolve_query_region(cname):
+                        """Scan region when available (identical cache
+                        keys), else the assigned-bands union."""
+                        key = _cat._normalize_catalog_name(str(cname))
+                        reg = (
+                            _scan_regions.get(key)
+                            if isinstance(_scan_regions, dict)
+                            else None
+                        )
+                        if not isinstance(reg, dict):
+                            reg = _region_for_catalog(cname)
+                        return reg
+
+                    # Only persist when a footprint was actually measured:
+                    # leaving the keys unset lets main.py re-size the cone
+                    # per image after its WCS solve.
+                    _measured = any(
+                        (i.get("shape") is not None)
+                        and (
+                            i.get("wcs") is not None
+                            or _positive_scale(i.get("pixscale"))
+                        )
+                        for i in _image_infos
+                    )
+                    if _measured:
+                        _cat_section = backup_yaml.setdefault("catalog", {})
+                        _cat_section[
+                            "catalog_query_radius_arcmin"
+                        ] = _prefetch_radius
+                        _cat_section["catalog_query_regions"] = {
+                            "default": _global_region,
+                            **{
+                                _cat._normalize_catalog_name(str(c)):
+                                _resolve_query_region(c)
+                                for c in _unique_cats
+                            },
+                        }
+                        _log(
+                            f"  Catalog query region: {_fmt_region(_global_region)}"
+                        )
+                    else:
+                        _log(
+                            "  Catalog query radius: 10.0 arcmin default "
+                            "(no WCS or pixel scale available)"
+                        )
+
+                    # Fallback ranking for auto-resolved mappings: the
+                    # optimizer report when the scan ran this session, else
+                    # the coverage CSV the earlier scan left in the output
+                    # directory.
+                    _opt_report = (
+                        _opt.get("report") if isinstance(_opt, dict) else None
+                    )
+                    _cov_csv = os.path.join(
+                        new_output_dir,
+                        f"{backup_yaml.get('target_name', 'target')}"
+                        "_optimized_catalog_coverage.csv",
+                    )
+                    if _opt_report is None and _auto_mode:
+                        if os.path.exists(_cov_csv):
+                            try:
+                                _opt_report = pd.read_csv(_cov_csv)
+                            except Exception:
+                                _opt_report = None
+
+                    # Coverage map + scoreboard: fresh scans render the
+                    # figure inside find_optimized_catalog; cached runs
+                    # rebuild it from the persisted report (if present)
+                    # and the local catalog CSV cache (offline) so every
+                    # auto run leaves the figure behind - map-only when no
+                    # report survived.
+                    if _auto_mode:
+                        _cov_png = os.path.join(
+                            new_output_dir,
+                            f"{backup_yaml.get('target_name', 'target')}"
+                            "_optimized_catalog_coverage.png",
+                        )
+                        if not os.path.exists(_cov_png):
+                            try:
+                                if _opt_report is not None and len(
+                                    _opt_report
+                                ):
+                                    _rep_cats = sorted(
+                                        _opt_report["catalog"]
+                                        .astype(str)
+                                        .unique()
+                                    )
+                                    _rep_bands = {
+                                        str(_c): sorted(
+                                            _opt_report.loc[
+                                                _opt_report["catalog"]
+                                                .astype(str)
+                                                == str(_c),
+                                                "band",
+                                            ]
+                                            .astype(str)
+                                            .unique()
+                                        )
+                                        for _c in _rep_cats
+                                    }
+                                else:
+                                    # No report: rebuild for the full auto
+                                    # candidate pool (plus any selected
+                                    # catalog outside it) so every catalog
+                                    # with detections reaches the map, not
+                                    # just the winners.  Downloads hit the
+                                    # scan's CSV cache.
+                                    _cat_cfg = (
+                                        backup_yaml.get("catalog", {}) or {}
+                                    )
+                                    _cand = list(_AUTO_CATALOGS)
+                                    if _cat_cfg.get(
+                                        "MASTcasjobs_wsid"
+                                    ) and _cat_cfg.get("MASTcasjobs_pwd"):
+                                        _cand.append("refcat")
+                                    if _cat_cfg.get("catalog_custom_fpath"):
+                                        _cand.append("custom")
+                                    _pool = {
+                                        _cat._normalize_catalog_name(str(c))
+                                        for c in _cand
+                                        if str(c) not in _AUTO_EXCLUDED
+                                    }
+                                    if isinstance(_use_cat, dict):
+                                        _pool |= {
+                                            _cat._normalize_catalog_name(
+                                                str(c)
+                                            )
+                                            for c in _use_cat.values()
+                                            if c is not None
+                                            and str(c).strip()
+                                        }
+                                    elif _use_cat:
+                                        _pool.add(
+                                            _cat._normalize_catalog_name(
+                                                str(_use_cat)
+                                            )
+                                        )
+                                    _rep_cats = sorted(_pool)
+                                    _sup = _cat._catalog_supported_bands(
+                                        _rep_cats
+                                    )[0]
+                                    _rep_bands = {
+                                        _c: sorted(
+                                            _sup.get(_c, set())
+                                        )
+                                        for _c in _rep_cats
+                                    }
+                                _rep_regions = {
+                                    str(_c): _resolve_query_region(_c)
+                                    for _c in _rep_cats
+                                }
+                                (
+                                    _rebuilt_sources,
+                                    _rebuilt_all,
+                                    _rebuilt_report,
+                                ) = _cat._optimizer_plot_sources(
+                                    _rep_cats,
+                                    band_set=sorted(
+                                        str(b)
+                                        for b in required_filters
+                                    ),
+                                    image_infos=_image_infos or [],
+                                    target_coords=_target_coords,
+                                    radius=_prefetch_radius,
+                                    regions=_rep_regions,
+                                    return_report=True,
+                                )
+                                if _opt_report is None or not len(
+                                    _opt_report
+                                ):
+                                    # The coverage CSV did not survive
+                                    # (or the scan ran on another output
+                                    # dir) - the offline rebuild supplies
+                                    # the same counts so the scoreboard
+                                    # row is not lost on cached runs.
+                                    _opt_report = _rebuilt_report
+                                    try:
+                                        _opt_report.to_csv(
+                                            _cov_csv, index=False
+                                        )
+                                    except Exception:
+                                        pass
+                                _plot_coverage(
+                                    {
+                                        "footprints": _mk_footprints(
+                                            _image_infos
+                                        ),
+                                        "sources": _rebuilt_sources,
+                                        "winners": (
+                                            {
+                                                str(b): str(c)
+                                                for b, c in _use_cat.items()
+                                                if str(b).strip().lower()
+                                                not in {"default", "*", "all"}
+                                            }
+                                            if isinstance(_use_cat, dict)
+                                            else {}
+                                        ),
+                                        "band_set": sorted(
+                                            str(b)
+                                            for b in required_filters
+                                        ),
+                                        "evaluated": list(_rep_cats),
+                                        "band_regions": _band_regions,
+                                        "regions": _rep_regions,
+                                        "catalog_sources": _rebuilt_all,
+                                        "catalog_bands": _rep_bands,
+                                        "skipped": {},
+                                    },
+                                    target_coords=_target_coords,
+                                    target_name=backup_yaml.get(
+                                        "target_name", "target"
+                                    ),
+                                    wdir=backup_yaml["wdir"],
+                                    outpath=_cov_png,
+                                    report=_opt_report,
+                                    skipped=(
+                                        _opt.get("skipped")
+                                        if isinstance(_opt, dict)
+                                        else None
+                                    ),
+                                )
+                            except Exception as _cpe:
+                                _log(
+                                    "  [WARNING] Could not rebuild catalog "
+                                    f"coverage plot: {_cpe}"
+                                )
+
+                    _prefetch_failed = {}
+
+                    def _prefetch_one(_name):
+                        if backup_yaml.get("catalog", {}).get("build_catalog", False):
+                            _log(f"  Pre-building catalog: {_name}")
+                            _cat.build_complete_catalog(
+                                target_coords=_target_coords,
+                                catalog_list=["refcat", "sdss", "pan_starrs", "apass", "2mass"],
+                                max_separation=5,
+                                radius=_prefetch_radius,
+                                regions=backup_yaml.get("catalog", {}).get(
+                                    "catalog_query_regions"
+                                ),
+                            )
+                            return
+                        _resolved = _cat._require_catalog_selected(_name)
+                        _pf_bands = (
+                            sorted(
+                                str(b)
+                                for b, c in _use_cat.items()
+                                if str(c).strip().lower()
+                                == str(_resolved).strip().lower()
+                                and str(b).strip().lower()
+                                not in {"default", "*", "all"}
+                            )
+                            if isinstance(_use_cat, dict)
+                            else []
+                        )
+                        _pf_region = _resolve_query_region(_resolved)
+                        _log(
+                            f"  Pre-fetching catalog: {_resolved}"
+                            + (
+                                f" (bands: {', '.join(_pf_bands)})"
+                                if _pf_bands
+                                else ""
+                            )
+                            + f" [{_fmt_region(_pf_region)}]"
+                        )
+                        # A fallback onto a Gaia-backed catalog needs the XP
+                        # systems re-enabled (they are disabled above whenever
+                        # no Gaia-backed winner was selected).
+                        if str(_resolved).strip().lower() in _gaia_catalogs:
+                            _xp = backup_yaml.setdefault("catalog", {}).get(
+                                "gaia_xp_photometric_systems"
+                            )
+                            if not _xp and _auto_phot_systems:
+                                backup_yaml["catalog"][
+                                    "gaia_xp_photometric_systems"
+                                ] = _auto_phot_systems
+                                _log(
+                                    "  Re-enabled GaiaXPy systems "
+                                    f"{_auto_phot_systems} for fallback "
+                                    f"catalog '{_resolved}'."
+                                )
+                        _cat.download(
+                            target_coords=_target_coords,
+                            target_name=backup_yaml.get("target_name", "target"),
+                            catalogName=_resolved,
+                            catalog_custom_fpath=backup_yaml.get("catalog", {}).get(
+                                "catalog_custom_fpath", None
+                            ),
+                            radius=_pf_region.get(
+                                "radius_arcmin", _prefetch_radius
+                            ),
+                            region=_pf_region,
+                        )
+
+                    def _auto_candidates(band):
+                        """Best-first fallback backends for `band` (None = any)."""
+                        _ordered = []
+
+                        def _push(c):
+                            c = str(c).strip().lower()
+                            if (
+                                c
+                                and c not in _ordered
+                                and c not in _prefetch_failed
+                            ):
+                                _ordered.append(c)
+
+                        if _opt_report is not None and len(_opt_report):
+                            _sub = _opt_report
+                            if band is not None:
+                                _sub = _sub[_sub["band"] == str(band)]
+                            if not _sub.empty:
+                                _rank = (
+                                    _sub.groupby("catalog")["n_usable"]
+                                    .agg(["min", "mean"])
+                                    .sort_values(
+                                        ["min", "mean"], ascending=False
+                                    )
+                                )
+                                for _c in _rank.index:
+                                    _push(_c)
+                        for _c in _AUTO_CATALOGS:
+                            if _c not in _AUTO_EXCLUDED:
+                                _push(_c)
+                        # Gaia sits last: excluded from the bulk auto scan to
+                        # protect the archive, but still a valid last resort.
+                        _push("gaia")
+                        return _ordered
+
+                    for _cat_name in list(_unique_cats):
+                        try:
+                            _prefetch_one(_cat_name)
+                        except Exception as _ce:
+                            _prefetch_failed[
+                                str(_cat_name).strip().lower()
+                            ] = _ce
+                            if (
+                                not _auto_mode
+                                and isinstance(_ce, RuntimeError)
+                                and "0 sources" in str(_ce)
+                            ):
+                                _alternatives = [
+                                    c for c in _available_catalogs
+                                    if c not in [n.lower() for n in _unique_cats]
+                                ]
+                                _log(
+                                    ascii_card(
+                                        f"Catalog '{_cat_name}' returned 0 sources",
+                                        [
+                                            f"Target: RA={backup_yaml['target_ra']:.6f} deg, "
+                                            f"Dec={backup_yaml['target_dec']:.6f} deg",
+                                            "",
+                                            "This usually means the catalog does not cover this",
+                                            "region of sky, or the query service is unavailable.",
+                                            "",
+                                            "Try one of these alternative catalogs instead:",
+                                        ]
+                                        + [f"  - {_alt}" for _alt in _alternatives]
+                                        + [
+                                            "",
+                                            "Set 'catalog.use_catalog' in your YAML to one of the",
+                                            "alternatives above, then re-run.",
+                                        ],
+                                    )
+                                    if ascii_card
+                                    else f"Catalog '{_cat_name}' returned 0 sources."
+                                )
+                                _log("")
+                                sys.exit(0)
+                            _log(f"  [WARNING] Pre-fetch of '{_cat_name}' failed: {_ce}")
+
+                    # Auto-resolved mappings demote a failed winner to the
+                    # best still-working candidate per band rather than
+                    # stopping the run.  A "0 sources" failure means the
+                    # survey genuinely does not cover the field, so the
+                    # demotion is persisted to the optimizer cache; anything
+                    # else is treated as transient and falls back for this
+                    # run only.
+                    if (
+                        _auto_mode
+                        and _prefetch_failed
+                        and not backup_yaml.get("catalog", {}).get(
+                            "build_catalog", False
+                        )
+                    ):
+                        while True:
+                            if isinstance(_use_cat, dict):
+                                _failed_keys = [
+                                    k
+                                    for k, v in _use_cat.items()
+                                    if str(v).strip().lower()
+                                    in _prefetch_failed
+                                ]
+                            elif (
+                                _use_cat is not None
+                                and str(_use_cat).strip().lower()
+                                in _prefetch_failed
+                            ):
+                                _failed_keys = [None]
+                            else:
+                                _failed_keys = []
+                            _acted = False
+                            for _k in _failed_keys:
+                                _band = (
+                                    str(_k)
+                                    if _k is not None
+                                    and str(_k).strip().lower()
+                                    not in {"default", "*", "all"}
+                                    else None
+                                )
+                                _nxt = next(
+                                    iter(_auto_candidates(_band)), None
+                                )
+                                if _nxt is None:
+                                    continue
+                                _acted = True
+                                _was = (
+                                    _use_cat[_k] if _k is not None else _use_cat
+                                )
+                                _log(
+                                    f"  Catalog '{_was}' failed; trying "
+                                    f"'{_nxt}'"
+                                    + (f" for {_band}-band" if _band else "")
+                                )
+                                try:
+                                    _prefetch_one(_nxt)
+                                except Exception as _ce2:
+                                    _prefetch_failed[
+                                        str(_nxt).strip().lower()
+                                    ] = _ce2
+                                    _log(
+                                        "  [WARNING] Fallback catalog "
+                                        f"'{_nxt}' also failed: "
+                                        f"{str(_ce2).splitlines()[0]}"
+                                    )
+                                else:
+                                    if _k is not None:
+                                        _use_cat[_k] = _nxt
+                                    else:
+                                        _use_cat = _nxt
+                            if not _acted:
+                                break
+
+                        _unresolved = (
+                            [
+                                k
+                                for k, v in _use_cat.items()
+                                if str(v).strip().lower() in _prefetch_failed
+                            ]
+                            if isinstance(_use_cat, dict)
+                            else (
+                                [None]
+                                if _use_cat is not None
+                                and str(_use_cat).strip().lower()
+                                in _prefetch_failed
+                                else []
+                            )
+                        )
+                        if _unresolved:
+                            _log(
+                                ascii_card(
+                                    "No working photometric catalog found",
+                                    [
+                                        f"Target: RA={backup_yaml['target_ra']:.6f} deg, "
+                                        f"Dec={backup_yaml['target_dec']:.6f} deg",
+                                        "",
+                                        "'auto' tried every candidate catalog and all",
+                                        "queries failed:",
+                                    ]
+                                    + [
+                                        "  - "
+                                        + str(_c)
+                                        + ": "
+                                        + str(_prefetch_failed[_c]).splitlines()[0]
+                                        for _c in sorted(_prefetch_failed)
+                                    ]
+                                    + [
+                                        "",
+                                        "Check the failing services and re-run, or set",
+                                        "'catalog.use_catalog' to a working backend.",
+                                    ],
+                                )
+                                if ascii_card
+                                else "No working photometric catalog found."
+                            )
+                            _log("")
+                            sys.exit(0)
+
+                        # Commit the remapped selection for this run.
+                        backup_yaml.setdefault("catalog", {})[
+                            "use_catalog"
+                        ] = _use_cat
+                        if isinstance(_use_cat, dict):
+                            _unique_cats = sorted(
+                                {
+                                    str(v).strip()
+                                    for v in _use_cat.values()
+                                    if v is not None and str(v).strip()
+                                }
+                            )
+                        elif _use_cat is not None and str(_use_cat).strip():
+                            _unique_cats = [str(_use_cat).strip()]
+                        else:
+                            _unique_cats = []
+
+                        # A genuine 0-source (no coverage) failure demotes the
+                        # catalog in the optimizer cache so restarts skip it.
+                        _demoted = any(
+                            isinstance(e, RuntimeError)
+                            and "0 sources" in str(e)
+                            for e in _prefetch_failed.values()
+                        )
+                        if (
+                            _demoted
+                            and isinstance(_use_cat, dict)
+                            and _opt_cache
+                            and os.path.exists(_opt_cache)
+                        ):
+                            try:
+                                with open(_opt_cache) as _fh:
+                                    _cached = yaml.safe_load(_fh) or {}
+                                _cached["use_catalog"] = {
+                                    str(k): str(v)
+                                    for k, v in _use_cat.items()
+                                }
+                                with open(_opt_cache, "w") as _fh:
+                                    yaml.safe_dump(
+                                        _cached, _fh, sort_keys=True
+                                    )
+                                _log(
+                                    "  Demoted failed catalog(s) in cached "
+                                    f"selection: {_opt_cache}"
+                                )
+                            except Exception as _we:
+                                _log(
+                                    "  [WARNING] Could not update cached "
+                                    f"catalog selection ({_we})"
+                                )
+                except Exception as _pe:
+                    _log(f"[WARNING] Catalog pre-download step failed: {_pe}")
+                    _log("         main.py will retry per-image (cached CSV may still exist).")
+                _log("")
+
+                # SIMBAD variable sources near target for context
+
+                if ts_cfg.get("get_simbad_sources", True):
+                    try:
+                        vars_df = find_variable_sources(
+                            ra_deg=default_input["target_ra"],
+                            dec_deg=default_input["target_dec"],
+                        )
+                        variable_sources = vars_df.to_dict("records")
+
+                        backup_yaml["variable_sources"] = variable_sources
+                    except Exception as e:
+                        _log(f"[WARNING] SIMBAD variable-source enrichment skipped:")
+
+                else:
+                    backup_yaml["variable_sources"] = {}
+
+                # Write input snapshot
+                input_file = os.path.join(new_output_dir, "input.yaml")
+                with open(input_file, "w") as fh:
+                    yaml.dump(backup_yaml, fh, default_flow_style=False)
+
+                # Reduce templates first
+                if template_file_list:
+                    _log("")
+                    if parallel_files and len(template_file_list) > 1:
+                        # Parallelise template reductions when multiple workers requested.
+                        _log_always(
+                            f"Running {len(template_file_list)} template files with nCPU={n_cpu} (parallel)."
+                        )
+                        failed_templates = []
+                        with ProcessPoolExecutor(max_workers=n_cpu) as executor:
+                            futures = {
+                                executor.submit(
+                                    _run_main_subprocess,
+                                    python_executable,
+                                    autophot_exe,
+                                    template,
+                                    input_file,
+                                    True,
+                                    suppress_output=True,
+                                    gpu_ordinal=(
+                                        (i % n_gpu) if n_gpu > 0 else None
+                                    ),
+                                ): template
+                                for i, template in enumerate(
+                                    template_file_list
+                                )
+                            }
+                            total_t = len(futures)
+                            done_t = 0
+                            # Completions are consumed only here in the parent,
+                            # so the counter needs no locking.
+                            for fut in as_completed(futures):
+                                try:
+                                    fname, rc = fut.result()
+                                except Exception as exc:
+                                    fname, rc = futures[fut], 1
+                                    _log_always(
+                                        f"[WORKER ERROR] {fname}: {exc}"
+                                    )
+                                done_t += 1
+                                if rc != 0:
+                                    failed_templates.append(fname)
+                                    _log_always(
+                                        f"[{done_t}/{total_t}] [TEMPLATE FAIL] {fname} (exit code {rc})"
+                                    )
+                                else:
+                                    _log_always(
+                                        f"[{done_t}/{total_t}] [TEMPLATE OK]   {fname}"
+                                    )
+                        if failed_templates:
+                            _log_always(
+                                f"[WARNING] {len(failed_templates)}/{total_t} "
+                                "template files failed - see per-image logs."
+                            )
+                        gc.collect()
+                    else:
+                        _log(border_msg("Reduce/calibrate template files"))
+                        failed_templates = []
+                        for template in print_progress_bar(
+                            template_file_list, title="Template files calibrated"
+                        ):
+                            fname, rc = _run_main_subprocess(
+                                python_executable,
+                                autophot_exe,
+                                template,
+                                input_file,
+                                True,
+                            )
+                            if rc != 0:
+                                failed_templates.append(fname)
+                                _log_always(
+                                    f"[TEMPLATE FAIL] {fname} (exit code {rc})"
+                                )
+                            gc.collect()
+                        if failed_templates:
+                            _log_always(
+                                f"[WARNING] {len(failed_templates)}/"
+                                f"{len(template_file_list)} template files "
+                                "failed - see per-image logs."
+                            )
+
+                # Reduce science frames
+                _log("")
+                _log(border_msg("Reduce/calibrate science files"))
+
+                counter = 0
+                if file_list:
+                    file_list = np.sort(file_list)[
+                        ::-1
+                    ]  # Sort newest first if filenames encode time
+
+                    if debug and debug > 0:
+                        _log(
+                            f"DEBUG mode: limiting to {debug} science image(s) "
+                            f"(of {len(file_list)} available)."
+                        )
+                        file_list = file_list[:debug]
+
+                    if parallel_files and len(file_list) > 1:
+                        # Parallel image-level execution: each worker runs main.py on one file.
+                        _log_always(
+                            f"Running {len(file_list)} science files with nCPU={n_cpu} (parallel)."
+                        )
+                        failed_files = []
+                        with ProcessPoolExecutor(max_workers=n_cpu) as executor:
+                            futures = {
+                                executor.submit(
+                                    _run_main_subprocess,
+                                    python_executable,
+                                    autophot_exe,
+                                    str(file),
+                                    input_file,
+                                    False,
+                                    suppress_output=True,
+                                    gpu_ordinal=(
+                                        (i % n_gpu) if n_gpu > 0 else None
+                                    ),
+                                ): str(file)
+                                for i, file in enumerate(file_list)
+                            }
+                            total = len(futures)
+                            # as_completed delivers results only to this parent
+                            # loop, so the counter is race-free by construction.
+                            for fut in as_completed(futures):
+                                try:
+                                    fname, rc = fut.result()
+                                except Exception as exc:
+                                    fname, rc = futures[fut], 1
+                                    _log_always(f"[WORKER ERROR] {fname}: {exc}")
+                                counter += 1
+                                if rc == 0:
+                                    _log_always(f"[{counter}/{total}] [OK]    {fname}")
+                                else:
+                                    failed_files.append(fname)
+                                    _log_always(f"[{counter}/{total}] [FAIL]  {fname} (exit code {rc})")
+                                    if rc == 2 and (not os.path.exists(input_file)):
+                                        _log_always(
+                                            "[ERROR] Input YAML snapshot disappeared during processing. "
+                                            "Stopping early; re-run required."
+                                        )
+                                        break
+                        if failed_files:
+                            _log_always(
+                                f"[WARNING] {len(failed_files)}/{total} science files failed: "
+                                + ", ".join(os.path.basename(f) for f in failed_files)
+                                + " - see per-image LOG_<base>.log files."
+                            )
+                        _done_msg = (
+                            f"Done: {total - len(failed_files)}/{total} images OK"
+                            + (f", {len(failed_files)} failed" if failed_files else "")
+                        )
+                        _log_always(
+                            border_msg(_done_msg) if border_msg else _done_msg
+                        )
+                        gc.collect()
+                    else:
+                        # Only show progress bar for multiple files. tqdm is an
+                        # optional nicety - fall back to plain iteration and
+                        # the [i/N] log lines if it is not installed.
+                        file_iter = file_list
+                        _using_tqdm = False
+                        if len(file_list) > 1:
+                            try:
+                                from tqdm import tqdm
+                            except ImportError:
+                                pass
+                            else:
+                                file_iter = tqdm(
+                                    file_list,
+                                    desc="Processing",
+                                    unit="file",
+                                    total=len(file_list),
+                                )
+                                _using_tqdm = True
+                        for file in file_iter:
+                            # tqdm redraws its bar on the cursor's current
+                            # line; the child process inherits stdout, so a
+                            # newline here keeps its first output off the
+                            # bar line.  flush=True commits it before the
+                            # child writes - a buffered print() lands late
+                            # when stdout is piped, gluing "Started:" to the
+                            # bar.
+                            if _using_tqdm:
+                                print(flush=True)
+                            try:
+                                fname, rc = _run_main_subprocess(
+                                    python_executable,
+                                    autophot_exe,
+                                    str(file),
+                                    input_file,
+                                    False,
+                                )
+                                if rc == 2 and (not os.path.exists(input_file)):
+                                    _log(
+                                        "[ERROR] Input YAML snapshot disappeared during processing. "
+                                        "Stopping early; re-run required."
+                                    )
+                                    break
+                                gc.collect()
+                                counter += 1
+                                if rc == 0:
+                                    _log(f"[{counter}/{len(file_list)}] [OK]    {str(file)}")
+                                else:
+                                    _log(
+                                        f"[{counter}/{len(file_list)}] [FAIL]  {str(file)} "
+                                        f"(exit code {rc})"
+                                    )
+                            except Exception as e:
+                                import traceback
+
+                                tb = traceback.format_exc(limit=1)
+                                _log(
+                                    f"[{counter + 1}/{len(file_list)}] [ERROR] Problem with file: {file}: {e} | {tb}"
+                                )
+                            # Two blank lines between the [OK]/[ERROR] line
+                            # and the bar redraw - the next iteration's
+                            # "\r" rewrite consumes the line the cursor is
+                            # on, so only printed newlines stay visible.
+                            if _using_tqdm:
+                                print(flush=True)
+                                print(flush=True)
+                        if len(file_list) > 1:
+                            _done_msg = f"Done: {counter}/{len(file_list)} images processed"
+                            _log(border_msg(_done_msg) if border_msg else _done_msg)
+
+            # Concatenate per-image outputs into one light curve CSV
+            reduced_loc = f"{default_input['fits_dir']}_{default_input['outdir_name']}"
+            _log_always(border_msg(f"Collect photometry: {reduced_loc}"))
+            output_loc = os.path.join(reduced_loc, "LightCurve_Output.csv")
+            concatenate_csv_files(
+                folder_path=reduced_loc,
+                output_filename=output_loc,
+                loc_file="Output_*.csv",
+            )
+
+            _run_transient_color_correction(default_input, output_loc, reduced_loc, _log)
+
+            # Concatenate additional-target per-image CSVs into per-target
+            # lightcurve files.  Each additional target's per-image CSV is
+            # named AdditionalTarget_{safe_name}_{base}.csv.
+            # All additional-target outputs go into a sub_targets/ subfolder.
+            _additional_lc_paths = []
+            _at_resolved = default_input.get("_additional_targets_resolved") or []
+            if _at_resolved:
+                from additional_targets import sanitize_target_name_for_filename as _stfn
+                _sub_targets_dir = os.path.join(reduced_loc, "sub_targets")
+                os.makedirs(_sub_targets_dir, exist_ok=True)
+                for _at in _at_resolved:
+                    _at_safe = _stfn(str(_at.get("name", "AdditionalTarget")))
+                    _at_pattern = f"AdditionalTarget_{_at_safe}_*.csv"
+                    _at_lc_path = os.path.join(
+                        _sub_targets_dir, f"LightCurve_Output_{_at_safe}.csv"
+                    )
+                    concatenate_csv_files(
+                        folder_path=reduced_loc,
+                        output_filename=_at_lc_path,
+                        loc_file=_at_pattern,
+                    )
+                    _additional_lc_paths.append(_at_lc_path)
+                    _log(f"Additional-target light curve: {_at_lc_path}")
+            default_input["_additional_targets_lightcurve_paths"] = _additional_lc_paths
+
+            _log_always(
+                f"Photometry pipeline completed in {time.perf_counter() - t0:.3f} seconds."
+            )
+            output_photometry = output_loc
+        else:
+            # do_photometry=False: recover existing files and create output table
+            _log(border_msg("Recover photometry (skip reductions)"))
+
+            # Set up output directory path (same logic as when do_photometry=True)
+            work_dir = default_input.get("fits_dir") or ""
+            out_dir_name = "_" + str(default_input.get("outdir_name", "REDUCED"))
+            reduced_loc = f"{work_dir}{out_dir_name}"
+
+            # Resolve additional targets so their lightcurves can be recovered
+            # even when skipping reductions.
+            if not default_input.get("_additional_targets_resolved"):
+                try:
+                    from additional_targets import resolve_additional_targets
+                    _additional = resolve_additional_targets(
+                        default_input, prepare_db=None
+                    )
+                    default_input["_additional_targets_resolved"] = _additional
+                except Exception as _at_exc:
+                    _log(f"[WARNING] Additional-target resolution failed in recovery mode: {_at_exc}")
+                    default_input["_additional_targets_resolved"] = []
+
+            # Concatenate existing per-image outputs into one light curve CSV
+            _log(border_msg(f"Collect photometry: {reduced_loc}"))
+            output_photometry = os.path.join(reduced_loc, "LightCurve_Output.csv")
+
+            if os.path.exists(reduced_loc):
+                concatenate_csv_files(
+                    folder_path=reduced_loc,
+                    output_filename=output_photometry,
+                    loc_file="Output_*.csv",
+                )
+                _log_always(f"Output light curve: {output_photometry}")
+                _run_transient_color_correction(
+                    default_input, output_photometry, reduced_loc, _log
+                )
+
+                # Recover additional-target lightcurves too
+                _at_resolved = default_input.get("_additional_targets_resolved") or []
+                if _at_resolved:
+                    from additional_targets import sanitize_target_name_for_filename as _stfn
+                    _sub_targets_dir = os.path.join(reduced_loc, "sub_targets")
+                    os.makedirs(_sub_targets_dir, exist_ok=True)
+                    _additional_lc_paths = []
+                    for _at in _at_resolved:
+                        _at_safe = _stfn(str(_at.get("name", "AdditionalTarget")))
+                        _at_pattern = f"AdditionalTarget_{_at_safe}_*.csv"
+                        _at_lc_path = os.path.join(
+                            _sub_targets_dir, f"LightCurve_Output_{_at_safe}.csv"
+                        )
+                        concatenate_csv_files(
+                            folder_path=reduced_loc,
+                            output_filename=_at_lc_path,
+                            loc_file=_at_pattern,
+                        )
+                        _additional_lc_paths.append(_at_lc_path)
+                        _log(f"Additional-target light curve: {_at_lc_path}")
+                    default_input["_additional_targets_lightcurve_paths"] = _additional_lc_paths
+            else:
+                _log_always(f"[WARNING] Reduced directory not found: {reduced_loc}")
+                output_photometry = ""
+
+            _log_always(
+                f"Recovery completed in {time.perf_counter() - t0:.3f} seconds."
+            )
+
+        # Reset global QUIET_MODE to prevent state persisting across multiple calls
+        QUIET_MODE = False
+
+        return output_photometry
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """
+    Simple CLI wrapper for the high-level driver.
+
+    Usage:
+        autophot-driver run
+        python autophot.py run
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    ap = AutomatedPhotometry()
+    config = ap.load()
+
+    # CLI verbosity flags override the YAML setting: -v/--verbose -> 2,
+    # -q/--quiet -> 0, --verbose-level LEVEL -> explicit 0/1/2 or name.
+    _cli_verbose = None
+    if any(a in ("-v", "--verbose") for a in argv):
+        _cli_verbose = 2
+    elif any(a in ("-q", "--quiet") for a in argv):
+        _cli_verbose = 0
+    elif "--verbose-level" in argv:
+        _vi = argv.index("--verbose-level")
+        if _vi + 1 < len(argv):
+            _cli_verbose = argv[_vi + 1]
+    if _cli_verbose is not None:
+        config["global_verbose_level"] = _cli_verbose
+
+    # Global verbosity control (0=quiet, 1=normal, 2=verbose, 3=debug).
+    vlevel = resolve_verbose_level(config.get("global_verbose_level", 1))
+    config["global_verbose_level"] = vlevel
+    console_level = verbose_to_console_level(vlevel)
+
+    _handler = logging.StreamHandler()
+    _handler.setLevel(logging.DEBUG)
+    if ConsoleLevelFilter is not None:
+        _handler.addFilter(ConsoleLevelFilter(console_level))
+    else:
+        _handler.setLevel(console_level)
+    if ColoredLevelFormatter is not None:
+        _handler.setFormatter(ColoredLevelFormatter(use_color=True))
+    else:
+        _handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+        if cap_console_lines is not None:
+            cap_console_lines([_handler])
+    logging.basicConfig(level=logging.DEBUG, handlers=[_handler])
+    silence_noisy_loggers()
+
+    driver_start = time.time()
+    _log("Started: %s" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(driver_start)))
+
+    do_run = any(str(a).lower() == "run" for a in argv)
+    output = ap.run_photometry(config, do_photometry=do_run)
+    _log(f"Output light curve: {output}")
+    driver_end = time.time()
+    _log(
+        "Finished: %s  (%.1f s)"
+        % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(driver_end)),
+           driver_end - driver_start)
+    )
+    return 0
+
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    raise SystemExit(main())

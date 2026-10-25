@@ -1,0 +1,89 @@
+.venv/
+venv/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+
+# Editor/OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Data products / logs (astronomy)
+*.fz
+*.fits.gz
+*.head
+*.weight
+*.cat
+*.log
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.csv
+
+# Pipeline output directories (common suffix)
+*_REDUCED/
+*_reduced/
+REDUCED/
+
+# Local secrets (do not commit)
+autophot_tokens_local.py
+*.env
+
+__pycache__/
+
+# Virtual environments
+
+# Editor / IDE
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Logs and checkpoints
+*.log
+*.tmp
+*.bak
+
+# Large data products (FITS and related)
+
+# AutoPHOT-specific outputs
+*_REDUCED/
+*_TEMPLATE/
+*_DIFF/
+*_SUB/
+*_PLOTS/
+
+# Token / secret files
+autophot_tokens.py
+
+# Local helper scripts
+scripts/
+
+# opencode config (contains API keys)
+opencode.json
+
+temp_autophot/
+
+# Documentation
+docs/
+
+# Agent session notes
+agents.md
+*.egg-info/
+
+# Test suite (local validation only)
+tests/
+
+# Build artifacts
+dist/
+build/

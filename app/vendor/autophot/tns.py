@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Transient Name Server (TNS) query helpers for AutoPHOT.
+
+Provides functions to query the `TNS API <https://www.wis-tns.org/api/get>`_
+for transient coordinates, type, redshift, and discovery metadata.
+Credentials are resolved via :mod:`autophot_tokens`.
+"""
+
+import json
+import logging
+from collections import OrderedDict
+
+from functions import ascii_kv
+
+logger = logging.getLogger(__name__)
+
+
+def format_to_json(source):
+    """Parse a JSON string and re-emit it with pretty-printing.
+
+    Parameters
+    ----------
+    source : str
+        Raw JSON text returned by the TNS API.
+
+    Returns
+    -------
+    str
+        Indented JSON string (key order preserved).
+    """
+    parsed = json.loads(source, object_pairs_hook=OrderedDict)
+    return json.dumps(parsed, indent=4)
+
+
+def plot_transient_info(data):
+    """Log a human-readable summary of transient metadata from TNS.
+
+    Parameters
+    ----------
+    data : dict or None
+        TNS object data dictionary.  If ``None`` or empty, a message is
+        logged and the function returns immediately.
+    """
+    if not data:
+        logger.info("No TNS data available to display.")
+        return
+
+    pairs = [
+        ("Name", f"{data.get('name_prefix', '')}{data.get('objname', '')}"),
+        ("Type", data.get("object_type", {}).get("name", "Unknown")),
+        ("RA / Dec", f"{data.get('ra')} / {data.get('dec')}"),
+        ("RA / Dec deg", f"{data.get('radeg')} / {data.get('decdeg')}"),
+        ("Redshift", data.get("redshift", "N/A")),
+        ("Discovered", data.get("discoverydate")),
+        (
+            "Disc. mag",
+            f"{data.get('discoverymag')} mag "
+            f"(filter: {data.get('discmagfilter', {}).get('name', 'N/A')})",
+        ),
+        ("Discoverer", data.get("discoverer")),
+        ("Reporter", data.get("reporter")),
+    ]
+    internal = data.get("internal_names")
+    if internal:
+        pairs.append(("Internal IDs", internal))
+
+    logger.info(ascii_kv("Transient summary", pairs))
+
+
+def get_coords(objname, TNS_BOT_ID=None, TNS_BOT_NAME=None, TNS_BOT_API=None):
+    """Query the TNS for transient coordinates and basic metadata.
+
+    Parameters
+    ----------
+    objname : str
+        IAU name of the transient (e.g. ``'2024aifs'``).
+        Prefixes like ``'SN'`` or ``'AT'`` are stripped automatically.
+    TNS_BOT_ID : int, optional
+        TNS bot ID.
+    TNS_BOT_NAME : str, optional
+        TNS bot name.
+    TNS_BOT_API : str, optional
+        TNS bot API key.
+
+    Returns
+    -------
+    dict or None
+        TNS object data dictionary, or ``None`` if the object is not found
+        or the query fails.
+
+    Raises
+    ------
+    ValueError
+        If any of the three credential arguments are missing.
+    """
+    import requests
+
+    if not all([TNS_BOT_ID, TNS_BOT_NAME, TNS_BOT_API]):
+        raise ValueError("You must provide TNS_BOT_ID, TNS_BOT_NAME, and TNS_BOT_API")
+
+    objname = "" if objname is None else str(objname).strip()
+    # "SN 2024aifs" -> "2024aifs": strip the prefix and the separating space.
+    if objname.lower().startswith(("sn", "at")):
+        objname = objname[2:].strip()
+
+    url = "https://www.wis-tns.org/api/get/object"
+    headers = {
+        "User-Agent": f'tns_marker{{"tns_id": {TNS_BOT_ID}, "type": "bot", "name": "{TNS_BOT_NAME}"}}'
+    }
+
+    payload = {
+        "api_key": TNS_BOT_API,
+        "data": json.dumps(OrderedDict([("objname", objname)])),
+    }
+
+    try:
+        response = requests.post(url, headers=headers, data=payload)
+        response.raise_for_status()
+        json_data = json.loads(format_to_json(response.text))
+        data = json_data.get("data")
+
+        if not data:
+            logger.warning("No TNS data returned for object '%s'.", objname)
+            return None
+
+        logger.info("Found transient '%s' on TNS.", objname)
+        plot_transient_info(data)
+        return data
+
+    except Exception as exc:
+        logger.error(
+            "Error querying TNS for object '%s': %s", objname, exc, exc_info=True
+        )
+        return None
+
+
+def get_coords_simbad(target_name):
+    """Query SIMBAD for object coordinates by name.
+
+    Uses :mod:`astroquery.simbad` to resolve ``target_name`` to J2000
+    coordinates.  No API credentials are required.
+
+    Parameters
+    ----------
+    target_name : str
+        Object name to resolve (e.g. ``'SN 2024aifs'``, ``'Vega'``,
+        ``'M31'``, or a bare IAU name like ``'2024aifs'``).
+
+    Returns
+    -------
+    dict or None
+        A dictionary with keys ``objname``, ``name_prefix``, ``radeg``,
+        ``decdeg``, ``ra``, ``dec``, ``object_type``, and ``source``
+        matching the structure returned by :func:`get_coords`, or
+        ``None`` if SIMBAD cannot resolve the name.
+    """
+    try:
+        from astroquery.simbad import Simbad
+        from astropy.coordinates import SkyCoord
+        import astropy.units as u
+
+        Simbad.reset_votable_fields()
+        Simbad.add_votable_fields("ra", "dec", "otype")
+
+        result = Simbad.query_object(target_name)
+        if result is None or len(result) == 0:
+            logger.warning("SIMBAD did not find object '%s'.", target_name)
+            return None
+
+        row = result[0]
+        ra_deg = float(row["ra"])
+        dec_deg = float(row["dec"])
+        obj_type = str(row.get("otype", "Unknown"))
+
+        # Build a response dict that matches the TNS structure so
+        # downstream code can use it transparently.
+        simbad_data = {
+            "objname": target_name,
+            "name_prefix": "",
+            "radeg": ra_deg,
+            "decdeg": dec_deg,
+            "ra": _ra_deg_to_hms(ra_deg),
+            "dec": _dec_deg_to_dms(dec_deg),
+            "object_type": {"name": obj_type},
+            "type": obj_type,
+            "source": "simbad",
+        }
+
+        logger.info(
+            "SIMBAD resolved '%s': RA=%.6f, Dec=%.6f, Type=%s",
+            target_name, ra_deg, dec_deg, obj_type,
+        )
+        return simbad_data
+
+    except Exception as exc:
+        logger.error(
+            "Error querying SIMBAD for object '%s': %s",
+            target_name, exc, exc_info=True,
+        )
+        return None
+
+
+def _ra_deg_to_hms(ra_deg):
+    """Convert RA in degrees to HH:MM:SS string."""
+    try:
+        from astropy.coordinates import Longitude
+        import astropy.units as u
+        return Longitude(ra_deg * u.deg).to_string(
+            unit=u.hourangle, sep=":", pad=True, precision=2
+        )
+    except Exception:
+        return str(ra_deg)
+
+
+def _dec_deg_to_dms(dec_deg):
+    """Convert Dec in degrees to DD:MM:SS string."""
+    try:
+        from astropy.coordinates import Latitude
+        import astropy.units as u
+        return Latitude(dec_deg * u.deg).to_string(
+            unit=u.deg, sep=":", pad=True, precision=2, alwayssign=True
+        )
+    except Exception:
+        return str(dec_deg)
