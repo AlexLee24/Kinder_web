@@ -19,6 +19,7 @@ matplotlib
 plotly
 pydantic>=2
 requests
+psutil
 beautifulsoup4
 playwright
 tqdm

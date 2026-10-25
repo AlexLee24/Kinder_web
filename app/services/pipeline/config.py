@@ -45,7 +45,7 @@ def _stored():
         return _cache['values']
     from app.db.auth import get_setting
     values = {k: (get_setting(f'pipeline.{k}', '') or '').strip() for k in SETTINGS}
-    _cache.update(at=now, values=values)
+    _cache.update(at=time.monotonic(), values=values)   # after the queries: a slow / unreachable DB must not expire it at once
     return values
 
 
