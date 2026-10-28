@@ -4,7 +4,8 @@
 
 ``before_request``
     1. ``enforce_allowed_host`` – reject requests whose Host header is not the configured
-       public domain (or the local dev hosts when DEBUG).
+       public domain (or the local dev hosts when DEBUG); outside DEBUG a GET to the
+       server's bare IP address is redirected (301) to the same path on APP_BASE_URL.
     2. ``check_same_origin`` – CSRF guard: state-changing requests carrying an
        ``Origin`` (or, failing that, ``Referer``) header from another host get 403.
     3. ``refresh_user_session`` – sync ``session['user']`` / ``g.current_user`` from the DB.
@@ -26,12 +27,13 @@
 Route: ``POST /csp-report`` collects browser CSP violation reports (no auth,
 rate-limited, body capped, logged at WARNING, 204).
 """
+import ipaddress
 import logging
 import os
 import time
 from urllib.parse import urlparse
 
-from flask import abort, g, jsonify, make_response, request, session
+from flask import abort, g, jsonify, make_response, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
 from app.config import config
@@ -130,8 +132,20 @@ def _contains_pipe(value):
     return False
 
 
+def _is_ip_host(host: str) -> bool:
+    """'140.115.34.110', '140.115.34.110:443' or '[::1]:8000' → True; a domain name → False."""
+    name = host.rsplit(':', 1)[0] if host.count(':') == 1 else host
+    try:
+        ipaddress.ip_address(name.strip('[]'))
+        return True
+    except ValueError:
+        return False
+
+
 def register_hooks(app) -> None:
     _allowed = allowed_hosts()
+    _base = urlparse(config.APP_BASE_URL)
+    _canonical = f'{_base.scheme}://{_base.netloc}'
 
     @app.before_request
     def enforce_allowed_host():
@@ -139,6 +153,13 @@ def register_hooks(app) -> None:
         # domain (e.g. direct-IP access) — the Host header is attacker-controlled
         # and must not be trusted for routing/redirect decisions.
         if request.host not in _allowed:
+            # Someone typed the server's IP address: send them to the same page on the real domain
+            # (fixed target, so the Host header still decides nothing). Not in DEBUG, where local
+            # addresses are the normal way in.
+            if not config.DEBUG and request.method in ('GET', 'HEAD') and _is_ip_host(request.host):
+                logging.getLogger('app').info("Redirecting direct-IP request %s%s to %s",
+                                              request.host, request.full_path.rstrip('?'), _canonical)
+                return redirect(_canonical + request.full_path.rstrip('?'), code=301)
             logging.getLogger('app').warning(
                 "Rejected request: Host header %r not in allowed hosts %r "
                 "(set APP_BASE_URL in kinder.env to match how the site is accessed)",
