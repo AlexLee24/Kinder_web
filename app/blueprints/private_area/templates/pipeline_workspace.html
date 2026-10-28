@@ -23,7 +23,7 @@
             <div>
                 <span class="kw-eyebrow">Photometry · AutoPhOT</span>
                 <h1>{{ ap.name }}</h1>
-                <p class="pl-ws-sub"><span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span><span>{{ ap.n_images }} FITS</span><span>{{ ap.cfg.catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}{% if ap.cfg.ts_download %} · {{ ts_download_labels.get(ap.cfg.ts_download, ap.cfg.ts_download) }}{% endif %}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
+                <p class="pl-ws-sub"><span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span><span>{{ ap.n_images }} FITS</span><span>{{ (ap.run_cfg if tab == 'results' and not run else ap.cfg).catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}{% if ap.cfg.ts_download %} · {{ ts_download_labels.get(ap.cfg.ts_download, ap.cfg.ts_download) }}{% endif %}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
             </div>
             <div class="kw-page-actions">
                 <span class="pl-save-state" id="plSaveState" aria-live="polite"></span>

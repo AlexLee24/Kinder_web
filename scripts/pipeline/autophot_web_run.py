@@ -135,6 +135,8 @@ def main():
         config['target_name'] = cfg_in['name']
     config['nCPU'] = int(cfg_in.get('ncpu') or 1)
     config['catalog']['use_catalog'] = cfg_in.get('catalog') or 'sdss'     # AutoPhOT 沒有預設星表，null 會直接報錯；網頁預設 SDSS
+    if config['catalog']['use_catalog'] == 'pan_starrs':
+        config['catalog']['use_catalog'] = 'panstarrs'    # catalog.yml 的鍵是 panstarrs（查詢時 AutoPhOT 自己再轉成 pan_starrs）
     ts = config['template_subtraction']
     ts['do_subtraction'] = bool(cfg_in.get('subtraction'))
     if cfg_in.get('sub_method'):
