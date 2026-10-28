@@ -10,6 +10,33 @@
     <meta name="x-user-email" content="{{ user_email }}">
     <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
     <style>
+        /* Targets switched off: one compact, dimmed line (name + Off, coordinates on one line, notes cut to one
+           line, actions as icons in a row). The switch stays at full strength so it reads as "turn back on". */
+        .dt-page .pa-target-table tr.pa-row-off { background: rgba(255, 255, 255, 0.015); }
+        .dt-page .pa-target-table tr.pa-row-off td { padding-top: 6px; padding-bottom: 6px; color: var(--kw-text-muted); vertical-align: middle; }
+        .dt-page tr.pa-row-off :is(.pa-name-mag, .pa-astro-row, .pa-mini-plot) { display: none; }
+        .dt-page tr.pa-row-off .pa-td-name a, .dt-page tr.pa-row-off .pa-td-name span:not(.pa-off-chip) { color: var(--kw-text-secondary); }
+        .dt-page .pa-off-chip {
+            display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px;
+            font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+            color: var(--kw-text-muted); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10);
+        }
+        .dt-page tr.pa-row-off .pa-td-coord { font-size: 0.78rem; line-height: 1.35; }
+        .dt-page tr.pa-row-off .pa-td-priority { color: var(--kw-text-muted) !important; }
+        .dt-page tr.pa-row-off .pa-td-filter-exp { opacity: 0.6; }
+        .dt-page .pa-filter-more { display: none; font-size: 0.72rem; color: var(--kw-text-muted); }
+        .dt-page tr.pa-row-off .pa-filter-stack > :not(:first-child):not(.pa-filter-more) { display: none !important; }
+        .dt-page tr.pa-row-off .pa-filter-more { display: block; }
+        .dt-page tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; justify-content: center; gap: 6px; }
+        .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action { font-size: 0; gap: 0; }   /* icon only; the title says what it does */
+        .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action svg { width: 13px; height: 13px; }
+        @media (max-width: 768px) {
+            /* phone cards: an off target keeps Target, RA / Dec and Actions only */
+            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+7) { display: none; }
+            .dt-page .pa-target-table tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { max-width: none; }
+        }
+
         /* Center log section content */
         .pa-obs-log-section { text-align: center; }
         .pa-log-grid { table-layout: fixed; width: 100%; }

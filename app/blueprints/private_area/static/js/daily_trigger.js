@@ -966,6 +966,11 @@ function renderTable(telescope, targets) {
         return;
     }
 
+    // Targets switched off sit below the active ones (keeping the chosen sort within each part)
+    // and render as one compact line (.pa-row-off, styled in daily_trigger.html)
+    targets = targets.filter(function (t) { return t.is_active !== false; })
+        .concat(targets.filter(function (t) { return t.is_active === false; }));
+
     targets.forEach(function(t) {
         let priorityColor = '#fff';
         if (t.priority === 'Urgent') priorityColor = '#ff4d4d';
@@ -1004,6 +1009,8 @@ function renderTable(telescope, targets) {
                 
                 filterExpHTML += '<div style="display: flex; align-items: center; white-space: nowrap; font-size: 0.85rem;"><span style="display: inline-block; width: 35px; text-align: center;">' + badge + '</span> <span style="margin-left: 8px; color: #aaa; font-family: monospace;">' + escapeHtml(f.exp) + 's &times; ' + escapeHtml(f.count) + '</span></div>';
             });
+            // shown only on switched-off rows, which list just the first filter
+            if (t.filters.length > 1) filterExpHTML += '<div class="pa-filter-more">+' + (t.filters.length - 1) + ' more</div>';
             filterExpHTML += '</div>';
         }
 
@@ -1027,17 +1034,17 @@ function renderTable(telescope, targets) {
             '</label>';
 
         const tr = document.createElement('tr');
-        if (t.is_active === false) {
-            tr.style.opacity = '0.5';
-        }
+        const isOff = t.is_active === false;
+        if (isOff) tr.className = 'pa-row-off';
 
         const targetNameHtml = renderObjectNameLink(t.name, t.name);
         const coordDisplay = formatTargetCoordValue(t.ra, t.dec);
 
         tr.innerHTML = '<td class="pa-td-name" style="vertical-align: middle;">' +
             '<div class="pa-td-name-content" style="display:flex; flex-direction:column; align-items:flex-start; justify-content:center;">' +
-                '<div style="display:flex; align-items:center; gap:8px;">' + targetNameHtml + ' ' + programBadge + '</div>' +
-                '<div style="margin-top: 4px;">' + magDisplay + '</div>' +
+                '<div style="display:flex; align-items:center; gap:8px;">' + targetNameHtml + ' ' + programBadge +
+                    (isOff ? '<span class="pa-off-chip" title="Switched off: not in the API target list">Off</span>' : '') + '</div>' +
+                '<div class="pa-name-mag" style="margin-top: 4px;">' + magDisplay + '</div>' +
                 '<div class="pa-astro-row" id="astro-row-' + t.id + '">' +
                     '<span class="pa-astro-item pa-astro-moon" title="Moon separation">☽ <span>—</span></span>' +
                     '<span class="pa-astro-item pa-astro-transit" title="Transit time (local)">⟳ <span>—</span></span>' +
