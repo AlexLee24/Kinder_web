@@ -1,27 +1,17 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>DETECT Loading — {{ selected_date }} · Kinder</title>
+{% extends '_base.html' %}
+{#- Shown while a DETECT results day is built in the background; polls /api/detect/cache_status and switches to the results. -#}
+{% block title %}DETECT Loading — {{ selected_date }} · Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
-    {% include '_favicon.html' %}
     <style>
-        .detect-loading-wrap {
-            max-width: 920px;
-            margin: 24px auto 0;
-            padding: 0 20px;
-        }
         .detect-loading-card {
-            background: rgba(12, 14, 12, 0.78);
-            border: 1px solid rgba(70, 255, 175, 0.28);
-            border-radius: 14px;
-            padding: 28px;
+            width: 100%;
+            max-width: 720px;
+            margin: 0 auto;
+            box-sizing: border-box;
+            padding: 28px 24px;
             text-align: center;
-            color: #d8d8d8;
-            box-shadow: 0 6px 26px rgba(0, 0, 0, 0.35);
         }
         .detect-loading-title {
             margin: 0 0 8px;
@@ -32,31 +22,30 @@
         }
         .detect-loading-sub {
             margin: 0;
-            color: #8e8e8e;
+            color: var(--kw-text-muted);
             font-size: 0.9rem;
         }
         .detect-loading-spinner {
             margin: 16px auto 12px;
             width: 22px;
             height: 22px;
-            border: 3px solid rgba(70, 255, 175, 0.2);
-            border-top-color: #46ffaf;
+            border: 3px solid var(--kw-accent-dim);
+            border-top-color: var(--kw-accent);
             border-radius: 50%;
             animation: detectSpin 0.8s linear infinite;
         }
         .detect-loading-help {
             margin-top: 16px;
             font-size: 0.82rem;
-            color: #777;
+            color: var(--kw-text-faint);
         }
         @keyframes detectSpin { to { transform: rotate(360deg); } }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="detect-loading-wrap">
-        <div class="detect-loading-card">
+{% block content %}
+    <div class="kw-page detect-loading-wrap">
+        <div class="kw-panel detect-loading-card">
             <h1 class="detect-loading-title">Preparing DETECT Results</h1>
             <p class="detect-loading-sub">Date: {{ selected_date }}</p>
             <div class="detect-loading-spinner" aria-hidden="true"></div>
@@ -64,7 +53,9 @@
             <p class="detect-loading-help">If it takes longer than expected, keep this tab open and it will refresh when ready.</p>
         </div>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         (function () {
             const selectedDate = {{ selected_date|tojson }};
@@ -88,6 +79,4 @@
             setInterval(pollStatus, 1500);
         })();
     </script>
-</body>
-</html>
-
+{% endblock %}

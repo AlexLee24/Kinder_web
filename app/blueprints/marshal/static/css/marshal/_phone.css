@@ -1,72 +1,14 @@
 /* ================================================================
    _phone.css — Marshal on a phone (≤ 768px). Imported last by marshal.css.
-   Goal: the object list is on the first screen. The control panel becomes a
-   compact header (status chips + one-line search), the side widgets move below
-   the list, and each card is a dense summary instead of a 700px tile.
+   Goal: the object list is on the first screen (the side widgets follow it, see _page.css)
+   and each card is a dense summary instead of a tall tile; the table becomes a compact list.
    ================================================================ */
 @media (max-width: 768px) {
-    /* list before the side widgets: the two-column wrapper stops being a box */
-    .marshal-container { display: flex; flex-direction: column; gap: 12px; }
-    .marshal-container .top-section-split { display: contents; }
-    .marshal-container .control-panel { order: 1; }
-    .marshal-container .content-area { order: 2; }
-    .marshal-container .dashboard-side-panel { order: 3; }
-
-    /* ── compact control panel ── */
-    .marshal-container { margin-top: 4px; padding: 8px 10px 16px; }
-    .marshal-container .top-section-split > .control-panel { padding: 14px 14px 12px; margin: 0; min-height: 0; }
-    .marshal-container .top-section-split > .control-panel .panel-header { margin-bottom: 10px; padding-bottom: 8px; }
-    .marshal-container .top-section-split > .control-panel .panel-header h1 { font-size: 1rem; margin: 0 0 2px; }
-    .marshal-container .top-section-split > .control-panel .panel-meta { font-size: 0.72rem; }
-    .marshal-container .top-section-split > .control-panel .type-stats-bar { display: none; }      /* AT / SN totals: the status chips below say enough */
-    .marshal-container .top-section-split > .control-panel .status-list {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-        margin: 0 0 10px;
-        padding: 0;
-    }
-    .marshal-container .top-section-split > .control-panel .status-list .status-row {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        grid-template-areas: "dot count" "name name";
-        align-items: center;
-        gap: 2px 6px;
-        min-height: 54px;
-        margin: 0;
-        padding: 8px 10px;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .marshal-container .top-section-split > .control-panel .status-list .status-row:active { background: rgba(255, 255, 255, 0.1); }
-    .marshal-container .top-section-split > .control-panel .status-row .status-dot { grid-area: dot; }
-    .marshal-container .top-section-split > .control-panel .status-row .status-icon { display: none; }
-    .marshal-container .top-section-split > .control-panel .status-row .status-name { grid-area: name; font-size: 0.7rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .marshal-container .top-section-split > .control-panel .status-row .status-count { grid-area: count; justify-self: end; font-size: 1.05rem; }
-
-    /* search on one line: [ name …… ] then Search · Clear · Filters */
-    .marshal-container .top-section-split > .control-panel .search-tools { padding: 10px; margin: 0 0 10px; min-height: 0; }
-    .marshal-container .top-section-split > .control-panel .search-input-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-    .marshal-container .top-section-split > .control-panel .search-input-group input { grid-column: 1 / -1; min-height: 42px; }
-    .marshal-container .top-section-split > .control-panel .search-input-group button { min-height: 40px; margin: 0; padding: 0 8px; font-size: 0.8rem; }
-    .marshal-container .top-section-split > .control-panel .search-input-group .toggle-advanced { grid-column: auto; }
-    .marshal-container .top-section-split > .control-panel .advanced-filters:not(:has(*)),
-    .marshal-container .top-section-split > .control-panel .admin-tools:not(:has(*)) { display: none; }   /* empty placeholders */
-    .marshal-container .top-section-split > .control-panel .search-section { margin: 0; }
-
-    .marshal-container .top-section-split > .control-panel .view-controls { display: flex; align-items: center; gap: 8px; margin: 0; padding-top: 10px; }
-    .marshal-container .top-section-split > .control-panel .view-toggle { flex-shrink: 0; }
-    .marshal-container .top-section-split > .control-panel .sort-controls { flex: 1; display: flex; gap: 6px; min-width: 0; }
-    .marshal-container .top-section-split > .control-panel .sort-controls select { flex: 1; min-width: 0; min-height: 38px; }
-
     /* ── pagination: one slim line ── */
-    .content-area .pagination-container { padding: 10px 12px; flex-wrap: wrap; gap: 8px; }
-    .content-area .pagination-container.top-pagination { margin-bottom: 10px; }
-    .content-area .pagination-container.bottom-pagination { margin-top: 10px; }
+    .content-area .pagination-container { gap: 8px; }
     .content-area .pagination-info { min-width: 0; font-size: 0.78rem; }
-    .content-area .pagination-container .page-size-selector { margin-left: auto; }
-    .content-area .pagination-container .page-size-selector select { min-height: 34px; padding: 0 28px 0 10px; }
+    .content-area .pagination-container .page-size-selector { margin-left: auto; min-width: 0; }
+    .content-area .pagination-controls { order: 3; flex: 1 1 100%; justify-content: flex-start; }
     .content-area .pagination-btn { min-width: 36px; min-height: 36px; padding: 0 8px; }
 
     /* ── dense object cards ── */
@@ -112,9 +54,9 @@
         gap: 6px 8px;
         margin: 0 0 8px;
         padding: 10px 12px 10px 14px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.045);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: var(--kw-radius-lg);
+        background: var(--kw-card-bg);
+        border: 1px solid var(--kw-border);
         border-left: 3px solid rgba(255, 255, 255, 0.2);
     }
     .objects-table .data-table tbody tr.tag-object   { border-left-color: var(--inbox-color); }
@@ -142,8 +84,8 @@
     .objects-table .data-table tbody td:nth-child(6)  { grid-area: m2; }
     .objects-table .data-table tbody td:nth-child(7)  { grid-area: m3; }
     .objects-table .data-table tbody td:nth-child(8)  { grid-area: z; }
-    .objects-table .data-table tbody td:nth-child(9)  { grid-area: date; color: rgba(255, 255, 255, 0.7); }
-    .objects-table .data-table tbody td:nth-child(10) { grid-area: src; color: rgba(255, 255, 255, 0.7); text-align: right; white-space: nowrap; }
+    .objects-table .data-table tbody td:nth-child(9)  { grid-area: date; color: var(--kw-text-secondary); }
+    .objects-table .data-table tbody td:nth-child(10) { grid-area: src; color: var(--kw-text-secondary); text-align: right; white-space: nowrap; }
     .objects-table .data-table tbody td:nth-child(11) { grid-area: tag; align-self: center; }
     .objects-table .data-table tbody td:nth-child(12) { grid-area: act; justify-self: end; display: flex; gap: 6px; }
     /* small labels above the numbers */
@@ -153,7 +95,7 @@
         font-size: 0.62rem;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.45);
+        color: var(--kw-text-muted);
     }
     .objects-table .data-table tbody td:nth-child(5)::before { content: "Disc. mag"; }
     .objects-table .data-table tbody td:nth-child(6)::before { content: "Peak"; }

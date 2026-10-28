@@ -1796,7 +1796,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                         return `<span style="color:${color};font-weight:600;font-size:12px;">${escapeHtml(display)}</span>`;
                     })();
                     const repeatBadge = (log.repeat_count > 0)
-                        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(77,184,255,0.15);border:1px solid rgba(77,184,255,0.35);border-radius:4px;padding:3px 8px;color:#4db8ff;font-weight:600;margin-left:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4db8ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span style="font-size:14px;">x ${escapeHtml(log.repeat_count)}</span></span>`
+                        ? `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--kw-accent-dim);border:1px solid var(--kw-accent-border);border-radius:var(--kw-radius-sm);padding:3px 8px;color:var(--kw-accent);font-weight:600;margin-left:4px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg><span style="font-size:14px;">x ${escapeHtml(log.repeat_count)}</span></span>`
                         : '';
                     
                     const userDisplay = (() => {
@@ -1817,12 +1817,12 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                             } else {
                                 // Fallback to an initial-based avatar or simple text if picture is null
                                 const intl = (displayName || '?').charAt(0).toUpperCase();
-                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#4db8ff;color:#fff;font-size:12px;font-weight:bold;flex-shrink:0;" title="${escapeHtml(fullName)}">${escapeHtml(intl)}</span><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${escapeHtml(displayName)}</span>`;
+                                return `<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--kw-accent);color:var(--color-accent-text);font-size:12px;font-weight:bold;flex-shrink:0;" title="${escapeHtml(fullName)}">${escapeHtml(intl)}</span><span style="font-size:13px;font-weight:600;color:#e8e8e8;">${escapeHtml(displayName)}</span>`;
                             }
                         }
                         return escapeHtml(displayName);
                     })();
-                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtn = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Edit" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#888;display:flex;align-items:center;" onmouseover="this.style.color='var(--kw-accent)'" onmouseout="this.style.color='#888'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
 
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${escapeHtml(t.name || '')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
@@ -1855,7 +1855,7 @@ async function renderLogGrid(initialLoad = false, skipFetch = false, forceFetch 
                         </td>
                     `;
                 } else {
-                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='#4db8ff'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+                    const editBtnEmpty = `<button onclick="openLogModalEdit(decodeURIComponent('${encodeURIComponent(t._unique_key || t.name || '').replace(/'/g, '%27')}'),'${d.dateStr}')" title="Add log" style="background:none;border:none;cursor:pointer;padding:0;margin-left:6px;color:#555;display:flex;align-items:center;" onmouseover="this.style.color='var(--kw-accent)'" onmouseout="this.style.color='#555'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
                     dateCells += `
                         <td data-cell-date="${d.dateStr}" data-target-name="${escapeHtml(t.name || '')}" style="${d.dateStr === todayStr ? 'background-color: rgba(46, 125, 50, 0.15);' : ''}">
                             <div class="pa-log-cell" style="width:100%;display:flex;flex-direction:column;gap:5px;">
@@ -2427,7 +2427,7 @@ function renderVisibilityToggleList() {
                 </div>
                 <input type="checkbox" ${isActive ? 'checked' : ''} 
                        onchange="toggleVPTraceAndDB(${i}, this.checked, ${cacheTarget ? cacheTarget.id : 'null'})" 
-                       style="accent-color: #4db8ff;">
+                       style="accent-color: var(--kw-accent);">
             </label>
         `;
     });

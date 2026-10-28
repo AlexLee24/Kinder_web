@@ -1,127 +1,123 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Kinder · Kilonova Finder</title>
+{% extends '_base.html' %}
+{#- Home: a first screen with only the background and the Kinder wordmark (it shrinks back as you scroll), then quick
+    access tiles and the gallery (admins upload / edit / delete; lightbox), then the footer.
+    home_gallery.js needs the lightbox / modal ids below; home.js runs the meteor shower on .main-banner. -#}
+{% block head %}
     <meta name="description" content="Kinder - Kilonova Finder">
     <meta name="author" content="GREAT Lab, Institute of Astronomy, National Central University, Taiwan">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
-    {% include '_favicon.html' %}
-</head>
-<body class="home-page">
+{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block main_class %}sh-home{% endblock %}
+{% block content %}
     {% if db_offline %}
     <div class="db-offline-banner" role="alert">
         Database offline — the connection is currently unavailable. Some pages may not work.
     </div>
     {% endif %}
-
     {% set _member = session.user and session.user.get('is_great_lab_member') %}
 
-    {% include '_navbar.html' %}
-
-    <!-- Hero -->
-    <section class="main-banner">
-        <div class="hero-title">
-            <p class="hero-eyebrow">GREAT Lab · National Central University</p>
-            <div class="hero-logo-row">
-                <img src="{{ url_for('static', filename='pwa/logo-256.png') }}" alt="" aria-hidden="true" class="home-logo">
-                <h1><span class="kl">K</span><span class="kl">i</span><span class="kl">n</span><span class="kl">d</span><span class="kl">e</span><span class="kl">r</span></h1>
+        <!-- Hero: .main-banner keeps home.js's meteor shower -->
+        <section class="sh-hello main-banner" id="sh-hello">
+            <div class="sh-hello-txt">
+                <p class="hero-eyebrow">GREAT Lab · National Central University</p>
+                <div class="sh-hello-mark">
+                    <img src="{{ url_for('static', filename='pwa/logo-256.png') }}" alt="" aria-hidden="true" class="home-logo">
+                    <h1><span class="kl">K</span><span class="kl">i</span><span class="kl">n</span><span class="kl">d</span><span class="kl">e</span><span class="kl">r</span></h1>
+                </div>
+                <h2>Kilonova Finder</h2>
+                <p class="hero-lead">Transient marshal, host screening and observation planning for the Lulin telescopes.</p>
+                <div class="hero-actions">
+                    <a href="{{ url_for('marshal.marshal') }}" class="sh-btn">Open Marshal</a>
+                    {% if _member %}
+                    <a href="{{ url_for('detect.detect_results') }}" class="sh-btn sh-btn-ghost">DETECT Review</a>
+                    {% else %}
+                    <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="sh-btn sh-btn-ghost">Plan Tonight</a>
+                    {% endif %}
+                </div>
             </div>
-            <h2>Kilonova Finder</h2>
-            <p class="hero-lead">Transient marshal, host screening and observation planning for the Lulin telescopes.</p>
-            <div class="hero-actions">
-                <a href="{{ url_for('marshal.marshal') }}" class="home-btn home-btn-primary">Open Marshal</a>
+            <a href="#quick-access" class="sh-scrollcue" aria-label="Scroll to content">
+                <span>Quick access</span>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </a>
+        </section>
+
+        <!-- Quick access -->
+        <section class="sh-section" id="quick-access" aria-labelledby="sh-quick-h">
+            <div class="sh-section-head">
+                <h2 id="sh-quick-h">Quick access</h2>
+                <p>Everything you use most, one click away.</p>
+            </div>
+            <div class="sh-bento{% if _member %} is-member{% endif %}">
+                <a href="{{ url_for('marshal.marshal') }}" class="sh-tile sh-q sh-q-feat reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h6"/></svg></span>
+                    <span class="sh-q-t">Marshal</span>
+                    <span class="sh-q-d">Browse every TNS transient, filter by status, pin and tag follow-ups.</span>
+                    <span class="sh-q-go">Open Marshal →</span>
+                </a>
+                <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="sh-tile sh-q reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8a4 4 0 1 0 0 8"/></svg></span>
+                    <span class="sh-q-t">Visibility Plot</span>
+                    <span class="sh-q-d">Altitude tracks, twilight and moon for any target from Lulin.</span>
+                </a>
+                <a href="{{ url_for('astronomy_tools.finding_chart') }}" class="sh-tile sh-q reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6M8 11h6"/></svg></span>
+                    <span class="sh-q-t">Finding Chart</span>
+                    <span class="sh-q-d">Survey cut-outs with compass, scale bar and comparison stars.</span>
+                </a>
+                <a href="{{ url_for('astronomy_tools.exposure_time_calculator') }}" class="sh-tile sh-q reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                    <span class="sh-q-t">Exposure Time</span>
+                    <span class="sh-q-d">CASTOR-powered SNR and exposure calculator for LOT and SLT.</span>
+                </a>
+                <a href="{{ url_for('astronomy_tools.lc_plotter') }}" class="sh-tile sh-q reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 16l5-6 4 3 7-8"/></svg></span>
+                    <span class="sh-q-t">LC Plotter</span>
+                    <span class="sh-q-d">Plot and share light curves with extinction and K-corrections.</span>
+                </a>
                 {% if _member %}
-                <a href="{{ url_for('detect.detect_results') }}" class="home-btn home-btn-secondary">DETECT Review</a>
+                <a href="{{ url_for('detect.detect_results') }}" class="sh-tile sh-q sh-q-lab reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                    <span class="sh-q-t">DETECT</span>
+                    <span class="sh-q-d">Review host candidates and screening scores for new transients.</span>
+                </a>
+                <a href="{{ url_for('private_area.daily_trigger') }}" class="sh-tile sh-q sh-q-lab reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>
+                    <span class="sh-q-t">Daily Trigger</span>
+                    <span class="sh-q-d">Build tonight's target list and send the script to Slack.</span>
+                </a>
                 {% else %}
-                <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="home-btn home-btn-secondary">Plan Tonight</a>
+                <a href="{{ url_for('astronomy_tools.telescope_simulator') }}" class="sh-tile sh-q sh-q-wide reveal">
+                    <span class="sh-q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l12-9"/><path d="M13 5l6 4-3 5-6-4z"/><path d="M4 21h6"/></svg></span>
+                    <span class="sh-q-t">Telescope Simulator</span>
+                    <span class="sh-q-d">Explore the sky with an Aladin Lite field-of-view overlay.</span>
+                </a>
                 {% endif %}
             </div>
-        </div>
-        <a href="#quick-access" class="hero-scroll" aria-label="Scroll to content">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </a>
-    </section>
+        </section>
 
-    <!-- Quick access -->
-    <section class="home-section" id="quick-access">
-        <div class="home-section-header">
-            <h2>Quick access</h2>
-            <p>Everything you use most, one click away.</p>
-        </div>
-        <div class="home-cards">
-            <a href="{{ url_for('marshal.marshal') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9h10M7 13h6"/></svg></span>
-                <span class="home-card-title">Marshal</span>
-                <span class="home-card-desc">Browse every TNS transient, filter by status, pin and tag follow-ups.</span>
-            </a>
-            <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8a4 4 0 1 0 0 8"/></svg></span>
-                <span class="home-card-title">Visibility Plot</span>
-                <span class="home-card-desc">Altitude tracks, twilight and moon for any target from Lulin.</span>
-            </a>
-            <a href="{{ url_for('astronomy_tools.finding_chart') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v6M8 11h6"/></svg></span>
-                <span class="home-card-title">Finding Chart</span>
-                <span class="home-card-desc">Survey cut-outs with compass, scale bar and comparison stars.</span>
-            </a>
-            <a href="{{ url_for('astronomy_tools.exposure_time_calculator') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-                <span class="home-card-title">Exposure Time</span>
-                <span class="home-card-desc">CASTOR-powered SNR and exposure calculator for LOT and SLT.</span>
-            </a>
-            <a href="{{ url_for('astronomy_tools.lc_plotter') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M4 16l5-6 4 3 7-8"/></svg></span>
-                <span class="home-card-title">LC Plotter</span>
-                <span class="home-card-desc">Plot and share light curves with extinction and K-corrections.</span>
-            </a>
-            {% if _member %}
-            <a href="{{ url_for('detect.detect_results') }}" class="home-card home-card-accent">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></span>
-                <span class="home-card-title">DETECT</span>
-                <span class="home-card-desc">Review host candidates and screening scores for new transients.</span>
-            </a>
-            <a href="{{ url_for('private_area.daily_trigger') }}" class="home-card home-card-accent">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg></span>
-                <span class="home-card-title">Daily Trigger</span>
-                <span class="home-card-desc">Build tonight's target list and send the script to Slack.</span>
-            </a>
-            {% else %}
-            <a href="{{ url_for('astronomy_tools.telescope_simulator') }}" class="home-card">
-                <span class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l12-9"/><path d="M13 5l6 4-3 5-6-4z"/><path d="M4 21h6"/></svg></span>
-                <span class="home-card-title">Telescope Simulator</span>
-                <span class="home-card-desc">Explore the sky with an Aladin Lite field-of-view overlay.</span>
-            </a>
-            {% endif %}
-        </div>
-    </section>
-
-    <!-- Gallery -->
-    <section class="home-section home-gallery-section">
-        <div class="home-section-header home-gallery-header">
-            <div>
-                <h2 class="home-gallery-title">Gallery</h2>
-                <p class="home-gallery-subtitle">Astronomy images from GREAT Lab and the Lulin telescopes.</p>
-            </div>
-            {% if session.user and session.user.is_admin %}
-            <div class="home-admin-actions">
-                <button class="home-btn home-btn-primary home-upload-btn" id="homeUploadBtn">
+        <!-- Gallery -->
+        <section class="sh-section sh-tile sh-gallery reveal" aria-labelledby="sh-gallery-h">
+            <div class="sh-section-head">
+                <div>
+                    <h2 id="sh-gallery-h">Gallery</h2>
+                    <p>Astronomy images from GREAT Lab and the Lulin telescopes.</p>
+                </div>
+                {% if session.user and session.user.is_admin %}
+                <button class="sh-btn home-upload-btn" id="homeUploadBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    Upload Image
+                    <span>Upload Image</span>
                 </button>
+                {% endif %}
             </div>
-            {% endif %}
-        </div>
-        <div class="home-gallery-container">
-            <div class="home-gallery-grid" id="homeGalleryGrid">
-                <div class="home-gallery-loading">Loading gallery…</div>
+            <div class="home-gallery-container">
+                <div class="home-gallery-grid" id="homeGalleryGrid">
+                    <div class="home-gallery-loading">Loading gallery…</div>
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <footer class="home-footer">
+    <footer class="home-footer sh-foot">
         <div class="home-footer-inner">
             <div class="bottom-bar-left">
                 <span class="institution">Institute of Astronomy, National Central University</span>
@@ -136,7 +132,9 @@
             </div>
         </div>
     </footer>
+{% endblock %}
 
+{% block after_main %}
     <!-- Lightbox -->
     <div class="home-lightbox" id="homeLightbox" hidden>
         <div class="home-lightbox-backdrop" id="homeLightboxBackdrop"></div>
@@ -287,8 +285,9 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/home.js') }}"></script>
     <script src="{{ url_for('static', filename='js/home_gallery.js') }}"></script>
-</body>
-</html>
+{% endblock %}

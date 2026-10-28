@@ -1,12 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Transient Marshal - Kinder</title>
+{% extends '_base.html' %}
+{#- Transient Marshal (/marshal): every TNS object, as cards or a table; marshal.js loads the list from the API.
+    Page bar: search + Filters left, Cards | Table centre, sort right. Layout kw-dash: status tiles on top,
+    the list in the main column, Top viewed / Pinned / Recent comments / TNS updates in the side column
+    (signed-in users only; guests get the list full width). -#}
+{% block title %}Transient Marshal - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
-    {% include '_favicon.html' %}
     <style>
         .loading-overlay {
             display: flex;
@@ -19,449 +18,397 @@
             min-height: 200px;
         }
         .loading-overlay p {
-            color: #ffffff;
-            font-size: 1.2rem;
+            color: var(--kw-text-secondary);
+            font-size: 0.95rem;
             margin-top: 15px;
             font-weight: 500;
-            letter-spacing: 1px;
         }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
-    
+{% endblock %}
+{% block body_class %}marshal-body{% endblock %}
+
+{% block bar_left %}
+    <div class="search-section marshal-search">
+        <div class="search-input-group">
+            <label class="kw-search">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="text" id="searchInput" placeholder="Search by name" aria-label="Search by name">
+            </label>
+            <button type="button" class="apply-advanced-btn kw-btn kw-btn-sm" onclick="performSearch()">Search</button>
+            <button type="button" class="clear-btn kw-btn kw-btn-sm kw-btn-ghost" onclick="clearAllFilters()">Clear</button>
+            <button type="button" class="toggle-advanced kw-btn kw-btn-sm" onclick="toggleAdvancedFilters()" id="advancedToggle">
+                <span>Filters</span>
+                <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
+            </button>
+        </div>
+    </div>
+{% endblock %}
+{% block bar_center %}
+    <div class="view-controls">
+        <div class="view-toggle kw-seg" role="group" aria-label="View">
+            <button type="button" class="view-btn kw-seg-item active" data-view="cards" onclick="switchView('cards')">Cards</button>
+            <button type="button" class="view-btn kw-seg-item" data-view="table" onclick="switchView('table')">Table</button>
+            <!-- <button class="view-btn" data-view="compact" onclick="switchView('compact')">
+                Compact
+            </button> -->
+        </div>
+    </div>
+{% endblock %}
+{% block bar_right %}
+    <div class="sort-controls">
+        <select id="sortBy" class="kw-select" onchange="applySorting()" aria-label="Sort by">
+            <option value="lastmodified">Last Update</option>
+            <option value="last_photometry">Last Photometry</option>
+            <option value="discovery_date">Discovery Date</option>
+            <option value="magnitude">Discovery Magnitude</option>
+            <option value="brightest_mag">Brightest Mag</option>
+            <option value="brightest_abs_mag">Brightest M</option>
+            <option value="redshift">Redshift</option>
+        </select>
+        <button type="button" class="sort-order-btn kw-btn" onclick="toggleSortOrder()" id="sortOrderBtn" title="Sort order" aria-label="Sort order">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+        </button>
+    </div>
+{% endblock %}
+
+{% block content %}
     <!-- Admin status for JavaScript -->
     {% if session.user and session.user.is_admin %}
     <div data-admin="true" style="display: none;"></div>
     {% endif %}
 
-    <div class="marshal-container">
-        <!-- Top Section Splitter -->
-        <div class="top-section-split">
-            <!-- Top Control Panel -->
-            <div class="control-panel">
-            <div class="panel-header">
-                <h1>Transient Marshal</h1>
-                <div class="panel-meta">
-                    <span class="total-count">{{ total_count }} objects</span>
-                    <span class="meta-sep">·</span>
-                    <span class="last-sync">
-                        Last sync:&nbsp;
-                        {% if last_sync %}
-                            <span id="lastSync">{{ last_sync.time }}</span>
-                            {% if last_sync.status == 'completed' %}
-                                <span class="sync-status success">&nbsp;({{ last_sync.imported }} new, {{ last_sync.updated }} updated{% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})</span>
-                            {% elif last_sync.status == 'failed' %}
-                                <span class="sync-status error">(Failed)</span>
-                            {% else %}
-                                <span class="sync-status pending">({{ last_sync.status|title }})</span>
-                            {% endif %}
-                        {% else %}
-                            <span id="lastSync">Never</span>
-                        {% endif %}
-                    </span>
-                </div>
-            </div>
+    {% set has_side = session.user or visibility.comments_sidebar %}
+    <div class="kw-page marshal-page">
+        <p class="kw-lead panel-meta">
+            <span class="total-count">{{ total_count }} objects</span>
+            <span class="meta-sep">·</span>
+            <span class="last-sync">
+                Last sync:&nbsp;
+                {% if last_sync %}
+                    <span id="lastSync">{{ last_sync.time }}</span>
+                    {% if last_sync.status == 'completed' %}
+                        <span class="sync-status success">&nbsp;({{ last_sync.imported }} new, {{ last_sync.updated }} updated{% if last_sync.errors %}, {{ last_sync.errors }}{% endif %})</span>
+                    {% elif last_sync.status == 'failed' %}
+                        <span class="sync-status error">(Failed)</span>
+                    {% else %}
+                        <span class="sync-status pending">({{ last_sync.status|title }})</span>
+                    {% endif %}
+                {% else %}
+                    <span id="lastSync">Never</span>
+                {% endif %}
+            </span>
+        </p>
 
-            {% if session.user %}
-            <!-- Type Breakdown Bar -->
-            <div class="type-stats-bar">
-                <div class="type-stat at">
-                    <span class="type-number">{{ at_count }}</span>
-                    <span class="type-label">AT</span>
-                </div>
-                <div class="type-divider-v"></div>
-                <div class="type-stat sn">
-                    <span class="type-number">{{ classified_count }}</span>
-                    <span class="type-label">SN</span>
-                </div>
+        {% if session.user %}
+        <!-- Type breakdown + status summary (click a status to filter the list) -->
+        <div class="kw-kpis marshal-kpis">
+            <div class="kw-kpi type-stat at">
+                <span class="kw-kpi-label type-label">AT</span>
+                <b class="type-number">{{ at_count }}</b>
             </div>
-
-            <!-- Status Summary List -->
-            <div class="status-list">
-                <div class="status-row clickable" onclick="filterByStatus('object')" title="Filter Inbox">
-                    <span class="status-dot inbox"></span>
-                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg></span>
-                    <span class="status-name">Inbox</span>
-                    <span class="status-count" id="inboxCount">{{ inbox_count }}</span>
-                </div>
-                <div class="status-row clickable" onclick="filterByStatus('followup')" title="Filter DETECT Follow up">
-                    <span class="status-dot followup"></span>
-                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg></span>
-                    <span class="status-name">DETECT Follow up</span>
-                    <span class="status-count" id="followupCount">{{ followup_count }}</span>
-                </div>
-                {# Finished row disabled — DB value preserved, UI hidden temporarily
-                <div class="status-row clickable" onclick="filterByStatus('finished')" title="Filter Finished">
-                    <span class="status-dot finished"></span>
-                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg></span>
-                    <span class="status-name">Finished</span>
-                    <span class="status-count" id="finishedCount">{{ finished_count }}</span>
-                </div>
-                #}
-                <div class="status-row clickable" onclick="filterByStatus('snoozed')" title="Filter Snoozed">
-                    <span class="status-dot snoozed"></span>
-                    <span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg></span>
-                    <span class="status-name">Snoozed</span>
-                    <span class="status-count" id="snoozedCount">{{ snoozed_count }}</span>
-                </div>
+            <div class="kw-kpi type-stat sn">
+                <span class="kw-kpi-label type-label">SN</span>
+                <b class="type-number">{{ classified_count }}</b>
             </div>
-            {% endif %}
+            <button type="button" class="kw-kpi status-row clickable" onclick="filterByStatus('object')" title="Filter Inbox">
+                <span class="kw-kpi-label"><span class="status-dot inbox"></span><span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z"/><polyline points="15,9 18,9 18,11"/><path d="M6.5 5C9 5 11 7 11 9.5V17a2 2 0 0 1-2 2"/><line x1="6" x2="7" y1="10" y2="10"/></svg></span><span class="status-name">Inbox</span></span>
+                <b class="status-count" id="inboxCount">{{ inbox_count }}</b>
+            </button>
+            <button type="button" class="kw-kpi status-row clickable" onclick="filterByStatus('followup')" title="Filter DETECT Follow up">
+                <span class="kw-kpi-label"><span class="status-dot followup"></span><span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.065 12.493-6.18 1.318a.934.934 0 0 1-1.108-.702l-.537-2.15a1.07 1.07 0 0 1 .691-1.265l13.504-4.44"/><path d="m13.56 11.747 4.332-.924"/><path d="m16 21-3.105-6.21"/><path d="M16.485 5.94a2 2 0 0 1 1.455-2.425l1.09-.272a1 1 0 0 1 1.212.727l1.515 6.06a1 1 0 0 1-.727 1.213l-1.09.272a2 2 0 0 1-2.425-1.455z"/><path d="m6.158 8.633 1.114 4.456"/><path d="m8 21 3.105-6.21"/><circle cx="12" cy="13" r="2"/></svg></span><span class="status-name">DETECT Follow up</span></span>
+                <b class="status-count" id="followupCount">{{ followup_count }}</b>
+            </button>
+            {# Finished row disabled — DB value preserved, UI hidden temporarily
+            <button type="button" class="kw-kpi status-row clickable" onclick="filterByStatus('finished')" title="Filter Finished">
+                <span class="kw-kpi-label"><span class="status-dot finished"></span><span class="status-name">Finished</span></span>
+                <b class="status-count" id="finishedCount">{{ finished_count }}</b>
+            </button>
+            #}
+            <button type="button" class="kw-kpi status-row clickable" onclick="filterByStatus('snoozed')" title="Filter Snoozed">
+                <span class="kw-kpi-label"><span class="status-dot snoozed"></span><span class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></svg></span><span class="status-name">Snoozed</span></span>
+                <b class="status-count" id="snoozedCount">{{ snoozed_count }}</b>
+            </button>
+        </div>
+        {% endif %}
 
-            <!-- Search and Filter Tools -->
-            <div class="search-tools">
-                <!-- Main Search -->
-                <div class="search-section">
-                    <div class="search-input-group">
-                        <input type="text" id="searchInput" placeholder="Search by name">
-                        <button class="apply-advanced-btn" onclick="performSearch()">
-                            Search
-                        </button>
-                        <button class="clear-btn" onclick="clearAllFilters()">
-                            Clear
-                        </button>
-                        <button class="toggle-advanced" onclick="toggleAdvancedFilters()" id="advancedToggle">
-                            <span>Filters</span>
-                            <span class="toggle-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>
-                        </button>
+        <div class="{{ 'kw-dash' if has_side else 'marshal-full' }} marshal-dash">
+            <!-- Main Content Area -->
+            <div class="content-area marshal-main">
+                <!-- Top Pagination Controls -->
+                <div class="pagination-container top-pagination">
+                    <div class="pagination-info">
+                        <span id="topPaginationInfo">Showing 0 of 0 objects</span>
+                    </div>
+                    <div class="pagination-controls" id="topPaginationControls">
+                    </div>
+                    <div class="page-size-selector">
+                        <label for="topPageSizeSelect">Show:</label>
+                        <select id="topPageSizeSelect" class="kw-select kw-select-sm" onchange="changePageSize()">
+                            <option value="20">20</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
                     </div>
                 </div>
-
-                <!-- Advanced Filters -->
-                <div class="advanced-filters">
+    
+                <!-- Pre-loader if objects are not initially provided -->
+                {% if not objects %}
+                <div id="loadingIndicator" class="loading-overlay" style="display: flex;">
+                    <div class="spinner"></div><p>Loading objects...</p>
+                </div>
+                {% endif %}
+    
+                <!-- Cards View -->
+                <div class="objects-grid" id="cardsView">
+                    {% for obj in objects %}
+                    {% set real_tag = obj.tag or 'object' %}
+                    <div class="object-card tag-{{ real_tag }}" 
+                        data-classification="{{ obj.type or 'AT' }}" 
+                        data-discovery="{{ obj.discoverydate or '' }}" 
+                        data-tag="{{ real_tag }}"
+                        data-magnitude="{{ obj.discoverymag or '' }}"
+                        data-redshift="{{ obj.redshift or '' }}"
+                        data-lastmodified="{{ obj.lastmodified or '' }}"
+                        data-lastphotometry="{{ obj.last_photometry_date or '' }}"
+                        data-brightest-mag="{{ obj.brightest_mag or '' }}"
+                        data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}"
+                        data-tags="{{ obj.tags or '' }}">
                     
-                </div>
-
-                <!-- Advanced Filters Modal (moved to body level, see below) -->
-
-                <!-- Admin Tools -->
-                <div class="admin-tools">
-                    {% if session.user and session.user.is_admin %}
+                    <div class="card-header">
+                        <div class="object-name">
+                            {% if obj.name and obj.name|length >= 4 %}
+                                {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                                {% set full_name = (obj.name_prefix or '') + obj.name %}
+                                
+                                {% if year_letters and not obj.name_prefix %}
+                                    <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank" rel="noopener noreferrer">
+                                        {{ obj.name_prefix or '' }}{{ obj.name }}
+                                    </a>
+                                {% else %}
+                                    <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" target="_blank" rel="noopener noreferrer">
+                                        {{ obj.name_prefix or '' }}{{ obj.name }}
+                                    </a>
+                                {% endif %}
+                            {% else %}
+                                <a href="{{ url_for('marshal.marshal') }}">
+                                    {{ obj.name_prefix or '' }}{{ obj.name }}
+                                </a>
+                            {% endif %}
+                        </div>
+                        <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
+                            {{ obj.type or 'AT' }}
+                        </div>
+                    </div>
+                    
+                    {% if visibility.tags and obj.tags %}
+                    <div class="card-tags">
+                        {% set tag_list = obj.tags.split(',') %}
+                        {% set ep_tags = [] %}
+                        {% set other_tags = [] %}
+                        {% for t in tag_list %}
+                            {% set t = t.strip() %}
+                            {% if t %}
+                                {% if t.upper().startswith('EP') %}
+                                    {% set _ = ep_tags.append(t) %}
+                                {% else %}
+                                    {% set _ = other_tags.append(t) %}
+                                {% endif %}
+                            {% endif %}
+                        {% endfor %}
+                        {% for t in ep_tags %}
+                            <span class="custom-tag ep">{{ t }}</span>
+                        {% endfor %}
+                        {% for t in other_tags %}
+                            <span class="custom-tag">{{ t }}</span>
+                        {% endfor %}
+                    </div>
                     {% endif %}
-                </div>
-            </div>
-
-            <!-- View Controls -->
-            <div class="view-controls">
-                <div class="view-toggle">
-                    <button class="view-btn active" data-view="cards" onclick="switchView('cards')">
-                        Cards
-                    </button>
-                    <button class="view-btn" data-view="table" onclick="switchView('table')">
-                        Table
-                    </button>
-                    <!-- <button class="view-btn" data-view="compact" onclick="switchView('compact')">
-                        Compact
-                    </button> -->
-                </div>
-                
-                <div class="sort-controls">
-                    <select id="sortBy" onchange="applySorting()">
-                        <option value="lastmodified">Last Update</option>
-                        <option value="last_photometry">Last Photometry</option>
-                        <option value="discovery_date">Discovery Date</option>
-                        <option value="magnitude">Discovery Magnitude</option>
-                        <option value="brightest_mag">Brightest Mag</option>
-                        <option value="brightest_abs_mag">Brightest M</option>
-                        <option value="redshift">Redshift</option>
-                    </select>
-                    <button class="sort-order-btn" onclick="toggleSortOrder()" id="sortOrderBtn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right Side Panel -->
-        <div class="dashboard-side-panel">
-            <div class="side-panel-grid">
-
-                <!-- Widget 1: Top Viewed + Pinned (split) -->
-                {% if session.user %}
-                <div class="side-widget split-widget">
-                    <div class="split-widget-section">
-                        <div class="widget-header">
-                            <span class="widget-header-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </span>
-                            <span class="widget-header-title">Top Viewed</span>
-                            <div class="widget-header-control">
-                                <select id="topViewedMode" onchange="loadTopViewed()">
-                                    <option value="all">All Time</option>
-                                    <option value="30days">30 Days</option>
-                                </select>
+                    
+                    <div class="card-content">
+                        <div class="coordinates">
+                            <div class="coord-item">
+                                <span class="coord-label">RA:</span>
+                                <span class="coord-value">{{ "%.3f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Dec:</span>
+                                <span class="coord-value">{{ "%.3f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
                             </div>
                         </div>
-                        <ul class="widget-list" id="topViewedList">
-                            <li class="empty-message">Loading...</li>
-                        </ul>
-                    </div>
-                    <div class="split-widget-section">
-                        <div class="widget-header">
-                            <span class="widget-header-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 10 7 10"/></svg>
-                            </span>
-                            <span class="widget-header-title">Pinned</span>
-                        </div>
-                        <ul class="widget-list" id="pinnedObjectsList">
-                            <li class="empty-message">Loading...</li>
-                        </ul>
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- Widget 2: Recent Comments -->
-                {% if visibility.comments_sidebar %}
-                <div class="side-widget">
-                    <div class="widget-header">
-                        <span class="widget-header-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        </span>
-                        <span class="widget-header-title">Recent Comments</span>
-                    </div>
-                    <ul class="widget-list" id="recentCommentsList">
-                        <li class="empty-message">Loading...</li>
-                    </ul>
-                </div>
-
-                <!-- Widget 3: Recent TNS Updates -->
-                <div class="side-widget">
-                    <div class="widget-header">
-                        <span class="widget-header-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
-                        </span>
-                        <span class="widget-header-title" id="tnsWidgetTitle">Recent TNS Updates</span>
-                    </div>
-                    <ul class="widget-list" id="recentTnsUpdatesList">
-                        <li class="empty-message">Loading...</li>
-                    </ul>
-                </div>
-                {% endif %}
-
-
-            </div>
-        </div>
-    </div>
-
-        <!-- Main Content Area -->
-        <div class="content-area">
-            <!-- Top Pagination Controls -->
-            <div class="pagination-container top-pagination">
-                <div class="pagination-info">
-                    <span id="topPaginationInfo">Showing 0 of 0 objects</span>
-                </div>
-                <div class="pagination-controls" id="topPaginationControls">
-                </div>
-                <div class="page-size-selector">
-                    <label>Show:</label>
-                    <select id="topPageSizeSelect" onchange="changePageSize()">
-                        <option value="20">20</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Pre-loader if objects are not initially provided -->
-            {% if not objects %}
-            <div id="loadingIndicator" class="loading-overlay" style="display: flex;">
-                <div class="spinner"></div><p>Loading objects...</p>
-            </div>
-            {% endif %}
-
-            <!-- Cards View -->
-            <div class="objects-grid" id="cardsView">
-                {% for obj in objects %}
-                {% set real_tag = obj.tag or 'object' %}
-                <div class="object-card tag-{{ real_tag }}" 
-                    data-classification="{{ obj.type or 'AT' }}" 
-                    data-discovery="{{ obj.discoverydate or '' }}" 
-                    data-tag="{{ real_tag }}"
-                    data-magnitude="{{ obj.discoverymag or '' }}"
-                    data-redshift="{{ obj.redshift or '' }}"
-                    data-lastmodified="{{ obj.lastmodified or '' }}"
-                    data-lastphotometry="{{ obj.last_photometry_date or '' }}"
-                    data-brightest-mag="{{ obj.brightest_mag or '' }}"
-                    data-brightest-abs-mag="{{ obj.brightest_abs_mag or '' }}"
-                    data-tags="{{ obj.tags or '' }}">
-                
-                <div class="card-header">
-                    <div class="object-name">
-                        {% if obj.name and obj.name|length >= 4 %}
-                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
-                            {% set full_name = (obj.name_prefix or '') + obj.name %}
+                        
+                        <div class="object-info">
+                            <div class="info-item">
+                                <span>Discovery Mag = {{ obj.discoverymag or '---' }}</span>
+                            </div>
+    
+                            <div class="info-item">
+                                <span>Brightest Mag = {{ obj.brightest_mag or '---' }}</span>
+                            </div>
                             
-                            {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" target="_blank" rel="noopener noreferrer">
-                                    {{ obj.name_prefix or '' }}{{ obj.name }}
-                                </a>
-                            {% else %}
-                                <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" target="_blank" rel="noopener noreferrer">
-                                    {{ obj.name_prefix or '' }}{{ obj.name }}
-                                </a>
-                            {% endif %}
-                        {% else %}
-                            <a href="{{ url_for('marshal.marshal') }}">
-                                {{ obj.name_prefix or '' }}{{ obj.name }}
-                            </a>
-                        {% endif %}
-                    </div>
-                    <div class="classification-badge {{ (obj.type or 'at')|lower|replace(' ', '-') }}">
-                        {{ obj.type or 'AT' }}
-                    </div>
-                </div>
-                
-                {% if visibility.tags and obj.tags %}
-                <div class="card-tags">
-                    {% set tag_list = obj.tags.split(',') %}
-                    {% set ep_tags = [] %}
-                    {% set other_tags = [] %}
-                    {% for t in tag_list %}
-                        {% set t = t.strip() %}
-                        {% if t %}
-                            {% if t.upper().startswith('EP') %}
-                                {% set _ = ep_tags.append(t) %}
-                            {% else %}
-                                {% set _ = other_tags.append(t) %}
-                            {% endif %}
-                        {% endif %}
-                    {% endfor %}
-                    {% for t in ep_tags %}
-                        <span class="custom-tag ep">{{ t }}</span>
-                    {% endfor %}
-                    {% for t in other_tags %}
-                        <span class="custom-tag">{{ t }}</span>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                
-                <div class="card-content">
-                    <div class="coordinates">
-                        <div class="coord-item">
-                            <span class="coord-label">RA:</span>
-                            <span class="coord-value">{{ "%.3f"|format(obj.ra) if obj.ra else 'N/A' }}</span>
-                        </div>
-                        <div class="coord-item">
-                            <span class="coord-label">Dec:</span>
-                            <span class="coord-value">{{ "%.3f"|format(obj.declination) if obj.declination else 'N/A' }}</span>
+                            <div class="info-item">
+                                <span>Redshift = {{ obj.redshift or '---' }}</span>
+                            </div>
+    
+                            <div class="info-item">
+                                <span>Brightest M = {{ obj.brightest_abs_mag or '---' }}</span>
+                            </div>
+                            
+                            <div class="info-item">
+                                <span>Date: {{ obj.discoverydate[:10] if obj.discoverydate else '---' }}</span>
+                            </div>
+                            
+                            <div class="info-item">
+                                <span>Source: {{ obj.source_group or '---' }}</span>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="object-info">
-                        <div class="info-item">
-                            <span>Discovery Mag = {{ obj.discoverymag or '---' }}</span>
+                    <div class="card-footer">
+                        <div class="tag-badge {{ real_tag }}">
+                            {% if real_tag == 'followup' %}
+                                DETECT Follow up
+                            {% elif real_tag == 'finished' %}
+                                Finished
+                            {% elif real_tag == 'snoozed' %}
+                                Snoozed
+                            {% else %}
+                                Inbox
+                            {% endif %}
                         </div>
-
-                        <div class="info-item">
-                            <span>Brightest Mag = {{ obj.brightest_mag or '---' }}</span>
+                        <div class="last-update">
+                            {{ obj.time_received[:16] if obj.time_received else 'No update' }}
                         </div>
-                        
-                        <div class="info-item">
-                            <span>Redshift = {{ obj.redshift or '---' }}</span>
-                        </div>
-
-                        <div class="info-item">
-                            <span>Brightest M = {{ obj.brightest_abs_mag or '---' }}</span>
-                        </div>
-                        
-                        <div class="info-item">
-                            <span>Date: {{ obj.discoverydate[:10] if obj.discoverydate else '---' }}</span>
-                        </div>
-                        
-                        <div class="info-item">
-                            <span>Source: {{ obj.source_group or '---' }}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card-footer">
-                    <div class="tag-badge {{ real_tag }}">
-                        {% if real_tag == 'followup' %}
-                            DETECT Follow up
-                        {% elif real_tag == 'finished' %}
-                            Finished
-                        {% elif real_tag == 'snoozed' %}
-                            Snoozed
-                        {% else %}
-                            Inbox
-                        {% endif %}
-                    </div>
-                    <div class="last-update">
-                        {{ obj.time_received[:16] if obj.time_received else 'No update' }}
-                    </div>
-                    <div class="card-actions">
-                        {% if obj.name and obj.name|length >= 4 %}
-                            {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
-                            {% set full_name = (obj.name_prefix or '') + obj.name %}
-                            
-                            {% if year_letters and not obj.name_prefix %}
-                                <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
-                                    View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
-                                </a>
+                        <div class="card-actions">
+                            {% if obj.name and obj.name|length >= 4 %}
+                                {% set year_letters = obj.name|regex_search('(\d{4})([a-zA-Z]+)') %}
+                                {% set full_name = (obj.name_prefix or '') + obj.name %}
+                                
+                                {% if year_letters and not obj.name_prefix %}
+                                    <a href="{{ url_for('marshal_bp.object_detail_tns_format', year=year_letters[0], letters=year_letters[1]) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
+                                        View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
+                                    </a>
+                                {% else %}
+                                    <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
+                                        View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
+                                    </a>
+                                {% endif %}
                             {% else %}
                                 <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
                                     View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
                                 </a>
                             {% endif %}
-                        {% else %}
-                            <a href="{{ url_for('marshal_bp.object_detail_generic', object_name=obj.name) }}" class="quick-action" title="View Details" target="_blank" rel="noopener noreferrer">
-                                View{% if visibility.tags and obj.tags %}{% for t in obj.tags.split(',') %}{% set t = t.strip() %}{% if t %}<span class="mini-tag{% if t.upper().startswith('EP') %} ep{% endif %}">{{ t }}</span>{% endif %}{% endfor %}{% endif %}
-                            </a>
-                        {% endif %}
+                        </div>
+                    </div>
+                </div>
+                    {% endfor %}
+                </div>
+    
+                <!-- Table View -->
+                <div class="objects-table" id="tableView" style="display: none;">
+                    <div class="table-container kw-table-wrap">
+                        <table class="data-table kw-table">
+                            <thead>
+                                <tr>
+                                    <th class="name-column">Object Name</th>
+                                    <th class="class-column">Class</th>
+                                    <th>RA (J2000)</th>
+                                    <th>Dec (J2000)</th>
+                                    <th>Discover Mag</th>
+                                    <th>Brightest Mag</th>
+                                    <th>Brightest M</th>
+                                    <th>Redshift</th>
+                                    <th>Discovery Date</th>
+                                    <th>Discoverer</th>
+                                    <th class="tag-column">Tag</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+    
+                <!-- Compact View -->
+                <div class="objects-compact" id="compactView" style="display: none;">
+                </div>
+    
+                <!-- Bottom Pagination Controls -->
+                <div class="pagination-container bottom-pagination">
+                    <div class="pagination-info">
+                        <span id="paginationInfo">Showing 0 of 0 objects</span>
+                    </div>
+                    <div class="pagination-controls" id="paginationControls">
+                    </div>
+                    <div class="page-size-selector">
+                        <label>Show:</label>
+                        <select id="pageSizeSelect" class="kw-select kw-select-sm" onchange="changePageSize()">
+                            <option value="20">20</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
                     </div>
                 </div>
             </div>
-                {% endfor %}
-            </div>
 
-            <!-- Table View -->
-            <div class="objects-table" id="tableView" style="display: none;">
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th class="name-column">Object Name</th>
-                                <th class="class-column">Class</th>
-                                <th>RA (J2000)</th>
-                                <th>Dec (J2000)</th>
-                                <th>Discover Mag</th>
-                                <th>Brightest Mag</th>
-                                <th>Brightest M</th>
-                                <th>Redshift</th>
-                                <th>Discovery Date</th>
-                                <th>Discoverer</th>
-                                <th class="tag-column">Tag</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tableBody">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {% if has_side %}
+            <!-- Side column -->
+            <aside class="dashboard-side-panel kw-stack" aria-label="Activity">
 
-            <!-- Compact View -->
-            <div class="objects-compact" id="compactView" style="display: none;">
-            </div>
+                <!-- Top Viewed + Pinned -->
+                {% if session.user %}
+                <section class="kw-panel side-widget">
+                    <div class="kw-panel-head widget-header">
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Top Viewed</h2>
+                        <div class="widget-header-control">
+                            <select id="topViewedMode" class="kw-select kw-select-sm" onchange="loadTopViewed()" aria-label="Top viewed period">
+                                <option value="all">All Time</option>
+                                <option value="30days">30 Days</option>
+                            </select>
+                        </div>
+                    </div>
+                    <ul class="widget-list" id="topViewedList">
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </section>
+                <section class="kw-panel side-widget">
+                    <div class="kw-panel-head widget-header">
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-1"/><polygon points="12 15 17 10 7 10"/></svg>Pinned</h2>
+                    </div>
+                    <ul class="widget-list" id="pinnedObjectsList">
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </section>
+                {% endif %}
 
-            <!-- Bottom Pagination Controls -->
-            <div class="pagination-container bottom-pagination">
-                <div class="pagination-info">
-                    <span id="paginationInfo">Showing 0 of 0 objects</span>
-                </div>
-                <div class="pagination-controls" id="paginationControls">
-                </div>
-                <div class="page-size-selector">
-                    <label>Show:</label>
-                    <select id="pageSizeSelect" onchange="changePageSize()">
-                        <option value="20">20</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                    </select>
-                </div>
-            </div>
+                {% if visibility.comments_sidebar %}
+                <!-- Recent Comments -->
+                <section class="kw-panel side-widget">
+                    <div class="kw-panel-head widget-header">
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recent Comments</h2>
+                    </div>
+                    <ul class="widget-list" id="recentCommentsList">
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </section>
+
+                <!-- Recent TNS Updates -->
+                <section class="kw-panel side-widget">
+                    <div class="kw-panel-head widget-header">
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg><span id="tnsWidgetTitle">Recent TNS Updates</span></h2>
+                    </div>
+                    <ul class="widget-list" id="recentTnsUpdatesList">
+                        <li class="empty-message">Loading...</li>
+                    </ul>
+                </section>
+                {% endif %}
+            </aside>
+            {% endif %}
         </div>
+    </div>
+{% endblock %}
 
+{% block after_main %}
     <!-- Advanced Filters Modal -->
     <div class="modal-overlay advanced-filter-overlay" id="advancedFilterModal" style="display: none;">
         <div class="upload-modal advanced-filter-dialog">
@@ -470,7 +417,7 @@
                 <h3>Advanced Filters</h3>
                 <p>Use the full-screen filter workspace to narrow the Marshal list more clearly.</p>
             </div>
-            <button class="close-modal advanced-filter-close" onclick="toggleAdvancedFilters()">
+            <button type="button" class="close-modal advanced-filter-close kw-icon-btn" onclick="toggleAdvancedFilters()" aria-label="Close">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
         </div>
@@ -567,10 +514,10 @@
 
             <div class="filter-row advanced-filter-actions-row">
                 <div class="filter-actions advanced-filter-actions">
-                    <button class="apply-advanced-btn" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
+                    <button type="button" class="apply-advanced-btn kw-btn kw-btn-primary" onclick="applyAdvancedFilters(); toggleAdvancedFilters();">
                         Apply Filters
                     </button>
-                    <button class="clear-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
+                    <button type="button" class="clear-btn kw-btn" onclick="clearAllFilters(); toggleAdvancedFilters();">
                         Clear All
                     </button>
                 </div>
@@ -584,7 +531,7 @@
         <div class="upload-modal">
             <div class="modal-header">
                 <h3> Upload TNS CSV Data</h3>
-                <button class="close-modal" onclick="closeUploadModal()"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                <button type="button" class="close-modal kw-icon-btn" onclick="closeUploadModal()" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
             <div class="modal-content">
                 <div class="upload-info">
@@ -617,7 +564,7 @@
                             <span class="file-name" id="selectedFileName"></span>
                             <span class="file-size" id="selectedFileSize"></span>
                         </div>
-                        <button class="remove-file" onclick="clearSelectedFile()">Remove</button>
+                        <button type="button" class="remove-file kw-btn kw-btn-sm kw-btn-danger" onclick="clearSelectedFile()">Remove</button>
                     </div>
                 </div>
                 
@@ -651,8 +598,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="cancel-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
-                <button class="upload-btn" onclick="startUpload()" id="startUploadBtn" disabled>
+                <button type="button" class="cancel-btn kw-btn" onclick="closeUploadModal()" id="cancelBtn">Cancel</button>
+                <button type="button" class="upload-btn kw-btn kw-btn-primary" onclick="startUpload()" id="startUploadBtn" disabled>
                      Start Upload
                 </button>
             </div>
@@ -662,12 +609,13 @@
     <!-- Notification Container -->
     <div class="notification-container" id="notificationContainer"></div>
 
-    <button id="backToTopBtn" title="Go to top">
+    <button type="button" id="backToTopBtn" title="Go to top" aria-label="Go to top">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 15l-6-6-6 6"/>
         </svg>
     </button>
+{% endblock %}
 
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/marshal.js') }}"></script>
-</body>
-</html>
+{% endblock %}

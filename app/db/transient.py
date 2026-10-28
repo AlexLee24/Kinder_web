@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re as _re
+import threading as _threading
 import time as _time
 from datetime import datetime, timezone
 
@@ -21,7 +22,13 @@ logger = logging.getLogger(__name__)
 _marshal_stats_cache = {'expires_at': 0.0, 'value': None}
 
 
+_cross_matches_flag_ok = False   # the column exists: no need to ask again in this process
+
+
 def _ensure_cross_matches_flag_column(cur, conn=None):
+    global _cross_matches_flag_ok
+    if _cross_matches_flag_ok:
+        return
     try:
         cur.execute(
             "ALTER TABLE transient.cross_matches "
@@ -29,6 +36,7 @@ def _ensure_cross_matches_flag_column(cur, conn=None):
         )
         if conn is not None:
             conn.commit()
+        _cross_matches_flag_ok = True
     except Exception as e:
         if conn is not None:
             conn.rollback()
@@ -1647,18 +1655,40 @@ def get_latest_photometry_for_names(names: list) -> dict:
 _detect_metadata_cache: dict = {'expires_at': 0.0, 'value': None}
 
 
+def _stale_while_revalidate(cache: dict, load, cache_ttl: int) -> dict:
+    """Serve *cache* at once; once it is older than *cache_ttl* it is rebuilt in a
+    background thread (the caller still gets the previous value). Only the very
+    first call, with nothing cached yet, waits for *load(cache_ttl)*."""
+    cached = cache.get('value')
+    if cached is None:
+        return load(cache_ttl)
+    if _time.monotonic() >= cache['expires_at'] and not cache.get('refreshing'):
+        cache['refreshing'] = True
+
+        def _refresh():
+            try:
+                load(cache_ttl)
+            except Exception as e:
+                logger.warning('cache refresh %s: %s', getattr(load, '__name__', load), e)
+            finally:
+                cache['refreshing'] = False
+        _threading.Thread(target=_refresh, name='swr-refresh', daemon=True).start()
+    return dict(cached)
+
+
 def get_detect_metadata(cache_ttl: int = 120) -> dict:
     """Return available_dates + daily_counts in a single DB connection.
 
-    Results are cached for *cache_ttl* seconds (default 120 s) to avoid
-    redundant queries every home-page or archives request.
+    Cached for *cache_ttl* seconds (default 120 s); after that the old value is
+    still served while a fresh one is built in the background, so the DETECT
+    pages never wait on these queries except right after start-up.
     Returns {'available_dates': [...], 'daily_counts': [...]}.
     """
-    now = _time.monotonic()
-    cached = _detect_metadata_cache.get('value')
-    if cached is not None and now < _detect_metadata_cache['expires_at']:
-        return dict(cached)
+    return _stale_while_revalidate(_detect_metadata_cache, _load_detect_metadata, cache_ttl)
 
+
+def _load_detect_metadata(cache_ttl: int) -> dict:
+    now = _time.monotonic()
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
@@ -1869,11 +1899,12 @@ def _screen_row(r) -> dict:
 def get_detect_overview(cache_ttl: int = 60) -> dict:
     """Latest DETECT run at a glance for the DETECT home page: when it ran, how
     the objects split by host status, what is still waiting for a person, and
-    the highest-scoring objects."""
+    the highest-scoring objects. Served stale-while-revalidate like get_detect_metadata."""
+    return _stale_while_revalidate(_detect_overview_cache, _load_detect_overview, cache_ttl)
+
+
+def _load_detect_overview(cache_ttl: int) -> dict:
     now = _time.monotonic()
-    cached = _detect_overview_cache.get('value')
-    if cached is not None and now < _detect_overview_cache['expires_at']:
-        return dict(cached)
     result = {'last_run': None, 'run_day': None, 'counts': {}, 'pending': 0, 'top': []}
     try:
         with get_db_connection() as conn:

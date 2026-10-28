@@ -1,14 +1,13 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Admin Panel - Kinder</title>
+{% extends '_base.html' %}
+{#- Admin hub (/admin): five in-page tabs (admin.js showTab; URL hash #overview … #operations), picked from the
+    admin menu (_admin_nav.html, left column). Each tab starts with a page head: title, one line, its own actions. -#}
+{% block title %}Admin Panel - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}">
     <meta name="description" content="Kinder Admin Panel">
-    {% include '_favicon.html' %}
-</head>
+{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
 {#- Dates arrive as ISO strings (db.auth) or datetimes -#}
 {% macro day(v) %}{% if v %}{{ v.strftime('%Y-%m-%d') if v.strftime is defined else (v|string)[:10] }}{% else %}—{% endif %}{% endmacro %}
 {% macro stamp(v) %}{% if v %}{{ v.strftime('%Y-%m-%d %H:%M') if v.strftime is defined else (v|string)[:16]|replace('T', ' ') }}{% endif %}{% endmacro %}
@@ -24,34 +23,37 @@
 {%- set _u = users[email] if email in users else none -%}
 {{ _u.username if _u and _u.has_placeholder_email and _u.username else email }}
 {%- endmacro %}
-<body class="kw-admin-body">
-    {% include '_navbar.html' %}
+{% block content %}
+    <div class="adm-layout">
     {% include '_admin_nav.html' %}
-
-    <main class="kw-page admin-page">
+    <div class="kw-page admin-page">
 
         <!-- ═══════════════ Overview ═══════════════ -->
-        <section id="overview-tab" class="tab-content active" data-tab="overview" aria-labelledby="h-overview">
-            <div class="kw-page-head">
-                <div>
-                    <span class="kw-eyebrow">Admin</span>
-                    <h1 id="h-overview">Overview</h1>
-                    <p>Everything at a glance. Requests that need a decision come first.</p>
-                </div>
+        <section id="overview-tab" class="tab-content active" data-tab="overview" aria-label="Overview">
+            <header class="kw-page-head adm-head">
+                <div><h1>Overview</h1><p>Everything at a glance. Requests that need a decision come first.</p></div>
                 <div class="kw-page-actions">
                     <span id="consistencyStatus" class="hdr-status"></span>
                     <span id="backupStatus" class="hdr-status"></span>
-                    <button class="kw-btn" onclick="checkDataConsistency()">
+                    <button class="kw-btn adm-act-icon" onclick="checkDataConsistency()" aria-label="Check consistency" title="Check consistency">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-                        Check consistency
+                        <span>Check consistency</span>
                     </button>
-                    <button class="kw-btn" onclick="triggerManualBackup()">
+                    <button class="kw-btn adm-act-icon" onclick="triggerManualBackup()" aria-label="Backup now" title="Backup now">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Backup now
+                        <span>Backup now</span>
                     </button>
                     <button class="kw-btn kw-btn-primary" onclick="showAddUserModal()">{{ ic_plus }} Add user</button>
                 </div>
+            </header>
+
+            {% if group_requests or api_key_requests %}
+            <div class="adm-todo">
+                <b>To do</b>
+                {% if group_requests %}<a href="#attention"><em>{{ group_requests|length }}</em> join request{{ 's' if group_requests|length != 1 }} →</a>{% endif %}
+                {% if api_key_requests %}<a href="#attention"><em>{{ api_key_requests|length }}</em> API key request{{ 's' if api_key_requests|length != 1 }} →</a>{% endif %}
             </div>
+            {% endif %}
 
             <div class="kw-kpis">
                 <button type="button" class="kw-kpi" onclick="showTab('users')">
@@ -118,10 +120,10 @@
                         {% endfor %}
                     </div>
                     {% else %}
-                    <div class="kw-empty">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+                    <p class="ov-clear">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
                         All clear — no join or API key requests.
-                    </div>
+                    </p>
                     {% endif %}
                 </section>
 
@@ -138,7 +140,7 @@
                             <b>{{ u.name or who(u.email) }}</b>
                             <small>{{ who(u.email) }}</small>
                         </div>
-                        {% if u.is_admin %}<span class="role-pill role-admin">admin</span>{% endif %}
+                        {% if u.is_admin %}<span class="kw-chip">Admin</span>{% endif %}
                         <span class="kw-row-time" data-ago="{{ u.last_login_iso }}">{{ day(u.last_login) }}</span>
                     </div>
                     {% else %}
@@ -210,13 +212,9 @@
         </section>
 
         <!-- ═══════════════ Users ═══════════════ -->
-        <section id="users-tab" class="tab-content" data-tab="users" aria-labelledby="h-users">
-            <div class="kw-page-head">
-                <div>
-                    <span class="kw-eyebrow">Admin</span>
-                    <h1 id="h-users">Users</h1>
-                    <p>Roles, group membership and API keys. Your own account can't be changed here.</p>
-                </div>
+        <section id="users-tab" class="tab-content" data-tab="users" aria-label="Users">
+            <header class="kw-page-head adm-head">
+                <div><h1>Users &amp; API keys</h1><p>Roles, group membership and API keys. Your own account can't be changed here.</p></div>
                 <div class="kw-mini-stats">
                     <div><b>{{ stats.users }}</b>Total</div>
                     <div><b>{{ stats.admins }}</b>Admins</div>
@@ -224,7 +222,7 @@
                     <div><b>{{ stats.guests }}</b>Guests</div>
                     <div><b>{{ stats.api_keys }}</b>API keys</div>
                 </div>
-            </div>
+            </header>
 
             {% if api_key_requests %}
             <section class="kw-panel req-banner">
@@ -351,17 +349,14 @@
         </section>
 
         <!-- ═══════════════ Groups ═══════════════ -->
-        <section id="groups-tab" class="tab-content" data-tab="groups" aria-labelledby="h-groups">
-            <div class="kw-page-head">
-                <div>
-                    <span class="kw-eyebrow">Admin</span>
-                    <h1 id="h-groups">Groups <span class="kw-count">{{ groups|length }}</span></h1>
-                    <p>Groups decide who sees private pages and restricted photometry sources.</p>
-                </div>
+        <section id="groups-tab" class="tab-content" data-tab="groups" aria-label="Groups">
+            <header class="kw-page-head adm-head">
+                <div><h1>Groups</h1><p>Groups decide who sees private pages and restricted photometry sources.</p></div>
                 <div class="kw-page-actions">
+                    <span class="kw-panel-meta">{{ groups|length }} group{{ 's' if groups|length != 1 }}</span>
                     <button class="kw-btn kw-btn-primary" onclick="showCreateGroupModal()">{{ ic_plus }} New group</button>
                 </div>
-            </div>
+            </header>
 
             {% if group_requests %}
             <section class="kw-panel req-banner">
@@ -430,14 +425,10 @@
         </section>
 
         <!-- ═══════════════ Access ═══════════════ -->
-        <section id="access-tab" class="tab-content" data-tab="access" aria-labelledby="h-access">
-            <div class="kw-page-head">
-                <div>
-                    <span class="kw-eyebrow">Admin</span>
-                    <h1 id="h-access">Access control</h1>
-                    <p>Which groups can open each private page, and the default visibility of every photometry / spectra source.</p>
-                </div>
-            </div>
+        <section id="access-tab" class="tab-content" data-tab="access" aria-label="Access control">
+            <header class="kw-page-head adm-head">
+                <div><h1>Access</h1><p>Which groups can open each private page, and the default visibility of every photometry / spectra source.</p></div>
+            </header>
 
             <section class="kw-panel">
                 <div class="kw-panel-head">
@@ -474,14 +465,10 @@
         </section>
 
         <!-- ═══════════════ Operations ═══════════════ -->
-        <section id="operations-tab" class="tab-content" data-tab="operations" aria-labelledby="h-ops">
-            <div class="kw-page-head">
-                <div>
-                    <span class="kw-eyebrow">Admin</span>
-                    <h1 id="h-ops">Operations</h1>
-                    <p>Run scheduled jobs by hand. Each one also runs on its own schedule.</p>
-                </div>
-            </div>
+        <section id="operations-tab" class="tab-content" data-tab="operations" aria-label="Operations">
+            <header class="kw-page-head adm-head">
+                <div><h1>Jobs</h1><p>Run scheduled jobs by hand. Each one also runs on its own schedule.</p></div>
+            </header>
 
             <div class="ops-grid">
                 <article class="kw-panel op-card">
@@ -579,8 +566,11 @@
                 </form>
             </section>
         </section>
-    </main>
+    </div>
+    </div>
+{% endblock %}
 
+{% block after_main %}
     <!-- ── Modals (admin.js shows them with style.display = 'block') ── -->
     <div id="consistencyModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-consistency">
         <div class="modal-content kw-modal-card is-wide">
@@ -722,6 +712,9 @@
         </div>
     </div>
 
+{% endblock %}
+
+{% block scripts %}
     <script type="application/json" id="adminGroupsData">{{ groups.keys() | list | tojson }}</script>
     <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
     <script>
@@ -798,5 +791,4 @@
             }
         }
     </script>
-</body>
-</html>
+{% endblock %}

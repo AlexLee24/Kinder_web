@@ -1,9 +1,11 @@
 # ---- secrets / local config --------------------------------------------------
 .env
 kinder.env
+kinder.local.env
 app/blueprints/private_area/tutorials/.env
 
 # ---- runtime data (never commit) ----------------------------------------------
+local_db/
 app/data/
 app/log/
 app/vendor/*

@@ -1,5 +1,5 @@
 /* Base styles and CSS variables */
-/* html fluid-size is handled by _theme.css (loaded via _navbar.html) */
+/* html fluid-size is handled by _theme.css (loaded by _base.html) */
 
 :root {
     --primary-color: var(--kw-accent);
@@ -24,60 +24,7 @@
     box-sizing: border-box;
 }
 
-body {
-    font-family: var(--kw-font-system);
-    background-color: #0f0f1a;
-    background-image: url('../../photo/background.png');
-    background-attachment: fixed;
-    background-size: cover;
-    background-repeat: no-repeat;
-    background-position: center;
-    min-height: 100vh;
-    color: var(--text-primary);
-    position: relative;
-}
-
-/* Glass morphism overlay for better readability */
-body::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(5px);
-    z-index: -1;
-}
-
-/* Selection and scrollbar styling */
-::selection {
-    background: rgba(197, 160, 89, 0.3);
-    color: white;
-}
-
-::-moz-selection {
-    background: rgba(197, 160, 89, 0.3);
-    color: white;
-}
-
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(197, 160, 89, 0.4);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(197, 160, 89, 0.6);
-}
+/* The page background, font, selection colour and scrollbars come from _theme.css / shell.css. */
 
 /* Animations */
 @keyframes fadeInUp {

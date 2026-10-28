@@ -1,4 +1,5 @@
-/* Import all marshal styles */
+/* Marshal styles (also loaded by the DETECT review page for the shared pieces: base, notifications, .content-area).
+   _page.css holds the Marshal page layout (kw-dash, page bar controls) scoped to .marshal-page / body.marshal-body. */
 @import '_variables.css';
 @import '_base.css';
 @import '_components.css';
@@ -9,6 +10,5 @@
 @import '_compact.css';
 @import '_modals.css';
 @import '_responsive.css';
-@import '_left_redesign.css';
-@import '_filter_modal_redesign.css';
 @import '_phone.css';
+@import '_page.css';

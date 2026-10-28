@@ -1,26 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Telescopes · Pipeline - Kinder</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% extends '_base.html' %}
+{#- Pipeline › Telescopes: this server's telescope.yml (a sub-page of Pipeline: keeps its page head and back link). -#}
+{% block title %}Telescopes · Pipeline - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">{% endblock %}
+
+{% block bar_left %}
+    <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
+{% endblock %}
+{% block bar_right %}
+    <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes_download') }}">Download</a>
+{% endblock %}
+
+{% block content %}
     {% macro val(v) %}{% if v is none or v == unset %}<span class="kw-chip kw-chip-red">not set</span>{% else %}<span class="pl-mono">{{ v }}</span>{% endif %}{% endmacro %}
 
-    <main class="kw-page pl-page" id="plTelescopes">
-        <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
+    <div class="kw-page pl-page" id="plTelescopes">
         <header class="kw-page-head">
             <div>
+                <span class="kw-eyebrow">Pipeline</span>
                 <h1>Telescopes</h1>
                 <p>This server's <code>telescope.yml</code>, shared by every workspace. AutoPhOT looks up each image by its TELESCOP and INSTRUME headers here; when it meets a new one, your answers in the run log are added here. Telescopes in the template kept in git are added automatically when they are missing.</p>
-            </div>
-            <div class="kw-page-actions">
-                <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_telescopes_download') }}">Download</a>
             </div>
         </header>
 
@@ -63,8 +61,9 @@
                 <p class="pl-msg" id="plTelMsg" role="status" aria-live="polite"></p>
             </div>
         </section>
-    </main>
+    </div>
+{% endblock %}
 
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
-</body>
-</html>
+{% endblock %}

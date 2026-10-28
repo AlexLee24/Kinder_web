@@ -35,7 +35,7 @@ STAGES = [
 ]
 
 _cache = {'at': 0.0, 'values': None}
-_TTL = 5.0
+_TTL = 60.0   # saving the settings calls clear_cache()
 
 
 def _stored():
@@ -43,8 +43,9 @@ def _stored():
     now = time.monotonic()
     if _cache['values'] is not None and now - _cache['at'] < _TTL:
         return _cache['values']
-    from app.db.auth import get_setting
-    values = {k: (get_setting(f'pipeline.{k}', '') or '').strip() for k in SETTINGS}
+    from app.db.auth import get_settings
+    got = get_settings(f'pipeline.{k}' for k in SETTINGS)          # one query for all of them
+    values = {k: (got.get(f'pipeline.{k}') or '').strip() for k in SETTINGS}
     _cache.update(at=time.monotonic(), values=values)   # after the queries: a slow / unreachable DB must not expire it at once
     return values
 

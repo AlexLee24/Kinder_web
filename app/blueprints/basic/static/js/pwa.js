@@ -1,6 +1,6 @@
 // Installable app (PWA): registers /sw.js and offers "Install app" (2026-10, after EAU_Web's pwa.js).
-// Loaded on every page by _navbar.html. Install entries: the navbar button [data-pwa-install-btn]
-// and menu items [data-pwa-install]. They show whenever Kinder is not already running as an
+// Loaded on every page by _base.html. Install entries: [data-pwa-install-btn] buttons
+// and menu items [data-pwa-install] (the "Kinder app" card in the account menu, About in the rail). They show whenever Kinder is not already running as an
 // installed app: the browser's own install prompt when it offers one, otherwise step-by-step
 // instructions for that browser (iOS Share → Add to Home Screen, Safari File → Add to Dock, …).
 // Prompt banner: once on the first sign-in on any device, then on phones until installed
@@ -151,7 +151,7 @@
         refresh();
         hideBanner();
     });
-    // capture phase: _navbar.html stops propagation of clicks on dropdown links
+    // capture phase, so menus that stop propagation of their link clicks still reach this
     document.addEventListener('click', function (e) {
         var t = e.target.closest('[data-pwa-install] a, [data-pwa-install-btn]');   // navbar button + menu items
         if (!t) return;

@@ -1,5 +1,6 @@
 """DETECT host screening pages and review APIs — routes (split from detect_routes.py)."""
 from flask import render_template, request, jsonify, flash, redirect, url_for, session, send_file
+from app.db import run_parallel
 from app.db.transient import (
     update_cross_match_flag,
     tns_object_db,
@@ -265,8 +266,12 @@ def detect_results():
     # Get date from query parameter
     selected_date = request.args.get('detect_results')
     
-    # Single cached call for both available_dates and daily_counts (Marshal pattern)
-    metadata = get_detect_metadata()
+    # Single cached call for both available_dates and daily_counts (Marshal pattern); the home page also
+    # needs the latest-run overview, fetched at the same time (both are stale-while-revalidate caches).
+    if selected_date:
+        metadata = get_detect_metadata()
+    else:
+        metadata, overview = run_parallel(get_detect_metadata, get_detect_overview)
     available_dates = metadata.get('available_dates') or []
     latest_date = available_dates[0] if available_dates else None
 
@@ -281,7 +286,7 @@ def detect_results():
         return render_template('detect_home.html',
                                latest_date=latest_date,
                                daily_counts=daily_counts,
-                               overview=get_detect_overview(),
+                               overview=overview,
                                current_path='/detect')
 
     if not _is_known_detect_date(selected_date, metadata):

@@ -1,127 +1,60 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>DETECT Archives - Kinder</title>
+{% extends '_base.html' %}
+{#- DETECT Archives (/detect/archives): every result day as a card (kw-list); the date filter sits in the page bar. -#}
+{% block title %}DETECT Archives - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">
-    {% include '_favicon.html' %}
     <style>
-        .archive-page-container {
-            width: 100%;
-            box-sizing: border-box;   /* width:100% + padding overflowed phones by 40px */
-            max-width: 1200px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 30px;
-            align-items: center;
-            animation: fadeIn 0.8s ease-out;
-            margin-top: 20px;
+        .archive-page-container .archive-btn {
+            flex-direction: row; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 8px 12px;
+            padding: 16px 20px;
+            border-radius: var(--kw-radius-xl);
+            background: var(--kw-card-bg);
+            border-color: var(--kw-border);
         }
-        .archive-list-card {
-            background: rgba(20, 20, 25, 0.6);
-            backdrop-filter: blur(15px) saturate(150%);
-            -webkit-backdrop-filter: blur(15px) saturate(150%);
-            padding: 40px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-            width: 100%;
-            box-sizing: border-box;
-        }
-        .archive-list-card h2 {
-            font-size: 2.2rem;
-            font-weight: 300;
-            color: #fff;
-            margin-bottom: 30px;
-            text-align: center;
-            letter-spacing: 2px;
-            border-bottom: 1px solid rgba(70, 255, 175, 0.4);
-            padding-bottom: 15px;
-            display: inline-block;
-        }
-        .header-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .filter-container {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 30px;
-            gap: 15px;
-        }
-        .filter-input {
-            padding: 12px 20px;
-            border-radius: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            font-size: 1.1rem;
-            outline: none;
-            transition: all 0.3s ease;
-            width: 300px;
-        }
-        .filter-input:focus {
-            border-color: #46ffaf;
-            box-shadow: 0 0 15px rgba(70, 255, 175, 0.2);
-        }
-        .archive-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-            width: 100%;
-        }
-        .result-link.disabled {
-            display: inline-block;
-            font-size: 1.8rem;
-            color: rgba(255, 255, 255, 0.4);
-            padding: 25px 40px;
-            border-radius: 15px;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            font-weight: 400;
-        }
+        .archive-page-container .archive-btn .date { margin-right: auto; font-size: 1.05rem; }
+        .archive-page-container .archive-btn:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--kw-accent-border); }
+        .archive-page-container .archive-btn.lens-match { border-color: rgba(255, 0, 127, 0.5); background: rgba(255, 0, 127, 0.05); }
+        .archive-page-container .archive-btn.no-match, .archive-page-container .archive-btn.no-match:hover { color: var(--kw-text-muted); background: rgba(255, 255, 255, 0.02); border-color: var(--kw-border); }
+        .sh-pagebar .archive-filter { width: 320px; max-width: 100%; min-width: 0; }
+        @media (max-width: 860px) { .sh-pagebar .archive-filter { width: 100%; } }
+        .archive-empty { text-align: center; }
+        .archive-empty .result-link.disabled { display: inline-block; }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="archive-page-container">
-        <h1 class="main-title">DETECT Archives</h1>
-        <h2 class="sub-title">Historical Cross-matching Results</h2>
+{% block bar_left %}
+    <label class="kw-search archive-filter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="dateFilter" class="filter-input" placeholder="Filter by date (e.g., 2024-03)..." aria-label="Filter by date">
+    </label>
+{% endblock %}
 
-        <div class="archive-list-card">
-            <div class="header-container">
-                <h2>All Results</h2>
-            </div>
-            
-            <div class="filter-container">
-                <input type="text" id="dateFilter" class="filter-input" placeholder="Filter by date (e.g., 2024-03)...">
-            </div>
+{% block content %}
+    <div class="kw-page archive-page-container">
+        <p class="kw-lead">Historical cross-matching results, newest first. Days with no matched target are dimmed.</p>
 
-            {% if daily_counts and daily_counts|length > 0 %}
-            <div class="archive-grid" id="archiveGrid">
-                {% for item in daily_counts %}
-                <a href="{{ url_for('detect.detect_results', detect_results=item.date) if item.count > 0 else '#' }}" 
-                   class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}" 
-                   data-date="{{ item.date }}"
-                   {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
-                    <span class="date">{{ item.date }}</span>
-                    <span class="count">{{ item.count }} targets</span>
-                    {% if item.has_lens %}<span class="lens-badge-small">🔭 LENS</span>{% endif %}
-                </a>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div style="text-align: center; margin-top: 50px;">
-                <span class="result-link disabled">No Archives Available</span>
-            </div>
-            {% endif %}
+        {% if daily_counts and daily_counts|length > 0 %}
+        <div class="kw-list archive-grid" id="archiveGrid">
+            {% for item in daily_counts %}
+            <a href="{{ url_for('detect.detect_results', detect_results=item.date) if item.count > 0 else '#' }}"
+               class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}"
+               data-date="{{ item.date }}"
+               {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
+                <span class="date">{{ item.date }}</span>
+                <span class="count">{{ item.count }} targets</span>
+                {% if item.has_lens %}<span class="lens-badge-small">🔭 LENS</span>{% endif %}
+            </a>
+            {% endfor %}
         </div>
+        {% else %}
+        <div class="archive-empty">
+            <span class="result-link disabled">No Archives Available</span>
+        </div>
+        {% endif %}
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         document.getElementById('dateFilter').addEventListener('input', function(e) {
             const filterValue = e.target.value.toLowerCase();
@@ -139,5 +72,4 @@
             }
         });
     </script>
-</body>
-</html>
+{% endblock %}

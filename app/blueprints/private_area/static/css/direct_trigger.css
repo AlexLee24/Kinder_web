@@ -1,22 +1,9 @@
-/* Direct Trigger — built on the kw-* components in _theme.css. */
-body { background: var(--kw-bg, #0B0D14); }
-.dt-page { box-sizing: border-box; }
+/* Direct Trigger — built on the kw-* components in _theme.css; layout = kw-tool (form side + list / script). */
+.dt-page [hidden] { display: none !important; }   /* .kw-field / .dt-filters set display, which beat the hidden attribute */
 .dt-page :is(input, select, textarea, button) { box-sizing: border-box; min-width: 0; max-width: 100%; }
 .dt-page .dt-grid > * { min-width: 0; }
 
-.dt-page .kw-page-head h1 { text-wrap: balance; }
-
-.dt-grid {
-    display: grid;
-    grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
-    gap: 16px;
-    align-items: start;
-}
-@media (max-width: 900px) { .dt-grid { grid-template-columns: 1fr; } }
-
 /* ── Form ── */
-.dt-add { position: sticky; top: 84px; }
-@media (max-width: 900px) { .dt-add { position: static; } }
 .dt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .dt-row-name { grid-template-columns: 1fr 96px; }
 .dt-page .kw-field input, .dt-page .kw-field select { font-variant-numeric: tabular-nums; }
@@ -29,14 +16,14 @@ body { background: var(--kw-bg, #0B0D14); }
     position: absolute; left: 0; right: 0; top: 100%; z-index: 20;
     margin: 4px 0 0; padding: 4px; list-style: none;
     max-height: 260px; overflow-y: auto;
-    border-radius: var(--kw-radius-md, 12px);
+    border-radius: var(--kw-radius-md);
     background: var(--kw-bg-elevated, #14171F);
     border: 1px solid var(--kw-border-med);
     box-shadow: var(--kw-glass-shadow);
 }
 .dt-suggest li {
     display: flex; justify-content: space-between; gap: 10px;
-    padding: 8px 10px; border-radius: 8px;
+    padding: 8px 10px; border-radius: var(--kw-radius-md);
     font-size: 0.84rem; cursor: pointer;
 }
 .dt-suggest li small { color: var(--kw-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -66,7 +53,7 @@ body { background: var(--kw-bg, #0B0D14); }
 .dt-empty b { display: block; margin-bottom: 4px; font-weight: 500; color: var(--kw-text-secondary); font-size: 0.95rem; }
 
 .dt-skeleton { display: grid; gap: 10px; padding: 6px 0; }
-.dt-skeleton span { height: 18px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); animation: dt-pulse 1.4s ease-in-out infinite; }
+.dt-skeleton span { height: 18px; border-radius: var(--kw-radius-sm); background: rgba(255, 255, 255, 0.06); animation: dt-pulse 1.4s ease-in-out infinite; }
 .dt-skeleton span:nth-child(2) { width: 86%; }
 .dt-skeleton span:nth-child(3) { width: 64%; }
 @keyframes dt-pulse { 50% { opacity: 0.45; } }
@@ -76,7 +63,7 @@ body { background: var(--kw-bg, #0B0D14); }
 .dt-script {
     width: 100%; min-height: 200px; resize: vertical;
     padding: 12px 14px;
-    border-radius: var(--kw-radius-md, 12px);
+    border-radius: var(--kw-radius-md);
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid var(--kw-border);
     color: var(--kw-text-primary);
@@ -85,3 +72,7 @@ body { background: var(--kw-bg, #0B0D14); }
 .dt-send-row { align-items: center; }
 .dt-send-row .dt-msg { flex: 1 1 220px; margin: 0; }
 #dtSend.is-armed { background: #FF9F0A; color: #1A1408; }
+@media (max-width: 860px) {
+    /* Phone: Target gets the whole row so its placeholder is not cut; Mag drops below. */
+    .dt-row-name > .dt-name-field { grid-column: 1 / -1; }
+}

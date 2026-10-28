@@ -4,7 +4,7 @@ import urllib.parse
 from datetime import datetime
 from flask import render_template, redirect, url_for, session, flash
 from app.db.transient import search_tns_objects, TNSObjectDB, update_object_abs_mag
-from app.db import get_tns_db_connection, OBJECT_COMPAT_COLS
+from app.db import get_tns_db_connection, run_in_background, OBJECT_COMPAT_COLS
 from app.db.auth import check_object_access
 from . import objects_bp
 
@@ -48,10 +48,10 @@ def object_detail_generic(object_name):
 
         # Log view
         user_email = user.get('email') if user else None
-        TNSObjectDB.log_object_view(object_name, user_email)
-        
-        # Update absolute magnitude and brightest mag
-        update_object_abs_mag(object_name)
+        # View counter and the brightest / absolute magnitude refresh run after the
+        # response: the page does not wait for them (the magnitude shown is the stored one).
+        run_in_background(TNSObjectDB.log_object_view, object_name, user_email)
+        run_in_background(update_object_abs_mag, object_name)
         
         # Try exact match first using direct SQL query
         conn = get_tns_db_connection()
@@ -266,10 +266,10 @@ def object_detail_tns_format(year, letters):
 
         # Log view
         user_email = user.get('email') if user else None
-        TNSObjectDB.log_object_view(object_name, user_email)
-        
-        # Update absolute magnitude and brightest mag
-        update_object_abs_mag(object_name)
+        # View counter and the brightest / absolute magnitude refresh run after the
+        # response: the page does not wait for them (the magnitude shown is the stored one).
+        run_in_background(TNSObjectDB.log_object_view, object_name, user_email)
+        run_in_background(update_object_abs_mag, object_name)
         
         # Try exact match first using direct SQL query
         conn = get_tns_db_connection()

@@ -1,63 +1,24 @@
-:root {
-    --primary-color: var(--kw-accent);
-    --primary-hover: var(--kw-accent-hover);
-    --border-color: var(--kw-border);
-    --text-color: var(--kw-text-white);
-    --text-muted: var(--kw-text-muted);
-    --panel-bg: rgba(20, 20, 30, 0.6);
-}
+/* 3D mount simulator (mount_3d.html). Cards, buttons and the page head come from _theme.css (kw-panel,
+   kw-btn, kw-page-head); this file only lays out the canvas + controls and styles the bespoke widgets. */
 
-body {
-    font-family: var(--kw-font-sans);
-    background: #0a0a14;
-    margin: 0;
-    padding: 0;
-    min-height: 100vh;
-    color: var(--text-color);
-}
-
-.page-header {
-    text-align: center;
-    margin: 100px auto 30px;
-    padding: 0 20px;
-}
-.page-header h1 {
-    font-size: 2.2em;
-    font-weight: 300;
-    color: #fff;
-    margin-bottom: 10px;
-    letter-spacing: 2px;
-}
-.page-header p {
-    color: var(--text-muted);
-    font-size: 1rem;
-    font-style: italic;
-}
-
-/* Layout: 2-column, 90% width */
+/* Layout: canvas + controls. minmax(0, …) so a column never grows to its widest control (phones overflowed). */
 .mount-layout {
     display: grid;
-    grid-template-columns: 3fr 2fr;
-    gap: 25px;
-    width: 90%;
-    margin: 0 auto 60px;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 20px;
 }
+.mount-layout > * { min-width: 0; }
 
 @media (max-width: 1024px) {
-    .mount-layout {
-        grid-template-columns: 1fr;
-    }
+    .mount-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* 3D Panel */
-.panel-3d {
-    background: var(--panel-bg);
-    backdrop-filter: blur(15px);
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    overflow: hidden;
+/* 3D panel: the canvas fills it (mount_3d.js sizes the canvas to this box) */
+.panel-3d.kw-panel {
     position: relative;
+    overflow: hidden;
     min-height: 600px;
+    padding: 0;
 }
 .panel-3d canvas {
     width: 100% !important;
@@ -69,44 +30,27 @@ body {
     bottom: 12px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,0.6);
+    background: rgba(0, 0, 0, 0.6);
     padding: 6px 18px;
-    border-radius: 20px;
+    border-radius: var(--kw-radius-pill);
     font-size: 0.85rem;
-    color: #ddd;
+    color: var(--kw-text-secondary);
     pointer-events: none;
     white-space: nowrap;
 }
 
-/* Controls Panel */
+/* Controls column */
 .panel-controls {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
 }
-.ctrl-section {
-    background: var(--panel-bg);
-    backdrop-filter: blur(15px);
-    border-radius: 16px;
-    border: 1px solid var(--border-color);
-    padding: 20px;
-}
-.ctrl-section h3 {
-    color: var(--primary-color);
-    font-size: 1.1rem;
-    font-weight: 500;
-    margin: 0 0 15px 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid rgba(197,160,89,0.25);
-    padding-bottom: 12px;
-}
+.panel-controls > .kw-panel + .kw-panel { margin-top: 0; }
 
 /* Inputs */
 .ctrl-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 12px;
 }
@@ -114,75 +58,37 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
 }
 .ctrl-field label {
     font-size: 0.85rem;
-    color: var(--text-muted);
+    color: var(--kw-text-muted);
 }
 .ctrl-field input[type="text"],
 .ctrl-field input[type="number"] {
-    background: rgba(0,0,0,0.3);
-    border: 1px solid var(--border-color);
-    color: #fff;
-    padding: 10px 12px;
-    border-radius: 8px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: var(--kw-control-h);
+    padding: 0 12px;
+    border-radius: var(--kw-radius-md);
     font-size: 0.95rem;
-    transition: border-color 0.2s;
-}
-.ctrl-field input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(197,160,89,0.15);
 }
 
 /* Range slider */
 .ctrl-field input[type="range"] {
-    /* -webkit-appearance: none; */
     width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: rgba(255,255,255,0.1);
-    outline: none;
-}
-.ctrl-field input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    cursor: pointer;
+    accent-color: var(--kw-accent);
 }
 .speed-val {
-    color: var(--primary-color);
+    color: var(--kw-accent);
     font-weight: 600;
     font-size: 0.9rem;
     text-align: right;
 }
 
-/* Buttons */
-.ctrl-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: #fff;
-    border: none;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.25s ease;
-    width: 100%;
-}
-.ctrl-btn.primary {
-    background: linear-gradient(45deg, var(--primary-color), var(--kw-accent-dark));
-}
-.ctrl-btn.primary:hover {
-    background: linear-gradient(45deg, var(--primary-hover), #a6874b);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(197,160,89,0.3);
-}
+/* Buttons (kw-btn) */
+.ctrl-btn { width: 100%; }
 
 /* Directional pad */
 .ctrl-pad {
@@ -198,81 +104,61 @@ body {
 .pad-label {
     width: 70px;
     font-size: 0.85rem;
-    color: var(--text-muted);
+    color: var(--kw-text-muted);
     flex-shrink: 0;
 }
 .pad-btn {
     flex: 1;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid var(--border-color);
-    color: #fff;
-    padding: 10px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s;
+    min-width: 0;
     user-select: none;
 }
-.pad-btn:hover {
-    background: rgba(197,160,89,0.15);
-    border-color: var(--primary-color);
-}
-.pad-btn:active {
-    background: rgba(197,160,89,0.3);
-    transform: scale(0.96);
-}
+.pad-btn:active { background: var(--kw-accent-dim); border-color: var(--kw-accent-border); }
 
 /* Presets */
 .preset-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
 }
-.preset-btn {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid var(--border-color);
-    color: #ddd;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.preset-btn:hover {
-    background: rgba(197,160,89,0.15);
-    border-color: var(--primary-color);
-    color: #fff;
-}
+.preset-btn { min-width: 0; white-space: normal; text-align: center; }
 
 /* Position display */
 .pos-display {
     display: flex;
-    gap: 20px;
+    gap: 12px;
 }
 .pos-item {
     flex: 1;
-    background: rgba(0,0,0,0.25);
-    border-radius: 10px;
+    min-width: 0;
     padding: 12px;
+    border-radius: var(--kw-radius-lg);
+    background: var(--kw-card-bg-2);
+    border: 1px solid var(--kw-hairline);
     text-align: center;
 }
 .pos-label {
     display: block;
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--kw-text-muted);
     margin-bottom: 4px;
 }
 .pos-value {
     display: block;
     font-size: 1.3rem;
     font-weight: 600;
-    color: var(--primary-color);
-    font-family: 'Courier New', monospace;
+    color: var(--kw-text-white);
+    font-family: var(--kw-font-mono);
+    font-variant-numeric: tabular-nums;
 }
 .pos-sub {
     display: block;
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--kw-text-secondary);
     margin-top: 4px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--kw-font-mono);
+}
+
+@media (max-width: 860px) {
+    .panel-3d.kw-panel { min-height: 420px; }
+    .panel-controls { gap: 12px; }
 }

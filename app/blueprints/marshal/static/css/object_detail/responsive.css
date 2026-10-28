@@ -1,10 +1,6 @@
 /* Responsive design styles */
 
 @media (max-width: 1024px) {
-    .object-detail-container {
-        margin: 100px auto 30px;
-        padding: 15px;
-    }
     
     .detail-content {
         grid-template-columns: 1fr;
@@ -38,10 +34,6 @@
 }
 
 @media (max-width: 768px) {
-    .object-detail-container {
-        margin: 90px auto 25px;
-        padding: 15px;
-    }
     
     .object-name {
         font-size: 2.2rem;
@@ -116,10 +108,6 @@
 }
 
 @media (max-width: 480px) {
-    .object-detail-container {
-        margin: 80px auto 20px;
-        padding: 10px;
-    }
     
     .object-header {
         padding: 20px;
@@ -233,7 +221,7 @@
         gap: 10px;
     }
 
-    .classification-badge, .tag-badge {
+    .classification-badge {
         width: 100%;
         text-align: center;
         justify-content: center;
@@ -389,7 +377,7 @@
         margin: 20px 0 0 0;
         cursor: pointer;
         font-weight: bold;
-        color: #4db8ff; /* Default primary-like color */
+        color: var(--kw-accent); /* Default primary-like color */
         transition: background 0.2s;
     }
     .mobile-toggle-label:hover {
@@ -426,114 +414,23 @@
 }
 
 /* ============================================================
-   NEW Layout — mid-panels-grid / bottom-grid / top-nav-bar
+   Layout — head, mini panels, mid-panels-grid, bottom-grid (inside <main class="sh-main">)
    ============================================================ */
 
-/* --- Tablet (≤ 1024px) --- */
-@media (max-width: 1024px) {
-    .object-detail-container {
-        margin: 100px auto 30px;
-        width: 100%;
-        padding: 0 16px;
-    }
-
-    /* All panels single column */
-    .mid-panels-grid {
-        grid-template-columns: 1fr;
-        gap: 16px;
-    }
-
-    .bottom-grid {
-        gap: 16px;
-    }
+/* --- Tablet (≤ 1080px): the three info panels stack --- */
+@media (max-width: 1080px) {
+    .mid-panels-grid { grid-template-columns: minmax(0, 1fr); }
+    .mid-panels-grid > .panel-card:nth-child(2),
+    .mid-panels-grid > .panel-card:nth-child(3) { min-height: 360px; }
 }
 
-/* --- Phone (≤ 768px) --- */
-@media (max-width: 768px) {
-    .object-detail-container {
-        margin: 80px auto 20px;
-        width: 100%;
-        padding: 0 10px;
-    }
-
-    /* Top nav bar: stack into two rows */
-    .top-nav-bar {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 12px 14px;
-    }
-    .top-nav-bottom {
-        flex-wrap: wrap;
-    }
-    .top-inline-panels {
-        flex: unset;
-        width: 100%;
-        flex-wrap: wrap;
-    }
-    .top-left-group {
-        flex-wrap: wrap;
-        gap: 8px;
-        width: 100%;
-    }
-    .object-main-title {
-        font-size: 1.5rem !important;
-    }
-    .top-right-group {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        width: 100%;
-        gap: 8px;
-    }
-    .coord-box {
-        font-size: 0.8rem !important;
-        flex: 1 1 100%;
-        padding: 5px 10px;
-    }
-    .top-right-group > .btn,
-    .top-right-group > a {
-        flex: 1 1 auto;
-        font-size: 0.8rem;
-        padding: 5px 10px;
-        text-align: center;
-    }
-
-    /* Mid panels: all single column */
-    .mid-panels-grid {
-        grid-template-columns: 1fr;
-        gap: 10px;
-        margin-bottom: 10px;
-    }
-    .mid-panels-grid > .panel-card:first-child {
-        grid-column: unset;
-    }
+/* --- Phone (≤ 860px) --- */
+@media (max-width: 860px) {
+    .mid-panels-grid, .bottom-grid, .top-inline-panels { gap: 12px; }
+    .panel-card { min-height: unset; }
     .mid-panels-grid > .panel-card:nth-child(2),
-    .mid-panels-grid > .panel-card:nth-child(3) {
-        min-height: 200px !important;
-    }
-
-    /* Bottom grid */
-    .bottom-grid {
-        gap: 10px;
-    }
-    .spec-full-width {
-        grid-column: 1 / -1;
-    }
-
-    /* General panel adjustments */
-    .panel-card {
-        min-height: unset !important;
-    }
-    .panel-card:hover {
-        transform: none !important; /* no hover effect on touch */
-    }
-    .panel-header {
-        padding: 10px 14px;
-    }
-    .panel-body {
-        padding: 12px;
-    }
+    .mid-panels-grid > .panel-card:nth-child(3) { min-height: 260px; }
+    .kw-panel.panel-card, .kw-panel.top-mini-panel { padding: 14px 14px; }
 
     /* Photometry action buttons: horizontal scroll instead of wrap */
     .phot-actions {
@@ -542,99 +439,35 @@
         -webkit-overflow-scrolling: touch;
         padding-bottom: 4px;
     }
-    .phot-btn {
-        flex-shrink: 0;
-    }
-    .phot-header-top {
-        flex-wrap: wrap;
-        gap: 6px;
-    }
+    .phot-btn { flex-shrink: 0; }
+    .phot-header-top { flex-wrap: wrap; gap: 6px; }
 
     /* Detail list: compact font */
-    .detail-item {
-        font-size: 0.85rem;
-        padding-bottom: 6px;
-    }
-    .detail-label {
-        font-size: 0.82rem;
-    }
-    .detail-value {
-        font-size: 0.85rem;
-        text-align: right;
-    }
-    .quick-links {
-        gap: 6px;
-    }
-}
+    .detail-item { font-size: 0.85rem; padding-bottom: 6px; }
+    .detail-label { font-size: 0.82rem; }
+    .detail-value { font-size: 0.85rem; text-align: right; }
+    .quick-links { gap: 6px; }
 
-/* --- Small phones (≤ 480px) --- */
-@media (max-width: 480px) {
-    .object-main-title {
-        font-size: 1.2rem !important;
-    }
-    .coord-box {
-        font-size: 0.72rem !important;
-    }
-    .mid-panels-grid > .panel-card:nth-child(2),
-    .mid-panels-grid > .panel-card:nth-child(3) {
-        min-height: 160px !important;
-    }
-}
-
-/* Phones: Comments and DETECT mini panels side by side leave ~150px each (names wrap per word) — stack them */
-@media (max-width: 600px) {
-    .top-inline-panels { flex-direction: column; flex-wrap: nowrap; }
-    .top-inline-panels .top-mini-panel { flex: none; width: 100%; }
-}
-
-/* Phones: section jump bar (Comments · DETECT · Info · Images · Photometry · Spectra · Sources).
-   Sticks under the navbar; full-bleed so it reads as part of the navbar. Hidden above 768px. */
-.od-jump { display: none; }
-@media (max-width: 768px) {
-    .object-detail-container { margin-top: 15px; }     /* the old 80–90px gap was for a floating navbar; the bar now sits right under it */
-    .od-jump {
+    /* Page bar on a phone: the section tabs stick under the top bar while the page scrolls
+       (the bar's rows become body-level boxes so the tab row can stick on its own) */
+    body.od-body .sh-pagebar { display: contents; }
+    body.od-body .sh-pagebar-l,
+    body.od-body .sh-pagebar-r { display: flex; margin: 0 var(--sh-page-x) 12px; }
+    body.od-body .sh-pagebar-r { justify-content: flex-start; }
+    body.od-body .sh-pagebar-c {
         position: sticky;
-        top: var(--kw-nav-h, 60px);
+        top: calc(var(--kw-nav-h) + 4px);
         z-index: 50;
         display: flex;
-        gap: 6px;
-        margin: -15px -15px 10px;
-        padding: 8px 15px;
-        overflow-x: auto;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
-        background: rgba(10, 11, 16, 0.94);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        margin: 0 var(--sh-page-x) 12px;
     }
-    .od-jump::-webkit-scrollbar { display: none; }
-    .od-jump a {
-        flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        min-height: 32px;
-        padding: 0 13px;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        letter-spacing: 0.02em;
-        color: rgba(255, 255, 255, 0.78);
-        text-decoration: none;
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-        -webkit-tap-highlight-color: transparent;
-    }
-    .od-jump a.is-active {
-        color: #141414;
-        background: var(--kw-accent, #c5a059);
-        border-color: transparent;
-        font-weight: 500;
-    }
-    /* jump targets stop below navbar + bar */
-    #commentsMiniPanel, #detectMiniPanel, #od-info, #od-images, #od-phot, #od-spec, #od-perm {
-        scroll-margin-top: calc(var(--kw-nav-h, 60px) + 60px);
+    body.od-body .sh-pagebar-c .od-jump { width: 100%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); background: var(--color-surface-elevated); }
+    .object-detail-container :is(#commentsMiniPanel, #detectMiniPanel, #od-info, #od-images, #od-phot, #od-spec, #od-perm) {
+        scroll-margin-top: calc(var(--kw-nav-h) + 64px);
     }
 }
+
 @media (max-width: 480px) {
-    .object-detail-container { margin-top: 10px; }
-    .od-jump { margin: -10px -10px 10px; padding: 8px 10px; }
+    .mid-panels-grid > .panel-card:nth-child(2),
+    .mid-panels-grid > .panel-card:nth-child(3) { min-height: 200px; }
 }

@@ -1,0 +1,82 @@
+{% extends '_base.html' %}
+{#- Settings (/settings, after EAU's): background, background mask, accent colour, glass colour and opacity.
+    Changes apply at once (js/ui_prefs.js KinderUi.apply) and are saved 0.4 s later — signed in: to the account
+    (settings.py), everyone: also in this browser. -#}
+{% block title %}Settings - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">{% endblock %}
+
+{% block content %}
+<div class="kw-page st-page">
+    <p class="kw-lead" id="st-status" aria-live="polite">
+        {% if session.user %}Changes apply instantly and sync to your account.
+        {% else %}Changes apply instantly and stay in this browser. Log in to keep them on every device.{% endif %}
+    </p>
+
+    <div class="st-grid">
+        <section class="kw-panel" aria-labelledby="st-bg-h">
+            <div class="kw-panel-head"><h2 id="st-bg-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>Background</h2></div>
+            <div class="st-bgs" role="radiogroup" aria-labelledby="st-bg-h">
+                <button type="button" role="radio" class="st-bg" data-bg="photo" style="background-image:url('{{ url_for('static', filename='photo/background.jpg') }}')"><span>Kinder</span></button>
+                <button type="button" role="radio" class="st-bg st-bg-plain" data-bg="plain"><span>Black</span></button>
+                <button type="button" role="radio" class="st-bg st-bg-color" data-bg="color" id="st-bg-color-tile"><span>Solid colour</span></button>
+            </div>
+            <div class="st-row st-row-top" id="st-bgcolor-row" hidden>
+                <span class="st-lbl">Background colour</span>
+                <div class="st-swatches" role="radiogroup" aria-label="Background colour">
+                    {% for hex, name in [('#06060C', 'Night'), ('#08090C', 'Graphite'), ('#0C0811', 'Deep purple'), ('#060B09', 'Deep green'), ('#0C0907', 'Deep brown'), ('#000000', 'Black')] %}
+                    <button type="button" role="radio" class="st-sw" data-bgcolor="{{ hex }}" style="--sw:{{ hex }}" title="{{ name }} {{ hex }}" aria-label="{{ name }}"></button>
+                    {% endfor %}
+                    <label class="st-sw st-sw-pick" title="Pick a colour"><input type="color" id="st-bgcolor-pick" aria-label="Pick a background colour"></label>
+                    <input type="text" id="st-bgcolor-hex" class="st-hex" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Background colour code" placeholder="#06060C">
+                </div>
+            </div>
+            <div class="st-row" id="st-mask-row">
+                <label for="st-mask">Mask opacity</label>
+                <input type="range" id="st-mask" min="0" max="85" step="1">
+                <output id="st-mask-v" for="st-mask"></output>
+            </div>
+        </section>
+
+        <section class="kw-panel" aria-labelledby="st-color-h">
+            <div class="kw-panel-head"><h2 id="st-color-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1"/><circle cx="17.5" cy="10.5" r="1"/><circle cx="8.5" cy="7.5" r="1"/><circle cx="6.5" cy="12.5" r="1"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.13a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.96 6.01 17.46 2 12 2z"/></svg>Colour</h2></div>
+            <div class="st-row st-row-top">
+                <span class="st-lbl">Accent</span>
+                <div class="st-swatches" role="radiogroup" aria-label="Accent colour">
+                    {% for hex, name in [('#F39F5A', 'Amber'), ('#F2C94C', 'Gold'), ('#E8798F', 'Rose'), ('#A78BFA', 'Violet'), ('#6BB8FF', 'Sky'), ('#5DCAA5', 'Mint'), ('#F5F5F7', 'White')] %}
+                    <button type="button" role="radio" class="st-sw" data-accent="{{ hex }}" style="--sw:{{ hex }}" title="{{ name }} {{ hex }}" aria-label="{{ name }}"></button>
+                    {% endfor %}
+                    <label class="st-sw st-sw-pick" title="Pick a colour"><input type="color" id="st-accent-pick" aria-label="Pick an accent colour"></label>
+                    <input type="text" id="st-accent-hex" class="st-hex" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Accent colour code" placeholder="#F39F5A">
+                </div>
+            </div>
+            <div class="st-row st-row-top">
+                <span class="st-lbl">Glass colour</span>
+                <div class="st-swatches" role="radiogroup" aria-label="Glass colour">
+                    {% for hex, name in [('#0E0E12', 'Black'), ('#14101E', 'Deep purple'), ('#0C1420', 'Deep blue'), ('#0C1814', 'Deep green'), ('#1A120E', 'Deep brown'), ('#2A2A30', 'Grey'), ('#1E2430', 'Slate')] %}
+                    <button type="button" role="radio" class="st-sw" data-glasscolor="{{ hex }}" style="--sw:{{ hex }}" title="{{ name }} {{ hex }}" aria-label="{{ name }}"></button>
+                    {% endfor %}
+                    <label class="st-sw st-sw-pick" title="Pick a colour"><input type="color" id="st-glasscolor-pick" aria-label="Pick a glass colour"></label>
+                    <input type="text" id="st-glasscolor-hex" class="st-hex" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Glass colour code" placeholder="#0E0E12">
+                </div>
+            </div>
+            <div class="st-row">
+                <label for="st-glass">Glass opacity</label>
+                <input type="range" id="st-glass" min="40" max="95" step="1">
+                <output id="st-glass-v" for="st-glass"></output>
+            </div>
+            <div class="st-preview" aria-hidden="true">
+                <div class="st-prev-card">
+                    <b>Preview</b><span class="st-mut">Panels and buttons will look like this</span>
+                    <span class="kw-btn kw-btn-primary kw-btn-sm">Primary</span><span class="st-prev-link">Text link</span>
+                </div>
+            </div>
+        </section>
+    </div>
+    <div class="st-foot"><button type="button" class="st-reset" id="st-reset">Reset to defaults</button></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>window.ST_CFG = { loggedIn: {{ 'true' if session.user else 'false' }} };</script>
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

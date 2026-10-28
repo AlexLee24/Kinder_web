@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from flask import flash, redirect, render_template, session, url_for
 
 from app.core.auth import session_unverified
+from app.db import run_parallel
 from app.db.auth import (
     get_api_key_requests,
     get_group_requests,
@@ -69,15 +70,13 @@ def admin_panel():
     if session_unverified():
         return 'Service temporarily unavailable (cannot verify your session).', 503
 
-    users = get_users()
-    groups = get_groups()
-    invitations = get_invitations()
-    group_requests = get_group_requests()
-    api_key_requests = get_api_key_requests()
+    # Independent reads: run together (the page waits for the slowest, not the sum)
+    users, groups, invitations, group_requests, api_key_requests, open_registration = run_parallel(
+        get_users, get_groups, get_invitations, get_group_requests, get_api_key_requests,
+        lambda: get_setting('open_registration', 'true'))
+    open_registration = open_registration == 'true'
 
     current_user_email = session['user']['email']
-
-    open_registration = get_setting('open_registration', 'true') == 'true'
 
     return render_template('admin.html',
                          current_path='/admin',

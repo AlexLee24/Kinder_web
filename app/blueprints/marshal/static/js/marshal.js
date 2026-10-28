@@ -1763,18 +1763,17 @@ function editTags(objectName) {
 
     const modal = document.createElement('div');
     modal.id = '_inlineTagEditModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    modal.style.cssText = 'position:fixed;inset:0;background:var(--kw-scrim);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9999;';
     modal.innerHTML = `
-        <div style="background:#1a1a2e;border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:24px;min-width:340px;max-width:480px;">
-            <h3 style="margin:0 0 16px;color:#fff;">Edit Tags — ${escapeHtml(objectName)}</h3>
-            <label style="font-size:0.85rem;color:#aaa;display:block;margin-bottom:6px;">Tags (comma-separated, EP will be highlighted)</label>
-            <input id="_tagEditInput" type="text" value="${escapeHtml(currentTags)}"
-                style="width:100%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 10px;color:#fff;font-size:0.9rem;box-sizing:border-box;">
-            <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-                <button type="button" id="_tagEditCancel"
-                    style="padding:6px 16px;background:transparent;border:1px solid rgba(255,255,255,0.2);border-radius:6px;color:#aaa;cursor:pointer;">Cancel</button>
-                <button type="button" id="_tagEditSave"
-                    style="padding:6px 16px;background:#46ffaf22;border:1px solid #46ffaf55;border-radius:6px;color:#46ffaf;cursor:pointer;">Save</button>
+        <div class="kw-modal-card" style="margin:0;">
+            <div class="kw-modal-head"><h3>Edit Tags — ${escapeHtml(objectName)}</h3></div>
+            <div class="kw-field">
+                <label for="_tagEditInput">Tags (comma-separated, EP will be highlighted)</label>
+                <input id="_tagEditInput" type="text" value="${escapeHtml(currentTags)}">
+            </div>
+            <div class="kw-modal-actions">
+                <button type="button" id="_tagEditCancel" class="kw-btn">Cancel</button>
+                <button type="button" id="_tagEditSave" class="kw-btn kw-btn-primary">Save</button>
             </div>
             <div id="_tagEditResult" style="margin-top:10px;font-size:0.85rem;"></div>
         </div>

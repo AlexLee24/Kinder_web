@@ -855,10 +855,10 @@ function buildLayout() {
     const marginRight  = (rightY !== 'none') ? Math.round(axisSize * 2.5 + 20) : 30;
 
     const layout = {
-        title: title ? { text: title, font: { color: isWhiteBg ? '#111111' : '#e8e8f0', size: titleSize, family: 'Inter, sans-serif' }, pad: { t: 8 } } : undefined,
+        title: title ? { text: title, font: { color: isWhiteBg ? '#111111' : '#e8e8f0', size: titleSize, family: '"TASA Explorer", sans-serif' }, pad: { t: 8 } } : undefined,
         paper_bgcolor: isWhiteBg ? '#ffffff' : 'rgba(0,0,0,0)',
         plot_bgcolor:  isWhiteBg ? '#ffffff' : 'rgba(18,18,32,0.5)',
-        font: { color: isWhiteBg ? '#333333' : '#ccccdd', family: 'Inter, sans-serif', size: tickSize },
+        font: { color: isWhiteBg ? '#333333' : '#ccccdd', family: '"TASA Explorer", sans-serif', size: tickSize },
         xaxis: {
             title: { text: xLabel, standoff: 10 },
             type: logX ? 'log' : 'linear',

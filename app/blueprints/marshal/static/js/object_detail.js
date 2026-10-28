@@ -401,7 +401,7 @@ function renderDetectData(results, screen) {
             if (has(mdata, 'tractor_type')) extraInfo += ` ${escapeHtml(mdata.tractor_type)}`;
         }
         if (has(mdata, 'priority_tag')) {
-            extraInfo += ` | <span style="color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:4px; padding:1px 4px;">${escapeHtml(String(mdata.priority_tag).replace(/_/g, ' '))}</span>`;
+            extraInfo += ` | <span style="display:inline-block; white-space:nowrap; color:#ffbe0b; font-size:0.8em; border:1px solid #ffbe0b; border-radius:6px; padding:1px 4px;">${escapeHtml(String(mdata.priority_tag).replace(/_/g, ' '))}</span>`;
         } else if (has(mdata, 'type') && catalog.includes('DESI')) {
             extraInfo += ` | type=${escapeHtml(mdata.type)}`;
         } else if (has(mdata, 'type') && catalog.includes('LENS_CATALOGUE')) {
@@ -410,8 +410,8 @@ function renderDetectData(results, screen) {
 
         html += `
             <li style="border-bottom: 1px solid rgba(255,255,255,0.1); padding: 8px 0; font-size: 0.9em;">
-                <div style="font-weight:bold; color:#00f5d4;">${escapeHtml(catalog.replace(/_/g, ' '))}</div>
-                <div style="color:#ccc;">Sep: ${escapeHtml(sep)}" ${extraInfo}</div>
+                <div style="font-weight:bold; color:var(--color-accent);">${escapeHtml(catalog.replace(/_/g, ' '))}</div>
+                <div style="color:var(--kw-text-secondary);">Sep: ${escapeHtml(sep)}" ${extraInfo}</div>
             </li>
         `;
     });
@@ -481,7 +481,7 @@ function switchDetectTab(mode) {
     const tabData  = document.getElementById('detectTabData');
     const tabChart = document.getElementById('detectTabChart');
     if (tabData && tabChart) {
-        const onStyle  = 'background:rgba(0,245,212,0.15); color:#00f5d4; font-weight:600;';
+        const onStyle  = 'background:color-mix(in srgb, var(--color-accent) 15%, transparent); color:var(--color-accent); font-weight:600;';
         const offStyle = 'background:transparent; color:#666; font-weight:400;';
         tabData.style.cssText  += mode === 'data'  ? onStyle : offStyle;
         tabChart.style.cssText += mode === 'chart' ? onStyle : offStyle;
@@ -563,7 +563,7 @@ function generateDetectImages() {
     const tabData  = document.getElementById('detectTabData');
     const tabChart = document.getElementById('detectTabChart');
     if (tabData)  { tabData.style.background  = 'transparent'; tabData.style.color  = '#666'; }
-    if (tabChart) { tabChart.style.background = 'rgba(0,245,212,0.15)'; tabChart.style.color = '#00f5d4'; }
+    if (tabChart) { tabChart.style.background = 'color-mix(in srgb, var(--color-accent) 15%, transparent)'; tabChart.style.color = 'var(--color-accent)'; }
 
     const detectBody = document.getElementById('detectBody');
     if (detectBody) {
@@ -1593,9 +1593,9 @@ function toggleKnModel() {
     const btn = document.getElementById('knModelBtn');
     const ctrl = document.getElementById('knModelControls');
     if (_knModelActive) {
-        btn.style.background    = 'rgba(0,245,212,0.18)';
-        btn.style.borderColor   = 'rgba(0,245,212,0.5)';
-        btn.style.color         = '#00f5d4';
+        btn.style.background    = 'color-mix(in srgb, var(--color-accent) 18%, transparent)';
+        btn.style.borderColor   = 'color-mix(in srgb, var(--color-accent) 50%, transparent)';
+        btn.style.color         = 'var(--color-accent)';
         if (ctrl) ctrl.style.display = 'flex';
         _applyKnModelOverlay();
     } else {
@@ -4302,8 +4302,8 @@ function createCommentElement(comment) {
             <div class="comment-edit-box" id="comment-edit-box-${Number(comment.id)}" style="display:none; margin-top:8px;">
                 <textarea id="comment-edit-textarea-${Number(comment.id)}" style="width:100%; background:rgba(0,0,0,0.3); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:8px; resize:vertical; font-family:inherit;">${escapeHtml(comment.content)}</textarea>
                 <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:4px;">
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; border:none;" onclick="cancelEditComment(${Number(comment.id)})">Cancel</button>
-                    <button class="btn-modern" style="padding:2px 8px; font-size:0.8rem; background:#00f5d4; color:#000; border:none;" onclick="saveEditComment(${Number(comment.id)})">Save</button>
+                    <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" onclick="cancelEditComment(${Number(comment.id)})">Cancel</button>
+                    <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" onclick="saveEditComment(${Number(comment.id)})">Save</button>
                 </div>
             </div>
         </div>
@@ -5133,6 +5133,7 @@ function initializeAladin() {
         const targetName = getFullObjectName(objectData) || objectName;
         // Self-hosted pinned Aladin Lite v3 (no jQuery needed); CSP blocks the CDS CDN.
         const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
+        const hipsSrc = escapeHtml(window.location.origin + '/static/js/hips_fallback.js');
 
         const html = `
 <!DOCTYPE html>
@@ -5147,6 +5148,7 @@ function initializeAladin() {
         .aladin-copyCoords { color: #fff; display: flex; align-items: center; white-space: nowrap; }
     </style>
     <script type="text/javascript" src="${aladinSrc}"><\/script>
+    <script src="${hipsSrc}"><\/script>
 </head>
 <body>
     <div id="aladin-lite"></div>
@@ -5156,9 +5158,11 @@ function initializeAladin() {
         const PARENT_ORIGIN = ${jsStringLiteral(window.location.origin)};
         let aladinInstance;
         window.onload = function() {
-            A.init.then(() => {
+            // CDS survey, or its ESA mirror when CDS is unreachable (js/hips_fallback.js)
+            Promise.all([A.init, KinderHips.resolve(${jsStringLiteral(currentSurvey)})]).then(([, survey]) => {
+                KinderHips.showStatus(document.body);
                 aladinInstance = A.aladin('#aladin-lite', {
-                    survey: ${jsStringLiteral(currentSurvey)},
+                    survey: survey,
                     fov: ${Number(currentFOV)},
                     target: '${ra} ${dec}',
                     cooFrame: 'ICRS',
@@ -5225,7 +5229,7 @@ function initializeAladin() {
             if (event.source !== window.parent || event.origin !== PARENT_ORIGIN) return;
             if (!event.data) return;
             const d = event.data;
-            if (d.type === 'changeSurvey' && aladinInstance) { aladinInstance.setImageSurvey(d.survey); }
+            if (d.type === 'changeSurvey' && aladinInstance) { KinderHips.resolve(d.survey).then(function (s) { aladinInstance.setImageSurvey(s); }); }
             else if (d.type === 'addNEDCatalog') { _nedSrcs = d.sources; if (d.visible !== false) _addNEDCat(); }
             else if (d.type === 'toggleNEDCatalog') { if (d.visible) _addNEDCat(); else _removeNEDCat(); }
         });
@@ -5401,7 +5405,7 @@ function fetchPhotometry(silent = false) {
         // Only show fetching message if currently showing "No data"
         if (photometryContainer && photometryContainer.innerHTML.includes('No photometry data available')) {
             photometryContainer.innerHTML = `
-                <div class="no-data" style="color: #00f5d4;">
+                <div class="no-data" style="color: var(--color-accent);">
                     <div class="loading-spinner-small" style="margin-bottom: 8px;"></div>
                     <span class="no-data-text">Fetching latest photometry from TNS...</span>
                 </div>
@@ -5639,11 +5643,11 @@ function _applyPinUI(isPinned) {
     const btn = document.getElementById('pinBtn');
     if (!btn) return;
     if (isPinned) {
-        btn.style.color = '#a78bfa';
-        btn.querySelector('svg').setAttribute('fill', '#a78bfa');
+        btn.style.color = 'var(--kw-accent)';
+        btn.querySelector('svg').setAttribute('fill', 'currentColor');
         btn.title = 'Unpin this object';
     } else {
-        btn.style.color = '#a78bfa';
+        btn.style.color = '';
         btn.querySelector('svg').setAttribute('fill', 'none');
         btn.title = 'Pin this object';
     }
@@ -6272,7 +6276,7 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
         ? ` · <span style="color:#f59e0b; font-size:0.75rem;" title="Loaded from database cache">cached ${new Date(_nedSearchedAt).toLocaleString()}</span>`
         : ` · <span style="color:#4ade80; font-size:0.75rem;">live from NED</span>`;
     const _hostNote = _nedCurrentHostName
-        ? ` · <span style="color:#00f5d4; font-size:0.75rem;">host: ${escapeHtml(_nedCurrentHostName)}</span>`
+        ? ` · <span style="color:var(--color-accent); font-size:0.75rem;">host: ${escapeHtml(_nedCurrentHostName)}</span>`
         : '';
     countEl.innerHTML = (sources.length
         ? `${sources.length} NED object(s) within ${escapeHtml(radiusArcsec)}"`
@@ -6293,7 +6297,7 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
             tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,0.06); cursor:default; transition:background 0.1s;';
             tr.innerHTML = `
                 <td style="padding:5px 8px; color:#555;">${i + 1}</td>
-                <td style="padding:5px 8px; color:#00f5d4; white-space:nowrap;">${escapeHtml(obj.objname || '—')}${isCurrentHost ? ' <span style="color:#00f5d4; font-size:0.7rem; border:1px solid rgba(0,245,212,0.5); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
+                <td style="padding:5px 8px; color:var(--color-accent); white-space:nowrap;">${escapeHtml(obj.objname || '—')}${isCurrentHost ? ' <span style="color:var(--color-accent); font-size:0.7rem; border:1px solid color-mix(in srgb, var(--color-accent) 50%, transparent); border-radius:999px; padding:1px 6px; margin-left:6px;">HOST</span>' : ''}</td>
                 <td style="padding:5px 8px;">${escapeHtml(obj.type || '—')}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.ra != null ? parseFloat(obj.ra).toFixed(5) : '—'}</td>
                 <td style="padding:5px 8px; text-align:right; font-family:monospace;">${obj.dec != null ? parseFloat(obj.dec).toFixed(5) : '—'}</td>
@@ -6307,7 +6311,7 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
                 </td>`;
             tr.addEventListener('mouseenter', () => {
                 document.querySelectorAll('#nedResultBody tr').forEach(r => r.style.background = '');
-                tr.style.background = 'rgba(0,245,212,0.1)';
+                tr.style.background = 'color-mix(in srgb, var(--color-accent) 10%, transparent)';
                 const iframe = document.getElementById('ned-aladin-iframe');
                 if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({type: 'highlightNED', idx: i}, window.location.origin);
             });
@@ -6330,7 +6334,7 @@ async function _initNEDExplorer(forceRefresh = false, forceNED = false) {
         if (e.data.type === 'nedHover') {
             const idx = e.data.idx;
             document.querySelectorAll('#nedResultBody tr').forEach(r => {
-                r.style.background = parseInt(r.dataset.idx) === idx ? 'rgba(0,245,212,0.1)' : '';
+                r.style.background = parseInt(r.dataset.idx) === idx ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : '';
             });
             if (idx >= 0) {
                 const row = document.querySelector(`#nedResultBody tr[data-idx="${idx}"]`);
@@ -6356,6 +6360,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '');
     const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
     const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
+    const hipsSrc = escapeHtml(window.location.origin + '/static/js/hips_fallback.js');
 
     const html = `<!DOCTYPE html>
 <html><head>
@@ -6365,6 +6370,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
   #al{width:100%;height:100%;}
 </style>
 <script src="${aladinSrc}"><\/script>
+<script src="${hipsSrc}"><\/script>
 </head><body>
 <div id="al"></div>
 <script>
@@ -6372,9 +6378,10 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
   const T_RA = ${Number(ra)}, T_DEC = ${Number(dec)};
   let al, nedCat;
 
-  A.init.then(function() {
+  Promise.all([A.init, KinderHips.resolve(${jsStringLiteral(currentSurvey)})]).then(function(r) {
+    KinderHips.showStatus(document.body);
     al = A.aladin('#al', {
-      survey: ${jsStringLiteral(currentSurvey)},
+      survey: r[1],
       fov: ${Number(fov)},
       target: T_RA + ' ' + T_DEC,
       cooFrame: 'ICRS',
@@ -6427,13 +6434,13 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
       });
       nedCat.addSources(srcs);
     } else if (d.type === 'changeSurvey') {
-      al.setImageSurvey(d.survey);
+      KinderHips.resolve(d.survey).then(function(sv) { al.setImageSurvey(sv); });
     } else if (d.type === 'highlightNED' && nedCat) {
       var idx = d.idx;
       nedCat.getSources().forEach(function(s){ s.color = null; });
       if (idx >= 0) {
         var match = nedCat.getSources().find(function(s){ return s.data && s.data.idx === idx; });
-        if (match) match.color = '#00f5d4';
+        if (match) match.color = '#F39F5A';
       }
       al.view && al.view.requestRedraw();
     }
@@ -6463,7 +6470,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     window.addEventListener('message', onReady);
 }
 
-// ── Phone: section jump bar (#odJump, shown ≤ 768px by responsive.css) ──
+// ── Section tabs (#odJump, in the page bar centre; sticky under the top bar on phones) ──
 // Tapping a chip scrolls to its panel; while scrolling, the chip of the panel under the bar is
 // highlighted and kept in view. The links are plain #anchors, so the bar still works without JS.
 (function initSectionJump() {
@@ -6487,8 +6494,10 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
         bar.scrollTo({ left: Math.max(0, left), behavior: reduceMotion.matches ? 'auto' : 'smooth' });
     }
     function spy() {
-        if (!bar.offsetParent || Date.now() < lockUntil) return;     // hidden on desktop
-        const line = bar.getBoundingClientRect().bottom + 24;
+        if (!bar.getClientRects().length || Date.now() < lockUntil) return;     // hidden
+        // the bar sits in the page bar: once it scrolls away (desktop), measure from the fixed top bar instead
+        const top = document.querySelector('.sh-top');
+        const line = Math.max(bar.getBoundingClientRect().bottom, top ? top.getBoundingClientRect().bottom : 0) + 24;
         let current = links[0];
         for (const item of links) {
             if (item.el.offsetParent && item.el.getBoundingClientRect().top <= line) current = item;

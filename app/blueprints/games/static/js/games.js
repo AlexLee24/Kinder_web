@@ -20,7 +20,7 @@ function initGame() {
     document.getElementById("guess-input").disabled = false;
     document.getElementById("btn-guess").disabled = false;
     document.getElementById("guess-input").focus();
-    updateStatus("Game Restarted! Guessed 4 new unique digits.", "#4db8ff");
+    updateStatus("Game Restarted! Guessed 4 new unique digits.", "var(--kw-text-secondary)");
 }
 
 function updateStatus(message, color = "#fff") {
@@ -138,9 +138,9 @@ function loadLeaderboard() {
                 else if (index === 2) rankText = "🥉 " + rankText;
                 
                 tr.innerHTML = `
-                    <td style="color: #C5A059; font-weight: bold;">${rankText}</td>
+                    <td style="color: var(--kw-accent); font-weight: bold;">${rankText}</td>
                     <td style="text-align: left;">${escapeHtml(run.name)}</td>
-                    <td style="color: #4db8ff; font-weight: bold;">${escapeHtml(run.attempts)}</td>
+                    <td style="color: var(--kw-text-white); font-weight: bold;">${escapeHtml(run.attempts)}</td>
                 `;
                 tbody.appendChild(tr);
             });

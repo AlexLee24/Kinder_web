@@ -6,6 +6,7 @@ import logging
 from flask import render_template, session, flash, request, jsonify
 
 from app.core.auth import is_non_guest
+from app.db import get_db_connection, run_parallel
 from app.db.transient import (
     get_marshal_overview_stats, search_tns_objects
 )
@@ -20,6 +21,21 @@ marshal_bp = Blueprint('marshal', __name__, template_folder='templates', static_
 # ===============================================================================
 # MARSHAL
 # ===============================================================================
+def _last_sync_row():
+    """Newest transient.download_logs row (None when missing or the DB fails)."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT download_date, obj_import, obj_update, status, error_message "
+                "FROM transient.download_logs "
+                "ORDER BY download_date DESC LIMIT 1"
+            )
+            return cur.fetchone()
+    except Exception:
+        return None
+
+
 @marshal_bp.route('/marshal')
 def marshal():
     user = session.get('user', {})
@@ -31,25 +47,17 @@ def marshal():
         'comments_sidebar': can_see_restricted,
     }
     try:
-        stats = get_marshal_overview_stats()
+        # The overview numbers and the last TNS sync are independent: fetch them together
+        stats, row = run_parallel(get_marshal_overview_stats, _last_sync_row)
         total_count = stats['total_count']
         at_count = stats['at_count']
         classified_count = stats['classified_count']
         tns_stats = stats['tns_stats']
         
-        # Fetch last sync from transient.download_logs
+        # Last sync (transient.download_logs)
         last_sync_data = None
         try:
             from datetime import timezone, timedelta
-            from app.db import get_db_connection
-            with get_db_connection() as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT download_date, obj_import, obj_update, status, error_message "
-                    "FROM transient.download_logs "
-                    "ORDER BY download_date DESC LIMIT 1"
-                )
-                row = cur.fetchone()
             if row:
                 dt = row[0]
                 if dt is not None:

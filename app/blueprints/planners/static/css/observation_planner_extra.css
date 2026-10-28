@@ -1,37 +1,35 @@
-/* Exposure Settings Styles */
-.exposure-settings-cell {
-    min-width: 300px;
-}
+/* Exposure settings cell of the Observation Planner target table (rows cloned from #row-template). */
+.exposure-settings-cell { min-width: 300px; }
 
 .auto-toggle-wrapper {
-    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 10px;
+    margin-bottom: 8px;
 }
 
-.checkbox-label {
+.op-page .checkbox-label {
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: 0.84rem;
+    color: var(--kw-text-primary);
     cursor: pointer;
-    color: var(--kw-accent);
-    font-weight: 500;
-    font-size: 14px;
 }
 
-.checkbox-label input[type="checkbox"] {
+.op-page .checkbox-label input[type="checkbox"] {
     width: 16px;
     height: 16px;
+    margin: 0;
     accent-color: var(--kw-accent);
     cursor: pointer;
 }
 
 .manual-exposures {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
     padding: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--kw-radius-md);
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--kw-hairline);
 }
 
 .exposure-list {
@@ -47,55 +45,27 @@
     gap: 8px;
 }
 
-.exposure-row .form-control {
-    padding: 6px 8px;
-    font-size: 13px;
+.op-page .exposure-row .form-control {
+    min-height: 32px;
     height: 32px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
 }
-
-.btn-small {
-    padding: 4px 12px;
-    font-size: 12px;
-    border-radius: 15px;
-    width: auto;
-    display: inline-block;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.add-exposure-btn {
-    background: rgba(255, 255, 255, 0.1) !important;
-    border: 1px solid rgba(197, 160, 89, 0.5) !important;
-    color: var(--kw-accent) !important;
-    box-shadow: none !important;
-}
-
-.add-exposure-btn:hover {
-    background: rgba(197, 160, 89, 0.2) !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 10px rgba(197, 160, 89, 0.2) !important;
-}
+.op-page .exposure-row select.form-control { padding-right: 22px; background-position: right 6px center; }
 
 .auto-info {
     padding: 8px;
-    background: rgba(197, 160, 89, 0.1);
-    border-radius: 6px;
-    border: 1px dashed rgba(197, 160, 89, 0.3);
+    border-radius: var(--kw-radius-sm);
+    background: var(--kw-card-bg-2);
+    border: 1px dashed var(--kw-border);
     text-align: center;
 }
 
 .text-muted {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 12px;
+    font-size: 0.76rem;
     font-style: italic;
+    color: var(--kw-text-muted);
 }
 
-.remove-exposure {
-    color: #ff6b6b;
-    opacity: 0.7;
-}
-.remove-exposure:hover {
-    opacity: 1;
-    background: rgba(255, 107, 107, 0.1);
-}
+.remove-exposure { color: #ff6b6b; opacity: 0.7; }
+.remove-exposure:hover { opacity: 1; background: rgba(255, 107, 107, 0.1); }

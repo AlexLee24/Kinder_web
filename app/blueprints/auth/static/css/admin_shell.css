@@ -1,0 +1,66 @@
+/* Admin pages layout (after EAU's admin.css): grouped menu (_admin_nav.html) in a sticky column left of the content,
+   page head (h1 + one line + actions) on top of the content. Phones: the menu becomes a sideways-scrolling row of pills.
+   Loaded by admin.html, system_status.html, database_status.html and log_viewer.html. */
+.adm-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+.adm-layout > .kw-page { min-width: 0; }
+
+.admin-nav {
+    position: sticky; top: calc(var(--kw-nav-h, 80px) + 4px);
+    display: flex; flex-direction: column; gap: 14px; padding: 14px 10px;
+    background: var(--color-surface); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--color-border); border-radius: var(--kw-radius-xl);
+}
+.admin-nav-h { display: flex; align-items: center; gap: 8px; padding: 2px 8px 0; font-weight: 700; font-size: 0.95rem; color: var(--color-text); }
+.admin-nav-h svg { width: 18px; height: 18px; color: var(--color-accent); }
+.admin-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.admin-nav-group + .admin-nav-group { padding-top: 10px; border-top: 1px solid var(--color-border-subtle); }
+.admin-nav-gh { padding: 0 10px 4px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.admin-nav-item {
+    display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border-radius: var(--kw-radius-md);
+    font-size: 0.88rem; color: var(--color-text-secondary); text-decoration: none; white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s;
+}
+.admin-nav-item svg { width: 17px; height: 17px; flex: none; }
+.admin-nav-item:hover { color: var(--color-text); background: rgba(255, 255, 255, 0.07); }
+.admin-nav-item:active { transform: translateY(1px) scale(0.98); }
+.admin-nav-item.is-on { background: var(--color-accent-soft); color: var(--color-text); font-weight: 600; box-shadow: inset 3px 0 var(--color-accent); }
+.admin-nav-item.is-on svg { color: var(--color-accent); }
+.admin-nav-item:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.admin-nav-item .nav-count {
+    margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+    font-size: 0.72rem; font-variant-numeric: tabular-nums; background: var(--kw-color-danger); color: #fff;
+}
+
+/* page head of each admin page / tab: h1 + one line on the left, the page's actions on the right */
+.adm-layout .kw-page-head { margin: 0; }
+.adm-layout .kw-page-head h1 { font-size: 1.5rem; }
+
+/* KPI tiles: all five in one row next to the menu; two per row on phones */
+.adm-layout .kw-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* to-do strip on the Overview (EAU's .adm-todo) */
+.adm-todo {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 12px 16px; border-radius: var(--kw-radius-lg);
+    background: var(--color-accent-soft); border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent); font-size: 0.88rem;
+}
+.adm-todo b { font-weight: 700; }
+.adm-todo a { color: var(--color-text); text-decoration: none; }
+.adm-todo a:hover { color: var(--color-accent); }
+.adm-todo em { font-style: normal; font-weight: 700; color: var(--color-accent); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 860px) {
+    .adm-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .admin-nav {
+        position: static; flex-direction: row; gap: 4px; padding: 4px; border-radius: 14px;
+        overflow-x: auto; scrollbar-width: none;
+    }
+    .admin-nav::-webkit-scrollbar { display: none; }
+    .admin-nav-h, .admin-nav-gh { display: none; }
+    .admin-nav-group { flex-direction: row; gap: 4px; }
+    .admin-nav-group + .admin-nav-group { padding: 0 0 0 4px; border-top: 0; border-left: 1px solid var(--color-border-subtle); }
+    .admin-nav-item { min-height: 40px; padding: 0 12px; font-size: 0.84rem; }
+    .admin-nav-item.is-on { box-shadow: none; color: var(--color-accent); }
+    .adm-layout .kw-page-head h1 { font-size: 1.3rem; }
+    .adm-layout .kw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .adm-layout .kw-kpis > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}

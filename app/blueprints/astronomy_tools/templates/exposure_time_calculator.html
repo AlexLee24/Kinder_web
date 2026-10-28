@@ -1,19 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Exposure Time Calculator - Kinder</title>
+{% extends '_base.html' %}
+{#- Exposure Time Calculator: the CASTOR ETC partial (castor_etc_body.html, injected as raw text by
+    exposure_time_calculator.py) inside the site shell. The partial brings its own form | results layout
+    (the kw-tool shape); this page only sets its tokens and the host-only footer note. -#}
+{% block title %}Exposure Time Calculator - Kinder{% endblock %}
+{% block head %}
     <meta name="description" content="CASTOR-powered optical exposure time calculator for Lulin Observatory instruments">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- Plotly for the batch "Observing Window" chart. etc.js only ever reads
-         window.Plotly; here it's pinned from the same CDN + SRI the other Kinder
-         plot pages already use, rather than the copy CASTOR vendors for offline use. -->
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
 
     <!-- The CASTOR calculator is dropped in verbatim: etc.css / etc.js / the body
          partial (castor_etc_body.html) are copied unmodified from CASTOR's
@@ -22,65 +13,62 @@
          restyle the site chrome around it. -->
     <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/etc.css') }}">
 
-    <!-- Point the host-agnostic calculator at Kinder's own blueprint routes.
-         Inline (not deferred) so it's in place before the deferred etc.js runs. -->
-    <script>
-        window.CASTOR_ETC_CONFIG = {
-            apiUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator') }}",
-            batchUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_batch') }}",
-            presetsUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_presets') }}"
-        };
-    </script>
-    <script src="{{ url_for('astronomy_tools.static', filename='js/etc.js') }}" defer></script>
-
-    <!-- Page chrome that belongs to the host, not the calculator. etc.css is scoped
-         to .castor-etc and never touches <body>, so the site's star-field background
-         (normally set by each page's own CSS) is restored here, matched to the rest
-         of the astronomy-tools section. Also clears the fixed nav bar and shrinks the
-         calculator's viewport-height budget by the same amount — --etc-shell-height
-         is the one line CASTOR's CSS documents as the host's to override. -->
+    <!-- Host chrome around the calculator. etc.css is scoped to .castor-etc and reads Kinder's --kw-* tokens;
+         the overrides below only line its surfaces up with the site's panels (.kw-panel) and give it the
+         viewport height left under the top bar — --etc-shell-height is the one line CASTOR's CSS documents
+         as the host's to override. -->
     <style>
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)),
-                              url("{{ url_for('astronomy_tools.static', filename='photo/background.jpg') }}");
-            background-attachment: fixed;
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-        }
-        .etc-page {
-            box-sizing: border-box;
-            padding: 96px 24px 32px;
-            max-width: 1500px;
-            margin: 0 auto;
-        }
         .etc-page .castor-etc {
-            --etc-shell-height: clamp(560px, calc(100vh - 150px), 1150px);
+            --etc-shell-height: clamp(560px, calc(100vh - var(--kw-nav-h) - 72px), 1150px);
+            --etc-panel-bg: var(--kw-card-bg);
+            --etc-border-width: 1px;
+            --etc-radius-card: var(--kw-radius-xl);
+            --etc-radius-base: var(--kw-radius-sm);
+            --etc-gap-main: 20px;
+            --etc-pad-card: 18px 20px;
         }
-        @media (max-width: 960px) {
-            .etc-page { padding: 84px 14px 24px; }
+        .etc-page .castor-etc .etc-panel { backdrop-filter: none; -webkit-backdrop-filter: none; }
+        /* Section tabs read like the site's tab bar (.kw-tab): the open one solid amber */
+        .etc-page .castor-etc .etc-tab { border-radius: 9px; }
+        .etc-page .castor-etc .etc-tab.is-active {
+            background: var(--color-accent);
+            border-color: transparent;
+            color: var(--color-accent-text);
+        }
+        .etc-page .castor-etc .etc-action { border-radius: var(--kw-radius-md); }
+        /* Card titles white like every panel title (the accent is for actions); metric tiles fill the row */
+        .etc-page .castor-etc .etc-section-title { color: var(--kw-text-white); font-size: 1rem; }
+        .etc-page .castor-etc .etc-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+        .etc-page .castor-etc .etc-metric { width: auto; border-radius: var(--kw-radius-md); }
+        @media (max-width: 860px) {
+            .etc-page .castor-etc { --etc-gap-main: 12px; --etc-pad-card: 14px 14px; }
+            /* Phones: the section tabs get a row of their own (in one row they were squeezed to
+               "Instrument T…"); EXECUTE / LOAD / SAVE sit on the next row, right-aligned. */
+            .etc-page .castor-etc .etc-tabbar { flex-wrap: wrap; row-gap: 10px; }
+            .etc-page .castor-etc .etc-tabs { flex-basis: 100%; }
+            .etc-page .castor-etc .etc-tabbar-actions { margin-left: auto; }
+            .etc-page .castor-etc .etc-action { height: 40px; }
+            /* fade at the right edge: more tabs scroll in from there */
+            .etc-page .castor-etc .etc-tabs { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
         }
 
         /* Host-only footer note below the calculator — not part of the CASTOR
            partial, so it survives verbatim re-copies of castor_etc_body.html. */
         .etc-github-note {
-            max-width: 1500px;
-            margin: 18px auto 0;
-            padding: 14px 20px;
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 10px;
-            color: var(--kw-text-muted, #9ca3af);
+            padding: 0 4px;
+            color: var(--kw-text-muted);
             font-size: 0.85rem;
         }
         .etc-github-note svg {
             flex-shrink: 0;
-            color: var(--kw-text-muted, #9ca3af);
+            color: var(--kw-text-muted);
         }
         .etc-github-note a {
-            color: var(--kw-accent, #C5A059);
+            color: var(--kw-link);
             text-decoration: none;
             font-weight: 600;
         }
@@ -88,20 +76,21 @@
         .etc-github-note-sep {
             width: 1px;
             height: 14px;
-            background: var(--kw-border, rgba(255, 255, 255, 0.15));
+            background: var(--kw-border);
         }
 
         /* Styling for #btn-execute (the manual-run button, a Kinder-specific
            addition to castor_etc_body.html — see the comment there). Kept here
            rather than in etc.css so the CASTOR stylesheet stays untouched. */
         .etc-page .etc-action-primary {
-            color: var(--kw-accent, #C5A059) !important;
-            border-color: var(--kw-accent, #C5A059) !important;
+            background: var(--kw-accent) !important;
+            color: var(--color-accent-text) !important;
+            border-color: transparent !important;
             font-weight: 700;
         }
         .etc-page .etc-action-primary:hover {
-            background: var(--kw-accent, #C5A059) !important;
-            color: #14141e !important;
+            background: var(--kw-accent-hover) !important;
+            color: var(--color-accent-text) !important;
         }
         .etc-page .etc-action-primary {
             display: inline-flex;
@@ -113,8 +102,8 @@
             opacity: 0.75;
         }
         .etc-page .etc-action-primary:disabled:hover {
-            background: transparent !important;
-            color: var(--kw-accent, #C5A059) !important;
+            background: var(--kw-accent) !important;
+            color: var(--color-accent-text) !important;
         }
         .etc-execute-spinner {
             display: none;
@@ -133,14 +122,11 @@
             to { transform: rotate(360deg); }
         }
     </style>
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="etc-page">
-        {{ castor_etc_body | safe }}
-    </div>
+{% block content %}
+<div class="kw-page etc-page">
+    {{ castor_etc_body | safe }}
 
     <div class="etc-github-note">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -163,5 +149,23 @@
         </svg>
         <a href="https://github.com/AlexLee24" target="_blank" rel="noopener noreferrer">Wang, Tong & Hsu, Po-Chih & Prof. Chen, Ting-Wan</a>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <!-- Plotly for the batch "Observing Window" chart. etc.js only ever reads
+         window.Plotly; here it's pinned from the same CDN + SRI the other Kinder
+         plot pages already use, rather than the copy CASTOR vendors for offline use. -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
+
+    <!-- Point the host-agnostic calculator at Kinder's own blueprint routes.
+         Inline (not deferred) so it's in place before the deferred etc.js runs. -->
+    <script>
+        window.CASTOR_ETC_CONFIG = {
+            apiUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator') }}",
+            batchUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_batch') }}",
+            presetsUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_presets') }}"
+        };
+    </script>
+    <script src="{{ url_for('astronomy_tools.static', filename='js/etc.js') }}" defer></script>
+{% endblock %}
