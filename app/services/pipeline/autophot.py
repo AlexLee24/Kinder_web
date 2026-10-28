@@ -11,6 +11,7 @@ passes answers to AutoPhOT's questions and reads what it wrote.
     .uploads/     uploads in progress (chunks are appended, then the FITS is checked and moved in)
     job.json      the current or last run (status, pid) — shared by all gunicorn workers
     .stdin        FIFO that becomes AutoPhOT's stdin, so any worker can send an answer
+    run_target.json  the settings the current run was started with (target.json may change after)
     web_run.log, result.json, exit.json, legacy/<time>/ (earlier runs)
   Shared cache (catalog queries): <runs>/.wdir/. Its telescope.yml is this server's
   telescope/instrument list (not in git), started from and topped up with the template
@@ -58,6 +59,7 @@ FILTER_RE = re.compile(r'[A-Za-z0-9_+\-]{1,16}')
 LEGACY_KEEP = 3                   # archived runs kept per workspace
 LEGACY_RE = re.compile(r'^\d{8}-\d{6}(?:-\d+)?$')
 TID_RE = re.compile(r'[A-Za-z0-9_+\-.]{1,80}')
+RUN_CFG = 'run_target.json'       # settings of the current run, archived with it
 
 
 class PipelineError(Exception):
@@ -671,7 +673,7 @@ def info(tid):
     updated = max((p.stat().st_mtime for p in (d / 'target.json', d / 'web_run.log', d / 'result.json') if p.exists()), default=0)
     status = job.get('status') or ('done' if res else 'incomplete' if (d / 'web_run.log').is_file() else '')
     return {
-        'id': tid, 'name': cfg.get('name', tid), 'cfg': cfg, 'result': res, 'reduced': str(red), 'has_results': have,
+        'id': tid, 'name': cfg.get('name', tid), 'cfg': cfg, 'run_cfg': run_cfg(tid), 'result': res, 'reduced': str(red), 'has_results': have,
         'lightcurve_csv': lc.is_file(), 'n_rows': _count_rows(lc), 'n_images': n_images, 'updated': updated,
         'images': str(imgs), 'status': status, 'job': job,
         'n_legacy': sum(1 for x in (d / 'legacy').iterdir() if x.is_dir()) if (d / 'legacy').is_dir() else 0,
@@ -825,6 +827,7 @@ def start(tid, user=''):
         archive_previous(tid)                        # the previous run moves to legacy/<time>/
         for name in ('result.json', 'exit.json'):
             (d / name).unlink(missing_ok=True)
+        shutil.copyfile(d / 'target.json', d / RUN_CFG)
         fifo = d / '.stdin'
         with contextlib.suppress(FileNotFoundError):
             fifo.unlink()
@@ -899,13 +902,19 @@ def run_paths(tid, run=None):
     """The current run (run=None) or an archived one (legacy/<run>/): {'reduced', 'log', 'result', 'cfg'}."""
     d = tdir(tid)
     if not run:
-        cfg = _read_json(d / 'target.json')
+        cfg = run_cfg(tid)
         return {'reduced': reduced_dir(cfg), 'log': d / 'web_run.log', 'result': d / 'result.json', 'cfg': cfg}
     if not LEGACY_RE.match(run) or not (d / 'legacy' / run).is_dir():
         raise NotFound('No such run.')
     base = d / 'legacy' / run
     return {'reduced': base / 'images_REDUCED', 'log': base / 'web_run.log', 'result': base / 'result.json',
             'cfg': _read_json(base / 'target.json')}
+
+
+def run_cfg(tid):
+    """Settings the current run was started with; target.json for runs from before run_target.json existed."""
+    d = tdir(tid)
+    return _read_json(d / RUN_CFG) or _read_json(d / 'target.json')
 
 
 def safe_out(tid, rel='', run=None):
@@ -1295,6 +1304,13 @@ def _strip_fits(name):
     return re.sub(r'\.(fits|fit|fts)(\.fz|\.gz)?$', '', name, flags=re.I)
 
 
+def _ap_base(name):
+    """The name AutoPhOT gives an image (its output folder, LOG_<base>.log, the CSV's filename column):
+    the file name without extension, spaces and dots as '_', '_APT' / '_ERROR' dropped (main.py)."""
+    base = os.path.splitext(Path(name).name)[0]
+    return base.replace(' ', '_').replace('.', '_').replace('_APT', '').replace('_ERROR', '')
+
+
 def _log_errors(log_path):
     msgs = []
     try:
@@ -1337,18 +1353,18 @@ def image_status(tid, run=None):
     if (base / 'LightCurve_Output.csv').is_file():
         import csv as _csv
         with open(base / 'LightCurve_Output.csv', newline='') as fh:
-            ok_names = {r.get('filename', '') for r in _csv.DictReader(fh)}
+            ok_names = {_ap_base(r['filename']) for r in _csv.DictReader(fh) if r.get('filename')}
     if not entries:
         fits_dir = Path(cfg.get('fits_dir', ''))
         if fits_dir.is_dir():
             for p in _fits_in(fits_dir, not cfg.get('top_only', True)):
-                entries[str(p)] = 'OK' if _strip_fits(p.name) in ok_names else 'FAIL'
+                entries[str(p)] = 'OK' if _ap_base(p.name) in ok_names else 'FAIL'
     if not entries:
         return None
     failed = []
     for path, status in entries.items():
-        name = _strip_fits(Path(path).name)
-        if status == 'OK' and (not ok_names or name in ok_names):
+        name = _ap_base(path)
+        if (status == 'OK' and not ok_names) or name in ok_names:
             continue
         logs = list(base.rglob(f'LOG_{name}.log')) if base.is_dir() else []
         errors = _log_errors(logs[0]) if logs else []
@@ -1374,7 +1390,7 @@ def image_status(tid, run=None):
 
 def archive_previous(tid):
     d = tdir(tid)
-    cfg = _read_json(d / 'target.json')
+    cfg = _read_json(d / RUN_CFG) or _read_json(d / 'target.json')
     red = reduced_dir(cfg)
     has_out = red.is_dir() and any(red.iterdir())
     log, res = d / 'web_run.log', d / 'result.json'
@@ -1394,6 +1410,7 @@ def archive_previous(tid):
     for p in (log, res, d / 'job.json', d / 'exit.json', d / 'web_stack.log'):
         if p.exists():
             p.rename(dest / p.name)
+    (d / RUN_CFG).unlink(missing_ok=True)
     snap = dict(cfg)
     if (dest / 'web_run.log').exists():
         snap['_archived_from'] = str(red)
