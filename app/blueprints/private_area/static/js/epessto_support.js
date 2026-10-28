@@ -1915,15 +1915,17 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
   #al{width:100%;height:100%;}
 </style>
 <script src="${vendorBase}aladin-3.8.2.global.js"><\/script>
+<script src="${window.location.origin}/static/js/hips_fallback.js"><\/script>
 </head><body>
 <div id="al"></div>
 <script>
   const T_RA = ${ra}, T_DEC = ${dec};
   const PARENT_ORIGIN = ${parentOriginLit};
   let al, nedCat;
-  A.init.then(function() {
+  Promise.all([A.init, KinderHips.resolve(${surveyLit})]).then(function(r) {
+    KinderHips.showStatus(document.body);
     al = A.aladin('#al', {
-      survey: ${surveyLit},
+      survey: r[1],
       fov: ${fov},
       target: T_RA + ' ' + T_DEC,
       cooFrame: 'ICRS',
@@ -1969,7 +1971,7 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
       });
       nedCat.addSources(srcs);
     } else if (d.type === 'changeSurvey') {
-      al.setImageSurvey(d.survey);
+      KinderHips.resolve(d.survey).then(function(sv) { al.setImageSurvey(sv); });
     } else if (d.type === 'highlightNED' && nedCat) {
       var idx = d.idx;
       nedCat.getSources().forEach(function(s){ s.color = null; });

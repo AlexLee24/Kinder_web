@@ -1,18 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>DETECT Review — {{ selected_date }} · Kinder</title>
+{% extends '_base.html' %}
+{#- DETECT review page (/detect?detect_results=<date>): verdicts, the review queue and one card per object.
+    On the DETECT navigation group (Results | Archives): the date picker sits left in the page bar, the tracker and help toggles right. -#}
+{% block title %}DETECT Review — {{ selected_date }} · Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
-    {% include '_favicon.html' %}
     <!-- Plotly deferred: 3.5 MB must not block first paint -->
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" defer></script>
-</head>
-{% set can_edit = session.user and session.user.is_admin %}
-<body data-can-edit="{{ 'true' if can_edit else 'false' }}">
+    <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" defer></script>
+{% endblock %}
+{% block body_attrs %}data-can-edit="{{ 'true' if (session.user and session.user.is_admin) else 'false' }}"{% endblock %}
+
+{% block bar_left %}
+    <div class="date-selector">
+        <label for="dateSelect">Date</label>
+        <select id="dateSelect" class="kw-select" onchange="changeDate(this)">
+            {% for date in available_dates %}
+            <option value="{{ date }}" {% if date == selected_date %}selected{% endif %}>{{ date }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% if counts.last_run %}<span class="kw-chip detect-page-run" title="Latest DETECT run that touched this day">run {{ counts.last_run }}</span>{% endif %}
+{% endblock %}
+{% block bar_right %}
+    <button class="kw-btn kw-btn-sm tracker-toggle-btn" id="trackerToggleBtn" onclick="toggleTracker()" title="Show/hide follow-up tracker">
+        <span class="tracker-toggle-icon">⬤</span>
+        Follow-up Tracker
+        <span class="tracker-count-badge" id="trackerCountBadge">…</span>
+    </button>
+    <button class="kw-btn kw-btn-sm help-toggle-btn" id="helpToggleBtn" onclick="toggleGuide()" title="How to review (?)">? How to review</button>
+{% endblock %}
+
+{% block content %}
+    {% set can_edit = session.user and session.user.is_admin %}
     {% macro render_abs_mag(value, sep=None) -%}
         {% if value is not none %}
             {% set am = value|float %}
@@ -67,36 +86,10 @@
         {% else %}<span class="hs-badge hs-none" title="No spectroscopic galaxy contains the transient">○ No host</span>{% endif %}
     {%- endmacro %}
 
-    {% include '_navbar.html' %}
-
-    <div class="detect-wrap">
-
-        <div class="detect-page-header">
-            <div class="detect-title-group">
-                <h1 class="detect-page-title"><a href="{{ url_for('detect.detect_results') }}" title="DETECT home">DETECT</a></h1>
-                <span class="detect-page-date">{{ selected_date }}</span>
-                {% if counts.last_run %}<span class="detect-page-run" title="Latest DETECT run that touched this day">run {{ counts.last_run }}</span>{% endif %}
-            </div>
-            <div class="detect-header-controls">
-                <div class="date-selector">
-                    <label for="dateSelect">Date</label>
-                    <select id="dateSelect" onchange="changeDate(this)">
-                        {% for date in available_dates %}
-                        <option value="{{ date }}" {% if date == selected_date %}selected{% endif %}>{{ date }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button class="tracker-toggle-btn" id="trackerToggleBtn" onclick="toggleTracker()" title="Show/hide follow-up tracker">
-                    <span class="tracker-toggle-icon">⬤</span>
-                    Follow-up Tracker
-                    <span class="tracker-count-badge" id="trackerCountBadge">…</span>
-                </button>
-                <button class="help-toggle-btn" id="helpToggleBtn" onclick="toggleGuide()" title="How to review (?)">? How to review</button>
-            </div>
-        </div>
+    <div class="kw-page detect-wrap">
 
         <!-- ── How to review ──────────────────────────────────────────── -->
-        <div class="review-guide" id="reviewGuide">
+        <div class="kw-panel review-guide" id="reviewGuide">
             <div class="guide-step">
                 <span class="guide-num">1</span>
                 <div><strong>Read DETECT's verdict</strong><br>
@@ -125,15 +118,15 @@
             </div>
         </div>
 
-        <div class="followup-tracker-panel" id="followupTrackerPanel">
+        <div class="kw-panel followup-tracker-panel" id="followupTrackerPanel">
             <div class="tracker-panel-header">
                 <div class="tracker-panel-title">
                     Follow-up Tracker
                     <span class="tracker-panel-subtitle" id="trackerSubtitle">loading…</span>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <button class="tracker-refresh-btn" onclick="loadTracker(true)" title="Refresh tracker">↺</button>
-                    <button class="tracker-close-btn" onclick="toggleTracker()" title="Collapse">✕</button>
+                    <button class="kw-icon-btn tracker-refresh-btn" onclick="loadTracker(true)" title="Refresh tracker">↺</button>
+                    <button class="kw-icon-btn tracker-close-btn" onclick="toggleTracker()" title="Collapse">✕</button>
                 </div>
             </div>
             <div id="trackerBody">
@@ -143,7 +136,7 @@
             </div>
         </div>
 
-        <div class="content-area">
+        <div class="kw-panel content-area">
             {% if results %}
 
             <!-- ── Day at a glance ────────────────────────────────────── -->
@@ -162,14 +155,14 @@
             <div class="results-section-hdr">
                 <h2 class="results-section-title">Review queue</h2>
                 <div class="results-section-meta">
-                    <div class="table-filter-bar">
-                        <button class="tbl-filter-btn active" data-filter="all" onclick="filterSummary(this,'all')">All</button>
-                        <button class="tbl-filter-btn tbl-filter-unreviewed" data-filter="pending" onclick="filterSummary(this,'pending')">Pending</button>
-                        <button class="tbl-filter-btn tbl-filter-review" data-filter="review" onclick="filterSummary(this,'review')">Needs judgement</button>
-                        <button class="tbl-filter-btn tbl-filter-confirmed" data-filter="confirmed" onclick="filterSummary(this,'confirmed')">Confirmed host</button>
-                        <button class="tbl-filter-btn" data-filter="nohost" onclick="filterSummary(this,'nohost')">No host</button>
-                        <button class="tbl-filter-btn" data-filter="followup" onclick="filterSummary(this,'followup')">Follow-up</button>
-                        <button class="tbl-filter-btn" data-filter="done" onclick="filterSummary(this,'done')">Done</button>
+                    <div class="kw-seg table-filter-bar" role="group" aria-label="Filter the review queue">
+                        <button type="button" class="kw-seg-item tbl-filter-btn active is-on" data-filter="all" onclick="filterSummary(this,'all')">All</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn tbl-filter-unreviewed" data-filter="pending" onclick="filterSummary(this,'pending')">Pending</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn tbl-filter-review" data-filter="review" onclick="filterSummary(this,'review')">Needs judgement</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn tbl-filter-confirmed" data-filter="confirmed" onclick="filterSummary(this,'confirmed')">Confirmed host</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn" data-filter="nohost" onclick="filterSummary(this,'nohost')">No host</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn" data-filter="followup" onclick="filterSummary(this,'followup')">Follow-up</button>
+                        <button type="button" class="kw-seg-item tbl-filter-btn" data-filter="done" onclick="filterSummary(this,'done')">Done</button>
                     </div>
                 </div>
             </div>
@@ -486,7 +479,9 @@
             {% endif %}
         </div>
     </div>
+{% endblock %}
 
+{% block after_main %}
     <button id="backToTopBtn" title="Back to top">
         <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -509,7 +504,8 @@
             border-radius:10px; box-shadow:0 8px 40px rgba(0,0,0,0.8);
             object-fit:contain;">
     </div>
+{% endblock %}
 
-    <script src="{{ url_for('static', filename='js/detect_results.js') }}"></script>
-</body>
-</html>
+{% block scripts %}
+    <script defer src="{{ url_for('static', filename='js/detect_results.js') }}"></script>
+{% endblock %}

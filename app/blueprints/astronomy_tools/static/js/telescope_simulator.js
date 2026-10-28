@@ -24,9 +24,11 @@ function initializeAladin() {
 
         // Aladin must initialize on a visible, properly-sized element so its
         // internal canvas pixel-per-degree ratio is correct from the start.
-        A.init.then(() => {
+        // CDS survey, or its ESA mirror when CDS is unreachable (js/hips_fallback.js)
+        Promise.all([A.init, KinderHips.resolve(currentSurvey)]).then(([, survey]) => {
+            KinderHips.showStatus(document.getElementById('aladin-lite-div').parentElement);
             aladin = A.aladin('#aladin-lite-div', {
-                survey: currentSurvey,
+                survey: survey,
                 fov: 10,
                 target: '20 51 05.74 +30 37 32.3',
                 cooFrame: 'ICRS',
@@ -110,7 +112,7 @@ function changeSurvey(surveyId) {
             }
             
             // Change survey in Aladin
-            aladin.setImageSurvey(surveyId);
+            KinderHips.resolve(surveyId).then(s => aladin.setImageSurvey(s));
             currentSurvey = surveyId;
 
             // Reflect active survey name in the collapsed panel header

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+{#- Every page extends this. Head: PWA tags, design system (_theme.css), shell (shell.css), then the page's own CSS.
+    Body: the shell (_shell_top.html), the page bar, <main>, then js/shell.js and the page's scripts.
+
+    Blocks a page fills:
+      title        full <title> text
+      head         the page's <link>/<style>/<script> tags for <head>
+      body_class   extra classes on <body>          body_attrs  extra attributes on <body>
+      bar_left / bar_center / bar_right
+                   the page bar under the top bar (one row, same on every page — EAU's page bar):
+                   left = filters / search / status chips, centre = the page's tab bar (defaults to the view
+                   switch of the current navigation group, e.g. DETECT Results | Archives), right = actions.
+                   Pages that are on the navigation show no big title: the navigation already names them.
+      main_class / main_attrs   on <main class="sh-main">
+      content      the page (inside <main>)
+      after_main   dialogs / lightboxes that must sit outside <main>
+      scripts      the page's scripts (after js/shell.js)
+    Layout types for the content (css/_theme.css): kw-list (card grid, ≤3 per row), kw-dash (main + 340px side),
+    kw-tool (360px settings + work area), kw-read (240px contents + 48rem text). -#}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    {% include '_pwa_head.html' %}
+    <title>{% block title %}Kinder · Kilonova Finder{% endblock %}</title>
+    {#- Personal look from the Settings page, applied before first paint (signed in: from the account; else localStorage) -#}
+    {% set _ui = ui_prefs() %}{% if _ui %}<script>window.KW_UI_SERVER = {{ _ui|tojson }};</script>{% endif %}
+    <script src="{{ url_for('static', filename='js/ui_prefs.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/_theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/shell.css') }}">
+    {% block head %}{% endblock %}
+    {% include '_favicon.html' %}
+    <script src="{{ url_for('static', filename='js/pwa.js') }}" defer data-user="{{ '1' if session.user else '0' }}"></script>
+</head>
+{% import '_shell.html' as sh with context %}
+<body class="shell{% if sh.is_nav_page %} is-nav-page{% endif %} {% block body_class %}{% endblock %}" data-page="{{ request.endpoint or '' }}" {% block body_attrs %}{% endblock %}>
+    {% include '_shell_top.html' %}
+
+    {% set _bar_l = self.bar_left()|trim %}{% set _bar_c = self.bar_center()|trim %}{% set _bar_r = self.bar_right()|trim %}
+    {% set _views = sh.views()|trim %}
+    {% if _bar_l or _bar_c or _bar_r or _views %}
+    <div class="sh-pagebar{% if _bar_c or _views %} has-c{% endif %}">
+        <div class="sh-pagebar-l">{% block bar_left %}{% endblock %}</div>
+        {% if _bar_c or _views %}<div class="sh-pagebar-c">{% if _bar_c %}{% block bar_center %}{% endblock %}{% else %}{{ _views|safe }}{% endif %}</div>{% endif %}
+        <div class="sh-pagebar-r">{% block bar_right %}{% endblock %}</div>
+    </div>
+    {% endif %}
+
+    <main class="sh-main {% block main_class %}{% endblock %}" id="main" {% block main_attrs %}{% endblock %}>
+        {% block content %}{% endblock %}
+    </main>
+    {% block after_main %}{% endblock %}
+
+    <script src="{{ url_for('static', filename='js/shell.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -133,7 +133,7 @@ function clearSearch() {
 const ADMIN_TABS = ['overview', 'users', 'groups', 'access', 'operations'];
 
 function initAdminTabs() {
-    document.querySelectorAll('.admin-tabbar .kw-tab[data-tab]').forEach(tab => {
+    document.querySelectorAll('.admin-nav [data-tab]').forEach(tab => {
         tab.addEventListener('click', e => {
             e.preventDefault();
             showTab(tab.dataset.tab);
@@ -159,10 +159,10 @@ function showTab(tabName, opts) {
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === tabName + '-tab');
     });
-    document.querySelectorAll('.admin-tabbar .kw-tab[data-tab]').forEach(tab => {
+    document.querySelectorAll('.admin-nav [data-tab]').forEach(tab => {
         const on = tab.dataset.tab === tabName;
         tab.classList.toggle('is-on', on);
-        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+        if (on) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current');
     });
 
     if (opts.push !== false && location.hash !== '#' + tabName) {
@@ -1097,22 +1097,22 @@ async function deleteGroup(groupName) {
 async function triggerManualBackup() {
     const statusEl = document.getElementById('backupStatus');
     statusEl.textContent = 'Backing up...';
-    statusEl.className = 'consistency-status checking';
+    statusEl.className = 'hdr-status checking';
     try {
         const response = await fetch('/admin/backup-now', { method: 'POST' });
         const result = await response.json();
         if (result.success) {
             statusEl.textContent = result.message;
-            statusEl.className = 'consistency-status no-issues';
+            statusEl.className = 'hdr-status no-issues';
             showNotification(result.message, 'success');
         } else {
             statusEl.textContent = 'Backup failed';
-            statusEl.className = 'consistency-status error';
+            statusEl.className = 'hdr-status error';
             showNotification('Backup failed: ' + result.error, 'error');
         }
     } catch (error) {
         statusEl.textContent = 'Backup failed';
-        statusEl.className = 'consistency-status error';
+        statusEl.className = 'hdr-status error';
         showNotification('An error occurred: ' + error.message, 'error');
     }
 }
@@ -1121,7 +1121,7 @@ async function triggerManualBackup() {
 async function checkDataConsistency() {
     const statusElement = document.getElementById('consistencyStatus');
     statusElement.textContent = 'Checking...';
-    statusElement.className = 'consistency-status checking';
+    statusElement.className = 'hdr-status checking';
     
     try {
         const response = await fetch('/admin/check-consistency');
@@ -1130,21 +1130,21 @@ async function checkDataConsistency() {
         if (result.success) {
             if (result.has_issues) {
                 statusElement.textContent = `${result.issues.total_issues} issues found`;
-                statusElement.className = 'consistency-status issues-found';
+                statusElement.className = 'hdr-status issues-found';
                 showConsistencyResults(result.issues);
             } else {
                 statusElement.textContent = '';
-                statusElement.className = 'consistency-status no-issues';
+                statusElement.className = 'hdr-status no-issues';
                 showNotification('Data consistency check passed - no issues found!', 'success');
             }
         } else {
             statusElement.textContent = 'Check failed';
-            statusElement.className = 'consistency-status error';
+            statusElement.className = 'hdr-status error';
             showNotification('Error: ' + result.error, 'error');
         }
     } catch (error) {
         statusElement.textContent = 'Check failed';
-        statusElement.className = 'consistency-status error';
+        statusElement.className = 'hdr-status error';
         showNotification('An error occurred: ' + error.message, 'error');
     }
 }
@@ -1212,7 +1212,7 @@ async function cleanDataConsistency() {
             // Update status
             const statusElement = document.getElementById('consistencyStatus');
             statusElement.textContent = 'Cleaned - No issues';
-            statusElement.className = 'consistency-status no-issues';
+            statusElement.className = 'hdr-status no-issues';
             
             // Reload page after a short delay
             setTimeout(() => location.reload(), 1500);

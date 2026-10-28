@@ -292,8 +292,8 @@ function _scoreChip(score) {
 
 // ── Filter summary table ──────────────────────────────────────────────────
 function filterSummary(btn, filter) {
-    document.querySelectorAll('.tbl-filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    document.querySelectorAll('.tbl-filter-btn').forEach(b => b.classList.remove('active', 'is-on'));
+    btn.classList.add('active', 'is-on');
     document.querySelectorAll('#summaryTable tbody tr').forEach(row => {
         const status = row.dataset.status || '';
         const hs     = row.dataset.hostStatus || '';

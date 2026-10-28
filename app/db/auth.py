@@ -970,6 +970,21 @@ def get_setting(key: str, default=None):
         return default
 
 
+def get_settings(keys) -> dict:
+    """Several settings in one query: {key: value} for the keys that exist."""
+    keys = list(keys)
+    if not keys:
+        return {}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT key, value FROM auth.system_settings WHERE key = ANY(%s)", (keys,))
+            return {k: v for k, v in cur.fetchall()}
+    except Exception as e:
+        logger.error("get_settings %s: %s", keys, e)
+        return {}
+
+
 def set_setting(key: str, value: str) -> bool:
     try:
         with get_db_connection() as conn:

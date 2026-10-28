@@ -51,6 +51,31 @@ SESSION_ABSOLUTE_MAX_S = 30 * 24 * 3600   # matches PERMANENT_SESSION_LIFETIME
 SESSION_IDLE_USER_S = 8 * 3600
 SESSION_IDLE_ADMIN_S = 1 * 3600
 LAST_SEEN_WRITE_INTERVAL_S = 60           # limit Set-Cookie churn
+# refresh_user_session reuses a user's DB row for this long (per process) instead of
+# reading it on every request (two round trips, ~0.5 s each to a remote DB). Role,
+# group or session_version changes therefore reach a running session within 15 s.
+USER_ROW_CACHE_S = 15
+_user_rows: dict[str, tuple[float, dict | None]] = {}
+
+
+def _get_user_cached(email: str) -> dict | None:
+    hit = _user_rows.get(email)
+    now = time.monotonic()
+    if hit and now - hit[0] < USER_ROW_CACHE_S:
+        return dict(hit[1]) if hit[1] else None
+    data = get_user(email)
+    if len(_user_rows) > 2000:
+        _user_rows.clear()
+    _user_rows[email] = (now, dict(data) if data else None)
+    return data
+
+
+def forget_cached_user(email: str | None = None) -> None:
+    """Drop the cached row (all rows when email is None) after changing a user."""
+    if email is None:
+        _user_rows.clear()
+    else:
+        _user_rows.pop(email, None)
 
 
 def idle_limit_seconds(is_admin: bool) -> int:
@@ -162,7 +187,7 @@ def refresh_user_session():
         return _session_expired_response(reason)
 
     try:
-        user_data = get_user(user_email)  # includes groups via single extra query
+        user_data = _get_user_cached(user_email)  # includes groups via single extra query
     except Exception as exc:
         # DB down: the cookie cannot be checked against the DB (revocation, role
         # changes). Keep it for ordinary pages, but admin checks fail closed.

@@ -1,421 +1,191 @@
-/* Astronomy Tools Styles */
-:root {
-    --astronomy-bg-image: url('../photo/background_telescope.jpg');
-    --primary-color: var(--kw-accent);
-    --primary-hover: var(--kw-accent-hover);
-    --bg-overlay: var(--kw-bg-overlay);
-    --border-color: var(--kw-border);
-    --text-color: var(--kw-text-white);
-    --text-muted: var(--kw-text-muted);
-}
+/* Astronomy Tools (/astronomy_tools) — only what the kw-* components in _theme.css don't cover:
+   the input | result split inside each calculator, the results injected by js/astronomy_tools.js,
+   the cosmology chip and the cosmological-parameters dialog. */
 
-body {
-    font-family: var(--kw-font-sans);
-    background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), var(--astronomy-bg-image);
-    background-attachment: fixed;
-    background-size: cover;
-    background-repeat: no-repeat;
-    margin: 0;
-    padding: 0;
-    min-height: 100vh;
-    color: var(--text-color);
-}
+/* ── Calculator panels ── */
+.at-page .at-grid { align-items: start; }
+.at-page .kw-panel-head h2 svg.section-icon { width: 16px; height: 16px; color: var(--kw-accent); }
 
-.page-header {
-    text-align: center;
-    margin: 50px auto 40px;
-    margin-top: 150px;
-    padding: 0 20px;
-}
-
-.page-header h1 {
-    font-size: 2.5em;
-    font-weight: 300;
-    color: #ffffff;
-    margin-bottom: 10px;
-    letter-spacing: 2px;
-    text-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-
-.page-header p {
-    color: var(--text-muted);
-    font-size: 1.1rem;
-    font-style: italic;
-}
-
-/* 2 Containers per row Grid */
-.at-container {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 30px;
-    width: 90%;
-    max-width: 90%;
-    margin: 0 auto 60px;
-}
-
-@media (max-width: 1024px) {
-    .at-container {
-        grid-template-columns: 1fr;
-    }
-}
-
-.settings-section {
-    background: rgba(20, 20, 30, 0.6);
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    border-radius: 20px;
-    padding: 30px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-    display: flex;
-    flex-direction: column;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.settings-section:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 40px rgba(0,0,0,0.3);
-}
-
-.settings-section h3 {
-    color: var(--primary-color);
-    font-size: 1.4em;
-    font-weight: 500;
-    margin: 0 0 10px 0;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid rgba(197, 160, 89, 0.3);
-    padding-bottom: 15px;
-}
-
-.section-icon {
-    color: var(--primary-color);
-}
-
-.at-desc {
-    color: var(--text-muted);
-    font-size: 0.95rem;
-    margin-bottom: 25px;
-}
-
-/* Inside container grid (Left: Input, Right: Output) */
+/* Input column | result column */
 .at-tool-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 25px;
-    flex-grow: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
 }
-
 @media (max-width: 600px) {
-    .at-tool-grid {
-        grid-template-columns: 1fr;
-    }
+    .at-tool-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-.at-col {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
+.at-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
 .at-col-title {
-    color: #fff;
+    font-size: 0.86rem;
     font-weight: 600;
-    margin-bottom: 5px;
-    font-size: 1.05rem;
-    border-left: 3px solid var(--primary-color);
-    padding-left: 10px;
+    color: var(--kw-text-white);
 }
 
-.form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
+.at-page .form-group,
+.cosmo-modal .form-group { display: flex; flex-direction: column; gap: 6px; }
+.at-page .form-group label,
+.cosmo-modal .form-group label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.at-page .form-group :is(input, select),
+.cosmo-modal .form-group input { box-sizing: border-box; width: 100%; min-height: 40px; }
+.at-unit { color: var(--kw-text-muted); font-size: 0.85em; }
 
-.form-group label {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-}
+.at-required { color: #FF6B61; }
 
-.form-group input, .form-group select {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-color);
-    color: #fff;
-    padding: 12px 15px;
-    border-radius: 8px;
-    font-size: 1rem;
-    transition: all 0.2s ease;
-}
+.at-divider { height: 1px; margin: 4px 0; background: var(--kw-hairline); }
 
-.form-group input:focus, .form-group select:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.2);
-}
+.at-page .at-btn { align-self: flex-start; }
 
-.at-required {
-    color: #ff6b6b;
-}
-
-.at-divider {
-    height: 1px;
-    background: var(--border-color);
-    margin: 10px 0;
-}
-
-/* Button styling */
-.at-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: linear-gradient(45deg, var(--primary-color), var(--kw-accent-dark));
-    color: #fff;
-    border: none;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 10px;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-
-.at-btn:hover {
-    background: linear-gradient(45deg, var(--primary-hover), #a6874b);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(197, 160, 89, 0.3);
-}
-
-.at-btn:active {
-    transform: translateY(0);
-}
-
-/* Results section */
+/* Result box (filled by js/astronomy_tools.js) */
 .at-result-box {
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 12px;
-    padding: 20px;
-    height: 100%;
-    border: 1px solid var(--border-color);
-    min-height: 150px;
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 150px;
+    padding: 14px 16px;
+    border-radius: var(--kw-radius-lg);
+    background: var(--kw-card-bg-2);
+    border: 1px solid var(--kw-hairline);
 }
-
 .at-result-box .at-placeholder {
-    color: var(--text-muted);
-    font-style: italic;
-    text-align: center;
     margin: auto;
+    text-align: center;
+    font-size: 0.84rem;
+    color: var(--kw-text-muted);
 }
 
-/* Override dynamically injected result styles */
-.result-category {
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-left: 3px solid var(--primary-color);
-}
-
-.result-category:last-child {
-    margin-bottom: 0;
-}
-
+.result-category + .result-category { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--kw-hairline); }
 .result-category h4 {
-    margin: 0 0 12px 0;
-    color: var(--primary-color);
-    font-size: 1rem;
     display: flex;
     align-items: center;
     gap: 8px;
+    margin: 0 0 10px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--kw-text-white);
 }
-
-.result-grid {
-    display: grid;
-    gap: 10px;
-}
-
+.result-category h4 svg { color: var(--kw-accent); }
+.result-grid { display: grid; gap: 8px; }
 .result-item-compact {
     display: flex;
     justify-content: space-between;
-    background: rgba(0, 0, 0, 0.2);
-    padding: 10px 12px;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 9px 12px;
+    border-radius: var(--kw-radius-md);
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 0.86rem;
 }
-
-.result-label-compact {
-    color: var(--text-muted);
-}
-
+.result-label-compact { color: var(--kw-text-muted); }
 .result-value-compact {
-    color: #fff;
-    font-family: 'Courier New', monospace;
+    color: var(--kw-text-white);
+    font-family: var(--kw-font-mono);
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
+.at-result-box .error-message { margin: auto; text-align: center; font-size: 0.84rem; color: #FF6B61; }
+.at-spinner-wrap { display: flex; align-items: center; justify-content: center; flex: 1; }
+.at-spinner-wrap .spinner {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.12);
+    border-top-color: var(--kw-accent);
+    animation: at-spin 0.8s linear infinite;
+}
+@keyframes at-spin { to { transform: rotate(360deg); } }
 
-/* Cosmological parameters chip (inline display) */
+/* ── Cosmology chip + gear ── */
 .cosmo-params-chip {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    background: rgba(197, 160, 89, 0.08);
-    border: 1px solid rgba(197, 160, 89, 0.25);
-    border-radius: 20px;
-    padding: 5px 12px;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    margin-bottom: 18px;
-    transition: background 0.2s, border-color 0.2s;
     flex-wrap: wrap;
-}
-
-.cosmo-params-chip:hover {
-    background: rgba(197, 160, 89, 0.15);
-    border-color: rgba(197, 160, 89, 0.45);
-}
-
-.cosmo-chip-ref {
-    color: var(--primary-color);
-    text-decoration: none;
-    white-space: nowrap;
-}
-
-.cosmo-chip-ref:hover {
-    text-decoration: underline;
-}
-
-/* Gear button inside section header */
-.cosmo-settings-btn {
-    background: none;
-    border: 1px solid rgba(197, 160, 89, 0.35);
-    color: var(--primary-color);
-    border-radius: 6px;
-    padding: 4px 7px;
+    gap: 6px;
+    align-self: flex-start;
+    margin: 0 0 16px;
+    padding: 5px 12px;
+    border-radius: var(--kw-radius-pill);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--kw-border);
+    font-size: 0.8rem;
+    color: var(--kw-text-secondary);
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    margin-top: 0;
-    transition: background 0.2s, border-color 0.2s;
-    flex-shrink: 0;
+    transition: background var(--kw-transition-fast), border-color var(--kw-transition-fast);
 }
+.cosmo-params-chip:hover { background: rgba(255, 255, 255, 0.1); border-color: var(--kw-border-med); }
+.cosmo-chip-ref { color: var(--kw-link); text-decoration: none; white-space: nowrap; }
+.cosmo-chip-ref:hover { text-decoration: underline; }
 
-.cosmo-settings-btn:hover {
-    background: rgba(197, 160, 89, 0.12);
-    border-color: var(--primary-color);
-}
+/* ── Link cards to the LC Plotter / Exposure Time Calculator ── */
+.at-link-card { display: flex; flex-direction: column; cursor: pointer; transition: border-color var(--kw-transition-fast); }
+.at-link-card:hover { border-color: var(--kw-border-med); }
+.at-link-card .kw-panel-desc { margin-bottom: 0; }
+.at-link-card .kw-panel-foot a { text-decoration: none; }
 
-/* Modal overlay */
+/* ── Cosmological parameters dialog (js toggles .active) ── */
 .cosmo-modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.65);
-    z-index: 1000;
+    z-index: 1300;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(3px);
+    padding: 16px;
+    background: var(--kw-scrim);
 }
-
-.cosmo-modal-overlay.active {
-    display: flex;
-}
+.cosmo-modal-overlay.active { display: flex; }
 
 .cosmo-modal {
-    background: rgba(12, 12, 22, 0.97);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(197, 160, 89, 0.3);
-    border-radius: 18px;
-    width: 370px;
-    max-width: 92vw;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    width: 380px;
+    max-width: 100%;
+    border-radius: var(--kw-radius-xl);
+    background: var(--kw-bg-elevated);
+    border: 1px solid var(--kw-border);
+    box-shadow: var(--kw-shadow-lg);
+    color: var(--kw-text-primary);
 }
-
 .cosmo-modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 24px 15px;
-    border-bottom: 1px solid rgba(197, 160, 89, 0.2);
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--kw-border);
 }
-
 .cosmo-modal-header h4 {
-    color: var(--primary-color);
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 500;
     display: flex;
     align-items: center;
     gap: 8px;
-}
-
-.cosmo-modal-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.5rem;
-    cursor: pointer;
-    padding: 0 3px;
-    line-height: 1;
-    transition: color 0.2s;
-}
-
-.cosmo-modal-close:hover {
-    color: #fff;
-}
-
-.cosmo-modal-body {
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.cosmo-modal-ref {
-    font-size: 0.85rem;
-    color: var(--text-muted);
     margin: 0;
-    line-height: 1.5;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--kw-text-white);
 }
-
-.cosmo-modal-ref a {
-    color: var(--primary-color);
-    text-decoration: none;
+.cosmo-modal-header h4 svg { color: var(--kw-accent); }
+.cosmo-modal-close {
+    min-height: 0;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: var(--kw-text-muted);
+    cursor: pointer;
 }
-
-.cosmo-modal-ref a:hover {
-    text-decoration: underline;
-}
-
+.cosmo-modal-close:hover { color: var(--kw-text-white); background: none; }
+.cosmo-modal-body { display: flex; flex-direction: column; gap: 14px; padding: 18px 22px; }
+.cosmo-modal-ref { margin: 0; font-size: 0.84rem; line-height: 1.5; color: var(--kw-text-secondary); }
+.cosmo-modal-ref a { color: var(--kw-link); text-decoration: none; }
+.cosmo-modal-ref a:hover { text-decoration: underline; }
 .cosmo-modal-footer {
     display: flex;
-    gap: 10px;
-    padding: 14px 24px 20px;
     justify-content: flex-end;
-    border-top: 1px solid rgba(197, 160, 89, 0.2);
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 14px 22px 18px;
+    border-top: 1px solid var(--kw-border);
 }
 
-.cosmo-modal-footer .at-btn {
-    margin-top: 0;
-    padding: 9px 18px;
-    font-size: 0.9rem;
-}
-
-.cosmo-reset-btn {
-    background: rgba(255, 255, 255, 0.07) !important;
-    color: var(--text-muted) !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-}
-
-.cosmo-reset-btn:hover {
-    background: rgba(255, 255, 255, 0.12) !important;
-    color: #fff !important;
-    box-shadow: none !important;
-}
+/* the settings icon button must not make its panel head taller than the neighbouring one */
+.cosmo-settings-btn { margin: -6px -6px -6px 0; }

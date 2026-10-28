@@ -1,21 +1,34 @@
 /* ================================================================
    _theme.css — Kinder Web design system (tokens + shared components)
-   Loaded on every page (by _navbar.html, and directly by home.html).
+   Loaded first on every page by _base.html.
    Direction: dark "observatory" surfaces, Apple HIG ergonomics
    (system type, 4/8pt rhythm, 44pt targets, one prominent action per view,
    visible focus, reduced-motion support). Change a token here → site-wide.
 
-   2026-10: page layouts follow EAU_Web (page head = eyebrow / title / lead +
-   actions, tab bar, KPI tiles, panels, data tables) drawn in Kinder's own
-   style — dark translucent panels, thin borders, gold accents. Those shared
-   pieces are the kw-* components at the end of this file.
-   NB: this file is loaded from _navbar.html inside <body>, i.e. AFTER each
-   page's CSS, so a page that overrides a kw-* rule needs a higher specificity.
+   2026-10-28: one design language for the whole site, after EAU_Web
+   (docs/web_design_system.md): colourless glass over the background photo,
+   one amber accent, radius 6/10/14/18. _base.html loads this file first,
+   then shell.css, then the page's own CSS — page rules win at equal specificity.
    ================================================================ */
 @import url('https://fonts.googleapis.com/css2?family=TASA+Explorer:wght@300;400;500;600;700&display=swap');
 
 :root {
     color-scheme: dark;
+
+    /* ── EAU design-system names (docs/web_design_system.md §3.1); the --kw-* tokens below use the same values ── */
+    --color-bg: #07061A;
+    --color-surface: rgba(14, 14, 18, 0.70);           /* colourless glass */
+    --color-surface-elevated: rgba(22, 22, 28, 0.92);  /* menus, dropdowns */
+    --color-border: rgba(255, 255, 255, 0.14);
+    --color-border-subtle: rgba(255, 255, 255, 0.08);
+    --color-text: #F5F5F7;
+    --color-text-secondary: rgba(245, 245, 247, 0.72);
+    --color-text-muted: rgba(245, 245, 247, 0.5);
+    --color-accent: #F39F5A;                           /* the one accent (js/ui_prefs.js writes the user's choice on <html>) */
+    --color-accent-hover: #F6B57E;
+    --color-accent-soft: rgba(243, 159, 90, 0.14);
+    --color-accent-text: #0C0A1A;                      /* text on the accent */
+    --glass-blur: blur(30px) saturate(130%);
 
     /* ── Type ────────────────────────────────────────────────── */
     --kw-font-sans:   "TASA Explorer", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -30,15 +43,16 @@
     --kw-text-3xl:  2.5rem;    /* 40 */
 
     /* ── Accent / brand (gold = primary action, blue = links/info) ─ */
-    --kw-accent:          #D4B06A;
-    --kw-accent-hover:    #E2C384;
-    --kw-accent-dark:     #A8843F;
-    --kw-accent-contrast: #1A1408;
-    --kw-accent-dim:      rgba(212, 176, 106, 0.18);
-    --kw-accent-border:   rgba(212, 176, 106, 0.35);
-    --kw-accent-gradient:    linear-gradient(135deg, #E2C384, #B8934A);
-    --kw-secondary-gradient: linear-gradient(135deg, #5E9BFF, #3B6FE0);
-    --kw-link:            #6DA9FF;
+    /* derived from the --color-* tokens, so the Settings page (ui_prefs.js) recolours everything */
+    --kw-accent:          var(--color-accent);
+    --kw-accent-hover:    var(--color-accent-hover);
+    --kw-accent-dark:     color-mix(in srgb, var(--color-accent) 80%, #000);
+    --kw-accent-contrast: var(--color-accent-text);
+    --kw-accent-dim:      var(--color-accent-soft);
+    --kw-accent-border:   color-mix(in srgb, var(--color-accent) 35%, transparent);
+    --kw-accent-gradient:    linear-gradient(135deg, var(--color-accent-hover), var(--kw-accent-dark));
+    --kw-secondary-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));   /* one accent: secondary actions are neutral glass */
+    --kw-link:            var(--color-accent-hover);
 
     /* ── Semantic (Apple system colors, dark variants) ───────── */
     --kw-color-success: #30D158;
@@ -50,18 +64,18 @@
     --kw-color-purple:  #BF5AF2;
 
     /* ── Text ────────────────────────────────────────────────── */
-    --kw-text-primary:   #F2F2F7;
+    --kw-text-primary:   #F5F5F7;
     --kw-text-white:     #FFFFFF;
-    --kw-text-secondary: rgba(235, 235, 245, 0.72);
-    --kw-text-muted:     rgba(235, 235, 245, 0.55);
-    --kw-text-faint:     rgba(235, 235, 245, 0.38);
+    --kw-text-secondary: rgba(245, 245, 247, 0.72);
+    --kw-text-muted:     rgba(245, 245, 247, 0.5);
+    --kw-text-faint:     rgba(245, 245, 247, 0.36);
 
     /* ── Surfaces ────────────────────────────────────────────── */
-    --kw-bg:             #0B0D14;
-    --kw-bg-elevated:    #14171F;
+    --kw-bg:             #07061A;
+    --kw-bg-elevated:    var(--color-surface-elevated);
     --kw-surface:        rgba(255, 255, 255, 0.06);
     --kw-surface-hover:  rgba(255, 255, 255, 0.10);
-    --kw-glass-bg:       rgba(18, 20, 28, 0.72);
+    --kw-glass-bg:       var(--color-surface);
     --kw-glass-bg-light: rgba(255, 255, 255, 0.08);
     --kw-glass-border:   rgba(255, 255, 255, 0.14);
     --kw-glass-shadow:   0 10px 40px rgba(0, 0, 0, 0.45);
@@ -69,10 +83,10 @@
     --kw-scrim:          rgba(0, 0, 0, 0.6);
 
     /* ── Borders ─────────────────────────────────────────────── */
-    --kw-border:     rgba(255, 255, 255, 0.10);
-    --kw-border-med: rgba(255, 255, 255, 0.18);
-    --kw-hairline:   rgba(255, 255, 255, 0.07);
-    --kw-focus-ring: 0 0 0 3px rgba(109, 169, 255, 0.55);
+    --kw-border:     rgba(255, 255, 255, 0.14);
+    --kw-border-med: rgba(255, 255, 255, 0.2);
+    --kw-hairline:   rgba(255, 255, 255, 0.08);
+    --kw-focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent) 45%, transparent);
 
     /* ── Spacing (4/8pt rhythm) ──────────────────────────────── */
     --kw-space-xs:  4px;
@@ -84,11 +98,11 @@
     --kw-space-3xl: 48px;
 
     /* ── Radius ──────────────────────────────────────────────── */
-    --kw-radius-sm:  8px;
-    --kw-radius-md:  12px;
-    --kw-radius-lg:  16px;
-    --kw-radius-xl:  22px;
-    --kw-radius-2xl: 28px;
+    --kw-radius-sm:  6px;
+    --kw-radius-md:  10px;
+    --kw-radius-lg:  14px;
+    --kw-radius-xl:  18px;
+    --kw-radius-2xl: 18px;
     --kw-radius-pill: 999px;
 
     /* ── Motion ──────────────────────────────────────────────── */
@@ -109,8 +123,8 @@
     --kw-nav-h:        60px;
 
     /* ── Layout components (kw-*) ────────────────────────────── */
-    --kw-page-max:     1240px;
-    --kw-card-bg:      rgba(18, 20, 28, 0.72);   /* Kinder panel surface (same as the original admin panels) */
+    --kw-page-max:     none;
+    --kw-card-bg:      var(--color-surface);   /* Kinder panel surface (same as the original admin panels) */
     --kw-card-bg-2:    rgba(255, 255, 255, 0.04); /* nested tiles inside a panel */
 }
 
@@ -158,11 +172,12 @@ body {
     color: var(--kw-text-primary);
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--kw-border-med);
-    border-radius: var(--kw-radius-sm);
+    border-radius: var(--kw-radius-md);
     padding: 8px 12px;
     min-height: var(--kw-control-h-sm);
     transition: border-color var(--kw-transition-fast), box-shadow var(--kw-transition-fast), background var(--kw-transition-fast);
 }
+:where(.kw-page, .sh-pagebar, .kw-modal) :where(input, select, textarea, button, .kw-btn) { box-sizing: border-box; }   /* 40px means 40px */
 :where(input, select, textarea)::placeholder { color: var(--kw-text-muted); }
 :where(input, select, textarea):focus {
     outline: none;
@@ -221,26 +236,34 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); background-clip: padding-box; }
 
 /* ================================================================
-   Layout components (kw-*): EAU_Web structure, Kinder look
+   Components (kw-*) — the one design language every page uses (EAU_Web docs/web_design_system.md §3):
+   page head (inner pages only), page layouts, panels (cards), KPI tiles, segmented controls, tables,
+   buttons, fields, chips, dialogs. Rhythm: 20px between blocks, 16px between cards, panel h2 = 1rem/700.
+   Radius 6 / 10 / 14 / 18 (small / controls / inner blocks / cards).
    ================================================================ */
 
 /* ── Page + page head (eyebrow · title · lead | actions) ── */
-.kw-page {
-    width: 100%;
-    max-width: var(--kw-page-max);
-    margin: 0 auto;
-    padding: 8px clamp(16px, 3vw, 32px) 64px;
+.kw-page {   /* a page's root inside <main class="sh-main"> — main already sets the edges; blocks 20px apart */
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
     color: var(--kw-text-primary);
     font-family: var(--kw-font-sans);
 }
+.kw-page > * { min-width: 0; margin-block: 0; }
+.kw-page > :is(.kw-kpis, .kw-mini-stats):empty { display: none; }   /* filled by JS; no gap while empty */
+/* Pages on the navigation have no big title (the navigation names them); one optional line says what the page is. */
+.kw-lead { margin: 0; max-width: 72ch; font-size: 0.9rem; line-height: 1.6; color: var(--kw-text-secondary); }
+@media (max-width: 860px) { .kw-page { gap: 12px; } }
 .kw-page-head {
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
     gap: 16px 24px;
     flex-wrap: wrap;
-    margin: 24px 0 20px;
+    margin: 4px 0 20px;
 }
+.kw-page > .kw-page-head { margin-bottom: 0; }   /* the .kw-page gap already spaces it */
 .kw-page-head > div:first-child { min-width: 0; flex: 1 1 340px; }
 .kw-eyebrow {
     display: inline-block;
@@ -253,9 +276,9 @@ body {
 }
 .kw-page-head h1 {
     margin: 0;
-    font-size: clamp(1.55rem, 1.2rem + 1vw, 2rem);
-    font-weight: 400;
-    letter-spacing: 0.02em;
+    font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.2;
     color: var(--kw-text-white);
 }
@@ -265,23 +288,54 @@ body {
 
 .kw-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .kw-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.kw-stack { display: grid; gap: 16px; align-content: start; }
+.kw-stack { display: grid; gap: 20px; align-content: start; }
 @media (max-width: 1080px) { .kw-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 820px)  { .kw-grid-2, .kw-grid-3 { grid-template-columns: 1fr; } }
 
-/* ── Tab bar (admin hub) and segmented filter ── */
-.kw-subnav { max-width: var(--kw-page-max); margin: 20px auto 0; padding: 0 clamp(16px, 3vw, 32px); }
-.kw-tabbar, .kw-seg {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px;
-    border-radius: var(--kw-radius-md);
-    background: var(--kw-card-bg);
-    border: 1px solid var(--kw-border);
+/* ── Page layouts: every page picks one (EAU §3.7) ──
+   kw-list  cards in a grid, at most 3 per row (min 340px)        — lists: archives, documents, results
+   kw-dash  main column + 340px side column                         — dashboards: marshal, admin, trigger
+   kw-tool  360px settings column (sticky) + work area              — tools: planners, calculators, plotters
+   kw-read  240px contents + text up to 48rem                       — reading: documents, API reference
+   Phones: one column, 12px gaps. */
+.kw-list {
+    display: grid; gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, max(340px, calc((100% - 32px) / 3))), 1fr));
 }
-.kw-tabbar { flex-wrap: wrap; }
-.kw-seg { display: inline-flex; border-radius: var(--kw-radius-pill); }
+.kw-list > * { display: flex; flex-direction: column; min-width: 0; }
+.kw-list > * > .kw-panel-foot { margin-top: auto; }   /* card footers line up */
+.kw-dash { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+.kw-tool { display: grid; gap: 20px; grid-template-columns: 360px minmax(0, 1fr); align-items: start; }
+.kw-tool > .kw-tool-side { position: sticky; top: calc(var(--kw-nav-h) + 14px); display: grid; gap: 16px; align-content: start; }
+.kw-read { display: grid; gap: 32px; grid-template-columns: 240px minmax(0, 48rem); align-items: start; }
+.kw-read > .kw-read-toc { position: sticky; top: calc(var(--kw-nav-h) + 14px); }
+:is(.kw-dash, .kw-tool, .kw-read) > * { min-width: 0; }
+@media (max-width: 1080px) { .kw-dash { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 960px)  { .kw-tool { grid-template-columns: minmax(0, 1fr); } .kw-tool > .kw-tool-side { position: static; } }
+@media (max-width: 860px)  {
+    .kw-read { grid-template-columns: minmax(0, 1fr); } .kw-read > .kw-read-toc { position: static; }
+    .kw-list, .kw-grid-2, .kw-grid-3 { gap: 12px; } .kw-dash, .kw-tool, .kw-stack { gap: 12px; }
+}
+
+/* ── Tab bar (admin hub) and segmented filter ── */
+.kw-subnav { margin: 0 0 20px; }
+/* Segmented control (EAU §3.4): one glass strip, 44px high. Navigation tabs (.kw-tab) light up in the accent,
+   filters / options (.kw-seg-item) in a soft white, so a page is never all accent. */
+.kw-tabbar, .kw-seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--color-surface);
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--kw-border);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.kw-tabbar::-webkit-scrollbar, .kw-seg::-webkit-scrollbar { display: none; }
 .kw-tab, .kw-seg-item {
     display: inline-flex;
     align-items: center;
@@ -298,10 +352,13 @@ body {
     cursor: pointer;
     transition: background var(--kw-transition-fast), color var(--kw-transition-fast);
 }
-.kw-seg-item { min-height: 30px; padding: 0 13px; border-radius: var(--kw-radius-pill); font-size: 0.8rem; }
+.kw-tab, .kw-seg-item { flex: none; min-height: 34px; border-radius: 9px; }
+.kw-seg-item { padding: 0 13px; font-size: 0.84rem; }
 .kw-tab svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.75; }
 .kw-tab:hover, .kw-seg-item:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
-.kw-tab.is-on, .kw-seg-item.is-on { background: var(--kw-accent-dim); color: var(--kw-accent); font-weight: 500; }
+.kw-tab.is-on { background: var(--color-accent); color: var(--color-accent-text); font-weight: 600; }
+.kw-seg-item.is-on { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); font-weight: 600; }
+.kw-tab.is-on .kw-n { background: rgba(0, 0, 0, 0.18); color: inherit; }
 .kw-tab.is-on svg { opacity: 1; }
 .kw-tabbar-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--kw-border-med); flex-shrink: 0; }
 .kw-n {
@@ -321,10 +378,9 @@ body {
     gap: 2px;
     min-width: 0;
     padding: 14px 16px;
-    border-radius: var(--kw-radius-lg);
+    border-radius: var(--kw-radius-xl);
     background: var(--kw-card-bg);
     border: 1px solid var(--kw-border);
-    box-shadow: var(--kw-shadow);
     color: var(--kw-text-primary);
     text-align: left;
     text-decoration: none;
@@ -334,7 +390,7 @@ body {
 button.kw-kpi { cursor: pointer; }
 a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
 .kw-kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
-.kw-kpi b { margin: 4px 0 2px; font-size: 1.9rem; font-weight: 300; line-height: 1.1; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
+.kw-kpi b { margin: 4px 0 2px; font-size: 1.9rem; font-weight: 600; line-height: 1.1; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
 .kw-kpi small { font-size: 0.74rem; color: var(--kw-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-kpi.is-alert { border-color: var(--kw-accent-border); }
 .kw-kpi.is-alert b { color: var(--kw-accent); }
@@ -348,26 +404,26 @@ a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
     border: 1px solid var(--kw-border);
     font-size: 0.68rem; color: var(--kw-text-muted);
 }
-.kw-mini-stats b { font-size: 1.15rem; font-weight: 300; line-height: 1.3; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
+.kw-mini-stats b { font-size: 1.15rem; font-weight: 600; line-height: 1.3; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
 
 /* ── Panels and list rows ── */
-.kw-panel {
+.kw-panel {   /* card (EAU §3.6): surface + hairline border, radius 18; nested blocks use .kw-inset */
     min-width: 0;
     padding: 18px 20px;
-    border-radius: var(--kw-radius-lg);
+    border-radius: var(--kw-radius-xl);
     background: var(--kw-card-bg);
     border: 1px solid var(--kw-border);
-    box-shadow: var(--kw-shadow);
     color: var(--kw-text-primary);
 }
+.kw-inset { padding: 14px 16px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-hairline); }
 .kw-panel + .kw-panel { margin-top: 16px; }
 .kw-grid-2 > .kw-panel + .kw-panel, .kw-grid-3 > .kw-panel + .kw-panel, .kw-stack > .kw-panel + .kw-panel { margin-top: 0; }
 .kw-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 12px; }
 .kw-panel-head h2, .kw-panel-head h3 {
     display: flex; align-items: center; gap: 8px;
     margin: 0;
-    font-size: 0.95rem; font-weight: 500; letter-spacing: 0.03em;
-    color: var(--kw-accent);
+    font-size: 1rem; font-weight: 700; letter-spacing: 0;
+    color: var(--kw-text-white);
 }
 .kw-panel-head h2 svg, .kw-panel-head h3 svg { width: 16px; height: 16px; color: var(--kw-accent); flex-shrink: 0; }
 .kw-panel-meta { font-size: 0.74rem; color: var(--kw-text-muted); }
@@ -389,18 +445,17 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 /* ── Data table ── */
 .kw-table-wrap {
     overflow-x: auto;
-    border-radius: var(--kw-radius-lg);
+    border-radius: var(--kw-radius-xl);
     background: var(--kw-card-bg);
     border: 1px solid var(--kw-border);
-    box-shadow: var(--kw-shadow);
 }
 .kw-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; color: var(--kw-text-primary); }
 .kw-table th, .kw-table td { padding: 11px 14px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--kw-hairline); }
 .kw-table thead th {
     padding-top: 12px; padding-bottom: 12px;
-    font-size: 0.7rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--kw-accent);
-    background: rgba(0, 0, 0, 0.2);
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--kw-text-secondary);
+    background: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid var(--kw-border);
     white-space: nowrap;
 }
@@ -410,8 +465,8 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 /* ── Controls ── */
 .kw-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    min-height: 36px; padding: 0 16px;
-    border-radius: var(--kw-radius-pill);
+    min-height: 40px; padding: 0 16px;
+    border-radius: var(--kw-radius-md);
     border: 1px solid var(--kw-border-med);
     background: var(--kw-surface);
     color: var(--kw-text-primary);
@@ -427,12 +482,12 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-btn-primary { background: var(--kw-accent); border-color: transparent; color: var(--kw-accent-contrast); font-weight: 600; }
 .kw-btn-primary:hover { background: var(--kw-accent-hover); border-color: transparent; color: var(--kw-accent-contrast); }
 .kw-btn-tinted { background: var(--kw-accent-dim); border-color: var(--kw-accent-border); color: var(--kw-accent); }
-.kw-btn-tinted:hover { background: rgba(212, 176, 106, 0.28); border-color: var(--kw-accent-border); color: var(--kw-accent-hover); }
+.kw-btn-tinted:hover { background: color-mix(in srgb, var(--color-accent) 28%, transparent); border-color: var(--kw-accent-border); color: var(--kw-accent-hover); }
 .kw-btn-danger { background: rgba(255, 69, 58, 0.14); border-color: rgba(255, 69, 58, 0.35); color: #FF6B61; }
 .kw-btn-danger:hover { background: rgba(255, 69, 58, 0.24); border-color: rgba(255, 69, 58, 0.5); color: #FF8A80; }
 .kw-btn-ghost { background: transparent; border-color: transparent; color: var(--kw-text-secondary); }
 .kw-btn-ghost:hover { background: rgba(255, 255, 255, 0.07); border-color: transparent; }
-.kw-btn-sm { min-height: 30px; padding: 0 12px; font-size: 0.78rem; }
+.kw-btn-sm { min-height: 32px; padding: 0 12px; font-size: 0.8rem; }
 .kw-btn-sm svg { width: 12px; height: 12px; }
 
 .kw-icon-btn {
@@ -450,11 +505,11 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
 .kw-search { position: relative; display: flex; align-items: center; flex: 1 1 260px; min-width: 200px; }
 .kw-search svg { position: absolute; left: 13px; width: 15px; height: 15px; color: var(--kw-text-muted); pointer-events: none; }
-.kw-search input { width: 100%; min-height: 38px; padding: 0 16px 0 38px; border-radius: var(--kw-radius-pill); background: var(--kw-card-bg); border-color: var(--kw-border); }
+.kw-search input { width: 100%; min-height: 38px; padding: 0 16px 0 38px; border-radius: var(--kw-radius-md); background: var(--kw-card-bg); border-color: var(--kw-border); }
 .kw-select {
-    min-height: 34px;
+    min-height: 40px;
     padding: 0 32px 0 14px;
-    border-radius: var(--kw-radius-pill);
+    border-radius: var(--kw-radius-md);
     border: 1px solid var(--kw-border-med);
     background: rgba(255, 255, 255, 0.06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 12px center / 11px;
     -webkit-appearance: none; appearance: none;
@@ -508,7 +563,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-avatar-sm { width: 28px; height: 28px; font-size: 0.72rem; }
 .kw-avatar-lg { width: 56px; height: 56px; font-size: 1.2rem; }
 .kw-avatar-stack { display: inline-flex; }
-.kw-avatar-stack .kw-avatar { margin-left: -8px; box-shadow: 0 0 0 2px #14171F; }
+.kw-avatar-stack .kw-avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--color-bg); }
 .kw-avatar-stack .kw-avatar:first-child { margin-left: 0; }
 
 .kw-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--kw-text-muted); flex-shrink: 0; }
@@ -535,8 +590,8 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
     margin: 0 auto;
     padding: 20px 24px;
     border-radius: 18px;
-    background: rgba(22, 22, 30, 0.97);
-    border: 1px solid var(--kw-border-med);
+    background: var(--kw-bg-elevated);
+    border: 1px solid var(--kw-border);
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     color: var(--kw-text-primary);
 }
@@ -558,8 +613,8 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
     max-width: min(92vw, 440px);
     padding: 11px 16px;
     border-radius: var(--kw-radius-md);
-    background: #1A1D27;
-    border: 1px solid var(--kw-border-med);
+    background: var(--kw-bg-elevated);
+    border: 1px solid var(--kw-border);
     box-shadow: var(--kw-shadow-lg);
     color: var(--kw-text-primary);
     font: 400 0.85rem/1.4 var(--kw-font-sans);

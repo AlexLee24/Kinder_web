@@ -1,0 +1,98 @@
+/* ================================================================
+   _page.css — the Marshal page (/marshal) in the site layout (_base.html).
+   Page bar: search + Filters (left) · Cards | Table (centre) · sort (right).
+   Content: one-line lead, status tiles, then kw-dash = list | side widgets.
+   ================================================================ */
+
+/* ── Page bar ── */
+.marshal-body .sh-pagebar-l > .marshal-search { flex: 1 1 auto; min-width: 0; max-width: 560px; }
+.marshal-search .search-input-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.marshal-search .kw-search { flex: 1 1 200px; min-width: 140px; }
+.marshal-search .kw-search input { min-height: 40px; }
+.marshal-search .kw-btn { min-height: 40px; flex: none; }
+.marshal-search .toggle-advanced .toggle-arrow { display: inline-flex; opacity: 0.7; }
+.marshal-search .toggle-advanced .toggle-arrow svg { width: 12px; height: 12px; }
+
+.marshal-body .view-controls { scroll-margin-top: calc(var(--kw-nav-h) + 8px); }   /* marshal.js scrolls here on page change */
+.marshal-body .view-toggle .view-btn.active { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); font-weight: 600; }
+
+.marshal-body .sort-controls { display: flex; align-items: center; gap: 8px; }
+.marshal-body .sort-controls #sortBy { min-width: 170px; }
+.marshal-body .sort-order-btn { width: 40px; padding: 0; }
+.marshal-body .sort-order-btn svg { width: 16px; height: 16px; }
+
+/* ── Lead line: total + last sync ── */
+.marshal-page .panel-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: none; }
+.marshal-page .total-count { color: var(--kw-text-white); font-weight: 600; font-variant-numeric: tabular-nums; }
+.marshal-page .meta-sep { color: var(--kw-text-faint); }
+.marshal-page .last-sync { display: inline-flex; flex-wrap: wrap; align-items: center; }
+.marshal-page .sync-status { font-size: 0.8rem; }
+.marshal-page .sync-status.success { color: var(--kw-text-muted); }
+.marshal-page .sync-status.error { color: #FF6B61; }
+.marshal-page .sync-status.pending { color: var(--kw-color-warning); }
+
+/* ── Status tiles: AT · SN · Inbox · Follow up · Snoozed (the three statuses filter the list) ── */
+.marshal-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; }
+.marshal-kpis .kw-kpi b { font-size: 1.6rem; }
+.marshal-kpis .kw-kpi-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.marshal-kpis .status-row { cursor: pointer; }
+.marshal-kpis .status-row.active { border-color: rgba(255, 255, 255, 0.45); background: rgba(255, 255, 255, 0.08); }
+.marshal-kpis .status-icon { display: inline-flex; opacity: 0.7; }
+.marshal-kpis .status-icon svg { width: 13px; height: 13px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--kw-text-muted); }
+.status-dot.inbox    { background: var(--inbox-color); }
+.status-dot.followup { background: var(--followup-color); }
+.status-dot.finished { background: var(--finished-color); }
+.status-dot.snoozed  { background: var(--snoozed-color); }
+
+/* ── List column ── */
+.marshal-page .content-area { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.marshal-page .content-area > :is(.objects-grid, .objects-table, .objects-compact) { margin: 0; }
+.marshal-page .loading-overlay { border-radius: var(--kw-radius-xl); background: var(--kw-card-bg); border: 1px solid var(--kw-border); }
+
+/* the side column stays in view while the list scrolls (it is shorter than the list) */
+.marshal-dash.kw-dash > .dashboard-side-panel { position: sticky; top: calc(var(--kw-nav-h) + 14px); }
+.marshal-dash .kw-stack > .kw-panel + .kw-panel { margin-top: 0; }
+
+@media (max-width: 1280px) {
+    .marshal-body .sort-controls #sortBy { min-width: 0; }
+}
+@media (max-width: 1080px) {
+    .marshal-dash.kw-dash > .dashboard-side-panel { position: static; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+}
+@media (max-width: 1000px) {
+    .marshal-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+
+/* ── Phones: search on its own row, view + sort side by side; tiles 3 across ── */
+@media (max-width: 860px) {
+    .marshal-body .sh-pagebar-l > .marshal-search { flex: 1 1 100%; max-width: none; }
+    .marshal-search .kw-search { flex: 1 1 100%; }
+    .marshal-search .search-input-group { flex-wrap: wrap; }
+    .marshal-search .search-input-group > .kw-btn { flex: 0 0 auto; }
+    .marshal-body .sh-pagebar-c { flex: 0 1 auto; order: 2; }
+    .marshal-body .sh-pagebar-r { order: 3; flex: 1 1 0; min-width: 0; }
+    .marshal-body .sh-pagebar-l { order: 1; }
+    .marshal-body .sort-controls { flex: 1 1 auto; min-width: 0; }
+    .marshal-body .sort-controls #sortBy { flex: 1 1 auto; min-width: 0; width: 100%; }
+    .marshal-body .sh-pagebar-r .sort-order-btn { width: 44px; min-width: 44px; height: 44px; }
+
+    .marshal-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .marshal-kpis .type-stat { display: none; }   /* AT / SN totals: the status tiles say enough on a phone */
+    .marshal-kpis .kw-kpi { padding: 10px 12px; border-radius: var(--kw-radius-lg); }
+    .marshal-kpis .kw-kpi { justify-content: space-between; }
+    .marshal-kpis .kw-kpi b { font-size: 1.15rem; margin-top: auto; }   /* numbers line up even when a label wraps */
+    .marshal-kpis .kw-kpi-label { font-size: 0.62rem; letter-spacing: 0.04em; white-space: normal; line-height: 1.25; align-items: flex-start; }
+    .marshal-kpis .status-icon { display: none; }
+    .marshal-dash.kw-dash > .dashboard-side-panel { gap: 12px; }
+    .marshal-page .content-area { gap: 12px; }
+    #backToTopBtn { right: 16px; }
+}
+
+/* pagination rows: when the list column is narrow, the page buttons get their own line under "Showing … · Show" */
+.marshal-page .content-area { container-type: inline-size; }
+@container (max-width: 900px) {
+    .marshal-page .pagination-info { order: 1; }
+    .marshal-page .page-size-selector { order: 2; margin-left: auto; }
+    .marshal-page .pagination-controls { order: 3; flex: 1 1 100%; justify-content: flex-start; }
+}

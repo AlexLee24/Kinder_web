@@ -1,26 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Profile - Kinder</title>
+{% extends '_base.html' %}
+{#- My profile (not on the navigation): the identity card is the page head (eyebrow · name as h1 · role · facts). -#}
+{% block title %}Profile - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
     <meta name="description" content="User Profile - Kinder">
-    {% include '_favicon.html' %}
-</head>
+{% endblock %}
 {% set _name = user_data.name if user_data else session.user.name %}
 {% set _pic = user_data.picture if user_data and user_data.picture else session.user.picture %}
 {% set _is_admin = session.user.get('role') == 'admin' or session.user.is_admin %}
 {% set _is_guest = not _is_admin and session.user.get('role', 'guest') == 'guest' %}
 {% set _placeholder = user_data and user_data.has_placeholder_email %}
 {% set _since = (user_data.join_date or user_data.invited_at) if user_data else None %}
-<body>
-    {% include '_navbar.html' %}
-
-    <main class="kw-page profile-page">
+{% block content %}
+    <div class="kw-page profile-page">
         <!-- ── Identity ── -->
-        <section class="profile-hero">
+        <header class="kw-panel profile-hero">
             <div class="profile-avatar" onclick="document.getElementById('avatar-upload').click()" role="button" tabindex="0" aria-label="Change profile picture"
                  onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.click(); }">
                 {% if _pic %}
@@ -57,7 +51,7 @@
                 <div><dt>Member since</dt><dd>{{ (_since|string)[:10] if _since else '—' }}</dd></div>
                 <div><dt>API key</dt><dd>{% if user_data and user_data.has_api_key %}<span class="kw-dot is-ok"></span> Active{% elif user_data and user_data.api_key_request_pending %}<span class="kw-dot is-warn"></span> Pending{% else %}None{% endif %}</dd></div>
             </dl>
-        </section>
+        </header>
 
         {% if _is_guest %}
         <div class="profile-note">
@@ -156,8 +150,10 @@
                 {% endif %}
             </section>
         </div>
-    </main>
+    </div>
+{% endblock %}
 
+{% block after_main %}
     <!-- Edit Name Modal (profile.js toggles style.display) -->
     <div id="editNameModal" class="modal kw-modal" role="dialog" aria-modal="true" aria-labelledby="m-editname">
         <div class="modal-content kw-modal-card">
@@ -183,7 +179,6 @@
 
     <!-- Notification Container -->
     <div id="notificationContainer"></div>
+{% endblock %}
 
-    <script src="{{ url_for('static', filename='js/profile.js') }}"></script>
-</body>
-</html>
+{% block scripts %}<script src="{{ url_for('static', filename='js/profile.js') }}"></script>{% endblock %}

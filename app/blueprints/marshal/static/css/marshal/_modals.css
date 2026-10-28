@@ -97,7 +97,7 @@
 .form-group select:focus {
     outline: none;
     border-color: var(--primary-green);
-    box-shadow: 0 0 15px rgba(70, 255, 175, 0.3);
+    box-shadow: var(--kw-focus-ring);
 }
 
 .tag-options {
@@ -300,7 +300,7 @@
 .add-object-modal .form-group select:focus {
     outline: none;
     border-color: var(--primary-green);
-    box-shadow: 0 0 15px rgba(70, 255, 175, 0.3);
+    box-shadow: var(--kw-focus-ring);
 }
 
 .add-object-modal .form-group input::placeholder {
@@ -380,15 +380,13 @@
 }
 
 .add-object-modal .add-btn {
-    background: linear-gradient(135deg, var(--primary-green), #20c997);
-    color: white;
-    border: 1px solid var(--primary-green);
+    background: var(--kw-accent);
+    color: var(--color-accent-text);
+    border: 1px solid transparent;
 }
 
 .add-object-modal .add-btn:hover {
-    background: linear-gradient(135deg, #3dd68c, #1ea085);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(70, 255, 175, 0.3);
+    background: var(--kw-accent-hover);
 }
 
 .add-object-modal .add-btn:disabled {

@@ -123,7 +123,7 @@
 
 .file-drop-zone.dragover {
     border-color: var(--kw-accent);
-    background: rgba(197, 160, 89, 0.1);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .drop-icon {
@@ -147,8 +147,8 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: rgba(197, 160, 89, 0.1);
-    border: 1px solid rgba(197, 160, 89, 0.3);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     border-radius: 6px;
     color: white;
 }
@@ -350,7 +350,7 @@
 }
 
 .col-map-item select:focus {
-    border-color: rgba(197, 160, 89, 0.6);
+    border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
 }
 
 .col-map-item select option {
@@ -386,7 +386,7 @@
 .form-group input[type="text"]:focus {
     outline: none;
     border-color: var(--kw-accent);
-    box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.1);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
 
 .form-group input:disabled {

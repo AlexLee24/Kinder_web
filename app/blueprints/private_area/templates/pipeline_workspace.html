@@ -1,20 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>{{ ap.name }} · Pipeline - Kinder</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% extends '_base.html' %}
+{#- Pipeline workspace (a sub-page of Pipeline: page head + back link; its Set up & run | Results | Earlier runs tabs
+    sit in the page bar centre). pipeline.js reads the data-* on #plWorkspace. -#}
+{% block title %}{{ ap.name }} · Pipeline - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">{% endblock %}
+
+{% block bar_center %}
+        <nav class="kw-tabbar pl-tabs" aria-label="Workspace">
+            <a class="kw-tab{% if tab == 'run' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}"{% if tab == 'run' %} aria-current="page"{% endif %}>Set up &amp; run</a>
+            <a class="kw-tab{% if tab == 'results' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results') }}"{% if tab == 'results' %} aria-current="page"{% endif %}>Results{% if ap.lightcurve_csv %} <span class="kw-n">{{ ap.n_rows }}</span>{% endif %}</a>
+            <a class="kw-tab{% if tab == 'legacy' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='legacy') }}"{% if tab == 'legacy' %} aria-current="page"{% endif %}>Earlier runs{% if ap.n_legacy %} <span class="kw-n">{{ ap.n_legacy }}</span>{% endif %}</a>
+        </nav>
+{% endblock %}
+
+{% block content %}
     {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options with context %}
     {% macro size(n) %}{% if n >= 1073741824 %}{{ '%.1f'|format(n / 1073741824) }} GB{% elif n >= 1048576 %}{{ '%.1f'|format(n / 1048576) }} MB{% elif n >= 1024 %}{{ '%.0f'|format(n / 1024) }} kB{% else %}{{ n }} B{% endif %}{% endmacro %}
     {% macro num(v, e=None, d=3) %}{% if v is not none %}{{ ('%.' ~ d ~ 'f')|format(v) }}{% if e is not none %}<small> ± {{ '%.3f'|format(e) }}</small>{% endif %}{% else %}<span class="pl-faint">—</span>{% endif %}{% endmacro %}
 
-    <main class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}">
+    <div class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}">
         <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
         <header class="kw-page-head">
             <div>
@@ -32,12 +35,6 @@
                 </span>
             </div>
         </header>
-
-        <nav class="kw-tabbar pl-tabs" aria-label="Workspace">
-            <a class="kw-tab{% if tab == 'run' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}"{% if tab == 'run' %} aria-current="page"{% endif %}>Set up &amp; run</a>
-            <a class="kw-tab{% if tab == 'results' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results') }}"{% if tab == 'results' %} aria-current="page"{% endif %}>Results{% if ap.lightcurve_csv %} <span class="kw-n">{{ ap.n_rows }}</span>{% endif %}</a>
-            <a class="kw-tab{% if tab == 'legacy' %} is-on{% endif %}" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='legacy') }}"{% if tab == 'legacy' %} aria-current="page"{% endif %}>Earlier runs{% if ap.n_legacy %} <span class="kw-n">{{ ap.n_legacy }}</span>{% endif %}</a>
-        </nav>
 
         {# ═════════════ Run ═════════════ #}
         {% if tab == 'run' %}
@@ -362,8 +359,10 @@
             {% endif %}
         </section>
         {% endif %}
-    </main>
+    </div>
+{% endblock %}
 
+{% block after_main %}
     {% if tab == 'results' and can_import and phot and phot.rows %}
     <div class="kw-modal" id="plImport" role="dialog" aria-modal="true" aria-labelledby="plImportTitle">
         <div class="kw-modal-card is-wide">
@@ -409,6 +408,8 @@
     </div>
     {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
-</body>
-</html>
+{% endblock %}

@@ -62,6 +62,21 @@ def _resolve_secret_key(secret_key: str) -> str:
     )
 
 
+def _warm_page_caches() -> None:
+    """Fill the DETECT home-page caches in the background at start-up, so the first
+    visitor after a restart doesn't wait for them (they refresh themselves afterwards)."""
+    import threading
+
+    def _run():
+        try:
+            from app.db.transient import get_detect_metadata, get_detect_overview
+            get_detect_metadata()
+            get_detect_overview()
+        except Exception as exc:
+            print(f"WARNING: page cache warm-up failed: {exc}")
+    threading.Thread(target=_run, name='cache-warm', daemon=True).start()
+
+
 def create_app(start_jobs: bool = True) -> Flask:
     """Build the Flask app.
 
@@ -130,5 +145,6 @@ def create_app(start_jobs: bool = True) -> Flask:
     if start_jobs:
         from app.services.jobs.scheduler import start_background_jobs
         start_background_jobs(app)
+        _warm_page_caches()
 
     return app

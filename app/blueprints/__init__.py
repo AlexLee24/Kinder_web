@@ -1,7 +1,7 @@
 """Site areas, one package per blueprint. Each package holds its routes, templates and
 static files together::
 
-    basic/            home page, login page, profile, gallery, navbar partial (_navbar.html)
+    basic/            home page, login page, profile, gallery, page shell (_base.html, _shell_top.html, _shell.html)
     auth/             Google OAuth / local admin login, profile actions; admin/ panel, web_log, database_status
     marshal/          object list page; objects/ = object detail page + per-object APIs
     detect/           DETECT host-screening review pages

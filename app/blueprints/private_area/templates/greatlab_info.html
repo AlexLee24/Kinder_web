@@ -1,346 +1,188 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>GREAT Lab Info - Kinder</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
+{% extends '_base.html' %}
+{#- GREAT Lab useful links: sections of link cards loaded from /api/greatlab_links; admins / lab members can edit the layout. -#}
+{% block title %}GREAT Lab Info - Kinder{% endblock %}
+{% block head %}
     <meta name="description" content="GREAT Lab useful links and resources">
-    {% include '_favicon.html' %}
     <style>
-        /* ── Page layout ── */
-        .info-page-wrap {
-            box-sizing: border-box;
-            width: 90%;
-            margin: 40px auto 60px auto;
-            max-width: 1600px;
-            padding: 50px;
-            background-color: rgba(25, 25, 25, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
-            color: #fff;
-            position: relative;
-        }
-        .info-page-title {
-            text-align: center;
-            margin-bottom: 10px;
-            position: relative;
-        }
-        .info-page-title h1 {
-            font-size: 2.8rem;
-            font-weight: 200;
-            letter-spacing: 3px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            margin: 0;
-        }
-        .info-page-title p {
-            font-size: 1rem;
-            opacity: 0.6;
-            margin: 8px 0 0 0;
-            font-weight: 300;
-        }
-        
-        /* ── Edit Controls ── */
-        .edit-controls {
-            position: absolute;
-            top: 30px;
-            right: 30px;
-            display: flex;
-            gap: 10px;
-        }
-        .edit-btn {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 6px;
-            padding: 6px 14px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .edit-btn:hover {
-            background-color: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-        .edit-btn.save-btn {
-            background-color: rgba(77, 184, 255, 0.2);
-            border-color: #4db8ff;
-            color: #4db8ff;
-            display: none;
-        }
-        .edit-btn.save-btn:hover {
-            background-color: #4db8ff;
-            color: #111;
-        }
-        .edit-btn.cancel-btn {
-            background-color: rgba(255, 85, 85, 0.2);
-            border-color: #ff5555;
-            color: #ff5555;
-            display: none;
-        }
-        .edit-btn.cancel-btn:hover {
-            background-color: #ff5555;
-            color: #111;
-        }
-        
+        /* ── Edit controls (page bar) ── */
+        .edit-btn.save-btn,
+        .edit-btn.cancel-btn { display: none; }
+        body.is-editing .edit-btn.edit-mode-btn { display: none; }
+        body.is-editing .edit-btn.save-btn,
+        body.is-editing .edit-btn.cancel-btn { display: inline-flex; }
+
         .add-action-btn {
-            background-color: transparent;
-            color: #4db8ff;
-            border: 1px dashed rgba(77, 184, 255, 0.5);
-            border-radius: 6px;
-            padding: 8px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: all 0.2s;
-            width: 100%;
-            margin-top: 10px;
             display: none;
+            width: 100%;
+            min-height: 36px;
+            margin-top: 10px;
+            padding: 8px;
             justify-content: center;
             align-items: center;
             gap: 6px;
+            background: transparent;
+            color: var(--kw-accent);
+            border: 1px dashed var(--kw-accent-border);
+            border-radius: var(--kw-radius-md);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: background var(--kw-transition-fast), border-color var(--kw-transition-fast);
         }
-        .add-action-btn:hover {
-            background-color: rgba(77, 184, 255, 0.1);
-            border-color: #4db8ff;
-        }
-        .add-card-btn {
-            margin-top: 20px;
-        }
+        .add-action-btn:hover { background: var(--kw-accent-dim); border-color: var(--kw-accent); }
+        .add-card-btn { margin-top: 20px; }
         .add-section-btn {
-            font-size: 1rem;
-            padding: 15px;
-            margin-top: 30px;
+            font-size: 0.95rem;
+            padding: 14px;
+            margin-top: 0;
             border-color: rgba(255, 255, 255, 0.3);
-            color: #ccc;
+            color: var(--kw-text-secondary);
         }
-        .add-section-btn:hover {
-            background-color: rgba(255, 255, 255, 0.05);
-            border-color: #fff;
-            color: #fff;
-        }
+        .add-section-btn:hover { background: rgba(255, 255, 255, 0.05); border-color: #fff; color: #fff; }
 
         .delete-btn {
+            display: none;
             background: none;
             border: none;
+            min-height: 0;
             color: rgba(255, 85, 85, 0.7);
             cursor: pointer;
             padding: 4px;
             margin-left: auto;
-            border-radius: 4px;
-            display: none;
+            border-radius: var(--kw-radius-sm);
         }
-        .delete-btn:hover {
-            background: rgba(255, 85, 85, 0.2);
-            color: #ff5555;
-        }
-        .delete-section-btn {
-            margin-left: 15px;
-            padding: 4px 8px;
-        }
+        .delete-btn:hover { background: rgba(255, 85, 85, 0.2); color: #ff5555; }
+        .delete-section-btn { margin-left: 15px; padding: 4px 8px; }
 
         /* Input fields during edit mode */
         .edit-input {
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: #fff;
-            padding: 6px 10px;
-            border-radius: 4px;
             width: 100%;
+            min-height: 34px;
+            padding: 6px 10px;
+            margin-bottom: 4px;
             font-size: inherit;
             font-family: inherit;
-            margin-bottom: 4px;
+            text-transform: none;
+            letter-spacing: normal;
         }
-        .edit-input:focus {
-            outline: none;
-            border-color: #4db8ff;
-        }
-        
+
         body.is-editing .add-action-btn,
-        body.is-editing .delete-btn {
-            display: flex;
-        }
-        body.is-editing .edit-btn.edit-mode-btn { display: none; }
-        body.is-editing .edit-btn.save-btn,
-        body.is-editing .edit-btn.cancel-btn { display: flex; }
-        
+        body.is-editing .delete-btn { display: flex; }
         body.is-editing .info-card,
-        body.is-editing .info-section {
-            border: 1px dashed rgba(255, 255, 255, 0.2);
-            position: relative;
-        }
-        body.is-editing .info-section { padding: 10px; }
+        body.is-editing .info-section { border: 1px dashed rgba(255, 255, 255, 0.2); position: relative; }
+        body.is-editing .info-section { padding: 10px; border-radius: var(--kw-radius-xl); }
         body.is-editing .info-link-list a { pointer-events: none; }
-        
-        /* ── Section header ── */
-        .info-section {
-            margin-top: 40px;
-        }
+
+        /* ── Sections ── */
+        #links-container { display: flex; flex-direction: column; gap: 28px; }
+        #links-container:empty { display: none; }
         .info-section-title {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            color: #4db8ff;
-            margin-bottom: 14px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid rgba(77, 184, 255, 0.2);
-        }
-        .info-section-title svg { flex-shrink: 0; }
-
-        /* ── Card grid ── */
-        .info-card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 16px;
-        }
-        .info-card {
-            background: rgba(0, 0, 0, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.10);
-            border-radius: 12px;
-            padding: 20px 22px;
-            transition: border-color 0.2s, background 0.2s;
-        }
-        .info-card:hover {
-            background: rgba(0, 0, 0, 0.50);
-            border-color: rgba(77, 184, 255, 0.35);
-        }
-        .info-card-header {
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #ccc;
-            letter-spacing: 0.5px;
+            gap: 8px;   /* = .kw-panel-head h2 */
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            color: var(--kw-text-white);
             margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .info-section-title svg { flex-shrink: 0; color: var(--kw-accent); }
+
+        /* ── Cards (kw-list grid; cards look like .kw-panel) ── */
+        .info-card {
+            min-width: 0;
+            padding: 18px 20px;
+            border-radius: var(--kw-radius-xl);
+            background: var(--kw-card-bg);
+            border: 1px solid var(--kw-border);
+            transition: border-color var(--kw-transition-fast);
+        }
+        .info-card:hover { border-color: rgba(255, 255, 255, 0.28); }
+        .info-card-header {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--kw-text-white);
+            margin-bottom: 8px;
         }
 
         /* ── Link list ── */
-        .info-link-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .info-link-list li {
-            padding: 7px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-        }
+        .info-link-list { list-style: none; padding: 0; margin: 0; }
+        .info-link-list li { padding: 8px 0; border-bottom: 1px solid var(--kw-hairline); }
         .info-link-list li:last-child { border-bottom: none; padding-bottom: 0; }
         .info-link-list a {
-            color: #ddd;
+            color: var(--kw-text-primary);
             text-decoration: none;
             display: flex;
             align-items: flex-start;
             gap: 8px;
             font-size: 0.9rem;
-            transition: color 0.15s;
             line-height: 1.4;
+            overflow-wrap: anywhere;
+            transition: color 0.15s;
         }
-        .info-link-list a:hover { color: #4db8ff; }
-        .info-link-list a .link-arrow {
-            flex-shrink: 0;
-            opacity: 0.4;
-            margin-top: 2px;
-            transition: opacity 0.15s, transform 0.15s;
-        }
+        .info-link-list a:hover { color: var(--kw-accent); }
+        .info-link-list a .link-arrow { flex-shrink: 0; opacity: 0.4; margin-top: 2px; transition: opacity 0.15s, transform 0.15s; }
         .info-link-list a:hover .link-arrow { opacity: 1; transform: translateX(3px); }
-        .info-link-desc {
-            font-size: 0.75rem;
-            color: #666;
-            margin-top: 2px;
-        }
+        .info-link-desc { font-size: 0.75rem; color: var(--kw-text-muted); margin-top: 2px; }
 
-        /* ── Scroll-to-top ── */
+        /* ── Scroll to top ── */
         .scroll-to-top {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            opacity: 0;
-            pointer-events: none;
-            background-color: #1f6feb;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 45px;
-            height: 45px;
-            cursor: pointer;
-            z-index: 1000;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            position: fixed; bottom: 30px; right: 30px;
+            opacity: 0; pointer-events: none;
+            width: 44px; height: 44px; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            border: none; border-radius: 50%;
+            background: var(--kw-accent); color: var(--color-accent-text);
+            box-shadow: var(--kw-shadow);
+            cursor: pointer; z-index: 1000;
             transition: opacity 0.3s, transform 0.2s, background-color 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
         }
-        .scroll-to-top:hover { background-color: #388bfd; transform: translateY(-3px); }
+        .scroll-to-top:hover { background: var(--kw-accent-hover); transform: translateY(-3px); }
 
-        @media (max-width: 700px) {
-            .info-page-wrap { width: 100%; max-width: none; margin: 12px auto 24px; padding: 24px 16px; }
-            .edit-controls { position: relative; top: 0; right: 0; justify-content: center; margin-bottom: 20px; }
-            .info-card-grid { grid-template-columns: 1fr; }
-            .info-page-title h1 { font-size: 1.9rem; }
+        @media (max-width: 860px) {
+            #links-container { gap: 20px; }
         }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="main-banner">
-        <div class="container">
-            <div class="info-page-wrap">
+{% block bar_left %}<p class="kw-lead">Useful links and resources for GREAT Lab members.</p>{% endblock %}
+{% block bar_right %}{% if session.get('user', {}).get('is_admin') or session.get('user', {}).get('is_great_lab_member') %}
+    <div class="edit-controls kw-page-actions">
+        <button class="kw-btn kw-btn-sm edit-btn edit-mode-btn" onclick="toggleEditMode()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            Edit Layout
+        </button>
+        <button class="kw-btn kw-btn-sm kw-btn-primary edit-btn save-btn" onclick="saveLayout()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+            Save Layout
+        </button>
+        <button class="kw-btn kw-btn-sm kw-btn-ghost edit-btn cancel-btn" onclick="cancelEditMode()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            Cancel
+        </button>
+    </div>
+{% endif %}{% endblock %}
 
-                <!-- Page Title -->
-                <div class="info-page-title">
-                    <h1>
-                        <img src="{{ url_for('static', filename='pwa/logo-128.png') }}" alt="Kinder Logo" class="home-logo">
-                        GREAT Lab Info
-                    </h1>
-                    <p>Useful links and resources for GREAT Lab members.</p>
-                </div>
+{% block content %}
+<div class="kw-page info-page">
 
-                {% if session.get('user', {}).get('is_admin') or session.get('user', {}).get('is_great_lab_member') %}
-                <div class="edit-controls">
-                    <button class="edit-btn edit-mode-btn" onclick="toggleEditMode()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        Edit Layout
-                    </button>
-                    <button class="edit-btn save-btn" onclick="saveLayout()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                        Save Layout
-                    </button>
-                    <button class="edit-btn cancel-btn" onclick="cancelEditMode()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                        Cancel
-                    </button>
-                </div>
-                {% endif %}
+    <!-- Container for dynamically rendering sections -->
+    <div id="links-container"></div>
 
-                <!-- Container for dynamically rendering sections -->
-                <div id="links-container"></div>
-                
-                <button class="add-action-btn add-section-btn" onclick="addSection()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    New Section Block
-                </button>
+    <button class="add-action-btn add-section-btn" onclick="addSection()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        New Section Block
+    </button>
+</div>
+{% endblock %}
 
-            </div><!-- end info-page-wrap -->
-        </div><!-- end container -->
-    </div><!-- end main-banner -->
+{% block after_main %}
+    <!-- Scroll-to-top button -->
+    <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+    </button>
+{% endblock %}
 
-
-
+{% block scripts %}
     <!-- UI Logic for rendering and editing -->
     <script>
         let isEditing = false;
@@ -412,7 +254,7 @@
 
                 // Grid
                 const gridDiv = document.createElement('div');
-                gridDiv.className = 'info-card-grid';
+                gridDiv.className = 'info-card-grid kw-list';
 
                 (section.cards || []).forEach((card, cIndex) => {
                     const cardDiv = document.createElement('div');
@@ -587,11 +429,6 @@
         // Init
         document.addEventListener('DOMContentLoaded', fetchLinks);
     </script>
-    
-    <!-- Scroll-to-top button -->
-    <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-    </button>
     <script>
         (function() {
             var btn = document.getElementById("scrollToTopBtn");
@@ -604,5 +441,4 @@
             updateBtn();
         })();
     </script>
-</body>
-</html>
+{% endblock %}

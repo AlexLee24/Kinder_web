@@ -1,29 +1,12 @@
 /* ================================================================
    profile.css — My Profile (/profile)
-   Layout (2026-10, after EAU_Web): identity card (avatar · name · role ·
-   quick facts) → two columns: Account + API key | Groups, in Kinder's
-   dark-panel + gold style. Generic pieces (kw-panel, kw-btn, kw-chip,
-   kw-modal …) are in _theme.css, which loads after this file.
+   Layout (2026-10, one design): identity card = the page head (avatar · name ·
+   role · quick facts) → two columns: Account + API key | Groups.
+   Generic pieces (kw-page, kw-panel, kw-btn, kw-chip, kw-modal …) are in _theme.css.
    ================================================================ */
 
-*, *::before, *::after { box-sizing: border-box; }
-
-body {
-    font-family: var(--kw-font-sans);
-    background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('../photo/background_profile.jpg');
-    background-attachment: fixed;
-    background-size: cover;
-    background-repeat: no-repeat;
-    margin: 0;
-    padding: 0;
-    font-weight: 300;
-    min-height: 100vh;
-    color: #fff;
-}
-
-::selection, ::-moz-selection { background: rgba(197, 160, 89, 0.3); }
-
-.kw-page.profile-page { max-width: 1120px; padding-top: 28px; }
+.profile-page *, .profile-page *::before, .profile-page *::after { box-sizing: border-box; }
+.profile-page ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
 
 /* ── Identity card ────────────────────────────────────────────── */
 .profile-hero {
@@ -31,12 +14,7 @@ body {
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 28px;
-    padding: 26px 28px;
-    margin-bottom: 16px;
-    border-radius: var(--kw-radius-xl);
-    background: var(--kw-card-bg);
-    border: 1px solid var(--kw-border);
-    box-shadow: var(--kw-shadow);
+    padding: 24px 26px;
 }
 .profile-avatar { position: relative; width: 108px; height: 108px; border-radius: 50%; overflow: hidden; cursor: pointer; flex-shrink: 0; border: 3px solid var(--kw-accent-border); }
 .profile-avatar img, .profile-avatar-initial { width: 100%; height: 100%; object-fit: cover; display: block; transition: filter 0.3s ease; }
@@ -59,33 +37,32 @@ body {
 .profile-name-row { display: flex; align-items: center; gap: 6px; }
 .profile-name-row h1 {
     margin: 0;
-    font-size: clamp(1.6rem, 1.2rem + 1.2vw, 2.1rem);
-    font-weight: 400;
-    letter-spacing: 0.02em;
+    font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.2;
-    color: var(--kw-accent);
+    color: var(--kw-text-white);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .profile-email { margin: 4px 0 12px; font-size: 0.92rem; color: rgba(255, 255, 255, 0.75); overflow-wrap: anywhere; }
 .profile-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.profile-chips .role-admin { background: #ff6b6b; color: #fff; }
+.profile-chips .role-admin { background: rgba(255, 69, 58, 0.16); color: #FF6B61; }
 
 .profile-facts { display: flex; gap: 10px; margin: 0; }
-.profile-facts > div { min-width: 104px; padding: 12px 14px; border-radius: 12px; background: var(--kw-card-bg-2); border: 1px solid var(--kw-border); text-align: center; }
+.profile-facts > div { min-width: 104px; padding: 12px 14px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-border); text-align: center; }
 .profile-facts dt { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
 .profile-facts dd { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: 1.05rem; font-weight: 400; color: #fff; white-space: nowrap; }
 
 .profile-note {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 16px;
-    margin-bottom: 16px;
-    border-radius: var(--kw-radius-md);
+    border-radius: var(--kw-radius-lg);
     background: rgba(116, 185, 255, 0.08);
     border: 1px solid rgba(116, 185, 255, 0.25);
     font-size: 0.86rem; line-height: 1.5;
     color: rgba(255, 255, 255, 0.8);
 }
-.profile-note svg { width: 18px; height: 18px; flex-shrink: 0; color: #74b9ff; }
+.profile-note svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--kw-text-secondary); }
 
 /* ── Columns ──────────────────────────────────────────────────── */
 .profile-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
@@ -109,6 +86,7 @@ body {
 .api-key-hint { font-family: var(--kw-font-mono); }
 .api-last-used { font-size: 0.78rem; color: var(--kw-text-muted); }
 .sessions-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; padding-top: 12px; border-top: 1px solid var(--kw-hairline); font-size: 0.82rem; color: rgba(255, 255, 255, 0.6); }
+.sessions-row > .kw-btn-ghost { margin-right: -10px; }   /* ghost text lines up with the right-aligned values above */
 .info-list dd a { color: var(--kw-accent); }
 
 /* Groups */
@@ -141,7 +119,6 @@ body {
     .profile-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
-    .kw-page.profile-page { padding-top: 16px; }
     .profile-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 24px 18px 20px; gap: 16px; }
     .profile-name-row { justify-content: center; }
     .profile-name-row h1 { white-space: normal; }

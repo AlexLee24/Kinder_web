@@ -1,36 +1,25 @@
-/* login.css — sign-in page */
-body.login-page {
-    margin: 0;
-    min-height: 100vh;
-    color: var(--kw-text-primary);
-    background:
-        radial-gradient(1200px 600px at 20% -10%, rgba(212, 176, 106, 0.16), transparent 60%),
-        radial-gradient(900px 500px at 90% 110%, rgba(10, 132, 255, 0.14), transparent 60%),
-        linear-gradient(rgba(6, 8, 14, 0.78), rgba(6, 8, 14, 0.9)),
-        url('../photo/background_login.jpg') center / cover no-repeat fixed;
-}
-
-.login-container {
-    min-height: calc(100vh - var(--kw-nav-h));
+/* login.css — sign-in page (/login) and change password (/account/password), both body.login-page.
+   One centred card inside the content column (<main class="sh-main"> sets the edges; the shell draws the background). */
+.kw-page.login-container {
+    min-height: min(72vh, 680px);
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     place-items: center;
-    padding: 32px 16px;
+    padding: 24px 0;
 }
 
 .login-card {
+    box-sizing: border-box;
     width: min(100%, 420px);
     padding: 32px 28px;
     border-radius: var(--kw-radius-xl);
-    background: rgba(18, 20, 28, 0.72);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    backdrop-filter: blur(24px) saturate(160%);
-    border: 1px solid var(--kw-glass-border);
-    box-shadow: var(--kw-shadow-lg);
+    background: var(--kw-card-bg);
+    border: 1px solid var(--kw-border);
 }
 
 .login-header { text-align: center; margin-bottom: 24px; }
 .login-logo { width: 56px; height: 56px; margin-bottom: 12px; }
-.login-header h1 { margin: 0 0 4px; font-size: var(--kw-text-2xl); font-weight: 700; letter-spacing: -0.02em; }
+.login-header h1 { margin: 0 0 4px; font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem); font-weight: 700; letter-spacing: -0.01em; color: var(--kw-text-white); }
 .login-header p { margin: 0; color: var(--kw-text-muted); font-size: var(--kw-text-sm); }
 
 .google-login-btn {
@@ -75,14 +64,7 @@ body.login-page {
 }
 .admin-login-section[open] summary::before { transform: rotate(45deg); }
 .admin-login-form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field span { font-size: var(--kw-text-xs); font-weight: 600; color: var(--kw-text-secondary); letter-spacing: 0.02em; }
+.login-card .field { display: flex; flex-direction: column; gap: 6px; }
+.login-card .field span { font-size: var(--kw-text-xs); font-weight: 600; color: var(--kw-text-secondary); letter-spacing: 0.02em; }
 .admin-input { min-height: 40px; }
-.admin-login-btn {
-    min-height: 40px;
-    border-radius: var(--kw-radius-md);
-    background: var(--kw-surface);
-    color: var(--kw-text-primary);
-    border: 1px solid var(--kw-border-med);
-}
-.admin-login-btn:hover { background: var(--kw-surface-hover); }
+.admin-login-btn { width: 100%; }

@@ -1,0 +1,72 @@
+{#- The site shell: top bar (Kinder logo + name, group pills, account button), left rail of sections (bottom tab
+    bar on phones), view switch, flash messages. Included by _base.html; the navigation list, icons and the
+    "where are we" logic live in _shell.html, styles in css/shell.css, behaviour in js/shell.js. -#}
+{% import '_shell.html' as sh with context %}
+<header class="sh-top" role="banner">
+<a href="/" class="sh-brand" aria-label="Kinder home">
+    <img src="{{ url_for('static', filename='pwa/logo-64.png') }}" alt="" aria-hidden="true">
+    <span class="sh-brand-txt"><b>Kinder</b><small>Kilonova Finder</small></span>
+</a>
+
+{# Group pills of the current section (none when it has a single group), centred on the content column #}
+{{ sh.tabs() }}
+{# Account at the right end — a round Log In button for guests, avatar + name once signed in (menu below it).
+   Installing the app lives in the menu, like EAU's app entry (and in the About menu for guests). #}
+<div class="sh-acct">
+    {% if session.user %}
+    <div class="sh-user">
+        <button type="button" class="sh-user-btn{% if request.path.startswith(('/admin', '/settings', '/profile', '/account')) %} is-here{% endif %}" aria-haspopup="true" aria-expanded="false" aria-label="Account menu" title="{{ session.user.name }}">
+            <img src="{{ g.current_user.picture if g.current_user and g.current_user.picture else session.user.picture }}" alt="" class="sh-avatar">
+            <span class="sh-user-name">{{ session.user.name }}</span>
+        </button>
+        <div class="sh-user-menu" role="menu">
+            <div class="sh-user-head">
+                <b>{{ session.user.name }}</b>
+                {% if not (session.user.email or '').endswith('@users.invalid') %}<span>{{ session.user.email }}</span>{% endif %}
+                <span class="sh-user-roles">
+                    {% if session.user.is_admin %}<span class="kw-chip kw-chip-gold">Administrator</span>
+                    {% elif session.user.get('role', 'guest') == 'guest' %}<span class="kw-chip">Guest</span>
+                    {% else %}<span class="kw-chip kw-chip-blue">Member</span>{% endif %}
+                    {% if session.user.get('is_great_lab_member') and not session.user.is_admin %}<span class="kw-chip kw-chip-purple">GREAT Lab</span>{% endif %}
+                </span>
+            </div>
+            {# Install the app (PWA): pwa.js shows it unless Kinder already runs as an installed app #}
+            <div data-pwa-install hidden><a href="#" role="menuitem" class="sh-app-card">
+                <img src="{{ url_for('static', filename='pwa/icon-96.png') }}" alt="">
+                <span><b>Kinder app</b><small>Install on this device</small></span>
+            </a></div>
+            <a href="{{ url_for('basic.profile') }}" role="menuitem"{% if request.path == '/profile' %} class="is-on"{% endif %}>{{ sh.ic('user') }}<span>Profile</span></a>
+            <a href="/settings" role="menuitem"{% if request.path == '/settings' %} class="is-on"{% endif %}>{{ sh.ic('settings') }}<span>Settings</span></a>
+            {% if session.user.is_admin %}
+            {# Phones have no Admin tab in the bottom bar #}
+            <a href="{{ url_for('admin.admin_panel') }}" role="menuitem" class="sh-phone-only{% if request.path.startswith('/admin') %} is-on{% endif %}">{{ sh.ic('shield-lock') }}<span>Admin</span></a>
+            {% endif %}
+            <div class="sh-user-sep" role="separator"></div>
+            {# Logout is a POST (GET kept only as a no-JS fallback) #}
+            <a href="{{ url_for('auth.logout') }}" role="menuitem" data-noprogress onclick="event.preventDefault(); document.getElementById('kw-logout-form').submit();">{{ sh.ic('logout') }}<span>Log Out</span></a>
+            <form id="kw-logout-form" method="post" action="{{ url_for('auth.logout') }}" style="display:none"></form>
+        </div>
+    </div>
+    {% else %}
+    <a href="{{ url_for('basic.login') }}" class="sh-login" aria-label="Log In" title="Log In">{{ sh.ic('login') }}</a>
+    {% endif %}
+</div>
+</header>
+<div class="sh-spacer" aria-hidden="true"></div>
+{{ sh.rail() }}
+
+<script type="speculationrules">{"prefetch": [{"where": {"selector_matches": ".sh-rail a[href^='/'], .sh-fly a[href^='/'], .sh-tabs a[href^='/'], .sh-views a"}, "eagerness": "moderate"}]}</script>
+
+<!-- Flash Messages -->
+<div class="flash-message-container" aria-live="polite">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div id="flash-message">
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+</div>
+<!-- Flash Messages End -->

@@ -1,33 +1,26 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Direct Trigger - Kinder</title>
+{% extends '_base.html' %}
+{#- Direct Trigger: change tonight's plan and send it to the Control Room (direct_trigger.js). The Triggers view switch
+    (Daily | Direct) sits in the page bar centre; the SLT | LOT scope goes left. -#}
+{% block title %}Direct Trigger - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/direct_trigger.css') }}">
     <meta name="description" content="Change tonight's observing plan and send it to the Control Room">
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <main class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}">
-        <header class="kw-page-head">
-            <div>
-                <h1>Direct Trigger</h1>
-                <p>Change tonight's plan without touching the Daily Trigger list. Add targets, check the script, then send it to the Control Room.</p>
-            </div>
-            <div class="kw-page-actions">
-                <div class="kw-seg dt-scope" role="radiogroup" aria-label="Telescope">
-                    <button type="button" class="kw-seg-item" role="radio" data-tel="SLT">SLT <span class="kw-n" data-count="SLT">0</span></button>
-                    <button type="button" class="kw-seg-item" role="radio" data-tel="LOT">LOT <span class="kw-n" data-count="LOT">0</span></button>
-                </div>
-            </div>
-        </header>
+{% block bar_left %}
+    <div class="kw-seg dt-scope" role="radiogroup" aria-label="Telescope">
+        <button type="button" class="kw-seg-item" role="radio" data-tel="SLT">SLT <span class="kw-n" data-count="SLT">0</span></button>
+        <button type="button" class="kw-seg-item" role="radio" data-tel="LOT">LOT <span class="kw-n" data-count="LOT">0</span></button>
+    </div>
+{% endblock %}
 
-        <div class="dt-grid">
+{% block content %}
+    <div class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}">
+        <p class="kw-lead">Change tonight's plan without touching the Daily Trigger list. Add targets, check the script, then send it to the Control Room.</p>
+
+        <div class="kw-tool dt-grid">
             <!-- ── Add a target ── -->
+            <aside class="kw-tool-side">
             <section class="kw-panel dt-add" aria-labelledby="dtAddTitle">
                 <div class="kw-panel-head">
                     <h2 id="dtAddTitle"><span>Add to <span data-tel-label>SLT</span></span></h2>
@@ -95,6 +88,7 @@
                     <button type="submit" class="kw-btn kw-btn-primary dt-submit" id="dtSubmit"><span>Add to <span data-tel-label>SLT</span> list</span></button>
                 </form>
             </section>
+            </aside>
 
             <div class="kw-stack">
                 <!-- ── Tonight's list ── -->
@@ -127,8 +121,9 @@
                 </section>
             </div>
         </div>
-    </main>
+    </div>
+{% endblock %}
 
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/direct_trigger.js') }}"></script>
-</body>
-</html>
+{% endblock %}

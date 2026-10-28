@@ -1,39 +1,45 @@
-{#- Admin hub tab bar, shared by /admin, /admin/database, /admin/system and /admin/log.
-    On /admin the first five entries switch in-page tabs (admin.js showTab, URL hash #users …);
-    on the other two pages they are plain links to /admin#<tab>.
-    Optional context: group_requests / api_key_requests (only /admin passes them). -#}
+{#- Admin menu (after EAU's admin side menu): on desktop a sticky grouped column left of the content, on phones a row of
+    pills above it that scrolls sideways. Shared by /admin, /admin/system, /admin/database and /admin/log; styles in
+    css/admin_shell.css. Pages wrap their content as
+        <div class="adm-layout">{% include '_admin_nav.html' %}<div class="kw-page …">…</div></div>
+    On /admin the tab entries switch in-page tabs (admin.js showTab, URL hash #users …); elsewhere they are links to
+    /admin#<tab>. Request counts: group_requests / api_key_requests (only /admin passes them). -#}
 {% set _ap = request.path %}
 {% set _on_panel = _ap == '/admin' %}
 {% set _n_groups = (group_requests|length) if group_requests is defined and group_requests else 0 %}
 {% set _n_keys = (api_key_requests|length) if api_key_requests is defined and api_key_requests else 0 %}
-<div class="kw-subnav">
-    <nav class="kw-tabbar admin-tabbar" aria-label="Admin">
-        {% for key, label, icon in [
-            ('overview', 'Overview', '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
-            ('users', 'Users', '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
-            ('groups', 'Groups', '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>'),
-            ('access', 'Access', '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>'),
-            ('operations', 'Operations', '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'),
-        ] %}
-        <a href="/admin#{{ key }}" class="kw-tab{% if _on_panel and key == 'overview' %} is-on{% endif %}" data-tab="{{ key }}"{% if _on_panel %} role="tab"{% endif %}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon|safe }}</svg>
-            {{ label }}
-            {% if key == 'users' and _n_keys %}<span class="kw-n is-alert" title="API key requests">{{ _n_keys }}</span>{% endif %}
-            {% if key == 'groups' and _n_groups %}<span class="kw-n is-alert" title="Join requests">{{ _n_groups }}</span>{% endif %}
+{% set _i = {
+    'overview': '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    'system': '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m6 12 3-3 3 2 4-4"/>',
+    'users': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    'groups': '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>',
+    'access': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    'operations': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+    'database': '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+    'log': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M16 13H8M16 17H8"/>',
+} %}
+{#- (group, [(href, tab key or '', icon, label, count)]) -#}
+{% set _groups = [
+    ('Overview', [('/admin#overview', 'overview', 'overview', 'Overview', 0), ('/admin/system', '', 'system', 'System', 0)]),
+    ('People', [('/admin#users', 'users', 'users', 'Users & API keys', _n_keys), ('/admin#groups', 'groups', 'groups', 'Groups', _n_groups), ('/admin#access', 'access', 'access', 'Access', 0)]),
+    ('Operations', [('/admin#operations', 'operations', 'operations', 'Jobs', 0), ('/admin/database', '', 'database', 'DB Status', 0), ('/admin/log', '', 'log', 'Web Log', 0)]),
+] %}
+<nav class="admin-nav" aria-label="Admin">
+    <div class="admin-nav-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a12 12 0 0 0 8.5 3A12 12 0 0 1 12 21 12 12 0 0 1 3.5 6 12 12 0 0 0 12 3"/><circle cx="12" cy="11" r="1"/><path d="M12 12v2.5"/></svg>
+        <span>Admin</span>
+    </div>
+    {% for glabel, items in _groups %}
+    <div class="admin-nav-group">
+        <div class="admin-nav-gh">{{ glabel }}</div>
+        {% for href, tab, icon, label, n in items %}
+        {% set on = (tab and _on_panel and tab == 'overview') or (not tab and _ap == href) %}
+        <a href="{{ href }}" class="admin-nav-item{% if on %} is-on{% endif %}"{% if tab %} data-tab="{{ tab }}"{% endif %}{% if on %} aria-current="page"{% endif %}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ _i[icon]|safe }}</svg>
+            <span>{{ label }}</span>
+            {% if n %}<b class="nav-count" title="Waiting for a decision">{{ n }}</b>{% endif %}
         </a>
         {% endfor %}
-        <span class="kw-tabbar-sep" aria-hidden="true"></span>
-        <a href="/admin/database" class="kw-tab{% if _ap == '/admin/database' %} is-on{% endif %}"{% if _ap == '/admin/database' %} aria-current="page"{% endif %}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-            DB Status
-        </a>
-        <a href="/admin/system" class="kw-tab{% if _ap == '/admin/system' %} is-on{% endif %}"{% if _ap == '/admin/system' %} aria-current="page"{% endif %}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m6 12 3-3 3 2 4-4"/></svg>
-            System
-        </a>
-        <a href="/admin/log" class="kw-tab{% if _ap == '/admin/log' %} is-on{% endif %}"{% if _ap == '/admin/log' %} aria-current="page"{% endif %}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M16 13H8M16 17H8"/></svg>
-            Web Log
-        </a>
-    </nav>
-</div>
+    </div>
+    {% endfor %}
+</nav>

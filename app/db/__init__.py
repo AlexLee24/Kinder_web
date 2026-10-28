@@ -9,6 +9,7 @@ Schema layout:
 
 import logging
 import os
+import threading
 import time
 import psycopg2
 import psycopg2.pool
@@ -31,16 +32,46 @@ _DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 # Smaller pool in DEBUG mode so we don't waste connections during development
 _POOL_MIN = 1  if _DEBUG else 2
 _POOL_MAX = 10 if _DEBUG else 60
+# Idle connections kept open between requests. psycopg2's pool keeps only `minconn`
+# and closes every other connection it gets back, so concurrent requests kept
+# reconnecting (a TCP + auth handshake each: ~1.3 s over a remote link).
+_POOL_KEEP_IDLE = 10
+# A connection idle longer than this gets a liveness ping before it is handed out;
+# fresher ones are used directly (a broken one still raises and is discarded).
+_PING_AFTER_IDLE_S = 30.0
 
 logger = logging.getLogger(__name__)
 
-_connection_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+class _KeepIdlePool(psycopg2.pool.ThreadedConnectionPool):
+    """ThreadedConnectionPool that keeps up to _POOL_KEEP_IDLE idle connections
+    (instead of only `minconn`) and remembers when each was returned."""
+
+    def __init__(self, *args, **kwargs):
+        self.returned_at: dict[int, float] = {}
+        super().__init__(*args, **kwargs)
+
+    def _putconn(self, conn, key=None, close=False):
+        # psycopg2 keeps a returned connection only while len(_pool) < minconn; raise
+        # that bar for the duration of the call (putconn holds the pool lock).
+        real_min = self.minconn
+        self.minconn = max(real_min, min(_POOL_KEEP_IDLE, self.maxconn))
+        try:
+            super()._putconn(conn, key, close)
+        finally:
+            self.minconn = real_min
+        if close or conn.closed:
+            self.returned_at.pop(id(conn), None)
+        else:
+            self.returned_at[id(conn)] = time.monotonic()
+
+
+_connection_pool: _KeepIdlePool | None = None
 
 
 def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
     global _connection_pool
     if _connection_pool is None:
-        _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+        _connection_pool = _KeepIdlePool(
             minconn, maxconn,
             host=DB_HOST, port=int(DB_PORT),
             database=DB_NAME,
@@ -63,7 +94,27 @@ def init_connection_pool(minconn: int = _POOL_MIN, maxconn: int = _POOL_MAX):
         _ensure_extra_tables()
         logger.info("Kinder connection pool initialised (%d–%d) [debug=%s]",
                     minconn, maxconn, _DEBUG)
+        threading.Thread(target=_warm_pool, name='db-warm', daemon=True).start()
     return _connection_pool
+
+
+def _warm_pool(n: int = 4) -> None:
+    """Open a few connections at start-up, in the background, so the first pages
+    (several queries in parallel) don't each pay a connection handshake."""
+    p = _connection_pool
+    if p is None:
+        return
+    conns = []
+    try:
+        for _ in range(min(n, _POOL_KEEP_IDLE, p.maxconn)):
+            conns.append(p.getconn())
+    except Exception as exc:
+        logger.debug("pool warm-up stopped: %s", exc)
+    for c in conns:
+        try:
+            p.putconn(c)
+        except Exception:
+            pass
 
 
 def get_pool_stats() -> dict:
@@ -141,10 +192,12 @@ def _reset_conn(conn, pool_ref) -> bool:
     reset itself fails.
     """
     try:
-        status = conn.status   # psycopg2.extensions.STATUS_*
-        if status in (
-            psycopg2.extensions.STATUS_IN_TRANSACTION,   # = 2
-            psycopg2.extensions.STATUS_IN_ERROR,         # = 4
+        # Open or aborted transaction → roll back. (psycopg2 has no STATUS_IN_ERROR;
+        # referencing it raised here, so every used connection was discarded and
+        # the next query had to reconnect.)
+        if conn.info.transaction_status in (
+            psycopg2.extensions.TRANSACTION_STATUS_INTRANS,
+            psycopg2.extensions.TRANSACTION_STATUS_INERROR,
         ):
             conn.rollback()
         return True
@@ -179,18 +232,24 @@ class _PooledConn:
             p.putconn(conn)
 
 
-def _is_healthy(conn) -> bool:
-    """Cheap liveness probe for a connection taken from the pool."""
+def _is_healthy(conn, pool=None) -> bool:
+    """Liveness probe for a connection taken from the pool. Skipped (True) for a
+    connection returned less than _PING_AFTER_IDLE_S ago; otherwise one round trip
+    (SELECT 1 in autocommit, so no BEGIN / ROLLBACK)."""
     if conn.closed:
         return False
+    returned = getattr(pool, 'returned_at', {}).get(id(conn)) if pool is not None else None
+    if returned is not None and time.monotonic() - returned < _PING_AFTER_IDLE_S:
+        return True
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1")
-            cur.fetchone()
-        # SELECT 1 opened a transaction (autocommit off); end it so the caller
-        # starts clean and the server doesn't see 'idle in transaction'.
-        if not conn.autocommit:
-            conn.rollback()
+        was_auto = conn.autocommit
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        finally:
+            conn.autocommit = was_auto
         return True
     except Exception:
         return False
@@ -200,7 +259,7 @@ def _checkout(p):
     """getconn() with a health check: a dead connection is discarded and one
     replacement is fetched (itself checked once more)."""
     conn = p.getconn()
-    if _is_healthy(conn):
+    if _is_healthy(conn, p):
         return conn
     try:
         p.putconn(conn, close=True)
@@ -257,6 +316,45 @@ def get_db_connection():
                 p.putconn(conn)
 
 
+_parallel_pool = None
+
+
+def run_parallel(*calls):
+    """Run independent read queries at the same time, each on its own pooled
+    connection, and return their results in order. A page that needs several
+    queries then waits for the slowest one instead of their sum (each round trip
+    to a remote DB costs ~0.25 s). calls: zero-argument callables (use lambda /
+    functools.partial). An exception in any call is re-raised here."""
+    global _parallel_pool
+    if len(calls) < 2:
+        return [c() for c in calls]
+    if _parallel_pool is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _parallel_pool = ThreadPoolExecutor(max_workers=max(2, min(8, _POOL_MAX // 2)), thread_name_prefix='db-par')
+    futures = [_parallel_pool.submit(c) for c in calls]
+    return [f.result() for f in futures]
+
+
+_background_pool = None
+
+
+def run_in_background(fn, *args, **kwargs) -> None:
+    """Fire-and-forget DB work the page does not need to wait for (view counters,
+    cached-value refreshes): runs after the response on a small worker pool;
+    errors are logged, never raised."""
+    global _background_pool
+    if _background_pool is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _background_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='db-bg')
+
+    def _run():
+        try:
+            fn(*args, **kwargs)
+        except Exception as exc:
+            logger.warning("background %s failed: %s", getattr(fn, '__name__', fn), exc)
+    _background_pool.submit(_run)
+
+
 def check_db_connection() -> bool:
     try:
         conn = psycopg2.connect(
@@ -279,25 +377,44 @@ _STATUS_CACHE_SECONDS = 15
 _status_cache = {"available": True, "checked_at": 0.0}
 
 
+def _check_via_pool() -> bool:
+    """Is the DB reachable? Uses a pooled connection (no fresh handshake)."""
+    try:
+        with get_db_connection() as conn:
+            if conn.closed:
+                return False
+        return True
+    except Exception:
+        return check_db_connection()
+
+
+def _refresh_status() -> None:
+    try:
+        was_available = _status_cache["available"]
+        available = _check_via_pool()
+        _status_cache["available"] = available
+        _status_cache["checked_at"] = time.monotonic()
+        if available and not was_available:
+            logger.info("Kinder DB connection restored (%s:%s).", DB_HOST, DB_PORT)
+        elif not available and was_available:
+            logger.error("Kinder DB connection lost (%s:%s) — home page will show 'DB offline'.", DB_HOST, DB_PORT)
+    finally:
+        _status_cache["refreshing"] = False
+
+
 def is_db_available(force: bool = False) -> bool:
-    """Return the last-known DB availability, re-checking at most once every
-    _STATUS_CACHE_SECONDS. Logs (and therefore prints, via the stdout→log
-    redirect) whenever the status flips so outages/recoveries are traceable."""
-    now = time.monotonic()
-    if not force and (now - _status_cache["checked_at"]) < _STATUS_CACHE_SECONDS:
+    """Return the last-known DB availability. When it is older than
+    _STATUS_CACHE_SECONDS it is re-checked in a background thread, so a request
+    never waits on the check (force=True checks inline). Logs whenever the status
+    flips so outages/recoveries are traceable."""
+    if force:
+        _status_cache["refreshing"] = True
+        _refresh_status()
         return _status_cache["available"]
-
-    was_available = _status_cache["available"]
-    available = check_db_connection()
-    _status_cache["available"] = available
-    _status_cache["checked_at"] = now
-
-    if available and not was_available:
-        logger.info("Kinder DB connection restored (%s:%s).", DB_HOST, DB_PORT)
-    elif not available and was_available:
-        logger.error("Kinder DB connection lost (%s:%s) — home page will show 'DB offline'.", DB_HOST, DB_PORT)
-
-    return available
+    if time.monotonic() - _status_cache["checked_at"] >= _STATUS_CACHE_SECONDS and not _status_cache.get("refreshing"):
+        _status_cache["refreshing"] = True
+        threading.Thread(target=_refresh_status, name='db-status', daemon=True).start()
+    return _status_cache["available"]
 
 
 # ---------------------------------------------------------------------------

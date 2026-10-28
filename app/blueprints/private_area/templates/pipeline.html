@@ -1,29 +1,21 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Pipeline - Kinder</title>
+{% extends '_base.html' %}
+{#- Pipeline hub (/pipeline, on the navigation: no big title) and the Reduction stage (/pipeline/reduction, a sub-page:
+    keeps its page head). pipeline.js drives the New workspace wizard. -#}
+{% block title %}Pipeline - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
     <meta name="description" content="Reduce and measure images from any telescope">
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
+
+{% block bar_left %}<p class="kw-lead">Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, builds a workspace on the server and runs AutoPhOT there.</p>{% endblock %}
+{% block bar_right %}
+    <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes') }}">Telescopes</a>
+{% endblock %}
+
+{% block content %}
     {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options with context %}
 
-    <main class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
-        <header class="kw-page-head">
-            <div>
-                <h1>Pipeline</h1>
-                <p>Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, builds a workspace on the server and runs AutoPhOT there.</p>
-            </div>
-            <div class="kw-page-actions">
-                <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes') }}">Telescopes</a>
-            </div>
-        </header>
-
+    <div class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
         <nav class="pl-stages" aria-label="Pipeline stages">
             {% for s in stages %}
             {% set here = s.key == stage %}
@@ -63,7 +55,7 @@
         </section>
 
         {% else %}
-        <div class="pl-home">
+        <div class="kw-dash pl-home">
             <section class="kw-panel pl-new" aria-labelledby="plNewTitle">
                 <div class="kw-panel-head"><h2 id="plNewTitle">New workspace</h2><span class="kw-panel-meta">AutoPhOT</span></div>
                 <form class="pl-form pl-wizard" data-pl-form data-new autocomplete="off" novalidate>
@@ -138,8 +130,9 @@
             </section>
         </div>
         {% endif %}
-    </main>
+    </div>
+{% endblock %}
 
+{% block scripts %}
     <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
-</body>
-</html>
+{% endblock %}

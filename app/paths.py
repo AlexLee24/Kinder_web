@@ -22,7 +22,11 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = APP_DIR.parent
 
-ENV_FILE = PROJECT_ROOT / 'kinder.env'
+# KINDER_ENV_FILE swaps in another settings file for the whole process, e.g.
+# kinder.local.env written by scripts/local_db.sh to run against the local test DB.
+ENV_FILE = Path(os.environ.get('KINDER_ENV_FILE') or PROJECT_ROOT / 'kinder.env')
+if not ENV_FILE.is_absolute():
+    ENV_FILE = PROJECT_ROOT / ENV_FILE
 BLUEPRINTS_DIR = APP_DIR / 'blueprints'
 RESOURCES_DIR = APP_DIR / 'resources'
 DATA_DIR = APP_DIR / 'data'

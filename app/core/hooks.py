@@ -36,7 +36,7 @@ from werkzeug.exceptions import HTTPException
 
 from app.config import config
 from app.core import rate_limit
-from app.core.auth import refresh_user_session
+from app.core.auth import forget_cached_user, refresh_user_session
 from app.core.request_validation import ParamOutOfRangeError
 
 _access_logger = logging.getLogger('web.request')
@@ -164,6 +164,14 @@ def register_hooks(app) -> None:
     # Registered globally so g.current_user (including DB picture) is available on
     # every request regardless of which blueprint handles it.
     app.before_request(refresh_user_session)
+
+    @app.after_request
+    def _drop_cached_users(response):
+        # Any write may change a user's role / groups / session_version: this process
+        # re-reads users on its next request (other workers within USER_ROW_CACHE_S).
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            forget_cached_user()
+        return response
 
     @app.before_request
     def mark_request_start():

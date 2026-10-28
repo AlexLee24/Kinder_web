@@ -1,13 +1,11 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Daily Trigger - Kinder</title>
+{% extends '_base.html' %}
+{#- Daily Trigger (on the navigation, Triggers › Daily | Direct in the page bar centre): checklist + script, tonight's
+    SLT / LOT targets and the Observation Log, stacked panels. daily_trigger.js drives it; the night's Weather and
+    Calendar open from the page bar. -#}
+{% block title %}Daily Trigger - Kinder{% endblock %}
+{% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
-    {% include '_favicon.html' %}
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
     <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
@@ -43,7 +41,7 @@
             gap: 10px;
             padding: 10px 14px;
             border-radius: 10px;
-            border: 1px solid rgba(77,184,255,0.28);
+            border: 1px solid var(--kw-accent-border);
             background: rgba(10, 18, 26, 0.86);
             color: rgba(235,245,255,0.9);
             font-size: 13px;
@@ -53,8 +51,8 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            border: 2px solid rgba(77,184,255,0.3);
-            border-top-color: rgba(77,184,255,0.95);
+            border: 2px solid var(--kw-accent-dim);
+            border-top-color: var(--kw-accent);
             animation: pa-log-spin 0.85s linear infinite;
             flex-shrink: 0;
         }
@@ -70,8 +68,8 @@
             right: 30px;
             opacity: 0;
             pointer-events: none;
-            background-color: #1f6feb;
-            color: white;
+            background-color: var(--kw-accent);
+            color: var(--color-accent-text);
             border: none;
             border-radius: 50%;
             width: 45px;
@@ -85,7 +83,7 @@
             justify-content: center;
             padding: 0;
         }
-        .scroll-to-top:hover { background-color: #388bfd; transform: translateY(-3px); }
+        .scroll-to-top:hover { background-color: var(--kw-accent-hover); transform: translateY(-3px); }
         /* Make log control buttons uniform size */
         .pa-log-controls .pa-btn-log-action {
             min-width: 88px;
@@ -108,7 +106,7 @@
         .pa-btn-filter-toggle { background: rgba(0,0,0,0.6); border: none; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; }
         .pa-btn-filter-toggle:hover { background: rgba(0,0,0,0.7); }
         .pa-btn-filter-toggle span { color: inherit; font-size: 14px; }
-        .pa-btn-filter-toggle.active { background: rgba(77,184,255,0.12); border: 1px solid rgba(77,184,255,0.18); }
+        .pa-btn-filter-toggle.active { background: var(--kw-accent-dim); border: 1px solid var(--kw-accent-border); }
 
         /* Target name hint/reminder */
         .pa-name-reminder {
@@ -164,23 +162,130 @@
             .pa-target-table td { padding: 7px 2px !important; font-size: 0.86rem !important; }
             .pa-target-table td::before { font-size: 0.78rem; }
         }
+
+        /* ── One design (2026-10-28): the page sits in the shell as stacked kw-panels; private_area.css (shared with
+           the other Lab pages) keeps the widgets, these rules bring them onto the tokens: one amber accent, radii
+           6/10/14/18, kw-btn / kw-seg looks. ── */
+        body[data-page="private_area.daily_trigger"] {
+            --pa-accent: var(--kw-accent);
+            --pa-accent-dark: var(--kw-accent-hover);
+            --pa-modal-bg: var(--kw-bg-elevated, #14171F);
+            font-family: var(--kw-font-sans);
+            font-weight: 400;
+            background-color: transparent;
+        }
+        body[data-page="private_area.daily_trigger"] ::selection { background: var(--kw-accent-dim); }
+        .dt-page > .kw-panel { width: auto; max-width: none; margin: 0; }
+        .dt-page .kw-panel-head h2 { text-align: left; }
+        .dt-credit { margin: 14px 0 0; font-size: 0.74rem; color: var(--kw-text-faint); text-align: center; }
+
+        /* Checklist + script: two kw-inset columns */
+        /* The section is only a wrapper; each column is its own full panel (no panel-in-panel). */
+        .dt-page .pa-trigger-section.kw-panel { padding: 0; background: transparent; border: 0; border-radius: 0; margin-bottom: 16px; }
+        .dt-page .pa-trigger-grid { gap: 16px; }
+        .dt-page .pa-trigger-col { border-radius: var(--kw-radius-xl); background: var(--color-surface); border: 1px solid var(--color-border); padding: 18px 20px; }
+        .dt-page .pa-trigger-script-col.locked::after { border-radius: var(--kw-radius-xl); background: rgba(14, 14, 18, 0.80); }
+        .dt-page .pa-trigger-script-col.locked .pa-script-vis-empty { visibility: hidden; }
+        .dt-page .pa-trigger-grid:not(.is-complete) .pa-script-body { flex-direction: column; }
+        .dt-page .pa-trigger-col-head { color: var(--kw-text-white); font-size: 0.95rem; font-weight: 700; gap: 10px; flex-wrap: wrap; }
+        .dt-page .pa-checklist-group-title { color: var(--kw-text-secondary); }
+        .dt-page .pa-trigger-progress { background: var(--kw-accent-dim); border-color: var(--kw-accent-border); border-radius: var(--kw-radius-pill); }
+        .dt-page .pa-checklist-item label { border-radius: var(--kw-radius-md); }
+        .dt-page .pa-checklist-item.done label { border-color: var(--kw-accent-border); }
+        .dt-page .pa-checklist-checkbox:checked + .pa-checklist-box { color: var(--color-accent-text); }
+        .dt-page .pa-checklist-checkbox:focus-visible + .pa-checklist-box { outline-color: var(--kw-accent); }
+        .dt-page .pa-checklist-box { border-radius: var(--kw-radius-sm); }
+        /* priority levels keep their own colours (urgent red, high orange, normal blue): they encode meaning */
+        .dt-page .pa-priority-tag { border-radius: var(--kw-radius-sm); }
+        .dt-page .pa-priority-tag.normal { background: rgba(10, 132, 255, 0.15); color: #74B9FF; border-color: rgba(116, 185, 255, 0.3); }
+        .dt-page .pa-btn-checklist-action { min-height: 30px; border-radius: var(--kw-radius-md); border-color: var(--kw-border-med); color: var(--kw-text-primary); background: var(--kw-surface, rgba(255,255,255,0.06)); }
+        .dt-page .pa-btn-checklist-action:hover { background: var(--kw-surface-hover); color: var(--kw-text-white); }
+        .dt-page .pa-script-tele-tabs { gap: 2px; padding: 3px; border-radius: var(--kw-radius-md); background: var(--color-surface); border: 1px solid var(--kw-border); }
+        .dt-page .pa-script-tele-tab { min-height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--kw-text-secondary); }
+        .dt-page .pa-script-tele-tab:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
+        .dt-page .pa-script-tele-tab.active { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); border: 0; }
+        .dt-page .pa-script-program-select { border-radius: var(--kw-radius-md); }
+        .dt-page .pa-script-textarea, .dt-page .pa-script-vis-panel { border-radius: var(--kw-radius-md); background: rgba(0, 0, 0, 0.25); border-color: var(--kw-border); }
+        .dt-page .pa-script-textarea { color: var(--kw-text-primary); font-family: var(--kw-font-mono); }
+        .dt-page .pa-script-vis-panel:hover { border-color: var(--kw-accent-border); background: rgba(0, 0, 0, 0.25); }
+        .dt-page .pa-sent-chip { border-radius: var(--kw-radius-pill); }
+
+        /* Buttons → kw-btn looks (40px, radius 10; primary = amber with dark text) */
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-log-action, .pa-log-controls .pa-btn-log-action, .pa-btn-filter-toggle) {
+            min-height: 40px; height: auto; margin: 0; padding: 0 14px; border-radius: var(--kw-radius-md);
+            background: var(--kw-surface, rgba(255,255,255,0.06)); border: 1px solid var(--kw-border-med); color: var(--kw-text-primary);
+            font-size: 0.86rem; font-weight: 600;
+        }
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-log-action, .pa-btn-filter-toggle):hover { background: var(--kw-surface-hover); color: var(--kw-text-white); }
+        body[data-page="private_area.daily_trigger"] .pa-btn-log-action.active, body[data-page="private_area.daily_trigger"] .pa-btn-filter-toggle.active {
+            background: var(--kw-accent-dim); border-color: var(--kw-accent-border); color: var(--kw-accent);
+        }
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save, .pa-btn-auto-exp) {
+            min-height: 40px; padding: 0 16px; border: 0; border-radius: var(--kw-radius-md);
+            background: var(--kw-accent); color: var(--color-accent-text); font-weight: 600; filter: none;
+        }
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save, .pa-btn-auto-exp):hover { background: var(--kw-accent-hover); }
+        body[data-page="private_area.daily_trigger"] .pa-btn-cancel { min-height: 40px; border-radius: var(--kw-radius-md); }
+        body[data-page="private_area.daily_trigger"] .pa-btn-cancel:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
+        body[data-page="private_area.daily_trigger"] .pa-btn-log-action:disabled:hover { background: var(--kw-surface, rgba(255,255,255,0.06)); }
+        .dt-page .pa-btn-action:hover { background: var(--kw-accent-dim); }
+        .dt-page .pa-action-row-btns { border-radius: var(--kw-radius-md); }
+
+        /* Inputs and modals */
+        body[data-page="private_area.daily_trigger"] .pa-input { border-radius: var(--kw-radius-md); }
+        body[data-page="private_area.daily_trigger"] .pa-modal-box { border-radius: var(--kw-radius-xl); border-color: var(--kw-border); }
+        body[data-page="private_area.daily_trigger"] .pa-modal-box h3 { font-size: 1.05rem; font-weight: 600; }
+        .pa-modal-box :is(.pa-send-account-box, .pa-send-review-img-wrap) { border-radius: var(--kw-radius-md); }
+
+        /* Observation Targets: panel head row (SLT | LOT seg · title · actions) */
+        .dt-page .dt-obs-topbar { margin-bottom: 14px; padding-bottom: 0; border-bottom: 0; flex-wrap: wrap; }
+        .dt-page .dt-obs-topbar h2 { order: -1; flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 700; color: var(--kw-text-white); }
+        .dt-page .dt-obs-topbar .pa-tabs-header { margin: 0; gap: 2px; border-bottom: 1px solid var(--kw-border); }
+        .dt-page .dt-obs-topbar .pa-tab-btn { min-height: 34px; padding: 0 13px; border: 0; border-radius: 9px; font-size: 0.84rem; font-weight: 400; color: var(--kw-text-secondary); }
+        .dt-page .dt-obs-topbar .pa-tab-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
+        .dt-page .dt-obs-topbar .pa-tab-btn.active { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); font-weight: 600; border: 0; }
+        .dt-page .dt-obs-topbar .pa-obs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
+        .dt-page .pa-target-table thead tr { background: transparent; }
+        .dt-page .pa-target-table th { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); border-bottom: 1px solid var(--kw-hairline); }
+
+        /* Observation Log */
+        .dt-page .pa-log-container { border-radius: var(--kw-radius-lg); border-color: var(--kw-hairline); }
+        .dt-page .pa-log-controls { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .dt-page .pa-log-controls > .pa-input { margin-right: 0 !important; }
+
+        @media (max-width: 900px) {
+            .dt-page .pa-trigger-col { padding: 14px 16px; }
+            .dt-page .pa-trigger-col-head > span:first-child { text-align: left; }
+        }
+        @media (max-width: 768px) {
+            .dt-page .dt-obs-topbar { flex-direction: column; align-items: stretch; gap: 12px; }
+            .dt-page .dt-obs-topbar .pa-tabs-header { align-self: center; }
+            .dt-page .dt-obs-topbar h2 { text-align: center; }
+            .dt-page .dt-obs-topbar .pa-obs-actions { display: grid; grid-template-columns: 1fr 1fr; }
+            .dt-page .dt-obs-topbar .pa-obs-actions button[onclick="openVisibilityPlot()"] { grid-column: auto; }
+            .dt-page .dt-obs-topbar .pa-obs-actions :is(#btn-add-slt, #btn-add-lot) { grid-column: 1 / -1; }
+            .dt-page .pa-target-table tr { border-color: var(--kw-border); border-radius: var(--kw-radius-lg); }
+            .dt-page .pa-target-table td::before { color: var(--kw-text-muted); }
+        }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="main-banner dt-page">
-        <div class="dt-layout">
+{% block bar_right %}
+    <button type="button" class="kw-btn kw-btn-sm" onclick="document.getElementById('weatherModal').style.display='flex'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+        Weather
+    </button>
+    <button type="button" class="kw-btn kw-btn-sm" onclick="document.getElementById('calendarModal').style.display='flex'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Calendar
+    </button>
+{% endblock %}
 
-            <!-- ── Main content ── -->
-            <div class="dt-main">
+{% block content %}
+    <div class="kw-page dt-page">
 
                 <!-- Trigger Checklist & Script Section -->
-                <div class="private-section pa-trigger-section">
-                    <h3>
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Daily Trigger
-                    </h3>
+                <section class="kw-panel pa-trigger-section" aria-label="Pre-trigger checklist and trigger script">
 
                     <div id="trigger-grid" class="pa-trigger-grid">
                         <!-- Checklist column -->
@@ -356,37 +461,29 @@
                             <div id="trigger-send-status" class="pa-trigger-send-status"></div>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div class="private-section pa-obs-section">
+                <section class="kw-panel pa-obs-section" aria-labelledby="dtObsTitle">
                     <div class="dt-obs-topbar">
-                        <div class="pa-tabs-header">
-                            <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn active">SLT Targets</button>
-                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn">LOT Targets</button>
+                        <div class="pa-tabs-header kw-seg" role="tablist" aria-label="Telescope">
+                            <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn kw-seg-item active">SLT Targets</button>
+                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn kw-seg-item">LOT Targets</button>
                         </div>
-                        <h3>Observation Targets</h3>
-                        <div class="pa-obs-actions" style="margin-bottom:0;display:flex;gap:8px;align-items:center;">
-                            <button onclick="document.getElementById('weatherModal').style.display='flex'" class="pa-btn-log-action" style="background:rgba(77,184,255,0.06);border:1px solid rgba(77,184,255,0.2);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
-                                Weather
-                            </button>
-                            <button id="updateMagBtn" onclick="updateTargetMags()" class="pa-btn-log-action" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
+                        <h2 id="dtObsTitle">Observation Targets</h2>
+                        <div class="pa-obs-actions">
+                            <button id="updateMagBtn" onclick="updateTargetMags()" class="kw-btn kw-btn-sm">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                                 Update Mag
                             </button>
-                            <button onclick="document.getElementById('calendarModal').style.display='flex'" class="pa-btn-log-action" style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                Calendar
-                            </button>
-                            <button onclick="openVisibilityPlot()" class="pa-btn-log-action" style="background:rgba(77,184,255,0.1);border:1px solid rgba(77,184,255,0.3);color:#4db8ff;border-radius:8px;padding:6px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;">
+                            <button onclick="openVisibilityPlot()" class="kw-btn kw-btn-sm">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                                 Visibility
                             </button>
-                            <button onclick="openTargetModal('SLT')" class="pa-btn-slt" id="btn-add-slt">
+                            <button onclick="openTargetModal('SLT')" class="kw-btn kw-btn-sm kw-btn-primary" id="btn-add-slt">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                 Add SLT
                             </button>
-                            <button onclick="openTargetModal('LOT')" class="pa-btn-lot" id="btn-add-lot" style="display: none;">
+                            <button onclick="openTargetModal('LOT')" class="kw-btn kw-btn-sm kw-btn-primary" id="btn-add-lot" style="display: none;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                                 Add LOT
                             </button>
@@ -435,19 +532,11 @@
                         </table>
                     </div>
 
-                </div>
+                </section>
 
                 <!-- Observation Log Section -->
-                <div class="private-section pa-obs-log-section">
-                    <h3>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="16" y1="2" x2="16" y2="6"></line>
-                            <line x1="8" y1="2" x2="8" y2="6"></line>
-                            <line x1="3" y1="10" x2="21" y2="10"></line>
-                        </svg>
-                        Observation Log
-                    </h3>
+                <section class="kw-panel pa-obs-log-section" aria-labelledby="dtLogTitle">
+                    <div class="kw-panel-head"><h2 id="dtLogTitle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect> <line x1="16" y1="2" x2="16" y2="6"></line> <line x1="8" y1="2" x2="8" y2="6"></line> <line x1="3" y1="10" x2="21" y2="10"></line> </svg> Observation Log</h2></div>
                     
                     <div class="pa-log-controls">
                         <select id="log-year" onchange="renderLogGrid()" class="pa-input" style="width: 120px; display: inline-block; margin-right: 10px;"></select>
@@ -517,16 +606,12 @@
                             </table>
                         </div>
                     </div>
-                    <h4>Design by Aiswarya Sankar Kachiprath</h4>
-                </div>
-
-            </div>
-
-
-
-        </div>
+                    <p class="dt-credit">Design by Aiswarya Sankar Kachiprath</p>
+                </section>
     </div>
+{% endblock %}
 
+{% block after_main %}
     <!-- Calendar Modal -->
     <div id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
         <div class="pa-modal-box" style="max-width:1100px;width:96vw;">
@@ -712,18 +797,18 @@
 
                 <div class="pa-form-row two-col" style="margin-top: 20px;">
                     <label style="display: flex; align-items: center; gap: 8px; color: #fff; cursor: pointer;">
-                        <input type="checkbox" id="log-edit-trigger-status" style="width: 18px; height: 18px; accent-color: #4db8ff;" onchange="toggleLogFields()">
+                        <input type="checkbox" id="log-edit-trigger-status" style="width: 18px; height: 18px; accent-color: var(--kw-accent);" onchange="toggleLogFields()">
                         Is Triggered
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; color: #fff; cursor: pointer;">
-                        <input type="checkbox" id="log-edit-obs-status" style="width: 18px; height: 18px; accent-color: #4db8ff;" onchange="toggleLogFields()">
+                        <input type="checkbox" id="log-edit-obs-status" style="width: 18px; height: 18px; accent-color: var(--kw-accent);" onchange="toggleLogFields()">
                         Is Observed
                     </label>
                 </div>
 
                 <!-- Trigger detail fields -->
-                <div id="trigger-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid rgba(77,184,255,0.3); border-radius: 8px; background: rgba(77,184,255,0.05);">
-                    <div style="color: #4db8ff; font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Trigger Details</div>
+                <div id="trigger-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid var(--kw-accent-border); border-radius: var(--kw-radius-md); background: var(--kw-accent-dim);">
+                    <div style="color: var(--kw-accent); font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Trigger Details</div>
                     <div id="log-trigger-filter-rows" class="pa-filter-rows"></div>
                     <div class="pa-filter-actions">
                         <button type="button" onclick="addLogFilterRow('trigger', 'rp')" class="pa-btn-link">
@@ -854,13 +939,16 @@
         </div>
     </div>
 
-<!-- Plotly loaded async to avoid blocking initial render -->
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
-    <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
     <!-- Global scroll-to-top button -->
     <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
     </button>
+{% endblock %}
+
+{% block scripts %}
+    <!-- Plotly loaded async to avoid blocking initial render -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
+    <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
     <script>
         (function() {
             var btn = document.getElementById("scrollToTopBtn");
@@ -946,5 +1034,4 @@
             });
         })();
     </script>
-</body>
-</html>
+{% endblock %}

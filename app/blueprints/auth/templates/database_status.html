@@ -1,128 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>Database Status - Kinder</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/_navbar.css') }}">
-    {% include '_favicon.html' %}
+{% extends '_base.html' %}
+{#- Admin: PostgreSQL sessions and pressure (polls /admin/database/status). Loads even while the database is down. -#}
+{% block title %}Database Status - Kinder{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}">
     <style>
-        :root {
-            --accent: #C5A059;
-            --bg: rgba(8, 10, 24, 0.86);
-            --panel: rgba(255, 255, 255, 0.07);
-            --panel-strong: rgba(255, 255, 255, 0.11);
-            --border: rgba(255, 255, 255, 0.14);
-            --text: rgba(255, 255, 255, 0.96);
-            --muted: rgba(255, 255, 255, 0.62);
+        .db-page {
             --ok: #3fb950;
             --warn: #e3b341;
             --bad: #ff7b72;
         }
 
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            font-family: var(--kw-font-sans);
-            color: var(--text);
-            background-image: linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)), url("{{ url_for('static', filename='photo/background_planner.jpg') }}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-        .page-shell {
-            max-width: 1450px;
-            margin: 0 auto 40px;
-            padding: 0 24px;
-        }
-
-        .hero {
-            display: flex;
-            gap: 16px;
-            align-items: flex-start;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            margin-bottom: 16px;
-        }
-
-        .hero h1 {
-            margin: 0;
-            font-size: 2rem;
-            line-height: 1.1;
-        }
-        .hero p {
-            margin: 6px 0 0;
-            color: var(--muted);
-        }
-
-        .hero-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        .btn {
-            appearance: none;
-            border: 1px solid rgba(197,160,89,0.35);
-            background: rgba(197,160,89,0.14);
-            color: var(--accent);
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform .15s ease, background .15s ease, opacity .15s ease;
-        }
-        .btn:hover { transform: translateY(-1px); background: rgba(197,160,89,0.22); }
-        .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-        .btn-danger {
-            color: #ffb4b0;
-            background: rgba(255, 123, 114, 0.12);
-            border-color: rgba(255, 123, 114, 0.26);
-        }
-        .btn-danger:hover { background: rgba(255, 123, 114, 0.18); }
-        .btn-ghost {
-            color: var(--text);
-            background: rgba(255,255,255,0.05);
-            border-color: var(--border);
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 14px;
-            margin-bottom: 14px;
-        }
-
-        .card {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            backdrop-filter: blur(16px) saturate(180%);
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        .card-header {
-            padding: 12px 14px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            font-size: .85rem;
-            color: var(--muted);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-        }
-        .card-body { padding: 14px; }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: -0.03em;
-            line-height: 1;
-        }
-        .stat-label { color: var(--muted); margin-top: 6px; font-size: .88rem; }
-        .stat-sub { color: var(--muted); margin-top: 4px; font-size: .8rem; }
+        .db-page .kw-kpis.db-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+        .db-page .kw-kpi b.status-pill { display: flex; align-items: center; gap: 10px; padding: 0; border-radius: 0; background: none; font-size: 1.5rem; line-height: 1.27; }
+        .db-page .kw-kpi b.status-pill .status-dot { width: 10px; height: 10px; }
+        .db-page .kw-kpi b.status-pill.ok { color: #8ae896; }
+        .db-page .kw-kpi b.status-pill.warn { color: #f7d26a; }
+        .db-page .kw-kpi b.status-pill.bad { color: #ffb4b0; }
+        .db-page > .kw-panel + .kw-panel { margin-top: 0; }   /* the .kw-page gap spaces them */
+        .db-version { font-family: var(--kw-font-mono); font-size: 0.8rem; overflow-wrap: anywhere; }
 
         .status-pill {
             display: inline-flex;
@@ -143,29 +38,18 @@
         }
 
         .banner {
-            margin-bottom: 14px;
             padding: 14px 16px;
-            border-radius: 14px;
-            border: 1px solid var(--border);
-            background: rgba(255,255,255,0.06);
-            color: var(--muted);
+            border-radius: var(--kw-radius-lg);
+            border: 1px solid var(--kw-border);
+            background: var(--kw-card-bg);
+            color: var(--kw-text-secondary);
         }
-        .banner strong { color: var(--text); }
+        .banner strong { color: var(--kw-text-white); }
         .banner.bad { border-color: rgba(255,123,114,0.24); background: rgba(255,123,114,0.10); color: #ffd0cd; }
         .banner.warn { border-color: rgba(227,179,65,0.24); background: rgba(227,179,65,0.10); color: #ffe8a8; }
+        .banner.ok { border-color: rgba(63,185,80,.24); background: rgba(63,185,80,.08); }
 
-        .toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            padding: 14px;
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            margin-bottom: 14px;
-        }
+        .db-toolbar { justify-content: space-between; }
         .toolbar-left, .toolbar-right {
             display: flex;
             gap: 10px;
@@ -176,67 +60,28 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            color: var(--muted);
+            color: var(--kw-text-muted);
             font-size: .9rem;
         }
-        .field input {
-            width: 90px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: rgba(0,0,0,.28);
-            color: var(--text);
-            padding: 8px 10px;
-            outline: none;
-        }
-        .field input:focus { border-color: rgba(197,160,89,.55); }
+        .field input { width: 90px; min-height: 32px; padding: 0 10px; }
 
-        .table-wrap {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            overflow: hidden;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        thead th {
-            position: sticky;
-            top: 0;
-            background: rgba(12, 14, 28, 0.96);
-            border-bottom: 1px solid rgba(255,255,255,0.10);
-            padding: 12px 10px;
-            text-align: left;
-            font-size: .84rem;
-            color: var(--muted);
-            font-weight: 600;
-            z-index: 1;
-        }
-        tbody td {
-            border-top: 1px solid rgba(255,255,255,0.06);
-            padding: 10px;
-            vertical-align: top;
-            font-size: .88rem;
-        }
-        tbody tr:hover { background: rgba(255,255,255,0.03); }
-
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-        .muted { color: var(--muted); }
+        .db-page .kw-table td { vertical-align: top; }
+        .mono { font-family: var(--kw-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace); }
+        .muted { color: var(--kw-text-muted); }
         .query {
             max-width: 560px;
             white-space: pre-wrap;
             word-break: break-word;
             color: rgba(255,255,255,0.88);
         }
-        .query.empty { color: var(--muted); font-style: italic; }
+        .query.empty { color: var(--kw-text-muted); font-style: italic; }
         .row-actions {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
         }
-        .row-actions .btn { padding: 7px 10px; border-radius: 8px; font-size: .84rem; }
-        .checkbox-cell { width: 42px; text-align: center; }
-        .checkbox-cell input { transform: scale(1.08); accent-color: var(--accent); }
+        .checkbox-cell { width: 42px; text-align: center !important; }
+        .checkbox-cell input { transform: scale(1.08); accent-color: var(--kw-accent); }
         .self-tag {
             display: inline-flex;
             align-items: center;
@@ -245,13 +90,13 @@
             padding: 4px 8px;
             border-radius: 999px;
             background: rgba(255,255,255,0.08);
-            color: var(--muted);
+            color: var(--kw-text-muted);
             margin-left: 6px;
         }
 
         .footer-note {
             margin-top: 12px;
-            color: var(--muted);
+            color: var(--kw-text-muted);
             font-size: .86rem;
             line-height: 1.5;
         }
@@ -261,17 +106,12 @@
             grid-template-columns: 260px 1fr;
             gap: 12px;
         }
-        .pressure-box {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 12px;
-        }
         .pressure-score {
             font-size: 2rem;
             font-weight: 700;
             letter-spacing: -0.03em;
             line-height: 1;
+            color: var(--kw-text-white);
         }
         .pressure-badge {
             display: inline-flex;
@@ -293,165 +133,146 @@
         }
         .pressure-list li { margin: 6px 0; }
         .helper-note {
-            color: var(--muted);
+            color: var(--kw-text-muted);
             font-size: .85rem;
-            margin-bottom: 10px;
+            line-height: 1.5;
+            margin-bottom: 12px;
         }
         .recommend-table td, .recommend-table th {
             white-space: nowrap;
         }
-        .recommend-reason {
+        .recommend-table .recommend-reason {
             white-space: normal;
+            min-width: 220px;
             color: rgba(255,255,255,0.86);
         }
 
         @media (max-width: 1120px) {
-            .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .db-page .kw-kpis.db-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media (max-width: 760px) {
-            .page-shell { padding: 0 12px; }
-            .grid { grid-template-columns: 1fr; }
+            .db-page .kw-kpis.db-kpis { gap: 8px; }
+            .db-page .kw-kpi { padding: 12px; }
+            .db-page .kw-kpi b { font-size: 1.5rem; }
+            .db-page .kw-kpi b.status-pill { font-size: 1.2rem; }
             .pressure-grid { grid-template-columns: 1fr; }
-            .query { max-width: 300px; }
-            thead th, tbody td { padding: 9px 8px; }
+            .query { max-width: 300px; min-width: 200px; }
+            .db-page .kw-table th, .db-page .kw-table td { padding: 9px 8px; }
         }
-        /* admin tab bar (_admin_nav.html) spans the same width as this page; body.* beats _theme.css */
-        body .kw-subnav { max-width: 1450px; padding: 0 24px; }
-        @media (max-width: 760px) { body .kw-subnav { padding: 0 12px; } }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    {% include '_admin_nav.html' %}
 
-    <div class="page-shell">
-        <div class="kw-page-head">
-            <div>
-                <span class="kw-eyebrow">Admin</span>
-                <h1>Database Status</h1>
-                <p>This page stays available even when the database is down, so you can still inspect status and recover quickly.</p>
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page db-page">
+    <header class="kw-page-head">
+        <div><h1>DB Status</h1><p>This page stays available even when the database is down, so you can still inspect status and recover quickly.</p></div>
+        <div class="kw-page-actions">
+            <button class="kw-btn kw-btn-sm" id="refreshBtn" onclick="refreshStatus()">Refresh</button>
+        </div>
+    </header>
+
+    <div id="statusBanner" class="banner">
+        Loading database status...
+    </div>
+
+    <div class="kw-kpis db-kpis">
+        <div class="kw-kpi">
+            <span class="kw-kpi-label">Connection</span>
+            <b id="connectionPill" class="status-pill warn"><span class="status-dot"></span><span>Checking…</span></b>
+            <small id="serverLabel">{{ config_name if config_name else 'Kinder' }}</small>
+        </div>
+        <div class="kw-kpi">
+            <span class="kw-kpi-label">Total sessions</span>
+            <b id="statTotal">0</b>
+            <small id="statCheckedAt">—</small>
+        </div>
+        <div class="kw-kpi">
+            <span class="kw-kpi-label">Active / idle</span>
+            <b><span id="statActive">0</span> / <span id="statIdle">0</span></b>
+            <small>Idle in transaction: <span id="statIdleTx">0</span></small>
+        </div>
+        <div class="kw-kpi">
+            <span class="kw-kpi-label">Waiting</span>
+            <b id="statWaiting">0</b>
+            <small>Sessions with a wait event</small>
+        </div>
+    </div>
+
+    <div id="actionBanner" class="banner warn" style="display:none;"></div>
+
+    <section class="kw-panel">
+        <div class="kw-panel-head"><h2>Pressure Guide (Beginner Friendly)</h2></div>
+        <div class="pressure-grid">
+            <div class="kw-inset pressure-box">
+                <div class="muted" style="font-size:.82rem;">Pressure Score</div>
+                <div class="pressure-score" id="pressureScore">0</div>
+                <div id="pressureLevel" class="pressure-badge low">LOW</div>
+                <div class="muted" style="margin-top:8px;font-size:.8rem;">0 = calm, 100 = overloaded</div>
             </div>
-            <div class="kw-page-actions">
-                <button class="btn" id="refreshBtn" onclick="refreshStatus()">Refresh</button>
+            <div class="kw-inset pressure-box">
+                <div class="muted" style="font-size:.82rem; margin-bottom:6px;">Why this level</div>
+                <ul id="pressureReasons" class="pressure-list">
+                    <li>Waiting for first status refresh.</li>
+                </ul>
             </div>
         </div>
+    </section>
 
-        <div id="statusBanner" class="banner">
-            Loading database status...
-        </div>
-
-        <div class="grid">
-            <div class="card">
-                <div class="card-header">Connection</div>
-                <div class="card-body">
-                    <div id="connectionPill" class="status-pill warn">
-                        <span class="status-dot"></span>
-                        <span>Checking…</span>
-                    </div>
-                    <div class="stat-sub" id="serverLabel">{{ config_name if config_name else 'Kinder' }}</div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">Total Sessions</div>
-                <div class="card-body">
-                    <div class="stat-value" id="statTotal">0</div>
-                    <div class="stat-label">pg_stat_activity rows</div>
-                    <div class="stat-sub" id="statCheckedAt">—</div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">Active / Idle</div>
-                <div class="card-body">
-                    <div class="stat-value"><span id="statActive">0</span> / <span id="statIdle">0</span></div>
-                    <div class="stat-label">Active / Idle sessions</div>
-                    <div class="stat-sub">Idle in transaction: <span id="statIdleTx">0</span></div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-header">Waiting</div>
-                <div class="card-body">
-                    <div class="stat-value" id="statWaiting">0</div>
-                    <div class="stat-label">Sessions with wait event</div>
-                    <div class="stat-sub" id="statVersion">—</div>
-                </div>
+    <section class="kw-panel">
+        <div class="kw-panel-head">
+            <h2>Recommended Actions</h2>
+            <div class="row-actions">
+                <button class="kw-btn kw-btn-sm" id="cancelRecommendedBtn" onclick="runRecommended('cancel')" disabled>Cancel Recommended</button>
+                <button class="kw-btn kw-btn-sm kw-btn-danger" id="terminateRecommendedBtn" onclick="runRecommended('terminate')" disabled>Terminate Recommended</button>
             </div>
         </div>
-
-        <div id="actionBanner" class="banner warn" style="display:none;"></div>
-
-        <div class="card" style="margin-bottom:14px;">
-            <div class="card-header">Pressure Guide (Beginner Friendly)</div>
-            <div class="card-body">
-                <div class="pressure-grid">
-                    <div class="pressure-box">
-                        <div class="muted" style="font-size:.82rem;">Pressure Score</div>
-                        <div class="pressure-score" id="pressureScore">0</div>
-                        <div id="pressureLevel" class="pressure-badge low">LOW</div>
-                        <div class="muted" style="margin-top:8px;font-size:.8rem;">0 = calm, 100 = overloaded</div>
-                    </div>
-                    <div class="pressure-box">
-                        <div class="muted" style="font-size:.82rem; margin-bottom:6px;">Why this level</div>
-                        <ul id="pressureReasons" class="pressure-list">
-                            <li>Waiting for first status refresh.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
+        <div class="helper-note">
+            Safe order for beginners: <strong>Cancel</strong> long-running/waiting queries first, then <strong>Terminate</strong> stuck "idle in transaction" sessions. "Client/ClientRead" usually means waiting for app input, not a lock stall.
         </div>
-
-        <div class="card" style="margin-bottom:14px;">
-            <div class="card-header">
-                <span>Recommended Actions</span>
-                <div class="row-actions">
-                    <button class="btn btn-ghost" id="cancelRecommendedBtn" onclick="runRecommended('cancel')" disabled>Cancel Recommended</button>
-                    <button class="btn btn-danger" id="terminateRecommendedBtn" onclick="runRecommended('terminate')" disabled>Terminate Recommended</button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="helper-note">
-                    Safe order for beginners: <strong>Cancel</strong> long-running/waiting queries first, then <strong>Terminate</strong> stuck "idle in transaction" sessions. "Client/ClientRead" usually means waiting for app input, not a lock stall.
-                </div>
-                <div class="table-wrap">
-                    <table class="recommend-table">
-                        <thead>
-                            <tr>
-                                <th>PID</th>
-                                <th>State</th>
-                                <th>Age</th>
-                                <th>Suggested</th>
-                                <th>Reason</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="recommendBody">
-                            <tr><td colspan="6" class="muted">No recommendation yet.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <div class="kw-table-wrap">
+            <table class="kw-table recommend-table">
+                <thead>
+                    <tr>
+                        <th>PID</th>
+                        <th>State</th>
+                        <th>Age</th>
+                        <th>Suggested</th>
+                        <th>Reason</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="recommendBody">
+                    <tr><td colspan="6" class="muted">No recommendation yet.</td></tr>
+                </tbody>
+            </table>
         </div>
+    </section>
 
-        <div class="toolbar">
+    <section class="kw-panel">
+        <div class="kw-panel-head"><h2>Sessions</h2></div>
+        <div class="kw-toolbar db-toolbar">
             <div class="toolbar-left">
-                <button class="btn btn-danger" id="cancelSelectedBtn" onclick="bulkAction('cancel')">Cancel selected</button>
-                <button class="btn btn-danger" id="terminateSelectedBtn" onclick="bulkAction('terminate')">Terminate selected</button>
+                <button class="kw-btn kw-btn-sm kw-btn-danger" id="cancelSelectedBtn" onclick="bulkAction('cancel')">Cancel selected</button>
+                <button class="kw-btn kw-btn-sm kw-btn-danger" id="terminateSelectedBtn" onclick="bulkAction('terminate')">Terminate selected</button>
                 <div class="field">
                     Terminate idle older than
                     <input type="number" id="idleMinutes" min="1" max="1440" value="15">
                     min
                 </div>
-                <button class="btn btn-danger" id="terminateIdleBtn" onclick="terminateIdle()">Terminate idle</button>
+                <button class="kw-btn kw-btn-sm kw-btn-danger" id="terminateIdleBtn" onclick="terminateIdle()">Terminate idle</button>
             </div>
             <div class="toolbar-right">
                 <span class="muted" id="selectionInfo">0 selected</span>
-                <button class="btn btn-ghost" onclick="selectAll(true)">Select all</button>
-                <button class="btn btn-ghost" onclick="selectAll(false)">Clear</button>
+                <button class="kw-btn kw-btn-sm kw-btn-ghost" onclick="selectAll(true)">Select all</button>
+                <button class="kw-btn kw-btn-sm kw-btn-ghost" onclick="selectAll(false)">Clear</button>
             </div>
         </div>
 
-        <div class="table-wrap">
-            <table>
+        <div class="kw-table-wrap">
+            <table class="kw-table">
                 <thead>
                     <tr>
                         <th class="checkbox-cell">✓</th>
@@ -475,9 +296,14 @@
         <div class="footer-note">
             Tip: <strong>Cancel</strong> tries to stop a running query, while <strong>Terminate</strong> forces the whole connection to close.
             When the database is unreachable, this page still loads so you can monitor recovery and retry actions.
+            <br>Server version: <span id="statVersion" class="db-version">—</span>
         </div>
-    </div>
+    </section>
+</div>
+</div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         let currentStatus = null;
         let refreshTimer = null;
@@ -519,7 +345,7 @@
                 available
                     ? `<strong>Database is reachable.</strong>${error ? ` ${esc(error)}` : ' You can inspect sessions and run connection actions.'}`
                     : `<strong>Database is currently unavailable.</strong> ${esc(error || 'Connection failed')}`,
-                available ? 'warn' : 'bad'
+                available ? 'ok' : 'bad'
             );
         }
 
@@ -637,7 +463,7 @@
             } else {
                 body.innerHTML = recommendedRows.map(row => {
                     const label = row.suggested === 'terminate' ? 'Terminate' : 'Cancel';
-                    const btnClass = row.suggested === 'terminate' ? 'btn-danger' : 'btn-ghost';
+                    const btnClass = row.suggested === 'terminate' ? 'kw-btn-danger' : '';
                     return `
                         <tr>
                             <td class="mono">${esc(row.pid)}</td>
@@ -645,7 +471,7 @@
                             <td class="mono">${esc(formatAge(row.age))}</td>
                             <td>${esc(label)}</td>
                             <td class="recommend-reason">${esc(row.reason)}</td>
-                            <td><button class="btn ${btnClass}" onclick="singleAction('${esc(row.suggested)}', ${Number(row.pid)})">${esc(label)}</button></td>
+                            <td><button class="kw-btn kw-btn-sm ${btnClass}" onclick="singleAction('${esc(row.suggested)}', ${Number(row.pid)})">${esc(label)}</button></td>
                         </tr>
                     `;
                 }).join('');
@@ -710,7 +536,7 @@
                 const age = formatAge(row.state_age_seconds);
                 const actionHtml = isSelf
                     ? '<span class="muted">Protected (self)</span>'
-                    : `<div class="row-actions"><button class="btn btn-ghost" onclick="singleAction(\'cancel\', ${pid})">Cancel</button><button class="btn btn-danger" onclick="singleAction(\'terminate\', ${pid})">Terminate</button></div>`;
+                    : `<div class="row-actions"><button class="kw-btn kw-btn-sm" onclick="singleAction(\'cancel\', ${pid})">Cancel</button><button class="kw-btn kw-btn-sm kw-btn-danger" onclick="singleAction(\'terminate\', ${pid})">Terminate</button></div>`;
                 return `
                     <tr data-pid="${pid}">
                         <td class="checkbox-cell">
@@ -863,11 +689,4 @@
         refreshStatus();
         refreshTimer = setInterval(() => refreshStatus(true), 5000);
     </script>
-</body>
-</html>
-
-
-
-
-
-
+{% endblock %}

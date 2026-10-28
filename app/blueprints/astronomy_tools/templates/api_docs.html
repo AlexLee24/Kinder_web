@@ -1,279 +1,140 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>API Reference - Kinder</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/astronomy_tools.css') }}">
-    {% include '_favicon.html' %}
+{% extends '_base.html' %}
+{#- API Reference (/api, public_api.py): kw-read — endpoint contents on the left, the reference on the right.
+    Endpoint cards open/close with toggleCard(); copy buttons use copyCode(). -#}
+{% block title %}API Reference - Kinder{% endblock %}
+{% block head %}
     <style>
-        :root {
-            --primary-color: #c5a059;
-            --border-color: rgba(197, 160, 89, 0.25);
-            --text-muted: #a0a0a8;
-        }
+        .api-page { --api-mono: var(--kw-font-mono); }
+        .api-page :is(.api-section-label, .api-card, .api-info-grid) { scroll-margin-top: calc(var(--kw-nav-h) + 16px); }
+        .api-page code { font-family: var(--api-mono); font-size: 0.82em; padding: 1px 6px; border-radius: var(--kw-radius-sm); background: rgba(255, 255, 255, 0.08); color: var(--kw-text-white); }
 
-        .api-wrap {
-            width: 92%;
-            max-width: 1600px;
-            margin: 0 auto 80px;
-        }
+        /* Contents */
+        .api-toc { padding: 14px 12px; }
+        .api-toc h2 { margin: 0 0 6px; padding: 0 8px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--kw-text-muted); }
+        .api-toc ul { list-style: none; margin: 0 0 12px; padding: 0; }
+        .api-toc ul:last-child { margin-bottom: 0; }
+        .api-toc a { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: var(--kw-radius-md); font-size: 0.8rem; color: var(--kw-text-secondary); text-decoration: none; }
+        .api-toc a:hover { background: rgba(255, 255, 255, 0.06); color: var(--kw-text-white); }
+        .api-toc a:not(.api-toc-top) > span:last-child { overflow-wrap: anywhere; font-family: var(--api-mono); font-size: 0.76rem; }
+        .api-toc h2 a.api-toc-sec { display: inline; padding: 0; font-size: inherit; color: inherit; }
+        .api-toc h2 a.api-toc-sec:hover { background: none; color: var(--kw-text-white); }
+        .api-toc .api-toc-top { font-weight: 600; color: var(--kw-text-primary); }
+        .api-toc .method-badge { min-width: 38px; text-align: center; font-size: 0.62rem; padding: 2px 5px; }
+
+        .api-main { display: flex; flex-direction: column; min-width: 0; }
 
         /* Section divider */
-        .api-section-label {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin: 50px 0 20px;
-        }
-        .api-section-label h2 {
-            color: #fff;
-            font-size: 1.25rem;
-            font-weight: 500;
-            margin: 0;
-            white-space: nowrap;
-        }
-        .api-section-label::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(197,160,89,0.25);
-        }
+        .api-section-label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 28px 0 14px; }
+        .api-section-label h2 { margin: 0; font-size: 1rem; font-weight: 700; color: var(--kw-text-white); white-space: nowrap; }
+        .api-section-label::after { content: ''; flex: 1; min-width: 40px; height: 1px; background: var(--kw-hairline); }
 
         /* Auth badge chips */
-        .auth-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            border-radius: 20px;
-            padding: 3px 12px;
-            font-size: 0.78rem;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            white-space: nowrap;
-        }
-        .auth-chip-public {
-            background: rgba(72, 199, 142, 0.15);
-            border: 1px solid rgba(72, 199, 142, 0.4);
-            color: #48c78e;
-        }
-        .auth-chip-key {
-            background: rgba(197, 160, 89, 0.15);
-            border: 1px solid rgba(197, 160, 89, 0.4);
-            color: var(--primary-color);
-        }
+        .auth-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 12px; border-radius: var(--kw-radius-pill); font-size: 0.76rem; font-weight: 600; white-space: nowrap; }
+        .auth-chip-public { background: rgba(48, 209, 88, 0.14); color: #4CD964; }
+        .auth-chip-key { background: var(--kw-accent-dim); color: var(--kw-accent); }
+        .api-c-public { color: #4CD964; }
+        .api-c-key { color: var(--kw-accent); }
 
         /* Endpoint cards */
-        .api-card {
-            background: rgba(20, 20, 30, 0.6);
-            backdrop-filter: blur(15px);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 0;
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
+        .api-card { margin-bottom: 12px; overflow: hidden; border-radius: var(--kw-radius-xl); background: var(--kw-card-bg); border: 1px solid var(--kw-border); }
+        .api-card-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: pointer; user-select: none; }
+        .api-card-header:hover { background: rgba(255, 255, 255, 0.03); }
+        .api-card.open .api-card-header { border-bottom: 1px solid var(--kw-hairline); }
 
-        .api-card-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 18px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            cursor: pointer;
-            user-select: none;
-        }
-        .api-card-header:hover { background: rgba(255,255,255,0.03); }
+        /* HTTP method badges (GET green, POST blue — they encode the method) */
+        .method-badge { flex-shrink: 0; padding: 3px 9px; border-radius: var(--kw-radius-sm); font-family: var(--api-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; }
+        .method-get  { background: rgba(48, 209, 88, 0.14); color: #4CD964; }
+        .method-post { background: rgba(10, 132, 255, 0.15); color: #74B9FF; }
 
-        /* HTTP method badges */
-        .method-badge {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.75rem;
-            font-weight: 700;
-            padding: 3px 9px;
-            border-radius: 5px;
-            letter-spacing: 0.05em;
-            flex-shrink: 0;
-        }
-        .method-get  { background: rgba(72,199,142,0.2);  color: #48c78e;  border: 1px solid rgba(72,199,142,0.4); }
-        .method-post { background: rgba(100,160,255,0.2); color: #6fa6ff;  border: 1px solid rgba(100,160,255,0.4); }
-
-        .api-path {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            color: #e0e0e0;
-            flex: 1;
-        }
-        .api-card-desc {
-            color: var(--text-muted);
-            font-size: 0.88rem;
-            margin-left: auto;
-            text-align: right;
-            max-width: 300px;
-        }
-        .api-chevron {
-            color: var(--text-muted);
-            transition: transform 0.2s;
-            flex-shrink: 0;
-        }
+        .api-path { flex: 1; min-width: 0; font-family: var(--api-mono); font-size: 0.88rem; color: var(--kw-text-white); overflow-wrap: anywhere; }
+        .api-card-desc { max-width: 280px; margin-left: auto; text-align: right; font-size: 0.82rem; color: var(--kw-text-muted); }
+        .api-chevron { flex-shrink: 0; color: var(--kw-text-muted); transition: transform 0.2s; }
         .api-card.open .api-chevron { transform: rotate(180deg); }
-
-        .api-card-body {
-            display: none;
-            padding: 20px 24px 24px;
-        }
+        .api-card-body { display: none; padding: 16px 18px 20px; }
         .api-card.open .api-card-body { display: block; }
 
         /* Params table */
-        .params-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 14px 0;
-            font-size: 0.875rem;
-        }
-        .params-table th {
-            text-align: left;
-            color: var(--text-muted);
-            font-weight: 500;
-            padding: 7px 12px;
-            background: rgba(255,255,255,0.04);
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
-        .params-table td {
-            padding: 9px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
-            vertical-align: top;
-        }
+        .api-table-wrap { margin: 14px 0; overflow-x: auto; border-radius: var(--kw-radius-md); border: 1px solid var(--kw-hairline); }
+        .params-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        .params-table th { padding: 8px 12px; text-align: left; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); background: rgba(255, 255, 255, 0.04); border-bottom: 1px solid var(--kw-hairline); }
+        .params-table td { padding: 9px 12px; vertical-align: top; border-bottom: 1px solid var(--kw-hairline); }
         .params-table tr:last-child td { border-bottom: none; }
-        .param-name {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.82rem;
-            color: #b0d4ff;
-        }
-        .param-req {
-            font-size: 0.75rem;
-            padding: 1px 7px;
-            border-radius: 10px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-        .req { background: rgba(255,100,100,0.15); color: #ff8080; border: 1px solid rgba(255,100,100,0.3); }
-        .opt { background: rgba(150,150,150,0.12); color: #aaa; border: 1px solid rgba(150,150,150,0.25); }
-        .param-desc { color: var(--text-muted); font-size: 0.85rem; }
-        .param-default { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #c5a059; }
+        .param-name { font-family: var(--api-mono); font-size: 0.82rem; color: var(--kw-text-white); white-space: nowrap; }
+        .param-req { padding: 1px 8px; border-radius: var(--kw-radius-pill); font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+        .req { background: rgba(255, 69, 58, 0.14); color: #FF6B61; }
+        .opt { background: rgba(255, 255, 255, 0.08); color: var(--kw-text-secondary); }
+        .param-desc { font-size: 0.85rem; line-height: 1.6; color: var(--kw-text-secondary); }
+        p.param-desc { margin: 0; }
+        .param-default { font-family: var(--api-mono); font-size: 0.8rem; color: var(--kw-accent); }
 
         /* Code block */
-        .api-example-label {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin: 18px 0 6px;
-        }
-        .api-code {
-            background: rgba(0,0,0,0.4);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            padding: 14px 18px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.83rem;
-            color: #c9d1d9;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.6;
-            position: relative;
-        }
-        .copy-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(255,255,255,0.08);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 5px;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            padding: 3px 9px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .copy-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+        .api-example-label { margin: 18px 0 6px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kw-text-muted); }
+        .api-code { position: relative; padding: 12px 16px; border-radius: var(--kw-radius-md); background: rgba(0, 0, 0, 0.4); border: 1px solid var(--kw-hairline); font-family: var(--api-mono); font-size: 0.8rem; line-height: 1.6; color: #D7DBE0; white-space: pre-wrap; word-break: break-all; }
+        .copy-btn { position: absolute; top: 8px; right: 8px; min-height: 0; padding: 3px 9px; border-radius: var(--kw-radius-sm); border: 1px solid var(--kw-border); background: rgba(255, 255, 255, 0.08); font-size: 0.72rem; color: var(--kw-text-secondary); cursor: pointer; }
+        .copy-btn:hover { background: rgba(255, 255, 255, 0.14); color: var(--kw-text-white); }
 
         /* Notes */
-        .api-note {
-            background: rgba(197,160,89,0.08);
-            border-left: 3px solid var(--primary-color);
-            border-radius: 0 6px 6px 0;
-            padding: 10px 14px;
-            font-size: 0.84rem;
-            color: var(--text-muted);
-            margin: 14px 0;
-        }
-        .api-note strong { color: var(--primary-color); }
+        .api-note { margin: 14px 0; padding: 10px 14px; border-radius: var(--kw-radius-md); background: rgba(255, 255, 255, 0.04); border-left: 3px solid var(--kw-accent); font-size: 0.84rem; line-height: 1.6; color: var(--kw-text-secondary); }
+        .api-note strong { color: var(--kw-text-white); }
+        .api-note a { color: var(--kw-link); }
 
-        /* Info box at top */
-        .api-info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin-bottom: 10px;
-        }
-        @media(max-width:700px){ .api-info-grid { grid-template-columns: 1fr; } }
-        .api-info-box {
-            background: rgba(20,20,30,0.6);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
-            padding: 20px 22px;
-        }
-        .api-info-box h4 {
-            color: var(--primary-color);
-            font-size: 0.95rem;
-            font-weight: 500;
-            margin: 0 0 12px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-        .api-info-box p, .api-info-box li {
-            color: var(--text-muted);
-            font-size: 0.86rem;
-            margin: 0;
-            line-height: 1.7;
-        }
-        .api-info-box ul { padding-left: 18px; margin: 0; }
-        .api-info-box code {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.82rem;
-            background: rgba(0,0,0,0.3);
-            padding: 1px 6px;
-            border-radius: 4px;
-            color: #b0d4ff;
-        }
+        /* Overview boxes */
+        .api-info-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+        .api-info-box { padding: 18px 20px; border-radius: var(--kw-radius-xl); background: var(--kw-card-bg); border: 1px solid var(--kw-border); }
+        .api-info-box h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 1rem; font-weight: 700; color: var(--kw-text-white); }
+        .api-info-box h4 svg { color: var(--kw-accent); }
+        .api-info-box p, .api-info-box li { margin: 0; font-size: 0.86rem; line-height: 1.7; color: var(--kw-text-secondary); }
+        .api-info-box ul { margin: 0; padding-left: 18px; }
 
         /* Body example grid */
-        .body-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 14px;
+        .body-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+
+        @media (max-width: 1180px) { .body-grid { grid-template-columns: minmax(0, 1fr); } }
+        @media (max-width: 860px) {
+            .api-toc { display: none; }
+            .api-info-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+            .api-card-header { flex-wrap: wrap; gap: 6px 10px; padding: 12px 14px; }
+            .api-card-desc { order: 3; flex-basis: 100%; max-width: none; margin-left: 0; text-align: left; }
+            .api-card-body { padding: 14px; }
         }
-        @media(max-width:700px){ .body-grid { grid-template-columns: 1fr; } }
     </style>
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% endblock %}
 
-    <div class="page-header">
-        <h1>API Reference</h1>
-        <p>Public endpoints &amp; authenticated API</p>
-    </div>
+{% block content %}
+<div class="kw-page api-page">
+    <header class="kw-page-head">
+        <div>
+            <span class="kw-eyebrow">Developers</span>
+            <h1>API Reference</h1>
+            <p>Public endpoints &amp; authenticated API</p>
+        </div>
+    </header>
 
-    <div class="api-wrap">
+    <div class="kw-read api-read">
+        <nav class="kw-read-toc kw-panel api-toc" aria-label="Endpoints">
+            <ul><li><a class="api-toc-top" href="#api-overview"><span>Overview</span></a></li></ul>
+            <h2><a href="#public-api" class="api-toc-sec">Public API</a></h2>
+            <ul>
+                <li><a href="#get-api-distance"><span class="method-badge method-get">GET</span><span>/api/distance</span></a></li>
+                <li><a href="#get-api-coords"><span class="method-badge method-get">GET</span><span>/api/coords</span></a></li>
+                <li><a href="#get-api-date"><span class="method-badge method-get">GET</span><span>/api/date</span></a></li>
+                <li><a href="#get-api-finding-chart-image"><span class="method-badge method-get">GET</span><span>/api/finding_chart/image</span></a></li>
+                <li><a href="#get-api-visibility-image"><span class="method-badge method-get">GET</span><span>/api/visibility/image</span></a></li>
+                <li><a href="#get-api-objects-name"><span class="method-badge method-get">GET</span><span>/api/objects/{name}</span></a></li>
+            </ul>
+            <h2><a href="#authenticated-api" class="api-toc-sec">Authenticated API</a></h2>
+            <ul>
+                <li><a href="#get-api-test"><span class="method-badge method-get">GET</span><span>/api/test</span></a></li>
+                <li><a href="#get-api-v1-observation-targets"><span class="method-badge method-get">GET</span><span>/api/v1/observation_targets</span></a></li>
+                <li><a href="#post-api-v1-observation-targets"><span class="method-badge method-post">POST</span><span>/api/v1/observation_targets</span></a></li>
+                <li><a href="#get-api-v1-observation-logs"><span class="method-badge method-get">GET</span><span>/api/v1/observation_logs</span></a></li>
+                <li><a href="#post-api-v1-observation-logs"><span class="method-badge method-post">POST</span><span>/api/v1/observation_logs</span></a></li>
+            </ul>
+        </nav>
 
+        <div class="api-main">
         <!-- ── Overview boxes ──────────────────────────────────────────────── -->
-        <div class="api-info-grid">
+        <div class="api-info-grid" id="api-overview">
             <div class="api-info-box">
                 <h4>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -289,8 +150,8 @@
                     Authentication
                 </h4>
                 <ul>
-                    <li><strong style="color:#48c78e">Public API</strong> — No key needed. Rate limited to <strong>1 req/s</strong> per IP per endpoint.</li>
-                    <li><strong style="color:#c5a059">Authenticated API</strong> — Pass API key via <code>X-API-Key</code> header or <code>?api_key=</code> query param.</li>
+                    <li><strong class="api-c-public">Public API</strong> — No key needed. Rate limited to <strong>1 req/s</strong> per IP per endpoint.</li>
+                    <li><strong class="api-c-key">Authenticated API</strong> — Pass API key via <code>X-API-Key</code> header or <code>?api_key=</code> query param.</li>
                 </ul>
             </div>
         </div>
@@ -298,13 +159,13 @@
         <!-- ══════════════════════════════════════════════════════════════════ -->
         <!-- PUBLIC API                                                         -->
         <!-- ══════════════════════════════════════════════════════════════════ -->
-        <div class="api-section-label">
+        <div class="api-section-label" id="public-api">
             <h2>Public API</h2>
             <span class="auth-chip auth-chip-public">No key required &nbsp;·&nbsp; 1 req/s per IP</span>
         </div>
 
         <!-- /api/distance -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-distance">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/distance</span>
@@ -314,7 +175,7 @@
             <div class="api-card-body">
                 <p class="param-desc">Calculate luminosity distance from redshift using a flat ΛCDM cosmology. Optionally compute absolute magnitude when apparent magnitude is provided. Cosmological parameters default to Planck 2018.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">z</td><td><span class="param-req req">required</span></td><td class="param-desc">Redshift</td><td></td></tr>
@@ -325,9 +186,9 @@
                         <tr><td class="param-name">Om0</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Matter density Ω<sub>m</sub></td><td class="param-default">0.309</td></tr>
                         <tr><td class="param-name">Tcmb0</td><td><span class="param-req opt">optional</span></td><td class="param-desc">CMB temperature (K)</td><td class="param-default">2.725</td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
-                <div class="api-note"><strong>Cosmology reference:</strong> Planck Collaboration 2020, A&amp;A, 641, A6 — <a href="https://ui.adsabs.harvard.edu/#abs/2020A%26A...641A...6P" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">ADS</a></div>
+                <div class="api-note"><strong>Cosmology reference:</strong> Planck Collaboration 2020, A&amp;A, 641, A6 — <a href="https://ui.adsabs.harvard.edu/#abs/2020A%26A...641A...6P" target="_blank" rel="noopener noreferrer">ADS</a></div>
 
                 <div class="api-example-label">Example request</div>
                 <div class="api-code" style="position:relative">/api/distance?z=0.039&amp;m=15.3&amp;A=0.1<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -358,7 +219,7 @@
         </div>
 
         <!-- /api/coords -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-coords">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/coords</span>
@@ -368,7 +229,7 @@
             <div class="api-card-body">
                 <p class="param-desc">Convert between HMS/DMS sexagesimal and decimal degree formats. RA and DEC can be converted in the same request.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">ra_hms</td><td><span class="param-req opt">optional</span></td><td class="param-desc">RA in <code>hh:mm:ss.s</code> → returns decimal degrees</td></tr>
@@ -376,7 +237,7 @@
                         <tr><td class="param-name">dec_dms</td><td><span class="param-req opt">optional</span></td><td class="param-desc">DEC in <code>±dd:mm:ss</code> → returns decimal degrees</td></tr>
                         <tr><td class="param-name">dec_deg</td><td><span class="param-req opt">optional</span></td><td class="param-desc">DEC in decimal ° → returns DMS</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <div class="api-note">Provide <code>ra_hms</code> <em>or</em> <code>ra_deg</code>, and/or <code>dec_dms</code> <em>or</em> <code>dec_deg</code>. At least one parameter is required.</div>
 
                 <div class="api-example-label">Example request</div>
@@ -396,7 +257,7 @@
         </div>
 
         <!-- /api/date -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-date">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/date</span>
@@ -406,14 +267,14 @@
             <div class="api-card-body">
                 <p class="param-desc">Convert between Modified Julian Date (MJD), Julian Date (JD), and calendar date (UTC). Provide exactly one of the three parameters.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">mjd</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Modified Julian Date (days since 1858-11-17)</td></tr>
                         <tr><td class="param-name">jd</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Julian Date</td></tr>
                         <tr><td class="param-name">date</td><td><span class="param-req opt">optional</span></td><td class="param-desc">ISO 8601 calendar date, e.g. <code>2024-06-01T12:00:00</code></td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="api-example-label">Example request</div>
                 <div class="api-code" style="position:relative">/api/date?mjd=59000.5<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -432,7 +293,7 @@
 
 
         <!-- /api/finding_chart/image -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-finding-chart-image">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/finding_chart/image</span>
@@ -442,7 +303,7 @@
             <div class="api-card-body">
                 <p class="param-desc">Returns a finding chart PNG directly (<code>Content-Type: image/png</code>). Pulls imagery from DSS / DESI LS / Pan-STARRS and overlays Tycho-2 + UCAC4 star annotations. <strong>Rate limit: 1 request per 30 seconds per IP</strong> (network-heavy).</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">obj_name</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Look up RA/Dec from database — accepts full name (<code>AT2025wny</code>) or year+letters (<code>2025wny</code>)</td><td></td></tr>
@@ -452,13 +313,13 @@
                         <tr><td class="param-name">survey</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>DSS2 Red</code> · <code>DSS2 Blue</code> · <code>DSS2 IR</code> · <code>DESI-color</code> · <code>DESI-r</code> · <code>PS1-color</code> · <code>PS1-r</code> …</td><td class="param-default">DESI-color</td></tr>
                         <tr><td class="param-name">fov</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Field of view in arcmin</td><td class="param-default">10</td></tr>
                         <tr><td class="param-name">invert</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = white background (single-band surveys only)</td><td class="param-default">0</td></tr>
-                        <tr><td colspan="4" style="padding: 8px 12px; background: rgba(197,160,89,0.08); font-weight: 600; color: var(--primary-color);">Star Annotation Controls</td></tr>
+                        <tr><td colspan="4" style="padding: 8px 12px; background: var(--kw-accent-dim); font-weight: 600; color: var(--kw-accent);">Star Annotation Controls</td></tr>
                         <tr><td class="param-name">mag_limit</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Faintest star to annotate (magnitude)</td><td class="param-default">15</td></tr>
                         <tr><td class="param-name">show_mag</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show magnitude labels, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
                         <tr><td class="param-name">show_names</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>1</code> = show bright star names, <code>0</code> = hide them</td><td class="param-default">1</td></tr>
                     </tbody>
-                </table>
-                <div class="api-note">* Provide <code>obj_name</code> <strong>or</strong> both <code>ra</code> + <code>dec</code>. &nbsp;|&nbsp; See all available surveys: <a href="/api/finding_chart/surveys" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)"><code>GET /api/finding_chart/surveys</code></a></div>
+                </table></div>
+                <div class="api-note">* Provide <code>obj_name</code> <strong>or</strong> both <code>ra</code> + <code>dec</code>. &nbsp;|&nbsp; See all available surveys: <a href="/api/finding_chart/surveys" target="_blank" rel="noopener noreferrer"><code>GET /api/finding_chart/surveys</code></a></div>
 
                 <div class="api-example-label">URL (basic with all star annotations)</div>
                 <div class="api-code" style="position:relative">/api/finding_chart/image?ra=12:34:56.78&dec=-23:45:12.34&survey=DESI-color&fov=10&name=SN2025abc<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
@@ -493,7 +354,7 @@ open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCo
         </div>
 
         <!-- /api/visibility/image -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-visibility-image">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/visibility/image</span>
@@ -503,7 +364,7 @@ open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCo
             <div class="api-card-body">
                 <p class="param-desc">Returns an altitude-vs-time observing track plot as JPEG (<code>Content-Type: image/jpeg</code>). Defaults to <strong>Lulin Observatory</strong> (NCU, Taiwan, UTC+8). <strong>Pass coordinates for any observing location:</strong> <code>lon</code> (longitude), <code>lat</code> (latitude), <code>alt</code> (altitude), <code>tz</code> (timezone). <strong>Rate limit: 1 req / 15 s per IP</strong>.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th><th>Default (Lulin)</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">date</td><td><span class="param-req req">required</span></td><td class="param-desc">Observation date <code>YYYY-MM-DD</code></td><td></td></tr>
@@ -517,7 +378,7 @@ open("chart.png", "wb").write(r.content)<button class="copy-btn" onclick="copyCo
                         <tr><td class="param-name">alt</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Altitude in metres above sea level</td><td class="param-default">2800</td></tr>
                         <tr><td class="param-name">tz</td><td><span class="param-req opt">optional</span></td><td class="param-desc">UTC offset (integer, −12 to +14). Negative for West, positive for East.</td><td class="param-default">8</td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="api-note">* Provide <code>obj_name</code> <strong>or</strong> both <code>ra</code> + <code>dec</code>.</div>
 
@@ -562,7 +423,7 @@ open("visibility.jpg", "wb").write(r.content)<button class="copy-btn" onclick="c
 
 
         <!-- /api/objects/<name> -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-objects-name">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/objects/<i style="opacity:.7">{name}</i></span>
@@ -572,13 +433,13 @@ open("visibility.jpg", "wb").write(r.content)<button class="copy-btn" onclick="c
             <div class="api-card-body">
                 <p class="param-desc">Returns object metadata (coordinates, redshift, type, discovery info, etc.) for anyone. Pass a valid <code>api_key</code> to also receive photometry and spectroscopy, filtered to only the sources your account has permission to access.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">{name}</td><td><span class="param-req req">path</span></td><td class="param-desc">Object name — full (<code>AT2025wny</code>, <code>SN2024abc</code>) or year+letters (<code>2025wny</code>)</td></tr>
                         <tr><td class="param-name">api_key</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Your API key. When valid, adds <code>photometry</code> and <code>spectra</code> arrays to the response</td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="api-note">
                     <strong>Without key</strong> — returns <code>metadata</code> only (public fields).<br>
@@ -661,7 +522,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         <!-- ══════════════════════════════════════════════════════════════════ -->
         <!-- AUTHENTICATED API                                                  -->
         <!-- ══════════════════════════════════════════════════════════════════ -->
-        <div class="api-section-label">
+        <div class="api-section-label" id="authenticated-api">
             <h2>Authenticated API</h2>
             <span class="auth-chip auth-chip-key">API Key required</span>
         </div>
@@ -679,7 +540,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
         <!-- /api/test -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-test">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/test</span>
@@ -708,7 +569,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
         <!-- /api/v1/observation_targets GET -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-v1-observation-targets">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/v1/observation_targets</span>
@@ -718,13 +579,13 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
             <div class="api-card-body">
                 <p class="param-desc">Retrieve the current active observation target list for SLT, LOT, or both telescopes.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">telescope</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Filter by telescope: <code>SLT</code> or <code>LOT</code>. Omit to get both.</td></tr>
                         <tr><td class="param-name">api_key</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Alternative to <code>X-API-Key</code> header</td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="api-example-label">Example request</div>
                 <div class="api-code" style="position:relative">curl -H "X-API-Key: YOUR_KEY" \
@@ -747,7 +608,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
         <!-- /api/v1/observation_targets POST -->
-        <div class="api-card">
+        <div class="api-card" id="post-api-v1-observation-targets">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-post">POST</span>
                 <span class="api-path">/api/v1/observation_targets</span>
@@ -757,7 +618,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
             <div class="api-card-body">
                 <p class="param-desc">Add a new target to the observation queue. Requires <strong>GREAT Lab member</strong> or <strong>admin</strong> role.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Field (JSON body)</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">telescope</td><td><span class="param-req req">required</span></td><td class="param-desc"><code>SLT</code> or <code>LOT</code></td></tr>
@@ -772,7 +633,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
                         <tr><td class="param-name">program</td><td><span class="param-req opt">optional</span></td><td class="param-desc">LOT program code, e.g. <code>R01</code></td></tr>
                         <tr><td class="param-name">note_gl</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Internal GREAT Lab note</td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="body-grid">
                     <div>
@@ -812,7 +673,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
         <!-- /api/v1/observation_logs GET -->
-        <div class="api-card">
+        <div class="api-card" id="get-api-v1-observation-logs">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-get">GET</span>
                 <span class="api-path">/api/v1/observation_logs</span>
@@ -822,14 +683,14 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
             <div class="api-card-body">
                 <p class="param-desc">Retrieve observation logs. Query by year+month or a specific date.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">year</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Year, e.g. <code>2026</code></td></tr>
                         <tr><td class="param-name">month</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Month, 1–12</td></tr>
                         <tr><td class="param-name">date</td><td><span class="param-req opt">optional*</span></td><td class="param-desc">Specific date <code>YYYY-MM-DD</code> (overrides year/month)</td></tr>
                     </tbody>
-                </table>
+                </table></div>
                 <div class="api-note">* Provide either <code>year</code>+<code>month</code>, or a specific <code>date</code>.</div>
 
                 <div class="api-example-label">Example request</div>
@@ -863,7 +724,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
         <!-- /api/v1/observation_logs POST -->
-        <div class="api-card">
+        <div class="api-card" id="post-api-v1-observation-logs">
             <div class="api-card-header" onclick="toggleCard(this)">
                 <span class="method-badge method-post">POST</span>
                 <span class="api-path">/api/v1/observation_logs</span>
@@ -873,7 +734,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
             <div class="api-card-body">
                 <p class="param-desc">Upsert (insert or update) an observation log entry. Set <code>"action":"delete"</code> to delete instead.</p>
 
-                <table class="params-table">
+                <div class="api-table-wrap"><table class="params-table">
                     <thead><tr><th>Field (JSON body)</th><th></th><th>Description</th></tr></thead>
                     <tbody>
                         <tr><td class="param-name">target_name</td><td><span class="param-req req">required</span></td><td class="param-desc">Object name, e.g. <code>SN2025abc</code></td></tr>
@@ -891,7 +752,7 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
                         <tr><td class="param-name">user_name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Observer name (auto-filled from API key owner)</td></tr>
                         <tr><td class="param-name">priority</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>Normal</code> / <code>High</code> / <code>Urgent</code> / <code>Filler</code></td></tr>
                     </tbody>
-                </table>
+                </table></div>
 
                 <div class="body-grid">
                     <div>
@@ -926,9 +787,12 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
                 </div>
             </div>
         </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-    </div><!-- /api-wrap -->
-
+{% block scripts %}
     <script>
         function toggleCard(header) {
             header.parentElement.classList.toggle('open');
@@ -942,5 +806,4 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
             });
         }
     </script>
-</body>
-</html>
+{% endblock %}

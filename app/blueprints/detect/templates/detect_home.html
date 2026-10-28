@@ -1,16 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    {% include '_pwa_head.html' %}
-    <title>DETECT - Kinder</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">
-    {% include '_favicon.html' %}
-</head>
-<body>
-    {% include '_navbar.html' %}
+{% extends '_base.html' %}
+{#- DETECT home (/detect without a date): latest run, results, pipeline, legend. On the DETECT navigation group (Results | Archives). -#}
+{% block title %}DETECT - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">{% endblock %}
 
+{% block content %}
     {% macro host_badge(hs) -%}
         {% if hs == 'confirmed' %}<span class="hs-badge hs-confirmed">● Confirmed host</span>
         {% elif hs == 'review' %}<span class="hs-badge hs-review">? Needs judgement</span>
@@ -24,20 +17,18 @@
         <span class="tag-chip {{ cls }}">{{ tag }}</span>
     {%- endmacro %}
 
-    <div class="detect-home-container">
-        <h1 class="main-title">DETECT</h1>
-        <p class="sub-title">Daily Transient Event Cross-matching Tool</p>
-        <p class="lead">
-            Every TNS report is screened against DESI's spectroscopic galaxies: <em>is it in a galaxy with a known
+    <div class="kw-page detect-home-container">
+        <p class="kw-lead lead">
+            <strong>Daily Transient Event Cross-matching Tool.</strong> Every TNS report is screened against DESI's spectroscopic galaxies: <em>is it in a galaxy with a known
             redshift, how luminous is it, and is it worth a large-telescope spectrum?</em>
             The pipeline decides what it can and hands the rest to a person on the
             <a href="{{ url_for('detect.detect_results', detect_results=latest_date) if latest_date else '#' }}">review page</a>.
         </p>
 
         <!-- ── Latest run + results ─────────────────────────────── -->
-        <div class="content-wrapper">
-            <div class="section-card overview-section">
-                <h2>Latest run</h2>
+        <div class="kw-grid-2 content-wrapper">
+            <section class="kw-panel section-card overview-section">
+                <div class="kw-panel-head"><h2>Latest run</h2></div>
                 {% if overview and overview.last_run %}
                 {% set c = overview.counts %}
                 <div class="overview-when">{{ overview.last_run }}<span class="overview-sub">
@@ -54,7 +45,7 @@
                 </div>
                 {% if overview.top %}
                 <div class="overview-top-title">Highest priority right now</div>
-                <table class="overview-top">
+                <div class="overview-top-wrap"><table class="overview-top">
                     <thead><tr><th>Object</th><th>Score</th><th>Host</th><th>M</th><th>z</th><th>Tags</th><th class="ov-act"></th></tr></thead>
                     <tbody>
                     {% for t in overview.top %}
@@ -65,19 +56,19 @@
                         <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>
                         <td class="num">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}{% else %}—{% endif %}</td>
                         <td class="tags">{% for tag in t.tags if not tag.startswith('Host-') %}{{ tag_chip(tag) }}{% endfor %}</td>
-                        <td class="ov-act">{% if latest_date %}<a class="ov-judge" href="{{ url_for('detect.detect_results', detect_results=latest_date) }}#t={{ t.name }}" title="Open this object on the review page">Judge →</a>{% endif %}</td>
+                        <td class="ov-act">{% if latest_date %}<a class="kw-btn kw-btn-sm kw-btn-tinted ov-judge" href="{{ url_for('detect.detect_results', detect_results=latest_date) }}#t={{ t.name }}" title="Open this object on the review page">Judge →</a>{% endif %}</td>
                     </tr>
                     {% endfor %}
                     </tbody>
-                </table>
+                </table></div>
                 {% endif %}
                 {% else %}
                 <p class="overview-empty">No DETECT run recorded yet.</p>
                 {% endif %}
-            </div>
+            </section>
 
-            <div class="section-card results-section">
-                <h2>Results</h2>
+            <section class="kw-panel section-card results-section">
+                <div class="kw-panel-head"><h2>Results</h2></div>
                 <div class="results-links">
                 {% if daily_counts and daily_counts|length > 0 %}
                 {% set newest = daily_counts[0] %}
@@ -114,7 +105,7 @@
 
                 {% if daily_counts|length > 9 %}
                 <div class="archive-btn-container">
-                    <a href="{{ url_for('detect.detect_archives') }}" class="all-archives-btn">All Archives</a>
+                    <a href="{{ url_for('detect.detect_archives') }}" class="kw-btn all-archives-btn">All Archives</a>
                 </div>
                 {% endif %}
 
@@ -122,12 +113,12 @@
                 <span class="result-link disabled">No Results Available</span>
                 {% endif %}
                 </div>
-            </div>
+            </section>
         </div>
 
         <!-- ── Pipeline ─────────────────────────────────────────── -->
-        <div class="section-card pipeline-section">
-            <h2>Pipeline</h2>
+        <section class="kw-panel section-card pipeline-section">
+            <div class="kw-panel-head"><h2>Pipeline</h2></div>
             <p class="pipeline-intro">Runs every hour on the hourly TNS file and once a day on the daily file plus every Follow-up object — as the DETECT daemon, and embedded in this site right after its own TNS import (same code, <code>app/modules/DETECT</code>). One run, seven steps:</p>
 
             <ol class="flow">
@@ -227,20 +218,20 @@
                 </li>
             </ol>
             {% include '_score_rules.html' %}
-        </div>
+        </section>
 
         <!-- ── How to read it ───────────────────────────────────── -->
-        <div class="content-wrapper legend-wrapper">
-            <div class="section-card legend-card">
-                <h2>Host status</h2>
+        <div class="kw-grid-3 content-wrapper legend-wrapper">
+            <section class="kw-panel section-card legend-card">
+                <div class="kw-panel-head"><h2>Host status</h2></div>
                 <dl class="legend">
                     <dt>{{ host_badge('confirmed') }}</dt><dd>One galaxy contains the transient and nothing argues against it. Accept it with <kbd>F</kbd> or <kbd>D</kbd>.</dd>
                     <dt>{{ host_badge('review') }}</dt><dd>Ambiguous (a second galaxy nearly as close), conflicting z on the host, or the nearest galaxy is just outside the limit. Look, then set the host or say no.</dd>
                     <dt>{{ host_badge('none') }}</dt><dd>No spectroscopic galaxy contains it. Usually nothing to do.</dd>
                 </dl>
-            </div>
-            <div class="section-card legend-card">
-                <h2>Tags</h2>
+            </section>
+            <section class="kw-panel section-card legend-card">
+                <div class="kw-panel-head"><h2>Tags</h2></div>
                 <dl class="legend legend-tags">
                     <dt>{{ tag_chip('Luminous') }} {{ tag_chip('SLSN?') }}</dt><dd>M ≤ −20 · M ≤ −21</dd>
                     <dt>{{ tag_chip('Too-bright') }}</dt><dd>z ≥ 0.15 and ≥ 1 mag brighter than an SN Ia peak</dd>
@@ -251,9 +242,9 @@
                     <dt>{{ tag_chip('Galactic') }} {{ tag_chip('AGN') }} {{ tag_chip('Classified') }} {{ tag_chip('Star?') }}</dt><dd>known from TNS / DESI — low priority, never hidden</dd>
                     <dt>{{ tag_chip('Ambiguous') }} {{ tag_chip('z-conflict') }} {{ tag_chip('z-warn') }} {{ tag_chip('Host-z?') }}</dt><dd>why the host needs judgement</dd>
                 </dl>
-            </div>
-            <div class="section-card legend-card">
-                <h2>Decisions</h2>
+            </section>
+            <section class="kw-panel section-card legend-card">
+                <div class="kw-panel-head"><h2>Decisions</h2></div>
                 <dl class="legend legend-keys">
                     <dt><kbd>F</kbd></dt><dd><strong>Follow-up</strong> — accepts the host; DETECT re-screens it daily.</dd>
                     <dt><kbd>D</kbd></dt><dd><strong>Done</strong> — host accepted, nothing more to do.</dd>
@@ -262,8 +253,7 @@
                     <dt><em>Set host</em></dt><dd>on any candidate row to change the galaxy; it stays yours on re-runs.</dd>
                     <dt><kbd>←</kbd><kbd>→</kbd> <kbd>U</kbd></dt><dd>move · next pending</dd>
                 </dl>
-            </div>
+            </section>
         </div>
     </div>
-</body>
-</html>
+{% endblock %}

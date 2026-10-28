@@ -1,53 +1,9 @@
+/* Shared by the Marshal and the DETECT review page (both load marshal.css). The page background,
+   font, selection colour and scrollbars come from _theme.css / shell.css. */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-}
-
-body {
-    font-family: var(--font-family);
-    background-image: url('../../photo/background.png');
-    background-attachment: fixed;
-    background-size: cover;
-    background-repeat: no-repeat;
-    margin: 0;
-    padding: 0;
-    font-weight: var(--font-weight-light);
-    min-height: 100vh;
-    line-height: 1.6;
-}
-
-.marshal-container {
-    max-width: 95%;
-    margin: 50px auto 40px;
-    padding: var(--spacing-xl);
-}
-
-/* Selection and Scrollbar */
-::selection {
-    background: rgba(70, 255, 175, 0.3);
-}
-
-::-moz-selection {
-    background: rgba(70, 255, 175, 0.3);
-}
-
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(70, 255, 175, 0.6);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(70, 255, 175, 0.8);
 }
 
 /* Animations */
@@ -85,11 +41,3 @@ body {
     }
 }
 
-@keyframes filterGlow {
-    0%, 100% {
-        box-shadow: 0 0 5px rgba(70, 255, 175, 0.3);
-    }
-    50% {
-        box-shadow: 0 0 20px rgba(70, 255, 175, 0.6);
-    }
-}
