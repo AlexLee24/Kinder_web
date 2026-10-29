@@ -21,8 +21,14 @@ these jobs in UTC too):
     db_recycle                     every 30m  close idle pooled connections
     detect_page_prewarm            every 30m  rebuild DETECT page cache
 
+    bot_astronote                  every 5m   new TNS AstroNotes -> Slack
+    bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
+    bot_reduction                  REDUCTION_HOUR_UTC (unset: by hand only)  reduction pipeline
+
 Daemon threads: ``auto_tns_download`` (hourly/daily TNS sync, real UTC clock),
-``tns_gap_filler`` (hourly kinder_id gap fill), ``nist-spec-lines`` (one-shot).
+``tns_gap_filler`` (hourly kinder_id gap fill), ``nist-spec-lines`` (one-shot),
+``bot-gcn`` (GCN circulars + Einstein Probe alerts). The lab bots (app/services/bots) record their own state
+for Admin › Bots instead of using ``_tracked``; BOTS_DISABLED switches single bots off.
 Every job is wrapped by ``_tracked`` so its last run is visible in the admin panel via
 ``app.services.jobs.job_status``.
 """
@@ -73,23 +79,71 @@ def acquire_background_lock() -> bool:
         return False
 
 
+def _add_bot_jobs(scheduler):
+    """Lab bots on a schedule (app/services/bots); each records its own state for Admin › Bots."""
+    from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+
+    from app.services import bots
+    from app.services.bots import astronote, obs_log, reduction
+    from app.services.bots import status as bot_status
+
+    off = bots.disabled()
+    if 'astronote' not in off:
+        scheduler.add_job(astronote.run, 'interval', minutes=5, id='bot_astronote')
+    if 'obs_log' not in off:
+        scheduler.add_job(obs_log.run, 'cron', hour=4, minute=0, id='bot_obs_log')     # 12:00 UTC+8
+    if 'reduction' not in off and reduction.hour_utc() is not None:
+        scheduler.add_job(reduction.run, 'cron', hour=reduction.hour_utc(), minute=0, id='bot_reduction')
+
+    def note_next_run(ev):
+        if ev.job_id.startswith('bot_'):
+            job = scheduler.get_job(ev.job_id)
+            if job and job.next_run_time:
+                bot_status.update(ev.job_id[4:], next_run=job.next_run_time.isoformat(timespec='seconds'))
+    scheduler.add_listener(note_next_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+
+
+def _start_bots(scheduler):
+    """After the scheduler starts: the GCN listener, a first AstroNote poll and the observation-log backfill
+    (as lab_bot did on start), and each scheduled bot's next run time for the page."""
+    from app.services import bots
+    from app.services.bots import gcn
+    from app.services.bots import status as bot_status
+
+    off = bots.disabled()
+    for bot_id in off:
+        bot_status.update(bot_id, state='disabled')
+    for job in scheduler.get_jobs():
+        if job.id.startswith('bot_') and job.next_run_time:
+            bot_status.update(job.id[4:], next_run=job.next_run_time.isoformat(timespec='seconds'))
+    if 'gcn' not in off:
+        gcn.start()
+    for bot_id in ('astronote', 'obs_log'):
+        job = scheduler.get_job(f'bot_{bot_id}')
+        if job:
+            threading.Thread(target=job.func, name=f'startup-bot-{bot_id}', daemon=True).start()
+
+
 def start_background_jobs(app) -> bool:
     """Register and start all background work. Returns True if this process owns them."""
-    from app.services.jobs.backup import run_daily_backup
-    from app.services.photometry.phot_scheduler import fetch_inbox_photometry, update_target_mags, retire_stale_followups
-    # from app.services.notifications.gcn_alert import start_gcn_listener  # reserved for future use
-    from app.services.tns.auto_tns_download import start_auto_tns_downloader
-    from app.services.detect import detect_pipeline as _detect_pipeline
-    from app.services.tns.tns_gap_filler import start_gap_filler
-    from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
-    from app.db import recycle_idle_connections as _db_recycle
-    from app.db.transient import sync_host_redshifts
     # The DETECT page cache lives with its blueprint; warming it is the one place a
     # background job reaches into app.blueprints.
     from app.blueprints.detect.cache import prewarm_detect_page_cache
+    from app.db import recycle_idle_connections as _db_recycle
+    from app.db.transient import sync_host_redshifts
     from app.services.astro.spectral_lines import warm_cache_async as _warm_spec_lines
+    from app.services.detect import detect_pipeline as _detect_pipeline
     from app.services.jobs import scheduler_state as _sched_state
+    from app.services.jobs.backup import run_daily_backup
+    from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
+    from app.services.photometry.phot_scheduler import (
+        fetch_inbox_photometry,
+        retire_stale_followups,
+        update_target_mags,
+    )
     from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
+    from app.services.tns.auto_tns_download import start_auto_tns_downloader
+    from app.services.tns.tns_gap_filler import start_gap_filler
 
     if not acquire_background_lock():
         print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
@@ -113,15 +167,16 @@ def start_background_jobs(app) -> bool:
             # DETECT re-screens every Follow-up object once a day (M from the latest light
             # curve, host against the latest catalogue); hourly runs hang off the TNS import.
             _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=4, minute=0, id='daily_detect_followups')  # after the 03:30 UTC photometry fetch
+        _add_bot_jobs(_scheduler)
     _scheduler.start()
     if not config.DEBUG:
         # Start-up backup runs in the background so the server accepts requests immediately
         # (pg_dump can take minutes).
         threading.Thread(target=_tracked('daily_backup', run_daily_backup), name='startup-backup', daemon=True).start()
         _tracked('detect_page_prewarm', prewarm_detect_page_cache)(prewarm_days=1, refresh_latest=True, force_latest=True, app_obj=app)
-        # start_gcn_listener(log_dir=log_dir)
         start_auto_tns_downloader(log_dir=log_dir)
         start_gap_filler(log_dir=log_dir)
+        _start_bots(_scheduler)
     else:
         print("DEBUG mode: all background scheduled jobs are disabled.")
     # Warm NIST spectral-line cache regardless of DEBUG mode

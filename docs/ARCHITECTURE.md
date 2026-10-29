@@ -43,7 +43,8 @@ kinder_web_blueprint/
     │   ├── planning/          obsplan（可見度圖）、observation_script / trigger_script（ACP 腳本）、trigger_send（Slack）
     │   ├── astro/             astronomy_calculator、coordinate_converter、date_converter、ext_M_calculator、filter_colors、spectral_lines
     │   ├── jobs/              scheduler（APScheduler + 常駐執行緒）、backup、db_monitor、job_status、scheduler_state
-    │   └── notifications/     email_utils、gcn_alert（停用）
+    │   ├── bots/              lab bots：gcn（GCN + EP）、astronote、obs_log、reduction、status（狀態 + log）
+    │   └── notifications/     email_utils
     ├── blueprints/        網站區塊：每個資料夾 = 路由 + templates/ + static/
     │   ├── __init__.py        register_blueprints(app)：註冊順序在這裡（有意義，見 §4）
     │   ├── basic/             首頁、登入頁、個人頁、相簿；_navbar.html / _favicon.html 全站共用

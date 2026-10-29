@@ -52,7 +52,7 @@
 | --- | --- | --- | --- |
 | `auto_tns_download` | `auto_tns_download.start_auto_tns_downloader()` | 每 10 s 輪詢 `datetime.now(timezone.utc)`；分鐘 15/45 做 hourly，01/04/12 UTC 整點做 daily | **這條執行緒真正以 UTC 判斷**（與 APScheduler 不同） |
 | `tns_gap_filler` | `tns_gap_filler.start_gap_filler()` | 啟動後等 10 分鐘，之後每 1 小時掃描一次 | 有 `_stop_event`；`stop_gap_filler()` 全站沒有呼叫點 |
-| `gcn_alert` | `GCN_alert.start_gcn_listener()` | Kafka consumer 無限迴圈 | **已停用**（main.py 註解） |
+| `bot-gcn` | `app.services.bots.gcn.start()` | Kafka consumer 無限迴圈，每 60 s 心跳 | 斷線指數退避重連；狀態見 Admin › Bots |
 | `nist-spec-lines` | `spectral_lines.warm_cache_async()` | 一次性（跑完即結束） | 每次行程啟動都會重建（見「已知問題」） |
 | （臨時）`detect_manual`、TNS manual、phot fetch 等 | `admin_routes` / `private_area_routes` 內 `threading.Thread(daemon=True)` | 一次性 | 由管理頁按鈕觸發 |
 | （臨時）DETECT page build | `detect_routes._start_detect_page_build()` | 一次性 | 快取重建 |
@@ -304,7 +304,14 @@
 - **SMTP 設定**：全部來自 `modules.config`（`SMTP_SERVER` 預設 smtp.gmail.com、`SMTP_PORT` 587、`SENDER_EMAIL`、`SENDER_PASSWORD`）。
 - **呼叫者**：`routes/auth/admin_routes.py:25` import，但全站 **沒有任何 `send_invitation_email(` 呼叫點**（grep 確認）。
 
-### `app/modules/GCN_alert.py`（已停用）
+### Lab bots（`app/services/bots/`，2026-10 從獨立的 lab_bot 合併進來）
+
+- 四個 bot：`gcn`（GCN + Einstein Probe，常駐執行緒）、`astronote`（每 5 分）、`obs_log`（每日 04:00 UTC）、`reduction`（`REDUCTION_HOUR_UTC` 或手動）。只在持有背景工作鎖的 process 啟動，`DEBUG=True` 時全部不啟動；`BOTS_DISABLED` 可逐一關閉。
+- 狀態：`app/log/.bot_status.json`（flock 讀改寫，任何 worker 可讀）；log：logger `bot.<id>` → `app/log/bots/<id>.log`（1 MB × 3）+ 每日 web log。
+- 管理頁 `/admin/bots`：卡片（健康燈、上次執行 / 下次執行 / 心跳、今日事件數、最近事件）、Log（即時追蹤）、Events、reduction 的 Steps / Folders、obs_log 的 Nights；Run now、reduction 的 Stop。
+- 與舊版 lab_bot 的差異：EP 命名、日夜頻道與訊息文字照舊版 EP.py；已發送 ID 存在 `app/data/bots/`（circular 另有「比已發送最大號還舊就跳過」）；obs_log 只更新 observed 欄位，不碰 trigger 資料。
+
+### 舊 `GCN_alert.py`（已由 `app/services/bots/gcn.py` 取代，以下為原始稽核紀錄）
 
 - **用途**：以 `gcn_kafka.Consumer` 訂閱 `gcn.circulars` 與 `gcn.notices.einstein_probe.wxt.alert`。
 - **會做的事**

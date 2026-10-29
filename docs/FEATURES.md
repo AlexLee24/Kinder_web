@@ -158,7 +158,10 @@ Kinder（Logo → /）
 | 執行緒 | `auto_tns_download` | 每 10 s 輪詢（真 UTC） | 分鐘 15 / 45：下載 TNS 每小時 CSV → 匯入 `transient.objects` → 種發現點光度 → 新物件抓光度 → DETECT → auto snooze（Inbox 超過 15 天 → Snoozed）。01 / 04 / 12 UTC 整點：下載每日檔（今天、昨天、前天）→ 匯入 → DETECT（只新物件）→ auto snooze |
 | 執行緒 | `tns_gap_filler` | 啟動 10 分後每小時 | 找當年 `kinder_id` 缺口，逐一向 TNS API 查詢補入 |
 | 執行緒 | `nist-spec-lines` | 啟動時一次 | 重抓 NIST 24 個離子譜線到 `app/modules/_spectral_lines_cache.json` |
-| （停用） | `gcn_alert` | – | GCN Kafka circular / Einstein Probe alert → Slack + email（`main.py` 已註解） |
+| 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email（`app/services/bots/gcn.py`） |
+| interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
+| cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
+| cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
 | 手動（管理頁） | TNS hourly / daily 下載、auto-snooze、光度抓取、缺漏光度、目標星等、DETECT run、備份 | – | `/admin/*` 按鈕，各自另起 thread（狀態為 process 內變數） |
 
 工作狀態記錄在 `app/log/.job_status.json`（只寫已完成項目），管理頁 `/admin/scheduled-jobs-status` 讀取。
@@ -175,7 +178,7 @@ Kinder（Logo → /）
 | `app/data/filter_colors.json` | 手動維護 | `modules/filter_colors.py`（濾鏡顏色） |
 | `app/data/trigger_send_status.json` | `trigger_send.mark_sent` | `trigger_send.get_send_status`（Daily Trigger 今晚是否已送） |
 | `app/data/backups/Kinder_backup_YYYYMMDD.sql` | `backup.run_daily_backup` | 人工 |
-| `app/data/gcn.json`、`ep.json`、`ep_observing_track.jpg` | `GCN_alert`（停用） | 無 |
+| `app/data/gcn.json`、`ep.json`、`ep_observing_track.jpg`、`target_objects.txt`、`bots/*_sent_ids.json` | lab bots（`app/services/bots`） | Admin › Bots |
 | `app/data/1a2b_leaderboard.json`、`app/data/greatlab_links.json` | **孤兒**：程式實際讀寫的是 `<repo>/data/1a2b_leaderboard.json`（目錄不存在）與 `app/routes/private_area/data/greatlab_links.json` | – |
 | `app/data/tns_public_objects_FULL.csv`、`tns_public_objects.csv.zip` | 一次性全量同步遺留（只有根目錄 `test_tns_full_sync.py` 引用） | – |
 | `app/log/` | 每日 log、`.background_jobs.lock`、`.job_status.json` | `/admin/log` 相關 API |
@@ -208,7 +211,7 @@ Kinder（Logo → /）
 | `TNS_BOT_ID` / `TNS_BOT_NAME` / `TNS_API_KEY` | TNS bot | `auto_tns_download`、`tns_gap_filler`、`download_phot` | TNS 同步必填 |
 | `ATLAS_USER` / `ATLAS_PASS`、`PANSTARRS_USER` / `PANSTARRS_PASS` | QUB 網站登入（Playwright） | `download_phot` | 光度抓取必填 |
 | `SLACK_BOT_TOKEN`、`SLACK_CHANNEL_ID_CONTROL_ROOM`、`SLACK_CHANNEL_ID_test` | Daily Trigger 送 Slack（DEBUG 用 test 頻道） | `trigger_send` | Trigger 必填 |
-| `SLACK_CHANNEL_ID_GCN` / `SLACK_CHANNEL_ID_ToO`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET` | GCN 監聽（停用） | `GCN_alert` | 否 |
+| `SLACK_CHANNEL_ID_GCN` / `_ToO` / `_EP_COPY` / `_ALERT`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET`、`BOTS_DISABLED`、`OBS_RAW_DIR`、`REDUCTION_*` | lab bots | `app/services/bots` | 否（缺少時該 bot 在 Admin › Bots 顯示 Needs setup） |
 | `ACCESS_LOG_ENABLED` | HTTP access log | `main.py` | 否（預設關） |
 | `LOG_MAX_FILE_BYTES` / `LOG_MAX_LINE_CHARS` | 日誌上限 | `log_setup` | 否 |
 | `DETECT_IN_WEB` | `0/false` 時停用 web 內 DETECT | `detect_pipeline` | 否（預設啟用） |
