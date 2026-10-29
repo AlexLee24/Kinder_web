@@ -965,16 +965,58 @@
             setTimeout(() => { b.textContent = 'Copy'; }, 1500);
         });
         urlIn.addEventListener('focus', () => urlIn.select());
-        const allow = $('plAllowRun');
-        if (allow) allow.addEventListener('change', async () => {
-            try {
-                await api(base + '/access', { allow_run: allow.checked });
-                say(m, allow.checked ? 'People with the link can now change settings and run.' : 'People with the link can only look.', 'ok');
-            } catch (err) { allow.checked = !allow.checked; say(m, err.message, 'error'); }
-        });
         armable(offBtn, 'People lose access. Stop?', async () => {
             try { await api(base + '/share/stop', {}); urlIn.value = ''; shown(false); say(m, 'Sharing stopped.', 'ok'); }
             catch (err) { say(m, err.message, 'error'); }
+        });
+    }
+
+    // ── Who may run: accounts that can open the Pipeline page (owner) ─────────
+    const runners = $('plRunners');
+    if (runners) {
+        const list = $('plRunnerList'), input = $('plRunnerIn'), box = runners.querySelector('.pl-suggest'), m = $('plRunnerMsg');
+        const addRow = (user, name) => {
+            const li = el('li', { 'data-user': user }, el('span', {}, name, name !== user ? el('small', { text: ' ' + user }) : null),
+                el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', 'data-remove': true, text: 'Remove', 'aria-label': 'Remove ' + name }));
+            list.append(li);
+        };
+        async function change(body, ok) {
+            try { const r = await api(base + '/access', body); say(m, ok, 'ok'); return r; }
+            catch (err) { say(m, err.message, 'error'); return null; }
+        }
+        $('plRunAll').addEventListener('change', async ev => {
+            const r = await change({ run_all: ev.target.checked }, ev.target.checked ? 'Everyone who can open the Pipeline page can now change and run it.' : 'Only the people listed below can run it.');
+            if (!r) ev.target.checked = !ev.target.checked;
+        });
+        list.addEventListener('click', async ev => {
+            const b = ev.target.closest('[data-remove]');
+            if (!b) return;
+            const li = b.closest('li');
+            if (await change({ remove: li.dataset.user }, 'Removed.')) li.remove();
+        });
+        let timer = null, items = [];
+        const hide = () => { box.hidden = true; box.replaceChildren(); items = []; };
+        const add = async p => {
+            hide(); input.value = '';
+            const r = await change({ add: p.email }, p.name + ' can now change and run it.');
+            if (r && !list.querySelector('[data-user="' + CSS.escape(p.email) + '"]')) addRow(p.email, p.name);
+        };
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            const q = input.value.trim();
+            if (q.length < 2) { hide(); return; }
+            timer = setTimeout(async () => {
+                try { items = (await api('/api/pipeline/people?q=' + encodeURIComponent(q))).people; } catch (err) { items = []; say(m, err.message, 'error'); }
+                box.replaceChildren(...items.map(p => el('li', { role: 'option', onmousedown: ev => { ev.preventDefault(); add(p); } },
+                    el('span', { text: p.name }), el('small', { text: p.email }))));
+                box.hidden = !items.length;
+                if (!items.length && q.length >= 2) say(m, 'No account that can open the Pipeline page matches.', null);
+            }, 250);
+        });
+        input.addEventListener('blur', () => setTimeout(hide, 150));
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Escape') hide();
+            if (e.key === 'Enter') { e.preventDefault(); if (items.length) add(items[0]); }
         });
     }
 

@@ -495,40 +495,54 @@ class Forbidden(PipelineError):
     status = 403
 
 
+def _listed(cfg, key, user):
+    return bool(user) and any(m.get('user') == user for m in cfg.get(key) or [])
+
+
 def role_of(cfg, user='', is_admin=False):
-    """'owner' (run, delete, share, everything), 'member' (opened the invite link: sees the workspace and its
-    results; changes and runs only when the owner allows it) or ''."""
+    """'owner' (run, delete, share, everything: the creator and admins) or 'member' (sees the workspace and its
+    results: opened the invite link, was given the right to run, or the owner opened running to everyone who can
+    open the Pipeline page) or ''. Callers have already checked that the person has an account that can open the page."""
     owner = cfg.get('owner')
     if not owner or is_admin or (user and owner == user):
         return 'owner'
-    if user and any(m.get('user') == user for m in cfg.get('members') or []):
+    if user and (_listed(cfg, 'members', user) or _listed(cfg, 'runners', user) or cfg.get('run_all')):
         return 'member'
     return ''
 
 
-def can_edit(cfg, role):
-    """Settings, images, run / stop / answer: the owner, and members once the owner allows it."""
-    return role == 'owner' or (role == 'member' and bool(cfg.get('allow_run')))
+def can_edit(cfg, role, user=''):
+    """Settings, images, run / stop / answer: the owner, and the people the owner gave that right
+    (one by one, or everyone who can open the Pipeline page)."""
+    return role == 'owner' or (role == 'member' and (bool(cfg.get('run_all')) or _listed(cfg, 'runners', user)))
 
 
 def require(tid, user='', is_admin=False, owner=False, edit=False):
     """The person's role in a workspace; NotFound (not Forbidden) when they may not see it at all.
-    owner=True: only its owner; edit=True: the owner, or a member the owner lets run."""
+    owner=True: only its owner; edit=True: the owner, or a person the owner lets run it."""
     cfg = _read_json(tdir(tid) / 'target.json')
     role = role_of(cfg, user, is_admin)
     if not role:
         raise NotFound('No such workspace.')
     if owner and role != 'owner':
         raise Forbidden('Only the owner of this workspace can do that.')
-    if edit and not can_edit(cfg, role):
-        raise Forbidden('Only the owner can change or run this workspace, unless they allow others to.')
+    if edit and not can_edit(cfg, role, user):
+        raise Forbidden('Only the owner can change or run this workspace, unless they gave you the right to.')
     return role
 
 
-def set_allow_run(tid, on):
+def set_run_access(tid, add=None, remove=None, run_all=None):
+    """Who besides the owner may change and run the workspace. add: {'user': email, 'name': name} (the caller has
+    checked the account can open the Pipeline page); remove: email; run_all: everyone who can open the page."""
     cfg = _read_json(tdir(tid) / 'target.json')
-    cfg['allow_run'] = bool(on)
+    runners = [r for r in cfg.get('runners') or [] if r.get('user') != remove]
+    if add and add.get('user') and add['user'] != cfg.get('owner') and not any(r['user'] == add['user'] for r in runners):
+        runners.append({'user': add['user'], 'name': add.get('name') or add['user'], 'at': time.time()})
+    cfg['runners'] = runners
+    if run_all is not None:
+        cfg['run_all'] = bool(run_all)
     _write_json(tdir(tid) / 'target.json', cfg)
+    return {'runners': runners, 'run_all': bool(cfg.get('run_all'))}
 
 
 # ── Images are kept FITS_KEEP_DAYS after they arrive; the owner can add days ──
@@ -908,8 +922,9 @@ def info(tid, user=None, is_admin=False):
     role = role_of(cfg, user or '', is_admin) if user is not None else 'owner'
     return {
         'id': tid, 'name': cfg.get('name', tid), 'target': target_label(cfg), 'owner': cfg.get('owner', ''),
-        'owner_name': cfg.get('owner_name') or cfg.get('owner', ''), 'role': role, 'can_edit': can_edit(cfg, role),
-        'share': cfg.get('share') if role == 'owner' else None, 'allow_run': bool(cfg.get('allow_run')),
+        'owner_name': cfg.get('owner_name') or cfg.get('owner', ''), 'role': role, 'can_edit': can_edit(cfg, role, user or ''),
+        'share': cfg.get('share') if role == 'owner' else None, 'run_all': bool(cfg.get('run_all')),
+        'runners': [{'user': r.get('user'), 'name': r.get('name') or r.get('user')} for r in cfg.get('runners') or []],
         'members': [m.get('user') for m in cfg.get('members') or []] if role == 'owner' else [],
         'result_shares': result_shares(cfg) if role == 'owner' else [],
         'expires': _earliest_expiry(cfg, imgs), 'keep_days': config.FITS_KEEP_DAYS + int(cfg.get('keep_extra') or 0),

@@ -154,10 +154,8 @@
                     <div class="pl-share" id="plShare">
                         <p class="pl-hint" data-share-off{% if ap.share %} hidden{% endif %}>Private: only you{% if ap.owner %} (and admins){% endif %} can see this workspace and its results. Only you can run and delete it.</p>
                         <div data-share-on{% if not ap.share %} hidden{% endif %}>
-                            <p class="pl-hint">Anyone logged in who opens this link can see the workspace and its results.</p>
+                            <p class="pl-hint">Anyone logged in who opens this link can see the workspace and its results, but not change or run it.</p>
                             <div class="pl-inline"><input type="text" id="plShareUrl" readonly value="{{ share_url }}" aria-label="Invite link" spellcheck="false"><button type="button" class="kw-btn kw-btn-sm" id="plShareCopy">Copy</button></div>
-                            <label class="pl-toggle"><input type="checkbox" id="plAllowRun"{% if ap.allow_run %} checked{% endif %}>
-                                <span><b>Let them change settings and run</b><small>Otherwise they can only look. Only you can delete.</small></span></label>
                             <p class="pl-hint" id="plMembers">{% if ap.members %}Opened by {{ ap.members|join(', ') }}.{% else %}Nobody has opened it yet.{% endif %}</p>
                         </div>
                         <div class="pl-share-btns">
@@ -165,6 +163,21 @@
                             <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="plShareOff"{% if not ap.share %} hidden{% endif %}>Stop sharing</button>
                         </div>
                         <p class="pl-msg" id="plShareMsg" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="pl-runners" id="plRunners">
+                        <h3 class="pl-sub">Who can run it</h3>
+                        <p class="pl-hint">Only you by default. You can give the right to change settings and run to accounts that can open the Pipeline page; nobody else can run, not even with a results link.</p>
+                        <label class="pl-toggle"><input type="checkbox" id="plRunAll"{% if ap.run_all %} checked{% endif %}>
+                            <span><b>Everyone who can open the Pipeline page</b><small>They also see this workspace in their list.</small></span></label>
+                        <ul class="pl-runner-list" id="plRunnerList">
+                            {% for r in ap.runners %}<li data-user="{{ r.user }}"><span>{{ r.name }}{% if r.name != r.user %} <small>{{ r.user }}</small>{% endif %}</span><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-remove aria-label="Remove {{ r.name }}">Remove</button></li>{% endfor %}
+                        </ul>
+                        <div class="kw-field pl-name-field">
+                            <label for="plRunnerIn">Add a person</label>
+                            <input type="search" id="plRunnerIn" placeholder="Name or email of an account" autocomplete="off" spellcheck="false" aria-autocomplete="list">
+                            <ul class="pl-suggest" role="listbox" hidden></ul>
+                        </div>
+                        <p class="pl-msg" id="plRunnerMsg" role="status" aria-live="polite"></p>
                     </div>
                     {% else %}
                     <p class="pl-hint">{{ 'You can change settings and run photometry here; only the owner can delete it.' if ap.can_edit else 'You can look at this workspace and its results; only the owner can change, run or delete it, unless they allow others to.' }}</p>

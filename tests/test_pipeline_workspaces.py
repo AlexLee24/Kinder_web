@@ -51,14 +51,31 @@ def test_private_until_invited_and_only_the_owner_runs(runs):
     info = ap.info(tid, 'b@x')
     assert info['share'] is None and not info['can_edit'] and info['owner_name'] == 'Alex'
 
-    ap.set_allow_run(tid, True)                                    # the owner lets them
+    ap.set_run_access(tid, add={'user': 'b@x', 'name': 'Bea'})      # the owner gives b the right to run
     assert ap.require(tid, 'b@x', edit=True) == 'member' and ap.info(tid, 'b@x')['can_edit']
     with pytest.raises(ap.Forbidden):
         ap.require(tid, 'b@x', owner=True)                         # delete, share, keep stay the owner's
+    assert ap.info(tid)['runners'] == [{'user': 'b@x', 'name': 'Bea'}]
 
-    ap.share_off(tid)
+    ap.share_off(tid)                                              # stopping the link does not take a runner's right away
+    assert ap.require(tid, 'b@x', edit=True) == 'member'
+    ap.set_run_access(tid, remove='b@x')
     with pytest.raises(ap.NotFound):
         ap.require(tid, 'b@x')
+
+
+def test_running_can_be_opened_to_everyone_with_an_account_that_sees_the_page(runs):
+    tid = ap.create_workspace({'name': 'ws'}, user='a@x')
+    with pytest.raises(ap.NotFound):
+        ap.require(tid, 'c@x')
+    ap.set_run_access(tid, run_all=True)
+    assert ap.require(tid, 'c@x', edit=True) == 'member'
+    assert [w['id'] for w in ap.targets('c@x')] == [tid]
+    with pytest.raises(ap.Forbidden):
+        ap.require(tid, 'c@x', owner=True)
+    ap.set_run_access(tid, run_all=False)
+    with pytest.raises(ap.NotFound):
+        ap.require(tid, 'c@x')
 
 
 def test_an_admin_is_the_owner_of_every_workspace(runs):

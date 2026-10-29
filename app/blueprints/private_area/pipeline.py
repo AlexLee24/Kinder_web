@@ -29,7 +29,7 @@ from app.services.pipeline import calibrated
 from app.services.pipeline import config as pconfig
 
 from . import private_area_bp
-from .helpers import can_access_page
+from .helpers import can_access_page, user_can_access_page
 
 logger = logging.getLogger(__name__)
 
@@ -462,14 +462,44 @@ def pipeline_api_share_stop(tid):
     return jsonify({'success': True})
 
 
+def _pipeline_accounts():
+    """{email: user} of the accounts that can open the Pipeline page (a person without an account, or whose account
+    cannot see this page, can never run anything)."""
+    from app.db.auth import get_users
+    return {e: u for e, u in get_users().items() if user_can_access_page(u, PAGE_KEY)}
+
+
+@private_area_bp.route('/api/pipeline/people')
+@_api
+def pipeline_api_people():
+    """Accounts that can open the Pipeline page, for choosing who may run a workspace: ?q= (2+ letters of a name or email)."""
+    q = request.args.get('q', '').strip().lower()
+    if len(q) < 2:
+        return jsonify({'success': True, 'people': []})
+    if not rate_limit.allow(f'pipeline-people:{_actor()}', 60, 300):
+        return jsonify({'success': False, 'error': 'Too many searches; wait a few minutes.'}), 429
+    people = [{'email': e, 'name': u.get('name') or e} for e, u in _pipeline_accounts().items()
+              if e != _actor() and (q in e.lower() or q in str(u.get('name') or '').lower())]
+    return jsonify({'success': True, 'people': sorted(people, key=lambda p: p['name'].lower())[:8]})
+
+
 @private_area_bp.route('/api/pipeline/autophot/<tid>/access', methods=['POST'])
 @_api(owner=True)
 def pipeline_api_access(tid):
-    """Whether people who opened the invite link may also change and run the workspace."""
-    on = bool(_body().get('allow_run'))
-    ap.set_allow_run(tid, on)
-    logger.info('pipeline: %s %s running by members in %s', _actor(), 'allowed' if on else 'stopped', tid)
-    return jsonify({'success': True, 'allow_run': on})
+    """Who besides the owner may change and run the workspace: {add: email} / {remove: email} / {run_all: bool}.
+    Only an account that can open the Pipeline page can be added."""
+    body = _body()
+    add = None
+    if body.get('add'):
+        email = str(body['add']).strip().lower()
+        account = next((u for e, u in _pipeline_accounts().items() if e.lower() == email), None)
+        if not account:
+            raise ap.PipelineError('That person has no account that can open the Pipeline page.')
+        add = {'user': account['email'], 'name': account.get('name') or account['email']}
+    result = ap.set_run_access(tid, add=add, remove=str(body.get('remove') or '') or None,
+                               run_all=bool(body['run_all']) if 'run_all' in body else None)
+    logger.info('pipeline: %s changed who may run %s: %s', _actor(), tid, body)
+    return jsonify({'success': True, **result})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/keep', methods=['POST'])

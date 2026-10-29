@@ -462,3 +462,8 @@ fieldset.pl-readonly { margin: 0; padding: 0; border: 0; min-inline-size: 0; dis
 .pl-public { max-width: 1100px; margin-inline: auto; }
 .pl-public-lock { max-width: 420px; margin: 8vh auto 0; }
 #plWsName[readonly] { opacity: 0.9; cursor: default; }
+.pl-runners { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--kw-hairline); }
+.pl-runners .pl-sub, .pl-runners .pl-hint { margin: 0; }
+.pl-runner-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.pl-runner-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--kw-text-white); overflow-wrap: anywhere; }
+.pl-runner-list small { color: var(--kw-text-faint); }
