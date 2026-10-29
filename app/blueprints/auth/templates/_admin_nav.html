@@ -1,5 +1,5 @@
 {#- Admin menu (after EAU's admin side menu): on desktop a sticky grouped column left of the content, on phones a row of
-    pills above it that scrolls sideways. Shared by /admin, /admin/system, /admin/database and /admin/log; styles in
+    pills above it that scrolls sideways. Shared by /admin, /admin/system, /admin/bots, /admin/database and /admin/log; styles in
     css/admin_shell.css. Pages wrap their content as
         <div class="adm-layout">{% include '_admin_nav.html' %}<div class="kw-page …">…</div></div>
     On /admin the tab entries switch in-page tabs (admin.js showTab, URL hash #users …); elsewhere they are links to
@@ -16,13 +16,14 @@
     'access': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
     'operations': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
     'database': '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+    'bots': '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M12 4v4"/><circle cx="12" cy="3" r="1"/><path d="M9 13v1M15 13v1M9 17h6"/>',
     'log': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M16 13H8M16 17H8"/>',
 } %}
 {#- (group, [(href, tab key or '', icon, label, count)]) -#}
 {% set _groups = [
     ('Overview', [('/admin#overview', 'overview', 'overview', 'Overview', 0), ('/admin/system', '', 'system', 'System', 0)]),
     ('People', [('/admin#users', 'users', 'users', 'Users & API keys', _n_keys), ('/admin#groups', 'groups', 'groups', 'Groups', _n_groups), ('/admin#access', 'access', 'access', 'Access', 0)]),
-    ('Operations', [('/admin#operations', 'operations', 'operations', 'Jobs', 0), ('/admin/database', '', 'database', 'DB Status', 0), ('/admin/log', '', 'log', 'Web Log', 0)]),
+    ('Operations', [('/admin#operations', 'operations', 'operations', 'Jobs', 0), ('/admin/bots', '', 'bots', 'Bots', 0), ('/admin/database', '', 'database', 'DB Status', 0), ('/admin/log', '', 'log', 'Web Log', 0)]),
 ] %}
 <nav class="admin-nav" aria-label="Admin">
     <div class="admin-nav-h">

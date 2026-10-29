@@ -7,4 +7,4 @@ from flask import Blueprint
 admin_bp = Blueprint('admin', __name__, template_folder='../templates', static_folder='../static')
 
 # Topic modules register their routes on import (order = original registration order).
-from . import helpers, users, panel, api_keys, settings, groups, maintenance, tns, detect, scheduled_jobs  # noqa: E402,F401
+from . import helpers, users, panel, api_keys, settings, groups, maintenance, tns, detect, scheduled_jobs, bots  # noqa: E402,F401

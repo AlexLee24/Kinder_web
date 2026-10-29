@@ -1,0 +1,52 @@
+{% extends '_base.html' %}
+{#- Admin › Bots: the lab bots (app/services/bots). admin_bots.js polls /admin/bots/status every 10 s and follows the
+    open bot's log every 3 s; the first paint comes from the server (bots) so the page is useful without JS. -#}
+{% block title %}Bots - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}">{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page bot-page" id="botPage">
+    <header class="kw-page-head">
+        <div><h1>Bots</h1><p>Alert bots, the observation log and the reduction pipeline, running inside Kinder. Refreshes every 10 s.</p></div>
+        <div class="kw-page-actions">
+            <span class="sys-pill" id="botState"><i></i><b>Loading…</b></span>
+            <button type="button" class="kw-btn kw-btn-sm" id="botRefresh">Refresh</button>
+        </div>
+    </header>
+
+    {% if debug %}
+    <div class="bot-note">DEBUG mode: no bot starts on its own here. Run now still works, and posts to Slack for real.</div>
+    {% endif %}
+
+    <div class="kw-kpis bot-kpis" id="botKpis"></div>
+
+    <div class="bot-cards" id="botCards">
+        {% for b in bots %}
+        <article class="kw-panel bot-card" data-bot="{{ b.id }}">
+            <div class="bot-card-head"><span class="bot-dot is-{{ b.health }}"></span><h2>{{ b.name }}</h2></div>
+            <p class="bot-sub">{{ b.health_label }} · {{ b.schedule }}</p>
+        </article>
+        {% endfor %}
+    </div>
+
+    <section class="kw-panel bot-detail" id="botDetail" aria-labelledby="botDetailT">
+        <div class="kw-panel-head">
+            <h2 id="botDetailT">Details</h2>
+            <div class="kw-seg" id="botPick" role="tablist" aria-label="Bot">
+                {% for b in bots %}<button type="button" class="kw-seg-item" role="tab" data-bot="{{ b.id }}">{{ b.name }}</button>{% endfor %}
+            </div>
+        </div>
+        <div class="kw-tabbar bot-tabs" id="botTabs" role="tablist" aria-label="View"></div>
+        <div id="botView"></div>
+    </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="botInitial">{{ bots | tojson }}</script>
+<script src="{{ url_for('static', filename='js/admin_bots.js') }}"></script>
+{% endblock %}

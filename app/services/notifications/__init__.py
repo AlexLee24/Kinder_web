@@ -1,1 +1,1 @@
-"""Outbound notifications: email (SMTP) and GCN/Slack alerts."""
+"""Outbound notifications: email (SMTP). GCN / Slack alert bots live in app/services/bots."""

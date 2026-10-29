@@ -252,7 +252,10 @@ def api_log_sources():
 
 
 _DAEMON_LOG_FILES = {
-    'gcn_alert': 'gcn_alert.log',
+    'gcn':       'bots/gcn.log',          # lab bots (app/services/bots); Admin › Bots shows them too
+    'astronote': 'bots/astronote.log',
+    'obs_log':   'bots/obs_log.log',
+    'reduction': 'bots/reduction.log',
     'detect':    'detect.log',
     'tns_fetch': 'tns_fetch.log',
 }
