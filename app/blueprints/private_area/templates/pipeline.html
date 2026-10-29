@@ -7,7 +7,7 @@
     <meta name="description" content="Reduce and measure images from any telescope">
 {% endblock %}
 
-{% block bar_left %}<p class="kw-lead">Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, names a workspace after them, and you set the target and run AutoPhOT on the next page. Workspaces are private until you share them.</p>{% endblock %}
+{% block bar_left %}{% if stage == 'reduction' %}<p class="kw-lead">Drop raw Lulin frames: the lab's reduction pipeline calibrates them with its master bias, dark and flat (or the ones you add), solves every frame with astrometry.net, and keeps the results {{ keep_days }} days to download or send on to AutoPhOT.</p>{% else %}<p class="kw-lead">Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, names a workspace after them, and you set the target and run AutoPhOT on the next page. Workspaces are private until you share them.</p>{% endif %}{% endblock %}
 {% block bar_right %}
     <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes') }}">Telescopes</a>
 {% endblock %}
@@ -25,6 +25,8 @@
                 <span class="pl-stage-top">
                     <b>{{ s.label }}</b>
                     {% if not s.ready %}<span class="kw-chip">Planned</span>
+                    {% elif s.key == 'reduction' and batches is defined and stage == 'reduction' %}<span class="kw-chip kw-chip-gold">{{ batches|length }} batch{{ '' if batches|length == 1 else 'es' }}</span>
+                    {% elif s.key == 'photometry' and stage == 'reduction' %}
                     {% elif s.key == 'photometry' and ready %}<span class="kw-chip kw-chip-gold">{{ workspaces|length }} workspace{{ '' if workspaces|length == 1 else 's' }}</span>
                     {% elif s.key == 'photometry' %}<span class="kw-chip kw-chip-red">Not set up</span>{% endif %}
                 </span>
@@ -36,11 +38,7 @@
         </nav>
 
         {% if stage == 'reduction' %}
-        <section class="kw-panel pl-planned">
-            <div class="kw-panel-head"><h2>Reduction comes next</h2></div>
-            <p>Raw frames will be calibrated here (bias, dark and flat, cosmic rays, astrometry) and handed straight to a Photometry workspace, so AutoPhOT measures the reduced frames without uploading them again.</p>
-            <p>Until then, reduce the frames as usual and upload them to a <a href="{{ url_for('private_area.pipeline') }}">Photometry workspace</a>.</p>
-        </section>
+        {% include '_pipeline_reduction_home.html' %}
 
         {% elif not ready %}
         <section class="kw-panel pl-setup" aria-labelledby="plSetupTitle">
@@ -141,5 +139,6 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>
+    {% if stage == 'reduction' %}<script src="{{ url_for('static', filename='js/pipeline_reduction.js') }}"></script>
+    {% else %}<script src="{{ url_for('static', filename='js/pipeline.js') }}"></script>{% endif %}
 {% endblock %}

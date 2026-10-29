@@ -28,7 +28,7 @@ FITS_KEEP_DAYS = 7                # uploaded / copied FITS are deleted this long
 
 # Pipeline stages, in order. A stage that is not ready is shown as planned.
 STAGES = [
-    {'key': 'reduction', 'label': 'Reduction', 'ready': False,
+    {'key': 'reduction', 'label': 'Reduction', 'tool': 'Lab pipeline', 'ready': True,
      'about': 'Bias, dark and flat correction, cosmic rays and astrometry for raw frames.'},
     {'key': 'photometry', 'label': 'Photometry', 'tool': 'AutoPhOT', 'ready': True,
      'about': 'PSF and aperture photometry, calibration, template subtraction and limits.'},
@@ -130,7 +130,7 @@ def ready():
 
 def child_env():
     """Environment for AutoPhOT: only what it needs, never Kinder's secrets (DB, OAuth, Slack, TNS)."""
-    keep = ('HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'TZ')
+    keep = ('HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'TZ', 'ASTROMETRY_CONFIG')
     env = {k: os.environ[k] for k in keep if k in os.environ}
     home = os.environ.get('HOME') or str(Path.home())
     # PATH is kept (solve-field, sex, swarp, hotpants live there) with uv's ~/.local/bin first
