@@ -502,7 +502,7 @@
             let d;
             try { d = await api(CAL_API + '/folder?path=' + encodeURIComponent(path)); }
             catch (err) { root.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message })); return; }
-            const boxes = [];
+            const boxes = [], chips = [];
             const foot = el('span', { class: 'pl-faint' });
             const go = el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: label });
             const sync = () => {
@@ -510,7 +510,14 @@
                 foot.textContent = on.length + ' of ' + boxes.length + ' selected · ' + sizeText(on.reduce((a, b) => a + b.f.size, 0));
                 go.disabled = !on.length;
                 all.checked = on.length === boxes.length; all.indeterminate = on.length > 0 && on.length < boxes.length;
+                chips.forEach(c => {                       // a tag is on when all of its frames are ticked
+                    const m = members(c.tag), n = m.filter(b => b.box.checked).length;
+                    c.btn.classList.toggle('is-on', m.length > 0 && n === m.length);
+                    c.btn.classList.toggle('is-partial', n > 0 && n < m.length);
+                    c.btn.setAttribute('aria-pressed', String(m.length > 0 && n === m.length));
+                });
             };
+            const members = tag => boxes.filter(b => !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)) && b.f.tag === tag);
             const all = el('input', { type: 'checkbox', 'aria-label': 'Select all', onchange: () => { boxes.forEach(b => { if (!b.f.error) b.box.checked = all.checked; }); sync(); } });
             const rows = d.files.map(f => {
                 const cal = f.imagetyp && CAL_RE.test(f.imagetyp);
@@ -530,12 +537,19 @@
                 go.disabled = true;
                 try { await onPick(chosen, d.path); } finally { go.disabled = false; }
             });
-            // One chip per telescope / filter / exposure read from the headers; a click picks just those frames
+            // One chip per telescope / filter / exposure read from the headers. Each is a switch: click to add or remove
+            // those frames, as many as you like; Select none first to start from nothing.
+            const setAll = on => { boxes.forEach(b => { b.box.checked = on && !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)); }); sync(); };
             const tagBar = (d.tags || []).length ? el('div', {},
-                el('p', { class: 'pl-tags-hint', text: 'Tags from the headers (telescope · filter · exposure). Click one to pick only those frames.' }),
-                el('div', { class: 'pl-chips pl-tags', role: 'group', 'aria-label': 'Select by tag' }, d.tags.map(t => el('button', {
-                    type: 'button', class: 'kw-chip kw-chip-gold pl-tag', text: t.tag + ' × ' + t.n,
-                    onclick: () => { boxes.forEach(b => { b.box.checked = !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)) && b.f.tag === t.tag; }); sync(); } })))) : null;
+                el('p', { class: 'pl-tags-hint' }, 'Tags from the headers (telescope · filter · exposure). Click tags to add or remove those frames. ',
+                    el('button', { type: 'button', class: 'pl-link', text: 'Select all', onclick: () => setAll(true) }), ' · ',
+                    el('button', { type: 'button', class: 'pl-link', text: 'Select none', onclick: () => setAll(false) })),
+                el('div', { class: 'pl-chips pl-tags', role: 'group', 'aria-label': 'Select by tag' }, d.tags.map(t => {
+                    const btn = el('button', { type: 'button', class: 'kw-chip kw-chip-gold pl-tag', 'aria-pressed': 'true', text: t.tag + ' × ' + t.n,
+                        onclick: () => { const m = members(t.tag), on = m.every(b => b.box.checked); m.forEach(b => { b.box.checked = !on; }); sync(); } });
+                    chips.push({ tag: t.tag, btn });
+                    return btn;
+                }))) : null;
             root.replaceChildren(...[
                 el('div', { class: 'pl-pick-head' },
                     el('button', { type: 'button', class: 'pl-link', text: '← All folders', onclick: () => showFolders(q) }),

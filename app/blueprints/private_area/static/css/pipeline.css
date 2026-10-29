@@ -90,6 +90,10 @@
 .pl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 button.pl-tag { font: inherit; cursor: pointer; }
 button.pl-tag:hover, button.pl-tag:focus-visible { filter: brightness(1.25); }
+button.pl-tag { opacity: 0.5; }
+button.pl-tag.is-on { opacity: 1; }
+button.pl-tag.is-on::before { content: "\2713\00a0"; }
+button.pl-tag.is-partial { opacity: 0.85; border-style: dashed; }
 .pl-tags-hint { margin: 0 0 6px; font-size: 0.78rem; color: var(--kw-text-muted); }
 .pl-clash { display: grid; gap: 10px; margin-top: 12px; }
 .pl-clash .pl-warn { margin: 0; }
