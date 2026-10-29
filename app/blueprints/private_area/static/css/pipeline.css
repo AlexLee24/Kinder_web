@@ -75,11 +75,6 @@
 .pl-step-head p { margin: 3px 0 0; font-size: 0.78rem; line-height: 1.5; color: var(--kw-text-muted); }
 .pl-step-n { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; margin-top: -1px; border-radius: 50%;
     border: 1px solid var(--kw-accent-border); color: var(--kw-accent); font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pl-step-more > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; }
-.pl-step-more > summary::-webkit-details-marker { display: none; }
-.pl-step-more > summary .pl-step-head { margin-bottom: 0; }
-.pl-step-more[open] > summary { margin-bottom: 14px; }
-.pl-step-more[open] .pl-chev { transform: rotate(45deg); }
 .pl-wizard-foot { display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid var(--kw-hairline); }
 .pl-wizard-foot .pl-msg { margin: 0; }
 .pl-wizard-foot .pl-form-foot .kw-btn { width: 100%; min-height: 44px; }
