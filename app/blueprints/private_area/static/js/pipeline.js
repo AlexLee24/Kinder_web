@@ -727,7 +727,8 @@
     let reloadImages = () => {};
     if (imgBody) {
         const cov = wsForm ? wsForm.querySelector('[data-coverage]') : null;
-        let last = null;
+        const FRAMES_SHOWN = 12;
+        let last = null, allFrames = false;
 
         const fail = err => imgBody.prepend(el('p', { class: 'pl-msg is-error', text: err.message }));
         function removeButton(name, label) {
@@ -769,9 +770,10 @@
             if (d.missing) parts.push(el('p', { class: 'pl-warn', text: plural(d.missing, 'frame') + ' missing TELESCOP / INSTRUME / FILTER; AutoPhOT skips them.' }));
             if (!d.files.length) parts.push(el('div', { class: 'pl-empty' }, el('b', { text: 'No frames yet' }), 'Drop a folder or FITS files above.'));
             else {
+                const files = allFrames || d.files.length <= FRAMES_SHOWN ? d.files : d.files.slice(0, FRAMES_SHOWN);
                 parts.push(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-hdr' },
                     el('thead', {}, el('tr', {}, ['File', 'Filter', 'Tag', 'Date (UTC)', 'Exp (s)', 'Deleted'].map(h => el('th', { text: h })), el('th'))),
-                    el('tbody', {}, d.files.map(f => el('tr', {},
+                    el('tbody', {}, files.map(f => el('tr', {},
                         el('td', { class: 'pl-mono' }, f.name, f.stack ? el('span', { class: 'kw-chip kw-chip-gold', text: 'stack' }) : null),
                         f.error ? el('td', { class: 'is-miss', colspan: '4', text: f.error }) : [
                             el('td', { class: !f.FILTER ? 'is-miss' : null }, f.band ? el('b', { text: f.band }) : null,
@@ -782,6 +784,11 @@
                             el('td', { text: f.EXPTIME || '—' })],
                         el('td', { class: 'pl-faint', title: new Date(f.expires * 1000).toLocaleString(), text: daysLeft(f.expires) }),
                         el('td', { class: 'pl-acts' }, f.stack ? null : removeButton(f.name))))))));
+                if (d.files.length > FRAMES_SHOWN) {
+                    parts.push(el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost pl-more-rows',
+                        text: allFrames ? 'Show the first ' + FRAMES_SHOWN : 'Show all ' + d.files.length + ' frames',
+                        onclick: () => { allFrames = !allFrames; renderImages(last); } }));
+                }
             }
             if (d.expired.length) {
                 const restore = d.restorable && canEdit ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy ' + d.restorable + ' again from the server',
@@ -1099,6 +1106,18 @@
     const jobBox = $('plJob');
     if (jobBox) {
         const logEl = $('plLog'), stateEl = $('plJobState'), runBtn = $('plRun'), ans = $('plAnswer'), prog = $('plProgress');
+        // The card shows only the last lines (no scrolling of its own); Full log opens the whole of it in a pop-out
+        const LOG_TAIL = 10, logBox = $('plLogModal'), logFull = $('plLogFull');
+        let lastLog = '';
+        function fillFull(first) {
+            const stick = first || logFull.scrollHeight - logFull.scrollTop - logFull.clientHeight < 40;
+            logFull.textContent = lastLog || 'Nothing logged yet.';
+            if (stick) logFull.scrollTop = logFull.scrollHeight;
+        }
+        if (logBox) {
+            const m = modal(logBox);
+            $('plLogOpen').addEventListener('click', () => { m.open(); fillFull(true); logFull.focus(); });
+        }
         let running = false, timer = null, stopArmed = false, armTimer = null;
 
         const elapsed = start => {
@@ -1118,9 +1137,12 @@
             if (head && on) head.replaceChildren(el('span', { class: 'kw-chip kw-chip-blue' }, el('span', { class: 'pl-pulse', 'aria-hidden': 'true' }), 'Running'));
         }
         function show(j) {
-            const stick = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
-            if (j.log) { logEl.hidden = false; $('plLogFoot').hidden = false; $('plRunHint').hidden = true; logEl.textContent = j.log; }
-            if (stick) logEl.scrollTop = logEl.scrollHeight;
+            if (j.log) {
+                logEl.hidden = false; $('plLogFoot').hidden = false; $('plRunHint').hidden = true;
+                lastLog = j.log;
+                logEl.textContent = j.log.replace(/\n+$/, '').split('\n').slice(-LOG_TAIL).join('\n');
+                if (logBox && logBox.classList.contains('is-open')) fillFull(false);
+            }
             const isRunning = j.status === 'running';
             if (isRunning !== running) setRunning(isRunning);
             const wasHidden = ans.hidden;
@@ -1401,13 +1423,20 @@
         });
     });
 
-    // ── Workspace list filter (Pipeline page) ─────────────────────────────────
-    const wsFilter = $('plWsFilter');
-    if (wsFilter) {
-        wsFilter.addEventListener('input', () => {
-            const q = wsFilter.value.trim().toLowerCase();
-            document.querySelectorAll('#plWsList .pl-ws').forEach(li => { li.hidden = q && !li.dataset.name.includes(q); });
-        });
+    // ── Workspace list (Pipeline page): the newest ten, Show all for the rest; the filter searches all ──
+    const wsList = $('plWsList');
+    if (wsList) {
+        const wsFilter = $('plWsFilter'), items = [...wsList.querySelectorAll('.pl-ws')], CAP = 10;
+        let expanded = false;
+        const more = items.length > CAP ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost pl-more-rows' }) : null;
+        const apply = () => {
+            const q = wsFilter ? wsFilter.value.trim().toLowerCase() : '';
+            items.forEach((li, i) => { li.hidden = q ? !li.dataset.name.includes(q) : !expanded && i >= CAP; });
+            if (more) { more.hidden = !!q; more.textContent = expanded ? 'Show the newest ' + CAP : 'Show all ' + items.length + ' workspaces'; }
+        };
+        if (more) { more.addEventListener('click', () => { expanded = !expanded; apply(); }); wsList.after(more); }
+        if (wsFilter) wsFilter.addEventListener('input', apply);
+        apply();
     }
 
     // ── Telescopes: the shared telescope.yml ──────────────────────────────────
