@@ -111,6 +111,8 @@ def external_runs():
         try:
             cmd = p.info.get('cmdline') or []
             hit = next((os.path.basename(a) for a in cmd if os.path.basename(a) in scripts), None)
+            if hit and any('/.reduction/' in a for a in cmd):     # a Pipeline › Reduction batch (its own copy)
+                continue
             if not hit or (mine and (p.info['pid'] == mine or _parent_is(p, mine))):
                 continue
             out.append({'pid': p.info['pid'], 'script': hit, 'user': p.info.get('username') or '',

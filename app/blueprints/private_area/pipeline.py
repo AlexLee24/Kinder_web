@@ -5,6 +5,7 @@ starts it and reads its output. The paths are set by an admin in
 Admin → Operations → Pipeline. Workspaces live in that folder, one per target;
 images are uploaded from the page (or, later, handed over by the Reduction stage).
 """
+import contextlib
 import functools
 import logging
 
@@ -25,7 +26,7 @@ from flask import (
 
 from app.core import rate_limit
 from app.services.pipeline import autophot as ap
-from app.services.pipeline import calibrated
+from app.services.pipeline import calibrated, reduce
 from app.services.pipeline import config as pconfig
 
 from . import private_area_bp
@@ -143,8 +144,67 @@ def pipeline_reduction():
     guard = _page_guard()
     if guard:
         return guard
+    checks, batches, error = [], [], ''
+    try:
+        checks = reduce.check()
+        if all(c['ok'] for c in checks):
+            reduce.cleanup_expired()                     # batches older than KEEP_DAYS (at most hourly)
+            batches = reduce.batches(_actor(), _is_admin())
+    except ap.PipelineError as e:
+        error = str(e)
     return render_template('pipeline.html', current_path='/pipeline', stage='reduction', stages=pconfig.STAGES,
-                           ready=False, checks=[], labels={}, workspaces=[], error='')
+                           ready=all(c['ok'] for c in checks) and not error, checks=checks, labels={}, workspaces=[],
+                           error=error, batches=batches, upload_chunk=_upload_chunk(), keep_days=reduce.KEEP_DAYS)
+
+
+def _batch(bid):
+    """The batch, or 404 when the caller may not see it (owner and admins only)."""
+    try:
+        return reduce.require(bid, _actor(), _is_admin())
+    except ap.NotFound:
+        abort(404)
+
+
+@private_area_bp.route('/pipeline/reduction/<bid>')
+def pipeline_reduction_batch(bid):
+    guard = _page_guard()
+    if guard:
+        return guard
+    _batch(bid)
+    workspaces = []
+    with contextlib.suppress(ap.PipelineError):
+        workspaces = [w for w in ap.targets(_actor(), _is_admin()) if w.get('role') in ('owner', 'editor', 'admin')]
+    return render_template('pipeline_reduction.html', current_path='/pipeline', stages=pconfig.STAGES,
+                           batch=reduce.summary(bid), files=reduce._read(reduce.bdir(bid) / 'batch.json').get('files') or {},
+                           types=reduce.TYPES, workspaces=workspaces, keep_days=reduce.KEEP_DAYS,
+                           run={**reduce.job(bid), 'results': reduce.results(bid)})
+
+
+@private_area_bp.route('/pipeline/reduction/<bid>/file/<path:rel>')
+def pipeline_reduction_file(bid, rel):
+    guard = _page_guard()
+    if guard:
+        return guard
+    _batch(bid)
+    try:
+        p = reduce.result_path(bid, rel)
+    except ap.NotFound:
+        abort(404)
+    return send_file(p, as_attachment=True, download_name=p.name, mimetype='application/fits')
+
+
+@private_area_bp.route('/pipeline/reduction/<bid>/results.zip')
+def pipeline_reduction_zip(bid):
+    guard = _page_guard()
+    if guard:
+        return guard
+    b = _batch(bid)
+    try:
+        z = reduce.zip_path(bid)
+    except ap.NotFound:
+        abort(404)
+    name = ap.target_id(reduce._name(b)) or bid
+    return send_file(z, as_attachment=True, download_name=f'{name}_reduced.zip', mimetype='application/zip')
 
 
 @private_area_bp.route('/pipeline/telescopes')
@@ -686,3 +746,96 @@ def pipeline_api_import(tid):
 def pipeline_api_import_undo(tid):
     _import_guard()
     return jsonify({'success': True, **ap.undo_import(tid, str(_body().get('id') or ''), user=_actor())})
+
+
+# ── Reduction batches ──
+
+def _bapi(fn):
+    """JSON API for a batch: login + page access + the batch is the caller's (or they are an admin)."""
+    @functools.wraps(fn)
+    @_api
+    def wrapper(bid, *args, **kwargs):
+        reduce.require(bid, _actor(), _is_admin())
+        return fn(bid, *args, **kwargs)
+    return wrapper
+
+
+@private_area_bp.route('/api/pipeline/reduction/new', methods=['POST'])
+@_api
+def pipeline_api_reduction_new():
+    problems = [c['detail'] for c in reduce.check() if not c['ok']]
+    if problems:
+        raise ap.NotConfigured('Reduction is not set up on this server: ' + '; '.join(problems))
+    bid = reduce.create(_actor())
+    logger.info('pipeline: %s made reduction batch %s', _actor(), bid)
+    return jsonify({'success': True, 'id': bid, 'url': url_for('private_area.pipeline_reduction_batch', bid=bid)})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/upload', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_upload(bid):
+    """One piece of a raw frame: bytes in the body; ?name= &offset= &total=."""
+    try:
+        offset = int(request.args.get('offset', ''))
+        total = int(request.args.get('total', ''))
+    except ValueError:
+        raise ap.PipelineError('Invalid upload.')
+    if (request.content_length or 0) > _upload_chunk() + 1024:
+        raise ap.PipelineError('Upload piece too large.')
+    result = reduce.upload_chunk(bid, request.args.get('name', ''), offset, total, request.get_data(cache=False))
+    return jsonify({'success': True, **result})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/remove', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_remove(bid):
+    reduce.remove_file(bid, str(_body().get('name') or ''))
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/run', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_run(bid):
+    reduce.start(bid, _actor())
+    logger.info('pipeline: %s started reduction batch %s', _actor(), bid)
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/stop', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_stop(bid):
+    reduce.stop(bid)
+    logger.info('pipeline: %s stopped reduction batch %s', _actor(), bid)
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/job')
+@_bapi
+def pipeline_api_reduction_job(bid):
+    try:
+        offset = max(0, int(request.args.get('offset') or 0))
+    except ValueError:
+        offset = 0
+    return jsonify({'success': True, **reduce.job(bid, offset), 'results': reduce.results(bid)})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/delete', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_delete(bid):
+    reduce.delete(bid)
+    logger.info('pipeline: %s deleted reduction batch %s', _actor(), bid)
+    return jsonify({'success': True, 'url': url_for('private_area.pipeline_reduction')})
+
+
+@private_area_bp.route('/api/pipeline/reduction/<bid>/send', methods=['POST'])
+@_bapi
+def pipeline_api_reduction_send(bid):
+    """Result frames → a Photometry workspace (an existing one, or a new one)."""
+    body = _body()
+    names = body.get('names')
+    if not isinstance(names, list):
+        raise ap.PipelineError('Invalid request.')
+    got = reduce.send_to_autophot(bid, [str(n) for n in names][:2000], user=_actor(), is_admin=_is_admin(),
+                                  tid=str(body.get('workspace') or ''), new_name=str(body.get('name') or ''))
+    logger.info('pipeline: %s sent %d frames of reduction batch %s to %s', _actor(), len(got['added']), bid, got['id'])
+    return jsonify({'success': True, **got, 'url': url_for('private_area.pipeline_workspace', tid=got['id'], tab='run')})
