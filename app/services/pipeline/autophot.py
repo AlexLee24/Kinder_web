@@ -79,22 +79,21 @@ class NotConfigured(PipelineError):
 def root():
     p = config.paths()['autophot_dir']
     if not p or not (p / 'autophot.py').is_file():
-        raise NotConfigured('AutoPhOT is not set up on this server (Admin → Operations → Pipeline).')
+        raise NotConfigured(f'AutoPhOT is missing from {p}: check out the repository again (scripts/sync_autophot.sh updates it).')
     return p
 
 
 def python():
     p = config.paths()['autophot_python']
     if not p or not p.is_file():
-        how = 'scripts/pipeline/setup_autophot.sh' if root() == config.VENDORED else f'"uv sync" in {root()}'
-        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run {how}.')
+        raise NotConfigured(f'AutoPhOT has no Python environment at {p}: run scripts/pipeline/setup_autophot.sh.')
     return p
 
 
 def runs_root():
     p = config.paths()['autophot_runs']
     if not p:
-        raise NotConfigured('The workspaces folder is not set (Admin → Operations → Pipeline).')
+        raise NotConfigured('The workspaces folder is not set (AUTOPHOT_RUNS in kinder.env).')
     return p
 
 

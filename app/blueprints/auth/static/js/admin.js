@@ -2128,18 +2128,11 @@ function _renderScheduledJobs(jobs) {
     }).join('');
 }
 
-// ── Pipeline · AutoPhOT paths (Operations tab) ──
+// ── Pipeline · AutoPhOT paths (Operations tab), read only: they come from the repository and kinder.env ──
 (function () {
-    const form = document.getElementById('pipelineForm');
-    if (!form) return;
     const rows = document.getElementById('pipelineRows');
+    if (!rows) return;
     const status = document.getElementById('pipelineStatus');
-    const hints = {
-        autophot_dir: 'Default: app/vendor/autophot (the copy in this repository)',
-        autophot_python: 'Default: <AutoPhOT folder>/.venv/bin/python (scripts/pipeline/setup_autophot.sh)',
-        autophot_runs: 'Default: app/data/autophot-runs (or autophot-runs next to a custom AutoPhOT folder)',
-        calibrated_dir: 'Default: /Users/greatlab/reduction_pipeline/Calibrated_Science (read only)',
-    };
 
     function node(tag, cls, text) {
         const n = document.createElement(tag);
@@ -2154,25 +2147,11 @@ function _renderScheduledJobs(jobs) {
         rows.replaceChildren(...settings.map(s => {
             const c = byKey[s.key];
             const field = node('div', 'kw-field');
-            const label = node('label', 'pipe-label');
-            label.htmlFor = 'pipe_' + s.key;
+            const label = node('div', 'pipe-label');
             label.append(node('span', 'pipe-dot' + (c ? (c.ok ? ' is-ok' : ' is-bad') : '')), node('span', '', s.label));
-            const input = node('input');
-            input.type = 'text';
-            input.id = 'pipe_' + s.key;
-            input.name = s.key;
-            input.value = s.value || '';
-            input.spellcheck = false;
-            input.placeholder = s.env_value ? 'kinder.env: ' + s.env_value : (s.used || hints[s.key] || '');
-            const note = node('div', 'pipe-note' + (c && !c.ok ? ' is-bad' : ''));
-            if (s.used) {
-                note.append('In use: ');
-                note.append(node('code', '', s.used));
-                if (c) note.append(' · ' + c.detail);
-            } else {
-                note.textContent = c ? c.detail : hints[s.key];
-            }
-            field.append(label, input, note);
+            const path = node('code', 'pipe-path', s.used);
+            const note = node('div', 'pipe-note' + (c && !c.ok ? ' is-bad' : ''), s.source + (c ? ' · ' + c.detail : ''));
+            field.append(label, path, note);
             return field;
         }));
     }
@@ -2187,34 +2166,11 @@ function _renderScheduledJobs(jobs) {
             const bad = data.checks.filter(c => !c.ok).length;
             status.textContent = probe ? (bad ? bad + ' problem' + (bad > 1 ? 's' : '') + ' found' : 'Ready') : '';
         } catch (e) {
-            rows.replaceChildren(node('p', 'pipe-note is-bad', 'Could not load the pipeline settings.'));
+            rows.replaceChildren(node('p', 'pipe-note is-bad', 'Could not load the pipeline paths.'));
             status.textContent = '';
         }
     }
 
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = document.getElementById('pipelineSave');
-        const settings = {};
-        form.querySelectorAll('input[name]').forEach(i => { settings[i.name] = i.value.trim(); });
-        btn.disabled = true;
-        status.textContent = 'Saving…';
-        try {
-            const res = await fetch('/admin/pipeline/settings', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ settings }),
-            });
-            const data = await res.json();
-            if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
-            render(data.settings, data.checks);
-            const bad = data.checks.filter(c => !c.ok).length;
-            status.textContent = bad ? 'Saved · ' + bad + ' problem' + (bad > 1 ? 's' : '') + ' left' : 'Saved · ready';
-        } catch (err) {
-            status.textContent = err.message;
-        }
-        btn.disabled = false;
-    });
     document.getElementById('pipelineCheck').addEventListener('click', () => load(true));
     load(false);
 })();

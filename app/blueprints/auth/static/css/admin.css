@@ -205,7 +205,7 @@
 .pipe-settings { margin-top: 14px; }
 .pipe-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; }
 .pipe-rows .kw-field { margin-bottom: 10px; min-width: 0; }
-.pipe-rows input { font-family: var(--kw-font-mono); font-size: 0.8rem; }
+.pipe-path { display: block; margin: 4px 0 2px; font-family: var(--kw-font-mono); font-size: 0.8rem; color: var(--kw-text-white, #fff); overflow-wrap: anywhere; }
 .pipe-label { display: flex; align-items: center; gap: 8px; }
 .pipe-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
 .pipe-dot.is-ok { background: #4CD964; }

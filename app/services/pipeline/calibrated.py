@@ -21,7 +21,7 @@ HEADER_KEYS = ('OBJECT', 'TELESCOP', 'INSTRUME', 'FILTER', 'DATE-OBS', 'DATE', '
 def root():
     p = config.paths().get('calibrated_dir')
     if not p or not p.is_dir():
-        raise NotConfigured(f'The calibrated science folder {p} is not on this server (Admin → Operations → Pipeline).')
+        raise NotConfigured(f'The calibrated science folder {p} is not on this server (CALIBRATED_SCIENCE_DIR in kinder.env).')
     return p
 
 

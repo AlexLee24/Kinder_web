@@ -129,7 +129,7 @@ def all_sources():
         return jsonify({'success': True, 'sources': []})
 
 # ===============================================================================
-# PIPELINE (AutoPhOT paths on this server)
+# PIPELINE (AutoPhOT paths on this server: shown, not set here; see services/pipeline/config.py)
 # ===============================================================================
 
 @admin_bp.route('/admin/pipeline/settings')
@@ -138,31 +138,3 @@ def get_pipeline_settings():
     from app.services.pipeline import config as pconfig
     return jsonify({'success': True, 'settings': pconfig.describe(),
                     'checks': pconfig.check(probe_python=request.args.get('probe') == '1')})
-
-
-@admin_bp.route('/admin/pipeline/settings', methods=['POST'])
-@admin_required
-def save_pipeline_settings():
-    import os
-
-    from app.services.pipeline import config as pconfig
-    data = request.get_json(silent=True) or {}
-    values = data.get('settings')
-    if not isinstance(values, dict):
-        return jsonify({'error': 'Invalid payload'}), 400
-    clean = {}
-    for key in pconfig.SETTINGS:
-        if key not in values:
-            continue
-        value = str(values.get(key) or '').strip()
-        if len(value) > 500 or any(c in value for c in '\0\r\n'):
-            return jsonify({'error': f'{pconfig.SETTINGS[key][1]}: invalid path'}), 400
-        if value and not os.path.isabs(os.path.expanduser(value)):
-            return jsonify({'error': f'{pconfig.SETTINGS[key][1]}: use an absolute path (or leave it empty)'}), 400
-        clean[key] = value
-    for key, value in clean.items():
-        if not set_setting(f'pipeline.{key}', value):
-            return jsonify({'error': 'Failed to save setting'}), 500
-    pconfig.clear_cache()
-    logger.info('admin: pipeline settings updated: %s', clean)
-    return jsonify({'success': True, 'settings': pconfig.describe(), 'checks': pconfig.check(probe_python=True)})

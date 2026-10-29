@@ -1,9 +1,9 @@
 """Private area: Pipeline — reduction (planned) → photometry with AutoPhOT.
 
-AutoPhOT runs on this server in its own Python; app/services/pipeline/autophot.py
-starts it and reads its output. The paths are set by an admin in
-Admin → Operations → Pipeline. Workspaces live in that folder, one per target;
-images are uploaded from the page (or, later, handed over by the Reduction stage).
+AutoPhOT (the copy in app/vendor/autophot) runs on this server in its own Python;
+app/services/pipeline/autophot.py starts it and reads its output. Workspaces live in
+the folder AUTOPHOT_RUNS names in kinder.env (see services/pipeline/config.py), one per
+target; images are uploaded from the page or copied from the calibrated frames.
 """
 import contextlib
 import functools
