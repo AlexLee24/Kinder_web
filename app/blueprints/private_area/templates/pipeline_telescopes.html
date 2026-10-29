@@ -51,6 +51,7 @@
             </div>
         </section>
 
+        {% if can_edit %}
         <section class="kw-panel" aria-labelledby="plTelEditTitle">
             <div class="kw-panel-head"><h2 id="plTelEditTitle">Edit telescope.yml</h2></div>
             <p class="kw-panel-desc">Saved on this server{% if local_path %} (<code>{{ local_path }}</code>){% endif %}, not in git; the template <code>{{ repo_path }}</code> is not changed. The previous version is kept in <code>.wdir/telescope_history/</code>. Saving waits until no AutoPhOT run is going.</p>
@@ -61,6 +62,12 @@
                 <p class="pl-msg" id="plTelMsg" role="status" aria-live="polite"></p>
             </div>
         </section>
+        {% else %}
+        <section class="kw-panel" aria-labelledby="plTelEditTitle">
+            <div class="kw-panel-head"><h2 id="plTelEditTitle">Edit telescope.yml</h2></div>
+            <p class="kw-panel-desc">Only admins can edit <code>telescope.yml</code>. To add or fix a telescope, ask an admin; you can download the file above to show them what you mean.</p>
+        </section>
+        {% endif %}
     </div>
 {% endblock %}
 

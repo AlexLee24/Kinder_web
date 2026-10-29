@@ -160,7 +160,7 @@ def pipeline_telescopes():
         local = ''
     return render_template('pipeline_telescopes.html', current_path='/pipeline', stages=pconfig.STAGES,
                            rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET, synced=synced,
-                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
+                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)), can_edit=_is_admin())
 
 
 @private_area_bp.route('/pipeline/telescopes/telescope.yml')
@@ -622,6 +622,8 @@ def pipeline_api_legacy_delete(tid):
 @private_area_bp.route('/api/pipeline/telescopes', methods=['POST'])
 @_api
 def pipeline_api_telescopes():
+    if not _is_admin():
+        raise ap.Forbidden('Only admins can edit telescope.yml.')
     result = ap.save_telescope(_body().get('text', ''), user=_actor())
     return jsonify({'success': True, **result, 'rows': ap.telescope_summary()})
 
