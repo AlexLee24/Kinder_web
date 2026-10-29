@@ -1,0 +1,87 @@
+{% extends '_base.html' %}
+{#- Pipeline › Reduction batch: its frames, run / stop, steps, astrometry per frame, results (download, zip, send to
+    AutoPhOT) and the log. pipeline_reduction.js renders the run parts from #rdInitial and polls while it runs. -#}
+{% block title %}{{ batch.name }} · Reduction - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">{% endblock %}
+
+{% block content %}
+    {% macro size(n) %}{% if n >= 1073741824 %}{{ '%.1f'|format(n / 1073741824) }} GB{% elif n >= 1048576 %}{{ '%.1f'|format(n / 1048576) }} MB{% elif n >= 1024 %}{{ '%.0f'|format(n / 1024) }} kB{% else %}{{ n }} B{% endif %}{% endmacro %}
+
+    <div class="kw-page pl-page rd-page" id="rdBatch" data-bid="{{ batch.id }}">
+        <a class="pl-back" href="{{ url_for('private_area.pipeline_reduction') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Reduction</a>
+        <header class="kw-page-head">
+            <div>
+                <span class="kw-eyebrow">Reduction · Lab pipeline</span>
+                <h1>{{ batch.name }}</h1>
+                <p class="pl-ws-sub">
+                    <span>{{ batch.counts.light }} science</span>
+                    {% for t in ('bias', 'dark', 'flat') %}{% if batch.counts[t] %}<span>{{ batch.counts[t] }} {{ t }}</span>{% endif %}{% endfor %}
+                    <span>Made <span data-ts="{{ batch.created }}"></span></span>
+                    <span>Deleted <span data-left="{{ batch.expires }}" id="rdExpires"></span></span>
+                </p>
+            </div>
+            <div class="kw-page-actions">
+                <span class="pl-state" id="rdState"></span>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="rdRun" hidden>Reduce</button>
+                <button type="button" class="kw-btn kw-btn-sm" id="rdStop" hidden>Stop</button>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="rdDelete">Delete batch</button>
+            </div>
+        </header>
+        <p class="pl-msg" role="status" aria-live="polite" id="rdMsg"></p>
+
+        <div class="rd-grid">
+            <div class="rd-main">
+                <section class="kw-panel" aria-labelledby="rdStepsT">
+                    <div class="kw-panel-head"><h2 id="rdStepsT">Progress</h2><span class="kw-panel-meta" id="rdStepMeta"></span></div>
+                    <ol class="rd-steps" id="rdSteps"></ol>
+                    <div id="rdProblems"></div>
+                </section>
+
+                <section class="kw-panel" aria-labelledby="rdResT">
+                    <div class="kw-panel-head"><h2 id="rdResT">Results</h2><span class="kw-panel-meta" id="rdResMeta"></span></div>
+                    <div id="rdResults"><div class="pl-empty"><b>No results yet</b>Calibrated frames appear here when the batch has been reduced.</div></div>
+                    <div class="rd-send" id="rdSend" hidden>
+                        <div class="rd-send-row">
+                            <a class="kw-btn kw-btn-sm" id="rdZip" href="{{ url_for('private_area.pipeline_reduction_zip', bid=batch.id) }}">Download all (.zip)</a>
+                            <span class="pl-spacer"></span>
+                            <label class="rd-send-to"><span>Send to AutoPhOT</span>
+                                <select class="kw-select kw-select-sm" id="rdWs">
+                                    <option value="">New workspace</option>
+                                    {% for w in workspaces|sort(attribute='updated', reverse=true) %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                                </select>
+                            </label>
+                            <input type="text" class="rd-ws-name" id="rdWsName" maxlength="80" spellcheck="false" placeholder="Workspace name (from the headers)" aria-label="New workspace name">
+                            <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="rdSendGo">Send selected</button>
+                        </div>
+                        <p class="pl-hint">Ticked frames are copied into the workspace; set the target there and run AutoPhOT. Frames without WCS are solved again before AutoPhOT runs.</p>
+                    </div>
+                </section>
+            </div>
+
+            <aside class="rd-side">
+                <section class="kw-panel" aria-labelledby="rdFramesT">
+                    <div class="kw-panel-head"><h2 id="rdFramesT">Uploaded frames</h2><span class="kw-panel-meta">{{ files|length }}</span></div>
+                    <div class="rd-table-wrap"><table class="rd-table rd-frames">
+                        <thead><tr><th>Frame</th><th>Type</th><th>Filter</th><th class="rd-num">Exp</th></tr></thead>
+                        <tbody>
+                        {% for name, f in files|dictsort %}
+                        <tr><td class="pl-mono rd-name" title="{{ name }}">{{ name }}<small>{{ f.object }}{% if f.telescope %} · {{ f.telescope }}{% endif %} · {{ size(f.size) }}</small></td>
+                            <td><span class="rd-type is-{{ f.type }}">{{ types[f.type] }}</span></td><td>{{ f.filter or '—' }}</td>
+                            <td class="rd-num">{{ '%g'|format(f.exptime) ~ ' s' if f.exptime is not none else '—' }}</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table></div>
+                </section>
+                <section class="kw-panel" aria-labelledby="rdLogT">
+                    <div class="kw-panel-head"><h2 id="rdLogT">Log</h2></div>
+                    <pre class="rd-log" id="rdLog" tabindex="0"></pre>
+                </section>
+            </aside>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script type="application/json" id="rdInitial">{{ run | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/pipeline_reduction.js') }}"></script>
+{% endblock %}

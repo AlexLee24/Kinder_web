@@ -114,6 +114,63 @@ def make_stacks(cfg_in, tdir):
     return new
 
 
+def ensure_astrometry(cfg_in, tdir):
+    """執行前每張要量的影像都先做一次 astrometry（astrometry_solve.py，跟 Reduction 同一套 solve-field 做法），WCS 寫回影像本身。
+    做過的影像 header 有 KWASTROM（solved / failed），已經是 Astrometry.net 解過的（例如 Reduction、伺服器上校正好的）也跳過，
+    所以每張只會做一次。解不出來的照樣交給 AutoPhOT（它自己還會再試）。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from astropy.io import fits
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import astrometry_solve as asv
+
+    solver = asv.find_solve_field()
+    if not solver:
+        print('[web] astrometry: solve-field not found on this server; AutoPhOT does its own WCS', flush=True)
+        return
+    top = cfg_in['fits_dir']
+    stacks = set(cfg_in.get('stacks') or {})
+    todo = []
+    for root_dir, dirs, names in os.walk(top):
+        rel_root = os.path.relpath(root_dir, top)
+        if rel_root != '.' and (cfg_in.get('top_only', True) or rel_root.split(os.sep)[0] == 'templates'):
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d != 'templates' and not d.startswith('.') and not d.endswith('_REDUCED')]
+        for n in sorted(names):
+            rel = os.path.normpath(os.path.join(rel_root, n))
+            if not n.lower().endswith(('.fits', '.fit', '.fts')) or rel in stacks:
+                continue
+            path = os.path.join(top, rel)
+            try:
+                h = fits.getheader(path)
+            except Exception:
+                continue
+            if h.get(asv.MARK) or any('Astrometry.net' in str(c[1]) for c in h.cards if c[0] in ('HISTORY', 'COMMENT')):
+                continue
+            todo.append(path)
+    if not todo:
+        print('[web] astrometry: every frame already has its WCS', flush=True)
+        return
+    print(f'[web] astrometry: solving {len(todo)} frame(s) with solve-field before AutoPhOT', flush=True)
+    work = os.path.join(tdir, '.astrometry')
+    os.makedirs(work, exist_ok=True)
+
+    def one(path):
+        rec = asv.solve(path, path, solver, log=lambda t: print(f'[web] astrometry: {t}', flush=True), workdir=work)
+        if rec['status'] != 'solved':
+            try:
+                with fits.open(path, mode='update') as hdul:
+                    hdul[0].header[asv.MARK] = ('failed', f"Kinder solve-field: {rec.get('reason', '')}"[:68])
+            except Exception:
+                pass
+        return rec['status'] == 'solved'
+
+    with ThreadPoolExecutor(max_workers=max(1, min(4, (os.cpu_count() or 2) // 2))) as ex:
+        ok = sum(ex.map(one, todo))
+    print(f'[web] astrometry: {ok} of {len(todo)} solved', flush=True)
+
+
 def main():
     tdir = Path(sys.argv[1]).resolve()
     ap_dir = os.environ.get('AUTOPHOT_DIR') or os.getcwd()     # AutoPhOT 的模組（autophot、prepare、lightcurve）在這裡
@@ -162,6 +219,7 @@ def main():
     #   不掃子資料夾 → 只留最上層；疊圖打勾 → 只量疊好的圖（stack_with_singles 時單張也量）；沒勾 → 疊好的圖不量
     # （模板由 find_templates 另外找，不受影響）
     use_stack, with_singles = bool(cfg_in.get('stack')), bool(cfg_in.get('stack_with_singles'))
+    ensure_astrometry(cfg_in, str(tdir))           # 疊圖之前：對齊也用得到 WCS
     if use_stack:
         cfg_in['stacks'] = make_stacks(cfg_in, str(tdir))
     import prepare
