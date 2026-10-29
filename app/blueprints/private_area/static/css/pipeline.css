@@ -205,6 +205,8 @@ button.pl-tag.is-partial { opacity: 0.85; border-style: dashed; }
 .pl-scan-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; font-size: 0.84rem; }
 .pl-hdr { font-size: 0.78rem; }
 .pl-hdr td, .pl-hdr th { padding: 7px 10px; white-space: nowrap; }
+/* file names are long (Calibrated_<target>_D<date>_<filter>_<telescope>_…): they wrap, so the table fits without scrolling sideways */
+.pl-hdr td.pl-mono { white-space: normal; overflow-wrap: anywhere; word-break: break-all; min-width: 18ch; }
 .pl-hdr .kw-chip { margin-left: 6px; }
 .pl-table td.is-miss { color: #FF8A80; }
 
@@ -223,11 +225,18 @@ button.pl-tag.is-partial { opacity: 0.85; border-style: dashed; }
 
 /* Workspace page: one column, the steps in order (images, target, template subtraction, options, run), then
    access, the folder on the server and delete. The page is the only thing that scrolls. */
-.pl-flow { display: grid; gap: 16px; max-width: 1080px; }
+.pl-flow { display: grid; gap: 16px; }
 .pl-flow > .kw-panel, .pl-flow-after > .kw-panel, .pl-setup-form > .kw-panel { margin-top: 0; }
 .pl-setup-form, .pl-flow-after { display: grid; gap: 16px; min-width: 0; }
 .pl-flow .kw-panel-head { align-items: flex-start; }
 .pl-flow-after { margin-top: 12px; padding-top: 20px; border-top: 1px solid var(--kw-hairline); }
+/* wide windows: steps 2, 3 and 4 (target, template subtraction, options) side by side, read left to right */
+@media (min-width: 1360px) {
+    .pl-setup-form, .pl-setup-form > fieldset.pl-readonly { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+    .pl-setup-form > fieldset.pl-readonly, .pl-setup-form > .pl-warn { grid-column: 1 / -1; }
+    .pl-setup-form .pl-row-3 { grid-template-columns: 1fr 1fr; }
+    .pl-flow-after { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+}
 .pl-images .pl-drop { margin-bottom: 12px; }
 .pl-save-state { font-size: 0.78rem; color: var(--kw-text-muted); }
 .pl-save-state.is-ok { color: #4CD964; }
