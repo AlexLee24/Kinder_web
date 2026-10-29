@@ -502,7 +502,7 @@
             let d;
             try { d = await api(CAL_API + '/folder?path=' + encodeURIComponent(path)); }
             catch (err) { root.replaceChildren(el('p', { class: 'pl-msg is-error', text: err.message })); return; }
-            const boxes = [];
+            const boxes = [], chips = [];
             const foot = el('span', { class: 'pl-faint' });
             const go = el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: label });
             const sync = () => {
@@ -510,7 +510,14 @@
                 foot.textContent = on.length + ' of ' + boxes.length + ' selected · ' + sizeText(on.reduce((a, b) => a + b.f.size, 0));
                 go.disabled = !on.length;
                 all.checked = on.length === boxes.length; all.indeterminate = on.length > 0 && on.length < boxes.length;
+                chips.forEach(c => {                       // a tag is on when all of its frames are ticked
+                    const m = members(c.tag), n = m.filter(b => b.box.checked).length;
+                    c.btn.classList.toggle('is-on', m.length > 0 && n === m.length);
+                    c.btn.classList.toggle('is-partial', n > 0 && n < m.length);
+                    c.btn.setAttribute('aria-pressed', String(m.length > 0 && n === m.length));
+                });
             };
+            const members = tag => boxes.filter(b => !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)) && b.f.tag === tag);
             const all = el('input', { type: 'checkbox', 'aria-label': 'Select all', onchange: () => { boxes.forEach(b => { if (!b.f.error) b.box.checked = all.checked; }); sync(); } });
             const rows = d.files.map(f => {
                 const cal = f.imagetyp && CAL_RE.test(f.imagetyp);
@@ -530,12 +537,19 @@
                 go.disabled = true;
                 try { await onPick(chosen, d.path); } finally { go.disabled = false; }
             });
-            // One chip per telescope / filter / exposure read from the headers; a click picks just those frames
+            // One chip per telescope / filter / exposure read from the headers. Each is a switch: click to add or remove
+            // those frames, as many as you like; Select none first to start from nothing.
+            const setAll = on => { boxes.forEach(b => { b.box.checked = on && !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)); }); sync(); };
             const tagBar = (d.tags || []).length ? el('div', {},
-                el('p', { class: 'pl-tags-hint', text: 'Tags from the headers (telescope · filter · exposure). Click one to pick only those frames.' }),
-                el('div', { class: 'pl-chips pl-tags', role: 'group', 'aria-label': 'Select by tag' }, d.tags.map(t => el('button', {
-                    type: 'button', class: 'kw-chip kw-chip-gold pl-tag', text: t.tag + ' × ' + t.n,
-                    onclick: () => { boxes.forEach(b => { b.box.checked = !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)) && b.f.tag === t.tag; }); sync(); } })))) : null;
+                el('p', { class: 'pl-tags-hint' }, 'Tags from the headers (telescope · filter · exposure). Click tags to add or remove those frames. ',
+                    el('button', { type: 'button', class: 'pl-link', text: 'Select all', onclick: () => setAll(true) }), ' · ',
+                    el('button', { type: 'button', class: 'pl-link', text: 'Select none', onclick: () => setAll(false) })),
+                el('div', { class: 'pl-chips pl-tags', role: 'group', 'aria-label': 'Select by tag' }, d.tags.map(t => {
+                    const btn = el('button', { type: 'button', class: 'kw-chip kw-chip-gold pl-tag', 'aria-pressed': 'true', text: t.tag + ' × ' + t.n,
+                        onclick: () => { const m = members(t.tag), on = m.every(b => b.box.checked); m.forEach(b => { b.box.checked = !on; }); sync(); } });
+                    chips.push({ tag: t.tag, btn });
+                    return btn;
+                }))) : null;
             root.replaceChildren(...[
                 el('div', { class: 'pl-pick-head' },
                     el('button', { type: 'button', class: 'pl-link', text: '← All folders', onclick: () => showFolders(q) }),
@@ -713,7 +727,8 @@
     let reloadImages = () => {};
     if (imgBody) {
         const cov = wsForm ? wsForm.querySelector('[data-coverage]') : null;
-        let last = null;
+        const FRAMES_SHOWN = 12;
+        let last = null, allFrames = false;
 
         const fail = err => imgBody.prepend(el('p', { class: 'pl-msg is-error', text: err.message }));
         function removeButton(name, label) {
@@ -755,9 +770,10 @@
             if (d.missing) parts.push(el('p', { class: 'pl-warn', text: plural(d.missing, 'frame') + ' missing TELESCOP / INSTRUME / FILTER; AutoPhOT skips them.' }));
             if (!d.files.length) parts.push(el('div', { class: 'pl-empty' }, el('b', { text: 'No frames yet' }), 'Drop a folder or FITS files above.'));
             else {
+                const files = allFrames || d.files.length <= FRAMES_SHOWN ? d.files : d.files.slice(0, FRAMES_SHOWN);
                 parts.push(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-hdr' },
                     el('thead', {}, el('tr', {}, ['File', 'Filter', 'Tag', 'Date (UTC)', 'Exp (s)', 'Deleted'].map(h => el('th', { text: h })), el('th'))),
-                    el('tbody', {}, d.files.map(f => el('tr', {},
+                    el('tbody', {}, files.map(f => el('tr', {},
                         el('td', { class: 'pl-mono' }, f.name, f.stack ? el('span', { class: 'kw-chip kw-chip-gold', text: 'stack' }) : null),
                         f.error ? el('td', { class: 'is-miss', colspan: '4', text: f.error }) : [
                             el('td', { class: !f.FILTER ? 'is-miss' : null }, f.band ? el('b', { text: f.band }) : null,
@@ -768,6 +784,11 @@
                             el('td', { text: f.EXPTIME || '—' })],
                         el('td', { class: 'pl-faint', title: new Date(f.expires * 1000).toLocaleString(), text: daysLeft(f.expires) }),
                         el('td', { class: 'pl-acts' }, f.stack ? null : removeButton(f.name))))))));
+                if (d.files.length > FRAMES_SHOWN) {
+                    parts.push(el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost pl-more-rows',
+                        text: allFrames ? 'Show the first ' + FRAMES_SHOWN : 'Show all ' + d.files.length + ' frames',
+                        onclick: () => { allFrames = !allFrames; renderImages(last); } }));
+                }
             }
             if (d.expired.length) {
                 const restore = d.restorable && canEdit ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy ' + d.restorable + ' again from the server',
@@ -1085,6 +1106,18 @@
     const jobBox = $('plJob');
     if (jobBox) {
         const logEl = $('plLog'), stateEl = $('plJobState'), runBtn = $('plRun'), ans = $('plAnswer'), prog = $('plProgress');
+        // The card shows only the last lines (no scrolling of its own); Full log opens the whole of it in a pop-out
+        const LOG_TAIL = 10, logBox = $('plLogModal'), logFull = $('plLogFull');
+        let lastLog = '';
+        function fillFull(first) {
+            const stick = first || logFull.scrollHeight - logFull.scrollTop - logFull.clientHeight < 40;
+            logFull.textContent = lastLog || 'Nothing logged yet.';
+            if (stick) logFull.scrollTop = logFull.scrollHeight;
+        }
+        if (logBox) {
+            const m = modal(logBox);
+            $('plLogOpen').addEventListener('click', () => { m.open(); fillFull(true); logFull.focus(); });
+        }
         let running = false, timer = null, stopArmed = false, armTimer = null;
 
         const elapsed = start => {
@@ -1104,9 +1137,12 @@
             if (head && on) head.replaceChildren(el('span', { class: 'kw-chip kw-chip-blue' }, el('span', { class: 'pl-pulse', 'aria-hidden': 'true' }), 'Running'));
         }
         function show(j) {
-            const stick = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
-            if (j.log) { logEl.hidden = false; $('plLogFoot').hidden = false; $('plRunHint').hidden = true; logEl.textContent = j.log; }
-            if (stick) logEl.scrollTop = logEl.scrollHeight;
+            if (j.log) {
+                logEl.hidden = false; $('plLogFoot').hidden = false; $('plRunHint').hidden = true;
+                lastLog = j.log;
+                logEl.textContent = j.log.replace(/\n+$/, '').split('\n').slice(-LOG_TAIL).join('\n');
+                if (logBox && logBox.classList.contains('is-open')) fillFull(false);
+            }
             const isRunning = j.status === 'running';
             if (isRunning !== running) setRunning(isRunning);
             const wasHidden = ans.hidden;
@@ -1387,13 +1423,20 @@
         });
     });
 
-    // ── Workspace list filter (Pipeline page) ─────────────────────────────────
-    const wsFilter = $('plWsFilter');
-    if (wsFilter) {
-        wsFilter.addEventListener('input', () => {
-            const q = wsFilter.value.trim().toLowerCase();
-            document.querySelectorAll('#plWsList .pl-ws').forEach(li => { li.hidden = q && !li.dataset.name.includes(q); });
-        });
+    // ── Workspace list (Pipeline page): the newest ten, Show all for the rest; the filter searches all ──
+    const wsList = $('plWsList');
+    if (wsList) {
+        const wsFilter = $('plWsFilter'), items = [...wsList.querySelectorAll('.pl-ws')], CAP = 10;
+        let expanded = false;
+        const more = items.length > CAP ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost pl-more-rows' }) : null;
+        const apply = () => {
+            const q = wsFilter ? wsFilter.value.trim().toLowerCase() : '';
+            items.forEach((li, i) => { li.hidden = q ? !li.dataset.name.includes(q) : !expanded && i >= CAP; });
+            if (more) { more.hidden = !!q; more.textContent = expanded ? 'Show the newest ' + CAP : 'Show all ' + items.length + ' workspaces'; }
+        };
+        if (more) { more.addEventListener('click', () => { expanded = !expanded; apply(); }); wsList.after(more); }
+        if (wsFilter) wsFilter.addEventListener('input', apply);
+        apply();
     }
 
     // ── Telescopes: the shared telescope.yml ──────────────────────────────────
