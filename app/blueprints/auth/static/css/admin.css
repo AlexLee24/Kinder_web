@@ -495,3 +495,6 @@
 .bot-file.is-warn { color: #ffe8a8; border-color: rgba(255, 214, 10, 0.3); }
 .bot-file b { font-weight: 700; }
 .bot-cron { color: var(--kw-text-secondary); }
+.bot-detect-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.bot-detect-names { display: inline-flex; gap: 8px; }
+.bot-detect-names input { min-width: 16ch; }

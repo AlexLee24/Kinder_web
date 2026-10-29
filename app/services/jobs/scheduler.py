@@ -79,6 +79,10 @@ def acquire_background_lock() -> bool:
         return False
 
 
+# Scheduler jobs that are not named bot_<id> but belong to a bot of Admin › Bots (the page shows their next run)
+_BOT_OF_JOB = {'daily_detect_followups': 'detect'}
+
+
 def _add_bot_jobs(scheduler):
     """Lab bots on a schedule (app/services/bots); each records its own state for Admin › Bots."""
     from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -96,10 +100,11 @@ def _add_bot_jobs(scheduler):
         scheduler.add_job(reduction.run, 'cron', hour=reduction.hour_utc(), minute=0, id='bot_reduction')
 
     def note_next_run(ev):
-        if ev.job_id.startswith('bot_'):
+        bot_id = _BOT_OF_JOB.get(ev.job_id) or (ev.job_id[4:] if ev.job_id.startswith('bot_') else None)
+        if bot_id:
             job = scheduler.get_job(ev.job_id)
             if job and job.next_run_time:
-                bot_status.update(ev.job_id[4:], next_run=job.next_run_time.isoformat(timespec='seconds'))
+                bot_status.update(bot_id, next_run=job.next_run_time.isoformat(timespec='seconds'))
     scheduler.add_listener(note_next_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
 
 
@@ -114,8 +119,9 @@ def _start_bots(scheduler):
     for bot_id in off:
         bot_status.update(bot_id, state='disabled')
     for job in scheduler.get_jobs():
-        if job.id.startswith('bot_') and job.next_run_time:
-            bot_status.update(job.id[4:], next_run=job.next_run_time.isoformat(timespec='seconds'))
+        bot_id = _BOT_OF_JOB.get(job.id) or (job.id[4:] if job.id.startswith('bot_') else None)
+        if bot_id and job.next_run_time:
+            bot_status.update(bot_id, next_run=job.next_run_time.isoformat(timespec='seconds'))
     if 'gcn' not in off:
         gcn.start()
     for bot_id in ('astronote', 'obs_log'):

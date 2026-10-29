@@ -100,7 +100,11 @@
         const running = b.state === 'running' && b.health === 'busy';
         const acts = [];
         acts.push('<button type="button" class="kw-btn kw-btn-sm" data-act="open" data-bot="' + b.id + '">Log & details</button>');
-        if (b.can_run && !running) acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-act="run" data-bot="' + b.id + '"' + (busy[b.id] ? ' disabled' : '') + '>Run now</button>');
+        if (b.can_run && !running) {
+            // DETECT has two ways to run it by hand: the daily Follow-up re-screen and what TNS touched in the last 2 h
+            const kinds = b.id === 'detect' ? [['followups', 'Re-screen Follow-ups'], ['recent', 'Recent (2 h)']] : [['', 'Run now']];
+            kinds.forEach((k) => acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-act="run" data-bot="' + b.id + '"' + (k[0] ? ' data-kind="' + k[0] + '"' : '') + (busy[b.id] ? ' disabled' : '') + '>' + k[1] + '</button>'));
+        }
         if (b.can_stop && running) acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-act="stop" data-bot="' + b.id + '"' + (busy[b.id] ? ' disabled' : '') + '>Stop</button>');
         (b.links || []).forEach((l) => acts.push('<a class="kw-btn kw-btn-sm kw-btn-ghost" href="' + esc(l[1]) + '">' + esc(l[0]) + ' →</a>'));
         return '<article class="kw-panel bot-card' + (b.id === sel ? ' is-sel' : '') + '" data-bot="' + b.id + '">' +
@@ -121,6 +125,7 @@
         const t = [['log', 'Log'], ['events', 'Events']];
         if (b.id === 'reduction') t.push(['steps', 'Steps'], ['folders', 'Folders']);
         if (b.id === 'obs_log') t.push(['nights', 'Nights']);
+        if (b.id === 'detect') t.push(['overview', 'Overview & manual runs']);
         return t;
     }
     function current() { return bots.find((b) => b.id === sel); }
@@ -169,6 +174,9 @@
         } else if (tab === 'folders') {
             v.innerHTML = '<p class="bot-muted">Reading the folders…</p>';
             getJSON('/admin/bots/reduction/overview' + (fresh ? '?fresh=1' : '')).then(renderFolders).catch((e) => { v.innerHTML = '<p class="bot-alert is-bad">' + esc(e.message) + '</p>'; });
+        } else if (tab === 'overview') {
+            v.innerHTML = '<p class="bot-muted">Reading the database…</p>';
+            getJSON('/admin/bots/detect/overview').then(renderDetect).catch((e) => { v.innerHTML = '<p class="bot-alert is-bad">' + esc(e.message) + '</p>'; });
         } else if (tab === 'nights') {
             const d = b.detail || {};
             const nights = d.nights || [];
@@ -196,6 +204,36 @@
                     ((s.tail || []).length ? '<pre class="bot-step-tail">' + esc(s.tail.join('\n')) + '</pre>' : '') + '</div>' +
                     '<span class="bot-step-time">' + esc(dur(live)) + '</span><span class="kw-chip ' + c[0] + '">' + c[1] + '</span></li>';
             }).join('') + '</ol>' : '<p class="bot-muted">The steps appear after the first run.</p>');
+    }
+    function renderDetect(st) {
+        const db = st.db || {};
+        const stale = db.last_run && (Date.now() - new Date(db.last_run).getTime()) > 6 * 3600e3;
+        const setup = (current().detail || {}).setup;
+        $('botView').innerHTML =
+            (setup ? '<p class="bot-alert is-warn">' + esc(setup) + '</p>' : '') +
+            (db.error ? '<p class="bot-alert is-bad">Database: ' + esc(db.error) + '</p>' : '') +
+            '<div class="kw-kpis bot-kpis">' +
+            kpi('Latest screening in DB', db.last_run ? ago(db.last_run) : '—', db.last_run ? stamp(db.last_run) + ' · any DETECT instance' : '', stale ? 'is-bad' : '') +
+            kpi('Last 24 h', db.screened_24h != null ? db.screened_24h + ' screened' : '—',
+                db.screened_24h != null ? db.confirmed_24h + ' confirmed · ' + db.review_24h + ' review · ' + db.none_24h + ' none' + (db.history_rows_24h != null ? ' · ' + db.history_rows_24h + ' history rows' : '') : '', '') +
+            kpi('Waiting for a person', db.pending_review != null ? db.pending_review : '—', 'Inbox objects with a host verdict (7 d) · ' + (db.followups != null ? db.followups + ' in Follow-up' : ''), db.pending_review > 0 ? 'is-warn' : '') +
+            kpi('Other writers', db.legacy_rows_24h > 0 ? db.legacy_rows_24h + ' legacy rows' : 'none',
+                db.legacy_rows_24h > 0 ? 'cross_matches rows without rule v1 data in 24 h: an old DETECT still runs somewhere' : 'no cross_matches without rule v1 data in 24 h', db.legacy_rows_24h > 0 ? 'is-bad' : '') +
+            '</div>' +
+            '<dl class="bot-paths">' +
+            '<div><dt>Code</dt><dd>' + esc(st.code_present ? (st.version && st.version.synced ? 'synced ' + st.version.synced.slice(0, 10) : 'present') : 'missing') + '</dd></div>' +
+            '<div><dt>SFD dust maps</dt><dd>' + (st.sfd_maps ? 'present' : 'missing (fetched on first use)') + '</dd></div>' +
+            '<div><dt>Data folder</dt><dd class="sys-mono">' + esc(st.data_dir || '—') + '</dd></div>' +
+            (st.running ? '<div><dt>Running now</dt><dd>' + esc(st.running.label) + (st.running.objects != null ? ' · ' + st.running.objects + ' objects' : '') + '</dd></div>' : '') +
+            '</dl>' +
+            '<h3>Run it now</h3>' +
+            '<p class="kw-panel-desc">The hourly TNS import and the daily 04:00 UTC job start DETECT on their own. Only one run goes at a time; another request is refused until it finishes.</p>' +
+            '<div class="bot-detect-run">' +
+            '<button type="button" class="kw-btn kw-btn-sm" data-detect-run="followups" title="Re-screen every Follow-up object now">Re-screen Follow-ups</button>' +
+            '<button type="button" class="kw-btn kw-btn-sm" data-detect-run="recent" title="Objects TNS touched in the last 2 hours">Recent (2 h)</button>' +
+            '<span class="bot-detect-names"><input type="text" id="detectNames" placeholder="2026abdm, 2026abnn" aria-label="Object names" spellcheck="false">' +
+            '<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-detect-run="names">Run on objects</button></span>' +
+            '<span id="detectRunMsg" class="bot-muted"></span></div>';
     }
     function renderFolders(o) {
         const rows = (list, empty) => list.length ? '<div class="kw-table-wrap"><table class="kw-table"><thead><tr><th>Folder</th><th>FITS</th><th>Changed</th></tr></thead><tbody>' +
@@ -293,10 +331,25 @@
         busy[id] = true;
         btn.disabled = true;
         btn.textContent = stop ? 'Stopping…' : 'Starting…';
-        post(stop ? '/admin/bots/reduction/stop' : '/admin/bots/' + id + '/run').then((r) => {
+        post(stop ? '/admin/bots/reduction/stop' : '/admin/bots/' + id + '/run' + (btn.dataset.kind ? '?kind=' + btn.dataset.kind : '')).then((r) => {
             if (!r.ok) alert(r.d.error || 'Failed');
             if (sel !== id) select(id, 'log'); else { logOffset = null; renderView(true); }
         }).catch((e) => alert(e.message)).finally(() => { busy[id] = false; setTimeout(refresh, 800); });
+    });
+    $('botView').addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-detect-run]');
+        if (!b) return;
+        const body = { kind: b.dataset.detectRun };
+        if (body.kind === 'names') body.names = ($('detectNames').value || '').trim();
+        if (body.kind === 'recent') body.hours = 2;
+        const msg = $('detectRunMsg');
+        b.disabled = true;
+        msg.className = 'bot-muted'; msg.textContent = 'Starting…';
+        fetch('/admin/detect-run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then((r) => r.json().then((d) => ({ ok: r.ok && d.success, d })))
+            .then((r) => { msg.className = r.ok ? 'bot-good' : 'bot-bad'; msg.textContent = r.d.message || (r.ok ? 'Started' : 'Failed'); setTimeout(refresh, 1500); })
+            .catch((e) => { msg.className = 'bot-bad'; msg.textContent = e.message; })
+            .finally(() => { b.disabled = false; });
     });
     $('botPick').addEventListener('click', (ev) => { const b = ev.target.closest('[data-bot]'); if (b) select(b.dataset.bot); });
     $('botTabs').addEventListener('click', (ev) => { const t = ev.target.closest('[data-tab]'); if (t) select(sel, t.dataset.tab); });

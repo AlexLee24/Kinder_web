@@ -14,8 +14,10 @@ from .helpers import audit
 def _setup_problems():
     """What each bot is missing right now (settings, folders), so the page shows it before the first run."""
     from app.services.bots import astronote, gcn, obs_log, reduction
+    from app.services.bots import detect as detect_bot
     raw = obs_log.raw_dir()
     out = {'gcn': gcn.setup_problem(), 'astronote': astronote.setup_problem(), 'reduction': reduction.setup_problem(),
+           'detect': detect_bot.setup_problem(),
            'obs_log': '' if raw and raw.is_dir() else f'Raw frame folder not found: {raw or "(not set)"} — set OBS_RAW_DIR or REDUCTION_PIPELINE_DIR.'}
     return {k: v for k, v in out.items() if v}
 
@@ -64,6 +66,10 @@ def bot_run(bot_id):
     if not bot or not bot.can_run:
         return jsonify({'error': 'This bot cannot be run by hand'}), 400
     audit('bot_run', bot_id)
+    if bot_id == 'detect':                              # ?kind=followups (the daily 04:00 job) or recent (objects TNS touched in 2 h)
+        from .detect import start_detect_run
+        res, code = start_detect_run('recent' if request.args.get('kind') == 'recent' else 'followups', hours=2.0)
+        return (jsonify({'ok': True, 'message': res['message']}) if res['success'] else jsonify({'error': res['message']})), code
     if bot_id == 'reduction':
         res = reduction.start_now()
         return jsonify(res), (409 if res.get('error') else 200)
@@ -86,3 +92,10 @@ def bot_reduction_stop():
 def bot_reduction_overview():
     from app.services.bots import reduction
     return jsonify(reduction.overview(max_age=0 if request.args.get('fresh') else 60))
+
+
+@admin_bp.route('/admin/bots/detect/overview')
+@admin_required
+def bot_detect_overview():
+    from app.services.bots import detect as detect_bot
+    return jsonify(detect_bot.overview())
