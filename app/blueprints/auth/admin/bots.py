@@ -66,9 +66,9 @@ def bot_run(bot_id):
     if not bot or not bot.can_run:
         return jsonify({'error': 'This bot cannot be run by hand'}), 400
     audit('bot_run', bot_id)
-    if bot_id == 'detect':                              # the Follow-up re-screen: what the daily 04:00 job does
+    if bot_id == 'detect':                              # ?kind=followups (the daily 04:00 job) or recent (objects TNS touched in 2 h)
         from .detect import start_detect_run
-        res, code = start_detect_run('followups')
+        res, code = start_detect_run('recent' if request.args.get('kind') == 'recent' else 'followups', hours=2.0)
         return (jsonify({'ok': True, 'message': res['message']}) if res['success'] else jsonify({'error': res['message']})), code
     if bot_id == 'reduction':
         res = reduction.start_now()

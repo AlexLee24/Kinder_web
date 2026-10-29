@@ -100,7 +100,11 @@
         const running = b.state === 'running' && b.health === 'busy';
         const acts = [];
         acts.push('<button type="button" class="kw-btn kw-btn-sm" data-act="open" data-bot="' + b.id + '">Log & details</button>');
-        if (b.can_run && !running) acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-act="run" data-bot="' + b.id + '"' + (busy[b.id] ? ' disabled' : '') + '>Run now</button>');
+        if (b.can_run && !running) {
+            // DETECT has two ways to run it by hand: the daily Follow-up re-screen and what TNS touched in the last 2 h
+            const kinds = b.id === 'detect' ? [['followups', 'Re-screen Follow-ups'], ['recent', 'Recent (2 h)']] : [['', 'Run now']];
+            kinds.forEach((k) => acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-act="run" data-bot="' + b.id + '"' + (k[0] ? ' data-kind="' + k[0] + '"' : '') + (busy[b.id] ? ' disabled' : '') + '>' + k[1] + '</button>'));
+        }
         if (b.can_stop && running) acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-act="stop" data-bot="' + b.id + '"' + (busy[b.id] ? ' disabled' : '') + '>Stop</button>');
         (b.links || []).forEach((l) => acts.push('<a class="kw-btn kw-btn-sm kw-btn-ghost" href="' + esc(l[1]) + '">' + esc(l[0]) + ' →</a>'));
         return '<article class="kw-panel bot-card' + (b.id === sel ? ' is-sel' : '') + '" data-bot="' + b.id + '">' +
@@ -327,7 +331,7 @@
         busy[id] = true;
         btn.disabled = true;
         btn.textContent = stop ? 'Stopping…' : 'Starting…';
-        post(stop ? '/admin/bots/reduction/stop' : '/admin/bots/' + id + '/run').then((r) => {
+        post(stop ? '/admin/bots/reduction/stop' : '/admin/bots/' + id + '/run' + (btn.dataset.kind ? '?kind=' + btn.dataset.kind : '')).then((r) => {
             if (!r.ok) alert(r.d.error || 'Failed');
             if (sel !== id) select(id, 'log'); else { logOffset = null; renderView(true); }
         }).catch((e) => alert(e.message)).finally(() => { busy[id] = false; setTimeout(refresh, 800); });
