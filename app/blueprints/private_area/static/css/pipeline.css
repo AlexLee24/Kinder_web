@@ -536,3 +536,7 @@ fieldset.pl-readonly { margin: 0; padding: 0; border: 0; min-inline-size: 0; dis
 .pl-runner-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .pl-runner-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--kw-text-white); overflow-wrap: anywhere; }
 .pl-runner-list small { color: var(--kw-text-faint); }
+/* Results: the run's errors and the log pop-out; images that fell back to no subtraction */
+.pl-problems { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 0.8rem; color: #FF8A80; overflow-wrap: anywhere; }
+.pl-problems .kw-chip { margin-left: 6px; }
+.pl-ts-miss { margin-bottom: 14px; }

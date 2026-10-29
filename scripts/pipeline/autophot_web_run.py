@@ -171,6 +171,38 @@ def ensure_astrometry(cfg_in, tdir):
     print(f'[web] astrometry: {ok} of {len(todo)} solved', flush=True)
 
 
+def template_box(files, ra, dec):
+    """模板在目標周圍真正有資料的方框邊長（arcmin），所有模板取最小；量不到回 None。
+
+    Pan-STARRS 的模板是從單一 skycell 切出來的：目標靠近 skycell 邊緣時，超出的部分是空白，
+    AutoPhOT 會把空白邊裁掉，結果模板只蓋到科學影像的一小塊（例如 6′×5′ 對 13′×13′），
+    低於 AutoPhOT 要求的 25% 覆蓋率，所有對齊方法都被拒絕、整張不做 TS。"""
+    import numpy as np
+    from astropy.io import fits
+    from astropy.wcs import WCS
+    from astropy.wcs.utils import proj_plane_pixel_scales
+    sides = []
+    for f in files:
+        try:
+            with fits.open(f) as hdul:
+                hdu = next(h for h in hdul if h.data is not None and getattr(h.data, 'ndim', 0) == 2)
+                data = np.asarray(hdu.data, dtype=float)
+                wcs = WCS(hdu.header).celestial
+            x, y = (float(v) for v in wcs.all_world2pix(ra, dec, 0))
+            ok = np.isfinite(data) & (data != 0)          # 空白的地方是 NaN 或 0
+            rows, cols = np.flatnonzero(ok.mean(axis=1) > 0.5), np.flatnonzero(ok.mean(axis=0) > 0.5)
+            if not len(rows) or not len(cols):
+                continue
+            half = min(x - cols[0], cols[-1] - x, y - rows[0], rows[-1] - y)   # 目標到最近一邊（像素）
+            scale = float(np.mean(proj_plane_pixel_scales(wcs))) * 3600          # arcsec/px
+            side = max(0.0, 2 * half * scale / 60)
+            print(f'[web] template {os.path.basename(f)}: {side:.1f}′ of data around the target', flush=True)
+            sides.append(side)
+        except Exception as e:                            # 量不到就不裁，照 AutoPhOT 原本的做法
+            print(f'[web] could not measure template {os.path.basename(f)}: {e}', flush=True)
+    return min(sides) if sides else None
+
+
 def main():
     tdir = Path(sys.argv[1]).resolve()
     ap_dir = os.environ.get('AUTOPHOT_DIR') or os.getcwd()     # AutoPhOT 的模組（autophot、prepare、lightcurve）在這裡
@@ -248,6 +280,31 @@ def main():
             kept = [f for f in kept if not is_stack(f)]
         return kept
     prepare.Prepare.clean = clean_selected
+
+    # 做 TS 時，把科學影像（和模板）裁成以目標為中心、模板真正有資料的方框（preprocessing.trim_image，邊長 arcmin），
+    # 這樣對齊時模板幾乎蓋滿整張圖。AutoPhOT 找到模板（也下載完）之後才量得到，所以接在 find_templates 後面；
+    # run_photometry 之後每張影像的設定都從同一份 input_yaml 複製，這時改還來得及。
+    # 網頁 TS 區可以關掉（ts_crop），「全部設定」裡自己給了 trim_image 也不動它。
+    trim_set = float((config.get('preprocessing') or {}).get('trim_image') or 0) > 0
+    if ts['do_subtraction'] and cfg_in.get('ts_crop', True) and not trim_set and ra is not None:
+        _find_templates = prepare.Prepare.find_templates
+
+        def find_and_crop(self, *args, **kwargs):
+            files = _find_templates(self, *args, **kwargs)
+            side = template_box(files, ra, dec)
+            if side is None:
+                return files
+            if side < 0.5:
+                print('[web] the target is at the edge of the template or outside it: no crop; choose another survey '
+                      'or your own template', flush=True)
+                return files
+            box = round(side * 0.9, 2)                    # 留一點邊
+            self.input_yaml.setdefault('preprocessing', {})['trim_image'] = box
+            print(f'[web] template subtraction: measuring a {box:g}′ box around the target, the part of each image the '
+                  f'template covers' + (' (small: few calibration stars; a survey with a bigger template helps)' if box < 3 else ''),
+                  flush=True)
+            return files
+        prepare.Prepare.find_templates = find_and_crop
     print(f"[web] fits_dir = {config['fits_dir']}", flush=True)
     print(f"[web] target   = {config['target_name']}  RA={config.get('target_ra')}  Dec={config.get('target_dec')}", flush=True)
     t0 = time.time()

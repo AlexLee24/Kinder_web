@@ -132,3 +132,48 @@ def test_settings_are_saved_piece_by_piece(runs):
     cfg = ap.info(tid)['cfg']
     assert (cfg['target'], cfg['ra'], cfg['dec'], cfg['catalog']) == ('SN2025abc', '12.5', '-3', 'gaia')
     assert ap.info(tid)['name'] == 'ws'                           # the target is not the workspace name
+
+
+LOG_WITH_ERRORS = '''[WARNING] Reproject failed. Falling back to AstroAlign.
+
+[ERROR] Reproject footprint coverage 18.3% below minimum 25.0%; too little overlap for a
+          meaningful subtraction.
+
+[ERROR] All alignment methods failed (spalipy->swarp->reproject->astroalign->chi2_shift).
+          Skipping template subtraction: aligned inputs are required for a meaningful
+          difference image.
+
+[ERROR] Template alignment failed
+
+        Type     : RuntimeError
+        File     : /x/main.py
+        Traceback (most recent call last):
+
+[ERROR] Reproject footprint coverage 18.3% below minimum 25.0%; too little overlap for a
+          meaningful subtraction.
+'''
+
+
+def test_the_errors_of_a_run_are_listed_once_each(runs):
+    tid = ap.create_workspace({'name': 'ws'}, user='a@x')
+    (runs / tid / 'web_run.log').write_text(LOG_WITH_ERRORS)
+    problems = ap.run_problems(tid)
+    assert [p['n'] for p in problems] == [2, 1, 1]
+    assert problems[0]['text'] == ('Reproject footprint coverage 18.3% below minimum 25.0%; too little overlap for a '
+                                   'meaningful subtraction.')
+    assert problems[2]['text'] == 'Template alignment failed'
+
+
+def test_a_new_survey_or_size_downloads_the_templates_again(runs):
+    tid = ap.create_workspace({'name': 'ws'}, user='a@x')
+    ap.save_target(tid, {'subtraction': True, 'ts_download': 'panstarrs', 'ts_size': 10}, 'a@x')
+    folder = ap.images_dir(tid) / 'templates' / 'r_template'
+    folder.mkdir(parents=True)
+    (folder / 'panstarrs_r_band_template.fits').write_bytes(b'x')
+    (folder / 'my_own_r.fits').write_bytes(b'x')
+    ap.save_target(tid, {'catalog': 'gaia'}, 'a@x')                  # other settings: the download stays
+    assert (folder / 'panstarrs_r_band_template.fits').exists()
+    ap.save_target(tid, {'ts_size': 15}, 'a@x')
+    assert not (folder / 'panstarrs_r_band_template.fits').exists()
+    assert (folder / 'my_own_r.fits').exists()                       # an uploaded template is never removed
+    assert ap.info(tid)['cfg']['ts_crop'] is True

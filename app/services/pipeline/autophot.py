@@ -446,8 +446,28 @@ def save_target(tid, body, user=''):
     _busy(tid)
     cfg = _build_cfg(tid, body, old, user)
     cfg['configured'] = True
+    if old.get('ts_download') and (cfg['ts_download'], cfg['ts_size']) != (old.get('ts_download'), old.get('ts_size')):
+        _drop_downloaded_templates(tid)          # AutoPhOT keeps a downloaded template forever: fetch it again
     _write_json(tdir(tid) / 'target.json', cfg)
     return tid
+
+
+DOWNLOADED_TEMPLATE_RE = re.compile(r'^(panstarrs|sdss|legacy|2MASS)_[A-Za-z0-9]+_band_template.*\.fits(\.unused)?$')
+
+
+def _drop_downloaded_templates(tid):
+    """Delete the templates AutoPhOT downloaded (<survey>_<band>_band_template.fits): it skips the download while one
+    exists, so after a change of survey or size the old cutout would be used again. Templates people uploaded stay."""
+    tpl = images_dir(tid) / 'templates'
+    gone = []
+    if tpl.is_dir():
+        for p in sorted(tpl.glob('*_template/*')):
+            if p.is_file() and DOWNLOADED_TEMPLATE_RE.match(p.name):
+                p.unlink()
+                gone.append(p.name)
+    if gone:
+        logger.info('pipeline: %s: removed downloaded templates %s (survey or size changed)', tid, ', '.join(gone))
+    return gone
 
 
 def _build_cfg(tid, body, old, user):
@@ -483,6 +503,8 @@ def _build_cfg(tid, body, old, user):
             'ts_size': _num(body, old, 'ts_size', 10, 1.0, 60.0),
             'ts_align': _pick(body, old, 'ts_align', TS_ALIGN, 'spalipy'),
             'ts_forceconv': _pick(body, old, 'ts_forceconv', TS_FORCECONV, 'REF'),
+            # measure only the box around the target that the template covers (scripts/pipeline/autophot_web_run.py)
+            'ts_crop': _flag(body, old, 'ts_crop', True),
             'wdir': str(runs_root() / '.wdir'), 'created': old.get('created') or time.time(),
             'created_by': old.get('created_by') or user}
 
@@ -1167,6 +1189,40 @@ def run_paths(tid, run=None):
     base = d / 'legacy' / run
     return {'reduced': base / 'images_REDUCED', 'log': base / 'web_run.log', 'result': base / 'result.json',
             'cfg': _read_json(base / 'target.json')}
+
+
+PROBLEM_RE = re.compile(r'^\[(ERROR|CRITICAL)\]\s*(.*)')
+
+
+def run_problems(tid, run=None, limit=12):
+    """What AutoPhOT reported as errors in a run's log ([ERROR] lines with their indented continuation),
+    each once, in order: [{'text', 'n'}] (n = how many times it came)."""
+    try:
+        lines = run_paths(tid, run)['log'].read_text(errors='replace').splitlines()
+    except (OSError, NotFound):
+        return []
+    found, cur = [], None
+    for line in lines:
+        m = PROBLEM_RE.match(line.strip()) if line[:1] == '[' else None
+        if m:
+            cur = [m.group(2).strip()]
+            found.append(cur)
+        elif cur is not None and line.startswith((' ', '\t')) and line.strip() and not line.strip().startswith(('Traceback', 'File ', 'raise ')):
+            if len(cur) < 6:
+                cur.append(line.strip())
+        else:
+            cur = None
+    out, seen = [], {}
+    for parts in found:
+        text = ' '.join(parts)
+        if text.startswith('Type ') or not text:
+            continue
+        if text in seen:
+            out[seen[text]]['n'] += 1
+            continue
+        seen[text] = len(out)
+        out.append({'text': text, 'n': 1})
+    return out[:limit]
 
 
 def run_cfg(tid):

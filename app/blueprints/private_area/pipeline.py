@@ -253,7 +253,7 @@ def pipeline_workspace(tid):
     if tab not in TABS:
         abort(404)
     ctx = {'ap': info, 'tab': tab, 'run': None, 'legacy': None, 'listing': None, 'phot': None, 'images': None,
-           'rel': '', 'runs': [], 'imports': []}
+           'rel': '', 'runs': [], 'imports': [], 'problems': [], 'run_settings': {}}
     if tab == 'results':
         run = request.args.get('run') or None
         rel = request.args.get('path', '').strip('/')
@@ -273,6 +273,11 @@ def pipeline_workspace(tid):
         except ap.NotFound:
             abort(404)
         ctx['imports'] = ap.imports(tid)
+        try:
+            ctx['problems'] = ap.run_problems(tid, request.args.get('run') or None)
+            ctx['run_settings'] = ap.run_paths(tid, request.args.get('run') or None)['cfg']
+        except ap.PipelineError:
+            ctx['problems'], ctx['run_settings'] = [], {}
     elif tab == 'legacy':
         ctx['runs'] = ap.legacy_runs(tid)
     ctx['result_links'] = [{**x, 'url': _result_url(x['token'])} for x in info['result_shares']
