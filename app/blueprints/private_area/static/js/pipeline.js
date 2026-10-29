@@ -403,6 +403,7 @@
             stack_align: f.stack_align.value, stack_combine: f.stack_combine.value, stack_sigma: parseFloat(f.stack_sigma.value) || 3,
             subtraction: mode !== 'none', sub_method: f.sub_method.value, ts_download: mode === 'survey' ? f.ts_download.value : '',
             ts_size: parseFloat(f.ts_size.value) || 10, ts_align: f.ts_align.value, ts_forceconv: f.ts_forceconv.value,
+            ts_crop: f.ts_crop.checked,
         };
         if (overrides) b.overrides = overrides;
         return b;
@@ -1038,6 +1039,23 @@
         input.addEventListener('keydown', e => {
             if (e.key === 'Escape') hide();
             if (e.key === 'Enter') { e.preventDefault(); if (items.length) add(items[0]); }
+        });
+    }
+
+    // ── Results: the run's log in the pop-out ─────────────────────────────────
+    const resLog = $('plResLogOpen');
+    if (resLog && $('plLogModal')) {
+        const m = modal($('plLogModal')), pre = $('plLogFull');
+        resLog.addEventListener('click', async () => {
+            pre.textContent = 'Loading…';
+            m.open();
+            const run = resLog.dataset.run;
+            try {
+                const r = await fetch('/pipeline/autophot/' + encodeURIComponent(tid) + '/log' + (run ? '?run=' + encodeURIComponent(run) : ''), { credentials: 'same-origin' });
+                pre.textContent = r.ok ? await r.text() : 'No log for this run.';
+                pre.scrollTop = pre.scrollHeight;
+            } catch (err) { pre.textContent = 'Network error.'; }
+            pre.focus();
         });
     }
 

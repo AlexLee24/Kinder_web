@@ -70,7 +70,7 @@
             <div class="kw-field"><label for="plTsSize{{ tid }}">Size (arcmin)</label>
                 <input type="number" id="plTsSize{{ tid }}" name="ts_size" min="1" max="60" step="1" value="{{ cfg.ts_size or 10 }}"></div>
         </div>
-        <p class="pl-hint">AutoPhOT downloads a template per filter when it runs. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky.</p>
+        <p class="pl-hint">AutoPhOT downloads a template per filter when it runs. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky. Pan-STARRS cuts each template from one sky cell, so near a cell edge it comes out smaller than the size asked for. Changing the survey or the size downloads the templates again.</p>
     </div>
 
     <div data-show-ts="own" class="pl-ts-own">
@@ -95,6 +95,8 @@
                     {% for c in ts_forceconv %}<option value="{{ c }}"{% if (cfg.ts_forceconv or 'REF') == c %} selected{% endif %}>{{ conv[c] }} ({{ c }})</option>{% endfor %}
                 </select></div>
         </div>
+        <label class="pl-check"><input type="checkbox" name="ts_crop"{% if cfg.get('ts_crop', True) %} checked{% endif %}>
+            <span>Measure only the part of each image the template covers, centred on the target (recommended: when a template covers less than a quarter of the image, AutoPhOT skips the subtraction)</span></label>
     </details>
 </div>
 {% endmacro %}

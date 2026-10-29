@@ -193,6 +193,20 @@
         </div>
         {% endif %}
 
+        {% if ap.status or legacy %}
+        <section class="kw-panel pl-runlog" aria-labelledby="plRunLogTitle">
+            <div class="kw-panel-head"><h2 id="plRunLogTitle">Run log</h2>
+                <div class="pl-job-actions">
+                    <button type="button" class="kw-btn kw-btn-sm" id="plResLogOpen" data-run="{{ run or '' }}">Show the log</button>
+                    <a class="kw-btn kw-btn-sm kw-btn-ghost" href="{{ url_for('private_area.pipeline_log', tid=ap.id, run=run) }}" target="_blank" rel="noopener">New tab</a>
+                </div></div>
+            {% if problems %}
+            <p class="kw-panel-desc">What AutoPhOT reported as errors in this run:</p>
+            <ul class="pl-problems">{% for p in problems %}<li>{{ p.text }}{% if p.n > 1 %} <span class="kw-chip">× {{ p.n }}</span>{% endif %}</li>{% endfor %}</ul>
+            {% else %}<p class="kw-panel-desc">AutoPhOT reported no errors in this run.</p>{% endif %}
+        </section>
+        {% endif %}
+
         {% if not listing %}
         <section class="kw-panel"><div class="pl-empty"><b>No results yet</b>Run AutoPhOT and the light curve, figures and tables appear here.
             <a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}">Go to Run</a></div></section>
@@ -216,6 +230,12 @@
             <div class="kw-kpi"><span class="kw-kpi-label">Template subtracted</span><b>{{ nts }}<small> / {{ phot.rows|length }}</small></b><small>{{ phot.magsys or 'magnitudes' }}</small></div>
             {% endif %}
         </div>
+        {% endif %}
+
+        {% set no_ts = phot.rows|rejectattr('ts')|list|length if phot else 0 %}
+        {% if not rel and (run_settings or {}).get('subtraction') and no_ts %}
+        <div class="pl-warn pl-ts-miss"><b>Template subtraction was on, but {{ no_ts }} of {{ phot.rows|length }} image{{ '' if phot.rows|length == 1 else 's' }} were measured without it.</b>
+            AutoPhOT could not use the template for {{ 'it' if no_ts == 1 else 'them' }}, so the magnitudes include the host galaxy; they are exported with “_(w/o_TS)”. The run log above says why.</div>
         {% endif %}
 
         {% if not rel and phot %}
@@ -426,11 +446,11 @@
 
 {% block after_main %}
     {% from '_pipeline_form.html' import pl_ws_card with context %}
-    {% if tab == 'run' %}
+    {% if tab in ('run', 'results') %}
     <div class="kw-modal" id="plLogModal" role="dialog" aria-modal="true" aria-labelledby="plLogModalTitle">
         <div class="kw-modal-card is-wide pl-log-card">
             <div class="kw-modal-head"><h3 id="plLogModalTitle">AutoPhOT log</h3>
-                <a class="pl-faint" href="{{ url_for('private_area.pipeline_log', tid=ap.id) }}" target="_blank" rel="noopener">Whole log in a new tab</a></div>
+                <a class="pl-faint" href="{{ url_for('private_area.pipeline_log', tid=ap.id, run=run) }}" target="_blank" rel="noopener">Whole log in a new tab</a></div>
             <pre class="pl-log pl-log-full" id="plLogFull" tabindex="0" aria-label="AutoPhOT log"></pre>
             <div class="kw-modal-foot"><button type="button" class="kw-btn" data-close>Close</button></div>
         </div>
