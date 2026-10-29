@@ -203,6 +203,18 @@ def template_box(files, ra, dec):
     return min(sides) if sides else None
 
 
+def plain_yaml_numbers(yaml):
+    """讓 yaml.dump 把 numpy 的數字和陣列寫成一般的數字和清單。
+
+    AutoPhOT 把整份設定寫進 images_REDUCED/input.yaml，每張影像的子程序再用 yaml.safe_load 讀回來；
+    設定裡只要有一個 numpy 數字（例如 numpy.float64），就會寫成 !!python/object/apply 標籤，
+    safe_load 讀不回來，整次執行每張影像都失敗。這裡在寫的那一端統一轉掉，不管值是哪裡來的。"""
+    import numpy as np
+    for dumper in (yaml.Dumper, yaml.SafeDumper):
+        yaml.add_multi_representer(np.generic, lambda d, v: d.represent_data(v.item()), Dumper=dumper)
+        yaml.add_representer(np.ndarray, lambda d, v: d.represent_data(v.tolist()), Dumper=dumper)
+
+
 def main():
     tdir = Path(sys.argv[1]).resolve()
     ap_dir = os.environ.get('AUTOPHOT_DIR') or os.getcwd()     # AutoPhOT 的模組（autophot、prepare、lightcurve）在這裡
@@ -212,6 +224,7 @@ def main():
 
     from autophot import AutomatedPhotometry
     import yaml
+    plain_yaml_numbers(yaml)
 
     config = AutomatedPhotometry.load()
     config['fits_dir'] = cfg_in['fits_dir']

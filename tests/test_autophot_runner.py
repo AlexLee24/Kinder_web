@@ -45,3 +45,12 @@ def test_box_survives_autophots_input_yaml(runner, tmp_path):
     assert type(side) is float
     text = yaml.dump({'preprocessing': {'trim_image': float(round(side * 0.9, 2))}})
     assert yaml.safe_load(text)['preprocessing']['trim_image'] == pytest.approx(2.7, abs=0.01)
+
+
+def test_numpy_values_in_the_settings_are_written_as_plain_yaml(runner):
+    """Any numpy number AutoPhOT or the runner puts in the settings (not only trim_image) must read back with safe_load."""
+    runner.plain_yaml_numbers(yaml)
+    cfg = {'preprocessing': {'trim_image': np.float64(3.86)}, 'n': np.int64(4), 'ok': np.bool_(True),
+           'xy': np.array([1.5, 2.5]), 'nested': [{'v': np.float32(0.5)}]}
+    back = yaml.safe_load(yaml.dump(cfg, default_flow_style=False))
+    assert back == {'preprocessing': {'trim_image': 3.86}, 'n': 4, 'ok': True, 'xy': [1.5, 2.5], 'nested': [{'v': 0.5}]}
