@@ -505,6 +505,8 @@ def _build_cfg(tid, body, old, user):
             'ts_forceconv': _pick(body, old, 'ts_forceconv', TS_FORCECONV, 'REF'),
             # measure only the box around the target that the template covers (scripts/pipeline/autophot_web_run.py)
             'ts_crop': _flag(body, old, 'ts_crop', True),
+            # AutoPhOT's own plate solve (wcs.redo_wcs): off, our astrometry gives the WCS; turned on for a run where ours fails
+            'ap_solve': _flag(body, old, 'ap_solve', False),
             'wdir': str(runs_root() / '.wdir'), 'created': old.get('created') or time.time(),
             'created_by': old.get('created_by') or user}
 

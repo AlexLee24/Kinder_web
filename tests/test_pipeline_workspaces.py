@@ -177,3 +177,4 @@ def test_a_new_survey_or_size_downloads_the_templates_again(runs):
     assert not (folder / 'panstarrs_r_band_template.fits').exists()
     assert (folder / 'my_own_r.fits').exists()                       # an uploaded template is never removed
     assert ap.info(tid)['cfg']['ts_crop'] is True
+    assert ap.info(tid)['cfg']['ap_solve'] is False                  # our astrometry by default

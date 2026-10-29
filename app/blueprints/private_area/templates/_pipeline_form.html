@@ -115,6 +115,8 @@
         <input type="number" id="plNcpu{{ tid }}" name="ncpu" min="1" value="{{ cfg.ncpu or 1 }}">
     </div>
 </div>
+<label class="pl-toggle"><input type="checkbox" name="ap_solve"{% if cfg.ap_solve %} checked{% endif %}>
+    <span><b>AutoPhOT plate solve</b><small>Off: when you press Run, every image, and every template once it is downloaded, is plate-solved with our astrometry (solve-field, as in Reduction) and AutoPhOT uses that WCS. If ours fails on any image or template, AutoPhOT's plate solve is turned on for that run automatically. On: AutoPhOT solves each image again as well.</small></span></label>
 <label class="pl-toggle"><input type="checkbox" name="stack"{% if cfg.stack %} checked{% endif %}>
     <span><b>Stack each night</b><small>Combine the frames of each filter and night, then measure the stacks</small></span></label>
 <fieldset class="pl-optsec" data-show-if="stack"{% if not cfg.stack %} hidden{% endif %}>

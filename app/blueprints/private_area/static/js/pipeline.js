@@ -404,6 +404,7 @@
             subtraction: mode !== 'none', sub_method: f.sub_method.value, ts_download: mode === 'survey' ? f.ts_download.value : '',
             ts_size: parseFloat(f.ts_size.value) || 10, ts_align: f.ts_align.value, ts_forceconv: f.ts_forceconv.value,
             ts_crop: f.ts_crop.checked,
+            ap_solve: f.ap_solve.checked,
         };
         if (overrides) b.overrides = overrides;
         return b;

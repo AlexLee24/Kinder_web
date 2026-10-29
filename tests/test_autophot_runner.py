@@ -54,3 +54,20 @@ def test_numpy_values_in_the_settings_are_written_as_plain_yaml(runner):
            'xy': np.array([1.5, 2.5]), 'nested': [{'v': np.float32(0.5)}]}
     back = yaml.safe_load(yaml.dump(cfg, default_flow_style=False))
     assert back == {'preprocessing': {'trim_image': 3.86}, 'n': 4, 'ok': True, 'xy': [1.5, 2.5], 'nested': [{'v': 0.5}]}
+
+
+def test_our_astrometry_reports_the_frames_it_did_not_solve(runner, tmp_path, monkeypatch):
+    """What decides whether AutoPhOT's own plate solve is turned on for a run: frames ours solved before are fine, a
+    frame ours failed on is not, and without solve-field on the server nothing new is solved."""
+    import sys
+    sys.path.insert(0, os.path.dirname(RUNNER))
+    import astrometry_solve as asv
+    solved, failed, new = (template(tmp_path / f'{n}.fits') for n in ('solved', 'failed', 'new'))
+    for path, mark in ((solved, 'solved'), (failed, 'failed')):
+        with fits.open(path, mode='update') as hdul:
+            hdul[0].header[asv.MARK] = mark
+    monkeypatch.setattr(asv, 'find_solve_field', lambda: None)
+    assert sorted(runner.our_astrometry([solved, failed, new], str(tmp_path))) == sorted([failed, new])
+    assert runner.our_astrometry([solved], str(tmp_path)) == []
+    # a downloaded survey template keeps its own WCS when ours fails on it
+    assert runner.has_wcs(failed) and runner.DOWNLOADED_TEMPLATE.match('panstarrs_r_band_template.fits')
