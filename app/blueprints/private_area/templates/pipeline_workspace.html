@@ -17,16 +17,18 @@
     {% macro size(n) %}{% if n >= 1073741824 %}{{ '%.1f'|format(n / 1073741824) }} GB{% elif n >= 1048576 %}{{ '%.1f'|format(n / 1048576) }} MB{% elif n >= 1024 %}{{ '%.0f'|format(n / 1024) }} kB{% else %}{{ n }} B{% endif %}{% endmacro %}
     {% macro num(v, e=None, d=3) %}{% if v is not none %}{{ ('%.' ~ d ~ 'f')|format(v) }}{% if e is not none %}<small> ± {{ '%.3f'|format(e) }}</small>{% endif %}{% else %}<span class="pl-faint">—</span>{% endif %}{% endmacro %}
 
-    <div class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}">
+    <div class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}" data-role="{{ ap.role }}" data-hint='{{ ap.cfg.hint|tojson if ap.cfg.hint and not ap.cfg.target else "{}" }}'>
         <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
         <header class="kw-page-head">
             <div>
                 <span class="kw-eyebrow">Photometry · AutoPhOT</span>
                 <h1>{{ ap.name }}</h1>
-                <p class="pl-ws-sub"><span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span><span>{{ ap.n_images }} FITS</span><span>{{ (ap.run_cfg if tab == 'results' and not run else ap.cfg).catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}{% if ap.cfg.ts_download %} · {{ ts_download_labels.get(ap.cfg.ts_download, ap.cfg.ts_download) }}{% endif %}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
+                <p class="pl-ws-sub">{% if ap.target %}<span>{{ ap.target }}</span>{% endif %}{% if ap.cfg.ra and ap.cfg.dec %}<span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span>{% endif %}<span>{{ ap.n_images }} FITS</span><span>{{ (ap.run_cfg if tab == 'results' and not run else ap.cfg).catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}{% if ap.cfg.ts_download %} · {{ ts_download_labels.get(ap.cfg.ts_download, ap.cfg.ts_download) }}{% endif %}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
             </div>
             <div class="kw-page-actions">
                 <span class="pl-save-state" id="plSaveState" aria-live="polite"></span>
+                {% if ap.role == 'editor' %}<span class="kw-chip kw-chip-blue" title="{{ ap.owner }}">Shared with you</span>
+                {% elif ap.owner %}<span class="kw-chip{% if ap.share %} kw-chip-gold{% endif %}" id="plAccessChip">{{ 'Shared' if ap.share else 'Private' }}</span>{% endif %}
                 <span class="pl-state" id="plHeadState">
                 {% if ap.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
                 {% elif ap.status == 'done' %}<span class="kw-chip kw-chip-green">Done</span>
@@ -58,13 +60,16 @@
                 </section>
 
                 <form class="pl-form pl-setup-form" data-pl-form data-tid="{{ ap.id }}" autocomplete="off" novalidate>
+                    <section class="kw-panel" aria-labelledby="plTargetTitle">
+                        <div class="kw-panel-head" id="plTargetTitle">{{ pl_step(2, 'Target', 'Where AutoPhOT measures. Changes are saved as you make them.') }}</div>
+                        {{ pl_target(ap.cfg, ap.id) }}
+                    </section>
                     <section class="kw-panel" aria-labelledby="plTsTitle">
-                        <div class="kw-panel-head" id="plTsTitle">{{ pl_step(2, 'Template subtraction') }}</div>
+                        <div class="kw-panel-head" id="plTsTitle">{{ pl_step(3, 'Template subtraction') }}</div>
                         {{ pl_ts(ap.cfg, ap.id) }}
                     </section>
                     <section class="kw-panel" aria-labelledby="plSetTitle">
-                        <div class="kw-panel-head" id="plSetTitle">{{ pl_step(3, 'Target & settings', 'Changes are saved as you make them.') }}</div>
-                        {{ pl_target(ap.cfg, ap.id) }}
+                        <div class="kw-panel-head" id="plSetTitle">{{ pl_step(4, 'Options', 'Calibration catalog, parallel images, stacking') }}</div>
                         {{ pl_options(ap.cfg, ap.id) }}
                         <p class="pl-msg" role="status" aria-live="polite"></p>
                     </section>
@@ -84,17 +89,19 @@
                     <div class="kw-panel-foot"><button type="button" class="kw-btn kw-btn-primary" id="plAllSave">Save settings</button></div>
                 </details>
 
+                {% if ap.role == 'owner' %}
                 <section class="kw-panel pl-danger">
                     <div class="kw-panel-head"><h2>Delete workspace</h2></div>
                     <p class="kw-panel-desc">Moves the images, results, settings and log to <code>.deleted/</code> in the workspaces folder on the server (not erased).</p>
                     <button type="button" class="kw-btn kw-btn-sm kw-btn-danger" id="plDelete">Delete {{ ap.id }}</button>
                 </section>
+                {% endif %}
             </div>
 
             <aside class="pl-setup-side">
                 <section class="kw-panel pl-job" id="plJob" aria-labelledby="plJobTitle">
                     <div class="kw-panel-head">
-                        {{ pl_step(4, 'Run AutoPhOT') }}
+                        {{ pl_step(5, 'Run AutoPhOT') }}
                         <button type="button" class="kw-btn kw-btn-primary" id="plRun">Run</button>
                     </div>
                     <p class="pl-job-state" id="plJobState" aria-live="polite"></p>
@@ -119,6 +126,32 @@
                         {% if ap.result %}<span>Last finished <span data-ts="{{ ap.result.time }}"></span> · {{ '%.0f'|format(ap.result.elapsed or 0) }} s</span>{% endif %}
                         {% if ap.has_results %}<a href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='results') }}">Results</a>{% endif %}
                     </div>
+                </section>
+
+                <section class="kw-panel pl-access" id="plAccess" aria-labelledby="plAccessTitle">
+                    <div class="kw-panel-head"><h2 id="plAccessTitle">Workspace</h2></div>
+                    {% if ap.role == 'owner' %}
+                    <form class="pl-rename" id="plRename" autocomplete="off">
+                        <label for="plRenameIn">Name</label>
+                        <div class="pl-inline"><input type="text" id="plRenameIn" maxlength="80" value="{{ ap.name }}" spellcheck="false"><button class="kw-btn kw-btn-sm" type="submit">Rename</button></div>
+                        <p class="pl-msg" role="status" aria-live="polite"></p>
+                    </form>
+                    <div class="pl-share" id="plShare">
+                        <p class="pl-hint" data-share-off{% if ap.share %} hidden{% endif %}>Private: only you{% if ap.owner %} (and admins){% endif %} can see this workspace and its results.</p>
+                        <div data-share-on{% if not ap.share %} hidden{% endif %}>
+                            <p class="pl-hint">Anyone logged in with this link can open the workspace, change its settings and run photometry. Only you can rename, share or delete it.</p>
+                            <div class="pl-inline"><input type="text" id="plShareUrl" readonly value="{{ share_url }}" aria-label="Share link" spellcheck="false"><button type="button" class="kw-btn kw-btn-sm" id="plShareCopy">Copy</button></div>
+                            <p class="pl-hint" id="plMembers">{% if ap.members %}Opened by {{ ap.members|join(', ') }}.{% else %}Nobody has opened it yet.{% endif %}</p>
+                        </div>
+                        <div class="pl-share-btns">
+                            <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plShareOn"{% if ap.share %} hidden{% endif %}>Create share link</button>
+                            <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="plShareOff"{% if not ap.share %} hidden{% endif %}>Stop sharing</button>
+                        </div>
+                        <p class="pl-msg" id="plShareMsg" role="status" aria-live="polite"></p>
+                    </div>
+                    {% else %}
+                    <p class="pl-hint">Shared with you by {{ ap.owner }}. You can change the settings and run photometry; only the owner can rename, share or delete it.</p>
+                    {% endif %}
                 </section>
 
                 <section class="kw-panel pl-tree-panel" aria-labelledby="plTreeTitle">
@@ -205,7 +238,7 @@
                     <b>Kinder object</b>
                     <span class="pl-faint">Add this light curve to the object's photometry.</span>
                     <span class="pl-spacer"></span>
-                    {% if can_import %}<button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plImportOpen" data-object="{{ ap.name }}" data-run="{{ run or '' }}">Import into Kinder…</button>
+                    {% if can_import %}<button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plImportOpen" data-object="{{ ap.target or ap.name }}" data-run="{{ run or '' }}">Import into Kinder…</button>
                     {% else %}<span class="pl-faint">Admins can import.</span>{% endif %}
                 </div>
                 {% if imports %}

@@ -151,6 +151,7 @@ def _scan_dir(d, recursive):
     files = _fits_in(d, recursive)
     n_sub = 0 if recursive else len(_fits_in(d, True)) - len(files)
     db = bands.telescope_db(_telescope_file())
+    meta = bands.telescope_meta(_telescope_file())
     out = []
     for p in files[:MAX_SCAN]:
         info = {'name': str(p.relative_to(d))}
@@ -163,11 +164,17 @@ def _scan_dir(d, recursive):
                 info[k] = str(h.get(k, '')) if h.get(k) is not None else ''
             if not info['FILTER']:
                 info['FILTER'] = ' / '.join(str(h[k]) for k in ('FILTER1', 'FILTER2') if h.get(k))
-            info['band'] = bands.band_of(h, db, p.name)[0] or ''
+            hi = bands.header_info(h, db, meta, p.name)
+            info['band'], info['tag'] = hi['band'], hi['tag']
         except Exception as e:
             info['error'] = f'{type(e).__name__}: {e}'
         out.append(info)
+    tags = {}
+    for f in out:
+        if f.get('tag'):
+            tags[f['tag']] = tags.get(f['tag'], 0) + 1
     return {'path': str(d), 'n': len(files), 'n_sub': n_sub, 'files': out,
+            'tags': [{'tag': t, 'n': n} for t, n in sorted(tags.items())],
             'missing': sum(1 for f in out if f.get('error') or not (f.get('TELESCOP') and f.get('INSTRUME') and f.get('FILTER')))}
 
 
@@ -243,9 +250,12 @@ def _check_fits(path, label):
         raise PipelineError(f'{label} is not a readable FITS file.')
 
 
-def _added(tid, rels, origin):
-    """Record new files: they are no longer 'removed', and note where they came from."""
+def _added(tid, rels, origin, template=False):
+    """Record new files: they are no longer 'removed', and note where they came from.
+    A template switches template subtraction on, until the settings have been saved once."""
     cfg = _read_json(tdir(tid) / 'target.json')
+    if template and not cfg.get('configured'):
+        cfg['subtraction'] = True
     cfg['removed'] = sorted(set(cfg.get('removed') or []) - set(rels))
     cfg['imported'] = time.time()
     cfg.setdefault('origins', {})
@@ -291,7 +301,7 @@ def upload_chunk(tid, name, offset, total, data, template_filter=''):
         if template_filter:
             rel, band, how = _place_template(tid, part, name, '' if template_filter == TEMPLATE_AUTO else template_filter)
             part.unlink(missing_ok=True)
-            _added(tid, [rel], 'upload')
+            _added(tid, [rel], 'upload', template=True)
             return {'done': True, 'name': rel, 'band': band, 'how': how}
     except PipelineError:
         part.unlink(missing_ok=True)
@@ -330,7 +340,7 @@ def add_files(tid, paths, origin='reduction', move=False, template_filter=''):
             (shutil.move if move else shutil.copy2)(str(src), str(dest))
         added.append(rel)
     if added:
-        _added(tid, added, origin)
+        _added(tid, added, origin, template=bool(template_filter))
     return {'added': added, 'skipped': skipped}
 
 
@@ -354,28 +364,112 @@ def _flag(body, old, key, default=False):
     return bool(body[key]) if key in body else bool(old.get(key, default))
 
 
-def save_target(tid, body, user=''):
-    """tid=None creates an empty workspace (images are uploaded after); otherwise updates the settings."""
-    name = str(body.get('name') or '').strip()[:80]
+def target_label(cfg):
+    """The astronomical target of a workspace. Workspaces made before targets and names were separate
+    have only 'name', which then was the target."""
+    return str(cfg['target'] if 'target' in cfg else cfg.get('name', '')).strip()
+
+
+def clean_name(name):
+    """A workspace name as it is stored and used for its folder: letters, digits and _ + - . only."""
+    return target_id(str(name or ''))
+
+
+class NameTaken(PipelineError):
+    status = 409
+
+    def __init__(self, name):
+        super().__init__(f'A workspace called {name} already exists. Add a name of your own at the end '
+                         f'(for example {name}_second).')
+        self.name = name
+
+
+def _workspaces():
+    r = runs_root()
+    if not r.is_dir():
+        return
+    for d in sorted(r.iterdir(), key=lambda x: x.name.lower()):
+        if d.is_dir() and not d.name.startswith('.') and TID_RE.fullmatch(d.name) and (d / 'target.json').is_file():
+            yield d
+
+
+def name_taken(name, exclude=None):
+    """Is there a workspace with this name (as its name or as its folder)? Case does not matter."""
+    low = name.lower()
+    for d in _workspaces():
+        if d.name == exclude:
+            continue
+        if d.name.lower() == low or str(_read_json(d / 'target.json').get('name', '')).lower() == low:
+            return True
+    return not exclude and tdir(name, must=False).exists()
+
+
+def final_name(name, suffix=''):
+    """The name from the auto-name and what the user added after it: <auto>_<suffix>."""
+    name, suffix = clean_name(name), clean_name(suffix)
     if not name:
-        raise PipelineError('Enter a target name.')
-    ra, dec = str(body.get('ra') or '').strip()[:40], str(body.get('dec') or '').strip()[:40]
-    if not ra or not dec:
-        # AutoPhOT needs a TNS account to work from the name alone, so the web page always sends coordinates
-        raise PipelineError('Enter RA and Dec (or use Look up).')
-    _parse_coord(ra, dec)
-    creating = not tid
-    if creating:
-        tid = target_id(body.get('workspace') or name)
-        if not tid:
-            raise PipelineError('Enter a target name.')
-        base_id, n = tid, 1
-        while tdir(tid, must=False).exists():           # same target again (another telescope, another season)
-            n += 1
-            tid = f'{base_id[:76]}_{n}'
-            if n > 99:
-                raise PipelineError(f'Workspace {base_id} already exists.')
-    old = {} if creating else _read_json(tdir(tid) / 'target.json')
+        raise PipelineError('Enter a workspace name.')
+    if suffix:
+        name = f'{name[:78 - len(suffix)]}_{suffix}'
+    return name[:80]
+
+
+def create_workspace(body, user=''):
+    """The first page: an empty workspace that only has a name and an owner; images are uploaded after.
+
+    Target, position, template subtraction and the other settings come on the workspace page.
+    body: name (from the images: target_telescope_date), suffix (the user's own ending), hint
+    (object / ra / dec read from the headers, offered later as the target)."""
+    name = final_name(body.get('name'), body.get('suffix'))
+    if name.startswith('.') or not TID_RE.fullmatch(name):
+        raise PipelineError('Enter a workspace name.')
+    if name_taken(name):
+        raise NameTaken(name)
+    d = tdir(name, must=False)
+    runs_root().mkdir(parents=True, exist_ok=True)
+    try:
+        d.mkdir(exist_ok=False)                          # two people creating the same name: one gets here first
+    except FileExistsError:
+        raise NameTaken(name)
+    hint = body.get('hint') if isinstance(body.get('hint'), dict) else {}
+    cfg = _build_cfg(name, {}, {}, user)
+    cfg.update(name=name, target='', ra='', dec='', owner=user, removed=[],
+               hint={k: str(hint.get(k) or '').strip()[:80] for k in ('object', 'ra', 'dec') if str(hint.get(k) or '').strip()})
+    images_dir(name).mkdir(parents=True, exist_ok=True)
+    _write_json(d / 'target.json', cfg)
+    return name
+
+
+def save_target(tid, body, user=''):
+    """Update the settings of a workspace (target, position, template subtraction, catalog, …).
+    Everything is optional: the page saves each change as it is made; the run asks for the position."""
+    old = _read_json(tdir(tid) / 'target.json')
+    _busy(tid)
+    cfg = _build_cfg(tid, body, old, user)
+    cfg['configured'] = True
+    _write_json(tdir(tid) / 'target.json', cfg)
+    return tid
+
+
+def rename_workspace(tid, name):
+    """Change the name shown for a workspace; its folder (the id in the address) stays."""
+    name = clean_name(name)
+    if not name:
+        raise PipelineError('Enter a workspace name.')
+    if name_taken(name, exclude=tid):
+        raise NameTaken(name)
+    cfg = _read_json(tdir(tid) / 'target.json')
+    cfg['name'] = name
+    _write_json(tdir(tid) / 'target.json', cfg)
+    return name
+
+
+def _build_cfg(tid, body, old, user):
+    ra = str(body['ra'] if 'ra' in body else old.get('ra') or '').strip()[:40]
+    dec = str(body['dec'] if 'dec' in body else old.get('dec') or '').strip()[:40]
+    if ra and dec:
+        _parse_coord(ra, dec)
+    target = str(body['target'] if 'target' in body else target_label(old)).strip()[:80]
     catalog = _pick(body, old, 'catalog', CATALOGS, DEFAULT_CATALOG)
     sub_method = _pick(body, old, 'sub_method', SUB_METHODS, 'sfft')
     extra = str(body['extra_yaml'] if 'extra_yaml' in body else old.get('extra_yaml', ''))
@@ -386,31 +480,82 @@ def save_target(tid, body, user=''):
                 raise PipelineError('Extra settings must be YAML key: value pairs.')
         except yaml.YAMLError as e:
             raise PipelineError(f'Extra settings are not valid YAML: {e}')
-    _busy(tid)
     overrides = clean_overrides(body['overrides']) if 'overrides' in body else old.get('overrides') or {}
-    cfg = {**old, 'name': name, 'fits_dir': str(images_dir(tid)), 'ra': ra, 'dec': dec,
-           'catalog': catalog, 'overrides': overrides,
-           'ncpu': int(_num(body, old, 'ncpu', 1, 1, os.cpu_count() or 1, int)),
-           'subtraction': _flag(body, old, 'subtraction'), 'sub_method': sub_method, 'extra_yaml': extra,
-           'top_only': True,              # uploads are flat; templates/ is found by AutoPhOT itself
-           # stacking: stack = measure the stacks (off by default); stack_with_singles = also the single frames
-           'stack': _flag(body, old, 'stack'),
-           'stack_with_singles': _flag(body, old, 'stack_with_singles'),
-           'stack_align': _pick(body, old, 'stack_align', ['auto', 'stars', 'wcs'], 'auto'),
-           'stack_combine': _pick(body, old, 'stack_combine', ['mean', 'median'], 'mean'),
-           'stack_sigma': _num(body, old, 'stack_sigma', 3.0, 1.5, 10.0),
-           # template subtraction
-           'ts_download': _pick(body, old, 'ts_download', [''] + TS_DOWNLOAD, ''),
-           'ts_size': _num(body, old, 'ts_size', 10, 1.0, 60.0),
-           'ts_align': _pick(body, old, 'ts_align', TS_ALIGN, 'spalipy'),
-           'ts_forceconv': _pick(body, old, 'ts_forceconv', TS_FORCECONV, 'REF'),
-           'wdir': str(runs_root() / '.wdir'), 'created': old.get('created') or time.time(),
-           'created_by': old.get('created_by') or user}
-    if creating:
-        runs_root().mkdir(parents=True, exist_ok=True)
-        images_dir(tid).mkdir(parents=True, exist_ok=True)
-        cfg['removed'] = []
-    _write_json(tdir(tid, must=False) / 'target.json', cfg)
+    return {**old, 'target': target, 'fits_dir': str(images_dir(tid)), 'ra': ra, 'dec': dec,
+            'catalog': catalog, 'overrides': overrides,
+            'ncpu': int(_num(body, old, 'ncpu', 1, 1, os.cpu_count() or 1, int)),
+            'subtraction': _flag(body, old, 'subtraction'), 'sub_method': sub_method, 'extra_yaml': extra,
+            'top_only': True,              # uploads are flat; templates/ is found by AutoPhOT itself
+            # stacking: stack = measure the stacks (off by default); stack_with_singles = also the single frames
+            'stack': _flag(body, old, 'stack'),
+            'stack_with_singles': _flag(body, old, 'stack_with_singles'),
+            'stack_align': _pick(body, old, 'stack_align', ['auto', 'stars', 'wcs'], 'auto'),
+            'stack_combine': _pick(body, old, 'stack_combine', ['mean', 'median'], 'mean'),
+            'stack_sigma': _num(body, old, 'stack_sigma', 3.0, 1.5, 10.0),
+            # template subtraction
+            'ts_download': _pick(body, old, 'ts_download', [''] + TS_DOWNLOAD, ''),
+            'ts_size': _num(body, old, 'ts_size', 10, 1.0, 60.0),
+            'ts_align': _pick(body, old, 'ts_align', TS_ALIGN, 'spalipy'),
+            'ts_forceconv': _pick(body, old, 'ts_forceconv', TS_FORCECONV, 'REF'),
+            'wdir': str(runs_root() / '.wdir'), 'created': old.get('created') or time.time(),
+            'created_by': old.get('created_by') or user}
+
+
+# ── Who sees a workspace: its owner, the people who opened its share link, admins ──
+# Workspaces from before owners existed have no 'owner'; everyone with the page still sees those.
+
+class Forbidden(PipelineError):
+    status = 403
+
+
+def role_of(cfg, user='', is_admin=False):
+    """'owner' (settings, sharing, delete), 'editor' (opened a share link: images, settings, run) or ''."""
+    owner = cfg.get('owner')
+    if not owner or is_admin or (user and owner == user):
+        return 'owner'
+    if user and any(m.get('user') == user for m in cfg.get('members') or []):
+        return 'editor'
+    return ''
+
+
+def require(tid, user='', is_admin=False, owner=False):
+    """The workspace's role for this person; NotFound (not Forbidden) when they may not see it at all."""
+    role = role_of(_read_json(tdir(tid) / 'target.json'), user, is_admin)
+    if not role:
+        raise NotFound('No such workspace.')
+    if owner and role != 'owner':
+        raise Forbidden('Only the owner of this workspace can do that.')
+    return role
+
+
+def share_on(tid):
+    """Turn the share link on (kept if already on): anyone with it who is logged in can open the workspace,
+    change its settings and run photometry. Results stay private to everyone else."""
+    import secrets
+    cfg = _read_json(tdir(tid) / 'target.json')
+    if not (cfg.get('share') or {}).get('token'):
+        cfg['share'] = {'token': secrets.token_urlsafe(18), 'at': time.time()}
+        _write_json(tdir(tid) / 'target.json', cfg)
+    return cfg['share']
+
+
+def share_off(tid):
+    cfg = _read_json(tdir(tid) / 'target.json')
+    cfg.pop('share', None)
+    cfg['members'] = []
+    _write_json(tdir(tid) / 'target.json', cfg)
+
+
+def join_share(tid, token, user):
+    """Open a share link: the person is remembered as an editor, so the workspace is in their list afterwards."""
+    import hmac
+    cfg = _read_json(tdir(tid) / 'target.json')
+    real = (cfg.get('share') or {}).get('token') or ''
+    if not real or not hmac.compare_digest(real, str(token or '')):
+        raise NotFound('This share link is not valid any more.')
+    if role_of(cfg, user) != 'owner' and not any(m.get('user') == user for m in cfg.get('members') or []):
+        cfg['members'] = (cfg.get('members') or []) + [{'user': user, 'at': time.time()}]
+        _write_json(tdir(tid) / 'target.json', cfg)
     return tid
 
 
@@ -602,16 +747,20 @@ def _templates(d):
 
 
 def classify(headers):
-    """Standard filter of FITS headers read by the page before upload: [{'name', 'band', 'how', 'raw'}]."""
+    """Standard filter and tag ('LOT rp 300s') of FITS headers read by the page before upload:
+    [{'name', 'band', 'how', 'raw', 'tag', 'telescope', 'filter', 'exptime'}]."""
     db = bands.telescope_db(_telescope_file())
+    meta = bands.telescope_meta(_telescope_file())
     out = []
     for h in (headers or [])[:5000]:
         if not isinstance(h, dict):
             continue
         name = str(h.get('name') or '')[:300]
         card = {str(k)[:8].upper(): str(v)[:80] for k, v in (h.get('header') or {}).items() if isinstance(k, str)}
-        band, how, raw = bands.band_of(card, db, name)
-        out.append({'name': name, 'band': band or bands.band_of_folder(name) or '', 'how': how or ('folder name' if bands.band_of_folder(name) else ''), 'raw': raw})
+        hi = bands.header_info(card, db, meta, name)
+        folder_band = bands.band_of_folder(name)
+        out.append({'name': name, 'band': hi['band'] or folder_band or '', 'how': hi['how'] or ('folder name' if folder_band else ''),
+                    'raw': hi['raw'], 'tag': hi['tag'], 'telescope': hi['telescope'], 'filter': hi['filter'], 'exptime': hi['exptime']})
     return out
 
 
@@ -660,7 +809,8 @@ def _count_rows(p):
         return 0
 
 
-def info(tid):
+def info(tid, user=None, is_admin=False):
+    """One workspace for the pages. With a user, 'role' says what that person may do and the owner also gets 'share'."""
     d = tdir(tid)
     cfg = _read_json(d / 'target.json')
     res = _read_json(d / 'result.json')
@@ -672,25 +822,29 @@ def info(tid):
     n_images = len(_fits_in(imgs, not cfg.get('top_only', True))) if imgs.is_dir() else 0
     updated = max((p.stat().st_mtime for p in (d / 'target.json', d / 'web_run.log', d / 'result.json') if p.exists()), default=0)
     status = job.get('status') or ('done' if res else 'incomplete' if (d / 'web_run.log').is_file() else '')
+    role = role_of(cfg, user or '', is_admin) if user is not None else 'owner'
     return {
-        'id': tid, 'name': cfg.get('name', tid), 'cfg': cfg, 'run_cfg': run_cfg(tid), 'result': res, 'reduced': str(red), 'has_results': have,
+        'id': tid, 'name': cfg.get('name', tid), 'target': target_label(cfg), 'owner': cfg.get('owner', ''), 'role': role,
+        'share': cfg.get('share') if role == 'owner' else None,
+        'members': [m.get('user') for m in cfg.get('members') or []] if role == 'owner' else [],
+        'cfg': cfg, 'run_cfg': run_cfg(tid), 'result': res, 'reduced': str(red), 'has_results': have,
         'lightcurve_csv': lc.is_file(), 'n_rows': _count_rows(lc), 'n_images': n_images, 'updated': updated,
         'images': str(imgs), 'status': status, 'job': job,
         'n_legacy': sum(1 for x in (d / 'legacy').iterdir() if x.is_dir()) if (d / 'legacy').is_dir() else 0,
     }
 
 
-def targets():
-    r = runs_root()
-    if not r.is_dir():
-        return []
+def targets(user=None, is_admin=False):
+    """The workspaces a person sees: their own, the ones shared with them, and (admins) all. user=None: every one."""
     out = []
-    for d in sorted(r.iterdir(), key=lambda x: x.name.lower()):
-        if d.is_dir() and not d.name.startswith('.') and TID_RE.fullmatch(d.name) and (d / 'target.json').is_file():
-            try:
-                out.append(info(d.name))
-            except Exception:
-                logger.exception('pipeline: could not read workspace %s', d.name)
+    for d in _workspaces():
+        try:
+            i = info(d.name, user, is_admin)
+        except Exception:
+            logger.exception('pipeline: could not read workspace %s', d.name)
+            continue
+        if i['role']:
+            out.append(i)
     return out
 
 
@@ -824,6 +978,10 @@ def start(tid, user=''):
             raise PipelineError(f'{MAX_RUNNING} AutoPhOT runs are already going on this server; try again when one finishes.')
         if not _fits_in(images_dir(tid), False):
             raise PipelineError('Upload at least one FITS image first.')
+        cfg = _read_json(d / 'target.json')
+        if not (str(cfg.get('ra') or '').strip() and str(cfg.get('dec') or '').strip()):
+            raise PipelineError('Enter the target position (RA and Dec) first.')
+        _parse_coord(cfg['ra'], cfg['dec'])
         archive_previous(tid)                        # the previous run moves to legacy/<time>/
         for name in ('result.json', 'exit.json'):
             (d / name).unlink(missing_ok=True)

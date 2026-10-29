@@ -105,6 +105,70 @@ def band_of(header, db, name=''):
     return None, '', raw
 
 
+_meta_cache = {}
+
+
+def telescope_meta(yml_path):
+    """telescope.yml → {(telescope, instrument): {'exptime': header key, 'date': header key}} (keys the yml names)."""
+    p = Path(yml_path)
+    try:
+        key = (str(p), p.stat().st_mtime)
+    except OSError:
+        return {}
+    if key in _meta_cache:
+        return _meta_cache[key]
+    out = {}
+    try:
+        import yaml
+        db = yaml.safe_load(p.read_text()) or {}
+    except Exception:
+        db = {}
+    for tel, tv in (db.items() if isinstance(db, dict) else []):
+        if not isinstance(tv, dict):
+            continue
+        for ins, iv in (tv.get('INSTRUME') or {}).items():
+            if isinstance(iv, dict):
+                out[(str(tel).strip(), str(ins).strip())] = {
+                    k: v for k, v in ((k, iv.get(k)) for k in ('exptime', 'date'))
+                    if isinstance(v, str) and v != 'not_given_by_user'}
+    _meta_cache.clear()
+    _meta_cache[key] = out
+    return out
+
+
+def short_filter(raw):
+    """The filter as people say it: rp_Astrodon_2019 → rp, 'g DECam SDSS c0001 …' → g; a long odd name stays whole."""
+    first = re.split(r'[_\s]', str(raw).strip(), maxsplit=1)[0]
+    return first if 0 < len(first) <= 3 else str(raw).strip()
+
+
+def _exptime(header, meta):
+    for k in [meta.get('exptime'), 'EXPTIME', 'EXPOSURE']:
+        v = header.get(k) if k else None
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f > 0:
+            return f
+    return None
+
+
+def header_info(header, db, meta, name=''):
+    """What one frame is, from its header and telescope.yml:
+    {'band', 'how', 'raw', 'telescope', 'instrument', 'filter', 'exptime', 'date', 'tag'}; tag reads like 'LOT rp 300s'."""
+    band, how, raw = band_of(header, db, name)
+    telescope = str(header.get('TELESCOP', '') or '').strip()
+    instrument = str(header.get('INSTRUME', '') or '').strip()
+    m = meta.get((telescope, instrument), {})
+    exp = _exptime(header, m)
+    date = str(header.get(m.get('date') or 'DATE-OBS', '') or header.get('DATE-OBS', '') or '').strip()
+    filt = short_filter(raw) if raw else (band or '')
+    parts = [telescope or instrument, filt, f'{exp:g}s' if exp else '']
+    return {'band': band or '', 'how': how, 'raw': raw, 'telescope': telescope, 'instrument': instrument,
+            'filter': filt, 'exptime': exp, 'date': date, 'tag': ' '.join(p for p in parts if p)}
+
+
 def band_of_folder(rel):
     """A path inside templates/ that already names its filter (g_template/x.fits) → that filter."""
     for part in Path(rel).parts[:-1]:
