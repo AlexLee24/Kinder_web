@@ -549,12 +549,13 @@
         const science = () => (scan ? scan.items.filter(i => i.kind === 'science') : []);
         const clean = t => String(t || '').trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_+\-.]/g, '_').replace(/_+/g, '_').replace(/^[_.]+|[_.]+$/g, '');
 
-        // target_telescope_date from the headers: the most common OBJECT and TELESCOP, the first night (UTC date of the earliest frame)
+        // target_telescope_date from the headers: the most common OBJECT and TELESCOP, the UTC dates of the frames (first-last when there are several)
         function autoName() {
             const sci = science();
             const obj = clean(mostCommon(sci.map(i => i.hdr && String(i.hdr.OBJECT || '').trim())));
             const tel = clean(mostCommon(sci.map(i => i.hdr && String(i.hdr.TELESCOP || i.hdr.INSTRUME || '').trim())));
-            const day = sci.map(i => i.hdr && String(i.hdr['DATE-OBS'] || i.hdr.DATE || '').slice(0, 10).replace(/-/g, '')).filter(d => /^\d{8}$/.test(d)).sort()[0] || '';
+            const days = sci.map(i => i.hdr && String(i.hdr['DATE-OBS'] || i.hdr.DATE || '').slice(0, 10).replace(/-/g, '')).filter(d => /^\d{8}$/.test(d)).sort();
+            const day = days.length ? (days[0] === days[days.length - 1] ? days[0] : days[0] + '-' + days[days.length - 1]) : '';
             return [obj, tel, day].filter(Boolean).join('_') || 'workspace';
         }
 
