@@ -231,11 +231,14 @@ button.pl-tag.is-partial { opacity: 0.85; border-style: dashed; }
 .pl-flow .kw-panel-head { align-items: flex-start; }
 .pl-flow-after { margin-top: 12px; padding-top: 20px; border-top: 1px solid var(--kw-hairline); }
 /* wide windows: steps 2, 3 and 4 (target, template subtraction, options) side by side, read left to right */
+/* the panels of a row share its height (the tallest one sets it), so the row reads as one band */
 @media (min-width: 1360px) {
-    .pl-setup-form, .pl-setup-form > fieldset.pl-readonly { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+    .pl-setup-form, .pl-setup-form > fieldset.pl-readonly { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
     .pl-setup-form > fieldset.pl-readonly, .pl-setup-form > .pl-warn { grid-column: 1 / -1; }
+    .pl-setup-form > .pl-warn { align-self: start; }
     .pl-setup-form .pl-row-3 { grid-template-columns: 1fr 1fr; }
-    .pl-flow-after { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+    .pl-flow-after { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+    .pl-setup-form > .kw-panel, .pl-setup-form > fieldset > .kw-panel, .pl-flow-after > .kw-panel { height: 100%; box-sizing: border-box; }
 }
 .pl-images .pl-drop { margin-bottom: 12px; }
 .pl-save-state { font-size: 0.78rem; color: var(--kw-text-muted); }

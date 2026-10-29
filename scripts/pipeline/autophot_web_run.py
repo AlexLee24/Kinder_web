@@ -195,7 +195,7 @@ def template_box(files, ra, dec):
                 continue
             half = min(x - cols[0], cols[-1] - x, y - rows[0], rows[-1] - y)   # 目標到最近一邊（像素）
             scale = float(np.mean(proj_plane_pixel_scales(wcs))) * 3600          # arcsec/px
-            side = max(0.0, 2 * half * scale / 60)
+            side = max(0.0, float(2 * half * scale / 60))     # plain float: numpy scalars break AutoPhOT's input.yaml
             print(f'[web] template {os.path.basename(f)}: {side:.1f}′ of data around the target', flush=True)
             sides.append(side)
         except Exception as e:                            # 量不到就不裁，照 AutoPhOT 原本的做法
@@ -298,7 +298,9 @@ def main():
                 print('[web] the target is at the edge of the template or outside it: no crop; choose another survey '
                       'or your own template', flush=True)
                 return files
-            box = round(side * 0.9, 2)                    # 留一點邊
+            # 留一點邊。一定要是 Python float：AutoPhOT 把設定寫進 images_REDUCED/input.yaml 給每張影像的子程序讀，
+            # numpy 的數字會寫成 !!python/object 標籤，子程序用 safe_load 讀不回來，整次執行每張都失敗
+            box = float(round(float(side) * 0.9, 2))
             self.input_yaml.setdefault('preprocessing', {})['trim_image'] = box
             print(f'[web] template subtraction: measuring a {box:g}′ box around the target, the part of each image the '
                   f'template covers' + (' (small: few calibration stars; a survey with a bigger template helps)' if box < 3 else ''),
