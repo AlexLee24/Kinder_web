@@ -1,24 +1,27 @@
 """Where the pipeline tools live on this server.
 
-Admins set the paths in Admin → Operations → Pipeline (auth.system_settings); an
-empty setting falls back to the environment (kinder.env), then to the AutoPhOT copy
-kept in this repository (app/vendor/autophot, scripts/sync_autophot.sh) with its own
-Python (scripts/pipeline/setup_autophot.sh) and workspaces in app/data/autophot-runs.
+AutoPhOT is always the copy kept in this repository (app/vendor/autophot, updated with
+scripts/sync_autophot.sh) run by its own Python (app/vendor/autophot/.venv, made by
+scripts/pipeline/setup_autophot.sh), so every server runs the same, reviewed version.
+Only the two folders that differ per server come from kinder.env: the workspaces
+(AUTOPHOT_RUNS, default app/data/autophot-runs) and the reduction pipeline's calibrated
+frames (CALIBRATED_SCIENCE_DIR). The admin panel shows them; it does not change them.
 Nothing here imports AutoPhOT: it runs in its own Python.
 """
 import os
 import subprocess
-import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 VENDORED = REPO / 'app' / 'vendor' / 'autophot'          # tracked in git, see app/vendor/README.md
 VENDORED_RUNS = REPO / 'app' / 'data' / 'autophot-runs'   # git-ignored
 
-# setting key → (environment variable, label shown in the admin panel)
+VENDORED_PYTHON = VENDORED / '.venv' / 'bin' / 'python'
+
+# path key → (kinder.env variable or None when fixed, label shown on the pages)
 SETTINGS = {
-    'autophot_dir': ('AUTOPHOT_DIR', 'AutoPhOT folder'),
-    'autophot_python': ('AUTOPHOT_PYTHON', 'AutoPhOT Python'),
+    'autophot_dir': (None, 'AutoPhOT folder'),
+    'autophot_python': (None, 'AutoPhOT Python'),
     'autophot_runs': ('AUTOPHOT_RUNS', 'Workspaces folder'),
     'calibrated_dir': ('CALIBRATED_SCIENCE_DIR', 'Calibrated science folder'),
 }
@@ -34,54 +37,28 @@ STAGES = [
      'about': 'PSF and aperture photometry, calibration, template subtraction and limits.'},
 ]
 
-_cache = {'at': 0.0, 'values': None}
-_TTL = 60.0   # saving the settings calls clear_cache()
 
-
-def _stored():
-    """The settings as stored (strings, '' when unset), cached for a few seconds."""
-    now = time.monotonic()
-    if _cache['values'] is not None and now - _cache['at'] < _TTL:
-        return _cache['values']
-    from app.db.auth import get_settings
-    got = get_settings(f'pipeline.{k}' for k in SETTINGS)          # one query for all of them
-    values = {k: (got.get(f'pipeline.{k}') or '').strip() for k in SETTINGS}
-    _cache.update(at=time.monotonic(), values=values)   # after the queries: a slow / unreachable DB must not expire it at once
-    return values
-
-
-def clear_cache():
-    _cache.update(at=0.0, values=None)
-
-
-def _path(value):
-    return Path(value).expanduser() if value else None
+def _env_path(var):
+    v = (os.getenv(var) or '').strip()
+    return Path(v).expanduser() if v else None
 
 
 def paths():
-    """{'autophot_dir', 'autophot_python', 'autophot_runs', 'calibrated_dir'} → Path or None."""
-    stored = _stored()
-    raw = {k: stored.get(k) or os.getenv(env, '').strip() for k, (env, _) in SETTINGS.items()}
-    out = {k: _path(v) for k, v in raw.items()}
-    vendored = not out['autophot_dir']
-    if vendored:
-        out['autophot_dir'] = VENDORED
-    if not out['autophot_python']:
-        out['autophot_python'] = out['autophot_dir'] / '.venv' / 'bin' / 'python'
-    if not out['autophot_runs']:
-        out['autophot_runs'] = VENDORED_RUNS if vendored else out['autophot_dir'].parent / 'autophot-runs'
-    if not out['calibrated_dir']:
-        out['calibrated_dir'] = DEFAULT_CALIBRATED
-    return out
+    """{'autophot_dir', 'autophot_python', 'autophot_runs', 'calibrated_dir'} → Path."""
+    return {'autophot_dir': VENDORED, 'autophot_python': VENDORED_PYTHON,
+            'autophot_runs': _env_path('AUTOPHOT_RUNS') or VENDORED_RUNS,
+            'calibrated_dir': _env_path('CALIBRATED_SCIENCE_DIR') or DEFAULT_CALIBRATED}
 
 
 def describe():
-    """For the admin panel: stored value, environment fallback and the path in use."""
-    stored = _stored()
+    """For the admin panel (read only): each path in use and where it comes from."""
     used = paths()
-    return [{'key': k, 'label': label, 'env': env, 'value': stored.get(k, ''),
-             'env_value': os.getenv(env, '').strip(), 'used': str(used[k]) if used[k] else ''}
-            for k, (env, label) in SETTINGS.items()]
+    out = []
+    for k, (env, label) in SETTINGS.items():
+        source = ('this repository' if env is None
+                  else f'kinder.env {env}' if (os.getenv(env) or '').strip() else f'default (set {env} in kinder.env to change)')
+        out.append({'key': k, 'label': label, 'env': env or '', 'used': str(used[k]), 'source': source})
+    return out
 
 
 def check(probe_python=True):
@@ -96,8 +73,7 @@ def check(probe_python=True):
     ok, detail = False, 'Not set'
     if py:
         if not py.is_file():
-            detail = (f'{py} does not exist (run scripts/pipeline/setup_autophot.sh)' if d == VENDORED
-                      else f'{py} does not exist (run "uv sync" in the AutoPhOT folder)')
+            detail = f'{py} does not exist (run scripts/pipeline/setup_autophot.sh)'
         elif not os.access(py, os.X_OK):
             detail = f'{py} is not executable'
         elif probe_python:

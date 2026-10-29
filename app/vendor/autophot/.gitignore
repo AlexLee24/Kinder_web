@@ -13,12 +13,14 @@ venv/
 # Editor/OS
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *~
 .DS_Store
 
 # Data products / logs (astronomy)
 *.fz
+*.fits
 *.fits.gz
 *.head
 *.weight
@@ -76,6 +78,8 @@ temp_autophot/
 
 # Documentation
 docs/
+*.tex
+*.bib
 
 # Agent session notes
 agents.md
@@ -83,6 +87,12 @@ agents.md
 
 # Test suite (local validation only)
 tests/
+test_*.py
+
+# Local helper/debug scripts (not production)
+check_telescope_entries.py
+debug_*.py
+run_autophot_VIPER.py
 
 # Build artifacts
 dist/

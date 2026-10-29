@@ -43,13 +43,12 @@
         {% elif not ready %}
         <section class="kw-panel pl-setup" aria-labelledby="plSetupTitle">
             <div class="kw-panel-head"><h2 id="plSetupTitle">AutoPhOT is not set up on this server</h2></div>
-            <p class="kw-panel-desc">An admin sets where AutoPhOT, its Python and the workspaces live.</p>
+            <p class="kw-panel-desc">AutoPhOT is the copy in this repository (<code>app/vendor/autophot</code>). On the server, run <code>scripts/pipeline/setup_autophot.sh</code> once to build its Python; the workspaces folder is <code>AUTOPHOT_RUNS</code> in <code>kinder.env</code>.</p>
             <ul class="pl-checks">
                 {% for c in checks %}
                 <li><span class="kw-dot {{ 'is-ok' if c.ok else 'is-bad' }}"></span><b>{{ labels[c.key] }}</b><span>{{ c.detail }}</span></li>
                 {% endfor %}
             </ul>
-            {% if session.user.is_admin %}<div class="kw-panel-foot"><a class="kw-btn kw-btn-primary" href="{{ url_for('admin.admin_panel') }}#operations">Open admin settings</a></div>{% endif %}
         </section>
 
         {% else %}

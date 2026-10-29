@@ -28,9 +28,10 @@ fi
 [ -f "$SRC/autophot.py" ] && [ -f "$SRC/LICENSE" ] || { echo "no AutoPhOT at $SRC" >&2; exit 1; }
 
 mkdir -p "$DST"
-# .venv (its Python, made by setup_autophot.sh) and VERSION stay; everything else mirrors the source
+# .venv (its Python, made by setup_autophot.sh), VERSION and this server's credentials (autophot_tokens*.py,
+# git-ignored: MAST CasJobs / TNS) stay; everything else mirrors the source
 rsync -a --delete \
-  --exclude '.git' --exclude '.venv' --exclude 'VERSION' \
+  --exclude '.git' --exclude '.venv' --exclude 'VERSION' --exclude 'autophot_tokens*.py' \
   --exclude '__pycache__' --exclude '*.pyc' --exclude '*.egg-info' \
   --exclude 'temp_*' --exclude '*.code-workspace' --exclude '.DS_Store' \
   "$SRC/" "$DST/"

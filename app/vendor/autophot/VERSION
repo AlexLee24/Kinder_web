@@ -1,3 +1,3 @@
 source: https://github.com/Astro-Sean/autophot.git
-synced: 2026-10-25T15:32:26Z
-commit: c4e1159 2026-10-19 Center README headers and rewrite in plainer language; use full transient name (e.g. SN 2024pba) in logs
+synced: 2026-10-29T17:00:13Z
+commit: 324e08e 2026-10-29 Updated to version 1.3.4 & updated citation count

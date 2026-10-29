@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autophot"
-version = "1.3.2"
+version = "1.3.4"
 description = "AutoPHOT object photometry pipeline (CCD/NIR; calibrated aperture/PSF photometry; template subtraction)."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -101,13 +101,13 @@ py-modules = [
   "additional_targets",
   "aperture",
   "autophot",
-  "autophot_tokens",
   "background",
   "batch_main",
   "catalog",
   "check",
   "color_correction",
   "cosmic",
+  "filter_transformations",
   "functions",
   "inspect_telescope",
   "fwhm",
