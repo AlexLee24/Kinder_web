@@ -26,6 +26,10 @@ def _view():
     for b in bots:
         if b['id'] == 'reduction':
             b['schedule'] = reduction.schedule_label()
+            ext = reduction.external_runs() if b['health'] != 'busy' else []
+            if ext:                                    # started by the folder owner's cron, not by Kinder
+                b['health'], b['health_label'] = 'busy', f"Running outside Kinder ({ext[0]['script']})"
+                b['external'] = ext
     return bots
 
 

@@ -201,13 +201,21 @@
         const rows = (list, empty) => list.length ? '<div class="kw-table-wrap"><table class="kw-table"><thead><tr><th>Folder</th><th>FITS</th><th>Changed</th></tr></thead><tbody>' +
             list.map((x) => '<tr><td class="sys-mono">' + esc(x.name) + '</td><td>' + x.frames + '</td><td title="' + esc(stamp(x.modified)) + '">' + esc(ago(x.modified)) + '</td></tr>').join('') + '</tbody></table></div>'
             : '<p class="bot-muted">' + empty + '</p>';
+        const ext = o.external || [];
         $('botView').innerHTML =
             (o.problem ? '<p class="bot-alert is-warn">' + esc(o.problem) + '</p>' : '') +
-            '<dl class="sys-facts bot-paths"><div><dt>Folder</dt><dd class="sys-mono">' + esc(o.root || '—') + '</dd></div>' +
+            (ext.length ? '<p class="bot-alert is-info"><b>Running outside Kinder:</b> ' + ext.map((x) => esc(x.script) + ' (pid ' + x.pid + (x.user ? ', ' + esc(x.user) : '') + ', since ' + esc(stamp(x.since)) + ')').join(' · ') + '</p>' : '') +
+            '<dl class="bot-paths"><div><dt>Folder</dt><dd class="sys-mono">' + esc(o.root || '—') + '</dd></div>' +
             '<div><dt>Python</dt><dd class="sys-mono">' + esc(o.python || 'not found') + '</dd></div>' +
-            '<div><dt>Schedule</dt><dd>' + esc(o.schedule) + '</dd></div></dl>' +
+            '<div><dt>Schedule</dt><dd>' + esc(o.schedule) + (o.skip_sync ? ' · download step skipped' : '') + '</dd></div>' +
+            '<div><dt>Last activity</dt><dd title="' + esc(stamp(o.activity)) + '">' + esc(o.activity ? ago(o.activity) + ' (' + stamp(o.activity) + ')' : '—') + '</dd></div>' +
+            (o.masters ? '<div><dt>Master frames</dt><dd>' + o.masters.files + ' in MasterBDF, newest ' + esc(ago(o.masters.newest)) + '</dd></div>' : '') +
+            '</dl>' +
+            ((o.problems || []).length ? '<h3>Problem folders</h3><div class="bot-files">' + o.problems.map((x) =>
+                '<span class="bot-file' + (x.files ? ' is-warn' : '') + '" title="' + esc(x.path) + ' · changed ' + esc(stamp(x.modified)) + '">' + esc(x.label) + ': <b>' + x.files + '</b></span>').join('') + '</div>' : '') +
             '<div class="bot-two"><div><h3>Newest raw nights</h3>' + rows(o.raw, 'No raw nights found.') + '</div>' +
             '<div><h3>Newest calibrated sets</h3>' + rows(o.calibrated, 'No calibrated folders found.') + '</div></div>' +
+            (o.crontab ? '<h3>Schedule on the server (crontab_setup.txt)</h3><pre class="bot-step-tail bot-cron">' + esc(o.crontab) + '</pre>' : '') +
             (o.folders.length ? '<h3>In the reduction folder</h3><div class="bot-files">' + o.folders.map((f) =>
                 '<span class="bot-file' + (f.dir ? ' is-dir' : '') + '" title="' + esc(stamp(f.modified)) + '">' + esc(f.name) + (f.dir ? '/' : '') + '</span>').join('') + '</div>' : '');
     }

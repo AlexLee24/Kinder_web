@@ -468,7 +468,11 @@
 .bot-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .bot-detail h3 { margin: 16px 0 8px; font-size: 0.86rem; font-weight: 600; color: var(--kw-text-secondary); }
 .bot-two h3 { margin-top: 0; }
-.bot-paths { margin-bottom: 4px; }
+.bot-paths { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px 24px; margin-bottom: 4px; }
+.bot-paths > div { min-width: 0; }
+.bot-paths dt { font-size: 0.74rem; color: var(--kw-text-muted); }
+.bot-paths dd { font-size: 0.84rem; }
+.bot-paths dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .bot-files { display: flex; flex-wrap: wrap; gap: 6px; }
 .bot-file { padding: 4px 9px; border-radius: 8px; font-family: var(--kw-font-mono); font-size: 0.74rem; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--kw-hairline); color: var(--kw-text-secondary); }
 .bot-file.is-dir { color: var(--kw-text-white); }
@@ -487,3 +491,7 @@
     .bot-step-main { flex-basis: calc(100% - 40px); }
     .bot-step-time { margin-left: 36px; }
 }
+.bot-alert.is-info { background: rgba(100, 210, 255, 0.08); border: 1px solid rgba(100, 210, 255, 0.28); color: #cdeeff; }
+.bot-file.is-warn { color: #ffe8a8; border-color: rgba(255, 214, 10, 0.3); }
+.bot-file b { font-weight: 700; }
+.bot-cron { color: var(--kw-text-secondary); }
