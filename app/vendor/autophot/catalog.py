@@ -71,6 +71,11 @@ from functions import (
     SUPPORTED_PHOTOMETRIC_FILTERS,
 )
 from aperture import Aperture
+from filter_transformations import (
+    apply_filter_transformations,
+    transformable_bands,
+    transformations_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +113,11 @@ AUTO_OPTIMIZE_CATALOGS = (
 )
 
 # Eligible backends removed from the default "auto" scan, with the reason
-# shown in the run printout. Gaia stays the single-catalog fallback, but a
-# fresh bulk cone query on every run adds disproportionate load on the ESA
-# Gaia archive, so it is only scanned when requested explicitly through
-# ``catalog_names``.
-AUTO_OPTIMIZE_EXCLUDED = {
-    "gaia": "excluded from auto scan - bulk cone queries overload the Gaia archive",
-}
+# shown in the run printout.  Gaia stays in the scan: the XP source-count
+# pre-check made its participation cheap - one COUNT(*) query decides
+# whether the ADQL + GaiaXPy build can possibly supply enough calibrators
+# (see ``_gaia_xp_cone_source_count``).
+AUTO_OPTIMIZE_EXCLUDED = {"tic": "Excluded as the TIC catalog is untested by developer"}
 
 
 # Fixed marker/color per catalog so the optimizer coverage plot keeps a
@@ -163,9 +166,44 @@ CATALOG_MAGSYS = {
         "I": "vegamag",
     },
     "gaia_custom": "abmag",
-    "pan_starrs": "abmag",
-    "sdss": "abmag",
-    "legacy": "abmag",
+    "pan_starrs": {
+        "g": "abmag",
+        "r": "abmag",
+        "i": "abmag",
+        "z": "abmag",
+        "Y": "abmag",
+        "w": "abmag",
+        "default": "abmag",
+        # BVRI synthesized by filter transformations are Vega-system.
+        "B": "vegamag",
+        "V": "vegamag",
+        "R": "vegamag",
+        "I": "vegamag",
+    },
+    "sdss": {
+        "u": "abmag",
+        "g": "abmag",
+        "r": "abmag",
+        "i": "abmag",
+        "z": "abmag",
+        "default": "abmag",
+        "U": "vegamag",
+        "B": "vegamag",
+        "V": "vegamag",
+        "R": "vegamag",
+        "I": "vegamag",
+    },
+    "legacy": {
+        "g": "abmag",
+        "r": "abmag",
+        "i": "abmag",
+        "z": "abmag",
+        "default": "abmag",
+        "B": "vegamag",
+        "V": "vegamag",
+        "R": "vegamag",
+        "I": "vegamag",
+    },
     "skymapper": "abmag",
     "refcat": {
         "g": "abmag",
@@ -224,6 +262,9 @@ def catalog_magsys(catalog_name, band=None):
         key = str(key).strip()
         if key in entry:
             return entry[key]
+    default = entry.get("default")
+    if default is not None:
+        return default
     systems = set(entry.values())
     return systems.pop() if len(systems) == 1 else "mixed"
 
@@ -3712,7 +3753,24 @@ class Catalog:
                     outputCatalog[col] = selectedCatalog[col].values
                     logger.debug("Copied %s directly from catalog", col)
                 else:
-                    logger.warning("Could not find column %s in catalog; available columns: %s", col, list(selectedCatalog.columns))
+                    _missing_band = col[:-4] if col.endswith("_err") else col
+                    _can_synth = (
+                        not col.endswith("_err")
+                        and transformations_enabled(self.input_yaml)
+                        and _missing_band
+                        in transformable_bands(
+                            catalogName
+                            if not isinstance(catalogName, dict)
+                            else self._resolve_catalog_for_filter(catalogName)
+                        )
+                    )
+                    if _can_synth:
+                        logger.info(
+                            "Column %s not in catalog; it will be synthesized by filter transformations",
+                            col,
+                        )
+                    else:
+                        logger.warning("Could not find column %s in catalog; available columns: %s", col, list(selectedCatalog.columns))
 
             # --- Retrieve all available filters ---
             baseDatabase = os.path.join(
@@ -3737,6 +3795,32 @@ class Catalog:
                         outputCatalog[col] = selectedCatalog[col].values
                     # NOTE: no case-insensitive fallback - it would conflate
                     # different photometric systems (e.g. SDSS r vs Cousins R).
+
+            # --- Published band transformations ---------------------------
+            # Optionally synthesize bands the survey does not carry (e.g.
+            # Johnson-Cousins BVRI for SDSS/PS1/LEGACY) so the image filter
+            # and its color-term bands can still be populated.
+            if transformations_enabled(self.input_yaml):
+                try:
+                    _ft_name = catalogName
+                    if isinstance(_ft_name, dict):
+                        _ft_name = self._resolve_catalog_for_filter(_ft_name)
+                    _ft_report = apply_filter_transformations(
+                        outputCatalog, _ft_name
+                    )
+                    for _fb, (_fl, _fn) in sorted(_ft_report.items()):
+                        logger.info(
+                            "Synthesized %s-band magnitudes for %d sources (%s)",
+                            _fb,
+                            _fn,
+                            _fl,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "allow_filter_transformations is set but the "
+                        "transformation failed: %s",
+                        exc,
+                    )
 
             # --- Early return if only updating names ---
             if update_names_only:
@@ -4430,6 +4514,41 @@ class Catalog:
             val = 0.2
         return val if val > 0 else None
 
+    def _gaia_xp_cone_source_count(self, region):
+        """
+        COUNT(*) of Gaia DR3 XP-spectra sources the query ``region`` could
+        contribute, or None when the count query fails.
+
+        On-detector calibrators must lie inside the region cone and inside
+        whatever cone the XP download grows to, so the reachable set is
+        bounded by ``min(region radius, gaia_xp_max_radius_deg)``.  The
+        count gates the expensive ADQL + batched GaiaXPy build during the
+        optimizer scan; ``None`` (query failure) must not gate anything -
+        the real download then decides.
+        """
+        cat_cfg = self.input_yaml.get("catalog", {}) or {}
+        try:
+            from autophot_gaia_curves.gaia_archive import gaia_cone_count
+
+            region_deg = float(region.get("radius_arcmin", 0.0)) / 60.0
+            grown_cap = float(cat_cfg.get("gaia_xp_max_radius_deg", 1.0))
+            radius_deg = min(region_deg, grown_cap)
+            if not np.isfinite(radius_deg) or radius_deg <= 0:
+                return None
+            return gaia_cone_count(
+                float(region["ra"]),
+                float(region["dec"]),
+                radius_deg,
+                xp_only=True,
+                max_retries=int(cat_cfg.get("gaia_archive_max_retries", 3)),
+                retry_base_delay_sec=float(
+                    cat_cfg.get("gaia_archive_retry_base_delay_sec", 2.0)
+                ),
+                logger=logger,
+            )
+        except Exception:
+            return None
+
     def _catalog_supported_bands(self, catalog_names, cat_cfg=None):
         """Bands each candidate backend can serve, from catalog.yml.
 
@@ -4475,6 +4594,10 @@ class Catalog:
                     if f"{c}_err" in csv_cols
                     and normalize_photometric_filter_name(c) is not None
                 }
+            # With transformations enabled a catalog also serves the bands
+            # it can synthesize (e.g. BVRI for sdss/panstarrs/legacy).
+            if cat_cfg.get("allow_filter_transformations", False):
+                bands_i |= set(transformable_bands(name))
             supported_bands[name] = bands_i
         return supported_bands, skipped
 
@@ -4489,6 +4612,7 @@ class Catalog:
         regions=None,
         return_all=False,
         return_report=False,
+        min_sources=5,
     ):
         """Rebuild ``plot_data["sources"]`` for the coverage map without a
         full rescan.
@@ -4510,6 +4634,10 @@ class Catalog:
         (catalog/band/image/n_usable/coverage/r_query_arcmin/mode), so a
         cached run can still draw the scoreboard row when the original
         coverage CSV did not survive.
+        ``min_sources`` mirrors the optimizer's preferred minimum: when a
+        catalog has no CSV cache and would hit the archive, Gaia is
+        skipped unless a COUNT(*) shows at least that many XP-spectra
+        sources in the reachable cone - the same gate the scan applies.
         """
         zp_cfg = self.input_yaml.get("zeropoint", {}) or {}
         bright_lim = float(zp_cfg.get("bright_mag_limit", 11.0))
@@ -4528,6 +4656,33 @@ class Catalog:
             if not (set(band_set) & supported_bands.get(name, set())):
                 continue
             reg = (regions or {}).get(name)
+            if name == "gaia":
+                # A cached Gaia CSV is free to reuse; without one this
+                # download would run the full XP build the optimizer scan
+                # gates behind a source count - apply the same gate so a
+                # rebuild never pays for a catalog the scan skipped.
+                _gaia_dir = os.path.join(
+                    self.input_yaml.get("wdir", "."),
+                    "catalog_queries",
+                    "gaia",
+                    canonical_target_name(self.input_yaml).lower(),
+                )
+                _has_cache = any(
+                    pathlib.Path(_gaia_dir).glob("*_gaia_target_ra_*.csv")
+                )
+                if not _has_cache:
+                    _reg = (
+                        reg
+                        if isinstance(reg, dict)
+                        else {
+                            "ra": float(target_coords.ra.deg),
+                            "dec": float(target_coords.dec.deg),
+                            "radius_arcmin": float(radius),
+                        }
+                    )
+                    _n_xp = self._gaia_xp_cone_source_count(_reg)
+                    if _n_xp is not None and _n_xp < min_sources:
+                        continue
             try:
                 with _quiet_catalog_log():
                     raw = self.download(
@@ -4876,8 +5031,12 @@ class Catalog:
             Backends to try; defaults to all feasible catalogs (every entry
             of AUTO_OPTIMIZE_CATALOGS minus AUTO_OPTIMIZE_EXCLUDED, plus
             "refcat"/"custom" when their credentials/file are configured).
-            Passing an explicit list overrides the exclusion - e.g.
-            ``["gaia"]`` re-enables the Gaia scan.
+            Passing an explicit list restricts the scan to the named
+            backends and bypasses AUTO_OPTIMIZE_EXCLUDED.
+            "gaia" is gated differently: a cheap COUNT(*) of XP-spectra
+            sources in the reachable cone runs first, and the ADQL +
+            GaiaXPy synthetic-photometry build is skipped entirely when
+            the count falls below ``min_sources``.
         radius : float
             Fallback query radius in arcmin (default 10) used when no
             image carries footprint geometry (no WCS/shape/pixel scale).
@@ -5058,6 +5217,26 @@ class Catalog:
             )
             cat_regions[name] = reg
             cat_bands[name] = served
+            if name == "gaia":
+                # The XP synthetic-photometry build is the heaviest step
+                # of the scan (ADQL cone + batched GaiaXPy).  One COUNT(*)
+                # over the reachable cone is enough to know Gaia cannot
+                # supply the preferred minimum - skip the build in that
+                # case instead of paying for spectra nobody can use.
+                _n_xp = self._gaia_xp_cone_source_count(reg)
+                if _n_xp is not None and _n_xp < min_sources:
+                    skipped[name] = (
+                        f"{_n_xp} Gaia XP-spectra sources in the query "
+                        f"cone (preferred minimum {min_sources})"
+                    )
+                    logger.info("  %-12s skipped - %s", name, skipped[name])
+                    continue
+                if _n_xp is not None:
+                    logger.info(
+                        "  %-12s %d XP-spectra sources in query cone",
+                        name,
+                        _n_xp,
+                    )
             try:
                 with _quiet_catalog_log():
                     raw_catalogs[name] = self.download(
