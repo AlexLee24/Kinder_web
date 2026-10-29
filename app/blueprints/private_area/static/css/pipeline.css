@@ -75,11 +75,6 @@
 .pl-step-head p { margin: 3px 0 0; font-size: 0.78rem; line-height: 1.5; color: var(--kw-text-muted); }
 .pl-step-n { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; margin-top: -1px; border-radius: 50%;
     border: 1px solid var(--kw-accent-border); color: var(--kw-accent); font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-.pl-step-more > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none; cursor: pointer; }
-.pl-step-more > summary::-webkit-details-marker { display: none; }
-.pl-step-more > summary .pl-step-head { margin-bottom: 0; }
-.pl-step-more[open] > summary { margin-bottom: 14px; }
-.pl-step-more[open] .pl-chev { transform: rotate(45deg); }
 .pl-wizard-foot { display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid var(--kw-hairline); }
 .pl-wizard-foot .pl-msg { margin: 0; }
 .pl-wizard-foot .pl-form-foot .kw-btn { width: 100%; min-height: 44px; }
@@ -93,6 +88,19 @@
 .pl-scan-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; font-size: 0.8rem; color: var(--kw-text-secondary); }
 .pl-scan-head b { font-size: 0.95rem; font-weight: 500; color: var(--kw-text-white); overflow-wrap: anywhere; }
 .pl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+button.pl-tag { font: inherit; cursor: pointer; }
+button.pl-tag:hover, button.pl-tag:focus-visible { filter: brightness(1.25); }
+.pl-tags-hint { margin: 0 0 6px; font-size: 0.78rem; color: var(--kw-text-muted); }
+.pl-clash { display: grid; gap: 10px; margin-top: 12px; }
+.pl-clash .pl-warn { margin: 0; }
+.pl-clash-base { overflow-wrap: anywhere; font-size: 0.8rem; color: var(--kw-text-secondary); }
+.pl-clash .pl-inline { flex-wrap: wrap; }
+.pl-clash .pl-inline input { min-width: 12ch; }
+.pl-rename, .pl-share { display: grid; gap: 8px; }
+.pl-rename { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--kw-hairline); }
+.pl-rename .pl-msg, .pl-share .pl-msg, .pl-share .pl-hint, .pl-rename label { margin: 0; }
+.pl-share-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-share .pl-inline input { font-family: var(--kw-font-mono, monospace); font-size: 0.78rem; }
 .pl-scan-files > summary { cursor: pointer; font-size: 0.8rem; color: var(--kw-text-secondary); }
 .pl-scan-files[open] > summary { margin-bottom: 8px; }
 .pl-scan-files .kw-table-wrap { max-height: 320px; overflow: auto; }

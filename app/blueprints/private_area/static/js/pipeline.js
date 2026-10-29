@@ -93,7 +93,7 @@
 
     // ── FITS headers, read in the browser before anything is uploaded ─────────
     const FITS_RE = /\.(fits|fit|fts)(\.fz|\.gz)?$/i;
-    const KEEP = /^(OBJECT|TELESCOP|INSTRUME|FILT|BAND|PASSBAND|DATE-OBS|MJD-OBS|EXPTIME|EXPOSURE|IMAGETYP|OBSTYPE|RA|DEC|OBJCTRA|OBJCTDEC|CRVAL[12]|NAXIS[12]?|ZNAXIS[12]?|ZIMAGE|BITPIX|PCOUNT|GCOUNT)/;
+    const KEEP = /^(OBJECT|TELESCOP|INSTRUME|FILT|BAND|PASSBAND|DATE|MJD-OBS|EXPTIME|EXPOSURE|IMAGETYP|OBSTYPE|RA|DEC|OBJCTRA|OBJCTDEC|CRVAL[12]|NAXIS[12]?|ZNAXIS[12]?|ZIMAGE|BITPIX|PCOUNT|GCOUNT)/;
 
     function parseCard(card) {
         const key = card.slice(0, 8).trim();
@@ -221,7 +221,7 @@
             const name = parts[parts.length - 1], dirs = parts.slice(0, -1);
             if (name.startsWith('.') || dirs.some(d => d.startsWith('.'))) continue;
             if (!FITS_RE.test(name)) { other.push(x.rel); continue; }
-            const it = { file: x.file, rel: parts.join('/'), name, kind: 'science', why: '', hdr: null, band: '', raw: '' };
+            const it = { file: x.file, rel: parts.join('/'), name, kind: 'science', why: '', hdr: null, band: '', raw: '', tag: '' };
             if (dirs.some(d => /_REDUCED$/i.test(d))) { it.kind = 'skip'; it.why = 'AutoPhOT output folder'; }
             else if (dirs.some(d => /templ/i.test(d))) it.kind = 'template';
             items.push(it);
@@ -239,7 +239,7 @@
         if (ask.length) {
             try {
                 const r = await api(API + '/classify', { headers: ask.map(it => ({ name: it.rel, header: filterCards(it.hdr) })) });
-                r.files.forEach((f, k) => { ask[k].band = f.band; ask[k].raw = f.raw; ask[k].how = f.how; });
+                r.files.forEach((f, k) => { ask[k].band = f.band; ask[k].raw = f.raw; ask[k].how = f.how; ask[k].tag = f.tag; });
             } catch (e) { /* filters stay unknown; AutoPhOT still reads the headers itself */ }
         }
         // Upload names: the file name, or folder__name when two subfolders hold the same name
@@ -256,7 +256,7 @@
 
     function filterCards(h) {
         const out = {};
-        for (const [k, v] of Object.entries(h || {})) if (/^(TELESCOP|INSTRUME|FILT|BAND|PASSBAND)/.test(k)) out[k] = String(v);
+        for (const [k, v] of Object.entries(h || {})) if (/^(TELESCOP|INSTRUME|FILT|BAND|PASSBAND|EXPTIME|EXPOSURE|DATE)/.test(k)) out[k] = String(v);
         return out;
     }
 
@@ -283,8 +283,8 @@
     function scanSummary(scan) {
         const sci = scan.items.filter(i => i.kind === 'science'), tpl = scan.items.filter(i => i.kind === 'template');
         const skip = scan.items.filter(i => i.kind === 'skip');
-        const byBand = {};
-        sci.forEach(i => { byBand[i.band || '?'] = (byBand[i.band || '?'] || 0) + 1; });
+        const byTag = {};
+        sci.forEach(i => { const k = i.tag || i.band || '?'; byTag[k] = (byTag[k] || 0) + 1; });
         const tels = [...new Set(sci.map(i => i.hdr ? [i.hdr.TELESCOP, i.hdr.INSTRUME].filter(Boolean).join(' / ') : '').filter(Boolean))];
         const nights = new Set(sci.map(i => nightOf(i.hdr)).filter(Boolean));
         const missing = sci.filter(i => i.hdr && !(i.hdr.TELESCOP && i.hdr.INSTRUME && (i.hdr.FILTER || i.hdr.FILTER1 || i.hdr.FILTNAME)));
@@ -296,7 +296,7 @@
                 el('span', { text: sizeText(bytes) }),
                 nights.size ? el('span', { text: plural(nights.size, 'night') }) : null,
                 tels.length ? el('span', { text: tels.join(', ') }) : null),
-            el('div', { class: 'pl-chips' }, Object.keys(byBand).sort().map(b => el('span', { class: 'kw-chip' + (b === '?' ? ' kw-chip-red' : ' kw-chip-gold'), text: (b === '?' ? 'unknown filter' : b) + ' × ' + byBand[b] })),
+            el('div', { class: 'pl-chips' }, Object.keys(byTag).sort().map(t => el('span', { class: 'kw-chip' + (t === '?' ? ' kw-chip-red' : ' kw-chip-gold'), text: (t === '?' ? 'unknown filter' : t) + ' × ' + byTag[t] })),
                 tpl.length ? el('span', { class: 'kw-chip kw-chip-blue', text: plural(tpl.length, 'template') }) : null),
         ];
         if (missing.length) kids.push(el('p', { class: 'pl-warn', text: plural(missing.length, 'frame') + ' without TELESCOP, INSTRUME or FILTER in the header; AutoPhOT skips them.' }));
@@ -306,14 +306,14 @@
         const rows = scan.items.map(i => el('tr', { class: i.kind === 'skip' ? 'is-skip' : null },
             el('td', { class: 'pl-mono', title: i.rel }, i.rel, i.kind === 'template' ? el('span', { class: 'kw-chip kw-chip-blue', text: 'template' }) : null),
             el('td', {}, i.band ? el('b', { text: i.band }) : el('span', { class: 'pl-faint', text: '?' }), i.raw && i.raw !== i.band ? el('small', { text: ' ' + i.raw }) : null),
-            el('td', { text: i.hdr ? (i.hdr.TELESCOP || '—') : '—' }), el('td', { text: i.hdr ? (i.hdr.INSTRUME || '—') : '—' }),
+            el('td', { text: i.tag || '—' }), el('td', { text: i.hdr ? (i.hdr.INSTRUME || '—') : '—' }),
             el('td', { text: i.hdr ? String(i.hdr['DATE-OBS'] || '—').replace('T', ' ').slice(0, 19) : '—' }),
             el('td', { text: i.hdr && i.hdr.EXPTIME != null ? String(i.hdr.EXPTIME) : '—' }),
             el('td', { text: i.hdr ? (i.hdr.OBJECT || '—') : '—' }),
             el('td', { class: 'pl-faint', text: i.kind === 'skip' ? i.why : '' })));
         kids.push(el('details', { class: 'pl-scan-files' }, el('summary', { text: 'Show every file' }),
             el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-hdr' },
-                el('thead', {}, el('tr', {}, ['File', 'Filter', 'TELESCOP', 'INSTRUME', 'DATE-OBS', 'EXPTIME', 'OBJECT', ''].map(h => el('th', { text: h })))),
+                el('thead', {}, el('tr', {}, ['File', 'Filter', 'Tag', 'INSTRUME', 'DATE-OBS', 'EXPTIME', 'OBJECT', ''].map(h => el('th', { text: h })))),
                 el('tbody', {}, rows)))));
         return kids;
     }
@@ -378,7 +378,7 @@
         const f = form.elements;
         const mode = (form.querySelector('input[name=ts_mode]:checked') || {}).value || 'none';
         const b = {
-            name: f.name.value.trim(), ra: f.ra.value.trim(), dec: f.dec.value.trim(),
+            target: f.target.value.trim(), ra: f.ra.value.trim(), dec: f.dec.value.trim(),
             catalog: f.catalog.value, ncpu: parseInt(f.ncpu.value, 10) || 1,
             stack: f.stack.checked, stack_with_singles: f.stack_with_singles.checked,
             stack_align: f.stack_align.value, stack_combine: f.stack_combine.value, stack_sigma: parseFloat(f.stack_sigma.value) || 3,
@@ -404,7 +404,7 @@
         sync();
 
         // Name → Kinder objects (autocomplete), or CDS Sesame with Look up
-        const name = form.elements.name;
+        const name = form.elements.target;
         const box = form.querySelector('.pl-suggest');
         let timer = null, items = [];
         const hide = () => { box.hidden = true; box.replaceChildren(); items = []; };
@@ -502,7 +502,7 @@
                     el('td', {}, box), el('td', { class: 'pl-mono' }, f.name, cal ? el('span', { class: 'kw-chip', text: f.imagetyp }) : null),
                     el('td', {}, f.band ? el('b', { text: f.band }) : el('span', { class: 'pl-faint', text: '?' }), f.raw && f.raw !== f.band ? el('small', { text: ' ' + f.raw }) : null),
                     f.error ? el('td', { colspan: '4', class: 'is-miss', text: f.error }) : [
-                        el('td', { text: [h.TELESCOP, h.INSTRUME].filter(Boolean).join(' / ') || '—' }),
+                        el('td', { title: [h.TELESCOP, h.INSTRUME].filter(Boolean).join(' / '), text: f.tag || [h.TELESCOP, h.INSTRUME].filter(Boolean).join(' / ') || '—' }),
                         el('td', { text: (h['DATE-OBS'] || '—').replace('T', ' ').slice(0, 19) }),
                         el('td', { text: h.EXPTIME || '—' }), el('td', { text: h.OBJECT || '—' })]);
             });
@@ -511,12 +511,19 @@
                 go.disabled = true;
                 try { await onPick(chosen, d.path); } finally { go.disabled = false; }
             });
+            // One chip per telescope / filter / exposure read from the headers; a click picks just those frames
+            const tagBar = (d.tags || []).length ? el('div', {},
+                el('p', { class: 'pl-tags-hint', text: 'Tags from the headers (telescope · filter · exposure). Click one to pick only those frames.' }),
+                el('div', { class: 'pl-chips pl-tags', role: 'group', 'aria-label': 'Select by tag' }, d.tags.map(t => el('button', {
+                    type: 'button', class: 'kw-chip kw-chip-gold pl-tag', text: t.tag + ' × ' + t.n,
+                    onclick: () => { boxes.forEach(b => { b.box.checked = !b.f.error && !(b.f.imagetyp && CAL_RE.test(b.f.imagetyp)) && b.f.tag === t.tag; }); sync(); } })))) : null;
             root.replaceChildren(...[
                 el('div', { class: 'pl-pick-head' },
                     el('button', { type: 'button', class: 'pl-link', text: '← All folders', onclick: () => showFolders(q) }),
                     el('b', { class: 'pl-mono', text: d.path + '/' })),
+                tagBar,
                 el('div', { class: 'kw-table-wrap pl-pick-files' }, el('table', { class: 'kw-table pl-table pl-hdr' },
-                    el('thead', {}, el('tr', {}, el('th', {}, all), ['File', 'Filter', 'Telescope / instrument', 'Date (UTC)', 'Exp (s)', 'OBJECT'].map(t => el('th', { text: t })))),
+                    el('thead', {}, el('tr', {}, el('th', {}, all), ['File', 'Filter', 'Tag', 'Date (UTC)', 'Exp (s)', 'OBJECT'].map(t => el('th', { text: t })))),
                     el('tbody', {}, rows))),
                 d.more ? el('p', { class: 'pl-hint', text: d.more + ' more FITS not listed (first 500).' }) : null,
                 el('div', { class: 'pl-pick-foot' }, foot, el('span', { class: 'pl-spacer' }), go)].filter(Boolean));
@@ -525,169 +532,147 @@
         showFolders('');
     }
 
-    // ── New workspace wizard ──────────────────────────────────────────────────
+    // ── New workspace: the images and a name made from their headers; everything else is on the workspace page ──
     const wizard = document.querySelector('[data-pl-form][data-new]');
     if (wizard) {
-        const { msg, sync } = wireForm(wizard);
+        const msg = wizard.querySelector('.pl-msg');
         const scanBox = wizard.querySelector('[data-scan]');
-        const cov = wizard.querySelector('[data-coverage]');
         const planBox = wizard.querySelector('[data-plan]');
         const bar = wizard.querySelector('[data-progress]');
         const btn = wizard.querySelector('button[type=submit]');
-        const hint = wizard.querySelector('[data-target-hint]');
-        let scan = null, extraTpl = [], created = null;
+        const nameStep = wizard.querySelector('[data-name-step]');
+        const nameIn = wizard.elements.wsname, suffixIn = wizard.elements.suffix;
+        const clash = wizard.querySelector('[data-clash]');
+        let scan = null, created = null, free = false, checkSeq = 0, checkTimer = null, busy = false;
 
-        const templates = () => (scan ? scan.items.filter(i => i.kind === 'template') : []).concat(extraTpl);
+        const templates = () => (scan ? scan.items.filter(i => i.kind === 'template') : []);
         const science = () => (scan ? scan.items.filter(i => i.kind === 'science') : []);
+        const clean = t => String(t || '').trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_+\-.]/g, '_').replace(/_+/g, '_').replace(/^[_.]+|[_.]+$/g, '');
 
-        // Per filter: frames, and which template (if any) will be used
-        function renderCoverage() {
-            const sci = science(), tpl = templates();
-            const bands = [...new Set(sci.map(i => i.band || '?').concat(tpl.filter(t => t.band).map(t => t.band)))].sort();
-            if (!bands.length) { cov.replaceChildren(el('p', { class: 'pl-hint', text: 'Drop the images first; each filter then gets a row here.' })); renderPlan(); return; }
-            const rows = bands.map(b => {
-                const n = sci.filter(i => (i.band || '?') === b).length;
-                const cands = tpl.filter(t => t.band === b);
-                if (cands.length && !cands.some(c => c.use)) cands.slice().sort((x, y) => y.file.size - x.file.size)[0].use = true;
-                let cell;
-                if (b === '?') cell = el('span', { class: 'pl-faint', text: 'Filter unknown; AutoPhOT decides when it runs' });
-                else if (cands.length) {
-                    cell = el('select', { class: 'kw-select kw-select-sm', 'aria-label': 'Template for ' + b, onchange: e => {
-                        cands.forEach(c => { c.use = c.up === e.target.value; }); renderPlan(); } },
-                        cands.map(c => el('option', { value: c.up, text: c.rel + ' · ' + sizeText(c.file.size), selected: c.use })));
-                } else cell = el('span', { class: 'kw-chip kw-chip-red', text: 'No template' });
-                return el('tr', {}, el('td', {}, el('b', { text: b === '?' ? '—' : b })), el('td', { text: n ? String(n) : '—' }), el('td', {}, cell));
-            });
-            const unknown = tpl.filter(t => !t.band);
-            const kids = [el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-cov' },
-                el('thead', {}, el('tr', {}, el('th', { text: 'Filter' }), el('th', { text: 'Frames' }), el('th', { text: 'Template' }))),
-                el('tbody', {}, rows)))];
-            if (unknown.length) {
-                kids.push(el('div', { class: 'pl-warn' }, el('b', { text: 'Which filter are these templates? ' }),
-                    unknown.map(t => el('span', { class: 'pl-unknown' }, el('span', { class: 'pl-mono', text: t.rel + (t.raw ? ' (FILTER ' + t.raw + ')' : '') }),
-                        bandSelect('', { onchange: e => { t.band = e.target.value; renderCoverage(); } })))));
-            }
-            cov.replaceChildren(...kids);
-            renderPlan();
+        // target_telescope_date from the headers: the most common OBJECT and TELESCOP, the UTC dates of the frames (first-last when there are several)
+        function autoName() {
+            const sci = science();
+            const obj = clean(mostCommon(sci.map(i => i.hdr && String(i.hdr.OBJECT || '').trim())));
+            const tel = clean(mostCommon(sci.map(i => i.hdr && String(i.hdr.TELESCOP || i.hdr.INSTRUME || '').trim())));
+            const days = sci.map(i => i.hdr && String(i.hdr['DATE-OBS'] || i.hdr.DATE || '').slice(0, 10).replace(/-/g, '')).filter(d => /^\d{8}$/.test(d)).sort();
+            const day = days.length ? (days[0] === days[days.length - 1] ? days[0] : days[0] + '-' + days[days.length - 1]) : '';
+            return [obj, tel, day].filter(Boolean).join('_') || 'workspace';
         }
 
+        // What the position hints on the workspace page are made from: the OBJECT and the pointing of the headers
+        function hint() {
+            const sci = science();
+            const c = hdrCoords((sci.find(i => i.hdr) || {}).hdr) || {};
+            return { object: mostCommon(sci.map(i => i.hdr && String(i.hdr.OBJECT || '').trim())), ra: c.ra || '', dec: c.dec || '' };
+        }
+
+        function updateBtn() { btn.disabled = busy || (!created && (!science().length || !nameIn.value.trim() || !free)); }
+
+        // Is the name free? If not, ask for the user's own ending: <auto name>_<ending>
+        async function checkName() {
+            const seq = ++checkSeq, base = nameIn.value.trim(), suffix = suffixIn.value.trim();
+            if (!base) { free = false; clash.hidden = true; updateBtn(); return; }
+            try {
+                const r = await api(API + '/name_check?' + new URLSearchParams({ name: base, suffix }));
+                if (seq !== checkSeq) return;
+                free = !r.taken;
+                clash.hidden = !(r.taken || suffix);
+                wizard.querySelector('[data-clash-base]').textContent = clean(base);
+                const m = wizard.querySelector('[data-clash-msg]');
+                m.textContent = r.taken ? (suffix ? r.name + ' exists too; change your ending.' : 'A workspace called ' + r.name + ' already exists. Add your own ending after it:')
+                    : 'It will be called ' + r.name + '.';
+                m.classList.toggle('pl-warn', r.taken);
+                m.classList.toggle('pl-hint', !r.taken);
+            } catch (err) { if (seq === checkSeq) { free = false; say(msg, err.message, 'error'); } }
+            updateBtn();
+            renderPlan();
+        }
+        const checkSoon = () => { free = false; updateBtn(); clearTimeout(checkTimer); checkTimer = setTimeout(checkName, 250); };
+        nameIn.addEventListener('input', () => { suffixIn.value = ''; checkSoon(); });
+        suffixIn.addEventListener('input', checkSoon);
+        nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+        suffixIn.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+
         function renderPlan() {
-            const sci = science(), mode = tsMode(wizard);
-            const used = mode === 'own' ? templates().filter(t => t.band && t.use) : [];
-            const ws = (wizard.elements.name.value.trim() || 'workspace').replace(/\s+/g, '_').replace(/[^A-Za-z0-9_+\-.]/g, '_');
+            const sci = science(), tpl = templates();
+            const ws = clean(nameIn.value) + (suffixIn.value.trim() ? '_' + clean(suffixIn.value) : '') || 'workspace';
             planBox.hidden = !sci.length;
             planBox.replaceChildren(el('span', { class: 'kw-label', text: 'Will be created on the server' }),
                 el('ul', { class: 'pl-tree' },
                     el('li', { class: 'is-dir' }, el('b', { text: ws + '/' })),
                     el('li', { class: 'is-dir pl-d1' }, el('b', { text: 'images/' }), el('small', { text: plural(sci.length, 'frame') })),
-                    used.length ? el('li', { class: 'is-dir pl-d2' }, el('b', { text: 'templates/' })) : null,
-                    used.map(t => el('li', { class: 'pl-d3' }, el('b', { text: t.band + '_template/' }), el('small', { text: t.rel }))),
+                    tpl.length ? el('li', { class: 'is-dir pl-d2' }, el('b', { text: 'templates/' }), el('small', { text: plural(tpl.length, 'template') + ', sorted by filter' })) : null,
                     el('li', { class: 'is-dir pl-d1 is-later' }, el('b', { text: 'images_REDUCED/' }), el('small', { text: 'AutoPhOT output, after the run' }))));
         }
 
-        async function prefillTarget() {
-            const sci = science();
-            const obj = mostCommon(sci.map(i => i.hdr && String(i.hdr.OBJECT || '').trim()));
-            const f = wizard.elements;
-            if (obj && !f.name.value.trim()) f.name.value = obj;
-            const q = f.name.value.trim();
-            if (q && !f.ra.value.trim()) {
-                const hits = await kinderObjects(q);
-                const norm = s => String(s).toLowerCase().replace(/[\s_]/g, '').replace(/^(sn|at)/, '');
-                const hit = hits.find(h => norm(h.name) === norm(q));
-                if (hit) {
-                    f.name.value = hit.name; f.ra.value = hit.ra; f.dec.value = hit.dec;
-                    say(hint, 'Position from the Kinder object ' + hit.name + '.', 'ok');
-                    return;
-                }
-            }
-            const c = hdrCoords((sci.find(i => i.hdr) || {}).hdr);
-            hint.replaceChildren(document.createTextNode('AutoPhOT measures at this position; the name is only a label. '));
-            if (c && !f.ra.value.trim()) {
-                hint.append(el('button', { type: 'button', class: 'pl-link', text: 'Use the telescope pointing from the header (' + c.ra + ', ' + c.dec + ')',
-                    onclick: () => { f.ra.value = c.ra; f.dec.value = c.dec; say(hint, 'Pointing from the header: check it is the target, not the field centre.', null); } }));
-            }
+        // The images are known: make the name and show the tags
+        async function scanned() {
+            nameStep.hidden = !science().length;
+            if (!science().length) { planBox.hidden = true; updateBtn(); return; }
+            nameIn.value = autoName();
+            suffixIn.value = '';
+            say(msg, '');
+            await checkName();
+            nameStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+        const startOver = () => { scan = null; scanBox.hidden = true; nameStep.hidden = true; planBox.hidden = true; free = false; updateBtn(); };
 
         dropZone(wizard.querySelector('[data-pl-drop]'), async list => {
-            if (created) return;
+            if (created || busy) return;
             scanBox.hidden = false;
             scanBox.replaceChildren(el('p', { class: 'pl-hint', text: 'Reading ' + plural(list.length, 'file') + '…' }));
             scan = await scanFiles(list, (d, n) => { scanBox.firstChild.textContent = 'Reading headers ' + d + ' / ' + n + '…'; });
             if (!science().length) {
                 scanBox.replaceChildren(el('p', { class: 'pl-msg is-error', text: 'No FITS frames found in what you dropped.' }));
+                startOverLater();
                 return;
             }
-            scanBox.replaceChildren(...scanSummary(scan),
-                el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Start over', onclick: () => { scan = null; extraTpl = []; scanBox.hidden = true; renderCoverage(); } }));
-            if (templates().length) {
-                const own = wizard.querySelector('input[name=ts_mode][value=own]');
-                if (own) { own.checked = true; sync(); }
-            }
-            renderCoverage();
-            await prefillTarget();
-            renderPlan();
+            scanBox.replaceChildren(...scanSummary(scan), el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Start over', onclick: startOver }));
+            await scanned();
         });
+        function startOverLater() { scan = null; nameStep.hidden = true; planBox.hidden = true; updateBtn(); }
 
         // Source: this computer (drop) or calibrated frames on the server (picker); both end in the same scan
         const srcSync = () => {
             const src = (wizard.querySelector('input[name=src]:checked') || {}).value || 'upload';
             wizard.querySelectorAll('[data-src]').forEach(n => { n.hidden = n.dataset.src !== src; });
+            wizard.querySelectorAll('.pl-seg-item').forEach(n => n.classList.toggle('is-on', n.querySelector('input').checked));
         };
         wizard.addEventListener('change', e => { if (e.target.name === 'src') srcSync(); });
         srcSync();
         const pick = wizard.querySelector('[data-picker]');
         if (pick) {
             picker(pick, async (files, folder) => {
-                if (created) return;
+                if (created || busy) return;
                 const seen = {};
                 const items = files.map(f => {
                     const up = seen[f.name] ? f.path.replace(/\//g, '__') : f.name;
                     seen[f.name] = true;
                     return { server: f.path, rel: f.name, name: f.name, up, size: f.size, kind: 'science', why: '',
-                        hdr: f.header || {}, band: f.band, raw: f.raw };
+                        hdr: f.header || {}, band: f.band, raw: f.raw, tag: f.tag || '' };
                 });
                 scan = { folder, items, other: [] };
                 scanBox.hidden = false;
-                scanBox.replaceChildren(...scanSummary(scan),
-                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Start over', onclick: () => { scan = null; scanBox.hidden = true; renderCoverage(); } }));
-                renderCoverage();
-                await prefillTarget();
-                renderPlan();
+                scanBox.replaceChildren(...scanSummary(scan), el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Start over', onclick: startOver }));
+                await scanned();
                 scanBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
         }
-
-        const tplDrop = cov.parentElement.querySelector('[data-pl-drop]');
-        dropZone(tplDrop, async list => {
-            const s = await scanFiles(list);
-            const add = s.items.filter(i => i.kind !== 'skip').map(i => Object.assign(i, { kind: 'template', use: false }));
-            add.forEach(t => { t.up = 'tpl__' + t.up; });
-            extraTpl = extraTpl.concat(add);
-            add.filter(t => t.band).forEach(t => templates().filter(o => o.band === t.band).forEach(o => { o.use = o === t; }));
-            renderCoverage();
-        });
-        wizard.addEventListener('change', e => { if (e.target.name === 'ts_mode' || e.target.name === 'name') renderPlan(); });
-        wizard.elements.name.addEventListener('input', renderPlan);
-        renderCoverage();
 
         wizard.addEventListener('submit', async e => {
             e.preventDefault();
             const sci = science();
             if (!created && !sci.length) { say(msg, 'Drop a folder or FITS files first.', 'error'); return; }
-            const f = wizard.elements;
-            if (!f.name.value.trim() || !f.ra.value.trim() || !f.dec.value.trim()) { say(msg, 'Enter the target and its RA and Dec.', 'error'); f.name.focus(); return; }
-            const mode = tsMode(wizard);
-            const tpl = mode === 'own' ? templates().filter(t => t.band && t.use) : [];
-            btn.disabled = true;
+            busy = true;
+            updateBtn();
             try {
                 if (!created) {
                     say(msg, 'Creating the workspace…');
-                    created = await api(API + '/new', formBody(wizard));
+                    created = await api(API + '/new', { name: nameIn.value.trim(), suffix: suffixIn.value.trim(), hint: hint() });
                     wizard.querySelectorAll('input, select').forEach(n => { n.disabled = true; });
                 }
-                const queue = sci.map(i => ({ file: i.file, up: i.up, server: i.server, size: i.size })).concat(tpl.map(t => ({ file: t.file, up: t.up.replace(/^tpl__/, ''), template: t.band })))
-                    .filter(x => !x.done);
+                const queue = sci.map(i => ({ file: i.file, up: i.up, server: i.server, size: i.size }))
+                    .concat(templates().map(t => ({ file: t.file, up: t.up, template: t.band || 'auto' }))).filter(x => !x.done);
                 say(msg, '');
                 const r = await uploadAll(API + '/' + encodeURIComponent(created.id), queue, bar);
                 queue.forEach(x => { if (x.result) x.done = true; });
@@ -695,8 +680,12 @@
                 say(msg, r.failed.map(x => x.item.up + ': ' + x.error).slice(0, 3).join(' · ') + (r.failed.length > 3 ? ' …' : ''), 'error');
                 btn.textContent = 'Open the workspace';
                 btn.onclick = ev => { ev.preventDefault(); location.href = created.url; };
-            } catch (err) { say(msg, err.message, 'error'); }
-            btn.disabled = false;
+            } catch (err) {
+                say(msg, err.message, 'error');
+                if (!created) checkName();                      // taken after all (someone was faster): ask for an ending
+            }
+            busy = false;
+            updateBtn();
         });
     }
 
@@ -736,17 +725,19 @@
             $('plImgCount').textContent = plural(d.n, 'frame');
             d.files.forEach(f => { f.stack = d.stacks.indexOf(f.name) >= 0; });
             const parts = [];
+            if ((d.tags || []).length) parts.push(el('div', { class: 'pl-chips pl-tags' }, d.tags.map(t => el('span', { class: 'kw-chip kw-chip-gold', text: t.tag + ' × ' + t.n }))));
             if (d.missing) parts.push(el('p', { class: 'pl-warn', text: plural(d.missing, 'frame') + ' missing TELESCOP / INSTRUME / FILTER; AutoPhOT skips them.' }));
             if (!d.files.length) parts.push(el('div', { class: 'pl-empty' }, el('b', { text: 'No frames yet' }), 'Drop a folder or FITS files above.'));
             else {
                 parts.push(el('div', { class: 'kw-table-wrap' }, el('table', { class: 'kw-table pl-table pl-hdr' },
-                    el('thead', {}, el('tr', {}, ['File', 'Filter', 'Telescope / instrument', 'Date (UTC)', 'Exp (s)', 'Deleted'].map(h => el('th', { text: h })), el('th'))),
+                    el('thead', {}, el('tr', {}, ['File', 'Filter', 'Tag', 'Date (UTC)', 'Exp (s)', 'Deleted'].map(h => el('th', { text: h })), el('th'))),
                     el('tbody', {}, d.files.map(f => el('tr', {},
                         el('td', { class: 'pl-mono' }, f.name, f.stack ? el('span', { class: 'kw-chip kw-chip-gold', text: 'stack' }) : null),
                         f.error ? el('td', { class: 'is-miss', colspan: '4', text: f.error }) : [
                             el('td', { class: !f.FILTER ? 'is-miss' : null }, f.band ? el('b', { text: f.band }) : null,
                                 el('small', { text: (f.band ? ' ' : '') + (f.FILTER || 'missing') })),
-                            el('td', { class: !(f.TELESCOP && f.INSTRUME) ? 'is-miss' : null, text: (f.TELESCOP || 'TELESCOP missing') + ' / ' + (f.INSTRUME || 'INSTRUME missing') }),
+                            el('td', { class: !(f.TELESCOP && f.INSTRUME) ? 'is-miss' : null, title: (f.TELESCOP || 'TELESCOP missing') + ' / ' + (f.INSTRUME || 'INSTRUME missing'),
+                                text: f.tag || (f.TELESCOP || 'TELESCOP missing') + ' / ' + (f.INSTRUME || 'INSTRUME missing') }),
                             el('td', { text: (f['DATE-OBS'] || '—').replace('T', ' ').slice(0, 19) }),
                             el('td', { text: f.EXPTIME || '—' })],
                         el('td', { class: 'pl-faint', title: new Date(f.expires * 1000).toLocaleString(), text: daysLeft(f.expires) }),
@@ -897,11 +888,74 @@
     }
     if (wsForm) {
         wireForm(wsForm);
+        // A new workspace has no target yet: offer the OBJECT of its headers, with its Kinder position or the header pointing
+        let hint = {};
+        try { hint = JSON.parse(page.dataset.hint || '{}') || {}; } catch (e) { hint = {}; }
+        const f = wsForm.elements, hintBox = wsForm.querySelector('[data-target-hint]');
+        const pointing = () => {
+            if (!hint.ra || !hint.dec || f.ra.value.trim()) return;
+            hintBox.replaceChildren(document.createTextNode('AutoPhOT measures at this position; the name is only a label. '),
+                el('button', { type: 'button', class: 'pl-link', text: 'Use the telescope pointing from the header (' + hint.ra + ', ' + hint.dec + ')',
+                    onclick: () => { f.ra.value = hint.ra; f.dec.value = hint.dec; say(hintBox, 'Pointing from the header: check it is the target, not the field centre.', null); saveNow().catch(() => {}); } }));
+        };
+        if (hint.object && f.target.value.trim() === hint.object && !f.ra.value.trim()) {
+            kinderObjects(hint.object).then(hits => {
+                const norm = t => String(t).toLowerCase().replace(/[\s_]/g, '').replace(/^(sn|at)/, '');
+                const hit = hits.find(h => norm(h.name) === norm(hint.object));
+                if (hit) {
+                    f.target.value = hit.name; f.ra.value = hit.ra; f.dec.value = hit.dec;
+                    say(hintBox, 'Position from the Kinder object ' + hit.name + '.', 'ok');
+                    saveNow().catch(() => {});
+                } else pointing();
+            });
+        } else pointing();
         wsForm.addEventListener('submit', e => { e.preventDefault(); saveNow().catch(() => {}); });
         wsForm.addEventListener('change', e => {
             if (!e.target.name || e.target.closest('[data-coverage], [data-pl-drop]')) return;
             clearTimeout(saveTimer);
             saveTimer = setTimeout(() => saveNow().catch(() => {}), 500);
+        });
+    }
+
+    // ── Name and sharing (owner) ──────────────────────────────────────────────
+    const ren = $('plRename');
+    if (ren) {
+        ren.addEventListener('submit', async e => {
+            e.preventDefault();
+            const m = ren.querySelector('.pl-msg'), input = $('plRenameIn');
+            try {
+                const r = await api(base + '/rename', { name: input.value.trim() });
+                input.value = r.name;
+                const h1 = document.querySelector('.kw-page-head h1');
+                if (h1) h1.textContent = r.name;
+                say(m, 'Renamed to ' + r.name + '.', 'ok');
+            } catch (err) { say(m, err.message, 'error'); }
+        });
+    }
+    const share = $('plShare');
+    if (share) {
+        const onBox = share.querySelector('[data-share-on]'), offBox = share.querySelector('[data-share-off]');
+        const onBtn = $('plShareOn'), offBtn = $('plShareOff'), urlIn = $('plShareUrl'), m = $('plShareMsg'), chip = $('plAccessChip');
+        const shown = on => {
+            onBox.hidden = !on; offBox.hidden = on; onBtn.hidden = on; offBtn.hidden = !on;
+            if (chip) { chip.textContent = on ? 'Shared' : 'Private'; chip.classList.toggle('kw-chip-gold', on); }
+        };
+        onBtn.addEventListener('click', async () => {
+            onBtn.disabled = true;
+            try { const r = await api(base + '/share', {}); urlIn.value = r.url; shown(true); say(m, ''); }
+            catch (err) { say(m, err.message, 'error'); }
+            onBtn.disabled = false;
+        });
+        $('plShareCopy').addEventListener('click', async ev => {
+            urlIn.select();
+            try { await navigator.clipboard.writeText(urlIn.value); } catch (e) { document.execCommand('copy'); }
+            const b = ev.currentTarget; b.textContent = 'Copied';
+            setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+        });
+        urlIn.addEventListener('focus', () => urlIn.select());
+        armable(offBtn, 'People lose access. Stop?', async () => {
+            try { await api(base + '/share/stop', {}); urlIn.value = ''; shown(false); say(m, 'Sharing stopped.', 'ok'); }
+            catch (err) { say(m, err.message, 'error'); }
         });
     }
 
@@ -970,6 +1024,11 @@
                 runBtn.disabled = true;
                 try { await api(base + '/stop', {}); poll(); }
                 catch (err) { say(stateEl, err.message, 'error'); runBtn.disabled = false; }
+                return;
+            }
+            if (wsForm && !(wsForm.elements.ra.value.trim() && wsForm.elements.dec.value.trim())) {
+                say(stateEl, 'Enter the target position (RA and Dec) first.', 'error');
+                wsForm.elements.ra.focus();
                 return;
             }
             runBtn.disabled = true;

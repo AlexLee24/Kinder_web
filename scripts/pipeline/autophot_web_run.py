@@ -132,7 +132,7 @@ def main():
         # 給了座標就不能再給真實名稱（AutoPhOT 會當成設定衝突），名稱只留在網頁顯示；網頁一定會給座標
         config['target_name'], config['target_ra'], config['target_dec'] = 'Transient', ra, dec
     else:
-        config['target_name'] = cfg_in['name']
+        config['target_name'] = cfg_in.get('target') or cfg_in['name']
     config['nCPU'] = int(cfg_in.get('ncpu') or 1)
     config['catalog']['use_catalog'] = cfg_in.get('catalog') or 'sdss'     # AutoPhOT 沒有預設星表，null 會直接報錯；網頁預設 SDSS
     if config['catalog']['use_catalog'] == 'pan_starrs':

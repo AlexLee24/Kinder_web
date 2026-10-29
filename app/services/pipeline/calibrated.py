@@ -15,7 +15,7 @@ from .autophot import FITS_EXT, MAX_SCAN, TELESCOPE_YML, NotConfigured, NotFound
 
 MAX_FOLDERS = 400
 MAX_DEPTH = 4
-HEADER_KEYS = ('OBJECT', 'TELESCOP', 'INSTRUME', 'FILTER', 'DATE-OBS', 'EXPTIME', 'RA', 'DEC', 'OBJCTRA', 'OBJCTDEC')
+HEADER_KEYS = ('OBJECT', 'TELESCOP', 'INSTRUME', 'FILTER', 'DATE-OBS', 'DATE', 'EXPTIME', 'RA', 'DEC', 'OBJCTRA', 'OBJCTDEC')
 
 
 def root():
@@ -74,7 +74,8 @@ def folder(rel):
     base, d = _inside(rel)
     if not d.is_dir() or d == base:
         raise NotFound('No such folder.')
-    db = bands.telescope_db(_telescope_file() if _telescope_file().is_file() else TELESCOPE_YML)
+    yml = _telescope_file() if _telescope_file().is_file() else TELESCOPE_YML
+    db, meta = bands.telescope_db(yml), bands.telescope_meta(yml)
     names = sorted(f for f in os.listdir(d) if _is_fits(f) and (d / f).is_file())
     files = []
     for name in names[:MAX_SCAN]:
@@ -90,16 +91,22 @@ def folder(rel):
                 f = ' / '.join(str(h[k]) for k in ('FILTER1', 'FILTER2', 'FILTNAME') if h.get(k))
                 if f:
                     info['header']['FILTER'] = f
-            band, _how, raw = bands.band_of(h, db, name)
-            info.update(band=band or '', raw=raw)
+            hi = bands.header_info(h, db, meta, name)
+            info.update(band=hi['band'], raw=hi['raw'], tag=hi['tag'])
+            if not info['header'].get('EXPTIME') and hi['exptime']:
+                info['header']['EXPTIME'] = f"{hi['exptime']:g}"
             typ = str(h.get('IMAGETYP') or h.get('OBSTYPE') or '').strip()
             if typ:
                 info['imagetyp'] = typ
         except Exception as e:
             info['error'] = f'{type(e).__name__}: {e}'
         files.append(info)
+    tags = {}
+    for f in files:
+        if f.get('tag'):
+            tags[f['tag']] = tags.get(f['tag'], 0) + 1
     return {'path': str(d.relative_to(base)), 'files': files, 'more': max(0, len(names) - MAX_SCAN),
-            'scanned': time.time()}
+            'tags': [{'tag': t, 'n': n} for t, n in sorted(tags.items())], 'scanned': time.time()}
 
 
 def file_path(rel):

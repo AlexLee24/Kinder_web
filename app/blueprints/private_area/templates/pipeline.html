@@ -7,13 +7,13 @@
     <meta name="description" content="Reduce and measure images from any telescope">
 {% endblock %}
 
-{% block bar_left %}<p class="kw-lead">Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, builds a workspace on the server and runs AutoPhOT there.</p>{% endblock %}
+{% block bar_left %}<p class="kw-lead">Turn images from any telescope into a calibrated light curve. Drop a folder of FITS: Kinder reads the headers, names a workspace after them, and you set the target and run AutoPhOT on the next page. Workspaces are private until you share them.</p>{% endblock %}
 {% block bar_right %}
     <a class="kw-btn kw-btn-sm" href="{{ url_for('private_area.pipeline_telescopes') }}">Telescopes</a>
 {% endblock %}
 
 {% block content %}
-    {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options with context %}
+    {% from '_pipeline_form.html' import pl_drop, pl_step with context %}
 
     <div class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
         <nav class="pl-stages" aria-label="Pipeline stages">
@@ -71,23 +71,27 @@
                         {% if calibrated.ok %}<div data-src="server" hidden><div class="pl-picker" data-picker data-pick-label="Use these frames"></div></div>{% endif %}
                         <div class="pl-scan" data-scan hidden></div>
                     </section>
-                    <section class="pl-step" data-step="target">
-                        {{ pl_step(2, 'Target') }}
-                        {{ pl_target({}) }}
+                    <section class="pl-step" data-step="name" data-name-step hidden>
+                        {{ pl_step(2, 'Name', 'Made from the headers: target_telescope_date (first-last when the frames span several days). Only you see the workspace until you share it.') }}
+                        <div class="kw-field">
+                            <label for="plWsName">Workspace name</label>
+                            <input type="text" id="plWsName" name="wsname" maxlength="80" spellcheck="false" placeholder="SN2025abc_LOT_20261029">
+                        </div>
+                        <div class="pl-clash" data-clash hidden>
+                            <p class="pl-warn" data-clash-msg></p>
+                            <div class="kw-field">
+                                <label for="plWsSuffix">Your own ending</label>
+                                <div class="pl-inline"><span class="pl-mono pl-clash-base" data-clash-base></span><span class="pl-mono">_</span>
+                                    <input type="text" id="plWsSuffix" name="suffix" maxlength="40" spellcheck="false" placeholder="second night, with templates, …"></div>
+                            </div>
+                        </div>
+                        <p class="pl-hint">Next, on the workspace page: the target and its position, template subtraction and the calibration catalog.</p>
                     </section>
-                    <section class="pl-step" data-step="ts">
-                        {{ pl_step(3, 'Template subtraction') }}
-                        {{ pl_ts({}) }}
-                    </section>
-                    <details class="pl-step pl-step-more">
-                        <summary>{{ pl_step(4, 'Options', 'Calibration catalog, parallel images, stacking') }}<span class="pl-chev" aria-hidden="true"></span></summary>
-                        {{ pl_options({}) }}
-                    </details>
                     <footer class="pl-wizard-foot">
                         <div class="pl-plan" data-plan hidden></div>
                         <div class="pl-progress" data-progress hidden><span class="pl-bar"><span></span></span><small></small></div>
                         <p class="pl-msg" role="status" aria-live="polite"></p>
-                        <div class="pl-form-foot"><button class="kw-btn kw-btn-primary" type="submit">Create workspace</button></div>
+                        <div class="pl-form-foot"><button class="kw-btn kw-btn-primary" type="submit" disabled>Create workspace</button></div>
                     </footer>
                 </form>
             </section>
@@ -104,7 +108,7 @@
                 {% if workspaces|length > 6 %}<input type="search" class="pl-ws-filter" id="plWsFilter" placeholder="Filter workspaces" aria-label="Filter workspaces" autocomplete="off">{% endif %}
                 <ul class="pl-ws-list" id="plWsList">
                     {% for w in workspaces|sort(attribute='updated', reverse=true) %}
-                    <li class="pl-ws" data-name="{{ (w.name ~ ' ' ~ w.id)|lower }}">
+                    <li class="pl-ws" data-name="{{ (w.name ~ ' ' ~ w.id ~ ' ' ~ w.target)|lower }}">
                         <a class="pl-ws-main" href="{{ url_for('private_area.pipeline_workspace', tid=w.id) }}">
                             <span class="pl-ws-top">
                                 <b>{{ w.name }}</b>
@@ -113,12 +117,15 @@
                                 {% elif w.status == 'stopped' %}<span class="kw-chip">Stopped</span>
                                 {% elif w.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if w.status == 'failed' else 'Did not finish' }}</span>
                                 {% else %}<span class="kw-chip">Not run</span>{% endif %}
+                                {% if w.owner and w.owner != session.user.email and w.owner != session.user.name %}<span class="kw-chip kw-chip-blue" title="{{ w.owner }}">{{ 'Shared with you' if w.role == 'editor' else 'Owner: ' ~ w.owner }}</span>
+                                {% elif w.share %}<span class="kw-chip kw-chip-gold" title="Anyone with the link can open it">Shared</span>{% endif %}
                             </span>
                             <span class="pl-ws-meta">
+                                {% if w.target %}<span>{{ w.target }}</span>{% endif %}
                                 <span>{{ w.n_images }} FITS</span>
                                 {% if w.lightcurve_csv %}<span>{{ w.n_rows }} point{{ '' if w.n_rows == 1 else 's' }}</span>{% endif %}
                                 {% if w.cfg.subtraction %}<span>{{ 'Survey templates' if w.cfg.ts_download else 'Own templates' }}</span>{% endif %}
-                                <span class="pl-mono">{{ w.cfg.ra }} {{ w.cfg.dec }}</span>
+                                {% if w.cfg.ra and w.cfg.dec %}<span class="pl-mono">{{ w.cfg.ra }} {{ w.cfg.dec }}</span>{% endif %}
                             </span>
                             <span class="pl-ws-foot">{% if w.id != w.name %}<span class="pl-mono">{{ w.id }}</span>{% endif %}{% if w.updated %}<span data-ts="{{ w.updated }}"></span>{% endif %}</span>
                         </a>
