@@ -100,6 +100,11 @@ class _Run:
             job_status.record_start(_job_id(self.label))
         except Exception:
             pass
+        try:
+            from app.services.bots import detect as bot
+            bot.started(self.label, self.n)
+        except Exception:
+            logger.debug("DETECT bot state not written", exc_info=True)
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -117,6 +122,11 @@ class _Run:
             job_status.record_finish(_job_id(self.label), ok, msg)
         except Exception:
             pass
+        try:
+            from app.services.bots import detect as bot
+            bot.finished(self.label, ok, counts, _state["last"]["seconds"], "" if ok else str(exc)[:200])
+        except Exception:
+            logger.debug("DETECT bot state not written", exc_info=True)
         return False
 
 

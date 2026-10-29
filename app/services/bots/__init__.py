@@ -8,6 +8,7 @@ Admin › Bots (``/admin/bots``) shows each bot's state, recent events and log f
     astronote   new TNS AstroNotes → Slack, every 5 minutes                                      astronote.py
     obs_log     Lulin raw frames (FITS headers) → obs.logs "observed", daily 12:00 UTC+8         obs_log.py
     reduction   the Lulin reduction pipeline (auto_calibration.sh), step by step                 reduction.py
+    detect      the embedded DETECT pipeline: cross-match, host rule, screening (every run, any trigger)   detect.py
 
 Each bot logs to the logger ``bot.<id>``: app/log/bots/<id>.log (rotating) and the daily web log.
 State lives in ``status`` (app/log/.bot_status.json, shared by every worker).
@@ -40,6 +41,10 @@ BOTS = (
     Bot('reduction', 'Reduction pipeline', 'scheduled', 'Manual unless REDUCTION_HOUR_UTC is set',
         'Runs the Lulin reduction pipeline (auto_calibration.sh): sync raw frames, calibrate, plate solve.',
         can_run=True, can_stop=True, links=(('Pipeline', '/pipeline/reduction'),)),
+    Bot('detect', 'DETECT', 'scheduled', 'After every TNS import · daily 04:00 UTC Follow-up re-screen',
+        'Cross-matches new TNS objects with galaxy catalogues, applies the host rule, scores and screens them for the '
+        'review queue. Runs after each TNS import, once a day on every Follow-up object, and from the object page.',
+        can_run=True, links=(('Review queue', '/detect'),)),
 )
 BY_ID = {b.id: b for b in BOTS}
 
