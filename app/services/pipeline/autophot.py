@@ -414,7 +414,7 @@ def final_name(name, suffix=''):
     return name[:80]
 
 
-def create_workspace(body, user=''):
+def create_workspace(body, user='', user_name=''):
     """The first page: an empty workspace that only has a name and an owner; images are uploaded after.
 
     Target, position, template subtraction and the other settings come on the workspace page.
@@ -433,7 +433,7 @@ def create_workspace(body, user=''):
         raise NameTaken(name)
     hint = body.get('hint') if isinstance(body.get('hint'), dict) else {}
     cfg = _build_cfg(name, {}, {}, user)
-    cfg.update(name=name, target='', ra='', dec='', owner=user, removed=[],
+    cfg.update(name=name, target='', ra='', dec='', owner=user, owner_name=user_name or user, removed=[],
                hint={k: str(hint.get(k) or '').strip()[:80] for k in ('object', 'ra', 'dec') if str(hint.get(k) or '').strip()})
     images_dir(name).mkdir(parents=True, exist_ok=True)
     _write_json(d / 'target.json', cfg)
@@ -449,19 +449,6 @@ def save_target(tid, body, user=''):
     cfg['configured'] = True
     _write_json(tdir(tid) / 'target.json', cfg)
     return tid
-
-
-def rename_workspace(tid, name):
-    """Change the name shown for a workspace; its folder (the id in the address) stays."""
-    name = clean_name(name)
-    if not name:
-        raise PipelineError('Enter a workspace name.')
-    if name_taken(name, exclude=tid):
-        raise NameTaken(name)
-    cfg = _read_json(tdir(tid) / 'target.json')
-    cfg['name'] = name
-    _write_json(tdir(tid) / 'target.json', cfg)
-    return name
 
 
 def _build_cfg(tid, body, old, user):
@@ -508,29 +495,138 @@ class Forbidden(PipelineError):
     status = 403
 
 
+def _listed(cfg, key, user):
+    return bool(user) and any(m.get('user') == user for m in cfg.get(key) or [])
+
+
 def role_of(cfg, user='', is_admin=False):
-    """'owner' (settings, sharing, delete), 'editor' (opened a share link: images, settings, run) or ''."""
+    """'owner' (run, delete, share, everything: the creator and admins) or 'member' (sees the workspace and its
+    results: opened the invite link, was given the right to run, or the owner opened running to everyone who can
+    open the Pipeline page) or ''. Callers have already checked that the person has an account that can open the page."""
     owner = cfg.get('owner')
     if not owner or is_admin or (user and owner == user):
         return 'owner'
-    if user and any(m.get('user') == user for m in cfg.get('members') or []):
-        return 'editor'
+    if user and (_listed(cfg, 'members', user) or _listed(cfg, 'runners', user) or cfg.get('run_all')):
+        return 'member'
     return ''
 
 
-def require(tid, user='', is_admin=False, owner=False):
-    """The workspace's role for this person; NotFound (not Forbidden) when they may not see it at all."""
-    role = role_of(_read_json(tdir(tid) / 'target.json'), user, is_admin)
+def can_edit(cfg, role, user=''):
+    """Settings, images, run / stop / answer: the owner, and the people the owner gave that right
+    (one by one, or everyone who can open the Pipeline page)."""
+    return role == 'owner' or (role == 'member' and (bool(cfg.get('run_all')) or _listed(cfg, 'runners', user)))
+
+
+def require(tid, user='', is_admin=False, owner=False, edit=False):
+    """The person's role in a workspace; NotFound (not Forbidden) when they may not see it at all.
+    owner=True: only its owner; edit=True: the owner, or a person the owner lets run it."""
+    cfg = _read_json(tdir(tid) / 'target.json')
+    role = role_of(cfg, user, is_admin)
     if not role:
         raise NotFound('No such workspace.')
     if owner and role != 'owner':
         raise Forbidden('Only the owner of this workspace can do that.')
+    if edit and not can_edit(cfg, role, user):
+        raise Forbidden('Only the owner can change or run this workspace, unless they gave you the right to.')
     return role
 
 
+def set_run_access(tid, add=None, remove=None, run_all=None):
+    """Who besides the owner may change and run the workspace. add: {'user': email, 'name': name} (the caller has
+    checked the account can open the Pipeline page); remove: email; run_all: everyone who can open the page."""
+    cfg = _read_json(tdir(tid) / 'target.json')
+    runners = [r for r in cfg.get('runners') or [] if r.get('user') != remove]
+    if add and add.get('user') and add['user'] != cfg.get('owner') and not any(r['user'] == add['user'] for r in runners):
+        runners.append({'user': add['user'], 'name': add.get('name') or add['user'], 'at': time.time()})
+    cfg['runners'] = runners
+    if run_all is not None:
+        cfg['run_all'] = bool(run_all)
+    _write_json(tdir(tid) / 'target.json', cfg)
+    return {'runners': runners, 'run_all': bool(cfg.get('run_all'))}
+
+
+# ── Images are kept FITS_KEEP_DAYS after they arrive; the owner can add days ──
+
+MAX_KEEP_EXTRA = 30
+
+
+def keep_seconds(cfg):
+    return (config.FITS_KEEP_DAYS + int(cfg.get('keep_extra') or 0)) * 86400
+
+
+def keep_one_more_day(tid):
+    """Move the removal of this workspace's images one day later; returns the days they are kept in all."""
+    cfg = _read_json(tdir(tid) / 'target.json')
+    extra = int(cfg.get('keep_extra') or 0)
+    if extra >= MAX_KEEP_EXTRA:
+        raise PipelineError(f'Images can be kept at most {config.FITS_KEEP_DAYS + MAX_KEEP_EXTRA} days.')
+    cfg['keep_extra'] = extra + 1
+    _write_json(tdir(tid) / 'target.json', cfg)
+    return config.FITS_KEEP_DAYS + extra + 1
+
+
+def _earliest_expiry(cfg, imgs):
+    """When the first image / template of the workspace will be removed (epoch seconds), None without any."""
+    if not imgs.is_dir():
+        return None
+    times = [_arrived(cfg, imgs, str(p.relative_to(imgs))) for p in _fits_in(imgs, True)]
+    times += [_arrived(cfg, imgs, t['name']) for t in _templates(imgs) if t['active']]
+    return min(times) + keep_seconds(cfg) if times else None
+
+
+# ── Results shared by a link without logging in, behind a password the owner chooses ──
+
+def result_share_create(tid, run, password, user=''):
+    """One link for one set of results ('' = the current ones, else an earlier run's id)."""
+    import secrets
+    from werkzeug.security import generate_password_hash
+    run = str(run or '')
+    run_paths(tid, run or None)                              # NotFound for a run that does not exist
+    pw = str(password or '')
+    if not 4 <= len(pw) <= 64:
+        raise PipelineError('Choose a password of 4 to 64 characters.')
+    cfg = _read_json(tdir(tid) / 'target.json')
+    share = {'id': secrets.token_hex(4), 'token': secrets.token_urlsafe(18), 'run': run,
+             'hash': generate_password_hash(pw), 'at': time.time(), 'by': user}
+    cfg['result_shares'] = (cfg.get('result_shares') or []) + [share]
+    _write_json(tdir(tid) / 'target.json', cfg)
+    return share
+
+
+def result_shares(cfg, run=None):
+    """The links (id, token, run, time; never the password hash), optionally of one set of results only."""
+    return [{k: x.get(k) for k in ('id', 'token', 'run', 'at')} for x in cfg.get('result_shares') or []
+            if run is None or x.get('run', '') == run]
+
+
+def result_share_stop(tid, share_id):
+    cfg = _read_json(tdir(tid) / 'target.json')
+    shares = cfg.get('result_shares') or []
+    if not any(x.get('id') == share_id for x in shares):
+        raise NotFound('No such link.')
+    cfg['result_shares'] = [x for x in shares if x.get('id') != share_id]
+    _write_json(tdir(tid) / 'target.json', cfg)
+
+
+def find_result_share(token):
+    """(tid, share) for a results link, or (None, None)."""
+    import hmac
+    token = str(token or '')
+    for d in _workspaces():
+        for x in _read_json(d / 'target.json').get('result_shares') or []:
+            if hmac.compare_digest(str(x.get('token') or ''), token):
+                return d.name, x
+    return None, None
+
+
+def check_result_password(share, password):
+    from werkzeug.security import check_password_hash
+    return check_password_hash(str(share.get('hash') or ''), str(password or ''))
+
+
 def share_on(tid):
-    """Turn the share link on (kept if already on): anyone with it who is logged in can open the workspace,
-    change its settings and run photometry. Results stay private to everyone else."""
+    """Turn the invite link on (kept if already on): anyone logged in who opens it can see the workspace and its
+    results; whether they may also change and run it is the owner's allow_run switch."""
     import secrets
     cfg = _read_json(tdir(tid) / 'target.json')
     if not (cfg.get('share') or {}).get('token'):
@@ -547,7 +643,7 @@ def share_off(tid):
 
 
 def join_share(tid, token, user):
-    """Open a share link: the person is remembered as an editor, so the workspace is in their list afterwards."""
+    """Open the invite link: the person is remembered as a member, so the workspace is in their list afterwards."""
     import hmac
     cfg = _read_json(tdir(tid) / 'target.json')
     real = (cfg.get('share') or {}).get('token') or ''
@@ -586,12 +682,13 @@ def workspace_images(tid):
     out['coverage'] = [{'band': b, 'n': n, 'template': b in active} for b, n in sorted(science.items(), key=lambda x: (not x[0], x[0]))]
     out['removed'] = sorted(cfg.get('removed') or [])
     origins = cfg.get('origins') or {}
+    ks = keep_seconds(cfg)
     for f in out['files']:
         f['origin'] = origins.get(f['name'], '')
-        f['expires'] = _arrived(cfg, d, f['name']) + KEEP_SECONDS
+        f['expires'] = _arrived(cfg, d, f['name']) + ks
     for t in out['templates']:
-        t['expires'] = _arrived(cfg, d, t['name']) + KEEP_SECONDS
-    out['keep_days'] = config.FITS_KEEP_DAYS
+        t['expires'] = _arrived(cfg, d, t['name']) + ks
+    out['keep_days'] = config.FITS_KEEP_DAYS + int(cfg.get('keep_extra') or 0)
     out['expired'] = cfg.get('expired') or []
     out['restorable'] = sum(1 for e in out['expired'] if str(e.get('origin', '')).startswith('calibrated:'))
     out['stacks'] = sorted(cfg.get('stacks') or {})
@@ -600,7 +697,6 @@ def workspace_images(tid):
 
 # ── Retention: results stay, FITS go FITS_KEEP_DAYS after they arrive ──
 
-KEEP_SECONDS = config.FITS_KEEP_DAYS * 86400
 CLEANUP_EVERY = 3600              # at most one sweep an hour (scheduler job and page opens share it)
 
 
@@ -659,6 +755,7 @@ def _cleanup_workspace(d, now):
     if j.get('status') == 'running' and _alive(j.get('pid')):
         return 0, 0
     cfg = _read_json(d / 'target.json')
+    keep = keep_seconds(cfg)
     images = d / 'images'
     n = size = 0
     expired = cfg.get('expired') or []
@@ -678,7 +775,7 @@ def _cleanup_workspace(d, now):
         for p in sorted(images.rglob('*')):
             if p.is_file() and _is_fits_like(p.name):
                 rel = str(p.relative_to(images))
-                if now - _arrived(cfg, images, rel) > KEEP_SECONDS and drop(p):
+                if now - _arrived(cfg, images, rel) > keep and drop(p):
                     gone.append(rel)
                     expired.append({'name': rel, 'origin': (cfg.get('origins') or {}).get(rel, ''), 'at': now})
     removed = d / '.removed'
@@ -686,7 +783,7 @@ def _cleanup_workspace(d, now):
         for p in sorted(removed.rglob('*')):
             if p.is_file() and _is_fits_like(p.name):
                 rel = str(p.relative_to(removed))
-                if now - _arrived(cfg, removed, rel) > KEEP_SECONDS and drop(p):
+                if now - _arrived(cfg, removed, rel) > keep and drop(p):
                     cfg['removed'] = [x for x in cfg.get('removed') or [] if x != rel]
     uploads = d / '.uploads'
     if uploads.is_dir():
@@ -698,7 +795,7 @@ def _cleanup_workspace(d, now):
     for base in outputs:
         if base.is_dir():
             for p in base.rglob('*'):
-                if p.is_file() and _is_fits_like(p.name) and now - p.stat().st_mtime > KEEP_SECONDS:
+                if p.is_file() and _is_fits_like(p.name) and now - p.stat().st_mtime > keep:
                     drop(p)
     if gone or cfg.get('removed') != _read_json(d / 'target.json').get('removed'):
         for rel in gone:
@@ -824,9 +921,13 @@ def info(tid, user=None, is_admin=False):
     status = job.get('status') or ('done' if res else 'incomplete' if (d / 'web_run.log').is_file() else '')
     role = role_of(cfg, user or '', is_admin) if user is not None else 'owner'
     return {
-        'id': tid, 'name': cfg.get('name', tid), 'target': target_label(cfg), 'owner': cfg.get('owner', ''), 'role': role,
-        'share': cfg.get('share') if role == 'owner' else None,
+        'id': tid, 'name': cfg.get('name', tid), 'target': target_label(cfg), 'owner': cfg.get('owner', ''),
+        'owner_name': cfg.get('owner_name') or cfg.get('owner', ''), 'role': role, 'can_edit': can_edit(cfg, role, user or ''),
+        'share': cfg.get('share') if role == 'owner' else None, 'run_all': bool(cfg.get('run_all')),
+        'runners': [{'user': r.get('user'), 'name': r.get('name') or r.get('user')} for r in cfg.get('runners') or []],
         'members': [m.get('user') for m in cfg.get('members') or []] if role == 'owner' else [],
+        'result_shares': result_shares(cfg) if role == 'owner' else [],
+        'expires': _earliest_expiry(cfg, imgs), 'keep_days': config.FITS_KEEP_DAYS + int(cfg.get('keep_extra') or 0),
         'cfg': cfg, 'run_cfg': run_cfg(tid), 'result': res, 'reduced': str(red), 'has_results': have,
         'lightcurve_csv': lc.is_file(), 'n_rows': _count_rows(lc), 'n_images': n_images, 'updated': updated,
         'images': str(imgs), 'status': status, 'job': job,
