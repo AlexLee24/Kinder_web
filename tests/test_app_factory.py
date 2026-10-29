@@ -28,8 +28,8 @@ def test_route_count_is_stable(app):
     # 287 with the Pipeline folder scan (classify API); 294 with Calibrated_Science (2), copy / restore (2)
     # and import into Kinder objects (preview, import, undo); 297 with /admin/system (page, status, recount);
     # 299 with /settings and /api/settings/ui; 305 with Admin › Bots (page, status, log, run, stop, overview);
-    # 310 by 2026-10-29; 321 with Pipeline › Reduction batches (3 pages + 8 API).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 321
+    # 317 by 2026-10-29; 328 with Pipeline › Reduction batches (3 pages + 8 API).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 328
 
 
 def test_duplicate_rules_keep_precedence(app):

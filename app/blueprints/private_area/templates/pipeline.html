@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-    {% from '_pipeline_form.html' import pl_drop, pl_step with context %}
+    {% from '_pipeline_form.html' import pl_drop, pl_step, pl_ws_card with context %}
 
     <div class="kw-page pl-page" data-chunk="{{ upload_chunk or 0 }}">
         <nav class="pl-stages" aria-label="Pipeline stages">
@@ -70,10 +70,10 @@
                         <div class="pl-scan" data-scan hidden></div>
                     </section>
                     <section class="pl-step" data-step="name" data-name-step hidden>
-                        {{ pl_step(2, 'Name', 'Made from the headers: target_telescope_date (first-last when the frames span several days). Only you see the workspace until you share it.') }}
+                        {{ pl_step(2, 'Name', 'Made from the headers: target_telescope_date (first-last when the frames span several days). It is fixed; you only add an ending of your own when the name is already taken. Only you see the workspace until you share it.') }}
                         <div class="kw-field">
                             <label for="plWsName">Workspace name</label>
-                            <input type="text" id="plWsName" name="wsname" maxlength="80" spellcheck="false" placeholder="SN2025abc_LOT_20261029">
+                            <input type="text" id="plWsName" name="wsname" maxlength="80" spellcheck="false" readonly aria-readonly="true" placeholder="SN2025abc_LOT_20261029">
                         </div>
                         <div class="pl-clash" data-clash hidden>
                             <p class="pl-warn" data-clash-msg></p>
@@ -106,29 +106,7 @@
                 {% if workspaces|length > 6 %}<input type="search" class="pl-ws-filter" id="plWsFilter" placeholder="Filter workspaces" aria-label="Filter workspaces" autocomplete="off">{% endif %}
                 <ul class="pl-ws-list" id="plWsList">
                     {% for w in workspaces|sort(attribute='updated', reverse=true) %}
-                    <li class="pl-ws" data-name="{{ (w.name ~ ' ' ~ w.id ~ ' ' ~ w.target)|lower }}">
-                        <a class="pl-ws-main" href="{{ url_for('private_area.pipeline_workspace', tid=w.id) }}">
-                            <span class="pl-ws-top">
-                                <b>{{ w.name }}</b>
-                                {% if w.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
-                                {% elif w.status == 'done' %}<span class="kw-chip kw-chip-green">Done</span>
-                                {% elif w.status == 'stopped' %}<span class="kw-chip">Stopped</span>
-                                {% elif w.status in ('failed', 'incomplete') %}<span class="kw-chip kw-chip-red">{{ 'Failed' if w.status == 'failed' else 'Did not finish' }}</span>
-                                {% else %}<span class="kw-chip">Not run</span>{% endif %}
-                                {% if w.owner and w.owner != session.user.email and w.owner != session.user.name %}<span class="kw-chip kw-chip-blue" title="{{ w.owner }}">{{ 'Shared with you' if w.role == 'editor' else 'Owner: ' ~ w.owner }}</span>
-                                {% elif w.share %}<span class="kw-chip kw-chip-gold" title="Anyone with the link can open it">Shared</span>{% endif %}
-                            </span>
-                            <span class="pl-ws-meta">
-                                {% if w.target %}<span>{{ w.target }}</span>{% endif %}
-                                <span>{{ w.n_images }} FITS</span>
-                                {% if w.lightcurve_csv %}<span>{{ w.n_rows }} point{{ '' if w.n_rows == 1 else 's' }}</span>{% endif %}
-                                {% if w.cfg.subtraction %}<span>{{ 'Survey templates' if w.cfg.ts_download else 'Own templates' }}</span>{% endif %}
-                                {% if w.cfg.ra and w.cfg.dec %}<span class="pl-mono">{{ w.cfg.ra }} {{ w.cfg.dec }}</span>{% endif %}
-                            </span>
-                            <span class="pl-ws-foot">{% if w.id != w.name %}<span class="pl-mono">{{ w.id }}</span>{% endif %}{% if w.updated %}<span data-ts="{{ w.updated }}"></span>{% endif %}</span>
-                        </a>
-                        <svg class="pl-ws-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-                    </li>
+                    {{ pl_ws_card(w, me) }}
                     {% endfor %}
                 </ul>
                 {% endif %}

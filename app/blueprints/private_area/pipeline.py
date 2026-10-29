@@ -15,6 +15,7 @@ from flask import (
     current_app,
     flash,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -29,7 +30,7 @@ from app.services.pipeline import calibrated, reduce
 from app.services.pipeline import config as pconfig
 
 from . import private_area_bp
-from .helpers import can_access_page
+from .helpers import can_access_page, user_can_access_page
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,11 @@ TABS = ('run', 'results', 'legacy')
 def _actor():
     user = session.get('user') or {}
     return user.get('email') or user.get('name') or 'unknown'
+
+
+def _actor_name():
+    user = session.get('user') or {}
+    return user.get('name') or user.get('email') or 'unknown'
 
 
 def _is_admin():
@@ -64,9 +70,9 @@ def _visible(tid, owner=False):
         abort(404)
 
 
-def _api(fn=None, *, owner=False):
-    """JSON API: login + page access (+ access to the workspace in the address; owner=True: its owner only);
-    PipelineError → its message and status."""
+def _api(fn=None, *, owner=False, edit=False):
+    """JSON API: login + page access (+ access to the workspace in the address; owner=True: its owner only;
+    edit=True: the owner, or a member the owner lets change and run it); PipelineError → its message and status."""
     def deco(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
@@ -76,7 +82,7 @@ def _api(fn=None, *, owner=False):
                 return jsonify({'success': False, 'error': 'Access denied.'}), 403
             try:
                 if kwargs.get('tid') is not None:
-                    ap.require(kwargs['tid'], _actor(), _is_admin(), owner=owner)
+                    ap.require(kwargs['tid'], _actor(), _is_admin(), owner=owner, edit=edit)
                 return fn(*args, **kwargs)
             except ap.NameTaken as e:
                 return jsonify({'success': False, 'error': str(e), 'conflict': True, 'name': e.name}), e.status
@@ -126,7 +132,7 @@ def pipeline():
             error = str(e)
     return render_template('pipeline.html', current_path='/pipeline', stage='photometry', stages=pconfig.STAGES,
                            ready=ready, checks=checks, labels={k: v[1] for k, v in pconfig.SETTINGS.items()},
-                           workspaces=workspaces, error=error, upload_chunk=_upload_chunk(),
+                           workspaces=workspaces, me=_actor(), error=error, upload_chunk=_upload_chunk(),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
                            ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, calibrated=calibrated.status(),
@@ -214,7 +220,7 @@ def pipeline_telescopes():
         local = ''
     return render_template('pipeline_telescopes.html', current_path='/pipeline', stages=pconfig.STAGES,
                            rows=ap.telescope_summary(), text=ap.telescope_text(), unset=ap.UNSET, synced=synced,
-                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)))
+                           local_path=local, repo_path=str(ap.TELESCOPE_YML.relative_to(ap.REPO)), can_edit=_is_admin())
 
 
 @private_area_bp.route('/pipeline/telescopes/telescope.yml')
@@ -269,12 +275,15 @@ def pipeline_workspace(tid):
         ctx['imports'] = ap.imports(tid)
     elif tab == 'legacy':
         ctx['runs'] = ap.legacy_runs(tid)
+    ctx['result_links'] = [{**x, 'url': _result_url(x['token'])} for x in info['result_shares']
+                           if x['run'] == (request.args.get('run') or '')]
     return render_template('pipeline_workspace.html', current_path='/pipeline', zp_flag_text=ap.zp_flag_text,
-                           upload_chunk=_upload_chunk(),
+                           upload_chunk=_upload_chunk(), me=_actor(),
+                           workspaces=sorted(ap.targets(_actor(), _is_admin()), key=lambda w: -w['updated']),
                            catalogs=ap.CATALOGS, sub_methods=ap.SUB_METHODS, default_catalog=ap.DEFAULT_CATALOG,
                            ts_download=ap.TS_DOWNLOAD, ts_download_labels=ap.TS_DOWNLOAD_LABELS,
                            ts_align=ap.TS_ALIGN, ts_forceconv=ap.TS_FORCECONV, calibrated=calibrated.status(),
-                           keep_days=pconfig.FITS_KEEP_DAYS, can_import=_is_admin(),
+                           keep_days=info['keep_days'], can_import=_is_admin(),
                            share_url=url_for('private_area.pipeline_share', tid=tid, token=info['share']['token'], _external=True)
                            if info['share'] else '',
                            **ctx)
@@ -293,6 +302,96 @@ def pipeline_share(tid, token):
         return redirect(url_for('private_area.pipeline'))
     logger.info('pipeline: %s opened the share link of %s', _actor(), tid)
     return redirect(url_for('private_area.pipeline_workspace', tid=tid, tab='run'))
+
+
+# ── Results shared by a link: no login, a password the owner chose ──
+
+def _shared_results(token):
+    """(workspace id, link) of a results link; 404 when it does not exist (any more)."""
+    tid, share = ap.find_result_share(token)
+    if not share:
+        abort(404)
+    return tid, share
+
+
+def _unlocked(share):
+    return bool(session.get(f"pl_res_{share['id']}"))
+
+
+def _no_store(resp):
+    resp.headers['Cache-Control'] = 'private, no-store'
+    resp.headers['X-Robots-Tag'] = 'noindex, nofollow'
+    resp.headers['Referrer-Policy'] = 'no-referrer'
+    return resp
+
+
+@private_area_bp.route('/pipeline/results/<token>', methods=['GET', 'POST'])
+def pipeline_results_public(token):
+    tid, share = _shared_results(token)
+    run = share.get('run') or None
+    if request.method == 'POST':
+        if not rate_limit.allow(f'pipeline-results-pw:{share["id"]}:{request.remote_addr or ""}', 10, 600):
+            abort(429)
+        if ap.check_result_password(share, request.form.get('password', '')):
+            session[f"pl_res_{share['id']}"] = True
+            return redirect(url_for('private_area.pipeline_results_public', token=token))
+        return _no_store(make_response(render_template('pipeline_results_public.html', locked=True, error=True,
+                                                       token=token, current_path='/pipeline'), 403))
+    if not _unlocked(share):
+        return _no_store(make_response(render_template('pipeline_results_public.html', locked=True, error=False,
+                                                       token=token, current_path='/pipeline')))
+    try:
+        info = ap.info(tid)
+        legacy = next((r for r in ap.legacy_runs(tid) if r['id'] == run), None) if run else None
+        red = ap.run_paths(tid, run)['reduced']
+        have = red.is_dir() and any(red.iterdir())
+        listing = ap.listing(tid, '', run) if have else None
+        phot = ap.photometry(tid, run) if listing is not None else None
+        images = ap.image_status(tid, run) if listing is not None else None
+    except ap.PipelineError:
+        abort(404)
+    return _no_store(make_response(render_template(
+        'pipeline_results_public.html', locked=False, token=token, current_path='/pipeline', ap=info, run=run, legacy=legacy,
+        listing=listing, phot=phot, images=images, zp_flag_text=ap.zp_flag_text)))
+
+
+@private_area_bp.route('/pipeline/results/<token>/file/<path:rel>')
+def pipeline_results_public_file(token, rel):
+    """Figures of the shared results (nothing else: no logs, no tables of files)."""
+    tid, share = _shared_results(token)
+    if not _unlocked(share):
+        abort(403)
+    try:
+        _, p = ap.safe_out(tid, rel, share.get('run') or None)
+    except ap.PipelineError:
+        abort(404)
+    if not p.is_file() or ap.kind(p.name) != 'image':
+        abort(404)
+    resp = send_file(p, download_name=p.name, max_age=0)
+    resp.headers['Content-Security-Policy'] = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox"
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return _no_store(resp)
+
+
+@private_area_bp.route('/pipeline/results/<token>/export.txt')
+def pipeline_results_public_export(token):
+    tid, share = _shared_results(token)
+    if not _unlocked(share):
+        abort(403)
+    method = 'AP' if request.args.get('method', 'PSF').upper() == 'AP' else 'PSF'
+    try:
+        limit = float(request.args.get('limit', 3) or 3)
+    except ValueError:
+        limit = 3.0
+    run = share.get('run') or None
+    try:
+        text = ap.export_text(tid, method, limit, request.args.get('header', '1') != '0', run)
+    except ap.PipelineError:
+        abort(404)
+    resp = Response(text, mimetype='text/plain')
+    if request.args.get('download') == '1':
+        resp.headers['Content-Disposition'] = f'attachment; filename="{tid}{"_" + run if run else ""}_{method}_lightcurve.txt"'
+    return _no_store(resp)
 
 
 @private_area_bp.route('/pipeline/autophot/<tid>/file/<path:rel>')
@@ -387,7 +486,7 @@ def pipeline_api_classify():
 @_api
 def pipeline_api_new():
     """First page: a named, empty workspace (the page then uploads the images). 409 + conflict when the name is taken."""
-    tid = ap.create_workspace(_body(), user=_actor())
+    tid = ap.create_workspace(_body(), user=_actor(), user_name=_actor_name())
     logger.info('pipeline: %s created workspace %s', _actor(), tid)
     return jsonify({'success': True, 'id': tid, 'url': url_for('private_area.pipeline_workspace', tid=tid, tab='run')})
 
@@ -401,18 +500,10 @@ def pipeline_api_name_check():
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/save', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_save(tid):
     ap.save_target(tid, _body(), user=_actor())
     return jsonify({'success': True})
-
-
-@private_area_bp.route('/api/pipeline/autophot/<tid>/rename', methods=['POST'])
-@_api(owner=True)
-def pipeline_api_rename(tid):
-    name = ap.rename_workspace(tid, str(_body().get('name') or ''))
-    logger.info('pipeline: %s renamed workspace %s to %s', _actor(), tid, name)
-    return jsonify({'success': True, 'name': name})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/share', methods=['POST'])
@@ -431,6 +522,76 @@ def pipeline_api_share_stop(tid):
     return jsonify({'success': True})
 
 
+def _pipeline_accounts():
+    """{email: user} of the accounts that can open the Pipeline page (a person without an account, or whose account
+    cannot see this page, can never run anything)."""
+    from app.db.auth import get_users
+    return {e: u for e, u in get_users().items() if user_can_access_page(u, PAGE_KEY)}
+
+
+@private_area_bp.route('/api/pipeline/people')
+@_api
+def pipeline_api_people():
+    """Accounts that can open the Pipeline page, for choosing who may run a workspace: ?q= (2+ letters of a name or email)."""
+    q = request.args.get('q', '').strip().lower()
+    if len(q) < 2:
+        return jsonify({'success': True, 'people': []})
+    if not rate_limit.allow(f'pipeline-people:{_actor()}', 60, 300):
+        return jsonify({'success': False, 'error': 'Too many searches; wait a few minutes.'}), 429
+    people = [{'email': e, 'name': u.get('name') or e} for e, u in _pipeline_accounts().items()
+              if e != _actor() and (q in e.lower() or q in str(u.get('name') or '').lower())]
+    return jsonify({'success': True, 'people': sorted(people, key=lambda p: p['name'].lower())[:8]})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/access', methods=['POST'])
+@_api(owner=True)
+def pipeline_api_access(tid):
+    """Who besides the owner may change and run the workspace: {add: email} / {remove: email} / {run_all: bool}.
+    Only an account that can open the Pipeline page can be added."""
+    body = _body()
+    add = None
+    if body.get('add'):
+        email = str(body['add']).strip().lower()
+        account = next((u for e, u in _pipeline_accounts().items() if e.lower() == email), None)
+        if not account:
+            raise ap.PipelineError('That person has no account that can open the Pipeline page.')
+        add = {'user': account['email'], 'name': account.get('name') or account['email']}
+    result = ap.set_run_access(tid, add=add, remove=str(body.get('remove') or '') or None,
+                               run_all=bool(body['run_all']) if 'run_all' in body else None)
+    logger.info('pipeline: %s changed who may run %s: %s', _actor(), tid, body)
+    return jsonify({'success': True, **result})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/keep', methods=['POST'])
+@_api(owner=True)
+def pipeline_api_keep(tid):
+    days = ap.keep_one_more_day(tid)
+    logger.info('pipeline: %s keeps the images of %s %d days', _actor(), tid, days)
+    return jsonify({'success': True, 'keep_days': days})
+
+
+def _result_url(token):
+    return url_for('private_area.pipeline_results_public', token=token, _external=True)
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/results/share', methods=['POST'])
+@_api(owner=True)
+def pipeline_api_results_share(tid):
+    """A link to one set of results ('run' empty = the current ones), no login, behind the password the owner types."""
+    body = _body()
+    share = ap.result_share_create(tid, str(body.get('run') or ''), body.get('password'), user=_actor())
+    logger.info('pipeline: %s shared the results of %s (run %r)', _actor(), tid, share['run'])
+    return jsonify({'success': True, 'id': share['id'], 'url': _result_url(share['token'])})
+
+
+@private_area_bp.route('/api/pipeline/autophot/<tid>/results/share/stop', methods=['POST'])
+@_api(owner=True)
+def pipeline_api_results_share_stop(tid):
+    ap.result_share_stop(tid, str(_body().get('id') or ''))
+    logger.info('pipeline: %s stopped a results link of %s', _actor(), tid)
+    return jsonify({'success': True})
+
+
 @private_area_bp.route('/api/pipeline/autophot/<tid>/images')
 @_api
 def pipeline_api_images(tid):
@@ -438,7 +599,7 @@ def pipeline_api_images(tid):
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/upload', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_upload(tid):
     """One piece of a FITS upload: raw bytes in the body; ?name= &offset= &total= [&template=<filter>]."""
     try:
@@ -456,14 +617,14 @@ def pipeline_api_upload(tid):
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/images/remove', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_remove_image(tid):
     ap.remove_image(tid, str(_body().get('name') or ''))
     return jsonify({'success': True})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/images/restore', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_restore_image(tid):
     ap.restore_image(tid, str(_body().get('name') or ''))
     return jsonify({'success': True})
@@ -476,21 +637,21 @@ def pipeline_api_settings(tid):
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/run', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_run(tid):
     ap.start(tid, user=_actor())
     return jsonify({'success': True})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/answer', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_answer(tid):
     ap.answer(tid, str(_body().get('text') or ''))
     return jsonify({'success': True})
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/stop', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_stop(tid):
     ap.stop(tid)
     logger.info('pipeline: %s stopped AutoPhOT in %s', _actor(), tid)
@@ -521,6 +682,8 @@ def pipeline_api_legacy_delete(tid):
 @private_area_bp.route('/api/pipeline/telescopes', methods=['POST'])
 @_api
 def pipeline_api_telescopes():
+    if not _is_admin():
+        raise ap.Forbidden('Only admins can edit telescope.yml.')
     result = ap.save_telescope(_body().get('text', ''), user=_actor())
     return jsonify({'success': True, **result, 'rows': ap.telescope_summary()})
 
@@ -540,7 +703,7 @@ def pipeline_api_calibrated_folder():
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/add_calibrated', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_add_calibrated(tid):
     """Copy one calibrated frame into the workspace (the page sends them one by one, with progress)."""
     rel = str(_body().get('path') or '')
@@ -549,7 +712,7 @@ def pipeline_api_add_calibrated(tid):
 
 
 @private_area_bp.route('/api/pipeline/autophot/<tid>/restore', methods=['POST'])
-@_api
+@_api(edit=True)
 def pipeline_api_restore(tid):
     result = ap.restore_expired(tid)
     logger.info('pipeline: %s copied %d expired frames back into %s', _actor(), len(result['added']), tid)

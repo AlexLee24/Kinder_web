@@ -127,6 +127,13 @@ def can_access_page(page_key: str) -> bool:
     allowed = set(get_page_groups(page_key))
     return bool(user_groups & allowed)
 
+def user_can_access_page(user: dict, page_key: str) -> bool:
+    """Same rule as can_access_page, for any account (a dict from auth.get_users), not only the one in the session."""
+    groups = set(user.get('groups') or [])
+    if user.get('is_admin') or 'GREAT_Lab' in groups:
+        return True
+    return bool(groups & set(get_page_groups(page_key)))
+
 _EPESSTO_DATE_RE = re.compile(r'^20\d{6}$')
 
 _EPESSTO_ROOM_SESSION_KEY = 'epessto_room_id'
