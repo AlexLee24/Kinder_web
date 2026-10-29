@@ -38,7 +38,19 @@
         return data;
     }
 
+    const daysLeft = t => {
+        const d = (t * 1000 - Date.now()) / 86400e3;
+        return d <= 0 ? 'soon' : d < 1 ? 'in ' + Math.max(1, Math.round(d * 24)) + ' h' : 'in ' + Math.round(d) + ' d';
+    };
+
     function stamp(root) {
+        (root || document).querySelectorAll('[data-exp]').forEach(n => {         // when a workspace's images are removed
+            const v = parseFloat(n.dataset.exp);
+            if (!v) return;
+            n.textContent = 'Images removed ' + daysLeft(v);
+            n.title = new Date(v * 1000).toLocaleString();
+            n.classList.toggle('is-soon', v * 1000 - Date.now() < 2 * 86400e3);
+        });
         (root || document).querySelectorAll('[data-ts]').forEach(n => {
             const v = parseFloat(n.dataset.ts);
             if (v) {
@@ -76,19 +88,26 @@
         });
     }
 
+    // Pop-out: .kw-modal with .is-open; closes with its Close button, a click outside the card, or Escape
+    function modal(box) {
+        const close = () => { box.classList.remove('is-open'); document.body.style.overflow = ''; };
+        const open = () => { box.classList.add('is-open'); document.body.style.overflow = 'hidden'; };
+        box.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+        box.addEventListener('click', e => { if (e.target === box) close(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && box.classList.contains('is-open')) close(); });
+        return { open, close };
+    }
+
     const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
     const sizeOf = x => (x.file ? x.file.size : x.size) || 0;
     const sizeText = n => n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' kB';
-    const daysLeft = t => {
-        const d = (t * 1000 - Date.now()) / 86400e3;
-        return d <= 0 ? 'soon' : d < 1 ? 'in ' + Math.max(1, Math.round(d * 24)) + ' h' : 'in ' + Math.round(d) + ' d';
-    };
     const bandSelect = (value, attrs) => el('select', Object.assign({ class: 'kw-select kw-select-sm' }, attrs || {}),
         el('option', { value: '', text: 'Filter…', selected: !value }), BANDS.map(b => el('option', { value: b, text: b, selected: b === value })));
 
     const page = $('plWorkspace');
     const tid = page ? page.dataset.tid : '';
     const base = tid ? API + '/' + encodeURIComponent(tid) : '';
+    const canEdit = !page || page.dataset.edit === '1';       // the owner, or a member the owner lets change and run
     let overrides = null;            // All settings: {key: one line of YAML}, only values that differ from the default
 
     // ── FITS headers, read in the browser before anything is uploaded ─────────
@@ -588,9 +607,7 @@
             renderPlan();
         }
         const checkSoon = () => { free = false; updateBtn(); clearTimeout(checkTimer); checkTimer = setTimeout(checkName, 250); };
-        nameIn.addEventListener('input', () => { suffixIn.value = ''; checkSoon(); });
         suffixIn.addEventListener('input', checkSoon);
-        nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
         suffixIn.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
 
         function renderPlan() {
@@ -700,6 +717,7 @@
 
         const fail = err => imgBody.prepend(el('p', { class: 'pl-msg is-error', text: err.message }));
         function removeButton(name, label) {
+            if (!canEdit) return null;
             const b = el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: label || 'Remove', title: 'Move out of this workspace (can be put back)' });
             armable(b, 'Confirm', async () => {
                 try { await api(base + '/images/remove', { name }); load(); } catch (err) { fail(err); }
@@ -707,6 +725,7 @@
             return b;
         }
         function addTemplateButton(band) {
+            if (!canEdit) return null;
             const input = el('input', { type: 'file', class: 'pl-drop-input', accept: '.fits,.fit,.fts,.fz,.gz' });
             const btn = el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Add template', onclick: () => input.click() });
             input.addEventListener('change', async () => {
@@ -723,6 +742,13 @@
 
         function renderImages(d) {
             $('plImgCount').textContent = plural(d.n, 'frame');
+            const exps = d.files.map(f => f.expires).concat(d.templates.filter(t => t.active).map(t => t.expires)).filter(Boolean);
+            const keepText = $('plKeepText');
+            if (keepText) {
+                const first = exps.length ? Math.min(...exps) : 0;
+                keepText.textContent = first ? 'Images are removed ' + daysLeft(first) + ' (' + new Date(first * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ').' : 'No images to remove.';
+                keepText.parentElement.classList.toggle('is-soon', !!first && first * 1000 - Date.now() < 2 * 86400e3);
+            }
             d.files.forEach(f => { f.stack = d.stacks.indexOf(f.name) >= 0; });
             const parts = [];
             if ((d.tags || []).length) parts.push(el('div', { class: 'pl-chips pl-tags' }, d.tags.map(t => el('span', { class: 'kw-chip kw-chip-gold', text: t.tag + ' × ' + t.n }))));
@@ -744,7 +770,7 @@
                         el('td', { class: 'pl-acts' }, f.stack ? null : removeButton(f.name))))))));
             }
             if (d.expired.length) {
-                const restore = d.restorable ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy ' + d.restorable + ' again from the server',
+                const restore = d.restorable && canEdit ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy ' + d.restorable + ' again from the server',
                     onclick: async ev => {
                         ev.currentTarget.disabled = true;
                         try { const r = await api(base + '/restore', {}); if (r.missing.length) fail(new Error(r.missing.length + ' no longer on the server.')); load(); }
@@ -759,7 +785,7 @@
                 parts.push(el('details', { class: 'pl-removed' },
                     el('summary', { text: d.removed.length + ' removed' }),
                     d.removed.map(r => el('div', {}, el('span', { class: 'pl-mono', text: r }),
-                        el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Put back',
+                        !canEdit ? null : el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', text: 'Put back',
                             onclick: async ev => {
                                 ev.currentTarget.disabled = true;
                                 try { await api(base + '/images/restore', { name: r }); load(); } catch (err) { fail(err); }
@@ -835,7 +861,7 @@
         // Frames (and a templates/ subfolder) dropped on Images: upload at once
         const addState = $('plAddState');
         let busy = false;
-        dropZone($('plAddFiles'), async list => {
+        if ($('plAddFiles')) dropZone($('plAddFiles'), async list => {
             if (busy) return;
             busy = true;
             addState.hidden = false;
@@ -851,7 +877,7 @@
 
         // Templates dropped on Template subtraction: the server reads each filter
         const tplRoot = wsForm ? wsForm.querySelector('.pl-ts-own [data-pl-drop]') : null;
-        if (tplRoot) {
+        if (tplRoot && canEdit) {
             dropZone(tplRoot, async list => {
                 const files = list.filter(x => FITS_RE.test(x.file.name));
                 for (const x of files) {
@@ -890,7 +916,7 @@
         wireForm(wsForm);
         // A new workspace has no target yet: offer the OBJECT of its headers, with its Kinder position or the header pointing
         let hint = {};
-        try { hint = JSON.parse(page.dataset.hint || '{}') || {}; } catch (e) { hint = {}; }
+        try { hint = canEdit ? JSON.parse(page.dataset.hint || '{}') || {} : {}; } catch (e) { hint = {}; }
         const f = wsForm.elements, hintBox = wsForm.querySelector('[data-target-hint]');
         const pointing = () => {
             if (!hint.ra || !hint.dec || f.ra.value.trim()) return;
@@ -917,21 +943,7 @@
         });
     }
 
-    // ── Name and sharing (owner) ──────────────────────────────────────────────
-    const ren = $('plRename');
-    if (ren) {
-        ren.addEventListener('submit', async e => {
-            e.preventDefault();
-            const m = ren.querySelector('.pl-msg'), input = $('plRenameIn');
-            try {
-                const r = await api(base + '/rename', { name: input.value.trim() });
-                input.value = r.name;
-                const h1 = document.querySelector('.kw-page-head h1');
-                if (h1) h1.textContent = r.name;
-                say(m, 'Renamed to ' + r.name + '.', 'ok');
-            } catch (err) { say(m, err.message, 'error'); }
-        });
-    }
+    // ── Sharing (owner) ───────────────────────────────────────────────────────
     const share = $('plShare');
     if (share) {
         const onBox = share.querySelector('[data-share-on]'), offBox = share.querySelector('[data-share-off]');
@@ -953,9 +965,77 @@
             setTimeout(() => { b.textContent = 'Copy'; }, 1500);
         });
         urlIn.addEventListener('focus', () => urlIn.select());
+        const allow = $('plAllowRun');
+        if (allow) allow.addEventListener('change', async () => {
+            try {
+                await api(base + '/access', { allow_run: allow.checked });
+                say(m, allow.checked ? 'People with the link can now change settings and run.' : 'People with the link can only look.', 'ok');
+            } catch (err) { allow.checked = !allow.checked; say(m, err.message, 'error'); }
+        });
         armable(offBtn, 'People lose access. Stop?', async () => {
             try { await api(base + '/share/stop', {}); urlIn.value = ''; shown(false); say(m, 'Sharing stopped.', 'ok'); }
             catch (err) { say(m, err.message, 'error'); }
+        });
+    }
+
+    // ── Keep the images one more day (owner) ──────────────────────────────────
+    const keepBtn = $('plKeepBtn');
+    if (keepBtn) {
+        keepBtn.addEventListener('click', async () => {
+            keepBtn.disabled = true;
+            try { await api(base + '/keep', {}); reloadImages(); }
+            catch (err) { say($('plKeepText'), err.message, 'error'); }
+            keepBtn.disabled = false;
+        });
+    }
+
+    // ── All workspaces in a pop-out ───────────────────────────────────────────
+    const wsAll = $('plWsAll'), wsModal = $('plWsModal');
+    if (wsAll && wsModal) {
+        const m = modal(wsModal), q = $('plWsModalFilter');
+        wsAll.addEventListener('click', () => { m.open(); q.focus(); });
+        q.addEventListener('input', () => {
+            const t = q.value.trim().toLowerCase();
+            wsModal.querySelectorAll('.pl-ws').forEach(li => { li.hidden = !!t && !li.dataset.name.includes(t); });
+        });
+    }
+
+    // ── Results link: no login, the owner's password (owner) ──────────────────
+    const rs = $('plResShare'), rsOpen = $('plResShareOpen');
+    if (rs && rsOpen) {
+        const m = modal(rs), list = $('plResLinks'), form = $('plResShareForm'), msg = $('plResMsg');
+        rsOpen.addEventListener('click', () => { m.open(); $('plResPw').focus(); });
+        function wireLink(li) {
+            const url = li.querySelector('input');
+            url.addEventListener('focus', () => url.select());
+            li.querySelector('[data-copy]').addEventListener('click', async ev => {
+                url.select();
+                try { await navigator.clipboard.writeText(url.value); } catch (e) { document.execCommand('copy'); }
+                const b = ev.currentTarget; b.textContent = 'Copied';
+                setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+            });
+            armable(li.querySelector('[data-stop]'), 'Stop the link?', async () => {
+                try { await api(base + '/results/share/stop', { id: li.dataset.id }); li.remove(); }
+                catch (err) { say(msg, err.message, 'error'); }
+            });
+        }
+        list.querySelectorAll('li').forEach(wireLink);
+        stamp(list);
+        form.addEventListener('submit', async e => {
+            e.preventDefault();
+            const pw = $('plResPw').value;
+            say(msg, 'Creating…');
+            try {
+                const r = await api(base + '/results/share', { run: rs.dataset.run, password: pw });
+                const li = el('li', { 'data-id': r.id },
+                    el('input', { type: 'text', readonly: true, value: r.url, 'aria-label': 'Link', spellcheck: 'false' }),
+                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm', 'data-copy': true, text: 'Copy' }),
+                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-ghost', 'data-stop': true, text: 'Stop' }));
+                list.prepend(li);
+                wireLink(li);
+                $('plResPw').value = '';
+                say(msg, 'Link created. Give the password to the people you share it with.', 'ok');
+            } catch (err) { say(msg, err.message, 'error'); }
         });
     }
 
@@ -972,7 +1052,7 @@
         };
         function setRunning(on) {
             running = on;
-            runBtn.disabled = false;
+            runBtn.disabled = !canEdit;
             stopArmed = false;
             runBtn.classList.toggle('kw-btn-primary', !on);
             runBtn.classList.toggle('kw-btn-danger', on);
@@ -1011,7 +1091,9 @@
         }
         const startPolling = () => { if (!timer) timer = setInterval(poll, 1500); poll(); };
 
+        if (!canEdit) { runBtn.disabled = true; runBtn.title = 'Only the owner can run this workspace, unless they allow others to.'; }
         runBtn.addEventListener('click', async () => {
+            if (!canEdit) return;
             if (running) {
                 if (!stopArmed) {
                     stopArmed = true;

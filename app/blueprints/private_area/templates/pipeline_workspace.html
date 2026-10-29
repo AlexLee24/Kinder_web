@@ -13,21 +13,22 @@
 {% endblock %}
 
 {% block content %}
-    {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options with context %}
+    {% from '_pipeline_form.html' import pl_drop, pl_step, pl_target, pl_ts, pl_options, pl_ws_card with context %}
     {% macro size(n) %}{% if n >= 1073741824 %}{{ '%.1f'|format(n / 1073741824) }} GB{% elif n >= 1048576 %}{{ '%.1f'|format(n / 1048576) }} MB{% elif n >= 1024 %}{{ '%.0f'|format(n / 1024) }} kB{% else %}{{ n }} B{% endif %}{% endmacro %}
     {% macro num(v, e=None, d=3) %}{% if v is not none %}{{ ('%.' ~ d ~ 'f')|format(v) }}{% if e is not none %}<small> ± {{ '%.3f'|format(e) }}</small>{% endif %}{% else %}<span class="pl-faint">—</span>{% endif %}{% endmacro %}
 
-    <div class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}" data-role="{{ ap.role }}" data-hint='{{ ap.cfg.hint|tojson if ap.cfg.hint and not ap.cfg.target else "{}" }}'>
+    <div class="kw-page pl-page pl-ws-page" id="plWorkspace" data-tid="{{ ap.id }}" data-tab="{{ tab }}" data-chunk="{{ upload_chunk }}" data-legacy="{{ ap.n_legacy }}" data-results="{{ '1' if ap.has_results else '' }}" data-role="{{ ap.role }}" data-edit="{{ '1' if ap.can_edit else '' }}" data-expires="{{ ap.expires or '' }}" data-hint='{{ ap.cfg.hint|tojson if ap.cfg.hint and not ap.cfg.target else "{}" }}'>
         <a class="pl-back" href="{{ url_for('private_area.pipeline') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>Pipeline</a>
         <header class="kw-page-head">
             <div>
                 <span class="kw-eyebrow">Photometry · AutoPhOT</span>
                 <h1>{{ ap.name }}</h1>
+                <p class="pl-ws-owner pl-ws-owner-lg">Owner: <b>{% if not ap.owner %}no one (open to everyone){% elif ap.owner == me %}you{% else %}{{ ap.owner_name }}{% endif %}</b>{% if ap.role == 'member' %}<span>{{ 'You can change and run it' if ap.can_edit else 'You can look; only the owner runs it' }}</span>{% endif %}</p>
                 <p class="pl-ws-sub">{% if ap.target %}<span>{{ ap.target }}</span>{% endif %}{% if ap.cfg.ra and ap.cfg.dec %}<span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span>{% endif %}<span>{{ ap.n_images }} FITS</span><span>{{ (ap.run_cfg if tab == 'results' and not run else ap.cfg).catalog or default_catalog }}</span>{% if ap.cfg.subtraction %}<span>Template subtraction · {{ ap.cfg.sub_method }}{% if ap.cfg.ts_download %} · {{ ts_download_labels.get(ap.cfg.ts_download, ap.cfg.ts_download) }}{% endif %}</span>{% else %}<span>No template subtraction</span>{% endif %}{% if ap.cfg.stack %}<span>Stacking</span>{% endif %}</p>
             </div>
             <div class="kw-page-actions">
                 <span class="pl-save-state" id="plSaveState" aria-live="polite"></span>
-                {% if ap.role == 'editor' %}<span class="kw-chip kw-chip-blue" title="{{ ap.owner }}">Shared with you</span>
+                {% if ap.role == 'member' %}<span class="kw-chip kw-chip-blue" title="{{ ap.owner }}">Shared with you</span>
                 {% elif ap.owner %}<span class="kw-chip{% if ap.share %} kw-chip-gold{% endif %}" id="plAccessChip">{{ 'Shared' if ap.share else 'Private' }}</span>{% endif %}
                 <span class="pl-state" id="plHeadState">
                 {% if ap.status == 'running' %}<span class="kw-chip kw-chip-blue"><span class="pl-pulse" aria-hidden="true"></span>Running</span>
@@ -47,6 +48,7 @@
                         {{ pl_step(1, 'Images') }}
                         <span class="kw-panel-meta" id="plImgCount"></span>
                     </div>
+                    {% if ap.can_edit %}
                     {{ pl_drop('plAddFiles', 'Add FITS', 'A folder or single files; a templates/ subfolder goes to Template subtraction') }}
                     {% if calibrated.ok %}
                     <details class="pl-more pl-from-server" id="plFromServer">
@@ -54,12 +56,17 @@
                         <div class="pl-picker" data-picker data-pick-label="Add to this workspace"></div>
                     </details>
                     {% endif %}
-                    <p class="pl-hint pl-keep">FITS stay {{ keep_days }} days after they arrive, then they are deleted; light curves, tables, figures and logs stay.</p>
+                    {% endif %}
+                    <div class="pl-keep" id="plKeep">
+                        <p class="pl-hint">FITS are deleted {{ keep_days }} days after they arrive; light curves, tables, figures and logs stay.</p>
+                        <p class="pl-keep-line"><span id="plKeepText"></span>{% if ap.role == 'owner' %}<button type="button" class="kw-btn kw-btn-sm" id="plKeepBtn">Keep one more day</button>{% endif %}</p>
+                    </div>
                     <div class="pl-upload-state" id="plAddState" hidden><span class="pl-bar"><span></span></span><small></small></div>
                     <div id="plImgBody"><div class="pl-skeleton" aria-hidden="true"><span></span><span></span><span></span></div></div>
                 </section>
 
                 <form class="pl-form pl-setup-form" data-pl-form data-tid="{{ ap.id }}" autocomplete="off" novalidate>
+                    {% if not ap.can_edit %}<p class="pl-warn">You can look at the settings; only {{ ap.owner_name or 'the owner' }} can change them and run the workspace, unless they allow it.</p><fieldset class="pl-readonly" disabled>{% endif %}
                     <section class="kw-panel" aria-labelledby="plTargetTitle">
                         <div class="kw-panel-head" id="plTargetTitle">{{ pl_step(2, 'Target', 'Where AutoPhOT measures. Changes are saved as you make them.') }}</div>
                         {{ pl_target(ap.cfg, ap.id) }}
@@ -73,8 +80,10 @@
                         {{ pl_options(ap.cfg, ap.id) }}
                         <p class="pl-msg" role="status" aria-live="polite"></p>
                     </section>
+                    {% if not ap.can_edit %}</fieldset>{% endif %}
                 </form>
 
+                {% if ap.can_edit %}
                 <details class="kw-panel pl-all" id="plAll">
                     <summary class="kw-panel-head">
                         <h2>All AutoPhOT settings</h2>
@@ -88,6 +97,7 @@
                     <div id="plAllBody"><div class="pl-skeleton" aria-hidden="true"><span></span><span></span></div></div>
                     <div class="kw-panel-foot"><button type="button" class="kw-btn kw-btn-primary" id="plAllSave">Save settings</button></div>
                 </details>
+                {% endif %}
 
                 {% if ap.role == 'owner' %}
                 <section class="kw-panel pl-danger">
@@ -99,6 +109,14 @@
             </div>
 
             <aside class="pl-setup-side">
+                {% set top = workspaces[:5] %}
+                {% if not (top|selectattr('id', 'equalto', ap.id)|list) %}{% set top = (workspaces|selectattr('id', 'equalto', ap.id)|list) + top[:4] %}{% endif %}
+                <section class="kw-panel pl-ws-side" aria-labelledby="plWsSideTitle">
+                    <div class="kw-panel-head"><h2 id="plWsSideTitle">Workspaces</h2><span class="kw-panel-meta">{{ workspaces|length }}</span></div>
+                    <ul class="pl-ws-list pl-ws-list-sm">{% for w in top %}{{ pl_ws_card(w, me, ap.id) }}{% endfor %}</ul>
+                    {% if workspaces|length > top|length %}<button type="button" class="kw-btn kw-btn-sm" id="plWsAll">All {{ workspaces|length }} workspaces…</button>{% endif %}
+                </section>
+
                 <section class="kw-panel pl-job" id="plJob" aria-labelledby="plJobTitle">
                     <div class="kw-panel-head">
                         {{ pl_step(5, 'Run AutoPhOT') }}
@@ -120,6 +138,7 @@
                         </div>
                     </form>
                     <pre class="pl-log" id="plLog" tabindex="0" aria-label="AutoPhOT log"{% if not ap.status %} hidden{% endif %}></pre>
+                    {% if not ap.can_edit %}<p class="pl-warn">Only {{ ap.owner_name or 'the owner' }} can run this workspace, unless they allow others to.</p>{% endif %}
                     <p class="pl-hint" id="plRunHint"{% if ap.status %} hidden{% endif %}>Runs on this server with the images and settings on the left. When AutoPhOT meets a telescope or filter it does not know, it asks here.{% if ap.has_results %} The current results move to Earlier runs first.{% endif %}</p>
                     <div class="pl-log-foot" id="plLogFoot"{% if not ap.status %} hidden{% endif %}>
                         <a href="{{ url_for('private_area.pipeline_log', tid=ap.id) }}" target="_blank" rel="noopener">Full log</a>
@@ -129,28 +148,26 @@
                 </section>
 
                 <section class="kw-panel pl-access" id="plAccess" aria-labelledby="plAccessTitle">
-                    <div class="kw-panel-head"><h2 id="plAccessTitle">Workspace</h2></div>
+                    <div class="kw-panel-head"><h2 id="plAccessTitle">Access</h2></div>
+                    <p class="pl-owner-line">Owner: <b>{% if not ap.owner %}no one (open to everyone){% elif ap.owner == me %}you{% else %}{{ ap.owner_name }}{% endif %}</b>{% if ap.owner and ap.owner != me %}<small>{{ ap.owner }}</small>{% endif %}</p>
                     {% if ap.role == 'owner' %}
-                    <form class="pl-rename" id="plRename" autocomplete="off">
-                        <label for="plRenameIn">Name</label>
-                        <div class="pl-inline"><input type="text" id="plRenameIn" maxlength="80" value="{{ ap.name }}" spellcheck="false"><button class="kw-btn kw-btn-sm" type="submit">Rename</button></div>
-                        <p class="pl-msg" role="status" aria-live="polite"></p>
-                    </form>
                     <div class="pl-share" id="plShare">
-                        <p class="pl-hint" data-share-off{% if ap.share %} hidden{% endif %}>Private: only you{% if ap.owner %} (and admins){% endif %} can see this workspace and its results.</p>
+                        <p class="pl-hint" data-share-off{% if ap.share %} hidden{% endif %}>Private: only you{% if ap.owner %} (and admins){% endif %} can see this workspace and its results. Only you can run and delete it.</p>
                         <div data-share-on{% if not ap.share %} hidden{% endif %}>
-                            <p class="pl-hint">Anyone logged in with this link can open the workspace, change its settings and run photometry. Only you can rename, share or delete it.</p>
-                            <div class="pl-inline"><input type="text" id="plShareUrl" readonly value="{{ share_url }}" aria-label="Share link" spellcheck="false"><button type="button" class="kw-btn kw-btn-sm" id="plShareCopy">Copy</button></div>
+                            <p class="pl-hint">Anyone logged in who opens this link can see the workspace and its results.</p>
+                            <div class="pl-inline"><input type="text" id="plShareUrl" readonly value="{{ share_url }}" aria-label="Invite link" spellcheck="false"><button type="button" class="kw-btn kw-btn-sm" id="plShareCopy">Copy</button></div>
+                            <label class="pl-toggle"><input type="checkbox" id="plAllowRun"{% if ap.allow_run %} checked{% endif %}>
+                                <span><b>Let them change settings and run</b><small>Otherwise they can only look. Only you can delete.</small></span></label>
                             <p class="pl-hint" id="plMembers">{% if ap.members %}Opened by {{ ap.members|join(', ') }}.{% else %}Nobody has opened it yet.{% endif %}</p>
                         </div>
                         <div class="pl-share-btns">
-                            <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plShareOn"{% if ap.share %} hidden{% endif %}>Create share link</button>
+                            <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="plShareOn"{% if ap.share %} hidden{% endif %}>Create invite link</button>
                             <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="plShareOff"{% if not ap.share %} hidden{% endif %}>Stop sharing</button>
                         </div>
                         <p class="pl-msg" id="plShareMsg" role="status" aria-live="polite"></p>
                     </div>
                     {% else %}
-                    <p class="pl-hint">Shared with you by {{ ap.owner }}. You can change the settings and run photometry; only the owner can rename, share or delete it.</p>
+                    <p class="pl-hint">{{ 'You can change settings and run photometry here; only the owner can delete it.' if ap.can_edit else 'You can look at this workspace and its results; only the owner can change, run or delete it, unless they allow others to.' }}</p>
                     {% endif %}
                 </section>
 
@@ -175,6 +192,13 @@
         <section class="kw-panel"><div class="pl-empty"><b>No results yet</b>Run AutoPhOT and the light curve, figures and tables appear here.
             <a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}">Go to Run</a></div></section>
         {% else %}
+
+        {% if ap.role == 'owner' and not rel %}
+        <div class="pl-share-bar">
+            <span class="pl-faint">Results can be opened by anyone with a link and a password you choose, no login needed.</span>
+            <button type="button" class="kw-btn kw-btn-sm" id="plResShareOpen">Share these results…{% if result_links %} <span class="kw-n">{{ result_links|length }}</span>{% endif %}</button>
+        </div>
+        {% endif %}
 
         {% if not rel and (phot or images) %}
         <div class="kw-kpis pl-kpis">
@@ -396,6 +420,38 @@
 {% endblock %}
 
 {% block after_main %}
+    {% from '_pipeline_form.html' import pl_ws_card with context %}
+    <div class="kw-modal" id="plWsModal" role="dialog" aria-modal="true" aria-labelledby="plWsModalTitle">
+        <div class="kw-modal-card is-wide">
+            <div class="kw-modal-head"><h3 id="plWsModalTitle">All workspaces</h3><span class="pl-faint">{{ workspaces|length }}</span></div>
+            <input type="search" class="pl-ws-filter" id="plWsModalFilter" placeholder="Filter by name, target or owner" aria-label="Filter workspaces" autocomplete="off">
+            <ul class="pl-ws-list pl-ws-modal-list" id="plWsModalList">{% for w in workspaces %}{{ pl_ws_card(w, me, ap.id) }}{% endfor %}</ul>
+            <div class="kw-modal-foot"><button type="button" class="kw-btn" data-close>Close</button></div>
+        </div>
+    </div>
+    {% if tab == 'results' and ap.role == 'owner' %}
+    <div class="kw-modal" id="plResShare" role="dialog" aria-modal="true" aria-labelledby="plResShareTitle" data-run="{{ run or '' }}">
+        <div class="kw-modal-card">
+            <div class="kw-modal-head"><h3 id="plResShareTitle">Share {{ 'this earlier run' if run else 'the current results' }}</h3></div>
+            <p class="pl-hint">Anyone with the link and the password can see the light curve, photometry table and figures. They do not need to log in and cannot see anything else in the workspace. To change a password, stop the link and make a new one.</p>
+            <form id="plResShareForm" autocomplete="off">
+                <div class="kw-field"><label for="plResPw">Password for this link</label>
+                    <input type="text" id="plResPw" maxlength="64" minlength="4" spellcheck="false" autocomplete="off" placeholder="4 to 64 characters"></div>
+                <p class="pl-msg" id="plResMsg" role="status" aria-live="polite"></p>
+                <div class="pl-share-btns"><button class="kw-btn kw-btn-primary" type="submit">Create link</button></div>
+            </form>
+            <ul class="pl-res-links" id="plResLinks">
+                {% for l in result_links %}
+                <li data-id="{{ l.id }}"><input type="text" readonly value="{{ l.url }}" aria-label="Link" spellcheck="false">
+                    <button type="button" class="kw-btn kw-btn-sm" data-copy>Copy</button>
+                    <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-stop>Stop</button>
+                    <small class="pl-faint" data-ts="{{ l.at }}"></small></li>
+                {% endfor %}
+            </ul>
+            <div class="kw-modal-foot"><button type="button" class="kw-btn" data-close>Close</button></div>
+        </div>
+    </div>
+    {% endif %}
     {% if tab == 'results' and can_import and phot and phot.rows %}
     <div class="kw-modal" id="plImport" role="dialog" aria-modal="true" aria-labelledby="plImportTitle">
         <div class="kw-modal-card is-wide">

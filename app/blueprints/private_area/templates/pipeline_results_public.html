@@ -1,0 +1,114 @@
+{% extends '_base.html' %}
+{#- Results shared by a link: no login, a password the owner chose. Read only; shows the light curve, the photometry and
+    the figures of one set of results and nothing else of the workspace (no logs, no file browser, no settings). -#}
+{% block title %}{{ 'Shared results' if locked else ap.name ~ ' · Shared results' }} - Kinder{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/pipeline.css') }}">
+    <meta name="robots" content="noindex, nofollow">
+{% endblock %}
+
+{% block content %}
+    {% macro num(v, e=None, d=3) %}{% if v is not none %}{{ ('%.' ~ d ~ 'f')|format(v) }}{% if e is not none %}<small> ± {{ '%.3f'|format(e) }}</small>{% endif %}{% else %}<span class="pl-faint">—</span>{% endif %}{% endmacro %}
+
+    <div class="kw-page pl-page pl-public">
+        {% if locked %}
+        <section class="kw-panel pl-public-lock" aria-labelledby="plLockTitle">
+            <div class="kw-panel-head"><h2 id="plLockTitle">Shared photometry results</h2></div>
+            <p class="kw-panel-desc">The owner protected these results with a password.</p>
+            <form method="post" autocomplete="off">
+                <div class="kw-field">
+                    <label for="plPubPw">Password</label>
+                    <input type="password" id="plPubPw" name="password" maxlength="64" required autofocus autocomplete="off">
+                </div>
+                {% if error %}<p class="pl-msg is-error" role="alert">That password is not right.</p>{% endif %}
+                <div class="pl-form-foot"><button class="kw-btn kw-btn-primary" type="submit">Open results</button></div>
+            </form>
+        </section>
+
+        {% else %}
+        {% set file_url = 'private_area.pipeline_results_public_file' %}
+        <header class="kw-page-head">
+            <div>
+                <span class="kw-eyebrow">Photometry · AutoPhOT · shared results, read only</span>
+                <h1>{{ ap.name }}</h1>
+                <p class="pl-ws-sub">{% if ap.target %}<span>{{ ap.target }}</span>{% endif %}{% if ap.cfg.ra and ap.cfg.dec %}<span class="pl-mono">{{ ap.cfg.ra }} {{ ap.cfg.dec }}</span>{% endif %}<span>{{ (legacy and 'Earlier run ' ~ legacy.id) or 'Current results' }}</span></p>
+            </div>
+        </header>
+
+        {% if not listing %}
+        <section class="kw-panel"><div class="pl-empty"><b>No results to show</b>These results are no longer in the workspace.</div></section>
+        {% else %}
+
+        {% if phot or images %}
+        <div class="kw-kpis pl-kpis">
+            {% if images %}<div class="kw-kpi"><span class="kw-kpi-label">Images measured</span><b>{{ images.n_ok }}<small> / {{ images.n_in }}</small></b></div>{% endif %}
+            {% if phot %}
+            {% set ndet = phot.rows|selectattr('det')|list|length %}
+            <div class="kw-kpi"><span class="kw-kpi-label">Light-curve points</span><b>{{ phot.rows|length }}</b><small>{{ ndet }} detection{{ '' if ndet == 1 else 's' }}, {{ phot.rows|length - ndet }} limit{{ '' if phot.rows|length - ndet == 1 else 's' }}</small></div>
+            <div class="kw-kpi"><span class="kw-kpi-label">Filters</span><b>{{ phot.bands|length }}</b><small>{{ phot.bands|join(' · ') }}</small></div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% set lc_plots = listing.files|selectattr('kind', 'equalto', 'image')|selectattr('lightcurve')|list %}
+        {% if phot and lc_plots %}
+        <section class="kw-panel" aria-labelledby="plLcTitle">
+            <div class="kw-panel-head"><h2 id="plLcTitle">Light curve</h2></div>
+            <div class="pl-gallery pl-gallery-lg">
+                {% for f in lc_plots %}<a href="{{ url_for(file_url, token=token, rel=f.path) }}" target="_blank" rel="noopener"><figure>
+                    <img src="{{ url_for(file_url, token=token, rel=f.path) }}" alt="{{ f.name }}" loading="lazy"><figcaption>{{ f.name }}</figcaption></figure></a>{% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if phot and phot.rows %}
+        <section class="kw-panel" aria-labelledby="plPhotTitle">
+            <div class="kw-panel-head"><h2 id="plPhotTitle">Photometry</h2>
+                <div class="pl-job-actions">{% if phot.magsys %}<span class="kw-chip kw-chip-blue">{{ phot.magsys }}</span>{% endif %}</div>
+            </div>
+            <p class="kw-panel-desc">One row per image. Detection follows AutoPhOT's S/N threshold; limits are the faintest magnitude recovered at that S/N by injecting artificial stars.</p>
+
+            <form class="pl-export" method="get" action="{{ url_for('private_area.pipeline_results_public_export', token=token) }}">
+                <b>Light curve</b>
+                <input type="hidden" name="download" value="1">
+                <label>Magnitude <select class="kw-select kw-select-sm" name="method"><option value="PSF">PSF</option><option value="AP">Aperture</option></select></label>
+                <label>Non-detections <select class="kw-select kw-select-sm" name="limit">{% for c, snr in phot.limits %}<option value="{{ '%g'|format(snr) }}">&gt; limit {{ '%g'|format(snr) }}σ</option>{% endfor %}</select></label>
+                <span class="pl-spacer"></span>
+                <button class="kw-btn kw-btn-sm kw-btn-primary" type="submit">Download .txt</button>
+            </form>
+
+            <div class="kw-table-wrap"><table class="kw-table pl-table pl-phot">
+                <thead><tr>
+                    <th>Date (UTC)</th><th>MJD</th><th>Filter</th><th>Telescope</th><th>PSF mag</th><th>Aperture mag</th><th>S/N</th><th>Detected</th><th>Subtracted</th>
+                    {% for c, snr in phot.limits %}<th>Limit {{ '%g'|format(snr) }}<span class="pl-nocase">σ</span></th>{% endfor %}
+                    <th>Zeropoint</th><th>FWHM (px)</th><th>Airmass</th><th>Exp (s)</th>
+                </tr></thead>
+                <tbody>
+                {% for r in phot.rows %}
+                <tr class="{{ 'is-det' if r.det else 'is-nondet' }}">
+                    <td>{{ r.date }}</td><td>{{ num(r.mjd, d=5) }}</td><td><b>{{ r.filter }}</b></td><td>{{ r.telescope or '—' }}</td>
+                    <td class="pl-mag">{{ num(r.psf, r.psf_err) }}</td><td class="pl-mag">{{ num(r.ap, r.ap_err) }}</td>
+                    <td>{{ num(r.snr, d=1) }}</td>
+                    <td>{% if r.det %}<span class="kw-chip kw-chip-green">Yes</span>{% else %}<span class="kw-chip">No</span>{% endif %}</td>
+                    <td>{% if r.ts %}<span class="kw-chip kw-chip-blue">TS</span>{% else %}<span class="pl-faint">w/o TS</span>{% endif %}</td>
+                    {% for v in r.limits %}<td>{{ num(v, d=2) }}</td>{% endfor %}
+                    <td>{{ num(r.zp, r.zp_err) }}</td>
+                    <td>{{ num(r.fwhm, d=2) }}</td><td>{{ num(r.airmass, d=2) }}</td><td>{{ num(r.exptime, d=0) }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+
+            {% for method, cl in phot.colors|dictsort(reverse=true) if cl %}
+            <h3 class="pl-sub">Colours ({{ method }})</h3>
+            <div class="kw-table-wrap"><table class="kw-table pl-table">
+                <thead><tr><th>Date (UTC)</th><th>MJD</th><th>Colour</th><th>Value</th></tr></thead>
+                <tbody>{% for c in cl %}<tr><td>{{ c.date[:19] }}</td><td>{{ num(c.mjd, d=3) }}</td><td><b>{{ c.color }}</b></td><td>{{ num(c.value, c.err) }}</td></tr>{% endfor %}</tbody>
+            </table></div>
+            {% endfor %}
+        </section>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+    </div>
+{% endblock %}
