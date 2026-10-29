@@ -149,9 +149,24 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-tabs a.is-on { color: var(--color-text); background: var(--sh-on); }
 .sh-tabs a.is-on .sh-ic { color: var(--color-accent); }
 @media (max-width: 1400px) { .sh-tabs a { padding: 0 12px; } }
-/* a strip that doesn't fit (shell.js adds .sh-overflow): soft edges show there is more to scroll */
-.sh-overflow { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%);
-               mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 24px), transparent 100%); }
+/* a strip that doesn't fit (shell.js adds .sh-overflow): a soft edge fades only on the side that still has more to
+   scroll to (.sh-can-l / .sh-can-r), and round arrow buttons (.sh-scroll-btn, placed by shell.js) step the strip */
+.sh-overflow { --sh-fade-l: 0px; --sh-fade-r: 0px;
+               -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--sh-fade-l), #000 calc(100% - var(--sh-fade-r)), transparent 100%);
+               mask-image: linear-gradient(90deg, transparent 0, #000 var(--sh-fade-l), #000 calc(100% - var(--sh-fade-r)), transparent 100%); }
+.sh-overflow.sh-can-l { --sh-fade-l: 36px; }
+.sh-overflow.sh-can-r { --sh-fade-r: 36px; }
+.sh-scroll-btn {
+    position: absolute; z-index: 3; box-sizing: border-box; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 1px solid var(--color-border); color: var(--color-text); cursor: pointer;
+    background: rgba(40, 40, 48, 0.62); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    transition: background-color 0.15s, opacity 0.15s;
+}
+.sh-scroll-btn[hidden] { display: none; }
+.sh-scroll-btn:hover { background: rgba(70, 70, 80, 0.8); }
+.sh-scroll-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.sh-scroll-btn .sh-ic { width: 16px; height: 16px; }
+@media (max-width: 860px) { .sh-scroll-btn { display: none; } }   /* phones swipe: the fade is enough */
 /* the account button marks where you are when the page lives in its menu (profile, settings, admin) */
 .sh-user-btn.is-here .sh-avatar { border-color: var(--color-accent); }
 
