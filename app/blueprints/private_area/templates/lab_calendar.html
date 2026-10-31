@@ -28,13 +28,11 @@
     <div class="lc-hl-cats">{{ chip(e) }}{% if e.repeat %}<span class="lc-rep" title="{{ e.repeat_label }}">{{ ic(IC_REPEAT) }}</span>{% endif %}</div>
     <button type="button" class="lc-hl-main" data-ev="{{ e.id }}">
         <span class="lc-hl-title">{{ e.title }}</span>
-        {#- a timed event's day and time are one piece that lab_calendar.js redraws in "Your time" (data-lc-when) -#}
-        {%- set when = ([] if today else [e.d.strftime('%a %d %b')]) + ([e.time_label] if e.time_label else []) -%}
-        {%- set bits = [] -%}
-        {%- if when %}{% set _ = bits.append((when|join(' · '), e.start_at.isoformat() ~ '|' ~ e.end_at.isoformat() ~ '|' ~ ('' if today else 'd')) if e.time_label else when|join(' · ')) %}{% endif -%}
+        {%- set bits = [] if today else [e.d.strftime('%a %d %b')] -%}
+        {%- if e.time_label %}{% set _ = bits.append(e.time_label) %}{% endif -%}
         {%- if e.location %}{% set _ = bits.append(e.location) %}{% endif -%}
         {%- if e.end_d != e.d %}{% set _ = bits.append('until ' ~ e.end_d.strftime('%a %d %b')) %}{% endif %}
-        <span class="lc-hl-sub">{% for b in bits %}{% if not loop.first %} · {% endif %}{% if b is string %}{{ b }}{% else %}<span data-lc-when="{{ b[1] }}">{{ b[0] }}</span>{% endif %}{% endfor %}</span>
+        <span class="lc-hl-sub">{{ bits|join(' · ') }}</span>
     </button>
     {% if today %}
     <span class="lc-hl-when is-today">{% if e.d < today_date %}Ongoing{% else %}Today{% endif %}</span>
@@ -50,7 +48,7 @@
         <aside class="lc-side">
             {% if today_events %}
             <section class="kw-panel lc-hl lc-hl-today" aria-labelledby="lcTodayT">
-                <div class="kw-panel-head"><h2 id="lcTodayT"><span class="lc-live" aria-hidden="true"></span>Today <span class="lc-hl-date" id="lcTodayDate">{{ today_date.strftime('%a %d %b') }}</span></h2></div>
+                <div class="kw-panel-head"><h2 id="lcTodayT"><span class="lc-live" aria-hidden="true"></span>Today <span class="lc-hl-date">{{ today_date.strftime('%a %d %b') }}</span></h2></div>
                 <ul class="lc-hl-list">{% for e in today_events %}{{ hl_row(e, True) }}{% endfor %}</ul>
             </section>
             {% endif %}
@@ -65,7 +63,7 @@
                     {% for d in duty_tonight %}
                     <div class="lc-duty-who"><b><button type="button" class="lc-linkbtn" data-ev="{{ d.id }}">{{ d.name }}</button></b><span class="{{ 'is-bad' if 'push off' in d.status else ('is-ok' if d.ok else '') }}">{{ d.status }}</span></div>
                     {% endfor %}
-                    <small>Push reminder at Lulin sunset, <span data-lc-clock="{{ sunset_iso }}">{{ sunset_today }}</span></small>
+                    <small>Push reminder at Lulin sunset, {{ sunset_today }}</small>
                     {% else %}
                     <b class="lc-duty-none">Nobody assigned</b>
                     {% endif %}
@@ -148,10 +146,7 @@
                         <button type="button" class="kw-seg-item is-on" data-view="month">Month</button>
                         <button type="button" class="kw-seg-item" data-view="list">List</button>
                     </div>
-                    <div class="kw-seg lc-tz" role="group" aria-label="Show times in">
-                        <button type="button" class="kw-seg-item" data-tz="ncu" title="Taiwan time (UTC+8), the observatory's clock">NCU time</button>
-                        <button type="button" class="kw-seg-item" data-tz="local">Your time</button>
-                    </div>
+                    <span class="lc-tz-tag" title="Every time on this page is NCU (Lulin) time: Taiwan, UTC+8, no daylight saving">NCU time · UTC+8</span>
                     {% if past_n %}<label class="lc-past-toggle" id="lcPastWrap"><input type="checkbox" id="lcShowPast"> Show past events ({{ past_n }})</label>{% endif %}
                     {% if q or kind != 'all' or src != 'all' %}<span class="lc-count">{{ total }} event{{ '' if total == 1 else 's' }} · <a href="{{ url_for('private_area.lab_calendar') }}">Clear filters</a></span>{% endif %}
                 </div>
@@ -175,7 +170,7 @@
                 </ul>
             </section>
             <div class="lc-timeline hide-past" id="lcList" hidden></div>
-            <p class="lc-note"><span id="lcTzNote">Times are NCU time (Taiwan, UTC+8).</span> Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>
+            <p class="lc-note">All times are NCU time (Taiwan, UTC+8). Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>
         </div>
     </div>
 </div>
@@ -228,7 +223,7 @@
             <div class="kw-field"><label for="lcFEndDate">Ends</label><input type="date" id="lcFEndDate" name="end_date"></div>
             <div class="kw-field lc-timefield"><label for="lcFEnd">Time</label><input type="time" id="lcFEnd" name="end_time" value="15:00"></div>
         </div>
-        <p class="lc-field-hint lc-form-tz" id="lcFormTz"></p>
+        <p class="lc-field-hint lc-form-tz">Times are NCU time (Taiwan, UTC+8).</p>
         <div class="lc-form-row">
             <div class="kw-field"><label for="lcFRepeat">Repeat</label>
                 <select id="lcFRepeat" name="repeat" class="kw-select">

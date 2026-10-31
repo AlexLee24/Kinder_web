@@ -65,6 +65,7 @@
 .lc-past-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--kw-text-muted); cursor: pointer; }
 .lc-past-toggle[hidden] { display: none; }
 .lc-count { font-size: 0.8rem; color: var(--kw-text-muted); }
+.lc-tz-tag { display: inline-flex; align-items: center; min-height: 28px; padding: 0 11px; border: 1px solid var(--kw-border); border-radius: 999px; font-size: 0.78rem; font-weight: 600; color: var(--kw-text-secondary); white-space: nowrap; cursor: help; }
 .lc-count a { color: var(--kw-link); }
 
 /* ── Month view ── */
