@@ -1,0 +1,99 @@
+/* Exposure Time Calculator — Kinder's Simple mode and the Simple / Advanced switch.
+   Kinder-only: CASTOR's etc.css stays a verbatim copy, so nothing here touches .castor-etc. */
+
+.etc-mode-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+.etc-mode-hint { font-size: 0.84rem; }
+[data-etc-mode-panel][hidden], .etc-mode-hint[hidden] { display: none !important; }
+.etc-advanced { margin-bottom: 16px; }
+
+/* ── Form ─────────────────────────────────────────────────────────────── */
+.etc-simple { margin-bottom: 16px; }
+.etc-simple-form .kw-panel-head h2 { font-size: 1rem; margin: 0 0 12px; color: var(--kw-text-white); }
+.etc-simple-form .etc-simple-head { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--kw-hairline); }
+.etc-simple-form .kw-select { width: 100%; }
+.etc-simple-pair { gap: 12px; }
+.etc-simple-pair .kw-field { min-width: 0; }
+.etc-simple-form small { font-size: 0.74rem; }
+.etc-simple-caveat {
+    margin: -4px 0 14px;
+    padding: 8px 12px;
+    border-radius: var(--kw-radius-md);
+    background: rgba(255, 214, 10, 0.08);
+    color: var(--kw-text-secondary);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+.etc-simple-go { width: 100%; min-height: 44px; justify-content: center; margin-top: 4px; }
+.etc-simple-go:disabled { cursor: wait; }
+
+/* ── Result ───────────────────────────────────────────────────────────── */
+.etc-simple-result { position: relative; min-height: 420px; scroll-margin-top: calc(var(--kw-nav-h) + 12px); }
+.etc-simple-empty {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    min-height: 380px;
+    color: var(--kw-text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+}
+.etc-simple-empty img { opacity: 0.9; }
+.etc-simple-result.is-idle .etc-simple-empty,
+.etc-simple-result.is-busy .etc-simple-empty { display: flex; }
+.etc-simple-result.is-idle .etc-simple-body,
+.etc-simple-result.is-busy .etc-simple-body { display: none; }
+.etc-simple-result.is-busy .etc-simple-empty img { animation: etc-simple-bob 0.9s ease-in-out infinite; }
+@keyframes etc-simple-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .etc-simple-result.is-busy .etc-simple-empty img { animation: none; } }
+/* An edit since the last answer: keep it readable, but plainly not current. */
+.etc-simple-result.is-stale .etc-simple-body { opacity: 0.45; transition: opacity 0.15s; }
+
+.etc-simple-hero { text-align: center; padding: 10px 0 20px; }
+.etc-simple-hero .kw-eyebrow { justify-content: center; }
+.etc-simple-plan {
+    margin: 6px 0 4px;
+    font-size: clamp(2.2rem, 5vw, 3.4rem);
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--kw-accent);
+    font-variant-numeric: tabular-nums;
+}
+.etc-simple-plan .etc-simple-x { margin: 0 0.2em; color: var(--kw-text-muted); font-weight: 400; }
+.etc-simple-plan.is-problem { color: var(--kw-text-white); font-size: clamp(1.5rem, 3.5vw, 2.1rem); }
+.etc-simple-sub { color: var(--kw-text-primary); font-size: 0.95rem; }
+.etc-simple-why { max-width: 560px; margin: 10px auto 0; color: var(--kw-text-muted); font-size: 0.8rem; line-height: 1.5; }
+
+.etc-simple-alerts { display: grid; gap: 8px; margin-bottom: 16px; }
+.etc-simple-alert {
+    padding: 10px 14px;
+    border-radius: var(--kw-radius-md);
+    border: 1px solid rgba(255, 214, 10, 0.35);
+    background: rgba(255, 214, 10, 0.08);
+    color: var(--kw-text-primary);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+.etc-simple-alert.is-error { border-color: rgba(255, 69, 58, 0.4); background: rgba(255, 69, 58, 0.1); }
+
+.etc-simple-result .kw-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.etc-simple-result .kw-kpi b { font-size: 1.35rem; }
+
+.etc-simple-section { margin: 4px 0 10px; font-size: 1rem; color: var(--kw-text-white); }
+.etc-simple-table td, .etc-simple-table th { font-variant-numeric: tabular-nums; }
+.etc-simple-table tr.is-rec td { background: var(--kw-accent-dim); color: var(--kw-text-white); }
+.etc-simple-table tr.is-rec td:first-child { box-shadow: inset 3px 0 0 var(--kw-accent); }
+.etc-simple-more { margin-top: 10px; }
+.etc-simple-foot { margin: 14px 0 0; color: var(--kw-text-muted); font-size: 0.76rem; line-height: 1.5; }
+
+@media (max-width: 960px) {
+    .etc-simple-result { min-height: 0; }
+    .etc-simple-empty { min-height: 240px; }
+}
+@media (max-width: 520px) {
+    .etc-simple-result .kw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .etc-simple-result .kw-kpi { padding: 12px; }
+    .etc-simple-table th, .etc-simple-table td { padding: 9px 8px; }
+}
