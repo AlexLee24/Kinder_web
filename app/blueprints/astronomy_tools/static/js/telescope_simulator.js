@@ -8,12 +8,32 @@ const ICONS = {
     chevronRight: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
 };
 
-// Initialize when page loads
+// Initialize when page loads. ?ra=&dec= (degrees or sexagesimal) [&name=] opens on that target,
+// e.g. from DETECT › LSST; the FOV frame is drawn there once the map is ready.
 document.addEventListener('DOMContentLoaded', function() {
-    initializeAladin();
+    const target = targetFromUrl();
+    if (target) {
+        document.getElementById('targetRA').value = target.raText;
+        document.getElementById('targetDEC').value = target.decText;
+        if (target.name) document.getElementById('targetName').value = target.name;
+        initializeAladin(`${target.ra} ${target.dec}`, 1);
+    } else {
+        initializeAladin();
+    }
     calculateFOV();
     calculateMosaic();
 });
+
+function targetFromUrl() {
+    const q = new URLSearchParams(window.location.search);
+    const raText = (q.get('ra') || '').trim(), decText = (q.get('dec') || '').trim();
+    if (!raText || !decText) return null;
+    const ra = parseCoordinate(raText, true);   // plain numbers are degrees, sexagesimal RA is hours
+    const dec = parseCoordinate(decText, false);
+    if (!isFinite(ra) || !isFinite(dec) || dec < -90 || dec > 90) return null;
+    return { ra: ((ra % 360) + 360) % 360, dec: dec, raText: raText, decText: decText,
+             name: (q.get('name') || '').trim().slice(0, 80) };
+}
 
 // Initialize Aladin Lite (target / fov default to the first-load view)
 function initializeAladin(target = '20 51 05.74 +30 37 32.3', fov = 10) {

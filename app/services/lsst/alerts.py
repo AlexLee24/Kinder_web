@@ -37,7 +37,7 @@ from app.db import get_db_connection
 from app.db.auth import get_setting, set_setting
 from app.paths import DATA_DIR
 from app.services.lsst import alerce_api
-from app.services.lsst.lightcurve import oid_from_internal_names, refresh_lightcurves
+from app.services.lsst.lightcurve import lightcurve_points, oid_from_internal_names, refresh_lightcurves
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +111,10 @@ def match_lens(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = LENS_RADI
 
 
 def match_desi(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = DESI_RADIUS_ARCSEC,
-               max_sep_re: float | None = DESI_MAX_SEP_RE) -> dict:
+               max_sep_re: float | None = DESI_MAX_SEP_RE, include_zwarn: bool = False) -> dict:
     """{alert index: [DESI match, ...]} nearest first, one HEALPix join for all alerts.
-    ``max_sep_re`` None keeps every galaxy in the cone."""
+    ``max_sep_re`` None keeps every galaxy in the cone; galaxies with ZWARN != 0 (unreliable
+    redshift) are left out unless ``include_zwarn``."""
     if not len(ra):
         return {}
     radius = np.radians(radius_arcsec / 3600.0)
@@ -142,6 +143,8 @@ def match_desi(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = DESI_RADI
         shape_r = _f(r[8])
         sep_re = float(s) / max(shape_r or 0.0, 0.5)
         if s > radius_arcsec or (max_sep_re is not None and sep_re > max_sep_re):
+            continue
+        if not include_zwarn and r[6]:
             continue
         out.setdefault(int(r[0]), []).append({
             "targetid": int(r[1]), "ra": r[2], "dec": r[3], "sep": round(float(s), 2),
@@ -361,6 +364,9 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
                 if k % (alerce_api.PAGE_SIZE * 10) == 0:
                     log.line(f"  {cls}: {k} objects so far…", force=False)
             log.line(f"  {cls}: {len(items) - n0} objects ({time.monotonic() - t0:.0f} s)")
+        pruned = prune_zwarn_matches()
+        if pruned:
+            log.line(f"Removed ZWARN DESI matches from {pruned} stored alert(s)")
         log.line(f"Cross-matching {len(items)} objects with Lens and DESI, linking to TNS…", phase="matching")
         res = process_objects(items)
         log.line(f"  {res.get('lens', 0)} near a lens, {res.get('desi', 0)} near a DESI galaxy; "
@@ -375,6 +381,13 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
         except Exception as e:
             logger.error("event=lsst_trigger_sync_error error=%s", e)
             log.line(f"  Daily Trigger rename failed: {e}")
+        log.line("Latest / brightest absolute magnitudes of recent alerts…", phase="magnitudes")
+        try:
+            res["mags"] = refresh_mags(progress=lambda m: log.line("  " + m, force=False))
+            log.line(f"  {res['mags']['computed']} computed, {res['mags']['failed']} failed")
+        except Exception as e:
+            logger.error("event=lsst_mags_error error=%s", e)
+            log.line(f"  Magnitudes failed: {e}")
         res.update(window=[round(mjd_from, 4), round(now, 4)], seconds=round(time.monotonic() - started, 1))
         logger.info("event=lsst_watch_done %s", " ".join(f"{k}={v}" for k, v in res.items()))
         if refresh_lc:
@@ -447,6 +460,120 @@ def _run_quietly(lookback_days):
         pass   # already logged and written to the run status
 
 
+# --------------------------------------------------------------------------- magnitudes
+
+MAGS_DAYS = 60.0               # keep magnitudes current for alerts first seen this recently
+MAGS_PER_RUN = 300             # light curves downloaded per run for magnitudes (~1 s each)
+
+
+def _redshift_for(alert: dict) -> tuple[float | None, str | None]:
+    """DETECT's order: the DESI host's redshift (nearest in half-light radii, ZWARN == 0),
+    else the TNS redshift of the linked object."""
+    for m in alert.get("desi_matches") or []:
+        z = _f(m.get("z"))
+        if z and z > 0 and not m.get("zwarn"):
+            return z, "DESI"
+    z = _f(alert.get("tns_redshift"))
+    if z and z > 0:
+        return z, "TNS"
+    return None, None
+
+
+def compute_mags(alert: dict, points: list[tuple]) -> dict:
+    """Latest and brightest LSST point (binned psfFlux > 0) and their absolute magnitudes,
+    with DETECT's absolute_magnitude (cosmology, K = 2.5 log(1+z), SFD extinction)."""
+    from function.module.screening import absolute_magnitude  # DETECT, on sys.path via app.paths
+    out = {"n_points": len(points), "latest_mag": None, "latest_filter": None, "latest_mjd": None,
+           "peak_mag": None, "peak_filter": None, "peak_mjd": None, "abs_latest": None, "abs_peak": None}
+    z, z_source = _redshift_for(alert)
+    out["z_used"], out["z_source"] = z, z_source
+    if not points:
+        return out
+    latest = max(points, key=lambda p: p[0])
+    peak = min(points, key=lambda p: p[1])
+    out.update(latest_mjd=latest[0], latest_mag=round(latest[1], 3), latest_filter=latest[3],
+               peak_mjd=peak[0], peak_mag=round(peak[1], 3), peak_filter=peak[3])
+    if z:
+        out["abs_latest"] = absolute_magnitude(latest[1], z, alert["ra"], alert["dec"], latest[3]).get("abs_mag")
+        out["abs_peak"] = absolute_magnitude(peak[1], z, alert["ra"], alert["dec"], peak[3]).get("abs_mag")
+    return out
+
+
+def save_mags(oid: int, mags: dict, lastmjd: float | None = None) -> None:
+    cols = ("latest_mag", "latest_filter", "latest_mjd", "peak_mag", "peak_filter", "peak_mjd",
+            "abs_latest", "abs_peak", "z_used", "z_source", "n_points")
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE transient.lsst_alerts SET {', '.join(c + ' = %s' for c in cols)}, "
+                    "mags_lastmjd = COALESCE(%s, mags_lastmjd), mags_at = now() WHERE oid = %s",
+                    [mags.get(c) for c in cols] + [lastmjd, int(oid)])
+        conn.commit()
+
+
+def _alerts_for_mags(oids=None) -> list[dict]:
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        where, params = ("a.oid = ANY(%s)", [list(oids)]) if oids is not None else \
+                        ("a.firstmjd >= %s AND (a.n_lens > 0 OR a.n_desi > 0)", [_now_mjd() - MAGS_DAYS])
+        cur.execute(f"""
+            SELECT a.oid, a.ra, a.dec, a.desi_matches, a.lastmjd, a.mags_lastmjd, a.mags_at,
+                   o.redshift AS tns_redshift
+              FROM transient.lsst_alerts a LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
+             WHERE {where}
+        """, params)
+        return cur.fetchall()
+
+
+def refresh_mags(progress=None, max_objects: int = MAGS_PER_RUN) -> dict:
+    """Recompute magnitudes of recent alerts that have a newer ALeRCE point than last time
+    (or none yet). New watch hits come first."""
+    say = progress or (lambda _m: None)
+    rows = {int(r["oid"]): r for r in _alerts_for_mags()}
+    latest = alerce_api.objects_by_oid(rows.keys()) if rows else {}
+    due = []
+    for oid, r in rows.items():
+        lastmjd = _f((latest.get(oid) or {}).get("lastmjd")) or _f(r["lastmjd"])
+        if r["mags_at"] is None or (lastmjd and (r["mags_lastmjd"] is None or lastmjd > r["mags_lastmjd"] + 1e-6)):
+            due.append((r["mags_at"] is not None, -(lastmjd or 0), oid, lastmjd))
+    due.sort()
+    todo = due[:max_objects]
+    say(f"{len(rows)} recent alerts; {len(due)} need magnitudes; computing {len(todo)}"
+        + (f" (the other {len(due) - len(todo)} next run)" if len(due) > len(todo) else ""))
+    done = failed = 0
+    for n, (_new, _neg, oid, lastmjd) in enumerate(todo, 1):
+        try:
+            mags = compute_mags(rows[oid], lightcurve_points(alerce_api.lightcurve(oid)))
+            save_mags(oid, mags, lastmjd)
+            done += 1
+        except Exception as e:
+            failed += 1
+            logger.warning("event=lsst_mags_failed oid=%s error=%s", oid, e)
+        if n % 50 == 0:
+            say(f"{n}/{len(todo)} magnitudes done")
+    return {"recent": len(rows), "due": len(due), "computed": done, "failed": failed}
+
+
+def prune_zwarn_matches() -> int:
+    """Drop DESI matches with ZWARN != 0 from stored alerts (they are no longer matched).
+    Returns how many alerts changed; an alert left with no match drops out of the lists."""
+    changed = 0
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute("""SELECT oid, lens_matches, desi_matches FROM transient.lsst_alerts
+                        WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(desi_matches) m
+                                       WHERE COALESCE((m->>'zwarn')::bigint, 0) <> 0)""")
+        for r in cur.fetchall():
+            desi = [m for m in r["desi_matches"] if not m.get("zwarn")]
+            best = (r["lens_matches"] or desi or [None])[0]
+            cur.execute("""UPDATE transient.lsst_alerts SET desi_matches = %s, n_desi = %s, best_sep = %s,
+                                  best_z = %s, mags_at = NULL, updated_at = now() WHERE oid = %s""",
+                        (json.dumps(desi), len(desi), best and best["sep"],
+                         best and (best.get("z") if "z" in best else best.get("z_lens")), r["oid"]))
+            changed += 1
+        conn.commit()
+    return changed
+
+
 # --------------------------------------------------------------------------- Daily Trigger
 
 TRIGGER_PREFIX = "LSST-"          # obs.targets name of an LSST object without a TNS name: LSST-<oid>
@@ -507,7 +634,7 @@ def search_alerts(q: str, limit: int = 15) -> list[dict]:
                    o.name AS obj_name, o.name_prefix, o.type AS obj_type
               FROM transient.lsst_alerts a
               LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
-             WHERE a.oid::text LIKE %s
+             WHERE a.oid::text LIKE %s AND (a.n_lens > 0 OR a.n_desi > 0)
              ORDER BY a.firstmjd DESC
              LIMIT %s
         """, (digits + "%", limit))
@@ -528,6 +655,12 @@ def crossmatch_oid(oid: int) -> dict:
     if not item:
         return {"found": False, "oid": oid}
     res = process_objects([item], desi_classes=None)
+    if res.get("stored"):
+        try:
+            row = _alerts_for_mags([oid])[0]
+            save_mags(oid, compute_mags(row, lightcurve_points(alerce_api.lightcurve(oid))), _f(item.get("lastmjd")))
+        except Exception as e:
+            logger.warning("event=lsst_mags_failed oid=%s error=%s", oid, e)
     return {"found": True, "oid": oid, "stored": bool(res.get("stored")), "item": item}
 
 
@@ -543,13 +676,14 @@ def parse_coords(ra_text: str, dec_text: str) -> tuple[float, float]:
 
 def cone_search(ra: float, dec: float, *, lens_radius: float = LENS_RADIUS_ARCSEC,
                 desi_radius: float = DESI_RADIUS_ARCSEC, desi_max_sep_re: float | None = DESI_MAX_SEP_RE,
-                tns_radius: float = 10.0, alerce_radius: float | None = 10.0, max_rows: int = 50) -> dict:
+                include_zwarn: bool = False, tns_radius: float = 10.0, alerce_radius: float | None = 10.0,
+                max_rows: int = 50) -> dict:
     """Everything Kinder knows around one position, for /detect/crossmatch. Nothing is stored.
     A radius of 0 / None skips that source."""
     ra_a, dec_a = np.array([ra]), np.array([dec])
     out = {"ra": ra, "dec": dec, "errors": {}}
     out["lens"] = match_lens(ra_a, dec_a, lens_radius).get(0, [])[:max_rows] if lens_radius else None
-    out["desi"] = (match_desi(ra_a, dec_a, desi_radius, desi_max_sep_re).get(0, [])[:max_rows]
+    out["desi"] = (match_desi(ra_a, dec_a, desi_radius, desi_max_sep_re, include_zwarn).get(0, [])[:max_rows]
                    if desi_radius else None)
     out["tns"] = _near_tns(ra, dec, tns_radius, max_rows) if tns_radius else None
     out["lsst_watch"] = _near_watch(ra, dec, max(tns_radius or 0, 5.0), max_rows)
@@ -616,7 +750,7 @@ def _within(ra, dec, rows, radius, limit, extra=None) -> list[dict]:
 def list_alerts(view: str = "pre_tns", catalog: str = "all", days: float = 14.0, limit: int = 500,
                 oid: int | None = None) -> list[dict]:
     """Rows for /detect/lsst; with ``oid`` just that object, whatever the filters."""
-    clauses = ["a.firstmjd >= %s"]
+    clauses = ["a.firstmjd >= %s", "(a.n_lens > 0 OR a.n_desi > 0)"]
     params = [_now_mjd() - days]
     if oid is not None:
         clauses, params = ["a.oid = %s"], [int(oid)]
@@ -663,7 +797,7 @@ def summary(days: float = 14.0) -> dict:
                    count(*) FILTER (WHERE obj_id IS NOT NULL),
                    count(*) FILTER (WHERE n_lens > 0),
                    count(*) FILTER (WHERE n_desi > 0)
-              FROM transient.lsst_alerts WHERE firstmjd >= %s
+              FROM transient.lsst_alerts WHERE firstmjd >= %s AND (n_lens > 0 OR n_desi > 0)
         """, (_now_mjd() - days,))
         pre, linked, n_lens, n_desi = cur.fetchone()
         cur.execute("SELECT count(*), max(refreshed_at), count(*) FILTER (WHERE error IS NOT NULL) "

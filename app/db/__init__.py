@@ -741,6 +741,14 @@ def _ensure_extra_tables():
         """)
         _run("CREATE INDEX IF NOT EXISTS lsst_alerts_firstmjd_idx ON transient.lsst_alerts (firstmjd)")
         _run("CREATE INDEX IF NOT EXISTS lsst_alerts_obj_idx ON transient.lsst_alerts (obj_id)")
+        # Latest / brightest LSST point and their absolute magnitudes (DETECT's formula), kept
+        # current by the watch whenever ALeRCE has a newer point (app/services/lsst/alerts.py).
+        for col, typ in (("latest_mag", "DOUBLE PRECISION"), ("latest_filter", "TEXT"), ("latest_mjd", "DOUBLE PRECISION"),
+                         ("peak_mag", "DOUBLE PRECISION"), ("peak_filter", "TEXT"), ("peak_mjd", "DOUBLE PRECISION"),
+                         ("abs_latest", "DOUBLE PRECISION"), ("abs_peak", "DOUBLE PRECISION"),
+                         ("z_used", "DOUBLE PRECISION"), ("z_source", "TEXT"), ("n_points", "INT"),
+                         ("mags_lastmjd", "DOUBLE PRECISION"), ("mags_at", "TIMESTAMPTZ")):
+            _run(f"ALTER TABLE transient.lsst_alerts ADD COLUMN IF NOT EXISTS {col} {typ}")
         # transient.lsst_lc_state — last ALeRCE lastmjd seen per TNS object, so the hourly
         # LSST light-curve refresh only re-downloads objects with new points.
         _run("""
