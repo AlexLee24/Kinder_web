@@ -9,47 +9,13 @@
     if (!page) return;
     let DATA = { series: {}, occ: [] };
     try { DATA = JSON.parse($('lcData').textContent) || DATA; } catch (e) { /* empty calendar */ }
-    // ── time zone: the server sends NCU time (Taiwan, UTC+8); "Your time" shows timed events in the browser's zone ──
-    const NCU_TZ = 'Asia/Taipei';
-    const LOCAL_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; } })();
-    let LOCAL = false;
-    try { LOCAL = localStorage.getItem('kinder-lc-tz') === 'local'; } catch (e) { /* storage blocked */ }
-    function zoned(when, tz) {          // {date: 'YYYY-MM-DD', time: 'HH:MM'} of an instant in a zone (undefined = the browser's)
-        const o = {};
-        new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-            .formatToParts(typeof when === 'string' ? new Date(when) : when).forEach((p) => { o[p.type] = p.value; });
-        return { date: o.year + '-' + o.month + '-' + o.day, time: (o.hour === '24' ? '00' : o.hour) + ':' + o.minute };
-    }
-    const shownAt = (when) => zoned(when, LOCAL ? undefined : NCU_TZ);
-    function utcOffset() {
-        const m = -new Date().getTimezoneOffset(), a = Math.abs(m);
-        return 'UTC' + (m < 0 ? '−' : '+') + Math.floor(a / 60) + (a % 60 ? ':' + String(a % 60).padStart(2, '0') : '');
-    }
-    const ZONE_LABEL = LOCAL ? 'your time (' + (LOCAL_TZ ? LOCAL_TZ.replace(/_/g, ' ') + ', ' : '') + utcOffset() + ')' : 'NCU time (Taiwan, UTC+8)';
-    function timeLabel(startIso, endIso) {   // like the server's time_label, in the shown zone
-        const a = shownAt(startIso), b = shownAt(endIso), md = (d) => d.slice(5, 7) + '/' + d.slice(8);
-        if (a.date === b.date) return new Date(endIso) > new Date(startIso) ? a.time + '–' + b.time : a.time;
-        return md(a.date) + ' ' + a.time + ' – ' + md(b.date) + ' ' + b.time;
-    }
-    // a wall time typed in the form, in the browser's zone → the NCU date and time the server takes
-    function toNcu(date, time) {
-        const d = date.split('-').map(Number), t = (time || '00:00').split(':').map(Number);
-        return zoned(new Date(d[0], d[1] - 1, d[2], t[0], t[1]), NCU_TZ);
-    }
-    const NCU_TODAY = DATA.today;
-    const ME = page.dataset.email, IS_ADMIN = !!page.dataset.admin, TODAY = LOCAL ? zoned(new Date()).date : DATA.today;
+    const ME = page.dataset.email, IS_ADMIN = !!page.dataset.admin, TODAY = DATA.today;
     // One object per occurrence: the series fields plus this occurrence's dates
     const EVENTS = {}, OCC = [];
     DATA.occ.forEach((o) => {
         const s = DATA.series[o[1]];
         if (!s) return;
         const e = Object.assign({}, s, { id: o[0], db_id: o[1], date: o[2], end_date: o[3], time_label: o[4], start: o[5], end: o[6] });
-        if (LOCAL && !e.all_day) {      // a timed event moves to the browser's day and clock (all-day ones keep their dates)
-            const a = shownAt(e.start), b = shownAt(e.end);
-            e.date = a.date;
-            e.end_date = b.date < a.date ? a.date : b.date;
-            e.time_label = timeLabel(e.start, e.end);
-        }
         e.is_past = e.end_date < TODAY;
         e.is_today = e.date <= TODAY && TODAY <= e.end_date;
         EVENTS[e.id] = e;
@@ -77,7 +43,7 @@
         }));
     }
 
-    // ── dates (strings are dates in the shown zone, so no time-zone maths below) ──
+    // ── dates (strings are Taiwan dates, so no time-zone maths in the browser) ──
     const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const parts = (iso) => iso.slice(0, 10).split('-').map(Number);
@@ -87,7 +53,7 @@
     function whenText(e) {
         const range = e.end_date !== e.date ? fmtDay(e.date) + ' – ' + fmtDay(e.end_date) : fmtDay(e.date);
         if (e.all_day) return range + ' · all day';
-        return e.end_date !== e.date ? fmtDay(e.date) + ' ' + shownAt(e.start).time + ' – ' + fmtDay(e.end_date) + ' ' + shownAt(e.end).time
+        return e.end_date !== e.date ? fmtDay(e.date) + ' ' + e.start.slice(11, 16) + ' – ' + fmtDay(e.end_date) + ' ' + e.end.slice(11, 16)
             : range + ' · ' + e.time_label;
     }
     const lc = (x) => String(x || '').toLowerCase();
@@ -95,12 +61,12 @@
     // Trigger duty: when the sunset push for one night went out (or why not)
     function dutyNote(e) {
         if (e.category !== 'trigger' || !e.assignee_email) return '';
-        const r = (DATA.reminders || {})[NCU_TODAY + '|' + e.assignee_email];
+        const r = (DATA.reminders || {})[TODAY + '|' + e.assignee_email];
         const OUT = { sent: (n) => 'Reminder pushed to ' + n + ' device' + (n === 1 ? '' : 's') + ' at sunset',
             already_sent: () => 'No reminder needed: the SLT trigger was already sent', no_device: () => 'Reminder under the bell only: no device with Trigger reminders on',
             pending: () => 'Sending the reminder…' };
         if (e.is_today && r) return OUT[r.outcome] ? OUT[r.outcome](r.devices) : '';
-        if (e.is_today) return 'Push reminder at Lulin sunset tonight, ' + (LOCAL && DATA.sunset_iso ? shownAt(DATA.sunset_iso).time : DATA.sunset_today);
+        if (e.is_today) return 'Push reminder at Lulin sunset tonight, ' + DATA.sunset_today;
         if (!e.is_past) return 'Push reminder at Lulin sunset on each night of the duty';
         return '';
     }
@@ -209,10 +175,7 @@
             F('date').value = e.series_start.slice(0, 10);
             F('end_date').value = e.all_day ? addDays(e.series_end.slice(0, 10), -1) : e.series_end.slice(0, 10);
             if (e.all_day && F('end_date').value < F('date').value) F('end_date').value = F('date').value;
-            if (!e.all_day) {
-                const a = shownAt(e.series_start), b = shownAt(e.series_end);
-                F('date').value = a.date; F('end_date').value = b.date; F('start_time').value = a.time; F('end_time').value = b.time;
-            }
+            if (!e.all_day) { F('start_time').value = e.series_start.slice(11, 16); F('end_time').value = e.series_end.slice(11, 16); }
             F('assignee').value = e.assignee_email || '';
             F('repeat').value = e.repeat || '';
             F('repeat_until').value = e.repeat_until || '';
@@ -275,10 +238,6 @@
             remind: F('remind').value,
             location: F('location').value, url: F('url').value, description: F('description').value,
         };
-        if (LOCAL && !body.all_day && body.category !== 'trigger') {     // typed in the browser's zone; the server takes NCU time
-            const a = toNcu(body.date, body.start_time), b = toNcu(body.end_date, body.end_time || body.start_time);
-            Object.assign(body, { date: a.date, start_time: a.time, end_date: b.date, end_time: b.time });
-        }
         const id = F('id').value;
         const save = $('lcFormSave');
         save.disabled = true;
@@ -460,29 +419,6 @@
         past.checked = store.get('kinder-lc-past') === '1';
         list.classList.toggle('hide-past', !past.checked);
         past.addEventListener('change', () => { list.classList.toggle('hide-past', !past.checked); store.set('kinder-lc-past', past.checked ? '1' : '0'); });
-    }
-    // NCU time / Your time: remembered per browser; switching redraws the page
-    document.querySelectorAll('[data-tz]').forEach((b) => {
-        const local = b.dataset.tz === 'local';
-        b.classList.toggle('is-on', local === LOCAL);
-        b.setAttribute('aria-pressed', local === LOCAL ? 'true' : 'false');
-        if (local) b.title = 'Your browser\'s time zone: ' + (LOCAL_TZ ? LOCAL_TZ.replace(/_/g, ' ') + ', ' : '') + utcOffset();
-        b.addEventListener('click', () => {
-            if (local === LOCAL) return;
-            store.set('kinder-lc-tz', local ? 'local' : 'ncu');
-            location.reload();
-        });
-    });
-    $('lcTzNote').textContent = 'Times are ' + ZONE_LABEL + '.';
-    $('lcFormTz').textContent = 'Times in ' + ZONE_LABEL + (LOCAL ? '; Kinder keeps them as NCU time.' : '.');
-    if (LOCAL) {                        // the side panels are drawn by the server in NCU time
-        const shortDay = (iso) => { const d = asUTC(iso); return WD[d.getUTCDay()] + ' ' + String(d.getUTCDate()).padStart(2, '0') + ' ' + MON[d.getUTCMonth()]; };
-        document.querySelectorAll('[data-lc-when]').forEach((n) => {
-            const [a, b, withDay] = n.dataset.lcWhen.split('|');
-            n.textContent = (withDay ? shortDay(shownAt(a).date) + ' · ' : '') + timeLabel(a, b);
-        });
-        document.querySelectorAll('[data-lc-clock]').forEach((n) => { n.textContent = shownAt(n.dataset.lcClock).time; });
-        if ($('lcTodayDate') && TODAY !== NCU_TODAY) $('lcTodayDate').textContent += ' · NCU date';   // the panel lists NCU today
     }
     const q = new URLSearchParams(location.search);
     setView(q.get('q') ? 'list' : (store.get('kinder-lc-view') === 'list' ? 'list' : 'month'));

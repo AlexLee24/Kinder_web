@@ -193,8 +193,6 @@
 .lc-form.is-duty label .lc-duty-only { display: inline; }
 .lc-form.is-duty .lc-form-row.lc-not-duty { display: none; }
 .lc-form .lc-form-row.lc-not-duty { display: grid; }
-.lc-form-tz { margin: -4px 0 4px; }
-.lc-form.is-allday .lc-form-tz { display: none; }
 .lc-field-hint { align-self: end; margin: 0 0 6px; font-size: 0.76rem; line-height: 1.4; color: var(--kw-text-muted); }
 .lc-week-pick { font-size: 0.8rem; font-weight: 600; color: #F2C94C; }
 .lc-form-hint { margin: -6px 0 14px; font-size: 0.78rem; line-height: 1.55; color: var(--kw-text-muted); }
