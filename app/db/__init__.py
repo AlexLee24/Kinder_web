@@ -749,6 +749,66 @@ def _ensure_extra_tables():
                          ("z_used", "DOUBLE PRECISION"), ("z_source", "TEXT"), ("n_points", "INT"),
                          ("mags_lastmjd", "DOUBLE PRECISION"), ("mags_at", "TIMESTAMPTZ")):
             _run(f"ALTER TABLE transient.lsst_alerts ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # DETECT on LSST alerts (app/services/lsst/detect.py): the binned LSST light curve the
+        # screen reads, and the reviewer's status (Inbox / Follow-up / Snoozed / Finish).
+        for col, typ in (("lc_points", "JSONB"), ("review_status", "TEXT NOT NULL DEFAULT 'Inbox'"),
+                         ("review_by", "TEXT"), ("review_at", "TIMESTAMPTZ")):
+            _run(f"ALTER TABLE transient.lsst_alerts ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # transient.lsst_detect_matches — DETECT's DESI / Lens candidates of one LSST alert,
+        # same match_data as transient.cross_matches (host rule, host_user decisions).
+        _run("""
+            CREATE TABLE IF NOT EXISTS transient.lsst_detect_matches (
+                match_id       BIGSERIAL PRIMARY KEY,
+                oid            BIGINT NOT NULL REFERENCES transient.lsst_alerts(oid) ON DELETE CASCADE,
+                crossmatch_uid TEXT NOT NULL,
+                catalog        TEXT,
+                separation     DOUBLE PRECISION,
+                is_host        BOOLEAN NOT NULL DEFAULT FALSE,
+                redshift       DOUBLE PRECISION,
+                match_ra       DOUBLE PRECISION,
+                match_dec      DOUBLE PRECISION,
+                match_data     JSONB,
+                flag           BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_date   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                UNIQUE (oid, crossmatch_uid)
+            )
+        """)
+        # transient.lsst_detect_screen — DETECT's verdict per LSST alert (columns of detect_screen).
+        _run("""
+            CREATE TABLE IF NOT EXISTS transient.lsst_detect_screen (
+                oid               BIGINT PRIMARY KEY REFERENCES transient.lsst_alerts(oid) ON DELETE CASCADE,
+                name              TEXT,
+                score             INTEGER NOT NULL DEFAULT 0,
+                host_status       TEXT,
+                tags              TEXT[] NOT NULL DEFAULT '{}',
+                flags             JSONB,
+                host_targetid     BIGINT,
+                z                 DOUBLE PRECISION,
+                z_source          TEXT,
+                abs_mag           REAL,
+                abs_mag_band      TEXT,
+                abs_mag_source    TEXT,
+                abs_mag_discovery REAL,
+                peak_mag          REAL,
+                peak_filter       TEXT,
+                peak_mjd          DOUBLE PRECISION,
+                center_sep_arcsec REAL,
+                d_dlr             REAL,
+                offset_kpc        REAL,
+                review_day        DATE,
+                screened_lastmjd  DOUBLE PRECISION,
+                image_key         TEXT,
+                run_date          TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        _run("CREATE INDEX IF NOT EXISTS lsst_detect_screen_day_idx ON transient.lsst_detect_screen (review_day)")
+        _run("""
+            CREATE TABLE IF NOT EXISTS transient.lsst_target_images (
+                oid        BIGINT PRIMARY KEY REFERENCES transient.lsst_alerts(oid) ON DELETE CASCADE,
+                image_data BYTEA NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
         # transient.lsst_lc_state — last ALeRCE lastmjd seen per TNS object, so the hourly
         # LSST light-curve refresh only re-downloads objects with new points.
         _run("""

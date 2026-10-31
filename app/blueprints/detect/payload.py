@@ -278,18 +278,22 @@ def _screen_public(s: dict | None) -> dict:
         'run_date': s.get('run_date'),
     }
 
-def _assemble_detect_payload(selected_date):
+def _assemble_detect_payload(selected_date, metadata=None, page_data=None, current_path='/detect'):
+    """The review page for one day. DETECT › LSST passes its own ``metadata`` / ``page_data``
+    (same shapes as get_detect_metadata / get_detect_page_data, app/services/lsst/detect.py)."""
     t0 = time.perf_counter()
 
     # ── Metadata: available_dates + daily_counts (cached, 1 conn or 0 if fresh) ──
-    metadata = get_detect_metadata()
+    if metadata is None:
+        metadata = get_detect_metadata()
     available_dates = metadata.get('available_dates', [])
     daily_counts    = metadata.get('daily_counts', [])
     screen_counts   = (metadata.get('screen_counts') or {}).get(selected_date) or {}
     t_meta = time.perf_counter()
 
     # ── All page data in a SINGLE DB connection (cross-matches + details + phot + screen) ──
-    page_data = get_detect_page_data(selected_date)
+    if page_data is None:
+        page_data = get_detect_page_data(selected_date)
     results        = page_data.get('results', [])
     details_batch  = page_data.get('details_batch', {})
     latest_phot    = page_data.get('latest_phot', {})
@@ -559,7 +563,7 @@ def _assemble_detect_payload(selected_date):
         'old_list':       old_list,
         'unmatched_recent_days': UNMATCHED_RECENT_DAYS,
         'counts':         counts,
-        'current_path':   '/detect',
+        'current_path':   current_path,
         'available_dates': available_dates,
         'daily_counts':   daily_counts,
         'selected_date':  selected_date,

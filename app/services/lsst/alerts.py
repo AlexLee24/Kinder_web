@@ -9,8 +9,10 @@
 3. Link to TNS: oid inside a ``LSST-AP-DO-<oid>`` internal name, else a TNS object within
    ``TNS_RADIUS_ARCSEC``. Unlinked rows are re-tried every run, so an alert moves to
    "in TNS" as soon as the hourly TNS import brings it in.
-4. Upsert matched objects into ``transient.lsst_alerts`` (shown on /detect/lsst), then
-   refresh the LSST light curves of linked TNS objects (app/services/lsst/lightcurve.py).
+4. Upsert matched objects into ``transient.lsst_alerts`` (shown on /detect/lsst), keep their
+   magnitudes current, run DETECT on them (app/services/lsst/detect.py, reviewed on
+   /detect/lsst/review), then refresh the LSST light curves of linked TNS objects
+   (app/services/lsst/lightcurve.py).
 
 Scheduled hourly at :25 UTC (app/services/jobs/scheduler.py); disable with LSST_WATCH=0.
 """
@@ -388,6 +390,15 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
         except Exception as e:
             logger.error("event=lsst_mags_error error=%s", e)
             log.line(f"  Magnitudes failed: {e}")
+        log.line("DETECT: host rule, score, tags and images…", phase="DETECT")
+        try:
+            from app.services.lsst import detect
+            res["detect"] = detect.screen_alerts(progress=lambda m: log.line("  " + m, force=False))
+            d = res["detect"]
+            log.line(f"  {d['screened']} screened, {d['images']} image(s), {d['failed']} failed")
+        except Exception as e:
+            logger.error("event=lsst_detect_error error=%s", e)
+            log.line(f"  DETECT failed: {e}")
         res.update(window=[round(mjd_from, 4), round(now, 4)], seconds=round(time.monotonic() - started, 1))
         logger.info("event=lsst_watch_done %s", " ".join(f"{k}={v}" for k, v in res.items()))
         if refresh_lc:
@@ -499,14 +510,18 @@ def compute_mags(alert: dict, points: list[tuple]) -> dict:
     return out
 
 
-def save_mags(oid: int, mags: dict, lastmjd: float | None = None) -> None:
+def save_mags(oid: int, mags: dict, lastmjd: float | None = None, points: list[tuple] | None = None) -> None:
+    """Store the magnitudes, and the binned light curve itself (DETECT's screen reads it)."""
     cols = ("latest_mag", "latest_filter", "latest_mjd", "peak_mag", "peak_filter", "peak_mjd",
             "abs_latest", "abs_peak", "z_used", "z_source", "n_points")
+    lc = None if points is None else json.dumps([[round(m, 6), round(mag, 4), round(e, 4), f]
+                                                 for m, mag, e, f in points])
     with get_db_connection() as conn:
         cur = conn.cursor()
         cur.execute(f"UPDATE transient.lsst_alerts SET {', '.join(c + ' = %s' for c in cols)}, "
+                    "lc_points = COALESCE(%s::jsonb, lc_points), "
                     "mags_lastmjd = COALESCE(%s, mags_lastmjd), mags_at = now() WHERE oid = %s",
-                    [mags.get(c) for c in cols] + [lastmjd, int(oid)])
+                    [mags.get(c) for c in cols] + [lc, lastmjd, int(oid)])
         conn.commit()
 
 
@@ -542,8 +557,8 @@ def refresh_mags(progress=None, max_objects: int = MAGS_PER_RUN) -> dict:
     done = failed = 0
     for n, (_new, _neg, oid, lastmjd) in enumerate(todo, 1):
         try:
-            mags = compute_mags(rows[oid], lightcurve_points(alerce_api.lightcurve(oid)))
-            save_mags(oid, mags, lastmjd)
+            points = lightcurve_points(alerce_api.lightcurve(oid))
+            save_mags(oid, compute_mags(rows[oid], points), lastmjd, points)
             done += 1
         except Exception as e:
             failed += 1
@@ -658,9 +673,15 @@ def crossmatch_oid(oid: int) -> dict:
     if res.get("stored"):
         try:
             row = _alerts_for_mags([oid])[0]
-            save_mags(oid, compute_mags(row, lightcurve_points(alerce_api.lightcurve(oid))), _f(item.get("lastmjd")))
+            points = lightcurve_points(alerce_api.lightcurve(oid))
+            save_mags(oid, compute_mags(row, points), _f(item.get("lastmjd")), points)
         except Exception as e:
             logger.warning("event=lsst_mags_failed oid=%s error=%s", oid, e)
+        try:
+            from app.services.lsst import detect
+            detect.screen_alerts(oids=[oid])
+        except Exception as e:
+            logger.warning("event=lsst_detect_failed oid=%s error=%s", oid, e)
     return {"found": True, "oid": oid, "stored": bool(res.get("stored")), "item": item}
 
 
@@ -767,16 +788,20 @@ def list_alerts(view: str = "pre_tns", catalog: str = "all", days: float = 14.0,
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(f"""
             SELECT a.*, o.name AS obj_name, o.name_prefix, o.status AS obj_status, o.type AS obj_type,
-                   s.refreshed_at AS lc_refreshed_at, s.n_points AS lc_points
+                   s.refreshed_at AS lc_refreshed_at, s.n_points AS lc_n_points,
+                   d.score AS detect_score, d.tags AS detect_tags, d.host_status AS detect_host_status
               FROM transient.lsst_alerts a
               LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
               LEFT JOIN transient.lsst_lc_state s ON s.obj_id = a.obj_id
+              LEFT JOIN transient.lsst_detect_screen d ON d.oid = a.oid
              WHERE {' AND '.join(clauses)}
              ORDER BY (a.n_lens > 0) DESC, a.firstmjd DESC
              LIMIT %s
         """, params)
         rows = cur.fetchall()
     for r in rows:
+        r.pop("lc_points", None)
+        r["detect_tags"] = [t for t in (r["detect_tags"] or []) if not t.startswith("Host-")]
         r["alerce_url"] = alerce_api.explorer_url(r["oid"])
         r["first_utc"] = _mjd_to_utc(r["firstmjd"])
         r["last_utc"] = _mjd_to_utc(r["lastmjd"])

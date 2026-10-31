@@ -1,7 +1,9 @@
 {% extends '_base.html' %}
 {#- DETECT review page (/detect?detect_results=<date>): verdicts, the review queue and one card per object.
-    On the DETECT navigation group (Results | Archives): the date picker sits left in the page bar, the tracker and help toggles right. -#}
-{% block title %}DETECT Review — {{ selected_date }} · Kinder{% endblock %}
+    On the DETECT navigation group (Results | Archives): the date picker sits left in the page bar, the tracker and help toggles right.
+    DETECT › LSST renders the same page (/detect/lsst/review): per-object obj_href / image_url / links,
+    and detect_api for the JS endpoints (static/js/detect_results.js, API). -#}
+{% block title %}{{ page_title|default('DETECT Review') }} — {{ selected_date }} · Kinder{% endblock %}
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/marshal/marshal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_results.css') }}">
@@ -202,7 +204,7 @@
                             </td>
                             {% endif %}
 
-                            <td><a href="/object/{{ t.target_name }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a></td>
+                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a></td>
 
                             <td style="text-align:center;">
                                 {% if t.tns_info and t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>
@@ -268,7 +270,7 @@
                 <div class="card-header-bar">
                     <div class="card-header-info">
                         <h3 class="card-obj-title">
-                            <a href="/object/{{ t.target_name }}" target="_blank" rel="noopener noreferrer">
+                            <a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" target="_blank" rel="noopener noreferrer">
                                 {{ t.target_name }}<span class="card-extlink">↗</span>
                             </a>
                             <span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}" title="DETECT priority score">score {{ t.score }}</span>
@@ -281,6 +283,7 @@
                             {% if t.tns_info.tns_z is not none %}<span><strong>TNS z</strong> {{ "%.4f"|format(t.tns_info.tns_z) }}</span>{% endif %}
                             {% if sc.run_date %}<span><strong>DETECT run</strong> {{ sc.run_date }}</span>{% endif %}
                             {% if t.wake_note %}<span>{{ wake_chip(t.wake_note) }}</span>{% endif %}
+                            {% for label, href in t.links or [] %}<a class="kw-chip" href="{{ href }}" target="_blank" rel="noopener noreferrer">{{ label }} ↗</a>{% endfor %}
                         </div>
                     </div>
                     <div class="card-header-actions">
@@ -341,7 +344,7 @@
                 <div class="card-body-grid">
                     <div class="card-image-col">
                         <div class="card-section-label">LS DR10 · host model</div>
-                        <img {% if loop.first %}src{% else %}data-src{% endif %}="{{ url_for('detect.detect_image', target_name=t.target_name) }}"
+                        <img {% if loop.first %}src{% else %}data-src{% endif %}="{{ t.image_url or url_for('detect.detect_image', target_name=t.target_name) }}"
                              alt="LS DR10 {{ t.target_name }}"
                              class="card-finder-img lazy-img"
                              onclick="openImgModal(this)"
@@ -422,7 +425,7 @@
             <details class="unmatched-section" {% if not results %}open{% endif %}>
                 <summary>
                     <span class="hs-badge hs-none">○ No host</span>
-                    Screened, nothing within the search radius — <strong>{{ none_list|length }}</strong> objects (discovered in the last {{ unmatched_recent_days }} days) · no decision needed
+                    Screened, nothing within the search radius — <strong>{{ none_list|length }}</strong> objects{% if unmatched_recent_days %} (discovered in the last {{ unmatched_recent_days }} days){% endif %} · no decision needed
                 </summary>
                 <div class="summary-table-wrap" style="margin-top:12px;">
                     <table class="results-table unmatched-table">
@@ -432,7 +435,7 @@
                         <tbody>
                             {% for n in none_list %}
                             <tr>
-                                <td><a href="/object/{{ n.target_name }}" class="obj-name-link">{{ n.target_name }}</a></td>
+                                <td><a href="{{ n.obj_href or ('/object/' ~ n.target_name) }}" class="obj-name-link">{{ n.target_name }}</a></td>
                                 <td>{% if n.type %}<span class="badge-type">{{ n.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}</td>
                                 <td class="td-date">{{ n.discoverydate }}</td>
                                 <td style="text-align:center;"><span class="score-chip score-{{ 'hi' if n.score >= 7 else 'mid' if n.score >= 3 else 'lo' if n.score >= 0 else 'neg' }}">{{ n.score }}</span></td>
@@ -462,7 +465,7 @@
                         <tbody>
                             {% for n in old_list %}
                             <tr>
-                                <td><a href="/object/{{ n.target_name }}" class="obj-name-link">{{ n.target_name }}</a></td>
+                                <td><a href="{{ n.obj_href or ('/object/' ~ n.target_name) }}" class="obj-name-link">{{ n.target_name }}</a></td>
                                 <td>{% if n.type %}<span class="badge-type">{{ n.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}</td>
                                 <td class="td-date">{{ n.discoverydate }}</td>
                                 <td style="text-align:center;"><span class="score-chip score-{{ 'hi' if n.score >= 7 else 'mid' if n.score >= 3 else 'lo' if n.score >= 0 else 'neg' }}">{{ n.score }}</span></td>
@@ -507,5 +510,6 @@
 {% endblock %}
 
 {% block scripts %}
+    {% if detect_api %}<script>window.DETECT_API = {{ detect_api|tojson }};</script>{% endif %}
     <script defer src="{{ url_for('static', filename='js/detect_results.js') }}"></script>
 {% endblock %}

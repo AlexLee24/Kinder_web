@@ -14,6 +14,9 @@
         .lsst-oid { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.8rem; }
         .lsst-match + .lsst-match { margin-top: 4px; }
         .lsst-actions { white-space: nowrap; }
+        .lsst-detect { min-width: 110px; }
+        .lsst-table td small.lsst-tag { display: inline-block; margin: 2px 4px 0 0; padding: 0 5px; border-radius: 4px;
+                                        background: rgba(255, 255, 255, 0.06); color: var(--kw-text-secondary); }
         .lsst-actions .kw-btn + .kw-btn { margin-left: 4px; }
         .lsst-lc-row td { padding: 0 14px 14px; background: rgba(255, 255, 255, 0.02); }
         .lsst-lc { width: 100%; }
@@ -157,7 +160,7 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
         <table class="kw-table lsst-table">
             <thead><tr>
                 <th>LSST object</th><th class="hide-sm">RA / Dec</th><th>First detected (UTC)</th>
-                <th>Class</th><th class="hide-sm">N det</th><th>M latest / peak</th><th>Lens</th><th>DESI</th><th>TNS</th><th></th>
+                <th>Class</th><th title="DETECT score and tags (LSST Review)">DETECT</th><th class="hide-sm">N det</th><th>M latest / peak</th><th>Lens</th><th>DESI</th><th>TNS</th><th></th>
             </tr></thead>
             <tbody>
             {% for r in rows %}
@@ -168,6 +171,8 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
                 <td class="num">{{ r.first_utc }}</td>
                 <td><span class="kw-chip{% if r.class_name == 'SN' %} kw-chip-gold{% elif r.class_name == 'AGN' %} kw-chip-purple{% else %} kw-chip-blue{% endif %}">{{ r.class_name }}</span>
                     <small>p = {{ "%.2f"|format(r.probability or 0) }}</small></td>
+                <td class="lsst-detect">{% if r.detect_score is not none %}<span class="kw-chip{% if r.detect_score >= 7 %} kw-chip-gold{% elif r.detect_score < 0 %} kw-chip-red{% endif %}" title="DETECT priority score">{{ r.detect_score }}</span>
+                    {% for t in r.detect_tags %}<small class="lsst-tag">{{ t }}</small>{% endfor %}{% else %}<small>not screened yet</small>{% endif %}</td>
                 <td class="num hide-sm">{{ r.n_det }}</td>
                 <td class="num lsst-absmag" data-oid="{{ r.oid }}">{{ absmag(r) }}</td>
                 <td>
@@ -185,10 +190,11 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
                 <td>
                     {% if r.obj_name %}
                     <a href="/object/{{ r.obj_name }}">{{ r.name_prefix or '' }} {{ r.obj_name }}</a>
-                    <small>{{ r.obj_status or '' }}{% if r.obj_type %} · {{ r.obj_type }}{% endif %} · by {{ r.tns_link }}{% if r.lc_points is not none %} · {{ r.lc_points }} LSST pts{% endif %}</small>
+                    <small>{{ r.obj_status or '' }}{% if r.obj_type %} · {{ r.obj_type }}{% endif %} · by {{ r.tns_link }}{% if r.lc_n_points is not none %} · {{ r.lc_n_points }} LSST pts{% endif %}</small>
                     {% else %}<span class="kw-chip kw-chip-red">not in TNS</span>{% endif %}
                 </td>
                 <td class="lsst-actions">
+                    {% if r.detect_score is not none %}<a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('detect.lsst_review', oid=r.oid) }}" title="DETECT card: verdict, image, host candidates">Review</a>{% endif %}
                     <button type="button" class="kw-btn kw-btn-sm lsst-lc-btn" data-oid="{{ r.oid }}">LC</button>
                     <a class="kw-btn kw-btn-sm" href="{{ sim_url(r) }}" target="_blank" rel="noopener noreferrer" title="View in Telescope Simulator">Sim</a>
                     <a class="kw-btn kw-btn-sm" href="{{ desi_url(r.ra, r.dec) }}" target="_blank" rel="noopener noreferrer" title="Legacy Survey viewer with DESI DR1 spectra">DESI</a>
@@ -256,7 +262,7 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
         if (next && next.classList.contains('lsst-lc-row')) { next.remove(); return; }
         const row = document.createElement('tr');
         row.className = 'lsst-lc-row';
-        row.innerHTML = '<td colspan="10"><div class="lsst-lc"><div class="lsst-lc-msg">Loading light curve from ALeRCE…</div></div></td>';
+        row.innerHTML = '<td colspan="11"><div class="lsst-lc"><div class="lsst-lc-msg">Loading light curve from ALeRCE…</div></div></td>';
         tr.after(row);
         const el = row.querySelector('.lsst-lc');
         fetch('/api/detect/lsst/lightcurve/' + btn.dataset.oid)

@@ -16,6 +16,22 @@
 
 const CAN_EDIT = document.body.dataset.canEdit === 'true';
 
+// Endpoints; DETECT › LSST's review page (/detect/lsst/review) overrides them via window.DETECT_API.
+const API = Object.assign({
+    setHost:        '/api/set_host',
+    unsetHost:      '/api/unset_host',
+    markNoHost:     '/api/mark_no_host',
+    setStatus:      '/api/set_object_status',
+    toggleFlag:     '/api/toggle_flag',
+    tracker:        '/api/detect/followup_tracker',
+    lightcurve:     '/api/detect/lightcurve/',                 // + name
+    fetchPhot:      '/api/object/{name}/fetch_photometry',
+    fetchPhotLabel: 'Fetching from TNS…',
+    objectUrl:      '/object/',                                // + name (tracker links)
+    dateUrl:        '/detect?detect_results=',                 // + date
+    homeUrl:        '/detect',
+}, window.DETECT_API || {});
+
 // Escape server data before it goes into innerHTML / attribute values.
 function _esc(value) {
     if (value === null || value === undefined) return '';
@@ -170,7 +186,7 @@ function fetchCardLightcurve(targetName, cardIdx) {
     if (!plotDiv) return;
 
     if (plotDiv._fullLayout) { try { Plotly.purge(plotDiv); } catch (_) {} }
-    plotDiv.innerHTML = '<div class="card-lc-loading"><span class="tracker-spinner"></span>&nbsp;Fetching from TNS…</div>';
+    plotDiv.innerHTML = `<div class="card-lc-loading"><span class="tracker-spinner"></span>&nbsp;${_esc(API.fetchPhotLabel)}</div>`;
     if (statusEl) { statusEl.textContent = ''; statusEl.className = 'card-lc-status'; }
     if (fetchBtn) {
         fetchBtn.disabled = true;
@@ -179,7 +195,7 @@ function fetchCardLightcurve(targetName, cardIdx) {
     }
     _lcCache.delete(targetName);
 
-    fetch(`/api/object/${encodeURIComponent(targetName)}/fetch_photometry`, {
+    fetch(API.fetchPhot.replace('{name}', encodeURIComponent(targetName)), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }
     })
     .then(r => r.json())
@@ -218,7 +234,7 @@ function _fetchLC(targetName, cardIdx, forceRefresh) {
 
     if (typeof Plotly === 'undefined') { setTimeout(() => _fetchLC(targetName, cardIdx, forceRefresh), 200); return; }
 
-    const url = `/api/detect/lightcurve/${encodeURIComponent(targetName)}` + (forceRefresh ? '?refresh=1' : '');
+    const url = API.lightcurve + encodeURIComponent(targetName) + (forceRefresh ? '?refresh=1' : '');
     fetch(url)
         .then(r => r.json())
         .then(data => {
@@ -332,7 +348,7 @@ function loadTracker(force) {
         _trackerLoaded = false;
         body.innerHTML = '<div class="tracker-loading"><span class="tracker-spinner"></span> Loading…</div>';
     }
-    fetch('/api/detect/followup_tracker')
+    fetch(API.tracker)
         .then(r => r.json())
         .then(data => {
             if (!data.success) { body.innerHTML = '<div class="tracker-empty">Failed to load tracker.</div>'; return; }
@@ -358,7 +374,7 @@ function loadTracker(force) {
             tracker.forEach(item => {
                 const src = item.abs_mag_source === 'peak' ? `peak (${item.abs_mag_band || ''})` : item.abs_mag_source === 'discovery' ? 'discovery mag' : '';
                 html += `<tr>
-                    <td><a href="/object/${encodeURIComponent(item.name || '')}" class="tracker-obj-link" target="_blank" rel="noopener noreferrer">${_esc(item.name)}</a></td>
+                    <td><a href="${_esc(item.url || API.objectUrl + encodeURIComponent(item.name || ''))}" class="tracker-obj-link" target="_blank" rel="noopener noreferrer">${_esc(item.name)}</a></td>
                     <td style="text-align:center;">${item.score != null ? _scoreChip(item.score) : '—'}</td>
                     <td>${item.host_status ? _hostBadge(item.host_status) : '—'}</td>
                     <td class="td-tags">${_tagChips(item.tags)}</td>
@@ -381,7 +397,7 @@ function toggleFlag(id, element) {
     event.stopPropagation();
     const newFlag = !element.classList.contains('active');
     element.style.opacity = '0.5';
-    fetch('/api/toggle_flag', {
+    fetch(API.toggleFlag, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, flag: newFlag })
     })
@@ -396,7 +412,7 @@ function toggleFlag(id, element) {
 
 function changeDate(sel) {
     const date = sel.value;
-    window.location.href = date ? `/detect?detect_results=${date}` : '/detect';
+    window.location.href = date ? API.dateUrl + encodeURIComponent(date) : API.homeUrl;
 }
 function refreshPage() { location.reload(); }
 
@@ -442,8 +458,8 @@ function _decide(name, status) {
     const pinned  = card.dataset.hostPinned === 'true';
     _setCardBusy(card, true);
     const req = (hostId && !pinned)
-        ? _post('/api/set_host', { match_id: hostId, target_name: name, redshift: card.dataset.hostZ || null, status })
-        : _post('/api/set_object_status', { target_name: name, status });
+        ? _post(API.setHost, { match_id: hostId, target_name: name, redshift: card.dataset.hostZ || null, status })
+        : _post(API.setStatus, { target_name: name, status });
     req.then(d => {
         if (!d.success) { _toast('Failed: ' + (d.message || 'unknown'), 'error'); return; }
         if (hostId) { card.dataset.hostPinned = 'true'; _markPinnedRow(card, hostId); }
@@ -460,7 +476,7 @@ function decideNoHost(name) {
     const card = _cardByName(name);
     if (!card) return;
     _setCardBusy(card, true);
-    _post('/api/mark_no_host', { target_name: name })
+    _post(API.markNoHost, { target_name: name })
         .then(d => {
             if (!d.success) { _toast('Failed: ' + (d.message || 'unknown'), 'error'); return; }
             card.dataset.hostMatchId = '';
@@ -487,7 +503,7 @@ function decideReopen(name) {
         _toast(`${name} is already pending.`); return;
     }
     _setCardBusy(card, true);
-    _post('/api/unset_host', { target_name: name })
+    _post(API.unsetHost, { target_name: name })
         .then(d => {
             if (!d.success) { _toast('Failed: ' + (d.message || 'unknown'), 'error'); return; }
             // the decision is withdrawn; whatever row is host right now stays the host
@@ -508,7 +524,7 @@ function pickHost(name, matchId, z) {
     const card = _cardByName(name);
     if (!card) return;
     _setCardBusy(card, true, 'Setting host…');
-    _post('/api/set_host', { match_id: matchId, target_name: name, redshift: z || null, status: 'keep' })
+    _post(API.setHost, { match_id: matchId, target_name: name, redshift: z || null, status: 'keep' })
         .then(d => {
             if (!d.success) { _toast('Failed: ' + (d.message || 'unknown'), 'error'); return; }
             card.dataset.hostMatchId = String(matchId);
@@ -688,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const panel = document.getElementById('followupTrackerPanel');
     if (panel) panel.classList.add('collapsed');
-    fetch('/api/detect/followup_tracker')
+    fetch(API.tracker)
         .then(r => r.json())
         .then(data => {
             const badge = document.getElementById('trackerCountBadge');
