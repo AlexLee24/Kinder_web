@@ -45,6 +45,17 @@
 
     {% if error %}<div class="kw-panel lsst-empty">Could not load LSST alerts: {{ error }}</div>{% endif %}
 
+    {% if oid %}
+    <p class="lsst-run-note">Showing LSST object <b class="lsst-oid">{{ oid }}</b> only ·
+        <a href="{{ url_for('detect.detect_lsst') }}">Show all LSST alerts</a></p>
+    {% if not rows and not error %}
+    <div class="kw-panel lsst-empty">
+        This LSST object is not in the DETECT watch list (no Lens / DESI match, or not read yet).
+        <a href="{{ alerce_url }}" target="_blank" rel="noopener noreferrer">Open it on ALeRCE</a>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <div class="kw-kpis">
         <a class="kw-kpi{% if stats.pre_tns %} is-alert{% endif %}" href="{{ qs(v='pre_tns') }}">
             <span class="kw-kpi-label">Not in TNS</span><b>{{ stats.pre_tns or 0 }}</b><small>last {{ days }} days</small></a>
@@ -125,7 +136,7 @@
             </tbody>
         </table>
     </div>
-    {% elif not error %}
+    {% elif not error and not oid %}
     <div class="kw-panel lsst-empty">No LSST objects for these filters in the last {{ days }} days.</div>
     {% endif %}
 </div>

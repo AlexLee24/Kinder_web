@@ -1,15 +1,17 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — targets (split from private_area_routes.py)."""
-from flask import session, request, jsonify
-from app.db.obs import (
-    save_observation_target,
-    get_observation_targets,
-    delete_observation_target,
-    update_observation_target,
-    _parse_ra_deg,
-    _parse_dec_deg,
-)
 import logging
+
+from flask import jsonify, request, session
+
 from app.core.auth import login_required
+from app.db.obs import (
+    _parse_dec_deg,
+    _parse_ra_deg,
+    delete_observation_target,
+    get_observation_targets,
+    save_observation_target,
+    update_observation_target,
+)
 
 logger = logging.getLogger(__name__)
 from . import private_area_bp
@@ -32,20 +34,20 @@ def _coord_error(data):
 @private_area_bp.route('/api/targets', methods=['GET', 'POST'])
 @login_required
 def api_observation_targets():
-        
+
     is_great_lab = session['user'].get('is_great_lab_member', False)
     is_admin = session['user'].get('is_admin', False)
-    
+
     if request.method == 'GET':
         if not can_access_page('daily_trigger'):
             return jsonify({'error': 'Access denied'}), 403
         targets = get_observation_targets(active_only=False)
         return jsonify({'success': True, 'targets': targets})
-        
+
     elif request.method == 'POST':
         if not (is_great_lab or is_admin):
             return jsonify({'error': 'Forbidden'}), 403
-            
+
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'error': 'Invalid JSON body'}), 400
@@ -71,7 +73,7 @@ def api_observation_targets():
             note_gl=data.get('note_gl', ''),
             user_email=session['user']['email']
         )
-        
+
         if new_id:
             return jsonify({'success': True, 'id': new_id})
         else:
@@ -80,12 +82,12 @@ def api_observation_targets():
 @private_area_bp.route('/api/targets/<int:target_id>', methods=['DELETE'])
 @login_required
 def api_observation_target_delete(target_id):
-        
+
     is_great_lab = session['user'].get('is_great_lab_member', False)
     is_admin = session['user'].get('is_admin', False)
     if not (is_great_lab or is_admin):
         return jsonify({'error': 'Forbidden'}), 403
-        
+
     if delete_observation_target(target_id):
         return jsonify({'success': True})
     else:
@@ -94,17 +96,17 @@ def api_observation_target_delete(target_id):
 @private_area_bp.route('/api/targets/<int:target_id>/toggle', methods=['PUT'])
 @login_required
 def api_observation_target_toggle(target_id):
-        
+
     is_great_lab = session['user'].get('is_great_lab_member', False)
     is_admin = session['user'].get('is_admin', False)
     if not (is_great_lab or is_admin):
         return jsonify({'error': 'Forbidden'}), 403
-        
+
     data = request.json
     is_active = data.get('is_active')
     if is_active is None:
         return jsonify({'error': 'is_active field required'}), 400
-        
+
     from app.db.obs import update_observation_target_status
     if update_observation_target_status(target_id, bool(is_active)):
         return jsonify({'success': True})
@@ -114,12 +116,12 @@ def api_observation_target_toggle(target_id):
 @private_area_bp.route('/api/targets/<int:target_id>', methods=['PUT'])
 @login_required
 def api_observation_target_update(target_id):
-        
+
     is_great_lab = session['user'].get('is_great_lab_member', False)
     is_admin = session['user'].get('is_admin', False)
     if not (is_great_lab or is_admin):
         return jsonify({'error': 'Forbidden'}), 403
-        
+
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return jsonify({'error': 'Invalid JSON body'}), 400
@@ -159,6 +161,7 @@ def api_update_target_mags():
         return jsonify({'error': 'Forbidden'}), 403
 
     import threading
+
     from app.services.photometry.phot_scheduler import update_target_mags
 
     def _run():
@@ -168,15 +171,34 @@ def api_update_target_mags():
     t.start()
     return jsonify({'success': True, 'message': 'Magnitude update started'})
 
+def _lsst_search_results(q, seen):
+    """LSST objects from DETECT › LSST whose oid matches q ("LSST-1711…" or plain digits). One that
+    already has a TNS name is offered under that name, so the target is created as the TNS object."""
+    from app.services.lsst import alerts as lsst_alerts
+    out = []
+    for a in lsst_alerts.search_alerts(q):
+        if a['obj_name']:
+            prefix, name, kind = a['name_prefix'] or '', a['obj_name'], a['obj_type'] or 'AT'
+        else:
+            prefix, name, kind = '', f"{lsst_alerts.TRIGGER_PREFIX}{a['oid']}", f"LSST {a['class_name'] or ''}".strip()
+        if prefix + name in seen:
+            continue
+        seen.add(prefix + name)
+        out.append({'name': name, 'prefix': prefix, 'ra': a['ra'], 'dec': a['dec'], 'mag': None,
+                    'type': kind, 'internal_names': f"LSST oid {a['oid']}", 'lsst_oid': str(a['oid']),
+                    'reporting_group': '', 'source_group': '', 'redshift': None})
+    return out
+
+
 @private_area_bp.route('/api/search_target')
 @login_required
 def api_search_target():
     """Search TNS objects by name for autocomplete"""
-    
+
     q = request.args.get('q', '').strip()
     if len(q) < 2:
         return jsonify({'results': []})
-    
+
     try:
         from app.db.transient import search_tns_objects
         rows = search_tns_objects(search_term=q, limit=15, sort_by='discoverydate', sort_order='desc',
@@ -197,6 +219,7 @@ def api_search_target():
                 'type': r.get('type') or '',
                 'internal_names': r.get('internal_names') or '',
             })
+        results.extend(_lsst_search_results(q, {(r['prefix'] + r['name']) for r in results}))
         return jsonify({'results': results})
     except Exception as e:
         logger.error('Search error: %s', e)

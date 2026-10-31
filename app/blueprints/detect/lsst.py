@@ -1,6 +1,7 @@
 """DETECT › LSST (/detect/lsst): ALeRCE LSST objects near a Lens or DESI galaxy,
 split into "not in TNS yet" and "in TNS" (app/services/lsst/alerts.py fills the table)."""
 import logging
+import re
 import threading
 
 from flask import flash, jsonify, redirect, render_template, request, session, url_for
@@ -41,16 +42,33 @@ def detect_lsst():
     except ValueError:
         days = 14
     days = days if days in _DAYS else 14
+    oid = request.args.get('oid', type=int)
     try:
-        rows = alerts.list_alerts(view=view, catalog=catalog, days=days)
+        rows = alerts.list_alerts(view=view, catalog=catalog, days=days, oid=oid)
         stats = alerts.summary(days=days)
         error = None
     except Exception as e:  # table missing / DB down: show the page, not a 500
         logger.error('DETECT LSST page: %s', e)
         rows, stats, error = [], {}, str(e)
     return render_template('detect_lsst.html', rows=rows, stats=stats, error=error,
-                           view=view, catalog=catalog, days=days, day_options=_DAYS,
+                           view=view, catalog=catalog, days=days, day_options=_DAYS, oid=oid,
+                           alerce_url=alerce_api.explorer_url(oid) if oid else None,
                            current_path='/detect/lsst')
+
+
+@detect_bp.route('/detect/lsst/<int:oid>')
+def detect_lsst_object(oid):
+    """Where a Daily Trigger target called LSST-<oid> points: its object page once TNS has
+    it, else its row on DETECT › LSST."""
+    denied = _member_or_redirect()
+    if denied:
+        return denied
+    from app.db import get_db_connection
+    with get_db_connection() as conn:
+        tns = alerts.tns_name_for_oid(conn.cursor(), oid)
+    if tns:
+        return redirect('/object/' + re.sub(r'^(AT|SN)', '', tns))
+    return redirect(url_for('detect.detect_lsst', oid=oid))
 
 
 @detect_bp.route('/api/detect/lsst/lightcurve/<int:oid>')
