@@ -146,6 +146,7 @@
                         <button type="button" class="kw-seg-item is-on" data-view="month">Month</button>
                         <button type="button" class="kw-seg-item" data-view="list">List</button>
                     </div>
+                    <span class="lc-tz-tag" title="Every time on this page is NCU (Lulin) time: Taiwan, UTC+8, no daylight saving">NCU time · UTC+8</span>
                     {% if past_n %}<label class="lc-past-toggle" id="lcPastWrap"><input type="checkbox" id="lcShowPast"> Show past events ({{ past_n }})</label>{% endif %}
                     {% if q or kind != 'all' or src != 'all' %}<span class="lc-count">{{ total }} event{{ '' if total == 1 else 's' }} · <a href="{{ url_for('private_area.lab_calendar') }}">Clear filters</a></span>{% endif %}
                 </div>
@@ -169,7 +170,7 @@
                 </ul>
             </section>
             <div class="lc-timeline hide-past" id="lcList" hidden></div>
-            <p class="lc-note">Times are Taiwan time (UTC+8). Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>
+            <p class="lc-note">All times are NCU time (Taiwan, UTC+8). Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>
         </div>
     </div>
 </div>
@@ -222,6 +223,7 @@
             <div class="kw-field"><label for="lcFEndDate">Ends</label><input type="date" id="lcFEndDate" name="end_date"></div>
             <div class="kw-field lc-timefield"><label for="lcFEnd">Time</label><input type="time" id="lcFEnd" name="end_time" value="15:00"></div>
         </div>
+        <p class="lc-field-hint lc-form-tz">Times are NCU time (Taiwan, UTC+8).</p>
         <div class="lc-form-row">
             <div class="kw-field"><label for="lcFRepeat">Repeat</label>
                 <select id="lcFRepeat" name="repeat" class="kw-select">

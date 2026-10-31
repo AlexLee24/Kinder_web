@@ -53,8 +53,8 @@
     function whenText(e) {
         const range = e.end_date !== e.date ? fmtDay(e.date) + ' – ' + fmtDay(e.end_date) : fmtDay(e.date);
         if (e.all_day) return range + ' · all day';
-        return e.end_date !== e.date ? fmtDay(e.date) + ' ' + e.start.slice(11, 16) + ' – ' + fmtDay(e.end_date) + ' ' + e.end.slice(11, 16)
-            : range + ' · ' + e.time_label;
+        return (e.end_date !== e.date ? fmtDay(e.date) + ' ' + e.start.slice(11, 16) + ' – ' + fmtDay(e.end_date) + ' ' + e.end.slice(11, 16)
+            : range + ' · ' + e.time_label) + ' NCU (UTC+8)';
     }
     const lc = (x) => String(x || '').toLowerCase();
     const canEdit = (e) => e.source === 'lab' && (IS_ADMIN || lc(e.created_by) === lc(ME) || (e.assignee_email && lc(e.assignee_email) === lc(ME)));
