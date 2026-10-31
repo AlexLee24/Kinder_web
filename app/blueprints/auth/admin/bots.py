@@ -11,20 +11,9 @@ from . import admin_bp
 from .helpers import audit
 
 
-def _setup_problems():
-    """What each bot is missing right now (settings, folders), so the page shows it before the first run."""
-    from app.services.bots import astronote, gcn, obs_log, reduction
-    from app.services.bots import detect as detect_bot
-    raw = obs_log.raw_dir()
-    out = {'gcn': gcn.setup_problem(), 'astronote': astronote.setup_problem(), 'reduction': reduction.setup_problem(),
-           'detect': detect_bot.setup_problem(),
-           'obs_log': '' if raw and raw.is_dir() else f'Raw frame folder not found: {raw or "(not set)"} — set OBS_RAW_DIR or REDUCTION_PIPELINE_DIR.'}
-    return {k: v for k, v in out.items() if v}
-
-
 def _view():
-    from app.services.bots import reduction, status
-    bots = status.view(debug=config.DEBUG, setup=_setup_problems())
+    from app.services.bots import reduction, setup_problems, status
+    bots = status.view(debug=config.DEBUG, setup=setup_problems())
     for b in bots:
         if b['id'] == 'reduction':
             b['schedule'] = reduction.schedule_label()

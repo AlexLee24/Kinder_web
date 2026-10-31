@@ -4,7 +4,8 @@
     gcn.notices.einstein_probe.wxt.alert   → name EPt<yymmdd><a,b,…>, SLT script, Lulin visibility plot;
                                              Slack: Lulin night (10–22 UTC) SLACK_CHANNEL_ID_CONTROL_ROOM,
                                              otherwise SLACK_CHANNEL_ID_ToO with "We can trigger … tonight";
-                                             both also to SLACK_CHANNEL_ID_EP_COPY when set; email to EP_EMAIL_TO
+                                             both also to SLACK_CHANNEL_ID_EP_COPY when set; email to EP_EMAIL_TO;
+                                             first of all published for the Lulin robot (robot.py)
 
 Started by ``start()`` as a daemon thread in the background-jobs process. Credentials and channels from kinder.env.
 Outputs in app/data/: gcn.json / ep.json (latest alerts), ep_observing_track.jpg, target_objects.txt (EP names),
@@ -252,14 +253,10 @@ def ep_message(name, ra, dec, lulin_night):
     return msg
 
 
-def _ep_plot(date, name, ra, dec):
-    from app.services.planning import obsplan as obs
-    target = obs.create_ephem_target(f'{name}\nRA: {ra}\nDEC: {dec}', ra, dec)
-    lulin = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-    obs.render_visibility_plot([target], lulin, date, 'Asia/Taipei', str(PLOT_PATH))
-    if not PLOT_PATH.is_file() or PLOT_PATH.stat().st_size == 0:
-        raise RuntimeError('the plot file is missing or empty')
-    return PLOT_PATH
+def _ep_plot(name, ra, dec):
+    """The same Lulin visibility plot as a Daily / Direct Trigger (tonight, Moon distance in the legend)."""
+    from app.services.planning.trigger_send import render_trigger_plot
+    return render_trigger_plot([{'name': name, 'ra': ra, 'dec': dec}], savepath=str(PLOT_PATH), label=name)
 
 
 def handle_ep(raw, client, sent):
@@ -281,13 +278,14 @@ def handle_ep(raw, client, sent):
     lulin_night = 10 <= now.hour < 22              # Lulin (UTC+8) 18:00–06:00
     name = _next_ep_name(yymmdd)
     _add_target(name)
+    from . import robot  # first: the Lulin robot polls for it (GET /api/v1/robot/alert)
+    robot_id = robot.publish(uid or f'ep_{name}', 'einstein_probe', name, ra, dec, slt_script(name, ra, dec),
+                             trigger_time=trigger_time, log=log)
     text = ep_message(name, ra, dec, lulin_night)
 
-    plot = None
-    try:
-        plot = _ep_plot(now.strftime('%Y-%m-%d'), name, ra, dec)
-    except Exception as e:
-        log.warning('EP visibility plot failed: %s', e)
+    plot = _ep_plot(name, ra, dec)
+    if not plot:
+        log.warning('EP visibility plot failed for %s (see the web log)', name)
 
     main = _env('SLACK_CHANNEL_ID_CONTROL_ROOM') if lulin_night else _env('SLACK_CHANNEL_ID_ToO')
     _send_slack(client, main, text, plot)
@@ -301,7 +299,8 @@ def handle_ep(raw, client, sent):
     _append_entry(EP_JSON, {'received_at': now.isoformat(timespec='seconds'), 'object_name': name, 'ra': ra, 'dec': dec,
                             'trigger_time': trigger_time, 'script': slt_script(name, ra, dec)})
     status.event(BOT, f'Einstein Probe alert {name} at RA {ra}, Dec {dec}'
-                      f' → {"control room (night)" if lulin_night else "ToO (day)"}')
+                      f' → {"control room (night)" if lulin_night else "ToO (day)"}'
+                      + (f', robot alert #{robot_id}' if robot_id else ''))
 
 
 # ── listener ──────────────────────────────────────────────────────────────────

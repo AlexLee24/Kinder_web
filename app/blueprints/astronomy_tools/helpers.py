@@ -1,11 +1,11 @@
 """Astronomy tools, planners, LC plotter, CASTOR ETC, finding chart and the public REST API — helpers (split from astronomy_tools_routes.py)."""
 import os
 import re
+
 import matplotlib
 from flask import request
 
 from app.core import rate_limit
-
 
 matplotlib.use('Agg')
 
@@ -118,6 +118,15 @@ _API_DOCS = {
             },
             'example': '/api/objects/2025wny',
             'example_auth': '/api/objects/2025wny?api_key=YOUR_KEY',
+        },
+        'GET /api/v1/robot/alert': {
+            'description': 'For the Lulin observing robot: at most one alert, the newest active and unexpired one '
+                           '(Einstein Probe for now), with its ACP script; alert is null when there is none. Run it '
+                           'only when its id is larger than the one you ran last (ids only grow). Rate limit: 60 req/min.',
+            'params': {},
+            'returns': 'alert{id, uid, source, name, telescope, ra, dec, trigger_time, created_at, expires_at, status, '
+                       'observable_tonight, max_alt_deg, moon_sep_deg, script, script_sha256} or null',
+            'example': '/api/v1/robot/alert',
         },
         'GET /api/visibility/image': {
             'description': 'Nightly visibility (altitude vs time) plot returned as JPEG. Rate limit: 1 req/15s.',

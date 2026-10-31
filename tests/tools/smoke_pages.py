@@ -23,7 +23,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 os.environ.setdefault('DETECT_IN_WEB', '1')
 
-BASE_URL = 'http://localhost:8000'
+# kinder.env (or KINDER_ENV_FILE) sets APP_BASE_URL; the Host check only admits that host
+# (plus localhost:PORT in DEBUG), so requests and the session cookie must use it.
+from app.config import config  # noqa: E402
+
+BASE_URL = config.APP_BASE_URL.rstrip('/')
 BP = os.path.join(ROOT, 'app', 'blueprints')
 
 EXCLUDE = {
@@ -89,7 +93,9 @@ def _samples():
         files = sorted(glob.glob(pattern))
         return os.path.basename(files[0]) if files else default
 
-    s['share_id'] = first(os.path.join(ROOT, 'app/data/shared_plots/*.json'), 'none.json')[:-5]
+    # newest share: an expired one answers 410 once and is deleted by that request (404 after)
+    shares = sorted(glob.glob(os.path.join(ROOT, 'app/data/shared_plots/*.json')), key=os.path.getmtime)
+    s['share_id'] = os.path.basename(shares[-1])[:-5] if shares else 'none'
     s['slide'] = first(os.path.join(BP, 'basic/slideshow/*.jpg'), 'x.jpg')
     gal = [f for f in sorted(glob.glob(os.path.join(BP, 'basic/gallery_uploads/*.jpg'))) if '_thumb' not in f]
     s['gallery'] = os.path.basename(gal[0]) if gal else 'x.jpg'
@@ -131,6 +137,7 @@ def build_urls(app, s):
 
 def run(out_path):
     from flask import template_rendered
+
     from app import create_app
     app = create_app(start_jobs=False)
     app.config['TESTING'] = True
@@ -147,9 +154,9 @@ def run(out_path):
         c = app.test_client()
         if user:
             now = int(time.time())
-            with c.session_transaction() as sess:
+            with c.session_transaction(base_url=BASE_URL) as sess:
                 # iat/last_seen: required by the session policy (app.core.auth)
-                sess['user'] = dict(user, iat=now, last_seen=now, session_version=0)
+                sess['user'] = dict(user, iat=now, last_seen=now, session_version=0, auth_method='google')
         res = {}
         for u in urls:
             if u.startswith(RATE_LIMITED_PREFIXES):

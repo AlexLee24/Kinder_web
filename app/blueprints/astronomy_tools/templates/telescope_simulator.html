@@ -215,17 +215,17 @@
                                     <div class="cp-field cp-field-full">
                                         <label class="cp-label">Name Search</label>
                                         <div class="cp-inline">
-                                            <input type="text" id="targetName" class="compact-input cp-ctrl" placeholder="e.g. M31, NGC 224" style="flex:1; max-width:unset;">
+                                            <input type="text" id="targetName" class="compact-input cp-ctrl" placeholder="e.g. M31, NGC 224" style="flex:1; max-width:unset;" onkeydown="if(event.key==='Enter')searchByName()">
                                             <button class="compact-btn" onclick="searchByName()">Search</button>
                                         </div>
                                     </div>
                                     <div class="cp-field">
-                                        <label class="cp-label">RA (°)</label>
-                                        <input type="number" id="targetRA" class="compact-input cp-ctrl" step="0.000001" placeholder="0.000000">
+                                        <label class="cp-label">RA</label>
+                                        <input type="text" id="targetRA" class="compact-input cp-ctrl" autocomplete="off" spellcheck="false" placeholder="83.82 or 05:35:17" onkeydown="if(event.key==='Enter')gotoCoordinates()">
                                     </div>
                                     <div class="cp-field">
-                                        <label class="cp-label">Dec (°)</label>
-                                        <input type="number" id="targetDEC" class="compact-input cp-ctrl" step="0.000001" placeholder="0.000000">
+                                        <label class="cp-label">Dec</label>
+                                        <input type="text" id="targetDEC" class="compact-input cp-ctrl" autocomplete="off" spellcheck="false" placeholder="-5.39 or -05:23:28" onkeydown="if(event.key==='Enter')gotoCoordinates()">
                                     </div>
                                     <div class="cp-field cp-field-full">
                                         <button class="compact-btn" style="width:100%;" onclick="gotoCoordinates()">Go to Coordinates</button>

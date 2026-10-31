@@ -1,6 +1,6 @@
-import os
 import json
 import logging
+import os
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
@@ -19,6 +19,7 @@ from app.config import config
 logger = logging.getLogger(__name__)
 
 from app.paths import DATA_DIR
+
 _STATUS_DIR = str(DATA_DIR)
 _STATUS_PATH = os.path.join(_STATUS_DIR, 'trigger_send_status.json')
 
@@ -34,6 +35,54 @@ def _trigger_day_key(now=None):
     if now.hour < 8:
         now = now - timedelta(days=1)
     return now.strftime('%Y-%m-%d')
+
+
+def render_trigger_plot(targets, savepath=None, label='trigger'):
+    """The Lulin visibility plot sent with a trigger (Daily / Direct Trigger, Einstein Probe alerts): tonight's
+    night (the trigger day, see _trigger_day_key) from Lulin, one track per target, Moon distance in the legend.
+
+    ``targets``: dicts with 'name', 'ra', 'dec'. Saves to ``savepath`` or, without one, to a private temp file the
+    caller deletes. Returns the path, or None when nothing is plottable or rendering fails (send the text alone)."""
+    import tempfile
+
+    from app.services.planning import obsplan as obs
+
+    target_list = []
+    for t in targets:
+        ra, dec = t.get('ra'), t.get('dec')
+        if not ra or not dec:
+            logger.warning('render_trigger_plot[%s]: %s has no RA/Dec, skipping in plot', label, t.get('name'))
+            continue
+        try:
+            target_list.append(obs.create_ephem_target(t.get('name') or 'Target', ra, dec))
+        except Exception:
+            logger.warning('render_trigger_plot[%s]: could not parse coords for %s (RA=%r DEC=%r)',
+                           label, t.get('name'), ra, dec, exc_info=True)
+    if not target_list:
+        logger.warning('render_trigger_plot[%s]: no plottable targets — sending without a plot', label)
+        return None
+
+    path = savepath
+    try:
+        if not path:
+            tf = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+            tf.close()
+            path = tf.name
+        lulin = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
+        obs.render_visibility_plot(target_list, lulin, _trigger_day_key(), 'Asia/Taipei', path, n_steps=500)
+        size = os.path.getsize(path) if os.path.isfile(path) else -1
+        if size <= 0:
+            raise RuntimeError('the plot file is missing or empty')
+        logger.info('render_trigger_plot[%s]: rendered %s (%d bytes), %d target(s) plotted', label, path, size, len(target_list))
+        return path
+    except Exception:
+        logger.exception('render_trigger_plot[%s]: render failed, %d target(s)', label, len(target_list))
+        if path and not savepath:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        return None
 
 
 @contextmanager
