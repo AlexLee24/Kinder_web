@@ -145,9 +145,11 @@ def lab_calendar():
         duty_choices={e: n for e, n in members.items()
                       if user.get('is_admin') or e.lower() == (user.get('email') or '').lower()},
         duty_weeks=duty_weeks, sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
+        sunset_iso=cal.lulin_sunset(today).isoformat(timespec='minutes'),
         cal_data={**cal.compact(evs), 'today': today.isoformat(), 'this_month': this_month.strftime('%Y-%m'),
                   'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m'),
-                  'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'), 'lot_closed_days': lot_closed_days,
+                  'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'),
+                  'sunset_iso': cal.lulin_sunset(today).isoformat(timespec='minutes'), 'lot_closed_days': lot_closed_days,
                   'reminders': {f'{d}|{e}': r for (d, e), r in reminders.items()}},
         sync=cal.sync_status(), user_email=user.get('email') or '', is_admin=bool(user.get('is_admin')))
 
