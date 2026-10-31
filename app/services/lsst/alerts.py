@@ -28,8 +28,14 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from psycopg2 import extras
 
+try:
+    import fcntl
+except ImportError:  # non-POSIX: only the per-process lock
+    fcntl = None
+
 from app.db import get_db_connection
 from app.db.auth import get_setting, set_setting
+from app.paths import DATA_DIR
 from app.services.lsst import alerce_api
 from app.services.lsst.lightcurve import oid_from_internal_names, refresh_lightcurves
 
@@ -48,9 +54,12 @@ FIRST_RUN_DAYS = 2.0
 RELINK_DAYS = 120.0                       # how long an unlinked alert keeps looking for TNS
 CURSOR_KEY = "lsst_watch_cursor_mjd"
 LAST_RUN_KEY = "lsst_watch_last_run"
+STATUS_KEY = "lsst_watch_status"          # current / last run: state, phase, log (shown on /detect/lsst)
+LOG_LINES = 200
 HEALPIX_NSIDE = 8192                      # cat.desi.healpix_8192 (NESTED)
 
 _lock = threading.Lock()
+_LOCK_FILE = str(DATA_DIR / "lsst_watch.lock")   # flock: one run per host (scheduler + gunicorn workers)
 _lens_cache = {"at": 0.0, "rows": None, "coords": None}
 
 
@@ -81,13 +90,13 @@ def _lens_catalog():
     return _lens_cache["rows"], _lens_cache["coords"]
 
 
-def match_lens(ra: np.ndarray, dec: np.ndarray) -> dict:
+def match_lens(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = LENS_RADIUS_ARCSEC) -> dict:
     """{alert index: [lens match, ...]} nearest first."""
     rows, lcoords = _lens_catalog()
     if not rows or not len(ra):
         return {}
     acoords = SkyCoord(ra * u.deg, dec * u.deg)
-    i_lens, i_alert, sep, _ = acoords.search_around_sky(lcoords, LENS_RADIUS_ARCSEC * u.arcsec)
+    i_lens, i_alert, sep, _ = acoords.search_around_sky(lcoords, radius_arcsec * u.arcsec)
     out = {}
     for il, ia, s in zip(i_lens, i_alert, sep.arcsec):
         r = rows[il]
@@ -101,11 +110,13 @@ def match_lens(ra: np.ndarray, dec: np.ndarray) -> dict:
     return out
 
 
-def match_desi(ra: np.ndarray, dec: np.ndarray) -> dict:
-    """{alert index: [DESI match, ...]} nearest first, one HEALPix join for all alerts."""
+def match_desi(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = DESI_RADIUS_ARCSEC,
+               max_sep_re: float | None = DESI_MAX_SEP_RE) -> dict:
+    """{alert index: [DESI match, ...]} nearest first, one HEALPix join for all alerts.
+    ``max_sep_re`` None keeps every galaxy in the cone."""
     if not len(ra):
         return {}
-    radius = np.radians(DESI_RADIUS_ARCSEC / 3600.0)
+    radius = np.radians(radius_arcsec / 3600.0)
     keys, pixels = [], []
     for k in range(len(ra)):
         vec = hp.ang2vec(float(ra[k]), float(dec[k]), lonlat=True)
@@ -130,7 +141,7 @@ def match_desi(ra: np.ndarray, dec: np.ndarray) -> dict:
     for r, s in zip(rows, sep):
         shape_r = _f(r[8])
         sep_re = float(s) / max(shape_r or 0.0, 0.5)
-        if s > DESI_RADIUS_ARCSEC or sep_re > DESI_MAX_SEP_RE:
+        if s > radius_arcsec or (max_sep_re is not None and sep_re > max_sep_re):
             continue
         out.setdefault(int(r[0]), []).append({
             "targetid": int(r[1]), "ra": r[2], "dec": r[3], "sep": round(float(s), 2),
@@ -236,8 +247,9 @@ def _relink_unlinked(index) -> int:
 
 # --------------------------------------------------------------------------- run
 
-def process_objects(items: list[dict]) -> dict:
-    """Cross-match + TNS-link a batch of ALeRCE list_objects rows and store the matched ones."""
+def process_objects(items: list[dict], desi_classes=DESI_CLASSES) -> dict:
+    """Cross-match + TNS-link a batch of ALeRCE list_objects rows and store the matched ones.
+    ``desi_classes`` None matches every class with DESI (a manual cross-match)."""
     uniq = {}
     for it in items:
         uniq[int(it["oid"])] = it
@@ -248,7 +260,8 @@ def process_objects(items: list[dict]) -> dict:
     ra = np.array([float(i["meanra"]) for i in items])
     dec = np.array([float(i["meandec"]) for i in items])
     lens = match_lens(ra, dec)
-    desi_idx = np.array([k for k, i in enumerate(items) if i.get("class_name") in DESI_CLASSES], dtype=int)
+    desi_idx = np.array([k for k, i in enumerate(items)
+                         if desi_classes is None or i.get("class_name") in desi_classes], dtype=int)
     desi = {int(desi_idx[k]): v for k, v in match_desi(ra[desi_idx], dec[desi_idx]).items()} if len(desi_idx) else {}
     hits = sorted(set(lens) | set(desi))
     index = _tns_index(float(min(i["firstmjd"] for i in items)) - 30.0)
@@ -275,12 +288,62 @@ def process_objects(items: list[dict]) -> dict:
             "linked": sum(1 for r in rows if r["obj_id"]), "relinked": relinked}
 
 
-def run_watch(lookback_days: float | None = None, refresh_lc: bool = True) -> dict:
+class _RunLog:
+    """Progress of one watch run, kept in auth.system_settings (``STATUS_KEY``) so every
+    gunicorn worker (and the page polling /api/detect/lsst/status) sees the same thing."""
+
+    def __init__(self, trigger: str, params: dict):
+        self.status = {"state": "running", "trigger": trigger, "params": params, "pid": os.getpid(),
+                       "started_at": time.time(), "updated_at": time.time(), "finished_at": None,
+                       "phase": "starting", "log": []}
+        self._last_write = 0.0
+        self.line(f"Started ({trigger}): " + ", ".join(f"{k}={v}" for k, v in params.items()))
+
+    def line(self, msg: str, phase: str | None = None, force: bool = True) -> None:
+        logger.info("event=lsst_watch_log %s", msg)
+        stamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        self.status["log"] = (self.status["log"] + [f"{stamp}  {msg}"])[-LOG_LINES:]
+        if phase:
+            self.status["phase"] = phase
+        self._save(force)
+
+    def _save(self, force: bool) -> None:
+        now = time.time()
+        if force or now - self._last_write > 3:      # progress lines: at most one write per 3 s
+            self.status["updated_at"] = now
+            set_setting(STATUS_KEY, json.dumps(self.status, default=str))
+            self._last_write = now
+
+    def finish(self, state: str, result: dict | None = None) -> None:
+        self.status.update(state=state, finished_at=time.time(), phase=state, result=result)
+        self._save(True)
+
+
+def _file_lock():
+    """Non-blocking flock shared by every process on this host; None when another run holds it."""
+    if fcntl is None:
+        return open(os.devnull)
+    fh = open(_LOCK_FILE, "a")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fh
+    except OSError:
+        fh.close()
+        return None
+
+
+def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigger: str = "hourly") -> dict:
     """Hourly job. ``lookback_days`` re-reads that much history instead of using the cursor
-    (the daily sweep, for objects ALeRCE ingested late)."""
+    (the daily sweep, and manual runs that want more than "since the last run")."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True, "reason": "already running"}
+    fh = _file_lock()
+    if fh is None:
+        _lock.release()
+        return {"skipped": True, "reason": "already running in another process"}
     started = time.monotonic()
+    log = _RunLog(trigger, {"lookback_days": lookback_days if lookback_days is not None else "since last run",
+                            "light_curves": refresh_lc})
     try:
         now = _now_mjd()
         if lookback_days is not None:
@@ -289,39 +352,99 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True) -> di
         else:
             cursor = _f(get_setting(CURSOR_KEY))
             mjd_from = (cursor - OVERLAP_DAYS) if cursor else now - FIRST_RUN_DAYS
+        log.line(f"Reading ALeRCE LSST objects first detected {_mjd_to_utc(mjd_from)} – now (UTC)", phase="fetching")
         items = []
         for cls in FETCH_CLASSES:
-            items.extend(alerce_api.iter_new_objects(mjd_from, now + 0.1, cls))
+            n0, t0 = len(items), time.monotonic()
+            for k, it in enumerate(alerce_api.iter_new_objects(mjd_from, now + 0.1, cls), 1):
+                items.append(it)
+                if k % (alerce_api.PAGE_SIZE * 10) == 0:
+                    log.line(f"  {cls}: {k} objects so far…", force=False)
+            log.line(f"  {cls}: {len(items) - n0} objects ({time.monotonic() - t0:.0f} s)")
+        log.line(f"Cross-matching {len(items)} objects with Lens and DESI, linking to TNS…", phase="matching")
         res = process_objects(items)
+        log.line(f"  {res.get('lens', 0)} near a lens, {res.get('desi', 0)} near a DESI galaxy; "
+                 f"{res.get('stored', 0)} stored, {res.get('linked', 0)} in TNS, {res.get('relinked', 0)} older ones newly linked")
         if lookback_days is None and items:
             newest = max(float(i["firstmjd"]) for i in items)
             set_setting(CURSOR_KEY, f"{max(newest, cursor or 0):.6f}")
         try:
             res["trigger_renamed"] = sync_trigger_targets()
+            if res["trigger_renamed"]:
+                log.line(f"  {res['trigger_renamed']} Daily Trigger target(s) renamed to their TNS name")
         except Exception as e:
             logger.error("event=lsst_trigger_sync_error error=%s", e)
+            log.line(f"  Daily Trigger rename failed: {e}")
         res.update(window=[round(mjd_from, 4), round(now, 4)], seconds=round(time.monotonic() - started, 1))
         logger.info("event=lsst_watch_done %s", " ".join(f"{k}={v}" for k, v in res.items()))
         if refresh_lc:
+            log.line("Refreshing LSST light curves of TNS objects…", phase="light curves")
             try:
-                res["lightcurves"] = refresh_lightcurves()
+                res["lightcurves"] = refresh_lightcurves(progress=lambda m: log.line("  " + m, force=False))
+                lc = res["lightcurves"]
+                log.line(f"  {lc.get('refreshed', 0)} refreshed, {lc.get('failed', 0)} failed "
+                         f"({lc.get('due', 0)} had new points, {lc.get('linked', 0)} linked objects)")
             except Exception as e:
                 logger.error("event=lsst_lc_refresh_error error=%s", e)
                 res["lightcurves"] = {"error": str(e)}
-        set_setting(LAST_RUN_KEY, json.dumps({"at": time.time(), **{k: v for k, v in res.items() if k != "lightcurves"},
+                log.line(f"  Light-curve refresh failed: {e}")
+        set_setting(LAST_RUN_KEY, json.dumps({"at": time.time(), "trigger": trigger,
+                                              **{k: v for k, v in res.items() if k != "lightcurves"},
                                               "lc": res.get("lightcurves")}, default=str))
+        log.line(f"Done in {time.monotonic() - started:.0f} s")
+        log.finish("done", {k: v for k, v in res.items() if k != "lightcurves"})
         return res
+    except Exception as e:
+        logger.exception("event=lsst_watch_error")
+        log.line(f"FAILED: {e}")
+        log.finish("error")
+        raise
     finally:
+        fh.close()
         _lock.release()
 
 
 def run_daily_sweep() -> dict:
     """Once a day after the Chilean night: re-read the last 1.5 days."""
-    return run_watch(lookback_days=1.5, refresh_lc=False)
+    return run_watch(lookback_days=1.5, refresh_lc=False, trigger="daily sweep")
 
 
 def is_running() -> bool:
-    return _lock.locked()
+    if _lock.locked():
+        return True
+    fh = _file_lock()
+    if fh is None:
+        return True
+    fh.close()
+    return False
+
+
+def run_status() -> dict:
+    """The current / last run as the page shows it (state, phase, log lines)."""
+    try:
+        st = json.loads(get_setting(STATUS_KEY) or "null") or {}
+    except ValueError:
+        st = {}
+    running = is_running()
+    if st.get("state") == "running" and not running:
+        st["state"] = "interrupted"      # the process died mid-run (restart / deploy)
+    st["running"] = running
+    return st
+
+
+def start_manual_run(lookback_days: float | None) -> bool:
+    """Start a watch run in a background thread; False when one is already running."""
+    if is_running():
+        return False
+    threading.Thread(target=_run_quietly, args=(lookback_days,), name="lsst-watch-manual", daemon=True).start()
+    return True
+
+
+def _run_quietly(lookback_days):
+    try:
+        run_watch(lookback_days=lookback_days, refresh_lc=True, trigger="manual")
+    except Exception:
+        pass   # already logged and written to the run status
 
 
 # --------------------------------------------------------------------------- Daily Trigger
@@ -394,6 +517,98 @@ def search_alerts(q: str, limit: int = 15) -> list[dict]:
 def get_alert(oid: int) -> dict | None:
     rows = list_alerts(oid=oid, limit=1)
     return rows[0] if rows else None
+
+
+# --------------------------------------------------------------------------- manual cross-match
+
+def crossmatch_oid(oid: int) -> dict:
+    """Cross-match one LSST object on request (any class with DESI). A match is stored like a
+    watch hit, so it shows on DETECT › LSST and can go to Daily Trigger."""
+    item = alerce_api.objects_by_oid([oid]).get(int(oid))
+    if not item:
+        return {"found": False, "oid": oid}
+    res = process_objects([item], desi_classes=None)
+    return {"found": True, "oid": oid, "stored": bool(res.get("stored")), "item": item}
+
+
+def parse_coords(ra_text: str, dec_text: str) -> tuple[float, float]:
+    """RA / Dec in degrees or sexagesimal (hh:mm:ss / dd:mm:ss, or with spaces) -> degrees."""
+    ra_text, dec_text = (ra_text or "").strip(), (dec_text or "").strip()
+    if not ra_text or not dec_text:
+        raise ValueError("RA and Dec are required")
+    sexa = any(c in ra_text for c in ": hms")
+    c = SkyCoord(ra_text, dec_text, unit=(u.hourangle if sexa else u.deg, u.deg))
+    return float(c.ra.deg), float(c.dec.deg)
+
+
+def cone_search(ra: float, dec: float, *, lens_radius: float = LENS_RADIUS_ARCSEC,
+                desi_radius: float = DESI_RADIUS_ARCSEC, desi_max_sep_re: float | None = DESI_MAX_SEP_RE,
+                tns_radius: float = 10.0, alerce_radius: float | None = 10.0, max_rows: int = 50) -> dict:
+    """Everything Kinder knows around one position, for /detect/crossmatch. Nothing is stored.
+    A radius of 0 / None skips that source."""
+    ra_a, dec_a = np.array([ra]), np.array([dec])
+    out = {"ra": ra, "dec": dec, "errors": {}}
+    out["lens"] = match_lens(ra_a, dec_a, lens_radius).get(0, [])[:max_rows] if lens_radius else None
+    out["desi"] = (match_desi(ra_a, dec_a, desi_radius, desi_max_sep_re).get(0, [])[:max_rows]
+                   if desi_radius else None)
+    out["tns"] = _near_tns(ra, dec, tns_radius, max_rows) if tns_radius else None
+    out["lsst_watch"] = _near_watch(ra, dec, max(tns_radius or 0, 5.0), max_rows)
+    if alerce_radius:
+        try:
+            here = SkyCoord(ra * u.deg, dec * u.deg)
+            rows = alerce_api.cone(ra, dec, alerce_radius, neighbors=max_rows)
+            for r in rows:
+                r["sep"] = round(float(here.separation(SkyCoord(r["ra"] * u.deg, r["dec"] * u.deg)).arcsec), 2)
+            out["alerce"] = sorted(rows, key=lambda r: r["sep"])
+        except Exception as e:
+            out["alerce"], out["errors"]["alerce"] = [], str(e)
+    else:
+        out["alerce"] = None
+    return out
+
+
+def _box(ra: float, dec: float, radius_arcsec: float) -> tuple[float, float, float, float]:
+    d = radius_arcsec / 3600.0
+    dra = d / max(float(np.cos(np.radians(dec))), 1e-3)
+    return float(dec - d), float(dec + d), float(ra - dra), float(ra + dra)
+
+
+def _near_tns(ra: float, dec: float, radius: float, limit: int) -> list[dict]:
+    dmin, dmax, rmin, rmax = _box(ra, dec, radius)
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute("""
+            SELECT name, name_prefix, ra, dec, type, redshift, status, internal_name,
+                   discovery_date, discovery_mag
+              FROM transient.objects
+             WHERE dec BETWEEN %s AND %s
+               AND (ra BETWEEN %s AND %s OR ra BETWEEN %s AND %s OR ra BETWEEN %s AND %s)
+        """, (dmin, dmax, rmin, rmax, rmin + 360, rmax + 360, rmin - 360, rmax - 360))
+        rows = cur.fetchall()
+    return _within(ra, dec, rows, radius, limit, extra=lambda r: {"discovery_utc": _mjd_to_utc(r["discovery_date"])})
+
+
+def _near_watch(ra: float, dec: float, radius: float, limit: int) -> list[dict]:
+    dmin, dmax, rmin, rmax = _box(ra, dec, radius)
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute("SELECT oid, ra, dec, class_name, n_lens, n_desi, tns_name, firstmjd FROM transient.lsst_alerts "
+                    "WHERE dec BETWEEN %s AND %s AND ra BETWEEN %s AND %s", (dmin, dmax, rmin, rmax))
+        rows = cur.fetchall()
+    return _within(ra, dec, rows, radius, limit)
+
+
+def _within(ra, dec, rows, radius, limit, extra=None) -> list[dict]:
+    if not rows:
+        return []
+    here = SkyCoord(ra * u.deg, dec * u.deg)
+    sep = here.separation(SkyCoord(np.array([float(r["ra"]) for r in rows]) * u.deg,
+                                   np.array([float(r["dec"]) for r in rows]) * u.deg)).arcsec
+    out = []
+    for r, s in zip(rows, sep):
+        if s <= radius:
+            out.append({**r, "sep": round(float(s), 2), **(extra(r) if extra else {})})
+    return sorted(out, key=lambda r: r["sep"])[:limit]
 
 
 # --------------------------------------------------------------------------- page data

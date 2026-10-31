@@ -2,7 +2,6 @@
 split into "not in TNS yet" and "in TNS" (app/services/lsst/alerts.py fills the table)."""
 import logging
 import re
-import threading
 
 from flask import flash, jsonify, redirect, render_template, request, session, url_for
 
@@ -16,6 +15,20 @@ logger = logging.getLogger(__name__)
 _VIEWS = ('pre_tns', 'in_tns', 'all')
 _CATALOGS = ('all', 'lens', 'desi')
 _DAYS = (3, 7, 14, 30, 90)
+
+
+_MAX_MANUAL_DAYS = 30
+# (query key, default, min, max): radii in arcsec; desi_re 0 = no half-light-radius cut
+_CONE_OPTIONS = (('lens_r', alerts.LENS_RADIUS_ARCSEC, 0, 120), ('desi_r', alerts.DESI_RADIUS_ARCSEC, 0, 120),
+                 ('desi_re', alerts.DESI_MAX_SEP_RE, 0, 50), ('tns_r', 10.0, 0, 120), ('alerce_r', 10.0, 0, 120))
+
+
+def _member_api_denied():
+    if 'user' not in session:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return jsonify({'success': False, 'message': 'Not available for Guest users'}), 403
+    return None
 
 
 def _member_or_redirect():
@@ -86,7 +99,83 @@ def detect_lsst_lightcurve(oid):
 @detect_bp.route('/api/detect/lsst/run', methods=['POST'])
 @admin_required
 def detect_lsst_run():
-    if alerts.is_running():
-        return jsonify({'success': False, 'message': 'Already running'}), 409
-    threading.Thread(target=alerts.run_watch, name='lsst-watch-manual', daemon=True).start()
-    return jsonify({'success': True, 'message': 'LSST watch started; reload in a few minutes.'})
+    """Run the watch now. ``days`` (1–30) re-reads that many days instead of "since the last run"."""
+    data = request.get_json(silent=True) or {}
+    days = data.get('days')
+    if days not in (None, ''):
+        try:
+            days = float(days)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'days must be a number'}), 400
+        if not 0 < days <= _MAX_MANUAL_DAYS:
+            return jsonify({'success': False, 'message': f'days must be 0–{_MAX_MANUAL_DAYS}'}), 400
+    else:
+        days = None
+    if not alerts.start_manual_run(days):
+        return jsonify({'success': False, 'message': 'A run is already in progress'}), 409
+    return jsonify({'success': True})
+
+
+@detect_bp.route('/api/detect/lsst/status')
+def detect_lsst_status():
+    """The current / last watch run (state, phase, log) for the page's live log."""
+    if 'user' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    return jsonify(alerts.run_status())
+
+
+@detect_bp.route('/api/detect/lsst/crossmatch_oid', methods=['POST'])
+def detect_lsst_crossmatch_oid():
+    """Cross-match one LSST object by oid (also "LSST-AP-DO-<oid>" / "LSST-<oid>"); where to look next."""
+    denied = _member_api_denied()
+    if denied:
+        return denied
+    raw = str((request.get_json(silent=True) or {}).get('oid') or '')
+    m = re.search(r'(\d{6,})', raw)
+    if not m:
+        return jsonify({'success': False, 'message': 'Enter an LSST oid (diaObjectId), e.g. 171141197314654355'}), 400
+    oid = int(m.group(1))
+    try:
+        res = alerts.crossmatch_oid(oid)
+    except Exception as e:
+        logger.warning('LSST oid cross-match %s: %s', oid, e)
+        return jsonify({'success': False, 'message': f'ALeRCE did not answer: {e}'}), 502
+    if not res['found']:
+        return jsonify({'success': False, 'message': f'ALeRCE has no LSST object {oid}'}), 404
+    if res['stored']:
+        return jsonify({'success': True, 'stored': True, 'url': url_for('detect.detect_lsst', oid=oid)})
+    item = res['item']
+    return jsonify({'success': True, 'stored': False,
+                    'message': 'No lens or DESI galaxy within the watch radii; showing everything around it.',
+                    'url': url_for('detect.detect_crossmatch', ra=f"{float(item['meanra']):.6f}",
+                                   dec=f"{float(item['meandec']):.6f}", oid=oid)})
+
+
+@detect_bp.route('/detect/crossmatch')
+def detect_crossmatch():
+    """DETECT › Cross-match: everything around one position (Lens, DESI, TNS, ALeRCE). Nothing is stored."""
+    denied = _member_or_redirect()
+    if denied:
+        return denied
+    form = {k: (request.args.get(k) or '').strip() for k in ('ra', 'dec', 'oid')}
+    opts = {}
+    for key, default, lo, hi in _CONE_OPTIONS:
+        try:
+            val = float(request.args.get(key, default))
+        except ValueError:
+            val = default
+        opts[key] = min(max(val, lo), hi)
+    result, error = None, None
+    if form['ra'] or form['dec']:
+        try:
+            ra, dec = alerts.parse_coords(form['ra'], form['dec'])
+            result = alerts.cone_search(
+                ra, dec, lens_radius=opts['lens_r'], desi_radius=opts['desi_r'],
+                desi_max_sep_re=opts['desi_re'] or None, tns_radius=opts['tns_r'], alerce_radius=opts['alerce_r'])
+        except ValueError as e:
+            error = f'Could not read the coordinates: {e}'
+        except Exception as e:
+            logger.exception('DETECT cross-match failed')
+            error = f'Cross-match failed: {e}'
+    return render_template('detect_crossmatch.html', form=form, opts=opts, result=result, error=error,
+                           explorer_url=alerce_api.explorer_url, current_path='/detect/crossmatch')

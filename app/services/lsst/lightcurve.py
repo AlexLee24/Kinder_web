@@ -164,14 +164,17 @@ def refresh_object(obj_id: int, name: str, oid: int, alerce_lastmjd: float | Non
     return len(points)
 
 
-def refresh_lightcurves(max_objects: int = MAX_REFRESH_PER_RUN) -> dict:
-    """Hourly: refresh the LSST light curve of every linked TNS object that has new points."""
+def refresh_lightcurves(max_objects: int = MAX_REFRESH_PER_RUN, progress=None) -> dict:
+    """Hourly: refresh the LSST light curve of every linked TNS object that has new points.
+    ``progress(msg)`` receives a few human-readable progress lines (the run log)."""
+    say = progress or (lambda _m: None)
     if not _lock.acquire(blocking=False):
         return {"skipped": True, "reason": "already running"}
     started = time.monotonic()
     try:
         targets = _targets()
         by_oid = {t["oid"]: oid for oid, t in targets.items()}
+        say(f"{len(targets)} TNS objects have an LSST counterpart; asking ALeRCE for their latest point…")
         latest = alerce_api.objects_by_oid(by_oid.keys())
         due = []
         for oid, row in latest.items():
@@ -183,7 +186,10 @@ def refresh_lightcurves(max_objects: int = MAX_REFRESH_PER_RUN) -> dict:
                 due.append((_priority(t, row["lastmjd"]), obj_id, row["lastmjd"]))
         due.sort()
         done = failed = 0
-        for _p, obj_id, lastmjd in due[:max_objects]:
+        todo = due[:max_objects]
+        say(f"{len(due)} have new points; refreshing {len(todo)}"
+            + (f" (the other {len(due) - len(todo)} next hour)" if len(due) > len(todo) else ""))
+        for n, (_p, obj_id, lastmjd) in enumerate(todo, 1):
             t = targets[obj_id]
             try:
                 refresh_object(obj_id, t["name"], t["oid"], lastmjd)
@@ -191,6 +197,8 @@ def refresh_lightcurves(max_objects: int = MAX_REFRESH_PER_RUN) -> dict:
             except Exception as e:
                 failed += 1
                 logger.warning("event=lsst_lc_refresh_failed object=%s oid=%s error=%s", t["name"], t["oid"], e)
+            if n % 25 == 0:
+                say(f"{n}/{len(todo)} light curves done")
         res = {"linked": len(targets), "in_alerce": len(latest), "due": len(due),
                "refreshed": done, "failed": failed, "seconds": round(time.monotonic() - started, 1)}
         logger.info("event=lsst_lc_refresh_done %s", " ".join(f"{k}={v}" for k, v in res.items()))

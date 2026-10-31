@@ -32,8 +32,9 @@ def test_route_count_is_stable(app):
     # 331 with Lab › Bots (/bots, /api/bots/status, /api/bots/<id>/results); 333 with the Lulin robot feed
     # (/api/v1/robot/alerts) and cancelling a robot alert; 336 with DETECT › LSST
     # (/detect/lsst, /api/detect/lsst/lightcurve/<oid>, /api/detect/lsst/run); 338 with the ETC
-    # Simple mode API and /detect/lsst/<oid> (Daily Trigger link of an LSST-<oid> target).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 338
+    # Simple mode API and /detect/lsst/<oid> (Daily Trigger link of an LSST-<oid> target); 341 with
+    # DETECT › Cross-match, the LSST run status and the LSST-oid cross-match API.
+    assert sum(1 for _ in app.url_map.iter_rules()) == 341
 
 
 def test_duplicate_rules_keep_precedence(app):
