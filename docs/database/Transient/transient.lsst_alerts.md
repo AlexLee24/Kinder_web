@@ -25,5 +25,7 @@ Filled hourly by `app/services/lsst/alerts.py` (shown on DETECT › LSST, `/dete
 | z_used / z_source | double / text | redshift used: DESI host (ZWARN = 0) or the linked TNS object's |
 | n_points     | int              | binned LSST points                                                       |
 | mags_lastmjd / mags_at | double / timestamptz | ALeRCE lastmjd the magnitudes were computed from, and when |
+| lc_points    | jsonb            | the binned LSST light curve, [[mjd, mag, mag_err, filter], ...] (DETECT's screen reads it) |
+| review_status / review_by / review_at | text / text / timestamptz | DETECT LSST Review status: Inbox / Follow-up / Snoozed / Finish, who and when |
 | first_seen   | timestamptz      | first time the watch stored it                                           |
 | updated_at   | timestamptz      | last update                                                              |

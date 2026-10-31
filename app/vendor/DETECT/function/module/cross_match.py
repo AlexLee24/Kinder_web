@@ -640,11 +640,13 @@ def _image_info_lines(target_name: str, screen: dict | None, host_row: dict | No
     return lines, f"{target_name}   LS DR10 grz"
 
 
-def _generate_and_upload_target_image(target_name: str, target_ra: float, target_dec: float,
-                                      upload_rows: list[dict],
-                                      has_desi: bool = True,
-                                      analyzed: list[dict] | None = None,
-                                      screen: dict | None = None) -> tuple[str | None, bool]:
+def build_target_image_bytes(target_name: str, target_ra: float, target_dec: float,
+                             upload_rows: list[dict],
+                             has_desi: bool = True,
+                             analyzed: list[dict] | None = None,
+                             screen: dict | None = None) -> bytes | None:
+    """The review image (LS DR10 host-model overlay, else a marked cutout / DSS2, else a
+    text-only card) as PNG bytes; None only when even the fallback fails."""
     image_candidates = _build_image_candidates(upload_rows)
     host_row = next((r for r in upload_rows if r.get('is_host')), None)
     shared_uids = {r['crossmatch_uid'] for r in upload_rows
@@ -719,9 +721,19 @@ def _generate_and_upload_target_image(target_name: str, target_ra: float, target
             image_bytes = _make_fallback_image_bytes(target_name, target_ra, target_dec, upload_rows)
         except Exception as e:
             print(f"[ERROR] {target_name}: fallback image also failed: {type(e).__name__} - {e}")
-            return None, False
+            return None
+    return bytes(image_bytes)
 
-    image_bytes = bytes(image_bytes)
+
+def _generate_and_upload_target_image(target_name: str, target_ra: float, target_dec: float,
+                                      upload_rows: list[dict],
+                                      has_desi: bool = True,
+                                      analyzed: list[dict] | None = None,
+                                      screen: dict | None = None) -> tuple[str | None, bool]:
+    image_bytes = build_target_image_bytes(target_name, target_ra, target_dec, upload_rows,
+                                           has_desi=has_desi, analyzed=analyzed, screen=screen)
+    if image_bytes is None:
+        return None, False
     output_path = CROSSMATCH_IMAGE_OUTPUT_DIR / f"{_sanitize_filename(target_name)}.png"
     output_path.write_bytes(image_bytes)
     uploaded = DataUploader.save_target_image(target_name, image_bytes, source=CROSSMATCH_IMAGE_SOURCE)

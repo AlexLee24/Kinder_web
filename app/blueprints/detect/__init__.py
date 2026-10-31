@@ -4,4 +4,4 @@ from flask import Blueprint
 detect_bp = Blueprint('detect', __name__, template_folder='templates', static_folder='static')
 
 # Topic modules register their routes on import (order = original registration order).
-from . import helpers, cache, payload, routes, lsst  # noqa: E402,F401
+from . import helpers, cache, payload, routes, lsst, lsst_review  # noqa: E402,F401

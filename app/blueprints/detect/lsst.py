@@ -72,7 +72,7 @@ def detect_lsst():
 @detect_bp.route('/detect/lsst/<int:oid>')
 def detect_lsst_object(oid):
     """Where a Daily Trigger target called LSST-<oid> points: its object page once TNS has
-    it, else its row on DETECT › LSST."""
+    it, else its card on DETECT › LSST › Review (its row on DETECT › LSST before DETECT ran)."""
     denied = _member_or_redirect()
     if denied:
         return denied
@@ -81,6 +81,9 @@ def detect_lsst_object(oid):
         tns = alerts.tns_name_for_oid(conn.cursor(), oid)
     if tns:
         return redirect('/object/' + re.sub(r'^(AT|SN)', '', tns))
+    from app.services.lsst.detect import review_day_for
+    if review_day_for(oid):
+        return redirect(url_for('detect.lsst_review', oid=oid))
     return redirect(url_for('detect.detect_lsst', oid=oid))
 
 
@@ -97,7 +100,7 @@ def detect_lsst_lightcurve(oid):
     if rows:                        # a watched object: its magnitudes follow this fresh light curve
         try:
             mags = alerts.compute_mags(rows[0], points)
-            alerts.save_mags(oid, mags, max((p[0] for p in points), default=None))
+            alerts.save_mags(oid, mags, max((p[0] for p in points), default=None), points)
         except Exception as e:
             logger.warning('LSST magnitudes for %s: %s', oid, e)
     return jsonify({'oid': oid, 'mags': mags, 'points': [
