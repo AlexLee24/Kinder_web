@@ -13,6 +13,8 @@
         .lsst-table tr.is-lens td:first-child { box-shadow: inset 3px 0 0 rgba(255, 0, 127, 0.75); }
         .lsst-oid { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.8rem; }
         .lsst-match + .lsst-match { margin-top: 4px; }
+        .lsst-actions { white-space: nowrap; }
+        .lsst-actions .kw-btn + .kw-btn { margin-left: 4px; }
         .lsst-lc-row td { padding: 0 14px 14px; background: rgba(255, 255, 255, 0.02); }
         .lsst-lc { width: 100%; }
         .lsst-lc.has-plot { height: 320px; }
@@ -38,6 +40,21 @@
     </style>
 {% endblock %}
 
+
+{% macro sim_url(r) -%}
+{{ url_for('astronomy_tools.telescope_simulator', ra='%.6f'|format(r.ra), dec='%.6f'|format(r.dec), name=(r.name_prefix or '') ~ r.obj_name if r.obj_name else 'LSST-' ~ r.oid) }}
+{%- endmacro %}
+{% macro desi_url(ra, dec) -%}
+https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|format(dec) }}&zoom=16&mark={{ '%.6f'|format(ra) }},{{ '%.6f'|format(dec) }}&layer=ls-dr10-grz&desi-spec-dr1
+{%- endmacro %}
+
+{% macro absmag(r) -%}
+{% if r.abs_latest is not none or r.abs_peak is not none %}<b>{{ '%.2f'|format(r.abs_latest) if r.abs_latest is not none else '—' }}</b> / <b>{{ '%.2f'|format(r.abs_peak) if r.abs_peak is not none else '—' }}</b>
+<small>{{ r.latest_filter }} {{ '%.2f'|format(r.latest_mag) }} · peak {{ r.peak_filter }} {{ '%.2f'|format(r.peak_mag) }} · z {{ '%.4f'|format(r.z_used) }} ({{ r.z_source }})</small>
+{%- elif r.latest_mag is not none %}— <small>m {{ r.latest_filter }} {{ '%.2f'|format(r.latest_mag) }} · peak {{ r.peak_filter }} {{ '%.2f'|format(r.peak_mag) }} · no redshift</small>
+{%- elif r.mags_at %}— <small>no positive-flux point</small>
+{%- else %}— <small>next run</small>{% endif %}
+{%- endmacro %}
 
 {% macro qs(v=view, c=catalog, d=days) -%}
 {{ url_for('detect.detect_lsst', view=v, catalog=c, days=d) }}
@@ -140,7 +157,7 @@
         <table class="kw-table lsst-table">
             <thead><tr>
                 <th>LSST object</th><th class="hide-sm">RA / Dec</th><th>First detected (UTC)</th>
-                <th>Class</th><th class="hide-sm">N det</th><th>Lens</th><th>DESI</th><th>TNS</th><th></th>
+                <th>Class</th><th class="hide-sm">N det</th><th>M latest / peak</th><th>Lens</th><th>DESI</th><th>TNS</th><th></th>
             </tr></thead>
             <tbody>
             {% for r in rows %}
@@ -152,6 +169,7 @@
                 <td><span class="kw-chip{% if r.class_name == 'SN' %} kw-chip-gold{% elif r.class_name == 'AGN' %} kw-chip-purple{% else %} kw-chip-blue{% endif %}">{{ r.class_name }}</span>
                     <small>p = {{ "%.2f"|format(r.probability or 0) }}</small></td>
                 <td class="num hide-sm">{{ r.n_det }}</td>
+                <td class="num lsst-absmag" data-oid="{{ r.oid }}">{{ absmag(r) }}</td>
                 <td>
                     {% for m in r.lens_matches[:2] %}
                     <div class="lsst-match"><b>{{ "%.1f"|format(m.sep) }}″</b> {{ m.reference or 'Lens' }}{% if m.grade %} · {{ m.grade }}{% endif %}
@@ -170,7 +188,11 @@
                     <small>{{ r.obj_status or '' }}{% if r.obj_type %} · {{ r.obj_type }}{% endif %} · by {{ r.tns_link }}{% if r.lc_points is not none %} · {{ r.lc_points }} LSST pts{% endif %}</small>
                     {% else %}<span class="kw-chip kw-chip-red">not in TNS</span>{% endif %}
                 </td>
-                <td><button type="button" class="kw-btn kw-btn-sm lsst-lc-btn" data-oid="{{ r.oid }}">LC</button></td>
+                <td class="lsst-actions">
+                    <button type="button" class="kw-btn kw-btn-sm lsst-lc-btn" data-oid="{{ r.oid }}">LC</button>
+                    <a class="kw-btn kw-btn-sm" href="{{ sim_url(r) }}" target="_blank" rel="noopener noreferrer" title="View in Telescope Simulator">Sim</a>
+                    <a class="kw-btn kw-btn-sm" href="{{ desi_url(r.ra, r.dec) }}" target="_blank" rel="noopener noreferrer" title="Legacy Survey viewer with DESI DR1 spectra">DESI</a>
+                </td>
             </tr>
             {% endfor %}
             </tbody>
@@ -193,6 +215,21 @@
         div.className = 'lsst-lc-msg';
         div.textContent = text;
         el.appendChild(div);
+    }
+
+    // The LC request recomputes the stored magnitudes: show the fresh values in the row.
+    function showMags(oid, m) {
+        const cell = document.querySelector('.lsst-absmag[data-oid="' + oid + '"]');
+        if (!cell) return;
+        const f = v => (v == null ? '—' : Number(v).toFixed(2));
+        cell.textContent = '';
+        const main = document.createElement('span');
+        main.textContent = f(m.abs_latest) + ' / ' + f(m.abs_peak);
+        const small = document.createElement('small');
+        small.textContent = m.latest_mag == null ? 'no positive-flux point'
+            : (m.latest_filter + ' ' + f(m.latest_mag) + ' · peak ' + m.peak_filter + ' ' + f(m.peak_mag)
+               + (m.z_used ? ' · z ' + Number(m.z_used).toFixed(4) + ' (' + m.z_source + ')' : ' · no redshift'));
+        cell.append(main, small);
     }
 
     function drawLc(el, points) {
@@ -219,7 +256,7 @@
         if (next && next.classList.contains('lsst-lc-row')) { next.remove(); return; }
         const row = document.createElement('tr');
         row.className = 'lsst-lc-row';
-        row.innerHTML = '<td colspan="9"><div class="lsst-lc"><div class="lsst-lc-msg">Loading light curve from ALeRCE…</div></div></td>';
+        row.innerHTML = '<td colspan="10"><div class="lsst-lc"><div class="lsst-lc-msg">Loading light curve from ALeRCE…</div></div></td>';
         tr.after(row);
         const el = row.querySelector('.lsst-lc');
         fetch('/api/detect/lsst/lightcurve/' + btn.dataset.oid)
@@ -228,6 +265,7 @@
                 if (d.error) throw new Error(d.error);
                 el.innerHTML = '';
                 drawLc(el, d.points || []);
+                if (d.mags) showMags(btn.dataset.oid, d.mags);
             })
             .catch(e => showMsg(el, 'Could not load: ' + e.message));
     }));

@@ -92,7 +92,15 @@ def detect_lsst_lightcurve(oid):
         points = lightcurve.lightcurve_points(alerce_api.lightcurve(oid))
     except Exception as e:
         return jsonify({'error': str(e)}), 502
-    return jsonify({'oid': oid, 'points': [
+    mags = None
+    rows = alerts._alerts_for_mags([oid])
+    if rows:                        # a watched object: its magnitudes follow this fresh light curve
+        try:
+            mags = alerts.compute_mags(rows[0], points)
+            alerts.save_mags(oid, mags, max((p[0] for p in points), default=None))
+        except Exception as e:
+            logger.warning('LSST magnitudes for %s: %s', oid, e)
+    return jsonify({'oid': oid, 'mags': mags, 'points': [
         {'mjd': m, 'mag': mag, 'mag_err': err, 'filter': f} for m, mag, err, f in points]})
 
 
@@ -157,7 +165,7 @@ def detect_crossmatch():
     denied = _member_or_redirect()
     if denied:
         return denied
-    form = {k: (request.args.get(k) or '').strip() for k in ('ra', 'dec', 'oid')}
+    form = {k: (request.args.get(k) or '').strip() for k in ('ra', 'dec', 'oid', 'zwarn')}
     opts = {}
     for key, default, lo, hi in _CONE_OPTIONS:
         try:
@@ -171,7 +179,8 @@ def detect_crossmatch():
             ra, dec = alerts.parse_coords(form['ra'], form['dec'])
             result = alerts.cone_search(
                 ra, dec, lens_radius=opts['lens_r'], desi_radius=opts['desi_r'],
-                desi_max_sep_re=opts['desi_re'] or None, tns_radius=opts['tns_r'], alerce_radius=opts['alerce_r'])
+                desi_max_sep_re=opts['desi_re'] or None, include_zwarn=form['zwarn'] == '1',
+                tns_radius=opts['tns_r'], alerce_radius=opts['alerce_r'])
         except ValueError as e:
             error = f'Could not read the coordinates: {e}'
         except Exception as e:

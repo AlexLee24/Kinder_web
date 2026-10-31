@@ -49,10 +49,13 @@
                 <label>Lens radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="lens_r" value="{{ opts.lens_r|round(2) }}"></label>
                 <label>DESI radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="desi_r" value="{{ opts.desi_r|round(2) }}"></label>
                 <label>DESI max R<sub>e</sub> (0 = no cut) <input class="kw-input" type="number" step="any" min="0" max="50" name="desi_re" value="{{ opts.desi_re|round(2) }}"></label>
+                <label>DESI ZWARN galaxies
+                    <select class="kw-input" name="zwarn"><option value="">Leave out (default)</option>
+                        <option value="1"{% if form.zwarn == '1' %} selected{% endif %}>Include</option></select></label>
                 <label>TNS radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="tns_r" value="{{ opts.tns_r|round(2) }}"></label>
                 <label>ALeRCE radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="alerce_r" value="{{ opts.alerce_r|round(2) }}"></label>
             </div>
-            <div class="xm-hint">A radius of 0 skips that source. Defaults are the LSST watch's: Lens 10″, DESI 30″ and ≤ 3 half-light radii (0.5″ floor).</div>
+            <div class="xm-hint">A radius of 0 skips that source. Defaults are the LSST watch's: Lens 10″, DESI 30″ and ≤ 3 half-light radii (0.5″ floor), DESI galaxies with ZWARN ≠ 0 left out.</div>
         </details>
     </form>
 
@@ -62,6 +65,8 @@
     <p class="xm-where">
         Position <b>{{ "%.6f"|format(result.ra) }}, {{ "%+.6f"|format(result.dec) }}</b>
         {% if form.oid %} · LSST object <a class="xm-mono" href="{{ explorer_url(form.oid) }}" target="_blank" rel="noopener noreferrer">{{ form.oid }}</a>{% endif %}
+        · <a href="{{ url_for('astronomy_tools.telescope_simulator', ra='%.6f'|format(result.ra), dec='%.6f'|format(result.dec), name=('LSST-' ~ form.oid) if form.oid else '') }}" target="_blank" rel="noopener noreferrer">View in Telescope Simulator</a>
+        · <a href="https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(result.ra) }}&dec={{ '%.6f'|format(result.dec) }}&zoom=16&mark={{ '%.6f'|format(result.ra) }},{{ '%.6f'|format(result.dec) }}&layer=ls-dr10-grz&desi-spec-dr1" target="_blank" rel="noopener noreferrer">DESI (Legacy Survey viewer)</a>
     </p>
 
     {% if result.lens is not none %}
@@ -82,7 +87,7 @@
 
     {% if result.desi is not none %}
     <section class="xm-section">
-        <h2>DESI galaxies <small>≤ {{ opts.desi_r|round(1) }}″{% if opts.desi_re %} and ≤ {{ opts.desi_re|round(1) }} R<sub>e</sub>{% endif %} · {{ result.desi|length }} found · closest in R<sub>e</sub> first</small></h2>
+        <h2>DESI galaxies <small>≤ {{ opts.desi_r|round(1) }}″{% if opts.desi_re %} and ≤ {{ opts.desi_re|round(1) }} R<sub>e</sub>{% endif %}{% if form.zwarn != '1' %} · ZWARN = 0 only{% endif %} · {{ result.desi|length }} found · closest in R<sub>e</sub> first</small></h2>
         {% if result.desi %}
         <div class="kw-table-wrap"><table class="kw-table xm-table">
             <thead><tr><th>Sep</th><th>Sep / R<sub>e</sub></th><th>z</th><th>Type</th><th>R<sub>e</sub></th><th>r mag</th><th>TARGETID</th></tr></thead>
