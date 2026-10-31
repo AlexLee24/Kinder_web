@@ -92,7 +92,7 @@ app/
   db/                       PostgreSQL access layer: auth.py / transient.py / obs.py / catalog.py
   services/                 domain logic, one package per topic:
     tns/                    hourly/daily TNS sync, manual download, kinder_id gap filler
-    photometry/             light-curve fetcher (download_phot.py, private), scheduler, plotting
+    photometry/             light-curve fetcher (download_phot.py: ZTF / LSST via ALeRCE, TNS), scheduler, plotting
     detect/                 wrappers around the vendored DETECT pipeline
     planning/               visibility plots, ACP scripts, Daily Trigger Slack send
     astro/                  calculators & converters (distance, extinction, coords, dates, ...)

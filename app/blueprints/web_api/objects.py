@@ -233,7 +233,7 @@ def fetch_photometry(object_name):
     if not session_can_access_object(object_name):
         return jsonify({'success': False, 'error': 'Access denied'}), 403
 
-    # The fetcher lives in a private (gitignored) module: the app must start without it.
+    # The app must still start if the fetcher cannot be imported (e.g. alerce missing).
     try:
         from app.services.photometry.download_phot import process_single_object_workflow
     except ImportError:

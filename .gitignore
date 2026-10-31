@@ -21,7 +21,7 @@ app/routes/private_area
 
 
 # ---- private module not published with the repo ---------------------------------
-app/services/photometry/download_phot.py
+app/services/photometry/download_phot_backup.py
 
 # ---- vendored: CASTOR is a separate git clone (see app/vendor/README.md) ---------
 app/vendor/CASTOR/
