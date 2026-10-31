@@ -159,7 +159,7 @@ Kinder（Logo → /）
 | 執行緒 | `auto_tns_download` | 每 10 s 輪詢（真 UTC） | 分鐘 15 / 45：下載 TNS 每小時 CSV → 匯入 `transient.objects` → 種發現點光度 → 新物件抓光度 → DETECT → auto snooze（Inbox 超過 15 天 → Snoozed）。01 / 04 / 12 UTC 整點：下載每日檔（今天、昨天、前天）→ 匯入 → DETECT（只新物件）→ auto snooze |
 | 執行緒 | `tns_gap_filler` | 啟動 10 分後每小時 | 找當年 `kinder_id` 缺口，逐一向 TNS API 查詢補入 |
 | 執行緒 | `nist-spec-lines` | 啟動時一次 | 重抓 NIST 24 個離子譜線到 `app/modules/_spectral_lines_cache.json` |
-| 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email（`app/services/bots/gcn.py`） |
+| 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email + Web Push 給 GREAT Lab 成員（分類 `alerts`）（`app/services/bots/gcn.py`） |
 | interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
 | cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
 | cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |

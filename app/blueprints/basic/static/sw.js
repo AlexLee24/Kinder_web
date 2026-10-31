@@ -161,7 +161,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
             const sub = await self.registration.pushManager.subscribe({
                 userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (ch) => ch.charCodeAt(0)) });
             await fetch('/api/push/subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ subscription: sub.toJSON() }) });
+                body: JSON.stringify({ subscription: sub.toJSON(), old_endpoint: event.oldSubscription ? event.oldSubscription.endpoint : '' }) });
         } catch (e) { /* signed out or offline: the Settings panel shows "off" next time */ }
     })());
 });

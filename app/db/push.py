@@ -1,8 +1,8 @@
 """auth.push_subscriptions and auth.push_broadcasts: Web Push (app/services/notifications/webpush.py).
 
 ``push_subscriptions``: one row per browser / device that turned push on (``endpoint`` is unique; a device that logs
-in as someone else moves to that account). ``categories`` says which kinds of push the device takes (today only
-'announce'; the column is there for automatic pushes later). ``fail_count`` / ``last_ok_at`` / ``last_error`` record
+in as someone else moves to that account). ``categories`` says which kinds of push the device takes (the keys of
+webpush.CATEGORIES, ticked per device in Settings). ``fail_count`` / ``last_ok_at`` / ``last_error`` record
 delivery: a 404 / 410 from the push service deletes the row, other errors delete it after MAX_FAILS in a row.
 
 ``push_broadcasts``: what admins sent from Admin › Push (who, to whom, how many devices took it).
@@ -70,7 +70,7 @@ def _cursor(conn, dict_rows=True):
 
 # ── Subscriptions ──
 
-def save(usr_id, endpoint, p256dh, auth, user_agent='', categories=('announce',)):
+def save(usr_id, endpoint, p256dh, auth, categories, user_agent=''):
     with get_db_connection() as conn:
         cur = _cursor(conn, False)
         cur.execute("""
@@ -100,13 +100,16 @@ def delete(sub_id):
 
 
 def status(usr_id, endpoint):
-    """(this device is subscribed for this account, how many devices the account has)."""
+    """(this device's categories, or None when it is not subscribed for this account; how many devices the account
+    has)."""
     with get_db_connection() as conn:
         cur = _cursor(conn, False)
-        cur.execute('SELECT count(*), count(*) FILTER (WHERE endpoint = %s) FROM auth.push_subscriptions '
-                    'WHERE usr_id = %s', (endpoint or '', int(usr_id)))
-        n, mine = cur.fetchone()
-        return bool(mine), int(n)
+        cur.execute('SELECT count(*) FROM auth.push_subscriptions WHERE usr_id = %s', (int(usr_id),))
+        n = cur.fetchone()[0]
+        cur.execute('SELECT categories FROM auth.push_subscriptions WHERE usr_id = %s AND endpoint = %s',
+                    (int(usr_id), endpoint or ''))
+        row = cur.fetchone()
+        return (list(row[0]) if row else None), int(n)
 
 
 def subscriptions(usr_ids=None, category=None, sub_id=None):

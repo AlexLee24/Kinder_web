@@ -1,8 +1,9 @@
 """Web Push to phones and desktops (after EAU_Web's modules/messaging/webpush.py).
 
-Members turn push on per device in Settings (js/push.js → /api/push/*); the browser's PushSubscription is stored in
-auth.push_subscriptions (app/db/push.py). Admins see who has it on and send from Admin › Push. /sw.js shows the
-notification and opens ``url`` when it is tapped.
+Members turn push on per device in Settings (js/push.js → /api/push/*) and tick which CATEGORIES it takes; the
+browser's PushSubscription is stored in auth.push_subscriptions (app/db/push.py). Admins see who has it on and send
+from Admin › Push; the GCN bot pushes Einstein Probe alerts (push_ep_alert). /sw.js shows the notification and opens
+``url`` when it is tapped.
 
 Keys: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY in kinder.env (make a pair with scripts/gen_vapid_keys.py). Every server
 that sends must use the same pair: subscriptions are tied to the public key, so changing it means every member has
@@ -21,8 +22,12 @@ from app.config import config  # noqa: F401  -- loads kinder.env
 
 logger = logging.getLogger(__name__)
 
-# Kinds of push a device can take. Only admin messages for now; automatic pushes add a key here.
-CATEGORIES = {'announce': 'Messages from the Kinder admins'}
+# Kinds of push; each device ticks the ones it wants in Settings (all by default). members: offered (and sent) only
+# to GREAT Lab members and admins.
+CATEGORIES = {
+    'announce': {'label': 'Messages from the Kinder admins', 'members': False},
+    'alerts':   {'label': 'Einstein Probe alerts (from the GCN bot)', 'members': True},
+}
 APP_NAME = 'Kinder'
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='webpush')
 
@@ -38,6 +43,23 @@ def enabled():
 def _subject():
     sub = os.getenv('VAPID_SUBJECT') or config.APP_BASE_URL or ''
     return sub if sub.startswith(('https:', 'mailto:')) else 'mailto:' + (config.ADMIN_EMAIL or 'admin@localhost')
+
+
+def is_member(user):
+    """GREAT Lab member or admin (a dict from app.db.auth.get_user / get_users)."""
+    return bool(user) and ('GREAT_Lab' in (user.get('groups') or []) or bool(user.get('is_admin')))
+
+
+def categories_for(user):
+    """{key: label} of the categories this account can take."""
+    member = is_member(user)
+    return {k: v['label'] for k, v in CATEGORIES.items() if member or not v['members']}
+
+
+def member_ids():
+    """usr_id of every GREAT Lab member and admin."""
+    from app.db.auth import get_users
+    return [u['usr_id'] for u in get_users().values() if is_member(u)]
 
 
 def valid_subscription(sub):
@@ -103,7 +125,8 @@ def _send_all(subs, data, broadcast_id=None):
 
 
 def send_to_users(usr_ids, title, body='', url='/', category='announce', broadcast_id=None, wait=False):
-    """Push to every device of these accounts that takes ``category``. In the background unless ``wait``;
+    """Push to every device of these accounts that takes ``category`` (None: every device, for tests). In the
+    background unless ``wait``;
     returns the number of devices it goes to (with ``wait``: (delivered, failed))."""
     from app.db import push as db
     if not enabled() or not usr_ids:
@@ -153,3 +176,30 @@ def device_label(user_agent, endpoint=''):
     else:
         browser = 'Browser'
     return plat, browser
+
+
+def push_ep_alert(name, ra, dec, log=None):
+    """Einstein Probe alert (app/services/bots/gcn.py) → every GREAT Lab member's devices that take 'alerts'.
+    Never raises: the Slack post and the robot must not wait on it."""
+    try:
+        if not enabled():
+            return 0
+        try:
+            from app.services.bots.robot import MIN_ALT, visibility_tonight
+            vis = visibility_tonight(name, ra, dec)
+            if vis.get('observable'):
+                when = f"observable tonight from Lulin (max alt {vis['max_alt']:.0f}°)"
+            elif vis.get('max_alt') is not None:
+                when = f"stays below {MIN_ALT:.0f}° tonight (max {vis['max_alt']:.0f}°)"
+            else:
+                when = 'not observable for the rest of tonight'
+        except Exception:
+            when = ''
+        body = f'RA {ra}  Dec {dec}' + (f' · {when}' if when else '') + ' · SLT script in Slack'
+        n = send_to_users(member_ids(), f'Einstein Probe alert {name}', body, '/bots', category='alerts')
+        if log:
+            log.info('EP alert %s pushed to %d device(s)', name, n)
+        return n
+    except Exception as exc:
+        logger.warning('EP alert push failed for %s: %s', name, exc)
+        return 0

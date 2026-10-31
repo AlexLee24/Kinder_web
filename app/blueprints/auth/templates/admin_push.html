@@ -113,5 +113,6 @@
 
 {% block scripts %}
 <script type="application/json" id="apPeople">{{ people|tojson }}</script>
+<script type="application/json" id="apCategories">{{ categories|tojson }}</script>
 <script src="{{ url_for('static', filename='js/admin_push.js') }}"></script>
 {% endblock %}

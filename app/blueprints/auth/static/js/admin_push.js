@@ -8,6 +8,8 @@
     if (!page) return;
     let PEOPLE = [];
     try { PEOPLE = JSON.parse($('apPeople').textContent) || []; } catch (e) { /* empty */ }
+    let CATS = {};
+    try { (JSON.parse($('apCategories').textContent) || []).forEach((c) => { CATS[c[0]] = c[1]; }); } catch (e) { /* none */ }
     const byId = new Map(PEOPLE.map((p) => [p.usr_id, p]));
     const picked = new Set();
     const open = new Set();
@@ -47,6 +49,8 @@
             : d.last_ok_at ? 'last delivered ' + esc(ago(d.last_ok_at)) : '<span class="ap-warn-t">not delivered yet</span>';
         return '<div class="ap-dev" data-sid="' + d.id + '"><span class="ap-dev-ic" aria-hidden="true">' + (PLAT_IC[d.platform] || '🔔') + '</span>' +
             '<div class="ap-dev-main"><b>' + esc(d.platform) + ' · ' + esc(d.browser) + '</b>' +
+            '<span class="ap-dev-cats">' + Object.keys(CATS).map((k) => '<span class="ap-cat' + (d.categories.includes(k) ? ' is-on' : '') +
+                '" title="' + (d.categories.includes(k) ? 'Takes: ' : 'Unticked: ') + esc(CATS[k]) + '">' + esc(CATS[k].replace(/ \(.*\)$/, '')) + '</span>').join('') + '</span>' +
             '<small>on since ' + esc(day(d.created_at)) + ' · ' + health + ' · <span title="' + esc(d.user_agent) + '">' + esc(d.host) + '</span></small></div>' +
             '<div class="ap-dev-acts"><button type="button" class="kw-btn kw-btn-sm" data-act="dev-test">Test</button>' +
             '<button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-act="dev-del">Remove</button></div></div>';

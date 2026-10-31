@@ -1,12 +1,13 @@
-// Push notifications panel of /settings (#push), after EAU_Web's push.js: turn push on / off for this device and send
-// a test. States: loading | on | off | denied (blocked in the browser) | ios (needs the Home Screen app) | na.
+// Push notifications panel of /settings (#push), after EAU_Web's push.js: turn push on / off for this device, tick
+// which kinds it takes (admin messages, Einstein Probe alerts for GREAT Lab, …) and send a test. States: loading | on | off | denied (blocked in the browser) | ios (needs the Home Screen app) | na.
 // The subscription goes to /api/push/subscribe (app/blueprints/basic/push.py); /sw.js shows what arrives.
 (function () {
     'use strict';
     var box = document.getElementById('push');
     if (!box) return;
     var stateEl = box.querySelector('.st-push-state'), actions = box.querySelector('.st-push-actions');
-    var KEY = null, sub = null;
+    var catsEl = box.querySelector('.st-push-cats');
+    var KEY = null, CATS = {}, sub = null;
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
     function post(url, body) {
@@ -35,8 +36,27 @@
     var mine = box.querySelector('.st-push-help [data-platform="' + (isIOS ? 'ios' : /Android/i.test(ua) ? 'android' : 'desktop') + '"]');
     if (mine) { mine.classList.add('is-mine'); mine.parentNode.insertBefore(mine, mine.parentNode.firstChild); }
 
+    function renderCats(selected) {
+        catsEl.innerHTML = '<span class="st-push-cats-h">Send to this device:</span>';
+        Object.keys(CATS).forEach(function (k) {
+            var lab = document.createElement('label');
+            lab.className = 'st-push-cat';
+            lab.innerHTML = '<input type="checkbox" value="' + esc(k) + '"' + (selected.indexOf(k) >= 0 ? ' checked' : '') + '><span>' + esc(CATS[k]) + '</span>';
+            lab.querySelector('input').addEventListener('change', saveCats);
+            catsEl.appendChild(lab);
+        });
+    }
+    function chosen() { return Array.prototype.map.call(catsEl.querySelectorAll('input:checked'), function (i) { return i.value; }); }
+    function saveCats() {
+        if (!sub) return;
+        post('/api/push/subscribe', { subscription: sub.toJSON(), categories: chosen() }).then(function (d) {
+            toast(d.ok ? 'Saved' : (d.error || 'Could not save'), d.ok ? 'success' : 'error');
+        });
+    }
+
     function show(state, title, text, buttons) {
         box.setAttribute('data-state', state);
+        catsEl.hidden = state !== 'on';
         stateEl.innerHTML = '<b>' + esc(title) + '</b>' + (text ? '<small>' + esc(text) + '</small>' : '');
         actions.innerHTML = '';
         (buttons || []).forEach(function (b) {
@@ -57,13 +77,14 @@
     }
     function onState(devices) {
         show('on', 'Push is on for this ' + (mobile ? 'device' : 'computer'),
-            'Messages from the Kinder admins pop up here, even when Kinder is closed.' +
+            'What you tick below pops up here, even when Kinder is closed.' +
             (devices > 1 ? ' You have push on ' + devices + ' devices.' : ''),
             [{ label: 'Send a test', primary: true, run: test }, { label: 'Turn off', run: off }]);
     }
     function offState() {
         show('off', 'Push is off on this ' + (mobile ? 'device' : 'computer'),
-            'Turn it on to get messages from the Kinder admins as notifications, even when Kinder is closed.',
+            'Turn it on to get ' + (Object.keys(CATS).map(function (k) { return CATS[k].replace(/ \(.*\)$/, '').replace(/^Messages/, 'messages'); }).join(' and ') || 'messages from the Kinder admins') +
+            ' as notifications, even when Kinder is closed.',
             [{ label: 'Turn on', primary: true, run: on }]);
     }
     function deniedState() {
@@ -86,11 +107,12 @@
                 });
             }).then(function (s) {
                 sub = s;
-                return post('/api/push/subscribe', { subscription: s.toJSON() });
+                return post('/api/push/subscribe', { subscription: s.toJSON(), categories: Object.keys(CATS) });
             }).then(function (d) {
                 if (!d.ok) throw new Error(d.error || 'save');
                 return post('/api/push/status', { endpoint: sub.endpoint });
             }).then(function (st) {
+                renderCats(st.categories || Object.keys(CATS));
                 onState(st.devices || 1);
                 toast('Push is on', 'success');
                 return test();
@@ -114,12 +136,13 @@
     fetch('/api/push/key', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (k) {
         if (!k.ok || !k.key) { show('na', 'Push is not set up on this server yet', 'An admin has to add the VAPID keys to kinder.env.', []); return; }
         KEY = k.key;
+        (k.categories || []).forEach(function (c) { CATS[c[0]] = c[1]; });
         if (Notification.permission === 'denied') { deniedState(); return; }
         return navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (s) {
             sub = s;
             if (!s) { offState(); return; }
             return post('/api/push/status', { endpoint: s.endpoint }).then(function (st) {
-                if (st.subscribed) onState(st.devices);
+                if (st.subscribed) { renderCats(st.categories || []); onState(st.devices); }
                 else offState();      // the browser is subscribed, but for another account (logged in as someone else)
             });
         });

@@ -69,6 +69,9 @@
 .ap-dev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ap-dev-main b { font-size: 0.84rem; font-weight: 600; }
 .ap-dev-main small { font-size: 0.74rem; color: var(--kw-text-muted); }
+.ap-dev-cats { display: flex; flex-wrap: wrap; gap: 4px; }
+.ap-cat { padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; border: 1px dashed var(--kw-border); color: var(--kw-text-faint); text-decoration: line-through; }
+.ap-cat.is-on { border-style: solid; border-color: transparent; background: rgba(48, 209, 88, 0.12); color: #5FCF9A; text-decoration: none; }
 .ap-dev-acts { display: flex; gap: 6px; flex-shrink: 0; }
 @media (max-width: 860px) {
     .ap-row-main { grid-template-columns: 24px 28px minmax(0, 1fr) auto; }
