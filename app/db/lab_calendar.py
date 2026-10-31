@@ -11,6 +11,10 @@ Times are TIMESTAMPTZ. An all-day event runs from 00:00 Taiwan time on its first
 ``obs.lab_calendar_feeds`` gives each member one secret subscription link (``token``); calendar apps fetch the feed
 without a login, so the token is the only key. Resetting it breaks the old link.
 
+``remind_minutes``: when Kinder reminds the members (bell + push) before a lab event — 30 by default (also for rows
+from before the column existed), NULL = no reminder; all-day events count from 09:00 on their first day.
+``obs.lab_event_reminders`` holds one row per (event, occurrence start) once that reminder went out.
+
 ``obs.lab_trigger_reminders``: one row per (night, member) once the sunset reminder for Trigger duty was handled, so
 it goes out once even with several workers (``outcome``: sent / already_sent / no_device).
 """
@@ -26,7 +30,7 @@ logger = logging.getLogger(__name__)
 _ensured = False
 
 _COLUMNS = ('id, source, uid, category, title, description, location, url, all_day, start_at, end_at, '
-            'repeat, repeat_until, assignee_email, assignee_name, created_by, created_by_name, created_at, updated_at')
+            'repeat, repeat_until, assignee_email, assignee_name, remind_minutes, created_by, created_by_name, created_at, updated_at')
 
 
 def _ensure(cur):
@@ -56,6 +60,16 @@ def _ensure(cur):
     """)
     cur.execute('ALTER TABLE obs.lab_calendar_events ADD COLUMN IF NOT EXISTS assignee_email TEXT')
     cur.execute('ALTER TABLE obs.lab_calendar_events ADD COLUMN IF NOT EXISTS assignee_name TEXT')
+    cur.execute('ALTER TABLE obs.lab_calendar_events ADD COLUMN IF NOT EXISTS remind_minutes INTEGER DEFAULT 30')
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS obs.lab_event_reminders (
+            event_id   BIGINT NOT NULL,
+            starts_at  TIMESTAMPTZ NOT NULL,
+            recipients INTEGER NOT NULL DEFAULT 0,
+            sent_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (event_id, starts_at)
+        )
+    """)
     cur.execute('CREATE INDEX IF NOT EXISTS lab_calendar_events_start_idx ON obs.lab_calendar_events (start_at)')
     cur.execute("""
         CREATE TABLE IF NOT EXISTS obs.lab_trigger_reminders (
@@ -110,7 +124,7 @@ def get_event(event_id):
 
 
 _EDITABLE = ('category', 'title', 'description', 'location', 'url', 'all_day', 'start_at', 'end_at',
-             'repeat', 'repeat_until', 'assignee_email', 'assignee_name')
+             'repeat', 'repeat_until', 'assignee_email', 'assignee_name', 'remind_minutes')
 
 
 def add_event(fields, created_by, created_by_name=''):
@@ -248,3 +262,26 @@ def reminders_since(day):
         return {(r['day'].isoformat(), r['email']): {'outcome': r['outcome'], 'devices': r['devices'],
                                                      'sent_at': r['sent_at'].isoformat(timespec='seconds')}
                 for r in cur.fetchall()}
+
+
+# ── Event reminders ──
+
+def claim_event_reminder(event_id, starts_at):
+    """Take the reminder of one occurrence; False when it already went out (from this or another process)."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        _ensure(cur)
+        cur.execute('INSERT INTO obs.lab_event_reminders (event_id, starts_at) VALUES (%s, %s) ON CONFLICT DO NOTHING',
+                    (int(event_id), starts_at))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def finish_event_reminder(event_id, starts_at, recipients):
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        _ensure(cur)
+        cur.execute('UPDATE obs.lab_event_reminders SET recipients = %s, sent_at = now() WHERE event_id = %s AND starts_at = %s',
+                    (int(recipients), int(event_id), starts_at))
+        cur.execute("DELETE FROM obs.lab_event_reminders WHERE starts_at < now() - interval '60 days'")
+        conn.commit()

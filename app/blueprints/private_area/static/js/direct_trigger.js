@@ -8,6 +8,10 @@
     const FILTERS = (page.dataset.filters || 'up,gp,rp,ip,zp').split(',');
     const TEL_KEY = 'kinder.directTrigger.telescope';
     const CONFIRM_MS = 5000;
+    // tonight's Lulin schedule closes LOT to triggers (lab_calendar.lot_closed); the server refuses LOT sends too
+    const LOT_CLOSED = page.dataset.lotClosed || '';
+    const LOT_CLOSED_MSG = `No LOT trigger tonight (Lulin schedule: ${LOT_CLOSED}). Send SLT only.`;
+    const lotShut = () => state.tel === 'LOT' && !!LOT_CLOSED;
 
     const $ = id => document.getElementById(id);
     const state = { tel: 'SLT', mode: 'auto', lists: { SLT: [], LOT: [] }, scriptFor: null, loaded: false };
@@ -282,7 +286,7 @@
         $('dtScript').value = '';
         $('dtSend').disabled = true;
         $('dtCopy').disabled = true;
-        setMsg($('dtSendMsg'), '');
+        setMsg($('dtSendMsg'), lotShut() ? LOT_CLOSED_MSG : '', lotShut() ? 'error' : undefined);
     }
 
     $('dtPreview').addEventListener('click', async () => {
@@ -293,9 +297,13 @@
             const data = await postJson('/api/direct_trigger/preview', { telescope: state.tel });
             $('dtScript').value = data.greeting + data.script;
             state.scriptFor = state.tel;
-            $('dtSend').disabled = false;
             $('dtCopy').disabled = false;
-            setMsg($('dtSendMsg'), `${data.count} target${data.count === 1 ? '' : 's'} ready. Press Send twice to confirm.`);
+            if (lotShut()) {
+                setMsg($('dtSendMsg'), LOT_CLOSED_MSG, 'error');
+            } else {
+                $('dtSend').disabled = false;
+                setMsg($('dtSendMsg'), `${data.count} target${data.count === 1 ? '' : 's'} ready. Press Send twice to confirm.`);
+            }
         } catch (err) {
             setMsg($('dtSendMsg'), err.message, 'error');
         } finally {
@@ -326,7 +334,7 @@
         } catch (err) {
             setMsg($('dtSendMsg'), err.message, 'error');
         } finally {
-            btn.disabled = state.scriptFor !== state.tel;
+            btn.disabled = state.scriptFor !== state.tel || lotShut();
         }
     });
 

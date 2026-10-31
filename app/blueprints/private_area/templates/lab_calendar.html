@@ -67,6 +67,7 @@
                     {% else %}
                     <b class="lc-duty-none">Nobody assigned</b>
                     {% endif %}
+                    {% if lot_closed %}<small class="lc-duty-nolot">No LOT trigger tonight ({{ lot_closed|join('; ') }}): SLT only</small>{% endif %}
                 </div>
                 <div class="lc-weeks-h"><span class="kw-label">Duty weeks · Mon – Sun</span></div>
                 <ul class="lc-weeks">
@@ -222,6 +223,14 @@
                 </select>
             </div>
             <div class="kw-field" id="lcFUntilWrap" hidden><label for="lcFUntil">Repeat until (optional)</label><input type="date" id="lcFUntil" name="repeat_until"></div>
+        </div>
+        <div class="lc-form-row lc-not-duty">
+            <div class="kw-field"><label for="lcFRemind">Reminder</label>
+                <select id="lcFRemind" name="remind" class="kw-select">
+                    {% for mk, ml in remind_labels.items() %}<option value="{{ mk }}"{% if mk == default_remind|string %} selected{% endif %}>{{ ml }}</option>{% endfor %}
+                </select>
+            </div>
+            <p class="lc-field-hint">Every GREAT Lab member gets it under the bell and as a push. All-day events count from 09:00.</p>
         </div>
         <div class="kw-field"><label for="lcFLoc">Location</label><input id="lcFLoc" name="location" maxlength="300" placeholder="e.g. S4-911, Zoom, Lulin"></div>
         <div class="kw-field"><label for="lcFUrl">Link</label><input id="lcFUrl" name="url" maxlength="1000" placeholder="https://…"></div>

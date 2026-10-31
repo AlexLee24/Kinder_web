@@ -6,7 +6,7 @@ from flask import abort, jsonify, redirect, request, session, url_for
 from .push import _usr_id
 from .routes import basic_bp
 
-ICONS = {'announce': 'megaphone', 'alerts': 'bolt', 'trigger': 'send'}
+ICONS = {'announce': 'megaphone', 'alerts': 'bolt', 'trigger': 'send', 'calendar': 'calendar'}
 
 
 def _login_needed():

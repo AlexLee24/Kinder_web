@@ -9,6 +9,7 @@
     <meta name="description" content="GREAT Lab Daily Trigger">
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
+    <meta name="x-lot-closed" content="{{ lot_closed|join('; ') }}">
     <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
     <style>
         /* Targets switched off: one compact, dimmed line (name + Off, coordinates on one line, notes cut to one
@@ -315,6 +316,7 @@
 
 {% block content %}
     <div class="kw-page dt-page">
+        {% include '_lot_closed.html' %}
 
                 <!-- Trigger Checklist & Script Section -->
                 <section class="kw-panel pa-trigger-section" aria-label="Pre-trigger checklist and trigger script">
@@ -453,7 +455,7 @@
                                 <span>Trigger Script Message</span>
                                 <div class="pa-script-tele-tabs">
                                     <button type="button" id="script-tab-SLT" class="pa-script-tele-tab active" onclick="switchScriptTelescope('SLT')">SLT</button>
-                                    <button type="button" id="script-tab-LOT" class="pa-script-tele-tab" onclick="switchScriptTelescope('LOT')">LOT</button>
+                                    <button type="button" id="script-tab-LOT" class="pa-script-tele-tab" onclick="switchScriptTelescope('LOT')"{% if lot_closed %} title="No LOT trigger tonight"{% endif %}>LOT{% if lot_closed %}<span class="lot-closed-tag">Closed</span>{% endif %}</button>
                                 </div>
                                 <select id="script-program-select" class="pa-script-program-select" style="display:none;" onchange="onScriptProgramChange()">
                                 </select>
@@ -499,7 +501,7 @@
                     <div class="dt-obs-topbar">
                         <div class="pa-tabs-header kw-seg" role="tablist" aria-label="Telescope">
                             <button id="tab-SLT" onclick="switchTab('SLT')" class="pa-tab-btn kw-seg-item active">SLT Targets</button>
-                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn kw-seg-item">LOT Targets</button>
+                            <button id="tab-LOT" onclick="switchTab('LOT')" class="pa-tab-btn kw-seg-item">LOT Targets{% if lot_closed %}<span class="lot-closed-tag">Closed tonight</span>{% endif %}</button>
                         </div>
                         <h2 id="dtObsTitle">Observation Targets</h2>
                         <div class="pa-obs-actions">
@@ -1020,7 +1022,7 @@
                     if (!byDay[k].length) return;
                     h += '<li class="lc-mini-day' + (k === d.today ? ' is-today' : '') + '"><p class="lc-mini-d">' + (k === d.today ? 'Tonight · ' : '') + esc(day(k)) + '</p>';
                     byDay[k].forEach(function(e) {
-                        h += '<div class="lc-mini-ev"><span class="lc-chip lc-c-' + esc(e.color) + '">' + esc(e.category_label) + '</span><span>' + esc(e.title) +
+                        h += '<div class="lc-mini-ev"><span class="lc-chip lc-c-' + esc(e.color) + '">' + esc(e.category_label) + '</span><span>' + esc(e.title) + (e.no_lot ? ' <small class="lc-nolot">No LOT trigger</small>' : '') +
                              (e.time_label ? ' <small>' + esc(e.time_label) + '</small>' : '') + (e.location ? ' <small>· ' + esc(e.location) + '</small>' : '') + '</span></div>';
                     });
                     h += '</li>';

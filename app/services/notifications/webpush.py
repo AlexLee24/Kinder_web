@@ -29,6 +29,7 @@ CATEGORIES = {
     'announce': {'label': 'Messages from the Kinder admins', 'members': False},
     'alerts':   {'label': 'Einstein Probe alerts (from the GCN bot)', 'members': True},
     'trigger':  {'label': 'My Trigger duty reminders (at Lulin sunset)', 'members': True},
+    'calendar': {'label': 'Lab Calendar event reminders', 'members': True},
 }
 APP_NAME = 'Kinder'
 _pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='webpush')

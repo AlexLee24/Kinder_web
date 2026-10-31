@@ -16,6 +16,15 @@ that take 'trigger' (Web Push) — unless the night's SLT trigger was already se
 Duty weeks run Monday to Sunday: members volunteer for a free week on the page (one 7-day event), and every Friday
 ``check_duty_weeks()`` (job ``lab_trigger_duty_check``) posts to Slack (SLACK_CHANNEL_ID_TRIGGER_DUTY) when nobody
 covers the week after next.
+
+Event reminders: each lab event (not Trigger duty, which has its sunset push, and not the Lulin schedule) reminds the
+GREAT Lab members under the bell and by push (category 'calendar') ``remind_minutes`` before it starts — 30 unless the
+event says otherwise or "No reminder"; all-day events count from 09:00 on their first day. ``send_event_reminders()``
+runs every minute (job ``lab_calendar_reminders``); subscribed calendar apps get the same time as a VALARM.
+
+LOT closed nights: a Lulin event whose title names UVEX, LISA or TRIPOL2, or whose program code starts with E
+(``E05 -- …``, not ``R05 -- …``), means LOT takes no triggers that night (``lot_closed()``). Daily Trigger and
+Direct Trigger refuse LOT sends then, and the sunset reminder says to send SLT only.
 """
 import calendar
 import json
@@ -53,8 +62,16 @@ SOURCES = {'lab': 'GREAT Lab', 'lulin': 'Lulin LOT'}
 LAB_CATEGORIES = [k for k, v in CATEGORIES.items() if v['source'] == 'lab']
 REPEAT_LABELS = {'': 'Does not repeat', 'weekly': 'Every week', 'biweekly': 'Every 2 weeks', '3weekly': 'Every 3 weeks',
                  '4weekly': 'Every 4 weeks', 'monthly': 'Every month'}
+# reminder before an event (minutes; '' = none) → label. DEFAULT_REMIND for new events and for rows from before
+REMIND_LABELS = {'': 'No reminder', '0': 'At the start', '10': '10 minutes before', '30': '30 minutes before',
+                 '60': '1 hour before', '120': '2 hours before', '1440': '1 day before'}
+DEFAULT_REMIND = 30
+ALL_DAY_REMIND_HOUR = 9        # an all-day event's reminder counts from 09:00 on its first day
+REMIND_GRACE = timedelta(minutes=15)   # a reminder missed by more than this (server down) is skipped
 _REPEAT_WEEKS = {'weekly': 1, 'biweekly': 2, '3weekly': 3, '4weekly': 4}
 LULIN = ('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
+# a Lulin event that keeps LOT from taking triggers: these instruments, or an E program (E05, not R05)
+LOT_CLOSED_RE = re.compile(r'UVEX|LISA|TRIPOL\s*2|^\s*E\d+', re.I)
 FEED_NAMES = {None: 'GREAT Lab Calendar', 'lab': 'GREAT Lab Calendar (lab only)', 'lulin': 'Lulin LOT Schedule'}
 
 
@@ -117,10 +134,35 @@ def _item(row, start, today):
         'repeat_until': row.get('repeat_until'),
         'series_start': row['start_at'].astimezone(TZ), 'series_end': row['end_at'].astimezone(TZ),
         'assignee_email': row.get('assignee_email') or '', 'assignee_name': row.get('assignee_name') or '',
+        'remind': _remind_of(row),
         'created_by': row.get('created_by') or '', 'created_by_name': row.get('created_by_name') or '',
         'days_left': (d - today).days,
         'is_past': end_d < today, 'is_today': d <= today <= end_d,
     }
+
+
+def _remind_of(row):
+    """Minutes before the start that this row reminds, or None (no reminder; Trigger duty; the Lulin schedule)."""
+    if row.get('source') != 'lab' or row.get('category') == 'trigger':
+        return None
+    m = row.get('remind_minutes')
+    return None if m is None else int(m)
+
+
+def remind_label(minutes, all_day=False):
+    if minutes is None:
+        return ''
+    label = REMIND_LABELS.get(str(minutes)) or f'{minutes} minutes before'
+    return label + (f' ({ALL_DAY_REMIND_HOUR:02d}:00)' if all_day and label == 'At the start' else '')
+
+
+def remind_at(e):
+    """When the reminder of occurrence ``e`` (from events()) goes out, or None."""
+    if e['remind'] is None:
+        return None
+    base = (datetime.combine(e['d'], datetime.min.time().replace(hour=ALL_DAY_REMIND_HOUR), TZ) if e['all_day']
+            else e['start_at'])
+    return base - timedelta(minutes=e['remind'])
 
 
 def events(today=None, past_days=60, future_days=480, source=None):
@@ -152,6 +194,8 @@ def to_json(e):
         'assignee_email': e['assignee_email'], 'assignee_name': e['assignee_name'],
         'created_by': e['created_by'], 'created_by_name': e['created_by_name'],
         'days_left': e['days_left'], 'is_past': e['is_past'], 'is_today': e['is_today'],
+        'no_lot': closes_lot(e),
+        'remind': e['remind'], 'remind_label': remind_label(e['remind'], e['all_day']),
     }
 
 
@@ -165,7 +209,7 @@ def compact(evs):
             series[e['db_id']] = {k: j[k] for k in (
                 'source', 'category', 'category_label', 'color', 'title', 'description', 'location', 'url', 'all_day',
                 'repeat', 'repeat_label', 'repeat_until', 'series_start', 'series_end', 'assignee_email',
-                'assignee_name', 'created_by', 'created_by_name')}
+                'assignee_name', 'created_by', 'created_by_name', 'no_lot', 'remind', 'remind_label')}
         occ.append([e['id'], e['db_id'], e['d'].isoformat(), e['end_d'].isoformat(), e['time_label'],
                     e['start_at'].isoformat(), e['end_at'].isoformat()])
     return {'series': series, 'occ': occ}
@@ -199,7 +243,8 @@ def _utc(dt):
 
 
 def vevent_lines(row, site_root='', alarm_minutes=30):
-    """VEVENT lines for one row (a repeating event is one VEVENT with an RRULE)."""
+    """VEVENT lines for one row (a repeating event is one VEVENT with an RRULE). The alarm: a lab event's own
+    reminder (all-day: from 09:00 on the day), ``alarm_minutes`` before a timed Lulin entry."""
     stamp = _utc(datetime.now(timezone.utc))
     uid = f"lulin-{row['uid']}" if row['source'] == 'lulin' and row.get('uid') else f"lab-{row['id']}@{SITE_DOMAIN}"
     lines = ['BEGIN:VEVENT', f'UID:{uid}', f'DTSTAMP:{stamp}']
@@ -241,9 +286,12 @@ def vevent_lines(row, site_root='', alarm_minutes=30):
     lines.append(f"CATEGORIES:{_ics_escape(cat['label'])}")
     if row['all_day']:
         lines.append('TRANSP:TRANSPARENT')      # all-day entries do not mark the subscriber busy
-    elif alarm_minutes:
+    before = _remind_of(row) if row['source'] == 'lab' else (None if row['all_day'] else alarm_minutes or None)
+    if before is not None:
+        offset = before - (ALL_DAY_REMIND_HOUR * 60 if row['all_day'] else 0)   # minutes before DTSTART
+        trigger = f'-PT{offset}M' if offset > 0 else f'PT{-offset}M'
         lines += ['BEGIN:VALARM', 'ACTION:DISPLAY', f'DESCRIPTION:{_ics_escape(summary)}',
-                  f'TRIGGER:-PT{int(alarm_minutes)}M', 'END:VALARM']
+                  f'TRIGGER:{trigger}', 'END:VALARM']
     lines.append('END:VEVENT')
     return lines
 
@@ -462,6 +510,10 @@ def parse_form(data, members=None):
             return None, 'Pick a valid "repeat until" date.'
         if repeat_until < d0:
             return None, '"Repeat until" is before the first day.'
+    remind = DEFAULT_REMIND if 'remind' not in data else str(data.get('remind') if data.get('remind') is not None else '')
+    if str(remind) not in REMIND_LABELS:
+        return None, 'Unknown reminder option.'
+    remind = None if remind == '' or category == 'trigger' else int(remind)
     url = str(data.get('url') or '').strip()
     if url and not re.match(r'^(https?://\S|/(?!/))', url):
         return None, 'The link must start with http:// or https://.'
@@ -471,7 +523,7 @@ def parse_form(data, members=None):
         'location': str(data.get('location') or '').strip()[:300], 'url': url[:1000],
         'all_day': all_day, 'start_at': start_at, 'end_at': end_at,
         'repeat': repeat, 'repeat_until': repeat_until,
-        'assignee_email': assignee_email, 'assignee_name': assignee_name,
+        'assignee_email': assignee_email, 'assignee_name': assignee_name, 'remind_minutes': remind,
     }, None
 
 
@@ -572,6 +624,30 @@ def duty_on(day):
     return out
 
 
+def closes_lot(e):
+    """True when this Lulin occurrence (or row) keeps LOT from taking triggers (LOT_CLOSED_RE)."""
+    return e.get('source') == 'lulin' and bool(LOT_CLOSED_RE.search(e.get('title') or ''))
+
+
+def lot_closed(day):
+    """Titles of the Lulin events on the night of ``day`` (a date) that close LOT to triggers; [] = LOT is open."""
+    out = []
+    for e in events(today=day, past_days=60, future_days=1, source='lulin'):
+        if e['d'] <= day <= e['end_d'] and closes_lot(e) and e['title'] not in out:
+            out.append(e['title'])
+    return out
+
+
+def lot_closed_tonight():
+    """lot_closed() for the current trigger night (turns over at 08:00, like Daily Trigger); [] when unknown."""
+    try:
+        from app.services.planning.trigger_send import _trigger_day_key
+        return lot_closed(date.fromisoformat(_trigger_day_key()))
+    except Exception:
+        logger.exception('lot_closed_tonight: Lulin schedule not read')
+        return []
+
+
 _sunset_cache = {}
 
 
@@ -622,11 +698,69 @@ def send_trigger_reminders(now=None, force=False):
         n = 0
         if user:                                      # the bell always; a push where they have it on
             first = (duty['name'] or '').split(' ')[0] or 'there'
+            closed = lot_closed(day)
+            todo = (f"LOT is closed tonight ({'; '.join(closed)}): send the SLT script only." if closed
+                    else 'open Daily Trigger and send the SLT / LOT script.')
             n = webpush.send_to_users(
-                [user['usr_id']], 'Trigger duty tonight',
-                f"Hi {first}, you are on Trigger duty tonight. Sunset at Lulin {sunset.strftime('%H:%M')}: "
-                'open Daily Trigger and send the SLT / LOT script.', '/daily_trigger', category='trigger')
+                [user['usr_id']], 'Trigger duty tonight' + (' · SLT only' if closed else ''),
+                f"Hi {first}, you are on Trigger duty tonight. Sunset at Lulin {sunset.strftime('%H:%M')}: {todo}",
+                '/daily_trigger', category='trigger')
         db.finish_reminder(day, duty['email'], 'sent' if n else 'no_device', n)
         logger.info('Trigger duty reminder %s %s: %s device(s)', day, duty['email'], n)
         done.append({**duty, 'outcome': 'sent' if n else 'no_device', 'devices': n})
     return {'day': day.isoformat(), 'sunset': sunset.isoformat(timespec='minutes'), 'reminded': done}
+
+
+# ── Event reminders (bell + push to the members, remind_minutes before an event) ──
+
+def _day_word(d, today):
+    if d == today:
+        return 'Today'
+    if d == today + timedelta(days=1):
+        return 'Tomorrow'
+    return f"{d.strftime('%a')} {d.day} {d.strftime('%b')}"
+
+
+def reminder_text(e, now):
+    """(title, body) of the reminder for occurrence ``e``, as of ``now``."""
+    today = now.astimezone(TZ).date()
+    if e['all_day']:
+        span = _day_word(e['d'], today)
+        if e['end_d'] > e['d']:
+            span += f" – {e['end_d'].strftime('%a')} {e['end_d'].day} {e['end_d'].strftime('%b')}"
+        when = span + ', all day'
+    else:
+        mins = round((e['start_at'] - now).total_seconds() / 60)
+        lead = 'Starting now' if mins <= 1 else f'In {mins} min' if mins < 90 else _day_word(e['d'], today)
+        when = f"{lead} · {e['time_label']}"
+    return e['title'], ' · '.join([when] + ([e['location']] if e['location'] else []))
+
+
+def send_event_reminders(now=None):
+    """Remind the members of every lab event whose reminder time has come (within REMIND_GRACE), once per
+    occurrence. Returns what went out."""
+    from app.db import lab_calendar as db
+    from app.services.notifications import webpush
+
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    due = []
+    for e in events(today=now.date(), past_days=1, future_days=2, source='lab'):
+        at = remind_at(e)
+        if at is None or not at <= now < at + REMIND_GRACE:
+            continue
+        if not e['all_day'] and now >= e['start_at']:
+            continue                                   # already begun
+        due.append(e)
+    if not due:
+        return []
+    members = webpush.member_ids()
+    sent = []
+    for e in due:
+        if not db.claim_event_reminder(e['db_id'], e['start_at']):
+            continue
+        title, body = reminder_text(e, now)
+        n = webpush.send_to_users(members, title, body, f"/lab_calendar?ev={e['id']}", category='calendar')
+        db.finish_event_reminder(e['db_id'], e['start_at'], len(members))
+        logger.info('Lab calendar reminder %s (%s): %d member(s), %d device(s)', e['id'], e['title'], len(members), n)
+        sent.append({'id': e['id'], 'title': title, 'body': body, 'members': len(members), 'devices': n})
+    return sent

@@ -165,7 +165,8 @@ Kinder（Logo → /）
 | interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
 | cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
 | cron | `lab_trigger_duty_check` | 週五 02:00（台灣 10:00） | 下下週有沒人值班的晚上 → Slack `SLACK_CHANNEL_ID_TRIGGER_DUTY`（預設 C06BT4DALM6）提醒大家去 Lab › Calendar 認領 |
-| interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推） |
+| interval | `lab_calendar_reminders` | 每 1 分 | Lab Calendar 組內事件開始前提醒 GREAT Lab 成員（通知鈴 + 推播分類 `calendar`）；預設 30 分鐘前，事件可改時間或 No reminder，全天事件從當天 09:00 算；每次發生只送一次（`obs.lab_event_reminders`），晚超過 15 分鐘就略過 |
+| interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推；當晚 LOT 關閉時標題加「· SLT only」並說只送 SLT） |
 | interval | `lab_calendar_lulin_sync` | 每 6 小時（啟動時一次） | 鹿林 LOT Google 日曆 → `obs.lab_calendar_events`（source `lulin`），Lab › Calendar 與訂閱 feed 用 |
 | cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
 | 手動（管理頁） | TNS hourly / daily 下載、auto-snooze、光度抓取、缺漏光度、目標星等、DETECT run、備份 | – | `/admin/*` 按鈕，各自另起 thread（狀態為 process 內變數） |

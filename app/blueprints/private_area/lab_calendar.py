@@ -109,6 +109,7 @@ def lab_calendar():
                           'pending': 'sending…'}.get(r['outcome'], status)
             duty_tonight.append({'id': e['id'], 'email': e['assignee_email'], 'name': e['assignee_name'],
                                  'status': status, 'ok': bool(r) and r['outcome'] != 'no_device'})
+    lot_closed = list(dict.fromkeys(e['title'] for e in evs if e['is_today'] and cal.closes_lot(e)))
     if src != 'all':
         evs = [e for e in evs if e['source'] == src]
     if kind != 'all':
@@ -135,8 +136,9 @@ def lab_calendar():
         today_events=today_evs, soon_events=soon_evs, today_date=today,
         past_n=sum(1 for e in evs if e['is_past']), total=len(evs),
         categories=cal.CATEGORIES, sources=cal.SOURCES, lab_categories=cal.LAB_CATEGORIES,
-        repeat_labels=cal.REPEAT_LABELS, src=src, kind=kind, q=q,
-        members=members, duty_tonight=duty_tonight,
+        repeat_labels=cal.REPEAT_LABELS, remind_labels=cal.REMIND_LABELS, default_remind=cal.DEFAULT_REMIND,
+        src=src, kind=kind, q=q,
+        members=members, duty_tonight=duty_tonight, lot_closed=lot_closed,
         duty_choices={e: n for e, n in members.items()
                       if user.get('is_admin') or e.lower() == (user.get('email') or '').lower()},
         duty_weeks=duty_weeks, sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),

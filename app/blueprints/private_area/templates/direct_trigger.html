@@ -10,12 +10,13 @@
 {% block bar_left %}
     <div class="kw-seg dt-scope" role="radiogroup" aria-label="Telescope">
         <button type="button" class="kw-seg-item" role="radio" data-tel="SLT">SLT <span class="kw-n" data-count="SLT">0</span></button>
-        <button type="button" class="kw-seg-item" role="radio" data-tel="LOT">LOT <span class="kw-n" data-count="LOT">0</span></button>
+        <button type="button" class="kw-seg-item" role="radio" data-tel="LOT"{% if lot_closed %} title="No LOT trigger tonight"{% endif %}>LOT <span class="kw-n" data-count="LOT">0</span></button>
     </div>
 {% endblock %}
 
 {% block content %}
-    <div class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}">
+    <div class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}" data-lot-closed="{{ lot_closed|join('; ') }}">
+        {% include '_lot_closed.html' %}
         <p class="kw-lead">Change tonight's plan without touching the Daily Trigger list. Add targets, check the script, then send it to the Control Room.</p>
 
         <div class="kw-tool dt-grid">

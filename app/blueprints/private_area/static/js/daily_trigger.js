@@ -2790,7 +2790,7 @@ function switchScriptTelescope(telescope) {
     lastGeneratedGreeting = '';
     lastGeneratedScriptBody = '';
     lastGeneratedTargets = [];
-    setTriggerSendStatus('', '');
+    setTriggerSendStatus(scriptTelescope === 'LOT' ? _LOT_CLOSED_MSG : '', scriptTelescope === 'LOT' && _LOT_CLOSED ? 'error' : '');
     resetScriptVisibilityPreview();
 }
 
@@ -2831,7 +2831,7 @@ function onScriptProgramChange() {
     lastGeneratedGreeting = '';
     lastGeneratedScriptBody = '';
     lastGeneratedTargets = [];
-    setTriggerSendStatus('', '');
+    setTriggerSendStatus(scriptTelescope === 'LOT' ? _LOT_CLOSED_MSG : '', scriptTelescope === 'LOT' && _LOT_CLOSED ? 'error' : '');
     resetScriptVisibilityPreview();
 }
 
@@ -2869,6 +2869,10 @@ function _buildScriptPayloadTarget(t) {
 }
 
 async function generateTriggerScriptMessage() {
+    if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
+        setTriggerSendStatus(_LOT_CLOSED_MSG, 'error');
+        return;
+    }
     const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
     const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
     if (done < checkboxes.length) {
@@ -3045,10 +3049,18 @@ const _USER_DISPLAY_NAME = (document.querySelector('meta[name="x-user-display-na
 const _USER_EMAIL = (document.querySelector('meta[name="x-user-email"]') || {}).content || '';
 const _APP_DEBUG = (document.querySelector('meta[name="x-app-debug"]') || {}).content === 'true';
 const _SLACK_CHANNEL_LABEL = _APP_DEBUG ? 'Test' : 'Control Room';
+// Tonight's Lulin schedule closes LOT to triggers (UVEX / LISA / TRIPOL2 / an E program; lab_calendar.lot_closed).
+// The server refuses LOT sends too; this only says so before anyone builds a LOT script.
+const _LOT_CLOSED = (document.querySelector('meta[name="x-lot-closed"]') || {}).content || '';
+const _LOT_CLOSED_MSG = _LOT_CLOSED ? `No LOT trigger tonight (Lulin schedule: ${_LOT_CLOSED}). Send the SLT script only.` : '';
 
 let _sendFlowState = null;
 
 function startSendTriggerFlow() {
+    if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
+        setTriggerSendStatus(_LOT_CLOSED_MSG, 'error');
+        return;
+    }
     if (!lastGeneratedScriptBody.trim()) {
         setTriggerSendStatus('Generate a script first before sending.', 'error');
         return;
@@ -3181,8 +3193,8 @@ function _rebuildSentChips() {
         chip.className = 'pa-sent-chip';
         chip.dataset.telescope = 'LOT';
         chip.dataset.program = p;
-        chip.title = 'Not sent yet today';
-        chip.textContent = `LOT ${p}: not sent`;
+        chip.title = _LOT_CLOSED_MSG || 'Not sent yet today';
+        chip.textContent = _LOT_CLOSED ? `LOT ${p}: closed tonight` : `LOT ${p}: not sent`;
         container.appendChild(chip);
     });
     if (_lastSentStatus) renderSentStatus(_lastSentStatus);
@@ -3217,8 +3229,8 @@ function renderSentStatus(status) {
             chip.title = `${info.sent_by} — ${info.sent_at} (Asia/Taipei)`;
         } else {
             chip.classList.remove('sent');
-            chip.textContent = `${label}: not sent`;
-            chip.title = 'Not sent yet today';
+            chip.textContent = _LOT_CLOSED ? `${label}: closed tonight` : `${label}: not sent`;
+            chip.title = _LOT_CLOSED_MSG || 'Not sent yet today';
         }
     });
 }
@@ -3244,6 +3256,10 @@ async function loadSentStatus() {
 let _singleTriggerState = null;
 
 async function startSingleTargetTriggerFlow(targetData, targetId) {
+    if (targetData.telescope === 'LOT' && _LOT_CLOSED) {
+        alert(_LOT_CLOSED_MSG);
+        return;
+    }
     const statusEl = document.getElementById('single-trigger-status');
     const modal = document.getElementById('singleTriggerConfirmModal');
     document.getElementById('single-trigger-target-name').textContent = targetData.name || 'Target';
