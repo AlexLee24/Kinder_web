@@ -1,6 +1,7 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — helpers (split from private_area_routes.py)."""
 import contextlib
 import fcntl
+import json
 import logging
 import os
 import re
@@ -9,11 +10,13 @@ import shutil
 import uuid
 import warnings
 from datetime import datetime, timedelta, timezone
+
 from flask import session
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
+
 from app.db.auth import get_page_groups
-import json
+
 from . import private_area_bp
 
 logger = logging.getLogger(__name__)
@@ -41,7 +44,7 @@ def get_documents_metadata():
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except (OSError, ValueError):   # unreadable or malformed metadata: fall back to the default
             pass
     return {'pinned': [], 'order': []}
 
@@ -101,7 +104,7 @@ def can_view_private_area():
 # ---------------------------------------------------------------------------
 # Per-page permission helpers
 # ---------------------------------------------------------------------------
-_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents']
+_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots']
 
 _PRIVATE_PAGE_LABELS = {
     'daily_trigger': 'Daily Trigger',
@@ -110,6 +113,7 @@ _PRIVATE_PAGE_LABELS = {
     'greatlab_info': 'Lab Info',
     'epessto_support': 'ePessto++ Support',
     'documents': 'Documents',
+    'bots': 'Lab Bots',
 }
 
 def _get_page_extra_groups(page_key: str) -> list:

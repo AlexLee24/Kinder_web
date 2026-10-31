@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', function() {
     calculateMosaic();
 });
 
-// Initialize Aladin Lite
-function initializeAladin() {
+// Initialize Aladin Lite (target / fov default to the first-load view)
+function initializeAladin(target = '20 51 05.74 +30 37 32.3', fov = 10) {
     const loadingElement = document.getElementById('aladinLoading');
 
     try {
@@ -29,8 +29,8 @@ function initializeAladin() {
             KinderHips.showStatus(document.getElementById('aladin-lite-div').parentElement);
             aladin = A.aladin('#aladin-lite-div', {
                 survey: survey,
-                fov: 10,
-                target: '20 51 05.74 +30 37 32.3',
+                fov: fov,
+                target: target,
                 cooFrame: 'ICRS',
                 showReticle: false,
                 showZoomControl: false,
@@ -54,7 +54,9 @@ function initializeAladin() {
                 showStatusBar: false,
             });
 
+            const instance = aladin;
             setTimeout(() => {
+                if (aladin !== instance) return;  // rebuilt again meanwhile
                 loadingElement.style.display = 'none';
                 isAladinReady = true;
 
@@ -404,6 +406,56 @@ function clearMosaicFromMap() {
     }
 }
 
+// Aladin's wasm core stays locked after an internal error (Safari: "recursive use of an object
+// detected which would lead to unsafe aliasing in rust"), and every later call throws the same.
+function aladinAlive() {
+    try {
+        aladin.getRaDec();
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Throw away a locked Aladin view and build a fresh one centred on target
+function rebuildAladin(target) {
+    console.warn('Aladin view is locked — rebuilding it');
+    let fov = 10;
+    try { fov = aladin.getFov()[0]; } catch (error) { /* locked */ }
+    isAladinReady = false;
+    clearMosaicFromMap();
+    // A fresh div drops the old instance's event listeners along with its canvases
+    const div = document.getElementById('aladin-lite-div');
+    div.replaceWith(div.cloneNode(false));
+    initializeAladin(target, fov);
+}
+
+// Sexagesimal ("05 35 17.3", "05:35:17", "5h35m17s") or decimal degrees → degrees.
+// isRA: sexagesimal RA is in hours.
+function parseCoordinate(text, isRA) {
+    const s = text.trim();
+    if (!s) return NaN;
+    if (/^[+-]?\d+(\.\d*)?$|^[+-]?\.\d+$/.test(s)) return parseFloat(s);
+    const parts = s.replace(/[hdms°'"′″:]/gi, ' ').trim().split(/\s+/);
+    if (parts.length > 3 || parts.some(p => !/^[+-]?\d+(\.\d*)?$/.test(p))) return NaN;
+    const sign = s.startsWith('-') ? -1 : 1;
+    const [a, b = 0, c = 0] = parts.map(p => Math.abs(parseFloat(p)));
+    if (b >= 60 || c >= 60) return NaN;
+    const value = sign * (a + b / 60 + c / 3600);
+    return isRA ? value * 15 : value;
+}
+
+// Redraw the FOV frame once Aladin has moved
+function refreshFOVAfterMove() {
+    setTimeout(() => {
+        clearMosaicFromMap();
+        setTimeout(() => {
+            autoDisplayFOV();
+            adjustAladinFOV();
+        }, 100);
+    }, 1000);
+}
+
 // Search by target name
 function searchByName() {
     const targetName = document.getElementById('targetName').value.trim();
@@ -417,33 +469,28 @@ function searchByName() {
         return;
     }
     
-    try {
-        // Use Aladin's built-in name resolver
-        aladin.gotoObject(targetName);
-        
-        // Clear and auto-update FOV after moving
-        setTimeout(() => {
-            clearMosaicFromMap();
-            setTimeout(() => {
-                autoDisplayFOV();
-                adjustAladinFOV();
-            }, 100);
-        }, 1000);
-    } catch (error) {
-        console.error('Error searching target:', error);
-        showNotification('Target not found', 'error');
+    if (!aladinAlive()) {
+        rebuildAladin(targetName);
+        return;
     }
+
+    // Use Aladin's built-in name resolver
+    aladin.gotoObject(targetName, {
+        success: refreshFOVAfterMove,
+        error: () => showNotification('Target not found', 'error'),
+    });
 }
 
 // Go to coordinates
 function gotoCoordinates() {
-    const ra = parseFloat(document.getElementById('targetRA').value);
-    const dec = parseFloat(document.getElementById('targetDEC').value);
+    const ra = parseCoordinate(document.getElementById('targetRA').value, true);
+    const dec = parseCoordinate(document.getElementById('targetDEC').value, false);
     
-    if (isNaN(ra) || isNaN(dec)) {
+    if (!isFinite(ra) || !isFinite(dec) || dec < -90 || dec > 90) {
         showNotification('Please enter valid coordinates', 'warning');
         return;
     }
+    const raNorm = ((ra % 360) + 360) % 360;
     
     if (!isAladinReady || !aladin) {
         showNotification('Sky map not ready', 'warning');
@@ -451,20 +498,12 @@ function gotoCoordinates() {
     }
     
     try {
-        aladin.gotoRaDec(ra, dec);
-        
-        // Clear and auto-update FOV after moving
-        setTimeout(() => {
-            clearMosaicFromMap();
-            setTimeout(() => {
-                autoDisplayFOV();
-                adjustAladinFOV();
-            }, 100);
-        }, 1000);
+        aladin.gotoRaDec(raNorm, dec);
     } catch (error) {
-        console.error('Error going to coordinates:', error);
-        showNotification('Failed to go to coordinates', 'error');
+        rebuildAladin(`${raNorm} ${dec}`);
+        return;
     }
+    refreshFOVAfterMove();
 }
 
 // Go to specific objects
@@ -487,19 +526,11 @@ function gotoObject(objectName) {
     if (obj) {
         try {
             aladin.gotoRaDec(obj.ra, obj.dec);
-            
-            // Clear and auto-update FOV after moving
-            setTimeout(() => {
-                clearMosaicFromMap();
-                setTimeout(() => {
-                    autoDisplayFOV();
-                    adjustAladinFOV();
-                }, 100);
-            }, 1000);
         } catch (error) {
-            console.error('Error going to object:', error);
-            showNotification('Failed to go to object', 'error');
+            rebuildAladin(`${obj.ra} ${obj.dec}`);
+            return;
         }
+        refreshFOVAfterMove();
     }
 }
 

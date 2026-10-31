@@ -53,3 +53,14 @@ def disabled():
     """Bot ids switched off with BOTS_DISABLED (comma separated), e.g. while the old lab_bot still runs."""
     import os
     return {x.strip() for x in (os.environ.get('BOTS_DISABLED') or '').split(',') if x.strip()}
+
+
+def setup_problems():
+    """What each bot is missing right now (settings, folders), so a page shows it before the first run."""
+    from . import astronote, gcn, obs_log, reduction
+    from . import detect as detect_bot
+    raw = obs_log.raw_dir()
+    out = {'gcn': gcn.setup_problem(), 'astronote': astronote.setup_problem(), 'reduction': reduction.setup_problem(),
+           'detect': detect_bot.setup_problem(),
+           'obs_log': '' if raw and raw.is_dir() else f'Raw frame folder not found: {raw or "(not set)"} — set OBS_RAW_DIR or REDUCTION_PIPELINE_DIR.'}
+    return {k: v for k, v in out.items() if v}

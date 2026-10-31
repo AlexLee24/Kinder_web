@@ -4,6 +4,7 @@
 not in app/data/bots/astronotes_sent_ids.json, oldest first. A note's id is saved before it is posted, so a
 restart can never post it twice; a failed post is rolled back and retried next time. With no sent-ids file yet
 (first run) every note in the window is marked as sent without posting, so the channel is not flooded.
+Each posted note is also kept in app/data/bots/astronotes_posted.json (newest MAX_POSTED) for Lab › Bots.
 
 TNS login: TNS_BOT_ID + TNS_BOT_NAME + TNS_API_KEY, or TNS_USER_ID + TNS_USERNAME (kinder.env).
 """
@@ -24,6 +25,8 @@ LOOKBACK_DAYS = 2
 TNS_LIST_URL = 'https://www.wis-tns.org/astronotes'
 TNS_NOTE_URL = 'https://www.wis-tns.org/astronotes/astronote/{}'
 SENT_IDS_FILE = DATA_DIR / 'bots' / 'astronotes_sent_ids.json'
+POSTED_FILE = DATA_DIR / 'bots' / 'astronotes_posted.json'
+MAX_POSTED = 50
 
 
 def _env(key):
@@ -68,6 +71,38 @@ def _save_sent(ids):
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(tmp, SENT_IDS_FILE)
+
+
+def load_posted():
+    """Notes posted to Slack, newest first."""
+    try:
+        with open(POSTED_FILE) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _remember_posted(note_id, note):
+    objects = []
+    for o in note.get('related_objects') or []:
+        name = f"{_txt(o.get('iauname_prefix'))}{_txt(o.get('iauname'))}".strip()
+        if name:
+            objects.append({'name': name, 'iauname': _txt(o.get('iauname')), 'type': _txt(o.get('objtype')),
+                            'z': _txt(o.get('redshift'))})
+    entry = {'id': str(note_id), 'title': _txt(note.get('title')) or '(no title)', 'type': _txt(note.get('type')),
+             'source_group': _txt(note.get('source_group')), 'public_timestamp': _txt(note.get('public_timestamp')),
+             'authors': _txt(note.get('authors'))[:300], 'abstract': _txt(note.get('abstract'))[:1500],
+             'objects': objects[:20], 'url': TNS_NOTE_URL.format(note_id), 'posted_at': status.now_iso()}
+    posted = [entry] + [p for p in load_posted() if p.get('id') != entry['id']]
+    try:
+        os.makedirs(POSTED_FILE.parent, exist_ok=True)
+        tmp = f'{POSTED_FILE}.tmp'
+        with open(tmp, 'w') as fh:
+            json.dump(posted[:MAX_POSTED], fh, indent=2, ensure_ascii=False)
+        os.replace(tmp, POSTED_FILE)
+    except OSError as e:
+        log.warning('Could not save posted notes: %s', e)
 
 
 # ── TNS ───────────────────────────────────────────────────────────────────────
@@ -188,6 +223,7 @@ def _poll():
         _save_sent(sent)                           # saved before posting: a restart never posts twice
         if _post(client, note_id, note):
             posted += 1
+            _remember_posted(note_id, note)
             status.event(BOT, f'AstroNote {note_id}: {_txt(note.get("title"))[:160]}')
         else:
             sent.discard(note_id)                  # retry next time

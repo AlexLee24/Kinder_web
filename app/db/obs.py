@@ -6,9 +6,12 @@ Return dicts use backward-compatible key names matching the legacy kinder_web DB
 import logging
 import math
 from datetime import date as _date
+
 from psycopg2 import extras
-from . import get_db_connection
+
 from app.services.astro.coordinate_converter import normalize_decimal_degrees
+
+from . import get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +256,9 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
                 plan_count.append(int(f.get('count', 1) or 1))
                 plan_time.append(int(f.get('exp', f.get('time', 60)) or 60))
             else:
-                plan_filter.append(str(f)); plan_count.append(1); plan_time.append(60)
+                plan_filter.append(str(f))
+                plan_count.append(1)
+                plan_time.append(60)
         sets += ['plan_filter=%s', 'plan_count=%s', 'plan_time=%s']
         params += [plan_filter, plan_count, plan_time]
 
@@ -411,13 +416,23 @@ def get_observation_logs(year_or_month: int | str | None = None,
             clauses.append("to_char(l.date, 'YYYY-MM') = %s")
             params.append(month_key)
     if target_name:
-        clauses.append("t_obj.name ILIKE %s"); params.append(f'%{target_name}%')
+        clauses.append("t_obj.name ILIKE %s")
+        params.append(f'%{target_name}%')
     if telescope:
-        clauses.append("l.telescope = %s"); params.append(telescope)
+        clauses.append("l.telescope = %s")
+        params.append(telescope)
     where = ' AND '.join(clauses)
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(f"{_LOG_SELECT} WHERE {where} ORDER BY l.date DESC, l.log_id DESC", params)
+        return [_log_to_dict(r) for r in cur.fetchall()]
+
+
+def get_observed_since(since) -> list[dict]:
+    """Observed rows of obs.logs from ``since`` (a date) on, newest night first (Lab › Bots, observation-log bot)."""
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute(f"{_LOG_SELECT} WHERE l.observed AND l.date >= %s ORDER BY l.date DESC, l.telescope, l.name", (since,))
         return [_log_to_dict(r) for r in cur.fetchall()]
 
 
@@ -497,7 +512,9 @@ def upsert_observation_log(target_id_or_name, date: str, name_or_user: str,
                 c_list.append(int(item.get('count', 1) or 1))
                 t_list.append(int(item.get('exp', item.get('time', 0)) or 0))
             else:
-                f_list.append(str(item)); c_list.append(1); t_list.append(0)
+                f_list.append(str(item))
+                c_list.append(1)
+                t_list.append(0)
         return f_list, c_list, t_list
 
     if isinstance(target_id_or_name, int):

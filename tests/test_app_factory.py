@@ -28,8 +28,11 @@ def test_route_count_is_stable(app):
     # 287 with the Pipeline folder scan (classify API); 294 with Calibrated_Science (2), copy / restore (2)
     # and import into Kinder objects (preview, import, undo); 297 with /admin/system (page, status, recount);
     # 299 with /settings and /api/settings/ui; 305 with Admin › Bots (page, status, log, run, stop, overview);
-    # 317 by 2026-10-29; 328 with Pipeline › Reduction batches (3 pages + 8 API).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 328
+    # 317 by 2026-10-29; 328 with Pipeline › Reduction batches (3 pages + 8 API);
+    # 331 with Lab › Bots (/bots, /api/bots/status, /api/bots/<id>/results); 333 with the Lulin robot feed
+    # (/api/v1/robot/alerts) and cancelling a robot alert; 336 with DETECT › LSST
+    # (/detect/lsst, /api/detect/lsst/lightcurve/<oid>, /api/detect/lsst/run).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 336
 
 
 def test_duplicate_rules_keep_precedence(app):

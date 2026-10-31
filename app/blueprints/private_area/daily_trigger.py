@@ -1,11 +1,12 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — daily_trigger (split from private_area_routes.py)."""
-import os
-from datetime import datetime, timedelta
-from flask import render_template, redirect, url_for, session, flash, request, jsonify
-from app.db.auth import get_groups
-from app.config import config
 import json
 import logging
+import os
+
+from flask import flash, jsonify, redirect, render_template, request, session, url_for
+
+from app.config import config
+from app.db.auth import get_groups
 
 logger = logging.getLogger(__name__)
 from . import private_area_bp
@@ -17,13 +18,13 @@ def daily_trigger():
     if 'user' not in session:
         flash('Please log in to access daily trigger.', 'warning')
         return redirect(url_for('basic.login'))
-    
+
     user_email = session['user']['email']
-    
+
     if not can_access_page('daily_trigger'):
         flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
-    
+
     all_groups = []
     if session['user'].get('is_admin', False):
         groups_dict = get_groups()
@@ -91,7 +92,7 @@ def daily_trigger_send_message():
     logger.info('daily_trigger_send_message: visibility image=%s', image_path or '(none)')
 
     try:
-        from app.services.planning.trigger_send import send_to_slack, mark_sent
+        from app.services.planning.trigger_send import mark_sent, send_to_slack
         send_to_slack(greeting, script, image_path=image_path)
         logger.info('daily_trigger_send_message: Slack send call completed by=%s telescope=%s', requester, telescope)
     except Exception:
@@ -123,51 +124,15 @@ def daily_trigger_send_message():
     return jsonify({'success': True, 'status': status, 'log_warnings': log_warnings})
 
 def _render_trigger_visibility_image(telescope, targets):
-    """Renders a fresh visibility JPG (obsplan.plot_night_observing_tracks) for
-    the given targets, to a private temp file the caller is responsible for
-    deleting. Returns None if there's nothing plottable or rendering fails —
-    the send should still go through with just the text message in that case."""
-    import tempfile
-    import ephem
-    from app.services.planning import obsplan as obs
-    from app.services.planning.trigger_send import _trigger_day_key
-
-    logger.info('render_trigger_visibility_image: start telescope=%s target_count=%d', telescope, len(targets))
-
-    target_list = []
-    for t in targets:
-        ra, dec = t.get('ra'), t.get('dec')
-        if not ra or not dec:
-            logger.warning('render_trigger_visibility_image: %s has no RA/Dec, skipping in plot', t.get('name'))
-            continue
-        try:
-            target_list.append(obs.create_ephem_target(t.get('name') or 'Target', ra, dec))
-        except Exception:
-            logger.warning('render_trigger_visibility_image: could not parse coords for %s (RA=%r DEC=%r)',
-                           t.get('name'), ra, dec, exc_info=True)
-    if not target_list:
-        logger.warning('render_trigger_visibility_image: no plottable targets for telescope=%s — sending without a plot', telescope)
-        return None
-
-    try:
-        date_str = _trigger_day_key()
-        lulin = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-        tf = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
-        tf.close()
-        obs.render_visibility_plot(target_list, lulin, date_str, 'Asia/Taipei', tf.name, n_steps=500)
-        size = os.path.getsize(tf.name) if os.path.isfile(tf.name) else -1
-        logger.info('render_trigger_visibility_image: rendered %s (%d bytes) for telescope=%s, %d target(s) plotted',
-                    tf.name, size, telescope, len(target_list))
-        return tf.name
-    except Exception:
-        logger.exception('render_trigger_visibility_image: render failed telescope=%s target_count=%d',
-                         telescope, len(target_list))
-        return None
+    """Fresh visibility JPG for the targets (trigger_send.render_trigger_plot), in a private temp file the caller
+    deletes. None if nothing is plottable or rendering fails — the send still goes through with the text alone."""
+    from app.services.planning.trigger_send import render_trigger_plot
+    return render_trigger_plot(targets, label=telescope)
 
 def _log_triggered_targets(telescope, targets, sent_by):
-    from app.services.planning.trigger_send import _trigger_day_key
-    from app.services.planning.trigger_script import exposure_time as _auto_exposure_time
     from app.db.obs import upsert_observation_log
+    from app.services.planning.trigger_script import exposure_time as _auto_exposure_time
+    from app.services.planning.trigger_send import _trigger_day_key
 
     obs_date = _trigger_day_key()
     warnings = []
