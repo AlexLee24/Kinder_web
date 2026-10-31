@@ -479,3 +479,71 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .kw-pwa-step-ico { flex: 0 0 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--kw-surface); color: var(--kw-accent); }
 .kw-pwa-step-ico svg { width: 18px; height: 18px; }
 .kw-pwa-guide-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+/* ── The bell left of the account button (js/notify.js, after EAU's notification centre) ── */
+.sh-acct { align-items: center; gap: 4px; }
+.sh-notif { position: relative; display: flex; }
+.sh-notif-btn {
+    position: relative; width: calc(var(--sh-bar-h) - 16px); height: calc(var(--sh-bar-h) - 16px); min-height: 0; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 999px;
+    background: none; color: var(--color-text-secondary); cursor: pointer; transition: background-color 0.15s, color 0.15s, transform 0.15s;
+}
+.sh-notif-btn svg { width: 20px; height: 20px; }
+.sh-notif-btn:hover, .sh-notif.is-open .sh-notif-btn { background: var(--sh-hover); color: var(--color-text); }
+.sh-notif-btn.has-unread { color: var(--color-text); }
+.sh-notif-btn:active { transform: scale(0.94); }
+.sh-notif-badge {
+    position: absolute; top: 3px; right: 1px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box;
+    display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
+    background: var(--color-accent); color: var(--color-accent-text); font: 700 0.64rem/1 var(--kw-font-sans);
+    box-shadow: 0 0 0 2px var(--color-bg, #07061a);
+}
+.sh-notif-badge[hidden] { display: none; }
+.sh-notif-panel {
+    position: absolute; right: -56px; top: calc(100% + 10px); z-index: 1010; width: 360px; max-width: calc(100vw - 24px);
+    display: flex; flex-direction: column; border-radius: var(--radius-lg); overflow: hidden;
+    background: var(--color-surface-elevated); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--color-border); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    opacity: 0; visibility: hidden; transform: translateY(-4px);
+    transition: opacity 0.15s, transform 0.15s, visibility 0s linear 0.15s;
+}
+.sh-notif.is-open .sh-notif-panel { opacity: 1; visibility: visible; transform: none; transition: opacity 0.15s, transform 0.15s; }
+.sh-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 8px 16px; border-bottom: 1px solid var(--color-border-subtle); }
+.sh-notif-head b { font-size: 0.92rem; font-weight: 600; color: var(--color-text); }
+.sh-notif-head button { min-height: 0; padding: 4px 7px; border: 0; border-radius: 6px; background: none; color: var(--color-accent); font: 500 0.74rem/1.2 var(--kw-font-sans); cursor: pointer; }
+.sh-notif-head button:hover { background: var(--color-accent-soft); }
+.sh-notif-head button.is-danger { color: var(--color-text-muted); }
+.sh-notif-head button.is-danger:hover { color: #FF8A80; background: rgba(255, 69, 58, 0.12); }
+.sh-notif-list { max-height: min(62vh, 460px); overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.sh-notif-empty { padding: 28px 12px; text-align: center; font-size: 0.82rem; color: var(--color-text-muted); }
+.sh-notif-row { position: relative; transition: opacity 0.15s, transform 0.15s; }
+.sh-notif-row.is-leaving { opacity: 0; transform: translateX(8px); }
+.sh-notif-item { display: flex; gap: 11px; padding: 10px 34px 10px 10px; border-radius: 10px; color: var(--color-text-secondary); text-decoration: none; transition: background-color 0.12s; }
+.sh-notif-item:hover { background: var(--sh-hover); color: var(--color-text); }
+.sh-notif-item.is-unread { color: var(--color-text); }
+.sh-notif-item.is-unread::after { content: ""; position: absolute; top: 16px; right: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); }
+.sh-notif-ic { flex: 0 0 32px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255, 255, 255, 0.07); color: var(--color-accent); }
+.sh-notif-ic svg { width: 16px; height: 16px; }
+.sh-notif-ic.is-bolt { color: #FF8A80; background: rgba(255, 69, 58, 0.12); }
+.sh-notif-ic.is-send { color: #F2C94C; background: rgba(242, 201, 76, 0.13); }
+.sh-notif-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sh-notif-title { font-size: 0.84rem; line-height: 1.4; overflow-wrap: anywhere; }
+.sh-notif-item.is-unread .sh-notif-title { font-weight: 600; }
+.sh-notif-sub { font-size: 0.76rem; line-height: 1.4; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sh-notif-time { font-size: 0.7rem; color: var(--color-text-faint, rgba(245, 245, 247, 0.36)); }
+.sh-notif-del {
+    position: absolute; top: 28px; right: 6px; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center; background: none; color: var(--color-text-muted);
+    opacity: 0; cursor: pointer; transition: opacity 0.12s, background-color 0.12s;
+}
+.sh-notif-del svg { width: 12px; height: 12px; }
+.sh-notif-row:hover .sh-notif-del, .sh-notif-del:focus-visible { opacity: 1; }
+.sh-notif-del:hover { background: rgba(255, 69, 58, 0.15); color: #FF8A80; }
+@media (hover: none) { .sh-notif-del { opacity: 0.6; } }
+.sh-notif-hint { display: block; margin: 0 4px 4px; padding: 9px 12px; border-radius: 10px; background: var(--color-accent-soft); color: var(--color-accent); font-size: 0.78rem; text-decoration: none; }
+.sh-notif-hint[hidden] { display: none; }
+.sh-notif-foot { display: block; padding: 11px; border-top: 1px solid var(--color-border-subtle); text-align: center; font-size: 0.8rem; color: var(--color-text-secondary); text-decoration: none; }
+.sh-notif-foot:hover { color: var(--color-text); background: var(--sh-hover); }
+@media (max-width: 860px) {
+    .sh-notif-panel { position: fixed; top: calc(var(--sh-bar-h) + 14px); left: 12px; right: 12px; width: auto; max-width: none; }
+}

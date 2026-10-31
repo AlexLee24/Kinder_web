@@ -181,7 +181,7 @@
         estTimer = setTimeout(() => {
             post('/admin/push/preview', { target: target(), group: $('apGroup') ? $('apGroup').value : '', usr_ids: Array.from(picked) }).then((d) => {
                 est = d;
-                $('apEst').textContent = d.recipients + ' ' + (d.recipients === 1 ? 'person' : 'people') + ' · ' + d.with_push + ' with push · ' + d.devices + ' device' + (d.devices === 1 ? '' : 's');
+                $('apEst').textContent = d.recipients + ' ' + (d.recipients === 1 ? 'person' : 'people') + ' (bell) · ' + d.with_push + ' with push · ' + d.devices + ' device' + (d.devices === 1 ? '' : 's');
             });
         }, 120);
     }
@@ -201,14 +201,14 @@
         ev.preventDefault();
         if (!$('apTitle').value.trim()) { toast('Write a title', 'error'); $('apTitle').focus(); return; }
         if (target() === 'users' && !picked.size) { toast('Pick at least one person in the list below', 'error'); return; }
-        if (!est.devices) { toast('Nobody in that list has push turned on', 'error'); return; }
-        if (target() !== 'me' && !confirm('Send this to ' + est.with_push + ' ' + (est.with_push === 1 ? 'person' : 'people') + ' (' + est.devices + ' devices)? It cannot be taken back.')) return;
+        if (!est.recipients) { toast('Nobody is in that list', 'error'); return; }
+        if (target() !== 'me' && !confirm('Send this to ' + est.recipients + ' ' + (est.recipients === 1 ? 'person' : 'people') + ' (under their bell; pushed to ' + est.devices + ' device' + (est.devices === 1 ? '' : 's') + ')? It cannot be taken back.')) return;
         const btn = $('apSend');
         btn.disabled = true;
         post('/admin/push/send', { title: $('apTitle').value, body: $('apBody').value, url: $('apUrl').value, target: target(),
             group: $('apGroup') ? $('apGroup').value : '', usr_ids: Array.from(picked) }).then((d) => {
             if (!d.ok) { btn.disabled = false; toast(d.error || 'Could not send', 'error'); return; }
-            toast('Sending to ' + d.devices + ' device(s)…', 'success');
+            toast('Sent to ' + d.recipients + ' bell(s), pushing to ' + d.devices + ' device(s)…', 'success');
             setTimeout(() => location.reload(), 2500);      // the history row then shows how many took it
         }).catch(() => { btn.disabled = false; toast('Could not send', 'error'); });
     });

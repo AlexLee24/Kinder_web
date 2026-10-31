@@ -63,7 +63,7 @@
         if (e.category !== 'trigger' || !e.assignee_email) return '';
         const r = (DATA.reminders || {})[TODAY + '|' + e.assignee_email];
         const OUT = { sent: (n) => 'Reminder pushed to ' + n + ' device' + (n === 1 ? '' : 's') + ' at sunset',
-            already_sent: () => 'No reminder needed: the SLT trigger was already sent', no_device: () => 'Not reminded: no device with Trigger reminders on',
+            already_sent: () => 'No reminder needed: the SLT trigger was already sent', no_device: () => 'Reminder under the bell only: no device with Trigger reminders on',
             pending: () => 'Sending the reminder…' };
         if (e.is_today && r) return OUT[r.outcome] ? OUT[r.outcome](r.devices) : '';
         if (e.is_today) return 'Push reminder at Lulin sunset tonight, ' + DATA.sunset_today;

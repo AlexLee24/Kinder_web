@@ -1,6 +1,7 @@
 """Web Push to phones and desktops (after EAU_Web's modules/messaging/webpush.py).
 
-Members turn push on per device in Settings (js/push.js → /api/push/*) and tick which CATEGORIES it takes; the
+Everything sent here also lands under the bell in the top bar (auth.notifications, app/db/notifications.py), also
+for people without push. Members turn push on per device in Settings (js/push.js → /api/push/*) and tick which CATEGORIES it takes; the
 browser's PushSubscription is stored in auth.push_subscriptions (app/db/push.py). Admins see who has it on and send
 from Admin › Push; the GCN bot pushes Einstein Probe alerts (push_ep_alert). /sw.js shows the notification and opens
 ``url`` when it is tapped.
@@ -109,10 +110,12 @@ def send_one(sub, data):
         return False, f'Could not reach the push service ({type(exc).__name__})'
 
 
-def _send_all(subs, data, broadcast_id=None):
+def _send_all(subs, data, broadcast_id=None, per_user=None):
+    """Send ``data`` to every subscription; ``per_user`` {usr_id: {…}} overrides fields for one account (its bell
+    link and unread count)."""
     ok = bad = 0
     for s in subs:
-        if send_one(s, data)[0]:
+        if send_one(s, {**data, **(per_user or {}).get(s['usr_id'], {})})[0]:
             ok += 1
         else:
             bad += 1
@@ -126,18 +129,31 @@ def _send_all(subs, data, broadcast_id=None):
 
 
 def send_to_users(usr_ids, title, body='', url='/', category='announce', broadcast_id=None, wait=False):
-    """Push to every device of these accounts that takes ``category`` (None: every device, for tests). In the
-    background unless ``wait``;
-    returns the number of devices it goes to (with ``wait``: (delivered, failed))."""
+    """Notify these accounts: a row under the bell for each (app/db/notifications.py, also for people without push),
+    then a push to every device that takes ``category``. ``category`` None = a device test: push only, every
+    device, nothing under the bell. Pushing runs in the background unless ``wait``; returns the number of devices
+    it goes to (with ``wait``: (delivered, failed))."""
+    from app.db import notifications as inbox
     from app.db import push as db
-    if not enabled() or not usr_ids:
+    if not usr_ids:
+        return (0, 0) if wait else 0
+    per_user = {}
+    if category:
+        try:
+            nids = inbox.add_many(usr_ids, category, title, body, url)
+            unread = inbox.unread_counts(list(nids))
+            # tapping the push opens the bell entry, which marks it read and goes on to ``url``
+            per_user = {u: {'url': f'/notifications/{n}', 'unread': unread.get(u, 0)} for u, n in nids.items()}
+        except Exception:
+            logger.exception('notifications: could not write the bell entries')
+    if not enabled():
         return (0, 0) if wait else 0
     subs = db.subscriptions(usr_ids=usr_ids, category=category)
     data = payload(title, body, url)
     if wait:
-        return _send_all(subs, data, broadcast_id)
+        return _send_all(subs, data, broadcast_id, per_user)
     try:
-        _pool.submit(_send_all, subs, data, broadcast_id)
+        _pool.submit(_send_all, subs, data, broadcast_id, per_user)
     except RuntimeError:            # interpreter shutting down
         pass
     return len(subs)
@@ -180,11 +196,9 @@ def device_label(user_agent, endpoint=''):
 
 
 def push_ep_alert(name, ra, dec, log=None):
-    """Einstein Probe alert (app/services/bots/gcn.py) → every GREAT Lab member's devices that take 'alerts'.
+    """Einstein Probe alert (app/services/bots/gcn.py) → every GREAT Lab member's bell and devices that take 'alerts'.
     Never raises: the Slack post and the robot must not wait on it."""
     try:
-        if not enabled():
-            return 0
         try:
             from app.services.bots.robot import MIN_ALT, visibility_tonight
             vis = visibility_tonight(name, ra, dec)

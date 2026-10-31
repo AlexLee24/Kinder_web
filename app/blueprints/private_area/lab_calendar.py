@@ -105,7 +105,7 @@ def lab_calendar():
             status = 'reminder at sunset'
             if r:
                 status = {'sent': f"reminded on {r['devices']} device{'s' if r['devices'] != 1 else ''}",
-                          'already_sent': 'trigger already sent', 'no_device': 'not reminded: push off',
+                          'already_sent': 'trigger already sent', 'no_device': 'bell only: push off',
                           'pending': 'sending…'}.get(r['outcome'], status)
             duty_tonight.append({'id': e['id'], 'email': e['assignee_email'], 'name': e['assignee_name'],
                                  'status': status, 'ok': bool(r) and r['outcome'] != 'no_device'})

@@ -52,6 +52,7 @@
     {% block after_main %}{% endblock %}
 
     <script src="{{ url_for('static', filename='js/shell.js') }}"></script>
+    {% if session.user %}<script src="{{ url_for('static', filename='js/notify.js') }}" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

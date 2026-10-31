@@ -620,7 +620,7 @@ def send_trigger_reminders(now=None, force=False):
             continue
         user = get_user(duty['email'])
         n = 0
-        if user and webpush.enabled():
+        if user:                                      # the bell always; a push where they have it on
             first = (duty['name'] or '').split(' ')[0] or 'there'
             n = webpush.send_to_users(
                 [user['usr_id']], 'Trigger duty tonight',

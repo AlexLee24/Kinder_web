@@ -1,6 +1,6 @@
 """Admin › Push (/admin/push), after EAU_Web's push broadcast + push devices pages: who has push on (and who has not),
 their devices, a test push to one device or one person, and messages to me / GREAT Lab / admins / a group / everyone /
-picked people. Sending: app/services/notifications/webpush.py; tables: app/db/push.py."""
+picked people (under everyone's bell, and pushed to the devices that take admin messages). Sending: app/services/notifications/webpush.py; tables: app/db/push.py."""
 import logging
 
 from flask import jsonify, render_template, request, session
@@ -17,7 +17,7 @@ TARGETS = {
     'members': 'GREAT Lab members',
     'admins': 'Admins',
     'group': 'A group',
-    'all': 'Everyone with push',
+    'all': 'Everyone',
     'users': 'Picked people',
 }
 
@@ -75,7 +75,7 @@ def _resolve(target, usr_ids, group, people):
     if target == 'group':
         return [p['usr_id'] for p in people if group and group in p['groups']]
     if target == 'all':
-        return [p['usr_id'] for p in people if p['devices']]
+        return [p['usr_id'] for p in people]
     if target == 'users':
         wanted = {int(i) for i in usr_ids or [] if str(i).isdigit()}
         return [p['usr_id'] for p in people if p['usr_id'] in wanted]
@@ -130,8 +130,6 @@ def push_send():
     from app.db import push as db
     from app.services.notifications import webpush
     data = request.get_json(silent=True) or {}
-    if not webpush.enabled():
-        return jsonify({'ok': False, 'error': 'Push is not set up: add the VAPID keys to kinder.env.'}), 503
     title = str(data.get('title') or '').strip()[:120]
     body = str(data.get('body') or '').strip()[:500]
     url = _clean_url(data.get('url'))
@@ -146,8 +144,8 @@ def push_send():
     group = str(data.get('group') or '')
     ids = _resolve(target, data.get('usr_ids'), group, people)
     est = _estimate(ids, people)
-    if not est['devices']:
-        return jsonify({'ok': False, 'error': 'Nobody in that list takes admin messages (push off, or unticked).'}), 400
+    if not est['recipients']:
+        return jsonify({'ok': False, 'error': 'Nobody is in that list.'}), 400
     desc = ''
     if target == 'users':
         idset = set(ids)

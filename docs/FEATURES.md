@@ -69,6 +69,7 @@ Kinder（Logo → /）
 │     ├── ePessto++ Support Team    /epessto_support                can_access_page('epessto_support')       → 07
 │     ├── Documents                 /documents、/documents/<file>   can_access_page('documents')             → 07
 │     └── Lab Info                  /greatlab_info                  can_access_page('greatlab_info')         → 07
+├── 通知鈴（登入後，右上角）        /api/notifications*、/notifications/<id>   需登入（各自的通知）          → 02
 ├── 使用者選單（登入後；頂端顯示姓名 / email / 角色）
 │     ├── Profile                   /profile                        需登入                                  → 01
 │     └── Log Out                   /logout                                                                → 01

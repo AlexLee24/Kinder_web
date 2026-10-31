@@ -38,8 +38,9 @@ def test_route_count_is_stable(app):
     # 352 with the LSST-DETECT archives; 360 with Lab › Calendar (page, events list / add / change, Lulin sync,
     # subscription link, the token feed and one event's .ics); 371 with Web Push (/api/push/key, status, subscribe,
     # unsubscribe, test and Admin › Push: page, preview, send, device test, person test, device delete); 372 with
-    # Trigger duty volunteering (/api/lab_calendar/volunteer).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 372
+    # Trigger duty volunteering (/api/lab_calendar/volunteer); 377 with the bell (/api/notifications, count, read,
+    # delete and /notifications/<id>).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 377
 
 
 def test_duplicate_rules_keep_precedence(app):
