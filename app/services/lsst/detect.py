@@ -13,8 +13,9 @@ light curve is the binned LSST one (alerts.save_mags keeps it in ``lsst_alerts.l
 type and TNS redshift come from the linked TNS object, if any. DESI candidates with
 ZWARN != 0 are dropped before the host rule, as in the watch.
 
-Review page: DETECT › LSST-DETECT, /detect/lsst (app/blueprints/detect/lsst_review.py), one day per
-UTC date of the first LSST detection.
+Pages: DETECT › LSST-DETECT (app/blueprints/detect/lsst_review.py): the overview at /detect/lsst and
+one review day per UTC date of the first LSST detection (/detect/lsst?day=). Only alerts with
+DETECT candidates (``_MATCHED``) are shown; the others stay screened but hidden.
 """
 import hashlib
 import json
@@ -267,13 +268,16 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
 
 # --------------------------------------------------------------------------- review page data
 
+# an alert DETECT found DESI / Lens candidates for; the pages show only these
+_MATCHED = "EXISTS (SELECT 1 FROM transient.lsst_detect_matches m WHERE m.oid = s.oid)"
+
 _SCREEN_SELECT = """
     SELECT s.oid, s.name, s.score, s.host_status, s.tags, s.flags, s.host_targetid,
            s.z, s.z_source, s.abs_mag, s.abs_mag_band, s.abs_mag_source, s.abs_mag_discovery,
            s.peak_mag, s.peak_filter, s.peak_mjd, s.center_sep_arcsec, s.d_dlr, s.offset_kpc,
            s.run_date, o.type AS tns_type, a.review_status AS obj_status, a.ra, a.dec, o.redshift AS tns_z,
            to_char(TIMESTAMP '1858-11-17' + a.firstmjd * INTERVAL '1 day', 'YYYY-MM-DD') AS discoverydate,
-           a.tns_name
+           a.tns_name, o.name AS obj_name, to_char(s.review_day, 'YYYY-MM-DD') AS review_day
       FROM transient.lsst_detect_screen s
       JOIN transient.lsst_alerts a ON a.oid = s.oid
       LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
@@ -290,27 +294,25 @@ def _screen_row(r) -> dict:
 
 
 def review_metadata() -> dict:
-    """available_dates / daily_counts / screen_counts in the shape of get_detect_metadata()."""
+    """available_dates / daily_counts / screen_counts in the shape of get_detect_metadata(),
+    over the alerts with DETECT candidates."""
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
-        cur.execute("""
+        cur.execute(f"""
             SELECT s.review_day AS d, s.host_status, count(*) AS n, max(s.run_date) AS last_run,
-                   count(*) FILTER (WHERE EXISTS (SELECT 1 FROM transient.lsst_detect_matches m
-                                                   WHERE m.oid = s.oid)) AS matched,
                    bool_or(EXISTS (SELECT 1 FROM transient.lsst_detect_matches m
                                     WHERE m.oid = s.oid AND m.catalog LIKE 'Lens%%')) AS has_lens
               FROM transient.lsst_detect_screen s
-             WHERE s.review_day IS NOT NULL
+             WHERE s.review_day IS NOT NULL AND {_MATCHED}
              GROUP BY 1, 2
         """)
         screen_counts: dict = {}
         for r in cur.fetchall():
             day = r["d"].strftime("%Y-%m-%d")
             e = screen_counts.setdefault(day, {"confirmed": 0, "review": 0, "none": 0, "total": 0,
-                                               "matched": 0, "has_lens": False, "last_run": None})
+                                               "has_lens": False, "last_run": None})
             e[r["host_status"] or "none"] = r["n"]
             e["total"] += r["n"]
-            e["matched"] += r["matched"]
             e["has_lens"] = e["has_lens"] or bool(r["has_lens"])
             if e["last_run"] is None or r["last_run"] > e["last_run"]:
                 e["last_run"] = r["last_run"]
@@ -319,14 +321,45 @@ def review_metadata() -> dict:
             e["last_run"] = e["last_run"].strftime("%Y-%m-%d %H:%M %Z")
     days = sorted(screen_counts, reverse=True)
     return {"available_dates": days,
-            "daily_counts": [{"date": d, "count": screen_counts[d]["matched"],
+            "daily_counts": [{"date": d, "count": screen_counts[d]["total"],
                               "has_lens": screen_counts[d]["has_lens"], "screen": screen_counts[d]} for d in days],
             "screen_counts": screen_counts}
 
 
+def review_overview() -> dict:
+    """get_detect_overview() for LSST: the latest run, how the alerts it screened split by host
+    status, what is still waiting for a person, and the highest-scoring alerts."""
+    result = {"last_run": None, "run_day": None, "counts": {}, "pending": 0, "top": []}
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute(f"SELECT max(s.run_date) AS last_run FROM transient.lsst_detect_screen s WHERE {_MATCHED}")
+        last_run = (cur.fetchone() or {}).get("last_run")
+        if last_run is None:
+            return result
+        result["last_run"] = last_run.strftime("%Y-%m-%d %H:%M %Z")
+        result["run_day"] = last_run.strftime("%Y-%m-%d")
+        cur.execute(f"""
+            SELECT s.host_status, count(*) AS n, count(*) FILTER (WHERE a.review_status = 'Inbox') AS pending
+              FROM transient.lsst_detect_screen s JOIN transient.lsst_alerts a ON a.oid = s.oid
+             WHERE s.run_date::date = %s::date AND {_MATCHED}
+             GROUP BY 1
+        """, (last_run,))
+        for r in cur.fetchall():
+            result["counts"][r["host_status"] or "none"] = r["n"]
+            if (r["host_status"] or "none") != "none":
+                result["pending"] += r["pending"]
+        result["counts"]["total"] = sum(result["counts"].values())
+        cur.execute(_SCREEN_SELECT + f"""
+             WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED}
+             ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
+        """, (last_run,))
+        result["top"] = [_screen_row(r) for r in cur.fetchall()]
+    return result
+
+
 def review_page_data(day: str) -> dict:
     """get_detect_page_data(date) for LSST: candidates, details, latest point and screen
-    rows of the alerts first detected on ``day`` (UTC)."""
+    rows of the alerts with DETECT candidates first detected on ``day`` (UTC)."""
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute("""
@@ -338,7 +371,7 @@ def review_page_data(day: str) -> dict:
              WHERE s.review_day = %s
         """, (day,))
         results = cur.fetchall()
-        cur.execute("""
+        cur.execute(f"""
             SELECT s.name, a.oid, a.ra, a.dec AS declination,
                    to_char(TIMESTAMP '1858-11-17' + a.firstmjd * INTERVAL '1 day', 'YYYY-MM-DD HH24:MI:SS')
                        AS discoverydate,
@@ -347,7 +380,7 @@ def review_page_data(day: str) -> dict:
               FROM transient.lsst_detect_screen s
               JOIN transient.lsst_alerts a ON a.oid = s.oid
               LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
-             WHERE s.review_day = %s
+             WHERE s.review_day = %s AND {_MATCHED}
         """, (day,))
         details_batch, latest_phot = {}, {}
         for r in cur.fetchall():
@@ -360,16 +393,14 @@ def review_page_data(day: str) -> dict:
             if r["latest_mag"] is not None:
                 latest_phot[r["name"]] = {"magnitude": r["latest_mag"], "filter": r["latest_filter"],
                                           "mjd": r["latest_mjd"]}
-        cur.execute(_SCREEN_SELECT + " WHERE s.review_day = %s", (day,))
-        screen_all = [_screen_row(r) for r in cur.fetchall()]
-    with_rows = {r["target_name"] for r in results}
+        cur.execute(_SCREEN_SELECT + f" WHERE s.review_day = %s AND {_MATCHED}", (day,))
+        screen_batch = {r["name"]: _screen_row(r) for r in cur.fetchall()}
     return {
         "results": results,
         "details_batch": details_batch,
         "latest_phot": latest_phot,
-        "screen_batch": {s["name"]: s for s in screen_all if s["name"] in with_rows},
-        "screen_only": sorted((s for s in screen_all if s["name"] not in with_rows),
-                              key=lambda s: (-(s["score"] or 0), s["name"])),
+        "screen_batch": screen_batch,
+        "screen_only": [],
         "wake_notes": {},
     }
 
@@ -384,7 +415,8 @@ def object_href(detail: dict | None, oid: int) -> str:
 def review_day_for(oid: int) -> str | None:
     with get_db_connection() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT review_day FROM transient.lsst_detect_screen WHERE oid = %s", (int(oid),))
+        cur.execute(f"SELECT review_day FROM transient.lsst_detect_screen s WHERE s.oid = %s AND {_MATCHED}",
+                    (int(oid),))
         row = cur.fetchone()
     return row[0].strftime("%Y-%m-%d") if row and row[0] else None
 

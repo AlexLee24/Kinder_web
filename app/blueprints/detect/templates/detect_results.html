@@ -1,7 +1,7 @@
 {% extends '_base.html' %}
 {#- DETECT review page (/detect?detect_results=<date>): verdicts, the review queue and one card per object.
     On the DETECT navigation group (Results | Archives): the date picker sits left in the page bar, the tracker and help toggles right.
-    DETECT › LSST-DETECT renders the same page (/detect/lsst, detect_lsst.html): per-object obj_href / image_url / links,
+    DETECT › LSST-DETECT renders the same page (/detect/lsst?day=, lsst_review.py): per-object obj_href / image_url / links,
     and detect_api for the JS endpoints (static/js/detect_results.js, API). -#}
 {% block title %}{{ page_title|default('DETECT Review') }} — {{ selected_date }} · Kinder{% endblock %}
 {% block head %}
@@ -89,8 +89,6 @@
     {%- endmacro %}
 
     <div class="kw-page detect-wrap">
-        {% block before_review %}{% endblock %}
-
         <!-- ── How to review ──────────────────────────────────────────── -->
         <div class="kw-panel review-guide" id="reviewGuide">
             <div class="guide-step">

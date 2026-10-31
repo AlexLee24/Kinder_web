@@ -1,6 +1,7 @@
 {% extends '_base.html' %}
-{#- DETECT Archives (/detect/archives): every result day as a card (kw-list); the date filter sits in the page bar. -#}
-{% block title %}DETECT Archives - Kinder{% endblock %}
+{#- DETECT Archives (/detect/archives): every result day as a card (kw-list); the date filter sits in the page bar.
+    LSST-DETECT's archives (/detect/lsst/archives) pass page_title and day_url. -#}
+{% block title %}{{ page_title|default('DETECT Archives') }} - Kinder{% endblock %}
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">
     <style>
@@ -30,13 +31,14 @@
 {% endblock %}
 
 {% block content %}
+    {% set day_url = day_url|default(url_for('detect.detect_results') ~ '?detect_results=') %}
     <div class="kw-page archive-page-container">
         <p class="kw-lead">Historical cross-matching results, newest first. Days with no matched target are dimmed.</p>
 
         {% if daily_counts and daily_counts|length > 0 %}
         <div class="kw-list archive-grid" id="archiveGrid">
             {% for item in daily_counts %}
-            <a href="{{ url_for('detect.detect_results', detect_results=item.date) if item.count > 0 else '#' }}"
+            <a href="{{ day_url ~ item.date if item.count > 0 else '#' }}"
                class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}"
                data-date="{{ item.date }}"
                {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>

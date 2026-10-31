@@ -1,9 +1,13 @@
 {% extends '_base.html' %}
-{#- DETECT home (/detect without a date): latest run, results, pipeline, legend. On the DETECT navigation group (Results | Archives). -#}
-{% block title %}DETECT - Kinder{% endblock %}
+{#- DETECT home (/detect without a date): latest run, results, pipeline, legend. On the DETECT navigation group (Results | Archives).
+    DETECT › LSST-DETECT's overview (/detect/lsst, detect_lsst.html) is this page: day_url / archives_url,
+    per-object obj_href / judge_href, and the lead / after_overview / pipeline_* blocks. -#}
+{% block title %}{{ page_title|default('DETECT') }} - Kinder{% endblock %}
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">{% endblock %}
 
 {% block content %}
+    {% set day_url = day_url|default(url_for('detect.detect_results') ~ '?detect_results=') %}
+    {% set archives_url = archives_url|default(url_for('detect.detect_archives')) %}
     {% macro host_badge(hs) -%}
         {% if hs == 'confirmed' %}<span class="hs-badge hs-confirmed">● Confirmed host</span>
         {% elif hs == 'review' %}<span class="hs-badge hs-review">? Needs judgement</span>
@@ -18,12 +22,14 @@
     {%- endmacro %}
 
     <div class="kw-page detect-home-container">
+        {% block lead scoped %}
         <p class="kw-lead lead">
             <strong>Daily Transient Event Cross-matching Tool.</strong> Every TNS report is screened against DESI's spectroscopic galaxies: <em>is it in a galaxy with a known
             redshift, how luminous is it, and is it worth a large-telescope spectrum?</em>
             The pipeline decides what it can and hands the rest to a person on the
-            <a href="{{ url_for('detect.detect_results', detect_results=latest_date) if latest_date else '#' }}">review page</a>.
+            <a href="{{ day_url ~ latest_date if latest_date else '#' }}">review page</a>.
         </p>
+        {% endblock %}
 
         <!-- ── Latest run + results ─────────────────────────────── -->
         <div class="kw-grid-2 content-wrapper">
@@ -34,13 +40,13 @@
                 <div class="overview-when">{{ overview.last_run }}<span class="overview-sub">
                     {{ c.total }} objects screened</span></div>
                 <div class="overview-stats">
-                    <a class="ov-stat ov-review" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                    <a class="ov-stat ov-review" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ c.review or 0 }}</span><span class="ov-l">need judgement</span></a>
-                    <a class="ov-stat ov-confirmed" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                    <a class="ov-stat ov-confirmed" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ c.confirmed or 0 }}</span><span class="ov-l">confirmed host</span></a>
-                    <a class="ov-stat ov-none" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                    <a class="ov-stat ov-none" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ c.none or 0 }}</span><span class="ov-l">no host</span></a>
-                    <a class="ov-stat ov-pending" href="{{ url_for('detect.detect_results', detect_results=overview.run_day) }}">
+                    <a class="ov-stat ov-pending" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ overview.pending }}</span><span class="ov-l">waiting for a person</span></a>
                 </div>
                 {% if overview.top %}
@@ -50,13 +56,13 @@
                     <tbody>
                     {% for t in overview.top %}
                     <tr>
-                        <td><a href="/object/{{ t.name }}" class="ov-link">{{ t.name }}</a></td>
+                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a></td>
                         <td><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
                         <td>{{ host_badge(t.host_status) }}</td>
                         <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>
                         <td class="num">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}{% else %}—{% endif %}</td>
                         <td class="tags">{% for tag in t.tags if not tag.startswith('Host-') %}{{ tag_chip(tag) }}{% endfor %}</td>
-                        <td class="ov-act">{% if latest_date %}<a class="kw-btn kw-btn-sm kw-btn-tinted ov-judge" href="{{ url_for('detect.detect_results', detect_results=latest_date) }}#t={{ t.name }}" title="Open this object on the review page">Judge →</a>{% endif %}</td>
+                        <td class="ov-act">{% if t.judge_href or latest_date %}<a class="kw-btn kw-btn-sm kw-btn-tinted ov-judge" href="{{ t.judge_href or (day_url ~ latest_date ~ '#t=' ~ t.name) }}" title="Open this object on the review page">Judge →</a>{% endif %}</td>
                     </tr>
                     {% endfor %}
                     </tbody>
@@ -73,7 +79,7 @@
                 {% if daily_counts and daily_counts|length > 0 %}
                 {% set newest = daily_counts[0] %}
 
-                <a href="{{ url_for('detect.detect_results', detect_results=newest.date) if newest.count > 0 else '#' }}"
+                <a href="{{ day_url ~ newest.date if newest.count > 0 else '#' }}"
                    class="result-link newest {% if newest.count == 0 %}no-match{% endif %} {% if newest.has_lens %}lens-match{% endif %}"
                    {% if newest.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                     <span class="newest-label">Latest · {{ newest.date }}</span>
@@ -92,7 +98,7 @@
                 <div class="archive-title">Recent</div>
                 <div class="archive-grid">
                     {% for item in daily_counts[1:9] %}
-                    <a href="{{ url_for('detect.detect_results', detect_results=item.date) if item.count > 0 else '#' }}"
+                    <a href="{{ day_url ~ item.date if item.count > 0 else '#' }}"
                        class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}"
                        {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                         <span class="date">{{ item.date }}</span>
@@ -105,7 +111,7 @@
 
                 {% if daily_counts|length > 9 %}
                 <div class="archive-btn-container">
-                    <a href="{{ url_for('detect.detect_archives') }}" class="kw-btn all-archives-btn">All Archives</a>
+                    <a href="{{ archives_url }}" class="kw-btn all-archives-btn">All Archives</a>
                 </div>
                 {% endif %}
 
@@ -115,13 +121,17 @@
                 </div>
             </section>
         </div>
+        {% block after_overview scoped %}{% endblock %}
 
         <!-- ── Pipeline ─────────────────────────────────────────── -->
         <section class="kw-panel section-card pipeline-section">
             <div class="kw-panel-head"><h2>Pipeline</h2></div>
+            {% block pipeline_intro %}
             <p class="pipeline-intro">Runs every hour on the hourly TNS file and once a day on the daily file plus every Follow-up object — as the DETECT daemon, and embedded in this site right after its own TNS import (same code, <code>app/modules/DETECT</code>). One run, seven steps:</p>
+            {% endblock %}
 
             <ol class="flow">
+                {% block pipeline_intake %}
                 <li class="flow-step">
                     <div class="flow-num">1</div>
                     <div class="flow-body">
@@ -145,6 +155,7 @@
                         <div class="flow-sum">The run's new TNS reports, and — daily — every object in <em>Follow-up</em>, so their light curves and M keep updating.</div>
                     </div>
                 </li>
+                {% endblock %}
                 <li class="flow-step">
                     <div class="flow-num">3</div>
                     <div class="flow-body">
@@ -201,10 +212,12 @@
                         <div class="flow-sum">LS DR10 cutout with the host ellipse, then everything into the Kinder DB.</div>
                         <details><summary>details</summary>
                             <ul>
+                            {% block pipeline_upload %}
                                 <li><code>transient.cross_matches</code>: one row per candidate, <code>is_host</code>, the rule's numbers in <code>match_data</code>.</li>
                                 <li><code>transient.detect_screen</code>: the verdict — host_status, score, tags, M (peak and discovery), z, d_DLR, offset.</li>
                                 <li><code>transient.target_images</code>: the finder; <code>objects.tag</code>: DETECT's tags (yours are left alone); <code>objects.brightest_mag / brightest_abs_mag</code>.</li>
                                 <li>Object <em>status</em> is never touched by the pipeline.</li>
+                            {% endblock %}
                             </ul>
                         </details>
                     </div>
@@ -213,7 +226,7 @@
                     <div class="flow-num">7</div>
                     <div class="flow-body">
                         <div class="flow-title">Review on Kinder</div>
-                        <div class="flow-sum">A person reads the verdict, looks at the image, presses one key. <a href="{{ url_for('detect.detect_results', detect_results=latest_date) if latest_date else '#' }}">Open the queue →</a></div>
+                        <div class="flow-sum">A person reads the verdict, looks at the image, presses one key. <a href="{{ day_url ~ latest_date if latest_date else '#' }}">Open the queue →</a></div>
                     </div>
                 </li>
             </ol>
