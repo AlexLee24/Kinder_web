@@ -1,7 +1,9 @@
 {% extends '_base.html' %}
 {#- Exposure Time Calculator: the CASTOR ETC partial (castor_etc_body.html, injected as raw text by
     exposure_time_calculator.py) inside the site shell. The partial brings its own form | results layout
-    (the kw-tool shape); this page only sets its tokens and the host-only footer note. -#}
+    (the kw-tool shape); this page only sets its tokens and the host-only footer note.
+    Above it sits Kinder's own Simple mode (etc_simple.js): hardware, target and SNR in, a frame length
+    and frame count out. The CASTOR partial is the Advanced mode, unchanged. -#}
 {% block title %}Exposure Time Calculator - Kinder{% endblock %}
 {% block head %}
     <meta name="description" content="CASTOR-powered optical exposure time calculator for Lulin Observatory instruments">
@@ -12,6 +14,7 @@
          under .castor-etc and reads Kinder's own --kw-* theme tokens, so it can't
          restyle the site chrome around it. -->
     <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/etc.css') }}">
+    <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/etc_simple.css') }}">
 
     <!-- Host chrome around the calculator. etc.css is scoped to .castor-etc and reads Kinder's --kw-* tokens;
          the overrides below only line its surfaces up with the site's panels (.kw-panel) and give it the
@@ -19,7 +22,8 @@
          as the host's to override. -->
     <style>
         .etc-page .castor-etc {
-            --etc-shell-height: clamp(560px, calc(100vh - var(--kw-nav-h) - 72px), 1150px);
+            /* 72px of page padding, plus the Simple / Advanced bar (44px + 16px gap) above */
+            --etc-shell-height: clamp(560px, calc(100vh - var(--kw-nav-h) - 132px), 1150px);
             --etc-panel-bg: var(--kw-card-bg);
             --etc-border-width: 1px;
             --etc-radius-card: var(--kw-radius-xl);
@@ -83,7 +87,91 @@
 
 {% block content %}
 <div class="kw-page etc-page">
+    <div class="etc-mode-bar">
+        <div class="kw-tabbar" role="tablist" aria-label="Calculator mode">
+            <button type="button" class="kw-tab is-on" role="tab" aria-selected="true" data-etc-mode="simple">Simple</button>
+            <button type="button" class="kw-tab" role="tab" aria-selected="false" data-etc-mode="advanced">Advanced</button>
+        </div>
+        <span class="kw-muted etc-mode-hint" data-etc-mode-hint="simple">Pick a telescope, a target and the SNR you need: it works out how long each frame should be and how many to take.</span>
+        <span class="kw-muted etc-mode-hint" data-etc-mode-hint="advanced" hidden>Every CASTOR input, the full noise budget and a time sweep.</span>
+    </div>
+
+    <!-- ── Simple mode (Kinder) ─────────────────────────────────────────── -->
+    <div class="kw-tool etc-simple" id="etc-simple" data-etc-mode-panel="simple">
+        <aside class="kw-tool-side">
+            <form class="kw-panel etc-simple-form" id="etc-simple-form" novalidate>
+                <div class="kw-panel-head"><h2>Setup</h2></div>
+                <div class="kw-field">
+                    <label for="qs-site">Observatory</label>
+                    <select class="kw-select" id="qs-site" name="site"></select>
+                </div>
+                <div class="kw-grid-2 etc-simple-pair">
+                    <div class="kw-field">
+                        <label for="qs-telescope">Telescope</label>
+                        <select class="kw-select" id="qs-telescope" name="telescope"></select>
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-filter">Filter</label>
+                        <select class="kw-select" id="qs-filter" name="filter"></select>
+                    </div>
+                </div>
+                <div class="kw-field">
+                    <label for="qs-camera">Camera</label>
+                    <select class="kw-select" id="qs-camera" name="camera"></select>
+                </div>
+                <p class="etc-simple-caveat" id="qs-caveat" hidden></p>
+
+                <div class="kw-panel-head etc-simple-head"><h2>Target</h2></div>
+                <div class="kw-grid-2 etc-simple-pair">
+                    <div class="kw-field">
+                        <label for="qs-ra">RA</label>
+                        <input type="text" id="qs-ra" name="ra" placeholder="22:00:00 or 330.0" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-dec">Dec</label>
+                        <input type="text" id="qs-dec" name="dec" placeholder="+20:00:00 or 20.0" autocomplete="off" spellcheck="false">
+                    </div>
+                </div>
+                <div class="kw-grid-2 etc-simple-pair">
+                    <div class="kw-field">
+                        <label for="qs-mag">Magnitude (AB)</label>
+                        <input type="number" id="qs-mag" name="mag" step="any" placeholder="e.g. 19.5">
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-snr">Target SNR</label>
+                        <input type="number" id="qs-snr" name="target_snr" step="any" min="0" value="10">
+                    </div>
+                </div>
+
+                <div class="kw-panel-head etc-simple-head"><h2>When</h2></div>
+                <div class="kw-field">
+                    <label for="qs-time">Observation time (<span id="qs-tz">your local time</span>)</label>
+                    <input type="datetime-local" id="qs-time" name="time">
+                    <small class="kw-muted" id="qs-time-utc"></small>
+                </div>
+                <div class="kw-field">
+                    <label for="qs-fwhm">Seeing (arcsec)</label>
+                    <input type="number" id="qs-fwhm" name="fwhm" step="any" min="0">
+                    <small class="kw-muted" id="qs-fwhm-note"></small>
+                </div>
+
+                <button type="submit" class="kw-btn kw-btn-primary etc-simple-go" id="qs-go">Calculate</button>
+            </form>
+        </aside>
+
+        <section class="kw-panel etc-simple-result is-idle" id="qs-result" aria-live="polite">
+            <div class="etc-simple-empty">
+                <img src="{{ url_for('astronomy_tools.static', filename='img/castor-logo-white.png') }}" alt="" width="96">
+                <span id="qs-empty-text">Fill in the target and press Calculate</span>
+            </div>
+            <div class="etc-simple-body" id="qs-body"></div>
+        </section>
+    </div>
+
+    <!-- ── Advanced mode: the CASTOR partial, verbatim ──────────────────── -->
+    <div class="etc-advanced" id="etc-advanced" data-etc-mode-panel="advanced" hidden>
     {{ castor_etc_body | safe }}
+    </div>
 
     <div class="etc-github-note">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -123,6 +211,9 @@
             batchUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_batch') }}",
             presetsUrl: "{{ url_for('astronomy_tools.api_exposure_time_calculator_presets') }}"
         };
+        // Simple mode only (Kinder's, not part of CASTOR's host contract).
+        window.KINDER_ETC_QUICK_URL = "{{ url_for('astronomy_tools.api_exposure_time_calculator_quick') }}";
     </script>
     <script src="{{ url_for('astronomy_tools.static', filename='js/etc.js') }}" defer></script>
+    <script src="{{ url_for('astronomy_tools.static', filename='js/etc_simple.js') }}" defer></script>
 {% endblock %}
