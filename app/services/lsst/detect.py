@@ -279,6 +279,9 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
 
 # an alert DETECT found DESI / Lens candidates for; the pages show only these
 _MATCHED = "EXISTS (SELECT 1 FROM transient.lsst_detect_matches m WHERE m.oid = s.oid)"
+# ... on a lens-catalogue object: marked and pinned to the top
+_ON_LENS = ("EXISTS (SELECT 1 FROM transient.lsst_detect_matches m"
+            " WHERE m.oid = s.oid AND left(lower(m.catalog), 4) = 'lens')")      # no %: used with and without params
 
 _SCREEN_SELECT = """
     SELECT s.oid, s.name, s.score, s.host_status, s.tags, s.flags, s.host_targetid,
@@ -286,11 +289,12 @@ _SCREEN_SELECT = """
            s.peak_mag, s.peak_filter, s.peak_mjd, s.center_sep_arcsec, s.d_dlr, s.offset_kpc,
            s.run_date, o.type AS tns_type, a.review_status AS obj_status, a.ra, a.dec, o.redshift AS tns_z,
            to_char(TIMESTAMP '1858-11-17' + a.firstmjd * INTERVAL '1 day', 'YYYY-MM-DD') AS discoverydate,
-           a.tns_name, o.name AS obj_name, to_char(s.review_day, 'YYYY-MM-DD') AS review_day
+           a.tns_name, o.name AS obj_name, to_char(s.review_day, 'YYYY-MM-DD') AS review_day,
+           {on_lens} AS has_lens
       FROM transient.lsst_detect_screen s
       JOIN transient.lsst_alerts a ON a.oid = s.oid
       LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
-"""
+""".replace("{on_lens}", _ON_LENS)
 
 
 def _screen_row(r) -> dict:
@@ -309,8 +313,9 @@ def review_metadata() -> dict:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(f"""
             SELECT s.review_day AS d, s.host_status, count(*) AS n, max(s.run_date) AS last_run,
-                   bool_or(EXISTS (SELECT 1 FROM transient.lsst_detect_matches m
-                                    WHERE m.oid = s.oid AND m.catalog LIKE 'Lens%%')) AS has_lens
+                   bool_or({_ON_LENS}) AS has_lens,
+                   count(*) FILTER (WHERE 'glSN?' = ANY(s.tags) AND NOT {_ON_LENS}) AS lens_cand,
+                   count(*) FILTER (WHERE 'SLSN?' = ANY(s.tags)) AS slsn
               FROM transient.lsst_detect_screen s
              WHERE s.review_day IS NOT NULL AND {_MATCHED}
              GROUP BY 1, 2
@@ -319,9 +324,11 @@ def review_metadata() -> dict:
         for r in cur.fetchall():
             day = r["d"].strftime("%Y-%m-%d")
             e = screen_counts.setdefault(day, {"confirmed": 0, "review": 0, "none": 0, "total": 0,
-                                               "has_lens": False, "last_run": None})
+                                               "has_lens": False, "lens_cand": 0, "slsn": 0, "last_run": None})
             e[r["host_status"] or "none"] = r["n"]
             e["total"] += r["n"]
+            e["lens_cand"] += r["lens_cand"]
+            e["slsn"] += r["slsn"]
             e["has_lens"] = e["has_lens"] or bool(r["has_lens"])
             if e["last_run"] is None or r["last_run"] > e["last_run"]:
                 e["last_run"] = r["last_run"]
@@ -330,14 +337,16 @@ def review_metadata() -> dict:
             e["last_run"] = e["last_run"].strftime("%Y-%m-%d %H:%M %Z")
     days = sorted(screen_counts, reverse=True)
     return {"available_dates": days,
-            "daily_counts": [{"date": d, "count": screen_counts[d]["total"],
-                              "has_lens": screen_counts[d]["has_lens"], "screen": screen_counts[d]} for d in days],
+            "daily_counts": [{"date": d, "count": screen_counts[d]["total"], "has_lens": screen_counts[d]["has_lens"],
+                              "lens_cand": screen_counts[d]["lens_cand"], "slsn": screen_counts[d]["slsn"],
+                              "screen": screen_counts[d]} for d in days],
             "screen_counts": screen_counts}
 
 
 def review_overview() -> dict:
     """get_detect_overview() for LSST: the latest run, how the alerts it screened split by host
-    status, what is still waiting for a person, and the highest-scoring alerts."""
+    status, what is still waiting for a person, and the highest-scoring alerts — after every
+    lens-catalogue alert still in Inbox or Follow-up, from any day."""
     result = {"last_run": None, "run_day": None, "counts": {}, "pending": 0, "top": []}
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -359,10 +368,15 @@ def review_overview() -> dict:
                 result["pending"] += r["pending"]
         result["counts"]["total"] = sum(result["counts"].values())
         cur.execute(_SCREEN_SELECT + f"""
-             WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED}
+             WHERE {_ON_LENS} AND a.review_status IN ('Inbox', 'Follow-up')
+             ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name
+        """)
+        lens = [_screen_row(r) for r in cur.fetchall()]
+        cur.execute(_SCREEN_SELECT + f"""
+             WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED} AND NOT {_ON_LENS}
              ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
         """, (last_run,))
-        result["top"] = [_screen_row(r) for r in cur.fetchall()]
+        result["top"] = lens + [_screen_row(r) for r in cur.fetchall()]
     return result
 
 

@@ -68,7 +68,7 @@
                     if (!response.ok) return;
                     const data = await response.json();
                     if (data && data.success && data.ready) {
-                        window.location.replace(targetUrl);
+                        window.location.replace(targetUrl + location.hash);   // keeps a Judge → #t=<name>
                     }
                 } catch (err) {
                     // Keep polling; transient network failures are expected.

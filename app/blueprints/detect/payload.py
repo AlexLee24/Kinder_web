@@ -416,6 +416,7 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
 
         target_obj = {
             'target_name': target_name,
+            'has_lens': any(str(m.get('catalog_name') or '').lower().startswith('lens') for m in processed_matches),
             'id': best_match.get('id'),
             'tns_info': best_match.get('tns_info'),
             'matches': processed_matches,
@@ -442,10 +443,12 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
         final_target_list.append(target_obj)
 
     t_build = time.perf_counter()
-    # Queue order: what still needs a person first (Inbox), grouped by what kind of
-    # decision it needs (judgement > accept a confirmed host > no host), best score
-    # first; then Follow-up; resolved objects (Done / No host) sink to the bottom.
+    # Queue order: anything on a lens-catalogue object first; then what still needs a
+    # person (Inbox), grouped by what kind of decision it needs (judgement > accept a
+    # confirmed host > no host), best score first; then Follow-up; resolved objects
+    # (Done / No host) sink to the bottom.
     final_target_list.sort(key=lambda x: (
+        not x['has_lens'],
         x['obj_status'] in ('finished', 'snoozed'),
         x['obj_status'] == 'followup',
         _HOST_STATUS_ORDER.get(x['host_status'], 2),
@@ -542,6 +545,7 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
             'is_flagged': bool(t.get('is_flagged')),
             'flag_id':    t.get('flag_id'),
             'score':      t.get('score'),
+            'has_lens':   bool(t.get('has_lens')),
             'hypothetical': bool(t.get('hypothetical')),
             'wake_note':  t.get('wake_note'),
             'screen':     t.get('screen'),

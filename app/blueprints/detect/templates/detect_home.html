@@ -6,6 +6,7 @@
 {% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/detect_home.css') }}">{% endblock %}
 
 {% block content %}
+    {% from '_detect_badges.html' import day_badges, obj_badges %}
     {% set day_url = day_url|default(url_for('detect.detect_results') ~ '?detect_results=') %}
     {% set archives_url = archives_url|default(url_for('detect.detect_archives')) %}
     {% macro host_badge(hs) -%}
@@ -56,7 +57,7 @@
                     <tbody>
                     {% for t in overview.top %}
                     <tr>
-                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a></td>
+                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a> {{ obj_badges(t.has_lens, t.tags) }}</td>
                         <td><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
                         <td>{{ host_badge(t.host_status) }}</td>
                         <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>
@@ -91,7 +92,7 @@
                         <span class="hs-badge hs-none">{{ newest.screen.none }}</span>
                     </span>
                     {% endif %}
-                    {% if newest.has_lens %}<span class="lens-badge">LENS MATCH!</span>{% endif %}
+                    {% if newest.has_lens or newest.lens_cand or newest.slsn %}<span class="hl-row">{{ day_badges(newest) }}</span>{% endif %}
                 </a>
 
                 {% if daily_counts|length > 1 %}
@@ -103,7 +104,7 @@
                        {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                         <span class="date">{{ item.date }}</span>
                         <span class="count">{{ item.count }} targets</span>
-                        {% if item.has_lens %}<span class="lens-badge-small">LENS</span>{% endif %}
+                        {% if item.has_lens or item.lens_cand or item.slsn %}<span class="hl-row">{{ day_badges(item, small=true) }}</span>{% endif %}
                     </a>
                     {% endfor %}
                 </div>

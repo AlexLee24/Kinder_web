@@ -1172,3 +1172,17 @@ kbd {
 @media (max-width: 860px) {
     .tracker-toggle-btn, .help-toggle-btn { min-height: 40px; }
 }
+
+/* Lens-catalogue objects: pinned to the top of the queue */
+#summaryTable tbody tr.row-lens td { background: rgba(255, 0, 127, 0.06); }
+#summaryTable tbody tr.row-lens td:first-child { border-left: 3px solid #ff007f; }
+.target-card.card-lens { border-color: rgba(255, 0, 127, 0.55); box-shadow: 0 0 18px rgba(255, 0, 127, 0.18); }
+
+/* Highlight badges (_detect_badges.html): LENS MATCH = lens catalogue, Lens? = glSN?, SLSN? */
+.hl-row { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.hl-badge, .hl-badge-sm { display: inline-block; vertical-align: middle; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; border-radius: 999px; }
+.hl-badge { padding: 3px 10px; font-size: 0.75rem; }
+.hl-badge-sm { padding: 1px 7px; font-size: 0.66rem; }
+.hl-lens { background: linear-gradient(45deg, #ff007f, #ff8c00); color: #fff; box-shadow: 0 0 10px rgba(255, 0, 127, 0.45); }
+.hl-lens-cand { background: rgba(255, 0, 127, 0.12); color: #ff6fb4; border: 1px dashed rgba(255, 0, 127, 0.7); }
+.hl-slsn { background: rgba(255, 107, 97, 0.14); color: #ff8a80; border: 1px solid rgba(255, 107, 97, 0.65); }

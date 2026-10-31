@@ -1,4 +1,4 @@
-# 管理後台：Admin Panel、Web Log、DB Status（`admin` / `web_log` / `database_status` blueprints）
+# 管理後台：Admin Panel、Push、Web Log、DB Status（`admin` / `web_log` / `database_status` blueprints）
 
 > **注意**：本章記錄的是重構前（commit `c7f91a4`，2026-09-21）的狀態，檔案路徑為舊位置（`app/routes/…`、`app/modules/…`）。新位置請對照 `docs/ARCHITECTURE.md` §6「新舊路徑對照」；功能與行為在重構後完全相同。
 
@@ -109,6 +109,15 @@
 | `#addMembersModal` | `#selectedGroupName`、`#memberSearch`（`filterAvailableUsers()`）、`#availableUsersContainer`（checkbox 列表）、**Add Selected** → `addSelectedMembers()` | `POST /admin/add-multiple-to-group` → 成功後 reload |
 
 `closeModal(id)` 隱藏並 `form.reset()`；`window.onclick` 點擊遮罩關閉。通知：`admin.js::showNotification(msg,type)`（`.notification` 元素，3 秒）與內嵌 `showAdminNotification()`（右下角 fixed）。幾乎所有寫入動作成功後 `setTimeout(() => location.reload(), 800~1500)`。
+
+### `/admin/push` — Push（2026-10-31，仿 EAU 推播廣播 + 推播裝置頁）
+
+- `GET /admin/push` → `admin.push_page`（`admin_required_page`）；模板 `admin_push.html`、`css/admin_push.css`、`js/admin_push.js`。
+- KPI：GREAT Lab 成員有幾人開推播、全部帳號幾人、裝置數（依平台）、推送失敗 / 從未送達的裝置數。
+- 發送：標題（120）、內容（500）、點了打開的連結（站內 `/…` 或 http(s)），對象 Only me / GREAT Lab members / Admins / A group / Everyone with push / Picked people（在下方名單打勾或按該列 Message）；右側手機通知預覽；`POST /admin/push/preview` 估算人數 / 有推播人數 / 裝置數；`POST /admin/push/send` 寫 `auth.push_broadcasts` 後背景發送，送完回填 delivered / failed（Sent 表顯示「送達 / 裝置數」，可 Reuse）。
+- People：所有帳號（預設只看 GREAT Lab），推播 On（幾台）/ Off、搜尋、篩選 Push on / off；每人 Test（`POST /admin/push/user/<usr_id>/test`，等推播服務回應）、展開看裝置（平台 · 瀏覽器、開啟日期、最後送達、失敗次數與原因），單台 Test（`POST /admin/push/device/<id>/test`）/ Remove（`POST /admin/push/device/<id>/delete`）。
+- 使用者端：`/settings` 的 Push notifications 面板（`js/push.js`）開 / 關這台裝置、傳送測試；API `/api/push/key|status|subscribe|unsubscribe|test`（`app/blueprints/basic/push.py`）。`/sw.js` 顯示通知、點擊開 `url`、`pushsubscriptionchange` 自動重新登記。iPhone / iPad 要「加入主畫面」後從圖示開（iOS 16.4+）。
+- 資料：`auth.push_subscriptions`（一台裝置一列，endpoint 唯一，刪帳號連帶刪除；推播服務回 404 / 410 立即刪，其他錯誤連續 5 次刪）、`auth.push_broadcasts`（`app/db/push.py`，首次使用自動建表）。發送：`app/services/notifications/webpush.py`（pywebpush，`Urgency: high`，TTL 24 h）。
 
 ### `/admin/log` — Web Log（System Log）
 

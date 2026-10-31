@@ -35,8 +35,9 @@ def test_route_count_is_stable(app):
     # Simple mode API and /detect/lsst/<oid> (Daily Trigger link of an LSST-<oid> target); 341 with
     # DETECT › Cross-match, the LSST run status and the LSST-oid cross-match API; 351 with
     # DETECT › LSST Review (page, image, light curve, fetch, set / unset / no host, status, flag, tracker);
-    # 352 with the LSST-DETECT archives.
-    assert sum(1 for _ in app.url_map.iter_rules()) == 352
+    # 352 with the LSST-DETECT archives; +11 with Web Push (/api/push/key, status, subscribe, unsubscribe, test and
+    # Admin › Push: page, preview, send, device test, person test, device delete).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 363
 
 
 def test_duplicate_rules_keep_precedence(app):

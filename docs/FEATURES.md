@@ -75,6 +75,7 @@ Kinder（Logo → /）
 │     ├── Admin Panel               /admin（#overview #users #groups #access #operations）  僅 admin       → 02
 │     ├── Users & API keys          /admin#users                    僅 admin                                → 02
 │     ├── Groups                    /admin#groups                   僅 admin                                → 02
+│     ├── Push                      /admin/push                     僅 admin                                → 02
 │     ├── Web Log                   /admin/log                      admin 或 GREAT_Lab                      → 02
 │     └── DB Status                 /admin/database                 僅 admin                                → 02
 └── Login                           /login                          公開                                    → 01
@@ -212,6 +213,7 @@ Kinder（Logo → /）
 | `ATLAS_USER` / `ATLAS_PASS`、`PANSTARRS_USER` / `PANSTARRS_PASS` | QUB 網站登入（Playwright） | `download_phot_backup.py`（未追蹤，2026-10-31 起） | 只有備份檔用到 |
 | `SLACK_BOT_TOKEN`、`SLACK_CHANNEL_ID_CONTROL_ROOM`、`SLACK_CHANNEL_ID_test` | Daily Trigger 送 Slack（DEBUG 用 test 頻道） | `trigger_send` | Trigger 必填 |
 | `SLACK_CHANNEL_ID_GCN` / `_ToO` / `_EP_COPY` / `_ALERT`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET`、`BOTS_DISABLED`、`OBS_RAW_DIR`、`REDUCTION_*` | lab bots | `app/services/bots` | 否（缺少時該 bot 在 Admin › Bots 顯示 Needs setup） |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push 金鑰（`scripts/gen_vapid_keys.py` 產生；所有發送的伺服器要同一組，換掉 = 大家要重開推播） | `app/services/notifications/webpush.py` | 推播必填（缺少時 Settings 顯示未設定、Admin › Push 不能送） |
 | `ACCESS_LOG_ENABLED` | HTTP access log | `main.py` | 否（預設關） |
 | `LOG_MAX_FILE_BYTES` / `LOG_MAX_LINE_CHARS` | 日誌上限 | `log_setup` | 否 |
 | `DETECT_IN_WEB` | `0/false` 時停用 web 內 DETECT | `detect_pipeline` | 否（預設啟用） |

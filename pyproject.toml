@@ -43,6 +43,7 @@ dependencies = [
     "slack-sdk",
     "gunicorn>=26.2.0",
     "psutil>=7.2",
+    "pywebpush>=2.0",  # Web Push to phones / desktops (app/services/notifications/webpush.py)
 ]
 
 [dependency-groups]

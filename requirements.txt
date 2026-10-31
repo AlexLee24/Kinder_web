@@ -29,3 +29,4 @@ pillow
 apscheduler
 slack-sdk
 gunicorn>=26.2.0
+pywebpush>=2.0
