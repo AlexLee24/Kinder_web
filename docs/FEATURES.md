@@ -62,13 +62,18 @@ Kinder（Logo → /）
 │     ├── Visibility Plot           /interactive_planner            公開                                    → 06
 │     └── Finding Chart             /finding_chart                  公開                                    → 06
 ├── About Us ▾                      外部連結（GREAT Lab 網站、鹿林天文台氣象）
-├── Private ▾（僅 session.user.is_great_lab_member）
+├── Lab ▾（僅 session.user.is_great_lab_member；選單由 `_shell.html` 的 nav 定義，多頁的項目在頁面上方切換）
+│     ├── Pipeline                  /pipeline                       can_access_page('pipeline')
 │     ├── DETECT                    /detect、/detect?detect_results=<date>、/detect/archives   非 guest（審核僅 admin） → 05
-│     ├── Daily Trigger             /daily_trigger                  can_access_page('daily_trigger')         → 07
-│     ├── Lab Calendar              /lab_calendar、/lab_calendar/feed/<token>.ics   can_access_page('lab_calendar') → 07
-│     ├── ePessto++ Support Team    /epessto_support                can_access_page('epessto_support')       → 07
-│     ├── Documents                 /documents、/documents/<file>   can_access_page('documents')             → 07
-│     └── Lab Info                  /greatlab_info                  can_access_page('greatlab_info')         → 07
+│     ├── Triggers                  Daily Trigger · Direct Trigger · Alerts
+│     │     ├── Daily Trigger       /daily_trigger                  can_access_page('daily_trigger')         → 07
+│     │     ├── Direct Trigger      /direct_trigger                 can_access_page('direct_trigger')
+│     │     └── Alerts（原 Bots）    /bots                           can_access_page('bots')
+│     ├── Calendar                  /lab_calendar、/lab_calendar/feed/<token>.ics   can_access_page('lab_calendar') → 07
+│     ├── ePessto++                 /epessto_support                can_access_page('epessto_support')       → 07
+│     └── Lab Info                  Docs · Links
+│           ├── Docs（原 Documents）  /documents、/documents/<file>   can_access_page('documents')             → 07
+│           └── Links（原 Lab Info）  /greatlab_info                  can_access_page('greatlab_info')         → 07
 ├── 通知鈴（登入後，右上角）        /api/notifications*、/notifications/<id>   需登入（各自的通知）          → 02
 ├── 使用者選單（登入後；頂端顯示姓名 / email / 角色）
 │     ├── Profile                   /profile                        需登入                                  → 01

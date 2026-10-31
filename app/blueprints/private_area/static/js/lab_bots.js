@@ -1,5 +1,6 @@
-// Lab › Bots (/bots): a card per bot (state) and the results of the selected one. Polls /api/bots/status every 15 s
-// and the open bot's /api/bots/<id>/results every 60 s while the page is visible. Read only: no run / stop / log here.
+// Triggers › Alerts (/bots): a card per bot (state) and the results of the selected one. Polls /api/bots/status
+// every 15 s and the open bot's /api/bots/<id>/results every 60 s while the page is visible. Read only: no run / stop /
+// log here.
 (function () {
     'use strict';
     const $ = (id) => document.getElementById(id);

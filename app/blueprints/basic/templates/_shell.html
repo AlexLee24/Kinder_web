@@ -30,12 +30,10 @@
     ('lab', 'flask', 'Lab', '/pipeline', 'member', [
         ('pipeline', 'stack', 'Pipeline', '', [('/pipeline', 'Pipeline')]),
         ('detect', 'shield-check', 'DETECT', '', [('/detect', 'TNS-DETECT'), ('/detect/lsst', 'LSST-DETECT'), ('/detect/crossmatch', 'Cross-match'), ('/detect/archives', 'Archives')]),
-        ('triggers', 'send', 'Triggers', '', [('/daily_trigger', 'Daily Trigger'), ('/direct_trigger', 'Direct Trigger')]),
+        ('triggers', 'send', 'Triggers', '', [('/daily_trigger', 'Daily Trigger'), ('/direct_trigger', 'Direct Trigger'), ('/bots', 'Alerts')]),
         ('calendar', 'calendar', 'Calendar', '', [('/lab_calendar', 'Calendar')]),
-        ('epessto', 'users', 'ePessto++ Support Team', '', [('/epessto_support', 'ePessto++ Support Team')]),
-        ('documents', 'file', 'Documents', '', [('/documents', 'Documents')]),
-        ('bots', 'robot', 'Bots', '', [('/bots', 'Bots')]),
-        ('labinfo', 'building', 'Lab Info', '', [('/greatlab_info', 'Lab Info')]),
+        ('epessto', 'users', 'ePessto++', '', [('/epessto_support', 'ePessto++ Support Team')]),
+        ('labinfo', 'building', 'Lab Info', '', [('/documents', 'Docs'), ('/greatlab_info', 'Links')]),
     ]),
 ] %}
 {# Bottom of the rail: links out, the admin hub (its own side menu inside the page) and personal settings #}
@@ -116,7 +114,7 @@
 {% macro ic(name, size=None) -%}
 <svg class="sh-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"{% if size %} width="{{ size }}" height="{{ size }}"{% endif %}>{{ _icons.get(name, '')|safe }}</svg>
 {%- endmacro %}
-{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/detect/lsst': 'telescope', '/detect/crossmatch': 'target', '/daily_trigger': 'send', '/direct_trigger': 'bolt'} %}
+{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/detect/lsst': 'telescope', '/detect/crossmatch': 'target', '/daily_trigger': 'send', '/direct_trigger': 'bolt', '/bots': 'robot', '/documents': 'file', '/greatlab_info': 'building'} %}
 
 {% macro _link(href, cls='', extra='') -%}
 <a href="{{ href }}"{% if cls %} class="{{ cls }}"{% endif %}{% if is_ext(href) %} target="_blank" rel="noopener noreferrer"{% endif %} {{ extra|safe }}
@@ -169,7 +167,7 @@
 {% endfor %}
 {% endmacro %}
 
-{# Segmented view switch: pages of the same group (DETECT Results | Archives, Daily | Direct Trigger) #}
+{# Segmented view switch: pages of the same group (DETECT Results | Archives, Daily | Direct Trigger | Alerts, Docs | Links) #}
 {% macro views() %}
 {% for key, _i, _l, _h, _n, groups in nav + nav_end if key == ns.sec %}
 {% for gkey, gic, glabel, gneed, vs in groups if gkey == ns.grp and vs|length > 1 and allowed(gneed) %}
