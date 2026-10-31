@@ -714,6 +714,46 @@ def _ensure_extra_tables():
         _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_ra DOUBLE PRECISION")
         _run("ALTER TABLE transient.cross_matches ADD COLUMN IF NOT EXISTS match_dec DOUBLE PRECISION")
 
+        # transient.lsst_alerts — LSST objects (ALeRCE) near a Lens / DESI galaxy, kept
+        # whether or not they are in TNS yet (app/services/lsst/alerts.py).
+        _run("""
+            CREATE TABLE IF NOT EXISTS transient.lsst_alerts (
+                oid           BIGINT PRIMARY KEY,
+                ra            DOUBLE PRECISION NOT NULL,
+                dec           DOUBLE PRECISION NOT NULL,
+                firstmjd      DOUBLE PRECISION,
+                lastmjd       DOUBLE PRECISION,
+                n_det         INT,
+                class_name    TEXT,
+                probability   DOUBLE PRECISION,
+                lens_matches  JSONB NOT NULL DEFAULT '[]'::jsonb,
+                desi_matches  JSONB NOT NULL DEFAULT '[]'::jsonb,
+                n_lens        INT NOT NULL DEFAULT 0,
+                n_desi        INT NOT NULL DEFAULT 0,
+                best_sep      DOUBLE PRECISION,
+                best_z        DOUBLE PRECISION,
+                obj_id        BIGINT REFERENCES transient.objects(obj_id) ON DELETE SET NULL,
+                tns_name      TEXT,
+                tns_link      TEXT,
+                first_seen    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        _run("CREATE INDEX IF NOT EXISTS lsst_alerts_firstmjd_idx ON transient.lsst_alerts (firstmjd)")
+        _run("CREATE INDEX IF NOT EXISTS lsst_alerts_obj_idx ON transient.lsst_alerts (obj_id)")
+        # transient.lsst_lc_state — last ALeRCE lastmjd seen per TNS object, so the hourly
+        # LSST light-curve refresh only re-downloads objects with new points.
+        _run("""
+            CREATE TABLE IF NOT EXISTS transient.lsst_lc_state (
+                obj_id         BIGINT PRIMARY KEY REFERENCES transient.objects(obj_id) ON DELETE CASCADE,
+                oid            BIGINT NOT NULL,
+                alerce_lastmjd DOUBLE PRECISION,
+                n_points       INT,
+                refreshed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                error          TEXT
+            )
+        """)
+
         cur.close()
     except Exception as e:
         logger.warning("_ensure_extra_tables: %s", e)

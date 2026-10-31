@@ -29,7 +29,7 @@
     ]),
     ('lab', 'flask', 'Lab', '/pipeline', 'member', [
         ('pipeline', 'stack', 'Pipeline', '', [('/pipeline', 'Pipeline')]),
-        ('detect', 'shield-check', 'DETECT', '', [('/detect', 'Results'), ('/detect/archives', 'Archives')]),
+        ('detect', 'shield-check', 'DETECT', '', [('/detect', 'Results'), ('/detect/lsst', 'LSST'), ('/detect/archives', 'Archives')]),
         ('triggers', 'send', 'Triggers', '', [('/daily_trigger', 'Daily Trigger'), ('/direct_trigger', 'Direct Trigger')]),
         ('epessto', 'users', 'ePessto++ Support Team', '', [('/epessto_support', 'ePessto++ Support Team')]),
         ('documents', 'file', 'Documents', '', [('/documents', 'Documents')]),
@@ -113,7 +113,7 @@
 {% macro ic(name, size=None) -%}
 <svg class="sh-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"{% if size %} width="{{ size }}" height="{{ size }}"{% endif %}>{{ _icons.get(name, '')|safe }}</svg>
 {%- endmacro %}
-{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/daily_trigger': 'send', '/direct_trigger': 'bolt'} %}
+{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/detect/lsst': 'telescope', '/daily_trigger': 'send', '/direct_trigger': 'bolt'} %}
 
 {% macro _link(href, cls='', extra='') -%}
 <a href="{{ href }}"{% if cls %} class="{{ cls }}"{% endif %}{% if is_ext(href) %} target="_blank" rel="noopener noreferrer"{% endif %} {{ extra|safe }}
