@@ -369,6 +369,7 @@
                             <tr>
                                 <th>Rule</th>
                                 <th>Source</th>
+                                <th title="Catalogue position of this candidate (J2000)">RA, Dec</th>
                                 <th>Spectrum</th>
                                 <th>z</th>
                                 <th title="Angular distance transient → catalogue position">Sep (″)</th>
@@ -397,6 +398,7 @@
                                     {% if r.z_conflict %}<span class="rule-note" title="Another spectrum on this galaxy model has a different z">z-conflict</span>{% endif %}
                                 </td>
                                 <td><span class="badge">{{ m.catalog_label or m.catalog_name }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}</td>
+                                <td class="td-coord">{% if m.coord %}<span class="coord-deg">{{ "%.6f"|format(m.coord.ra) }}, {{ "%+.6f"|format(m.coord.dec) }}</span><span class="fact-sub">{{ m.coord.hms }} {{ m.coord.dms }}</span>{% else %}—{% endif %}</td>
                                 <td class="td-spec">{{ r.spectype or '—' }}{% if r.survey %}<span class="fact-sub">{{ r.survey }}/{{ r.program }}{% if r.zwarn %} · zwarn {{ r.zwarn }}{% endif %}</span>{% endif %}
                                     {% if md.get('grade') or md.get('Grade') %}<span class="fact-sub">grade {{ md.get('grade') or md.get('Grade') }}</span>{% endif %}
                                     {% if md.get('lens_probability') or md.get('LENS_PROBABILITY') %}<span class="fact-sub">P(lens) {{ "%.2f"|format((md.get('lens_probability') or md.get('LENS_PROBABILITY'))|float) }}</span>{% endif %}

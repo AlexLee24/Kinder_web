@@ -39,6 +39,34 @@ def _safe_coord(v):
     except (TypeError, ValueError):
         return str(v) if v else ''
 
+def _match_coord(row, match_data) -> dict | None:
+    """A candidate's catalogue position: {'ra', 'dec'} in degrees and the sexagesimal 'hms' / 'dms'."""
+    def first(*vals):
+        for v in vals:
+            try:
+                if v is not None and v != '':
+                    return float(v)
+            except (TypeError, ValueError):
+                pass
+        return None
+    md = match_data or {}
+    ra = first(row.get('match_ra'), md.get('ra'), md.get('RA'), md.get('_RAJ2000'))
+    dec = first(row.get('match_dec'), md.get('dec'), md.get('DEC'), md.get('_DEJ2000'))
+    if ra is None or dec is None:
+        return None
+    h, rem = divmod(ra % 360.0 / 15.0 * 3600.0, 3600.0)
+    m, s = divmod(rem, 60.0)
+    sign = '-' if dec < 0 else '+'
+    d, rem = divmod(abs(dec) * 3600.0, 3600.0)
+    dm, ds = divmod(rem, 60.0)
+    if round(s, 2) >= 60.0:
+        s, m = 0.0, m + 1
+    if round(ds, 1) >= 60.0:
+        ds, dm = 0.0, dm + 1
+    return {'ra': ra, 'dec': dec,
+            'hms': f'{int(h):02d}:{int(m):02d}:{s:05.2f}', 'dms': f'{sign}{int(d):02d}:{int(dm):02d}:{ds:04.1f}'}
+
+
 def _detect_abs_mag_inputs(latest_point, tns_details, tns_info):
     latest_mag = None
     filter_name = 'V'
@@ -382,6 +410,7 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
             row['is_host'] = bool(row.get('is_host'))
             row['rule'] = _match_rule(match_data, row['is_host'])
             row['catalog_label'] = _catalog_label(row.get('catalog_name'), match_data)
+            row['coord'] = _match_coord(row, match_data)
             processed_matches.append(row)
 
         if not processed_matches:

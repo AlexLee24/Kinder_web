@@ -1186,3 +1186,7 @@ kbd {
 .hl-lens { background: linear-gradient(45deg, #ff007f, #ff8c00); color: #fff; box-shadow: 0 0 10px rgba(255, 0, 127, 0.45); }
 .hl-lens-cand { background: rgba(255, 0, 127, 0.12); color: #ff6fb4; border: 1px dashed rgba(255, 0, 127, 0.7); }
 .hl-slsn { background: rgba(255, 107, 97, 0.14); color: #ff8a80; border: 1px solid rgba(255, 107, 97, 0.65); }
+/* Candidate position (RA, Dec) in the card's candidate table */
+.match-detail-table .td-coord { white-space: nowrap; font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.74rem; }
+.match-detail-table .td-coord .coord-deg { user-select: all; }
+.match-detail-table .td-coord .fact-sub { display: block; font-family: inherit; }
