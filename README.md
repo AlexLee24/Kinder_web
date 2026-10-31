@@ -26,7 +26,7 @@ systemd unit):
 ```bash
 scripts/kinder_service.sh install          # once: LaunchAgent, runs while this user is logged in (no sudo)
 scripts/kinder_service.sh install --system # or: LaunchDaemon, runs from boot without a login (sudo)
-scripts/kinder_service.sh deploy           # git pull --ff-only + uv sync --frozen + restart + wait until it answers
+scripts/kinder_service.sh deploy           # git pull --ff-only (+ app/vendor/CASTOR) + uv sync --frozen + restart
 scripts/kinder_service.sh restart | stop | start | status | logs [-f] | uninstall
 ```
 

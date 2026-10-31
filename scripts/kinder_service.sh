@@ -4,7 +4,8 @@
 #
 #   scripts/kinder_service.sh install      write the plist and start the service (once)
 #   scripts/kinder_service.sh restart      stop + start (new code, new kinder.env)
-#   scripts/kinder_service.sh deploy       git pull --ff-only, uv sync, restart, wait until it answers
+#   scripts/kinder_service.sh deploy       git pull --ff-only (Kinder, then app/vendor/CASTOR), uv sync, restart,
+#                                          wait until it answers
 #   scripts/kinder_service.sh status       running? pid, last exit, does the port answer
 #   scripts/kinder_service.sh logs [-f]    the service's own output (~/Library/Logs/Kinder/tw.edu.ncu.kinder.log)
 #   scripts/kinder_service.sh start | stop | uninstall
@@ -257,6 +258,12 @@ cmd_deploy() {
     cd "$ROOT"
     echo "== git pull ($(git rev-parse --abbrev-ref HEAD))"
     git pull --ff-only
+    if [[ -d app/vendor/CASTOR/.git ]]; then      # the exposure-time engine is its own clone (git-ignored here)
+        echo "== git pull app/vendor/CASTOR ($(git -C app/vendor/CASTOR rev-parse --abbrev-ref HEAD))"
+        git -C app/vendor/CASTOR pull --ff-only
+    else
+        echo "== app/vendor/CASTOR is not a git clone: skipped"
+    fi
     echo "== uv sync"
     local uv                                  # over ssh PATH often lacks Homebrew
     uv="$(command -v uv || true)"
@@ -268,6 +275,7 @@ cmd_deploy() {
     echo "== restart"
     cmd_restart
     echo "== now at $(git log --oneline -1)"
+    if [[ -d app/vendor/CASTOR/.git ]]; then echo "   CASTOR $(git -C app/vendor/CASTOR log --oneline -1)"; fi
 }
 
 cmd_uninstall() {
