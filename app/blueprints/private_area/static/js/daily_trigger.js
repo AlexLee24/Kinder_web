@@ -3049,7 +3049,8 @@ const _USER_DISPLAY_NAME = (document.querySelector('meta[name="x-user-display-na
 const _USER_EMAIL = (document.querySelector('meta[name="x-user-email"]') || {}).content || '';
 const _APP_DEBUG = (document.querySelector('meta[name="x-app-debug"]') || {}).content === 'true';
 const _SLACK_CHANNEL_LABEL = _APP_DEBUG ? 'Test' : 'Control Room';
-// Tonight's Lulin schedule closes LOT to triggers (UVEX / LISA / TRIPOL2 / an E program; lab_calendar.lot_closed).
+// Tonight's Lulin schedule closes LOT to triggers (UVEX / LISA / TRIPOL2 / an E program
+// that is not a LATTE run; lab_calendar.closes_lot).
 // The server refuses LOT sends too; this only says so before anyone builds a LOT script.
 const _LOT_CLOSED = (document.querySelector('meta[name="x-lot-closed"]') || {}).content || '';
 const _LOT_CLOSED_MSG = _LOT_CLOSED ? `No LOT trigger tonight (Lulin schedule: ${_LOT_CLOSED}). Send the SLT script only.` : '';

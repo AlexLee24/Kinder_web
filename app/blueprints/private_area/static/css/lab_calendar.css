@@ -196,7 +196,7 @@
 .lc-mini-ev { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 0.86rem; color: var(--kw-text-primary); }
 .lc-mini-ev .lc-chip { flex-shrink: 0; }
 .lc-mini-ev small { color: var(--kw-text-muted); }
-/* a Lulin night that closes LOT to triggers (lab_calendar.LOT_CLOSED_RE) */
+/* a Lulin night that closes LOT to triggers (lab_calendar.closes_lot) */
 .lc-nolot, .lc-mini-ev small.lc-nolot { display: inline-block; padding: 1px 7px; border-radius: 999px; background: rgba(255, 69, 58, 0.16); color: #FF8A80; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
 .lc-duty-nolot { display: block; margin-top: 6px; color: #FF8A80; font-size: 0.78rem; }
 
