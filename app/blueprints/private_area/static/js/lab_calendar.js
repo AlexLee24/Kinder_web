@@ -255,33 +255,81 @@
     const monthKey = (y, m) => y + '-' + String(m).padStart(2, '0');
     const nextKey = (key, n) => { const p = key.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1 + n, 1)); return monthKey(d.getUTCFullYear(), d.getUTCMonth() + 1); };
     const FIRST = DATA.first_month || DATA.this_month, LAST = DATA.last_month || DATA.this_month;
-    const byDay = {};       // 'YYYY-MM-DD' → occurrences on that day (an event spanning days sits on each)
+    // Each week is one row: the days behind (click = add an event), the events in lanes on top. An event that
+    // spans days is one bar across them (cut at the week's edges), Trigger duty first, then the group's all-day
+    // events, then the Lulin schedule, then timed events (a dot, the time and the title).
+    const LOT_CLOSED = new Set(DATA.lot_closed_days || []);          // nights LOT takes no triggers
+    const DUTY_DAYS = new Set();
     OCC.forEach((e) => {
-        for (let d = e.date, n = 0; d <= e.end_date && n < 63; d = addDays(d, 1), n++) (byDay[d] = byDay[d] || []).push(e);
+        if (e.category !== 'trigger') return;
+        for (let d = e.date, n = 0; d <= e.end_date && n < 63; d = addDays(d, 1), n++) DUTY_DAYS.add(d);
     });
-    // in a day cell the group's own events come first, then the Lulin schedule
-    Object.values(byDay).forEach((l) => l.sort((a, b) => (a.source === 'lab' ? 0 : 1) - (b.source === 'lab' ? 0 : 1)));
-    function evButton(e, day) {
-        const start = e.time_label && day === e.date ? '<b>' + esc(e.time_label.split('–')[0].trim()) + '</b> ' : '';
-        const tip = e.title + (e.time_label ? ' · ' + e.time_label : '') + (e.location ? ' · ' + e.location : '') + (e.no_lot ? ' · No LOT trigger' : '');
-        return '<button type="button" class="lc-cal-ev lc-c-' + esc(e.color) + (e.source === 'lulin' ? ' is-lulin' : '') + '" data-ev="' + esc(e.id) + '" title="' + esc(tip) + '">' +
-            start + (e.source === 'lulin' ? (e.no_lot ? '<i class="is-nolot">LOT</i> ' : '<i>LOT</i> ') : '') + esc(e.title) + '</button>';
+    const kindRank = (e) => e.category === 'trigger' ? 0 : e.source === 'lab' && (e.all_day || e.end_date > e.date) ? 1 : e.source === 'lulin' ? 2 : 3;
+    const colOf = (mon, d) => Math.round((asUTC(d) - asUTC(mon)) / 864e5);
+    function weekBars(mon) {
+        const sun = addDays(mon, 6);
+        const segs = OCC.filter((e) => e.date <= sun && e.end_date >= mon).map((e) => {
+            const a = e.date < mon ? mon : e.date, b = e.end_date > sun ? sun : e.end_date;
+            return { e, a: colOf(mon, a), b: colOf(mon, b), contL: e.date < mon, contR: e.end_date > sun };
+        });
+        segs.sort((x, y) => kindRank(x.e) - kindRank(y.e) || x.a - y.a || (y.b - y.a) - (x.b - x.a) ||
+            (x.e.start || '').localeCompare(y.e.start || '') || x.e.title.localeCompare(y.e.title));
+        const lanes = [];                                  // lanes[i] = the columns taken in lane i
+        segs.forEach((sg) => {
+            let i = 0;
+            while (lanes[i] && lanes[i].some((c) => c >= sg.a && c <= sg.b)) i++;
+            (lanes[i] = lanes[i] || []).push(...Array.from({ length: sg.b - sg.a + 1 }, (_, k) => sg.a + k));
+            sg.lane = i;
+        });
+        return { segs, lanes: lanes.length };
+    }
+    function bar(sg, mon, from, to, extra) {
+        const e = sg.e, timed = !e.all_day && e.end_date === e.date;
+        const cls = ['lc-bar', 'lc-c-' + e.color, timed ? 'is-timed' : '', e.source === 'lulin' ? 'is-lulin' : '',
+            addDays(mon, to) < TODAY ? 'is-past' : '', extra || ''];
+        if (from === sg.a && sg.contL) cls.push('is-cont-l');
+        if (to === sg.b && sg.contR) cls.push('is-cont-r');
+        let tip = e.title + (e.time_label ? ' · ' + e.time_label : '') + (e.location ? ' · ' + e.location : '');
+        if ((extra || '').includes('is-struck')) tip += ' · No LOT trigger these nights (SLT only)';
+        const label = timed ? '<b>' + esc((e.time_label || '').split('–')[0].trim()) + '</b> ' + esc(e.title) : esc(e.title);
+        return '<button type="button" class="' + cls.filter(Boolean).join(' ') + '" data-ev="' + esc(e.id) + '" title="' + esc(tip) + '"' +
+            ' style="grid-column:' + (from + 1) + ' / ' + (to + 2) + ';grid-row:' + (sg.lane + 2) + '">' + '<span>' + label + '</span></button>';
     }
     let shown = DATA.this_month;
     function showMonth(key) {
         shown = key < FIRST ? FIRST : key > LAST ? LAST : key;
         const p = shown.split('-').map(Number);
         const first = new Date(Date.UTC(p[0], p[1] - 1, 1));
-        let d = addDays(shown + '-01', -((first.getUTCDay() + 6) % 7));     // the Monday on or before the 1st
-        let h = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((w, i) => '<div class="lc-cal-wd' + (i > 4 ? ' is-we' : '') + '" role="columnheader">' + w + '</div>').join('');
+        let mon = addDays(shown + '-01', -((first.getUTCDay() + 6) % 7));     // the Monday on or before the 1st
+        let h = '<div class="lc-cal-head" role="row">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+            .map((w, i) => '<div class="lc-cal-wd' + (i > 4 ? ' is-we' : '') + '" role="columnheader">' + w + '</div>').join('') + '</div>';
         do {
-            for (let i = 0; i < 7; i++, d = addDays(d, 1)) {
-                const inMonth = d.slice(0, 7) === shown;
-                const cls = 'lc-cal-cell' + (inMonth ? '' : ' is-out') + (d === TODAY ? ' is-today' : d < TODAY ? ' is-past' : '');
-                h += '<div class="' + cls + '" data-date="' + d + '" role="gridcell"><span class="lc-cal-num">' + Number(d.slice(8)) + '</span>' +
-                    (inMonth ? (byDay[d] || []).map((e) => evButton(e, d)).join('') : '') + '</div>';
+            const { segs, lanes } = weekBars(mon);
+            let bg = '', fg = '';
+            for (let i = 0; i < 7; i++) {
+                const d = addDays(mon, i), inMonth = d.slice(0, 7) === shown;
+                const nolot = LOT_CLOSED.has(d) && !DUTY_DAYS.has(d);
+                bg += '<div class="lc-cal-cell' + (inMonth ? '' : ' is-out') + (d === TODAY ? ' is-today' : d < TODAY ? ' is-past' : '') +
+                    '" data-date="' + d + '" role="gridcell" aria-label="' + esc(fmtDay(d)) + '"></div>';
+                fg += '<div class="lc-cal-day' + (inMonth ? '' : ' is-out') + (d === TODAY ? ' is-today' : d < TODAY ? ' is-past' : '') +
+                    '" style="grid-column:' + (i + 1) + '"><span class="lc-cal-num">' + Number(d.slice(8)) + '</span>' +
+                    (nolot ? '<span class="lc-cal-nolot" title="LOT takes no triggers this night (Lulin schedule)">No LOT</span>' : '') + '</div>';
             }
-        } while (d.slice(0, 7) === shown);
+            segs.forEach((sg) => {
+                if (sg.e.category !== 'trigger') { fg += bar(sg, mon, sg.a, sg.b); return; }
+                // Trigger duty: struck through on the nights LOT is closed, in runs of the same state
+                let from = sg.a;
+                for (let c = sg.a; c <= sg.b; c++) {
+                    const closed = LOT_CLOSED.has(addDays(mon, c));
+                    if (c === sg.b || LOT_CLOSED.has(addDays(mon, c + 1)) !== closed) {
+                        fg += bar(sg, mon, from, c, (closed ? 'is-struck' : '') + (from > sg.a ? ' is-join-l' : '') + (c < sg.b ? ' is-join-r' : ''));
+                        from = c + 1;
+                    }
+                }
+            });
+            h += '<div class="lc-wk" style="--lanes:' + lanes + '"><div class="lc-wk-bg">' + bg + '</div><div class="lc-wk-fg">' + fg + '</div></div>';
+            mon = addDays(mon, 7);
+        } while (mon.slice(0, 7) === shown);
         $('lcCalGrid').innerHTML = h;
         $('lcPagerTitle').textContent = MONTHS[p[1] - 1] + ' ' + p[0];
         $('lcPrev').disabled = shown <= FIRST;
