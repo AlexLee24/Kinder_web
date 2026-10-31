@@ -13,7 +13,7 @@ light curve is the binned LSST one (alerts.save_mags keeps it in ``lsst_alerts.l
 type and TNS redshift come from the linked TNS object, if any. DESI candidates with
 ZWARN != 0 are dropped before the host rule, as in the watch.
 
-Review page: /detect/lsst/review (app/blueprints/detect/lsst_review.py), one day per
+Review page: DETECT › LSST-DETECT, /detect/lsst (app/blueprints/detect/lsst_review.py), one day per
 UTC date of the first LSST detection.
 """
 import hashlib

@@ -16,7 +16,7 @@
 
 const CAN_EDIT = document.body.dataset.canEdit === 'true';
 
-// Endpoints; DETECT › LSST's review page (/detect/lsst/review) overrides them via window.DETECT_API.
+// Endpoints; DETECT › LSST-DETECT (/detect/lsst) overrides them via window.DETECT_API.
 const API = Object.assign({
     setHost:        '/api/set_host',
     unsetHost:      '/api/unset_host',
