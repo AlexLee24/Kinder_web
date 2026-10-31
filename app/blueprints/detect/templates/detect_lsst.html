@@ -19,15 +19,25 @@
         .lsst-lc-msg { padding: 16px 0; color: var(--kw-text-muted); font-size: 0.85rem; }
         .lsst-empty { padding: 32px; text-align: center; color: var(--kw-text-muted); }
         .lsst-run-note { font-size: 0.78rem; color: var(--kw-text-muted); }
+        .lsst-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+        .lsst-tools .kw-panel + .kw-panel { margin-top: 0; }
+        .lsst-tools h2 { margin: 0 0 6px; font-size: 0.95rem; }
+        .lsst-tools p { margin: 0 0 10px; font-size: 0.8rem; color: var(--kw-text-secondary); }
+        .lsst-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .lsst-row .kw-input, .lsst-row select { min-height: 36px; }
+        .lsst-state { font-size: 0.8rem; color: var(--kw-text-secondary); }
+        .lsst-state b.running { color: var(--kw-accent); }
+        .lsst-state b.error, .lsst-state b.interrupted { color: #FF6B61; }
+        .lsst-log { margin: 10px 0 0; max-height: 240px; overflow: auto; padding: 10px 12px; border-radius: 10px;
+                    background: rgba(0, 0, 0, 0.35); border: 1px solid var(--kw-border); font: 0.74rem/1.5 var(--kw-font-mono, ui-monospace, monospace);
+                    color: var(--kw-text-secondary); white-space: pre-wrap; }
+        .lsst-msg { font-size: 0.8rem; margin-top: 8px; color: var(--kw-text-secondary); }
+        .lsst-msg.err { color: #FF6B61; }
+        @media (max-width: 960px) { .lsst-tools { grid-template-columns: minmax(0, 1fr); } }
         @media (max-width: 860px) { .lsst-table .hide-sm { display: none; } }
     </style>
 {% endblock %}
 
-{% block bar_right %}
-    {% if session.get('user') and session['user'].get('is_admin') %}
-    <button type="button" class="kw-btn kw-btn-sm" id="lsstRunBtn" title="Run the hourly LSST watch now">Run now</button>
-    {% endif %}
-{% endblock %}
 
 {% macro qs(v=view, c=catalog, d=days) -%}
 {{ url_for('detect.detect_lsst', view=v, catalog=c, days=d) }}
@@ -71,6 +81,41 @@
         </div>
     </div>
 
+    {% set _admin_user = session.get('user') and session['user'].get('is_admin') %}
+    <div class="lsst-tools">
+        <section class="kw-panel">
+            <h2>Watch runs</h2>
+            <p>Runs by itself every hour at hh:25 UTC (same minute in Taiwan, UTC+8): objects first detected since the last
+               run. Once a day at 14:30 UTC (22:30 Taiwan) it re-reads the last 1.5 days for objects ALeRCE ingested late.</p>
+            {% if _admin_user %}
+            <div class="lsst-row">
+                <select id="lsstRunDays" class="kw-input" aria-label="How much to read">
+                    <option value="">Since the last run</option>
+                    <option value="1">Last 1 day</option>
+                    <option value="3">Last 3 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30">Last 30 days (slow)</option>
+                </select>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="lsstRunBtn">Run now</button>
+            </div>
+            {% endif %}
+            <div class="lsst-state" id="lsstState" style="margin-top:10px">Loading run status…</div>
+            <pre class="lsst-log" id="lsstLog" hidden></pre>
+        </section>
+        <section class="kw-panel">
+            <h2>Cross-match an LSST object</h2>
+            <p>Enter an LSST oid (diaObjectId, or LSST-AP-DO-…). It is matched against Lens and DESI like the watch
+               (DESI for every class); a match is kept in this list. For any position use
+               <a href="{{ url_for('detect.detect_crossmatch') }}">Cross-match</a>.</p>
+            <form class="lsst-row" id="lsstOidForm">
+                <input type="text" class="kw-input" id="lsstOid" placeholder="171141197314654355" autocomplete="off" style="flex:1; min-width: 200px">
+                <button type="submit" class="kw-btn kw-btn-sm">Cross-match</button>
+            </form>
+            <div class="lsst-msg" id="lsstOidMsg"></div>
+        </section>
+    </div>
+
     <div class="lsst-filters">
         <div class="kw-seg" role="tablist" aria-label="TNS">
             {% for v, label in [('pre_tns', 'Not in TNS'), ('in_tns', 'In TNS'), ('all', 'All')] %}
@@ -87,11 +132,6 @@
             <a class="kw-seg-item{% if days == d %} is-on{% endif %}" href="{{ qs(d=d) }}">{{ d }} d</a>
             {% endfor %}
         </div>
-        <span class="lsst-run-note">
-            {% if stats.running %}Running now…
-            {% elif stats.last_run %}Last watch: {{ stats.last_run.fetched }} objects read, {{ stats.last_run.stored }} matched ({{ stats.last_run.seconds }} s)
-            {% else %}The watch has not run yet.{% endif %}
-        </span>
     </div>
 
     {% if rows %}
@@ -192,13 +232,91 @@
             .catch(e => showMsg(el, 'Could not load: ' + e.message));
     }));
 
+    // ---- watch runs: state + live log (polled while a run is in progress) ----
     const run = document.getElementById('lsstRunBtn');
+    const stateEl = document.getElementById('lsstState');
+    const logEl = document.getElementById('lsstLog');
+    let pollTimer = null, sawRunning = false;
+
+    function fmtTime(t) {
+        if (!t) return '';
+        const d = new Date(t * 1000);
+        return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+    }
+
+    function renderStatus(st) {
+        stateEl.textContent = '';
+        if (!st || !st.state) {
+            stateEl.textContent = 'No run recorded yet.';
+            return;
+        }
+        const b = document.createElement('b');
+        b.className = st.running ? 'running' : st.state;
+        b.textContent = st.running ? 'Running' : ({ done: 'Last run finished', error: 'Last run failed',
+            interrupted: 'Last run was interrupted (server restarted)' }[st.state] || st.state);
+        stateEl.appendChild(b);
+        let tail = ' · ' + (st.trigger || '') + ' · started ' + fmtTime(st.started_at);
+        if (st.running && st.phase) tail += ' · ' + st.phase;
+        if (!st.running && st.finished_at) tail += ' · ended ' + fmtTime(st.finished_at);
+        if (!st.running && st.result) tail += ' · ' + (st.result.fetched || 0) + ' objects read, ' + (st.result.stored || 0) + ' matched';
+        stateEl.appendChild(document.createTextNode(tail));
+        const lines = st.log || [];
+        logEl.hidden = !lines.length;
+        const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 4;
+        logEl.textContent = lines.join('\n');
+        if (atBottom || st.running) logEl.scrollTop = logEl.scrollHeight;
+        if (run) run.disabled = !!st.running;
+    }
+
+    function poll() {
+        fetch('/api/detect/lsst/status').then(r => r.json()).then(st => {
+            renderStatus(st);
+            if (st.running) {
+                sawRunning = true;
+                pollTimer = setTimeout(poll, 3000);
+            } else if (sawRunning) {
+                sawRunning = false;
+                const a = document.createElement('a');
+                a.href = location.href;
+                a.textContent = ' · Reload to see the new objects';
+                stateEl.appendChild(a);
+            }
+        }).catch(() => { stateEl.textContent = 'Could not load the run status.'; });
+    }
+    poll();
+
     if (run) run.addEventListener('click', () => {
+        const days = document.getElementById('lsstRunDays').value;
         run.disabled = true;
-        fetch('/api/detect/lsst/run', { method: 'POST' })
+        fetch('/api/detect/lsst/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ days: days || null }) })
             .then(r => r.json())
-            .then(d => { run.textContent = d.success ? 'Started' : (d.message || d.error || 'Failed'); })
-            .catch(() => { run.textContent = 'Failed'; });
+            .then(d => {
+                if (!d.success) { stateEl.textContent = d.message || d.error || 'Could not start'; }
+                clearTimeout(pollTimer);
+                setTimeout(poll, 800);
+            })
+            .catch(() => { stateEl.textContent = 'Could not start the run.'; run.disabled = false; });
+    });
+
+    // ---- cross-match one LSST oid ----
+    const oidForm = document.getElementById('lsstOidForm');
+    const oidMsg = document.getElementById('lsstOidMsg');
+    oidForm.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const oid = document.getElementById('lsstOid').value.trim();
+        if (!oid) return;
+        oidMsg.className = 'lsst-msg';
+        oidMsg.textContent = 'Asking ALeRCE and cross-matching…';
+        fetch('/api/detect/lsst/crossmatch_oid', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                   body: JSON.stringify({ oid: oid }) })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) { oidMsg.className = 'lsst-msg err'; oidMsg.textContent = d.message || 'Failed'; return; }
+                oidMsg.textContent = d.message || 'Matched — opening it…';
+                setTimeout(() => { location.href = d.url; }, d.stored ? 200 : 900);
+            })
+            .catch(() => { oidMsg.className = 'lsst-msg err'; oidMsg.textContent = 'Request failed'; });
     });
 })();
 </script>

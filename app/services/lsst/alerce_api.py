@@ -33,10 +33,10 @@ _session = requests.Session()
 _session.headers["User-Agent"] = "Kinder-LSST-watch"
 
 
-def _get(path: str, params: dict):
+def _get(path: str, params: dict, retries: int = RETRIES):
     """GET with retries on 5xx / timeouts; returns parsed JSON or raises."""
     last = None
-    for attempt in range(RETRIES):
+    for attempt in range(retries):
         try:
             r = _session.get(BASE_URL + path, params=params, timeout=TIMEOUT)
             if r.status_code == 200:
@@ -52,7 +52,7 @@ def _get(path: str, params: dict):
             last = str(e)
             logger.warning("ALeRCE %s %s, retry", path, e)
             time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"ALeRCE {path} failed after {RETRIES} tries: {last}")
+    raise RuntimeError(f"ALeRCE {path} failed after {retries} tries: {last}")
 
 
 def iter_new_objects(firstmjd_from: float, firstmjd_to: float, class_name: str):
@@ -96,6 +96,13 @@ def objects_by_oid(oids) -> dict:
 def lightcurve(oid) -> dict:
     """{"detections": [...], "non_detections": [...], "forced_photometry": [...]}"""
     return _get("/lightcurve_api/lightcurve", {"oid": str(oid), "survey_id": "lsst"})
+
+
+def cone(ra: float, dec: float, radius_arcsec: float, neighbors: int = 20) -> list[dict]:
+    """ALeRCE objects (LSST and ZTF) within radius_arcsec: [{objectId, survey_id, ra, dec}] (radius is
+    sent in degrees). One retry only: this serves a page, not a background job."""
+    return _get("/lightcurve_api/conesearch/objects_by_coordinates",
+                {"ra": ra, "dec": dec, "radius": radius_arcsec / 3600.0, "neighbors": neighbors}, retries=2) or []
 
 
 def band_letter(point: dict) -> str:

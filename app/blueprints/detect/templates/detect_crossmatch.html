@@ -1,0 +1,151 @@
+{% extends '_base.html' %}
+{#- DETECT › Cross-match (/detect/crossmatch): everything around one position — Lens, DESI, TNS objects,
+    DETECT › LSST rows and ALeRCE (LSST + ZTF). A one-off look-up: nothing is stored. -#}
+{% block title %}DETECT Cross-match - Kinder{% endblock %}
+{% block head %}
+    <style>
+        .xm-page .kw-lead { max-width: 920px; }
+        .xm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+        .xm-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.74rem; color: var(--kw-text-secondary); }
+        .xm-form .kw-input { min-height: 38px; }
+        .xm-form .xm-wide { grid-column: span 2; }
+        .xm-opts { margin-top: 12px; }
+        .xm-opts summary { cursor: pointer; font-size: 0.8rem; color: var(--kw-text-secondary); }
+        .xm-opts .xm-form { margin-top: 10px; }
+        .xm-hint { font-size: 0.74rem; color: var(--kw-text-muted); margin-top: 8px; }
+        .xm-where { margin: 16px 0; font-size: 0.85rem; color: var(--kw-text-secondary); }
+        .xm-where b { font-family: var(--kw-font-mono, ui-monospace, monospace); color: var(--kw-text-white); }
+        .xm-section { margin-top: 16px; }
+        .xm-section h2 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 0.95rem; }
+        .xm-section h2 small { font-size: 0.74rem; font-weight: 400; color: var(--kw-text-muted); }
+        .xm-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .xm-table td small { display: block; color: var(--kw-text-muted); font-size: 0.74rem; }
+        .xm-none { padding: 14px 16px; font-size: 0.82rem; color: var(--kw-text-muted); }
+        .xm-err { color: #FF6B61; }
+        .xm-mono { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.8rem; }
+        @media (max-width: 640px) { .xm-form .xm-wide { grid-column: span 1; } }
+    </style>
+{% endblock %}
+
+{% macro num(v, fmt='%.2f') -%}{% if v is not none %}{{ fmt|format(v) }}{% else %}—{% endif %}{%- endmacro %}
+
+{% block content %}
+<div class="kw-page xm-page">
+    <p class="kw-lead">
+        <strong>Cross-match one position.</strong> Lens and DESI catalogues, TNS objects, DETECT › LSST rows and
+        ALeRCE (LSST + ZTF) around any RA / Dec. A one-off look-up: nothing is stored and no pipeline runs.
+    </p>
+
+    <form class="kw-panel" method="get" action="{{ url_for('detect.detect_crossmatch') }}">
+        <div class="xm-form">
+            <label class="xm-wide">RA <input class="kw-input" name="ra" value="{{ form.ra }}" placeholder="349.89018 or 23:19:33.64" required></label>
+            <label class="xm-wide">Dec <input class="kw-input" name="dec" value="{{ form.dec }}" placeholder="-1.10272 or -01:06:09.8" required></label>
+            <button type="submit" class="kw-btn kw-btn-primary">Cross-match</button>
+        </div>
+        {% if form.oid %}<input type="hidden" name="oid" value="{{ form.oid }}">{% endif %}
+        <details class="xm-opts"{% if request.args.get('lens_r') %} open{% endif %}>
+            <summary>Radii and cuts</summary>
+            <div class="xm-form">
+                <label>Lens radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="lens_r" value="{{ opts.lens_r|round(2) }}"></label>
+                <label>DESI radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="desi_r" value="{{ opts.desi_r|round(2) }}"></label>
+                <label>DESI max R<sub>e</sub> (0 = no cut) <input class="kw-input" type="number" step="any" min="0" max="50" name="desi_re" value="{{ opts.desi_re|round(2) }}"></label>
+                <label>TNS radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="tns_r" value="{{ opts.tns_r|round(2) }}"></label>
+                <label>ALeRCE radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="alerce_r" value="{{ opts.alerce_r|round(2) }}"></label>
+            </div>
+            <div class="xm-hint">A radius of 0 skips that source. Defaults are the LSST watch's: Lens 10″, DESI 30″ and ≤ 3 half-light radii (0.5″ floor).</div>
+        </details>
+    </form>
+
+    {% if error %}<p class="xm-where xm-err">{{ error }}</p>{% endif %}
+
+    {% if result %}
+    <p class="xm-where">
+        Position <b>{{ "%.6f"|format(result.ra) }}, {{ "%+.6f"|format(result.dec) }}</b>
+        {% if form.oid %} · LSST object <a class="xm-mono" href="{{ explorer_url(form.oid) }}" target="_blank" rel="noopener noreferrer">{{ form.oid }}</a>{% endif %}
+    </p>
+
+    {% if result.lens is not none %}
+    <section class="xm-section">
+        <h2>Lens catalogue <small>≤ {{ opts.lens_r|round(1) }}″ · {{ result.lens|length }} found</small></h2>
+        {% if result.lens %}
+        <div class="kw-table-wrap"><table class="kw-table xm-table">
+            <thead><tr><th>Sep</th><th>Reference</th><th>Grade</th><th>Status</th><th>z<sub>lens</sub></th><th>z<sub>source</sub></th><th>RA / Dec</th></tr></thead>
+            <tbody>{% for m in result.lens %}<tr>
+                <td class="num">{{ num(m.sep) }}″</td><td>{{ m.reference or '—' }}</td><td>{{ m.grade or '—' }}</td><td>{{ m.known or '—' }}</td>
+                <td class="num">{{ num(m.z_lens, '%.3f') }}</td><td class="num">{{ num(m.z_source, '%.3f') }}</td>
+                <td class="num">{{ "%.5f"|format(m.ra) }}, {{ "%+.5f"|format(m.dec) }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="kw-panel xm-none">No lens within {{ opts.lens_r|round(1) }}″.</div>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if result.desi is not none %}
+    <section class="xm-section">
+        <h2>DESI galaxies <small>≤ {{ opts.desi_r|round(1) }}″{% if opts.desi_re %} and ≤ {{ opts.desi_re|round(1) }} R<sub>e</sub>{% endif %} · {{ result.desi|length }} found · closest in R<sub>e</sub> first</small></h2>
+        {% if result.desi %}
+        <div class="kw-table-wrap"><table class="kw-table xm-table">
+            <thead><tr><th>Sep</th><th>Sep / R<sub>e</sub></th><th>z</th><th>Type</th><th>R<sub>e</sub></th><th>r mag</th><th>TARGETID</th></tr></thead>
+            <tbody>{% for m in result.desi %}<tr>
+                <td class="num">{{ num(m.sep) }}″</td><td class="num">{{ num(m.sep_re, '%.1f') }}</td>
+                <td class="num">{{ num(m.z, '%.4f') }}{% if m.zwarn %}<small>ZWARN {{ m.zwarn }}</small>{% endif %}</td>
+                <td>{{ m.spectype or '—' }}</td><td class="num">{{ num(m.shape_r) }}″</td><td class="num">{{ num(m.mag_r, '%.1f') }}</td>
+                <td class="xm-mono">{{ m.targetid }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="kw-panel xm-none">No DESI galaxy within these limits.</div>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if result.tns is not none %}
+    <section class="xm-section">
+        <h2>TNS objects in Kinder <small>≤ {{ opts.tns_r|round(1) }}″ · {{ result.tns|length }} found</small></h2>
+        {% if result.tns %}
+        <div class="kw-table-wrap"><table class="kw-table xm-table">
+            <thead><tr><th>Sep</th><th>Object</th><th>Type</th><th>z</th><th>Discovered (UTC)</th><th>Internal names</th></tr></thead>
+            <tbody>{% for o in result.tns %}<tr>
+                <td class="num">{{ num(o.sep) }}″</td>
+                <td><a href="/object/{{ o.name }}">{{ o.name_prefix or '' }} {{ o.name }}</a><small>{{ o.status or '' }}</small></td>
+                <td>{{ o.type or '—' }}</td><td class="num">{{ num(o.redshift, '%.4f') }}</td>
+                <td class="num">{{ o.discovery_utc }}{% if o.discovery_mag is not none %}<small>mag {{ "%.2f"|format(o.discovery_mag) }}</small>{% endif %}</td>
+                <td><small>{{ o.internal_name or '—' }}</small></td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="kw-panel xm-none">No TNS object in Kinder within {{ opts.tns_r|round(1) }}″.</div>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if result.lsst_watch %}
+    <section class="xm-section">
+        <h2>DETECT › LSST <small>rows the watch stored near here</small></h2>
+        <div class="kw-table-wrap"><table class="kw-table xm-table">
+            <thead><tr><th>Sep</th><th>LSST object</th><th>Class</th><th>Lens / DESI</th><th>TNS</th></tr></thead>
+            <tbody>{% for a in result.lsst_watch %}<tr>
+                <td class="num">{{ num(a.sep) }}″</td>
+                <td><a class="xm-mono" href="{{ url_for('detect.detect_lsst', oid=a.oid) }}">{{ a.oid }}</a></td>
+                <td>{{ a.class_name or '—' }}</td><td class="num">{{ a.n_lens }} / {{ a.n_desi }}</td><td>{{ a.tns_name or '—' }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+    </section>
+    {% endif %}
+
+    {% if result.alerce is not none %}
+    <section class="xm-section">
+        <h2>ALeRCE objects <small>LSST + ZTF ≤ {{ opts.alerce_r|round(1) }}″ · {{ result.alerce|length }} found</small></h2>
+        {% if result.errors.alerce %}<div class="kw-panel xm-none xm-err">ALeRCE did not answer: {{ result.errors.alerce }}</div>
+        {% elif result.alerce %}
+        <div class="kw-table-wrap"><table class="kw-table xm-table">
+            <thead><tr><th>Sep</th><th>Object</th><th>Survey</th><th>RA / Dec</th></tr></thead>
+            <tbody>{% for a in result.alerce %}<tr>
+                <td class="num">{{ num(a.sep) }}″</td>
+                <td>{% if a.survey_id == 'lsst' %}<a class="xm-mono" href="{{ explorer_url(a.objectId) }}" target="_blank" rel="noopener noreferrer">{{ a.objectId }}</a>
+                    {% else %}<a class="xm-mono" href="https://alerce.online/object/{{ a.objectId }}" target="_blank" rel="noopener noreferrer">{{ a.objectId }}</a>{% endif %}</td>
+                <td>{{ a.survey_id|upper }}</td><td class="num">{{ "%.5f"|format(a.ra) }}, {{ "%+.5f"|format(a.dec) }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="kw-panel xm-none">No ALeRCE object within {{ opts.alerce_r|round(1) }}″.</div>{% endif %}
+    </section>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
