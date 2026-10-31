@@ -11,7 +11,7 @@
    "in TNS" as soon as the hourly TNS import brings it in.
 4. Upsert matched objects into ``transient.lsst_alerts`` (shown on /detect/lsst), keep their
    magnitudes current, run DETECT on them (app/services/lsst/detect.py, reviewed on
-   /detect/lsst/review), then refresh the LSST light curves of linked TNS objects
+   /detect/lsst), then refresh the LSST light curves of linked TNS objects
    (app/services/lsst/lightcurve.py).
 
 Scheduled hourly at :25 UTC (app/services/jobs/scheduler.py); disable with LSST_WATCH=0.
@@ -337,9 +337,11 @@ def _file_lock():
         return None
 
 
-def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigger: str = "hourly") -> dict:
+def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigger: str = "hourly",
+              reset: bool = False) -> dict:
     """Hourly job. ``lookback_days`` re-reads that much history instead of using the cursor
-    (the daily sweep, and manual runs that want more than "since the last run")."""
+    (the daily sweep, and manual runs that want more than "since the last run"). ``reset``
+    (manual only) first deletes every stored alert and its DETECT results."""
     if not _lock.acquire(blocking=False):
         return {"skipped": True, "reason": "already running"}
     fh = _file_lock()
@@ -348,8 +350,11 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
         return {"skipped": True, "reason": "already running in another process"}
     started = time.monotonic()
     log = _RunLog(trigger, {"lookback_days": lookback_days if lookback_days is not None else "since last run",
-                            "light_curves": refresh_lc})
+                            "light_curves": refresh_lc, **({"reset": True} if reset else {})})
     try:
+        if reset:
+            n = clear_alerts()
+            log.line(f"Cleared {n} stored LSST alert(s) with their DETECT matches, verdicts and images")
         now = _now_mjd()
         if lookback_days is not None:
             mjd_from = now - lookback_days
@@ -456,17 +461,29 @@ def run_status() -> dict:
     return st
 
 
-def start_manual_run(lookback_days: float | None) -> bool:
+def start_manual_run(lookback_days: float | None, reset: bool = False) -> bool:
     """Start a watch run in a background thread; False when one is already running."""
     if is_running():
         return False
-    threading.Thread(target=_run_quietly, args=(lookback_days,), name="lsst-watch-manual", daemon=True).start()
+    threading.Thread(target=_run_quietly, args=(lookback_days, reset), name="lsst-watch-manual",
+                     daemon=True).start()
     return True
 
 
-def _run_quietly(lookback_days):
+def clear_alerts() -> int:
+    """Delete every stored LSST alert; its DETECT matches, verdict and image go with it
+    (ON DELETE CASCADE). TNS objects' LSST photometry and Daily Trigger targets stay."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM transient.lsst_alerts")
+        n = cur.rowcount
+        conn.commit()
+    return n
+
+
+def _run_quietly(lookback_days, reset=False):
     try:
-        run_watch(lookback_days=lookback_days, refresh_lc=True, trigger="manual")
+        run_watch(lookback_days=lookback_days, refresh_lc=True, trigger="manual", reset=reset)
     except Exception:
         pass   # already logged and written to the run status
 
@@ -770,7 +787,7 @@ def _within(ra, dec, rows, radius, limit, extra=None) -> list[dict]:
 
 def list_alerts(view: str = "pre_tns", catalog: str = "all", days: float = 14.0, limit: int = 500,
                 oid: int | None = None) -> list[dict]:
-    """Rows for /detect/lsst; with ``oid`` just that object, whatever the filters."""
+    """Stored alerts by TNS state / catalogue / age; with ``oid`` just that object (get_alert)."""
     clauses = ["a.firstmjd >= %s", "(a.n_lens > 0 OR a.n_desi > 0)"]
     params = [_now_mjd() - days]
     if oid is not None:
@@ -812,27 +829,3 @@ def _mjd_to_utc(mjd) -> str:
     if mjd is None:
         return "—"
     return datetime.fromtimestamp((float(mjd) - 40587.0) * 86400.0, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-
-
-def summary(days: float = 14.0) -> dict:
-    with get_db_connection() as conn:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT count(*) FILTER (WHERE obj_id IS NULL),
-                   count(*) FILTER (WHERE obj_id IS NOT NULL),
-                   count(*) FILTER (WHERE n_lens > 0),
-                   count(*) FILTER (WHERE n_desi > 0)
-              FROM transient.lsst_alerts WHERE firstmjd >= %s AND (n_lens > 0 OR n_desi > 0)
-        """, (_now_mjd() - days,))
-        pre, linked, n_lens, n_desi = cur.fetchone()
-        cur.execute("SELECT count(*), max(refreshed_at), count(*) FILTER (WHERE error IS NOT NULL) "
-                    "FROM transient.lsst_lc_state")
-        lc_n, lc_last, lc_err = cur.fetchone()
-    last = get_setting(LAST_RUN_KEY)
-    try:
-        last = json.loads(last) if last else None
-    except ValueError:
-        last = None
-    return {"pre_tns": pre, "in_tns": linked, "lens": n_lens, "desi": n_desi,
-            "lc_tracked": lc_n, "lc_last": lc_last, "lc_errors": lc_err,
-            "last_run": last, "cursor": _f(get_setting(CURSOR_KEY)), "running": is_running()}

@@ -1,29 +1,10 @@
-{% extends '_base.html' %}
-{#- DETECT › LSST (/detect/lsst): ALeRCE LSST objects near a Lens / DESI galaxy, "not in TNS yet" vs "in TNS".
-    Rows come from transient.lsst_alerts (hourly job, app/services/lsst/alerts.py); the light curve is fetched from ALeRCE on demand. -#}
-{% block title %}DETECT LSST - Kinder{% endblock %}
+{% extends 'detect_results.html' %}
+{#- DETECT › LSST-DETECT (/detect/lsst?day=YYYY-MM-DD): DETECT's review page (detect_results.html) on LSST
+    alerts, with the hourly watch's run panel / live log and the LSST-oid cross-match on top.
+    Data: app/services/lsst/alerts.py (watch) + app/services/lsst/detect.py (DETECT); routes in lsst_review.py. -#}
 {% block head %}
-    <script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous"></script>
+    {{ super() }}
     <style>
-        .lsst-page .kw-lead { max-width: 920px; }
-        .lsst-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
-        .lsst-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .lsst-table td.coord { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--kw-text-secondary); font-size: 0.8rem; }
-        .lsst-table td small, .lsst-match small { display: block; color: var(--kw-text-muted); font-size: 0.74rem; }
-        .lsst-table tr.is-lens td:first-child { box-shadow: inset 3px 0 0 rgba(255, 0, 127, 0.75); }
-        .lsst-oid { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.8rem; }
-        .lsst-match + .lsst-match { margin-top: 4px; }
-        .lsst-actions { white-space: nowrap; }
-        .lsst-detect { min-width: 110px; }
-        .lsst-table td small.lsst-tag { display: inline-block; margin: 2px 4px 0 0; padding: 0 5px; border-radius: 4px;
-                                        background: rgba(255, 255, 255, 0.06); color: var(--kw-text-secondary); }
-        .lsst-actions .kw-btn + .kw-btn { margin-left: 4px; }
-        .lsst-lc-row td { padding: 0 14px 14px; background: rgba(255, 255, 255, 0.02); }
-        .lsst-lc { width: 100%; }
-        .lsst-lc.has-plot { height: 320px; }
-        .lsst-lc-msg { padding: 16px 0; color: var(--kw-text-muted); font-size: 0.85rem; }
-        .lsst-empty { padding: 32px; text-align: center; color: var(--kw-text-muted); }
-        .lsst-run-note { font-size: 0.78rem; color: var(--kw-text-muted); }
         .lsst-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
         .lsst-tools .kw-panel + .kw-panel { margin-top: 0; }
         .lsst-tools h2 { margin: 0 0 6px; font-size: 0.95rem; }
@@ -38,75 +19,25 @@
                     color: var(--kw-text-secondary); white-space: pre-wrap; }
         .lsst-msg { font-size: 0.8rem; margin-top: 8px; color: var(--kw-text-secondary); }
         .lsst-msg.err { color: #FF6B61; }
+        .lsst-tools .lsst-check { display: flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--kw-text-secondary); margin-top: 8px; }
+        .lsst-note { margin-bottom: 16px; }
         @media (max-width: 960px) { .lsst-tools { grid-template-columns: minmax(0, 1fr); } }
-        @media (max-width: 860px) { .lsst-table .hide-sm { display: none; } }
     </style>
 {% endblock %}
 
-
-{% macro sim_url(r) -%}
-{{ url_for('astronomy_tools.telescope_simulator', ra='%.6f'|format(r.ra), dec='%.6f'|format(r.dec), name=(r.name_prefix or '') ~ r.obj_name if r.obj_name else 'LSST-' ~ r.oid) }}
-{%- endmacro %}
-{% macro desi_url(ra, dec) -%}
-https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|format(dec) }}&zoom=16&mark={{ '%.6f'|format(ra) }},{{ '%.6f'|format(dec) }}&layer=ls-dr10-grz&desi-spec-dr1
-{%- endmacro %}
-
-{% macro absmag(r) -%}
-{% if r.abs_latest is not none or r.abs_peak is not none %}<b>{{ '%.2f'|format(r.abs_latest) if r.abs_latest is not none else '—' }}</b> / <b>{{ '%.2f'|format(r.abs_peak) if r.abs_peak is not none else '—' }}</b>
-<small>{{ r.latest_filter }} {{ '%.2f'|format(r.latest_mag) }} · peak {{ r.peak_filter }} {{ '%.2f'|format(r.peak_mag) }} · z {{ '%.4f'|format(r.z_used) }} ({{ r.z_source }})</small>
-{%- elif r.latest_mag is not none %}— <small>m {{ r.latest_filter }} {{ '%.2f'|format(r.latest_mag) }} · peak {{ r.peak_filter }} {{ '%.2f'|format(r.peak_mag) }} · no redshift</small>
-{%- elif r.mags_at %}— <small>no positive-flux point</small>
-{%- else %}— <small>next run</small>{% endif %}
-{%- endmacro %}
-
-{% macro qs(v=view, c=catalog, d=days) -%}
-{{ url_for('detect.detect_lsst', view=v, catalog=c, days=d) }}
-{%- endmacro %}
-
-{% block content %}
-<div class="kw-page lsst-page">
-    <p class="kw-lead">
-        <strong>LSST alerts near a lens or a DESI galaxy.</strong> Every hour the ALeRCE LSST stream is read
-        (stamp classifier SN / AGN / VS; bogus and asteroids skipped), matched against <code>cat.lens</code>
-        (≤ 10″, any class) and <code>cat.desi</code> (≤ 30″ and ≤ 3 half-light radii, SN class only), and linked to TNS by the
-        <code>LSST-AP-DO-&lt;oid&gt;</code> internal name or a TNS object within 1.5″.
-        Objects in TNS also get their LSST light curve refreshed whenever ALeRCE has a new point.
-    </p>
-
-    {% if error %}<div class="kw-panel lsst-empty">Could not load LSST alerts: {{ error }}</div>{% endif %}
-
-    {% if oid %}
-    <p class="lsst-run-note">Showing LSST object <b class="lsst-oid">{{ oid }}</b> only ·
-        <a href="{{ url_for('detect.detect_lsst') }}">Show all LSST alerts</a></p>
-    {% if not rows and not error %}
-    <div class="kw-panel lsst-empty">
-        This LSST object is not in the DETECT watch list (no Lens / DESI match, or not read yet).
-        <a href="{{ alerce_url }}" target="_blank" rel="noopener noreferrer">Open it on ALeRCE</a>
-    </div>
+{% block before_review %}
+    {% if missing_oid %}
+    <div class="kw-panel lsst-note">LSST object <b>{{ missing_oid }}</b> has not been screened by DETECT
+        (no Lens / DESI match, or not read yet). <a href="{{ alerce_url }}" target="_blank" rel="noopener noreferrer">Open it on ALeRCE</a></div>
     {% endif %}
-    {% endif %}
-
-    <div class="kw-kpis">
-        <a class="kw-kpi{% if stats.pre_tns %} is-alert{% endif %}" href="{{ qs(v='pre_tns') }}">
-            <span class="kw-kpi-label">Not in TNS</span><b>{{ stats.pre_tns or 0 }}</b><small>last {{ days }} days</small></a>
-        <a class="kw-kpi" href="{{ qs(v='in_tns') }}">
-            <span class="kw-kpi-label">In TNS</span><b>{{ stats.in_tns or 0 }}</b><small>linked by oid or position</small></a>
-        <a class="kw-kpi" href="{{ qs(c='lens') }}">
-            <span class="kw-kpi-label">Lens matches</span><b>{{ stats.lens or 0 }}</b><small>≤ 10″ from a lens</small></a>
-        <a class="kw-kpi" href="{{ qs(c='desi') }}">
-            <span class="kw-kpi-label">DESI matches</span><b>{{ stats.desi or 0 }}</b><small>SN within 3 R<sub>e</sub> of a DESI galaxy</small></a>
-        <div class="kw-kpi">
-            <span class="kw-kpi-label">LSST light curves</span><b>{{ stats.lc_tracked or 0 }}</b>
-            <small>{% if stats.lc_last %}last refresh {{ stats.lc_last.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}not refreshed yet{% endif %}{% if stats.lc_errors %} · {{ stats.lc_errors }} errors{% endif %}</small>
-        </div>
-    </div>
-
     {% set _admin_user = session.get('user') and session['user'].get('is_admin') %}
     <div class="lsst-tools">
         <section class="kw-panel">
             <h2>Watch runs</h2>
-            <p>Runs by itself every hour at hh:25 UTC (same minute in Taiwan, UTC+8): objects first detected since the last
-               run. Once a day at 14:30 UTC (22:30 Taiwan) it re-reads the last 1.5 days for objects ALeRCE ingested late.</p>
+            <p>Every hour at hh:25 UTC the ALeRCE LSST stream (SN / AGN / VS) is matched against <code>cat.lens</code>
+               (≤ 10″) and <code>cat.desi</code> (SN, ≤ 30″ and 3 R<sub>e</sub>, ZWARN = 0), linked to TNS, and every
+               match goes through DETECT (host rule, score, tags, image). Once a day at 14:30 UTC it re-reads the last
+               1.5 days for objects ALeRCE ingested late. One page per UTC day of the first LSST detection.</p>
             {% if _admin_user %}
             <div class="lsst-row">
                 <select id="lsstRunDays" class="kw-input" aria-label="How much to read">
@@ -119,6 +50,8 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
                 </select>
                 <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="lsstRunBtn">Run now</button>
             </div>
+            <label class="lsst-check"><input type="checkbox" id="lsstReset">
+                Clear all stored LSST alerts first (DETECT verdicts, host decisions, review status, images) and rebuild from the chosen days</label>
             {% endif %}
             <div class="lsst-state" id="lsstState" style="margin-top:10px">Loading run status…</div>
             <pre class="lsst-log" id="lsstLog" hidden></pre>
@@ -126,7 +59,7 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
         <section class="kw-panel">
             <h2>Cross-match an LSST object</h2>
             <p>Enter an LSST oid (diaObjectId, or LSST-AP-DO-…). It is matched against Lens and DESI like the watch
-               (DESI for every class); a match is kept in this list. For any position use
+               (DESI for every class) and screened by DETECT; a match gets a card here. For any position use
                <a href="{{ url_for('detect.detect_crossmatch') }}">Cross-match</a>.</p>
             <form class="lsst-row" id="lsstOidForm">
                 <input type="text" class="kw-input" id="lsstOid" placeholder="171141197314654355" autocomplete="off" style="flex:1; min-width: 200px">
@@ -135,147 +68,12 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
             <div class="lsst-msg" id="lsstOidMsg"></div>
         </section>
     </div>
-
-    <div class="lsst-filters">
-        <div class="kw-seg" role="tablist" aria-label="TNS">
-            {% for v, label in [('pre_tns', 'Not in TNS'), ('in_tns', 'In TNS'), ('all', 'All')] %}
-            <a class="kw-seg-item{% if view == v %} is-on{% endif %}" href="{{ qs(v=v) }}">{{ label }}</a>
-            {% endfor %}
-        </div>
-        <div class="kw-seg" role="tablist" aria-label="Catalog">
-            {% for c, label in [('all', 'Lens + DESI'), ('lens', 'Lens'), ('desi', 'DESI')] %}
-            <a class="kw-seg-item{% if catalog == c %} is-on{% endif %}" href="{{ qs(c=c) }}">{{ label }}</a>
-            {% endfor %}
-        </div>
-        <div class="kw-seg" role="tablist" aria-label="First detected">
-            {% for d in day_options %}
-            <a class="kw-seg-item{% if days == d %} is-on{% endif %}" href="{{ qs(d=d) }}">{{ d }} d</a>
-            {% endfor %}
-        </div>
-    </div>
-
-    {% if rows %}
-    {% if rows|length >= 500 %}<p class="lsst-run-note">Showing the first 500 (lens matches first, then newest). Narrow the filters to see the rest.</p>{% endif %}
-    <div class="kw-table-wrap">
-        <table class="kw-table lsst-table">
-            <thead><tr>
-                <th>LSST object</th><th class="hide-sm">RA / Dec</th><th>First detected (UTC)</th>
-                <th>Class</th><th title="DETECT score and tags (LSST Review)">DETECT</th><th class="hide-sm">N det</th><th>M latest / peak</th><th>Lens</th><th>DESI</th><th>TNS</th><th></th>
-            </tr></thead>
-            <tbody>
-            {% for r in rows %}
-            <tr class="{% if r.n_lens %}is-lens{% endif %}" data-oid="{{ r.oid }}">
-                <td><a class="lsst-oid" href="{{ r.alerce_url }}" target="_blank" rel="noopener noreferrer">{{ r.oid }}</a>
-                    <small>last {{ r.last_utc }}</small></td>
-                <td class="coord hide-sm">{{ "%.5f"|format(r.ra) }}<br>{{ "%+.5f"|format(r.dec) }}</td>
-                <td class="num">{{ r.first_utc }}</td>
-                <td><span class="kw-chip{% if r.class_name == 'SN' %} kw-chip-gold{% elif r.class_name == 'AGN' %} kw-chip-purple{% else %} kw-chip-blue{% endif %}">{{ r.class_name }}</span>
-                    <small>p = {{ "%.2f"|format(r.probability or 0) }}</small></td>
-                <td class="lsst-detect">{% if r.detect_score is not none %}<span class="kw-chip{% if r.detect_score >= 7 %} kw-chip-gold{% elif r.detect_score < 0 %} kw-chip-red{% endif %}" title="DETECT priority score">{{ r.detect_score }}</span>
-                    {% for t in r.detect_tags %}<small class="lsst-tag">{{ t }}</small>{% endfor %}{% else %}<small>not screened yet</small>{% endif %}</td>
-                <td class="num hide-sm">{{ r.n_det }}</td>
-                <td class="num lsst-absmag" data-oid="{{ r.oid }}">{{ absmag(r) }}</td>
-                <td>
-                    {% for m in r.lens_matches[:2] %}
-                    <div class="lsst-match"><b>{{ "%.1f"|format(m.sep) }}″</b> {{ m.reference or 'Lens' }}{% if m.grade %} · {{ m.grade }}{% endif %}
-                        <small>{% if m.z_lens is not none %}z<sub>l</sub> {{ "%.3f"|format(m.z_lens) }}{% endif %}{% if m.z_source is not none %} · z<sub>s</sub> {{ "%.3f"|format(m.z_source) }}{% endif %}{% if m.known %} · {{ m.known }}{% endif %}</small></div>
-                    {% else %}—{% endfor %}
-                </td>
-                <td>
-                    {% for m in r.desi_matches[:2] %}
-                    <div class="lsst-match"><b>{{ "%.1f"|format(m.sep) }}″</b>{% if m.z is not none %} · z {{ "%.4f"|format(m.z) }}{% endif %}
-                        <small>{{ m.spectype or '?' }} · {{ "%.1f"|format(m.sep_re) }} R<sub>e</sub>{% if m.mag_r is not none %} · r {{ "%.1f"|format(m.mag_r) }}{% endif %}</small></div>
-                    {% else %}—{% endfor %}
-                </td>
-                <td>
-                    {% if r.obj_name %}
-                    <a href="/object/{{ r.obj_name }}">{{ r.name_prefix or '' }} {{ r.obj_name }}</a>
-                    <small>{{ r.obj_status or '' }}{% if r.obj_type %} · {{ r.obj_type }}{% endif %} · by {{ r.tns_link }}{% if r.lc_n_points is not none %} · {{ r.lc_n_points }} LSST pts{% endif %}</small>
-                    {% else %}<span class="kw-chip kw-chip-red">not in TNS</span>{% endif %}
-                </td>
-                <td class="lsst-actions">
-                    {% if r.detect_score is not none %}<a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('detect.lsst_review', oid=r.oid) }}" title="DETECT card: verdict, image, host candidates">Review</a>{% endif %}
-                    <button type="button" class="kw-btn kw-btn-sm lsst-lc-btn" data-oid="{{ r.oid }}">LC</button>
-                    <a class="kw-btn kw-btn-sm" href="{{ sim_url(r) }}" target="_blank" rel="noopener noreferrer" title="View in Telescope Simulator">Sim</a>
-                    <a class="kw-btn kw-btn-sm" href="{{ desi_url(r.ra, r.dec) }}" target="_blank" rel="noopener noreferrer" title="Legacy Survey viewer with DESI DR1 spectra">DESI</a>
-                </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% elif not error and not oid %}
-    <div class="kw-panel lsst-empty">No LSST objects for these filters in the last {{ days }} days.</div>
-    {% endif %}
-</div>
 {% endblock %}
 
 {% block scripts %}
+    {{ super() }}
 <script>
 (function () {
-    const COLORS = { u: '#9b59ff', g: '#2ecc71', r: '#e74c3c', i: '#f39c12', z: '#8e6e53', y: '#7f8c8d' };
-
-    function showMsg(el, text) {
-        el.innerHTML = '';
-        const div = document.createElement('div');
-        div.className = 'lsst-lc-msg';
-        div.textContent = text;
-        el.appendChild(div);
-    }
-
-    // The LC request recomputes the stored magnitudes: show the fresh values in the row.
-    function showMags(oid, m) {
-        const cell = document.querySelector('.lsst-absmag[data-oid="' + oid + '"]');
-        if (!cell) return;
-        const f = v => (v == null ? '—' : Number(v).toFixed(2));
-        cell.textContent = '';
-        const main = document.createElement('span');
-        main.textContent = f(m.abs_latest) + ' / ' + f(m.abs_peak);
-        const small = document.createElement('small');
-        small.textContent = m.latest_mag == null ? 'no positive-flux point'
-            : (m.latest_filter + ' ' + f(m.latest_mag) + ' · peak ' + m.peak_filter + ' ' + f(m.peak_mag)
-               + (m.z_used ? ' · z ' + Number(m.z_used).toFixed(4) + ' (' + m.z_source + ')' : ' · no redshift'));
-        cell.append(main, small);
-    }
-
-    function drawLc(el, points) {
-        if (!points.length) { showMsg(el, 'No positive-flux LSST points (every psfFlux ≤ 0: fainter than the template).'); return; }
-        const byF = {};
-        points.forEach(p => { (byF[p.filter] = byF[p.filter] || []).push(p); });
-        el.classList.add('has-plot');
-        const traces = Object.keys(byF).sort().map(f => ({
-            x: byF[f].map(p => p.mjd), y: byF[f].map(p => p.mag), name: f, mode: 'markers', type: 'scatter',
-            error_y: { type: 'data', array: byF[f].map(p => p.mag_err), visible: true, thickness: 1 },
-            marker: { color: COLORS[f] || '#ccc', size: 7 },
-        }));
-        Plotly.newPlot(el, traces, {
-            margin: { l: 50, r: 20, t: 10, b: 40 }, paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-            font: { color: '#ccc' }, xaxis: { title: 'MJD', tickformat: '.1f', gridcolor: 'rgba(255,255,255,0.08)' },
-            yaxis: { title: 'AB mag (psfFlux)', autorange: 'reversed', gridcolor: 'rgba(255,255,255,0.08)' },
-            legend: { orientation: 'h' },
-        }, { displaylogo: false, responsive: true });
-    }
-
-    document.querySelectorAll('.lsst-lc-btn').forEach(btn => btn.addEventListener('click', () => {
-        const tr = btn.closest('tr');
-        const next = tr.nextElementSibling;
-        if (next && next.classList.contains('lsst-lc-row')) { next.remove(); return; }
-        const row = document.createElement('tr');
-        row.className = 'lsst-lc-row';
-        row.innerHTML = '<td colspan="11"><div class="lsst-lc"><div class="lsst-lc-msg">Loading light curve from ALeRCE…</div></div></td>';
-        tr.after(row);
-        const el = row.querySelector('.lsst-lc');
-        fetch('/api/detect/lsst/lightcurve/' + btn.dataset.oid)
-            .then(r => r.json())
-            .then(d => {
-                if (d.error) throw new Error(d.error);
-                el.innerHTML = '';
-                drawLc(el, d.points || []);
-                if (d.mags) showMags(btn.dataset.oid, d.mags);
-            })
-            .catch(e => showMsg(el, 'Could not load: ' + e.message));
-    }));
-
     // ---- watch runs: state + live log (polled while a run is in progress) ----
     const run = document.getElementById('lsstRunBtn');
     const stateEl = document.getElementById('lsstState');
@@ -322,7 +120,7 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
                 sawRunning = false;
                 const a = document.createElement('a');
                 a.href = location.href;
-                a.textContent = ' · Reload to see the new objects';
+                a.textContent = ' · Reload to see the new cards';
                 stateEl.appendChild(a);
             }
         }).catch(() => { stateEl.textContent = 'Could not load the run status.'; });
@@ -331,9 +129,12 @@ https://www.legacysurvey.org/viewer?ra={{ '%.6f'|format(ra) }}&dec={{ '%.6f'|for
 
     if (run) run.addEventListener('click', () => {
         const days = document.getElementById('lsstRunDays').value;
+        const reset = document.getElementById('lsstReset').checked;
+        if (reset && !days) { stateEl.textContent = 'Choose how many days to re-read after clearing.'; return; }
+        if (reset && !confirm('Delete every stored LSST alert with its DETECT verdict, host decisions, review status and image, then re-read the last ' + days + ' day(s) from ALeRCE?')) return;
         run.disabled = true;
         fetch('/api/detect/lsst/run', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ days: days || null }) })
+                                        body: JSON.stringify({ days: days || null, reset: reset }) })
             .then(r => r.json())
             .then(d => {
                 if (!d.success) { stateEl.textContent = d.message || d.error || 'Could not start'; }

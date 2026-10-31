@@ -1,7 +1,8 @@
-"""DETECT › LSST › Review (/detect/lsst/review?day=YYYY-MM-DD): DETECT's daily review page
-(detect_results.html + detect_results.js) on the LSST alerts DETECT screened
-(app/services/lsst/detect.py). Same cards, verdicts, tags, image and one-key decisions;
-decisions go to the LSST tables, never to transient.objects."""
+"""DETECT › LSST-DETECT (/detect/lsst?day=YYYY-MM-DD): DETECT's daily review page
+(detect_results.html + detect_results.js, via detect_lsst.html) on the LSST alerts DETECT
+screened (app/services/lsst/detect.py), with the watch's run panel and LSST-oid cross-match
+on top. Same cards, verdicts, tags, image and one-key decisions; decisions go to the LSST
+tables, never to transient.objects."""
 import io
 import logging
 import re
@@ -10,6 +11,7 @@ from flask import jsonify, redirect, render_template, request, send_file, sessio
 
 from app.services.lsst import alerce_api
 from app.services.lsst import detect as lsst_detect
+from app.services.lsst.detect import review_day_for as day_of
 from app.services.photometry.data_processing import DataVisualization
 
 from . import detect_bp
@@ -33,8 +35,8 @@ def _detect_api() -> dict:
         'lightcurve':     '/api/detect/lsst/review/lightcurve/',
         'fetchPhot':      '/api/detect/lsst/review/fetch_photometry/{name}',
         'fetchPhotLabel': 'Downloading from ALeRCE…',
-        'dateUrl':        url_for('detect.lsst_review') + '?day=',
-        'homeUrl':        url_for('detect.lsst_review'),
+        'dateUrl':        url_for('detect.detect_lsst') + '?day=',
+        'homeUrl':        url_for('detect.detect_lsst'),
     }
 
 
@@ -67,6 +69,12 @@ def _decorate(payload: dict, page_data: dict) -> dict:
 
 @detect_bp.route('/detect/lsst/review')
 def lsst_review():
+    """Old address of the page (it was a separate tab)."""
+    return redirect(url_for('detect.detect_lsst', **request.args))
+
+
+@detect_bp.route('/detect/lsst')
+def detect_lsst():
     denied = _member_or_redirect()
     if denied:
         return denied
@@ -74,24 +82,28 @@ def lsst_review():
     days = metadata['available_dates']
     day = (request.args.get('day') or '').strip()
     oid = request.args.get('oid', type=int)
-    if oid and not day:                              # /detect/lsst/review?oid=… → that alert's day and card
-        found = lsst_detect.review_day_for(oid)
+    missing_oid = None
+    if oid and not day:                              # /detect/lsst?oid=… → that alert's day and card
+        found = day_of(oid)
+        missing_oid = None if found else oid
         if found:
-            return redirect(url_for('detect.lsst_review', day=found) + f'#t={lsst_detect.target_name(oid)}')
+            return redirect(url_for('detect.detect_lsst', day=found) + f'#t={lsst_detect.target_name(oid)}')
     if not _DAY_RE.match(day) or day not in days:
         if day:
-            return redirect(url_for('detect.lsst_review'))
+            return redirect(url_for('detect.detect_lsst'))
         day = days[0] if days else ''
     page_data = lsst_detect.review_page_data(day) if day else {}
     payload = _assemble_detect_payload(day, metadata=metadata, page_data=page_data,
-                                       current_path='/detect/lsst/review')
+                                       current_path='/detect/lsst')
     # every LSST alert is new: no "old TNS edits" section
     payload['none_list'] = sorted(payload['none_list'] + payload['old_list'],
                                   key=lambda x: (-x['score'], x['target_name']))
     payload['old_list'], payload['unmatched_recent_days'] = [], None
     payload['counts'].update(unmatched=len(payload['none_list']), old=0)
-    return render_template('detect_results.html', page_title='DETECT LSST Review',
-                           detect_api=_detect_api(), **_decorate(payload, page_data))
+    return render_template('detect_lsst.html', page_title='LSST-DETECT', detect_api=_detect_api(),
+                           missing_oid=missing_oid,
+                           alerce_url=alerce_api.explorer_url(missing_oid) if missing_oid else None,
+                           **_decorate(payload, page_data))
 
 
 @detect_bp.route('/detect/lsst/review/image/<int:oid>')
@@ -244,5 +256,5 @@ def lsst_review_tracker():
         return denied
     items = lsst_detect.followup_tracker()
     for it in items:
-        it['url'] = url_for('detect.lsst_review', oid=it['oid'])
+        it['url'] = url_for('detect.detect_lsst', oid=it['oid'])
     return jsonify({'success': True, 'tracker': items, 'building': False})

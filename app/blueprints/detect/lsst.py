@@ -1,5 +1,5 @@
-"""DETECT › LSST (/detect/lsst): ALeRCE LSST objects near a Lens or DESI galaxy,
-split into "not in TNS yet" and "in TNS" (app/services/lsst/alerts.py fills the table)."""
+"""DETECT › LSST-DETECT: the watch's run / status / cross-match APIs, /detect/lsst/<oid> and
+DETECT › Cross-match. The LSST-DETECT page itself is in lsst_review.py."""
 import logging
 import re
 
@@ -11,11 +11,6 @@ from app.services.lsst import alerce_api, alerts, lightcurve
 from . import detect_bp
 
 logger = logging.getLogger(__name__)
-
-_VIEWS = ('pre_tns', 'in_tns', 'all')
-_CATALOGS = ('all', 'lens', 'desi')
-_DAYS = (3, 7, 14, 30, 90)
-
 
 _MAX_MANUAL_DAYS = 30
 # (query key, default, min, max): radii in arcsec; desi_re 0 = no half-light-radius cut
@@ -41,38 +36,10 @@ def _member_or_redirect():
     return None
 
 
-@detect_bp.route('/detect/lsst')
-def detect_lsst():
-    denied = _member_or_redirect()
-    if denied:
-        return denied
-    view = request.args.get('view', 'pre_tns')
-    view = view if view in _VIEWS else 'pre_tns'
-    catalog = request.args.get('catalog', 'all')
-    catalog = catalog if catalog in _CATALOGS else 'all'
-    try:
-        days = int(request.args.get('days', 14))
-    except ValueError:
-        days = 14
-    days = days if days in _DAYS else 14
-    oid = request.args.get('oid', type=int)
-    try:
-        rows = alerts.list_alerts(view=view, catalog=catalog, days=days, oid=oid)
-        stats = alerts.summary(days=days)
-        error = None
-    except Exception as e:  # table missing / DB down: show the page, not a 500
-        logger.error('DETECT LSST page: %s', e)
-        rows, stats, error = [], {}, str(e)
-    return render_template('detect_lsst.html', rows=rows, stats=stats, error=error,
-                           view=view, catalog=catalog, days=days, day_options=_DAYS, oid=oid,
-                           alerce_url=alerce_api.explorer_url(oid) if oid else None,
-                           current_path='/detect/lsst')
-
-
 @detect_bp.route('/detect/lsst/<int:oid>')
 def detect_lsst_object(oid):
     """Where a Daily Trigger target called LSST-<oid> points: its object page once TNS has
-    it, else its card on DETECT › LSST › Review (its row on DETECT › LSST before DETECT ran)."""
+    it, else its card on DETECT › LSST-DETECT."""
     denied = _member_or_redirect()
     if denied:
         return denied
@@ -81,9 +48,6 @@ def detect_lsst_object(oid):
         tns = alerts.tns_name_for_oid(conn.cursor(), oid)
     if tns:
         return redirect('/object/' + re.sub(r'^(AT|SN)', '', tns))
-    from app.services.lsst.detect import review_day_for
-    if review_day_for(oid):
-        return redirect(url_for('detect.lsst_review', oid=oid))
     return redirect(url_for('detect.detect_lsst', oid=oid))
 
 
@@ -110,7 +74,8 @@ def detect_lsst_lightcurve(oid):
 @detect_bp.route('/api/detect/lsst/run', methods=['POST'])
 @admin_required
 def detect_lsst_run():
-    """Run the watch now. ``days`` (1–30) re-reads that many days instead of "since the last run"."""
+    """Run the watch now. ``days`` (1–30) re-reads that many days instead of "since the last run";
+    ``reset`` first deletes every stored LSST alert and its DETECT results (needs ``days``)."""
     data = request.get_json(silent=True) or {}
     days = data.get('days')
     if days not in (None, ''):
@@ -122,7 +87,10 @@ def detect_lsst_run():
             return jsonify({'success': False, 'message': f'days must be 0–{_MAX_MANUAL_DAYS}'}), 400
     else:
         days = None
-    if not alerts.start_manual_run(days):
+    reset = data.get('reset') is True
+    if reset and days is None:
+        return jsonify({'success': False, 'message': 'Choose how many days to re-read after clearing'}), 400
+    if not alerts.start_manual_run(days, reset=reset):
         return jsonify({'success': False, 'message': 'A run is already in progress'}), 409
     return jsonify({'success': True})
 
