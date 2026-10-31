@@ -12,9 +12,11 @@ from .helpers import audit
 
 
 def _view():
-    from app.services.bots import reduction, setup_problems, status
+    from app.services.bots import nas_backup, reduction, setup_problems, status
     bots = status.view(debug=config.DEBUG, setup=setup_problems())
     for b in bots:
+        if b['id'] == 'nas_backup':
+            b['schedule'] = f'Every {nas_backup.interval_min()} min' if nas_backup.configured() else 'Off until NAS_IP / NAS_PATH are set'
         if b['id'] == 'reduction':
             b['schedule'] = reduction.schedule_label()
             ext = reduction.external_runs() if b['health'] != 'busy' else []
@@ -50,7 +52,7 @@ def bot_log(bot_id):
 @admin_bp.route('/admin/bots/<bot_id>/run', methods=['POST'])
 @admin_required
 def bot_run(bot_id):
-    from app.services.bots import BY_ID, astronote, obs_log, reduction
+    from app.services.bots import BY_ID, astronote, nas_backup, obs_log, reduction
     bot = BY_ID.get(bot_id)
     if not bot or not bot.can_run:
         return jsonify({'error': 'This bot cannot be run by hand'}), 400
@@ -62,7 +64,7 @@ def bot_run(bot_id):
     if bot_id == 'reduction':
         res = reduction.start_now()
         return jsonify(res), (409 if res.get('error') else 200)
-    fn = {'astronote': astronote.run, 'obs_log': obs_log.run}[bot_id]
+    fn = {'astronote': astronote.run, 'obs_log': obs_log.run, 'nas_backup': nas_backup.run}[bot_id]
     threading.Thread(target=fn, name=f'manual-bot-{bot_id}', daemon=True).start()
     return jsonify({'ok': True, 'message': 'Started.'})
 
@@ -81,6 +83,13 @@ def bot_reduction_stop():
 def bot_reduction_overview():
     from app.services.bots import reduction
     return jsonify(reduction.overview(max_age=0 if request.args.get('fresh') else 60))
+
+
+@admin_bp.route('/admin/bots/nas_backup/overview')
+@admin_required
+def bot_nas_backup_overview():
+    from app.services.bots import nas_backup
+    return jsonify(nas_backup.overview(max_age=0 if request.args.get('fresh') else 300))
 
 
 @admin_bp.route('/admin/bots/detect/overview')

@@ -35,6 +35,32 @@ It runs the same gunicorn command (change it at install with `KINDER_BIND`, `KIN
 that a background job may read the project: on an external disk (or in Documents / Desktop / Downloads) the
 venv's Python needs Full Disk Access, and the script prints the exact path to add.
 
+### NAS backup of the reduction folder
+
+The lab's reduction pipeline runs under its own account (e.g. `greatlab`, its own schedule); Kinder only moves what
+it no longer needs to the lab NAS (Admin › Bots › NAS backup, every 60 min): raw nights not from this month or last
+month, dated masters older than 30 days, calibrated targets without a new frame for 60 days. Nothing moves while its
+raw frames are still local (the pipeline would rebuild it), and a run is skipped while the pipeline is working.
+The Moves tab lists what moved and what the next run would move. Settings in `kinder.env`:
+
+```bash
+REDUCTION_PIPELINE_DIR=/Users/greatlab/reduction_pipeline
+NAS_IP=100.77.208.119
+NAS_USER=...
+NAS_PWD=...
+NAS_PATH=great_data/Auto_Backup        # share/folder; RAW_IMG_Sync, MasterBDF, Calibrated_Science go below it
+# NAS_ARCHIVE_DRY_RUN=1                # first runs: only log what would move
+```
+
+The Kinder user must be allowed to delete in the three folders. Once, as the pipeline's account, give it an
+inherited ACL (`alex-lee` = the account that runs Kinder):
+
+```bash
+cd /Users/greatlab/reduction_pipeline && chmod -R +a "user:alex-lee allow list,add_file,search,add_subdirectory,delete,delete_child,readattr,writeattr,readextattr,writeextattr,readsecurity,file_inherit,directory_inherit" RAW_IMG_Sync MasterBDF Calibrated_Science
+```
+
+Try it by hand first (lists, moves nothing): `uv run python -m app.services.bots.nas_backup --dry-run`.
+
 Both entry points start immediately (the start-up backup runs in a background thread) and
 write every log line to the terminal as well as `app/log/<date>.log`.
 `cd app && gunicorn main:app` still works through the `app/main.py` shim.

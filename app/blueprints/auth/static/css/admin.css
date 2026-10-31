@@ -494,6 +494,7 @@
 .bot-alert.is-info { background: rgba(100, 210, 255, 0.08); border: 1px solid rgba(100, 210, 255, 0.28); color: #cdeeff; }
 .bot-file.is-warn { color: #ffe8a8; border-color: rgba(255, 214, 10, 0.3); }
 .bot-file b { font-weight: 700; }
+.bot-nowrap { white-space: nowrap; }
 .bot-cron { color: var(--kw-text-secondary); }
 .bot-detect-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .bot-detect-names { display: inline-flex; gap: 8px; }

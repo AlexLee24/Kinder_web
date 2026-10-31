@@ -174,6 +174,7 @@ Kinder（Logo → /）
 | interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推；當晚 LOT 關閉時標題加「· SLT only」並說只送 SLT） |
 | interval | `lab_calendar_lulin_sync` | 每 6 小時（啟動時一次） | 鹿林 LOT Google 日曆 → `obs.lab_calendar_events`（source `lulin`），Lab › Calendar 與訂閱 feed 用 |
 | cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
+| interval / 手動 | `bot_nas_backup` | `NAS_ARCHIVE_INTERVAL_MIN`（60），需設 `NAS_IP` / `NAS_PATH` | 把 reduction 資料夾裡不再需要的資料搬到實驗室 NAS：非本月 / 上月的 raw 夜、30 天以上的 master、60 天沒有新影像的 calibrated 目標（Admin › Bots › NAS backup › Moves 看紀錄） |
 | 手動（管理頁） | TNS hourly / daily 下載、auto-snooze、光度抓取、缺漏光度、目標星等、DETECT run、備份 | – | `/admin/*` 按鈕，各自另起 thread（狀態為 process 內變數） |
 
 工作狀態記錄在 `app/log/.job_status.json`（只寫已完成項目），管理頁 `/admin/scheduled-jobs-status` 讀取。
