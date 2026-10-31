@@ -1,7 +1,8 @@
 """obs.lab_calendar_events and obs.lab_calendar_feeds: the Lab calendar (Lab › Calendar).
 
 ``obs.lab_calendar_events`` holds both kinds of event:
-  source 'lab'    events the group adds on the page (``uid`` NULL); may repeat weekly / every 2 weeks / monthly
+  source 'lab'    events the group adds on the page (``uid`` NULL); may repeat every 1–4 weeks or monthly.
+                  Trigger duty (category 'trigger') names the member on duty (``assignee_email`` / ``assignee_name``)
   source 'lulin'  the Lulin LOT schedule, copied from its Google calendar by app/services/lab_calendar.py
                   (``uid`` = the Google event UID, so a re-sync updates rows instead of adding them again)
 Times are TIMESTAMPTZ. An all-day event runs from 00:00 Taiwan time on its first day to 00:00 after its last day
@@ -9,6 +10,9 @@ Times are TIMESTAMPTZ. An all-day event runs from 00:00 Taiwan time on its first
 
 ``obs.lab_calendar_feeds`` gives each member one secret subscription link (``token``); calendar apps fetch the feed
 without a login, so the token is the only key. Resetting it breaks the old link.
+
+``obs.lab_trigger_reminders``: one row per (night, member) once the sunset reminder for Trigger duty was handled, so
+it goes out once even with several workers (``outcome``: sent / already_sent / no_device).
 """
 import logging
 import secrets
@@ -22,9 +26,7 @@ logger = logging.getLogger(__name__)
 _ensured = False
 
 _COLUMNS = ('id, source, uid, category, title, description, location, url, all_day, start_at, end_at, '
-            'repeat, repeat_until, created_by, created_by_name, created_at, updated_at')
-
-REPEATS = ('', 'weekly', 'biweekly', 'monthly')
+            'repeat, repeat_until, assignee_email, assignee_name, created_by, created_by_name, created_at, updated_at')
 
 
 def _ensure(cur):
@@ -52,7 +54,20 @@ def _ensure(cur):
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
         )
     """)
+    cur.execute('ALTER TABLE obs.lab_calendar_events ADD COLUMN IF NOT EXISTS assignee_email TEXT')
+    cur.execute('ALTER TABLE obs.lab_calendar_events ADD COLUMN IF NOT EXISTS assignee_name TEXT')
     cur.execute('CREATE INDEX IF NOT EXISTS lab_calendar_events_start_idx ON obs.lab_calendar_events (start_at)')
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS obs.lab_trigger_reminders (
+            day       DATE NOT NULL,
+            email     TEXT NOT NULL,
+            event_id  BIGINT,
+            outcome   TEXT NOT NULL DEFAULT 'sent',
+            devices   INTEGER NOT NULL DEFAULT 0,
+            sent_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+            PRIMARY KEY (day, email)
+        )
+    """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS obs.lab_calendar_feeds (
             email        TEXT PRIMARY KEY,
@@ -95,7 +110,7 @@ def get_event(event_id):
 
 
 _EDITABLE = ('category', 'title', 'description', 'location', 'url', 'all_day', 'start_at', 'end_at',
-             'repeat', 'repeat_until')
+             'repeat', 'repeat_until', 'assignee_email', 'assignee_name')
 
 
 def add_event(fields, created_by, created_by_name=''):
@@ -200,3 +215,36 @@ def email_for_token(token):
         row = cur.fetchone()
         conn.commit()
         return row[0] if row else None
+
+
+# ── Trigger duty reminders ──
+
+def claim_reminder(day, email, event_id):
+    """Take the (night, member) reminder; False when it was already handled (by this or another process)."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        _ensure(cur)
+        cur.execute('INSERT INTO obs.lab_trigger_reminders (day, email, event_id, outcome) VALUES (%s, %s, %s, %s) '
+                    'ON CONFLICT DO NOTHING', (day, email, event_id, 'pending'))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def finish_reminder(day, email, outcome, devices=0):
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        _ensure(cur)
+        cur.execute('UPDATE obs.lab_trigger_reminders SET outcome = %s, devices = %s, sent_at = now() '
+                    'WHERE day = %s AND email = %s', (outcome, int(devices), day, email))
+        conn.commit()
+
+
+def reminders_since(day):
+    """{(day ISO, email): {'outcome', 'devices', 'sent_at'}} from ``day`` on."""
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        _ensure(cur)
+        cur.execute('SELECT day, email, outcome, devices, sent_at FROM obs.lab_trigger_reminders WHERE day >= %s', (day,))
+        return {(r['day'].isoformat(), r['email']): {'outcome': r['outcome'], 'devices': r['devices'],
+                                                     'sent_at': r['sent_at'].isoformat(timespec='seconds')}
+                for r in cur.fetchall()}

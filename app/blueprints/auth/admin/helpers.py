@@ -97,4 +97,5 @@ _SCHEDULED_JOBS = {
     'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min',     'interval', {'minutes': 30}),
     'daily_detect_followups':       ('DETECT: Follow-up re-screen', 'Daily 04:00 UTC', 'cron',     {'hour': 4,  'minute': 0}),
     'lab_calendar_lulin_sync':      ('Lab Calendar: Lulin sync',  'Every 6 h',        'interval', {'minutes': 360}),
+    'lab_trigger_reminder':         ('Trigger duty reminder',     'Every 5 min (after Lulin sunset)', 'interval', {'minutes': 5}),
 }

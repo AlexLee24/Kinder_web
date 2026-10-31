@@ -56,7 +56,20 @@
         return e.end_date !== e.date ? fmtDay(e.date) + ' ' + e.start.slice(11, 16) + ' – ' + fmtDay(e.end_date) + ' ' + e.end.slice(11, 16)
             : range + ' · ' + e.time_label;
     }
-    const canEdit = (e) => e.source === 'lab' && (IS_ADMIN || e.created_by === ME);
+    const lc = (x) => String(x || '').toLowerCase();
+    const canEdit = (e) => e.source === 'lab' && (IS_ADMIN || lc(e.created_by) === lc(ME) || (e.assignee_email && lc(e.assignee_email) === lc(ME)));
+    // Trigger duty: when the sunset push for one night went out (or why not)
+    function dutyNote(e) {
+        if (e.category !== 'trigger' || !e.assignee_email) return '';
+        const r = (DATA.reminders || {})[TODAY + '|' + e.assignee_email];
+        const OUT = { sent: (n) => 'Reminder pushed to ' + n + ' device' + (n === 1 ? '' : 's') + ' at sunset',
+            already_sent: () => 'No reminder needed: the SLT trigger was already sent', no_device: () => 'Not reminded: no device with Trigger reminders on',
+            pending: () => 'Sending the reminder…' };
+        if (e.is_today && r) return OUT[r.outcome] ? OUT[r.outcome](r.devices) : '';
+        if (e.is_today) return 'Push reminder at Lulin sunset tonight, ' + DATA.sunset_today;
+        if (!e.is_past) return 'Push reminder at Lulin sunset on each night of the duty';
+        return '';
+    }
 
     // ── dialogs ──
     let lastFocus = null;
@@ -74,6 +87,8 @@
     const IC = {
         clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
         repeat: '<path d="M4 12V9a3 3 0 0 1 3-3h13l-3-3M20 12v3a3 3 0 0 1-3 3H4l3 3"/>',
+        user: '<circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>',
+        bell: '<path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>',
         pin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
         link: '<path d="M10 14a3.5 3.5 0 0 0 5 0l4-4a3.5 3.5 0 0 0-5-5l-.5.5"/><path d="M14 10a3.5 3.5 0 0 0-5 0l-4 4a3.5 3.5 0 0 0 5 5l.5-.5"/>',
     };
@@ -83,7 +98,10 @@
         if (!e) return;
         $('lcEvTitle').textContent = e.title;
         let h = '<p><span class="lc-chip lc-c-' + esc(e.color) + '">' + esc(e.category_label) + '</span></p><div class="lc-ev-meta">';
+        if (e.assignee_name) h += svg('user') + '<span>On duty: <b>' + esc(e.assignee_name) + '</b>' + (lc(e.assignee_email) === lc(ME) ? ' (you)' : '') + '</span>';
         h += svg('clock') + '<span>' + esc(whenText(e)) + '</span>';
+        const dn = dutyNote(e);
+        if (dn) h += svg('bell') + '<span>' + esc(dn) + '</span>';
         if (e.repeat) h += svg('repeat') + '<span>' + esc(e.repeat_label) + (e.repeat_until ? ' until ' + esc(fmtDay(e.repeat_until)) : '') + '</span>';
         if (e.location) h += svg('pin') + '<span>' + esc(e.location) + '</span>';
         if (e.url) h += svg('link') + '<a href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">' + esc(e.url) + '</a>';
@@ -112,10 +130,14 @@
     const form = $('lcForm');
     const F = (n) => form.elements[n];
     function syncForm() {
-        form.classList.toggle('is-allday', F('all_day').checked);
+        const duty = F('category').value === 'trigger';
+        form.classList.toggle('is-duty', duty);
+        form.classList.toggle('is-allday', duty || F('all_day').checked);
+        F('title').placeholder = duty ? 'Optional (default: Trigger: <name>)' : 'e.g. Group meeting';
         $('lcFUntilWrap').hidden = !F('repeat').value;
     }
     F('all_day').addEventListener('change', syncForm);
+    F('category').addEventListener('change', syncForm);
     F('repeat').addEventListener('change', syncForm);
     F('date').addEventListener('change', () => { if (!F('end_date').value || F('end_date').value < F('date').value) F('end_date').value = F('date').value; });
     F('start_time').addEventListener('change', () => {
@@ -124,7 +146,7 @@
         if (isNaN(h) || F('end_date').value !== F('date').value) return;
         if (!F('end_time').value || F('end_time').value <= F('start_time').value) F('end_time').value = String(Math.min(23, h + 1)).padStart(2, '0') + ':' + String(m).padStart(2, '0');
     });
-    function openForm(e, date) {
+    function openForm(e, date, category) {
         form.reset();
         $('lcFormErr').hidden = true;
         F('id').value = e ? e.db_id : '';
@@ -139,6 +161,7 @@
             F('end_date').value = e.all_day ? addDays(e.series_end.slice(0, 10), -1) : e.series_end.slice(0, 10);
             if (e.all_day && F('end_date').value < F('date').value) F('end_date').value = F('date').value;
             if (!e.all_day) { F('start_time').value = e.series_start.slice(11, 16); F('end_time').value = e.series_end.slice(11, 16); }
+            F('assignee').value = e.assignee_email || '';
             F('repeat').value = e.repeat || '';
             F('repeat_until').value = e.repeat_until || '';
             F('location').value = e.location;
@@ -146,12 +169,14 @@
             F('description').value = e.description;
         } else {
             F('date').value = F('end_date').value = date || TODAY;
+            if (category) F('category').value = category;
         }
         syncForm();
         openModal($('lcFormModal'));
-        F('title').focus();
+        (F('category').value === 'trigger' && !F('assignee').value ? F('assignee') : F('title')).focus();
     }
     $('lcAddOpen').addEventListener('click', () => openForm(null));
+    if ($('lcDutyAdd')) $('lcDutyAdd').addEventListener('click', () => openForm(null, TODAY, 'trigger'));
     $('lcFormDelete').addEventListener('click', () => {
         const e = Object.values(EVENTS).find((x) => String(x.db_id) === F('id').value);
         if (e) { closeModal($('lcFormModal')); removeEvent(e); }
@@ -159,7 +184,7 @@
     form.addEventListener('submit', (ev) => {
         ev.preventDefault();
         const body = {
-            title: F('title').value, category: F('category').value, all_day: F('all_day').checked,
+            title: F('title').value, category: F('category').value, all_day: F('all_day').checked, assignee: F('assignee').value,
             date: F('date').value, end_date: F('end_date').value || F('date').value,
             start_time: F('start_time').value, end_time: F('end_time').value,
             repeat: F('repeat').value, repeat_until: F('repeat').value ? F('repeat_until').value : '',

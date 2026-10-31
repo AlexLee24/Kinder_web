@@ -8,6 +8,11 @@ Two sources, one list (rows in obs.lab_calendar_events, app/db/lab_calendar.py):
 
 Members subscribe with a personal secret link (/lab_calendar/feed/<token>.ics); the feed is RFC 5545 text built
 here. Dates are Taiwan time (UTC+8, no DST).
+
+Trigger duty (category 'trigger', one member per event, all day; a week of duty is a 7-day event, a rotation of N
+people is N events repeating every N weeks): ``send_trigger_reminders()`` runs every 5 minutes (scheduler job
+``lab_trigger_reminder``) and, once the Sun has set at Lulin, pushes "Trigger duty tonight" to that member's devices
+that take 'trigger' (Web Push) — unless the night's SLT trigger was already sent from Daily Trigger.
 """
 import calendar
 import json
@@ -31,6 +36,7 @@ SYNC_STATUS_KEY = 'lab_calendar:lulin_sync'
 
 # key → label, colour (lc-c-<colour> in lab_calendar.css), source
 CATEGORIES = {
+    'trigger':   {'label': 'Trigger duty',      'color': 'gold',   'source': 'lab'},
     'meeting':   {'label': 'Group meeting',     'color': 'blue',   'source': 'lab'},
     'observing': {'label': 'Observing',         'color': 'amber',  'source': 'lab'},
     'talk':      {'label': 'Talk / Seminar',    'color': 'purple', 'source': 'lab'},
@@ -42,7 +48,10 @@ CATEGORIES = {
 }
 SOURCES = {'lab': 'GREAT Lab', 'lulin': 'Lulin LOT'}
 LAB_CATEGORIES = [k for k, v in CATEGORIES.items() if v['source'] == 'lab']
-REPEAT_LABELS = {'': 'Does not repeat', 'weekly': 'Every week', 'biweekly': 'Every 2 weeks', 'monthly': 'Every month'}
+REPEAT_LABELS = {'': 'Does not repeat', 'weekly': 'Every week', 'biweekly': 'Every 2 weeks', '3weekly': 'Every 3 weeks',
+                 '4weekly': 'Every 4 weeks', 'monthly': 'Every month'}
+_REPEAT_WEEKS = {'weekly': 1, 'biweekly': 2, '3weekly': 3, '4weekly': 4}
+LULIN = ('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
 FEED_NAMES = {None: 'GREAT Lab Calendar', 'lab': 'GREAT Lab Calendar (lab only)', 'lulin': 'Lulin LOT Schedule'}
 
 
@@ -63,7 +72,7 @@ def _occurrence_starts(row, until):
     last = min(until, row['repeat_until']) if row.get('repeat_until') else until
     out, i = [], 0
     while i < 1000:
-        cur = _add_months(st, i) if rep == 'monthly' else st + timedelta(weeks=i * (2 if rep == 'biweekly' else 1))
+        cur = _add_months(st, i) if rep == 'monthly' else st + timedelta(weeks=i * _REPEAT_WEEKS.get(rep, 1))
         if cur.date() > last:
             break
         out.append(cur)
@@ -104,6 +113,7 @@ def _item(row, start, today):
         'repeat': rep, 'repeat_label': REPEAT_LABELS.get(rep, '') if rep else '',
         'repeat_until': row.get('repeat_until'),
         'series_start': row['start_at'].astimezone(TZ), 'series_end': row['end_at'].astimezone(TZ),
+        'assignee_email': row.get('assignee_email') or '', 'assignee_name': row.get('assignee_name') or '',
         'created_by': row.get('created_by') or '', 'created_by_name': row.get('created_by_name') or '',
         'days_left': (d - today).days,
         'is_past': end_d < today, 'is_today': d <= today <= end_d,
@@ -136,6 +146,7 @@ def to_json(e):
         'repeat': e['repeat'], 'repeat_label': e['repeat_label'],
         'repeat_until': e['repeat_until'].isoformat() if e['repeat_until'] else '',
         'series_start': e['series_start'].isoformat(), 'series_end': e['series_end'].isoformat(),
+        'assignee_email': e['assignee_email'], 'assignee_name': e['assignee_name'],
         'created_by': e['created_by'], 'created_by_name': e['created_by_name'],
         'days_left': e['days_left'], 'is_past': e['is_past'], 'is_today': e['is_today'],
     }
@@ -150,7 +161,8 @@ def compact(evs):
             j = to_json(e)
             series[e['db_id']] = {k: j[k] for k in (
                 'source', 'category', 'category_label', 'color', 'title', 'description', 'location', 'url', 'all_day',
-                'repeat', 'repeat_label', 'repeat_until', 'series_start', 'series_end', 'created_by', 'created_by_name')}
+                'repeat', 'repeat_label', 'repeat_until', 'series_start', 'series_end', 'assignee_email',
+                'assignee_name', 'created_by', 'created_by_name')}
         occ.append([e['id'], e['db_id'], e['d'].isoformat(), e['end_d'].isoformat(), e['time_label'],
                     e['start_at'].isoformat(), e['end_at'].isoformat()])
     return {'series': series, 'occ': occ}
@@ -198,7 +210,8 @@ def vevent_lines(row, site_root='', alarm_minutes=30):
         lines.append(f'DTEND:{_utc(en if en > st else st + timedelta(hours=1))}')
     rep = row.get('repeat') or ''
     if rep:
-        rule = {'weekly': 'FREQ=WEEKLY', 'biweekly': 'FREQ=WEEKLY;INTERVAL=2', 'monthly': 'FREQ=MONTHLY'}[rep]
+        rule = 'FREQ=MONTHLY' if rep == 'monthly' else 'FREQ=WEEKLY' + (
+            f';INTERVAL={_REPEAT_WEEKS[rep]}' if _REPEAT_WEEKS.get(rep, 1) > 1 else '')
         if row.get('repeat_until'):
             # UNTIL must match DTSTART's type: a date for all-day events, a UTC time (end of that day) otherwise
             ru = row['repeat_until']
@@ -209,6 +222,8 @@ def vevent_lines(row, site_root='', alarm_minutes=30):
     summary = row['title'] if row['source'] == 'lab' else f"LOT: {row['title']}"
     lines.append(f'SUMMARY:{_ics_escape(summary)}')
     desc = row.get('description') or ''
+    if row.get('assignee_name'):
+        desc = f"On duty: {row['assignee_name']}" + ('\n\n' + desc if desc else '')
     if row['source'] == 'lab' and row.get('created_by_name'):
         desc = (desc + '\n\n' if desc else '') + f"Added by {row['created_by_name']}"
     if desc:
@@ -385,17 +400,25 @@ def sync_lulin_if_stale(max_age_hours=12):
     return True
 
 
-def parse_form(data, today=None):
-    """Validate the page's add / edit form. Returns (fields, error)."""
+def parse_form(data, members=None):
+    """Validate the page's add / edit form. ``members``: {email: name} of the people who can take Trigger duty.
+    Returns (fields, error)."""
+    category = str(data.get('category') or 'other')
+    if category not in LAB_CATEGORIES:
+        return None, 'Unknown category.'
     title = str(data.get('title') or '').strip()
+    assignee_email = assignee_name = None
+    if category == 'trigger':
+        assignee_email = str(data.get('assignee') or '').strip()
+        if assignee_email not in (members or {}):
+            return None, 'Choose who is on Trigger duty.'
+        assignee_name = members[assignee_email]
+        title = title or f'Trigger: {assignee_name}'
     if not title:
         return None, 'Give the event a title.'
     if len(title) > 200:
         return None, 'The title is too long (200 characters at most).'
-    category = str(data.get('category') or 'other')
-    if category not in LAB_CATEGORIES:
-        return None, 'Unknown category.'
-    all_day = bool(data.get('all_day'))
+    all_day = bool(data.get('all_day')) or category == 'trigger'      # a duty is for whole nights
     try:
         d0 = date.fromisoformat(str(data.get('date') or ''))
         d1 = date.fromisoformat(str(data.get('end_date') or '') or d0.isoformat())
@@ -440,4 +463,78 @@ def parse_form(data, today=None):
         'location': str(data.get('location') or '').strip()[:300], 'url': url[:1000],
         'all_day': all_day, 'start_at': start_at, 'end_at': end_at,
         'repeat': repeat, 'repeat_until': repeat_until,
+        'assignee_email': assignee_email, 'assignee_name': assignee_name,
     }, None
+
+
+# ── Trigger duty: who is on duty, Lulin sunset, the reminder ──
+
+def duty_on(day):
+    """Trigger duty occurrences covering ``day`` (a date): [{'email', 'name', 'event_id', 'title'}]."""
+    out = []
+    for e in events(today=day, past_days=400, future_days=1):
+        if e['category'] == 'trigger' and e['assignee_email'] and e['d'] <= day <= e['end_d']:
+            if not any(o['email'] == e['assignee_email'] for o in out):
+                out.append({'email': e['assignee_email'], 'name': e['assignee_name'] or e['assignee_email'],
+                            'event_id': e['db_id'], 'title': e['title']})
+    return out
+
+
+_sunset_cache = {}
+
+
+def lulin_sunset(day):
+    """Sunset at Lulin on ``day`` (Taiwan date) as an aware datetime (UTC+8); cached per day."""
+    if day not in _sunset_cache:
+        import ephem
+        obs = ephem.Observer()
+        obs.lon, obs.lat, obs.elevation = LULIN[1], LULIN[2], LULIN[3]
+        obs.date = ephem.Date(datetime(day.year, day.month, day.day, 4, 0))       # local noon (04:00 UTC)
+        t = obs.next_setting(ephem.Sun()).datetime().replace(tzinfo=timezone.utc)
+        if len(_sunset_cache) > 30:
+            _sunset_cache.clear()
+        _sunset_cache[day] = t.astimezone(TZ)
+    return _sunset_cache[day]
+
+
+def _slt_sent_tonight():
+    """True when tonight's SLT trigger was already sent from Daily Trigger."""
+    try:
+        from app.services.planning.trigger_send import get_send_status
+        return bool(get_send_status().get('SLT'))
+    except Exception:
+        return False
+
+
+def send_trigger_reminders(now=None, force=False):
+    """Push "Trigger duty tonight" to today's duty once the Sun has set at Lulin (until midnight). Each (night,
+    member) is handled once. ``force``: ignore the sunset (tests / the admin button). Returns what it did."""
+    from app.db import lab_calendar as db
+    from app.db.auth import get_user
+    from app.services.notifications import webpush
+
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    day = now.date()
+    sunset = lulin_sunset(day)
+    if not force and now < sunset:
+        return {'day': day.isoformat(), 'sunset': sunset.isoformat(timespec='minutes'), 'waiting': True}
+    done = []
+    for duty in duty_on(day):
+        if not db.claim_reminder(day, duty['email'], duty['event_id']):
+            continue
+        if _slt_sent_tonight():
+            db.finish_reminder(day, duty['email'], 'already_sent')
+            done.append({**duty, 'outcome': 'already_sent'})
+            continue
+        user = get_user(duty['email'])
+        n = 0
+        if user and webpush.enabled():
+            first = (duty['name'] or '').split(' ')[0] or 'there'
+            n = webpush.send_to_users(
+                [user['usr_id']], 'Trigger duty tonight',
+                f"Hi {first}, you are on Trigger duty tonight. Sunset at Lulin {sunset.strftime('%H:%M')}: "
+                'open Daily Trigger and send the SLT / LOT script.', '/daily_trigger', category='trigger')
+        db.finish_reminder(day, duty['email'], 'sent' if n else 'no_device', n)
+        logger.info('Trigger duty reminder %s %s: %s device(s)', day, duty['email'], n)
+        done.append({**duty, 'outcome': 'sent' if n else 'no_device', 'devices': n})
+    return {'day': day.isoformat(), 'sunset': sunset.isoformat(timespec='minutes'), 'reminded': done}

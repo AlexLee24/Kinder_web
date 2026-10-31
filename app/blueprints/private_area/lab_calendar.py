@@ -40,8 +40,20 @@ def _feed_urls(token):
 
 
 def _can_edit(row):
+    """The one who added it, the member on duty (to swap a Trigger duty) or an admin."""
     u = session.get('user') or {}
-    return row and row['source'] == 'lab' and (u.get('is_admin') or row.get('created_by') == u.get('email'))
+    me = (u.get('email') or '').lower()
+    return row and row['source'] == 'lab' and (u.get('is_admin') or (row.get('created_by') or '').lower() == me
+                                               or (row.get('assignee_email') or '').lower() == me)
+
+
+def _members():
+    """{email: name} of the people who can take Trigger duty: GREAT Lab members and admins, by name."""
+    from app.db.auth import get_users
+    from app.services.notifications.webpush import is_member
+    people = [(e, u.get('display_name') or u.get('name') or e) for e, u in get_users().items()
+              if is_member(u) and not u.get('has_placeholder_email')]
+    return dict(sorted(people, key=lambda p: p[1].lower()))
 
 
 @private_area_bp.route('/lab_calendar')
@@ -67,6 +79,19 @@ def lab_calendar():
     cal.sync_lulin_if_stale()
     today = datetime.now(cal.TZ).date()
     evs = cal.events(today)
+    duties = [e for e in evs if e['category'] == 'trigger' and e['end_d'] >= today]
+    reminders = _reminders(today)
+    duty_tonight = []                  # one line per member on duty tonight, with how the sunset push went
+    for e in duties:
+        if e['is_today'] and not any(d['email'] == e['assignee_email'] for d in duty_tonight):
+            r = reminders.get((today.isoformat(), e['assignee_email']))
+            status = 'reminder at sunset'
+            if r:
+                status = {'sent': f"reminded on {r['devices']} device{'s' if r['devices'] != 1 else ''}",
+                          'already_sent': 'trigger already sent', 'no_device': 'not reminded: push off',
+                          'pending': 'sending…'}.get(r['outcome'], status)
+            duty_tonight.append({'id': e['id'], 'email': e['assignee_email'], 'name': e['assignee_name'],
+                                 'status': status, 'ok': bool(r) and r['outcome'] != 'no_device'})
     if src != 'all':
         evs = [e for e in evs if e['source'] == src]
     if kind != 'all':
@@ -93,9 +118,22 @@ def lab_calendar():
         past_n=sum(1 for e in evs if e['is_past']), total=len(evs),
         categories=cal.CATEGORIES, sources=cal.SOURCES, lab_categories=cal.LAB_CATEGORIES,
         repeat_labels=cal.REPEAT_LABELS, src=src, kind=kind, q=q,
+        members=_members(), duty_tonight=duty_tonight,
+        duty_next=[e for e in duties if not e['is_today']][:6], sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
         cal_data={**cal.compact(evs), 'today': today.isoformat(), 'this_month': this_month.strftime('%Y-%m'),
-                  'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m')},
+                  'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m'),
+                  'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'),
+                  'reminders': {f'{d}|{e}': r for (d, e), r in reminders.items()}},
         sync=cal.sync_status(), user_email=user.get('email') or '', is_admin=bool(user.get('is_admin')))
+
+
+def _reminders(today):
+    from app.db import lab_calendar as db
+    try:
+        return db.reminders_since(today - timedelta(days=60))
+    except Exception:
+        logger.exception('lab calendar: reminders not read')
+        return {}
 
 
 @private_area_bp.route('/api/lab_calendar/events')
@@ -128,7 +166,7 @@ def api_lab_calendar_add():
         return denied
     from app.db import lab_calendar as db
     from app.services import lab_calendar as cal
-    fields, err = cal.parse_form(request.get_json(silent=True) or {})
+    fields, err = cal.parse_form(request.get_json(silent=True) or {}, _members())
     if err:
         return jsonify({'success': False, 'error': err}), 400
     u = session['user']
@@ -154,7 +192,7 @@ def api_lab_calendar_change(event_id):
         db.delete_event(event_id)
         logger.info('audit action=lab_calendar_delete actor=%s target=%s title=%r', who, event_id, row['title'])
         return jsonify({'success': True})
-    fields, err = cal.parse_form(request.get_json(silent=True) or {})
+    fields, err = cal.parse_form(request.get_json(silent=True) or {}, _members())
     if err:
         return jsonify({'success': False, 'error': err}), 400
     db.update_event(event_id, fields)

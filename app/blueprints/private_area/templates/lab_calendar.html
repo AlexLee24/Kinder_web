@@ -52,6 +52,30 @@
                 <ul class="lc-hl-list">{% for e in today_events %}{{ hl_row(e, True) }}{% endfor %}</ul>
             </section>
             {% endif %}
+            <section class="kw-panel lc-duty" aria-labelledby="lcDutyT">
+                <div class="kw-panel-head">
+                    <h2 id="lcDutyT">Trigger duty</h2>
+                    <button type="button" class="kw-btn kw-btn-sm" id="lcDutyAdd">Assign</button>
+                </div>
+                <div class="lc-duty-tonight">
+                    <span class="kw-label">Tonight</span>
+                    {% if duty_tonight %}
+                    {% for d in duty_tonight %}
+                    <div class="lc-duty-who"><b><button type="button" class="lc-linkbtn" data-ev="{{ d.id }}">{{ d.name }}</button></b><span class="{{ 'is-bad' if 'push off' in d.status else ('is-ok' if d.ok else '') }}">{{ d.status }}</span></div>
+                    {% endfor %}
+                    <small>Push reminder at Lulin sunset, {{ sunset_today }}</small>
+                    {% else %}
+                    <b class="lc-duty-none">Nobody assigned</b>
+                    {% endif %}
+                </div>
+                {% if duty_next %}
+                <ul class="lc-duty-list">
+                    {% for e in duty_next %}
+                    <li><button type="button" data-ev="{{ e.id }}"><span>{{ e.d.strftime('%a %d %b') }}{% if e.end_d != e.d %} – {{ e.end_d.strftime('%a %d %b') }}{% endif %}</span><b>{{ e.assignee_name }}</b></button></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </section>
             <section class="kw-panel lc-hl" aria-labelledby="lcSoonT">
                 <div class="kw-panel-head"><h2 id="lcSoonT">Coming up</h2></div>
                 {% if soon_events %}
@@ -147,7 +171,6 @@
             <button type="button" class="kw-icon-btn" data-close aria-label="Close">✕</button>
         </div>
         <input type="hidden" name="id">
-        <div class="kw-field"><label for="lcFTitle">Title</label><input id="lcFTitle" name="title" maxlength="200" required placeholder="e.g. Group meeting"></div>
         <div class="lc-form-row">
             <div class="kw-field"><label for="lcFCat">Category</label>
                 <select id="lcFCat" name="category" class="kw-select">
@@ -157,7 +180,15 @@
             <div class="kw-field lc-allday"><span class="kw-label">All day</span>
                 <label class="kw-switch"><input type="checkbox" name="all_day" id="lcFAllDay"><span></span><span>All-day event</span></label>
             </div>
+            <div class="kw-field lc-duty-only"><label for="lcFWho">On duty</label>
+                <select id="lcFWho" name="assignee" class="kw-select">
+                    <option value="">Choose a member…</option>
+                    {% for email, name in members.items() %}<option value="{{ email }}">{{ name }}</option>{% endfor %}
+                </select>
+            </div>
         </div>
+        <p class="lc-form-hint lc-duty-only">They get a push at Lulin sunset on each night of the duty (if their phone has push on). A week of duty: end it 6 days later. A rotation of N people: one event per person, repeating every N weeks.</p>
+        <div class="kw-field"><label for="lcFTitle">Title</label><input id="lcFTitle" name="title" maxlength="200" required placeholder="e.g. Group meeting"></div>
         <div class="lc-form-row">
             <div class="kw-field"><label for="lcFDate">Starts</label><input type="date" id="lcFDate" name="date" required></div>
             <div class="kw-field lc-timefield"><label for="lcFStart">Time</label><input type="time" id="lcFStart" name="start_time" value="14:00"></div>

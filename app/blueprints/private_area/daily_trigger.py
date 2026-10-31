@@ -32,9 +32,21 @@ def daily_trigger():
 
     user_display_name = session['user'].get('name') or user_email
 
+    # Tonight's Trigger duty from Lab › Calendar (the trigger night turns over at 08:00)
+    duty = []
+    try:
+        from datetime import date as _date
+
+        from app.services import lab_calendar
+        from app.services.planning.trigger_send import _trigger_day_key
+        duty = lab_calendar.duty_on(_date.fromisoformat(_trigger_day_key()))
+    except Exception:
+        logger.exception('daily_trigger: Trigger duty not read')
+
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
                             user_display_name=user_display_name, user_email=user_email,
-                            app_debug=config.DEBUG)
+                            app_debug=config.DEBUG, duty=duty,
+                            on_duty=any(d['email'].lower() == user_email.lower() for d in duty))
 
 @private_area_bp.route('/daily_trigger/send_status', methods=['GET'])
 def daily_trigger_send_status():

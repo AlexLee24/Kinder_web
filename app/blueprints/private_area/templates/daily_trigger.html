@@ -1,7 +1,7 @@
 {% extends '_base.html' %}
 {#- Daily Trigger (on the navigation, Triggers › Daily | Direct in the page bar centre): checklist + script, tonight's
-    SLT / LOT targets and the Observation Log, stacked panels. daily_trigger.js drives it; the night's Weather and
-    Calendar open from the page bar. -#}
+    SLT / LOT targets and the Observation Log, stacked panels. daily_trigger.js drives it; tonight's Trigger duty (Lab ›
+    Calendar), the night's Weather and Calendar open from the page bar. -#}
 {% block title %}Daily Trigger - Kinder{% endblock %}
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
@@ -299,6 +299,10 @@
 {% endblock %}
 
 {% block bar_right %}
+    <a href="/lab_calendar" class="dt-duty{% if on_duty %} is-me{% elif not duty %} is-none{% endif %}" title="Trigger duty tonight (Lab › Calendar)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+        {% if on_duty %}You are on duty tonight{% elif duty %}On duty: {{ duty|map(attribute='name')|join(', ') }}{% else %}No one on duty tonight{% endif %}
+    </a>
     <button type="button" class="kw-btn kw-btn-sm" onclick="document.getElementById('weatherModal').style.display='flex'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
         Weather

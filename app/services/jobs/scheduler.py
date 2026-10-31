@@ -23,6 +23,7 @@ these jobs in UTC too):
     lsst_watch                     hh:25      new ALeRCE LSST objects vs Lens/DESI + LSST light curves of TNS objects
     lsst_daily_sweep               14:30      re-read the last 1.5 days of LSST objects (late ingests)
     lab_calendar_lulin_sync        every 6h   Lulin LOT Google calendar -> Lab › Calendar (also once at start)
+    lab_trigger_reminder           every 5m   after Lulin sunset: push "Trigger duty tonight" to today's duty (once)
 
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
     bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
@@ -145,6 +146,7 @@ def start_background_jobs(app) -> bool:
     from app.services.jobs import scheduler_state as _sched_state
     from app.services.jobs.backup import run_daily_backup
     from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
+    from app.services.lab_calendar import send_trigger_reminders as _lab_trigger_reminders
     from app.services.lab_calendar import sync_lulin as _lab_calendar_sync_lulin
     from app.services.lsst import alerts as _lsst_alerts
     from app.services.photometry.phot_scheduler import (
@@ -175,6 +177,7 @@ def start_background_jobs(app) -> bool:
         _scheduler.add_job(_tracked('pipeline_fits_cleanup', _pipeline_cleanup),              'interval', minutes=60,   id='pipeline_fits_cleanup')  # Pipeline FITS older than 7 days
         _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm', kwargs={'app_obj': app})  # needs the app: no request context in the scheduler thread
         _scheduler.add_job(_tracked('lab_calendar_lulin_sync', _lab_calendar_sync_lulin),     'interval', hours=6,      id='lab_calendar_lulin_sync')
+        _scheduler.add_job(_tracked('lab_trigger_reminder', _lab_trigger_reminders),         'interval', minutes=5,    id='lab_trigger_reminder')
         if _detect_pipeline.ENABLED:
             # DETECT re-screens every Follow-up object once a day (M from the latest light
             # curve, host against the latest catalogue); hourly runs hang off the TNS import.
