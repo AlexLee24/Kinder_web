@@ -23,7 +23,7 @@ SHORT_EXPOSURES = (1, 2, 3, 5, 10)
 # integration time only). The exact figure depends on the camera's readout mode; this is an
 # assumption, not a measurement. What matters is that it is not zero: ranking plans by time
 # spent rather than time integrating is what makes one 30 s frame beat four 8 s ones.
-READOUT_OVERHEAD_S = 10
+READOUT_OVERHEAD_S = 5
 
 # A plan longer than this on one target is reported, not hidden: the numbers are right, the
 # plan is not one anybody will run.
