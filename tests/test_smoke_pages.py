@@ -44,5 +44,7 @@ def test_route_matches_baseline(clients, persona, url, expected):
     r = clients[persona].get(url, base_url=BASE_URL)
     if r.status_code == 404 and expected['status'] == 200 and any(tok in url for tok in ('/object/', '/api/object/', '/detect_image')):
         pytest.skip('sample object from the baseline no longer exists')
+    if r.status_code == 404 and expected['status'] in (200, 410) and '/lc_plotter/shared/' in url:
+        pytest.skip('sample shared plot expired (deleted on its first 410)')
     assert r.status_code == expected['status'], f'{persona} {url}: {r.status_code} != {expected["status"]}'
     assert (r.content_type or '').split(';')[0] == expected['ctype']
