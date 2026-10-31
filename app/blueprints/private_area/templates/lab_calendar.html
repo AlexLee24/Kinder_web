@@ -198,20 +198,20 @@
                 </select>
             </div>
         </div>
-        <p class="lc-form-hint lc-duty-only">They get a push at Lulin sunset on each night of the duty (if their phone has push on). A week of duty: end it 6 days later. A rotation of N people: one event per person, repeating every N weeks.</p>
+        <p class="lc-form-hint lc-duty-only">A duty is one week, Monday to Sunday. They get a push at Lulin sunset every night of it (if their phone has push on). A rotation of N people: one week per person, repeating every N weeks.</p>
         <div class="kw-field"><label for="lcFTitle">Title</label><input id="lcFTitle" name="title" maxlength="200" required placeholder="e.g. Group meeting"></div>
         <div class="lc-form-row">
-            <div class="kw-field"><label for="lcFDate">Starts</label><input type="date" id="lcFDate" name="date" required></div>
+            <div class="kw-field"><label for="lcFDate"><span class="lc-not-duty">Starts</span><span class="lc-duty-only">Week (any day of it)</span></label><input type="date" id="lcFDate" name="date" required><small class="lc-week-pick lc-duty-only" id="lcFWeek"></small></div>
             <div class="kw-field lc-timefield"><label for="lcFStart">Time</label><input type="time" id="lcFStart" name="start_time" value="14:00"></div>
         </div>
-        <div class="lc-form-row">
+        <div class="lc-form-row lc-not-duty">
             <div class="kw-field"><label for="lcFEndDate">Ends</label><input type="date" id="lcFEndDate" name="end_date"></div>
             <div class="kw-field lc-timefield"><label for="lcFEnd">Time</label><input type="time" id="lcFEnd" name="end_time" value="15:00"></div>
         </div>
         <div class="lc-form-row">
             <div class="kw-field"><label for="lcFRepeat">Repeat</label>
                 <select id="lcFRepeat" name="repeat" class="kw-select">
-                    {% for rk, rl in repeat_labels.items() %}<option value="{{ rk }}">{{ rl }}</option>{% endfor %}
+                    {% for rk, rl in repeat_labels.items() %}<option value="{{ rk }}"{% if rk == 'monthly' %} class="lc-not-duty"{% endif %}>{{ rl }}</option>{% endfor %}
                 </select>
             </div>
             <div class="kw-field" id="lcFUntilWrap" hidden><label for="lcFUntil">Repeat until (optional)</label><input type="date" id="lcFUntil" name="repeat_until"></div>

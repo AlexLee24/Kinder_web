@@ -9,8 +9,8 @@ Two sources, one list (rows in obs.lab_calendar_events, app/db/lab_calendar.py):
 Members subscribe with a personal secret link (/lab_calendar/feed/<token>.ics); the feed is RFC 5545 text built
 here. Dates are Taiwan time (UTC+8, no DST).
 
-Trigger duty (category 'trigger', one member per event, all day; a week of duty is a 7-day event, a rotation of N
-people is N events repeating every N weeks): ``send_trigger_reminders()`` runs every 5 minutes (scheduler job
+Trigger duty (category 'trigger', one member per event; a duty is always one whole week, Monday to Sunday, and a
+rotation of N people is N weeks repeating every N weeks): ``send_trigger_reminders()`` runs every 5 minutes (scheduler job
 ``lab_trigger_reminder``) and, once the Sun has set at Lulin, pushes "Trigger duty tonight" to that member's devices
 that take 'trigger' (Web Push) — unless the night's SLT trigger was already sent from Daily Trigger.
 Duty weeks run Monday to Sunday: members volunteer for a free week on the page (one 7-day event), and every Friday
@@ -427,6 +427,9 @@ def parse_form(data, members=None):
         d1 = date.fromisoformat(str(data.get('end_date') or '') or d0.isoformat())
     except ValueError:
         return None, 'Pick a valid date.'
+    if category == 'trigger':           # a duty is one week, Monday to Sunday, whatever day was picked
+        d0 = week_monday(d0)
+        d1 = d0 + timedelta(days=6)
     if all_day:
         if d1 < d0:
             return None, 'The end date is before the start date.'
@@ -449,6 +452,8 @@ def parse_form(data, members=None):
     repeat = str(data.get('repeat') or '')
     if repeat not in REPEAT_LABELS:
         return None, 'Unknown repeat option.'
+    if category == 'trigger' and repeat == 'monthly':
+        return None, 'Trigger duty weeks repeat every 1–4 weeks, not monthly.'
     repeat_until = None
     if repeat and data.get('repeat_until'):
         try:

@@ -129,8 +129,18 @@
     // ── add / edit ──
     const form = $('lcForm');
     const F = (n) => form.elements[n];
+    // Trigger duty is one week: show which Monday–Sunday the picked day falls in
+    const mondayOf = (iso) => addDays(iso, -((asUTC(iso).getUTCDay() + 6) % 7));
+    function syncWeek() {
+        if (F('category').value !== 'trigger' || !F('date').value) return;
+        const mon = mondayOf(F('date').value);
+        F('end_date').value = addDays(mon, 6);
+        $('lcFWeek').textContent = fmtDay(mon).slice(0, -5) + ' – ' + fmtDay(addDays(mon, 6));
+    }
     function syncForm() {
         const duty = F('category').value === 'trigger';
+        if (duty && F('repeat').value === 'monthly') F('repeat').value = '';
+        syncWeek();
         form.classList.toggle('is-duty', duty);
         form.classList.toggle('is-allday', duty || F('all_day').checked);
         F('title').placeholder = duty ? 'Optional (default: Trigger: <name>)' : 'e.g. Group meeting';
@@ -139,7 +149,10 @@
     F('all_day').addEventListener('change', syncForm);
     F('category').addEventListener('change', syncForm);
     F('repeat').addEventListener('change', syncForm);
-    F('date').addEventListener('change', () => { if (!F('end_date').value || F('end_date').value < F('date').value) F('end_date').value = F('date').value; });
+    F('date').addEventListener('change', () => {
+        if (!F('end_date').value || F('end_date').value < F('date').value) F('end_date').value = F('date').value;
+        syncWeek();
+    });
     F('start_time').addEventListener('change', () => {
         // keep a one-hour slot when the end was not moved yet
         const [h, m] = F('start_time').value.split(':').map(Number);
@@ -169,7 +182,7 @@
             F('description').value = e.description;
         } else {
             F('date').value = F('end_date').value = date || TODAY;
-            if (category) F('category').value = category;
+            F('category').value = category || 'meeting';      // Trigger duty is listed first but is not the usual event
         }
         syncForm();
         openModal($('lcFormModal'));

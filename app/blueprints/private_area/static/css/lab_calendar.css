@@ -151,6 +151,12 @@
 .lc-form.is-allday .lc-timefield { visibility: hidden; }
 .lc-form .lc-duty-only, .lc-form.is-duty .lc-allday { display: none; }
 .lc-form.is-duty .lc-duty-only { display: flex; }
+.lc-form .lc-not-duty { display: revert; }
+.lc-form.is-duty .lc-not-duty { display: none; }
+.lc-form.is-duty label .lc-duty-only { display: inline; }
+.lc-form.is-duty .lc-form-row.lc-not-duty { display: none; }
+.lc-form .lc-form-row.lc-not-duty { display: grid; }
+.lc-week-pick { font-size: 0.8rem; font-weight: 600; color: #F2C94C; }
 .lc-form-hint { margin: -6px 0 14px; font-size: 0.78rem; line-height: 1.55; color: var(--kw-text-muted); }
 .lc-form-note { margin: 0 0 8px; font-size: 0.78rem; color: var(--kw-text-muted); }
 .lc-form-err { margin: 0; padding: 8px 12px; border-radius: var(--kw-radius-md); background: rgba(255, 69, 58, 0.14); color: #FF8A80; font-size: 0.82rem; }
