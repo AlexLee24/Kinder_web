@@ -9,6 +9,7 @@ Admin › Bots (``/admin/bots``) shows each bot's state, recent events and log f
     obs_log     Lulin raw frames (FITS headers) → obs.logs "observed", daily 12:00 UTC+8         obs_log.py
     reduction   the Lulin reduction pipeline (auto_calibration.sh), step by step                 reduction.py
     detect      the embedded DETECT pipeline: cross-match, host rule, screening (every run, any trigger)   detect.py
+    nas_backup  old raw nights, masters and calibrated targets of the reduction folder → lab NAS (SMB)   nas_backup.py
 
 Each bot logs to the logger ``bot.<id>``: app/log/bots/<id>.log (rotating) and the daily web log.
 State lives in ``status`` (app/log/.bot_status.json, shared by every worker).
@@ -45,6 +46,9 @@ BOTS = (
         'Cross-matches new TNS objects with galaxy catalogues, applies the host rule, scores and screens them for the '
         'review queue. Runs after each TNS import, once a day on every Follow-up object, and from the object page.',
         can_run=True, links=(('Review queue', '/detect'),)),
+    Bot('nas_backup', 'NAS backup', 'scheduled', 'Every 60 min once NAS_IP / NAS_PATH are set',
+        'Moves what the reduction pipeline no longer needs to the lab NAS: raw nights older than last month, masters '
+        'older than 30 days, calibrated targets without a new frame for 60 days.', can_run=True),
 )
 BY_ID = {b.id: b for b in BOTS}
 
@@ -57,10 +61,10 @@ def disabled():
 
 def setup_problems():
     """What each bot is missing right now (settings, folders), so a page shows it before the first run."""
-    from . import astronote, gcn, obs_log, reduction
+    from . import astronote, gcn, nas_backup, obs_log, reduction
     from . import detect as detect_bot
     raw = obs_log.raw_dir()
     out = {'gcn': gcn.setup_problem(), 'astronote': astronote.setup_problem(), 'reduction': reduction.setup_problem(),
-           'detect': detect_bot.setup_problem(),
+           'detect': detect_bot.setup_problem(), 'nas_backup': nas_backup.setup_problem(),
            'obs_log': '' if raw and raw.is_dir() else f'Raw frame folder not found: {raw or "(not set)"} — set OBS_RAW_DIR or REDUCTION_PIPELINE_DIR.'}
     return {k: v for k, v in out.items() if v}

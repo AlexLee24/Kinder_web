@@ -1,5 +1,5 @@
 // Admin › Bots (/admin/bots): cards for every lab bot, and a detail panel for one of them (log, events and, per bot,
-// steps / folders / nights). Polls /admin/bots/status every 10 s; while the Log tab is open and the page is visible
+// steps / folders / nights / NAS moves). Polls /admin/bots/status every 10 s; while the Log tab is open and the page is visible
 // it follows the bot's log every 3 s from the last byte offset.
 (function () {
     'use strict';
@@ -126,6 +126,7 @@
         if (b.id === 'reduction') t.push(['steps', 'Steps'], ['folders', 'Folders']);
         if (b.id === 'obs_log') t.push(['nights', 'Nights']);
         if (b.id === 'detect') t.push(['overview', 'Overview & manual runs']);
+        if (b.id === 'nas_backup') t.unshift(['moves', 'Moves']);
         return t;
     }
     function current() { return bots.find((b) => b.id === sel); }
@@ -135,9 +136,9 @@
         sel = id;
         const b = current();
         const names = tabsFor(b).map((t) => t[0]);
-        tab = newTab && names.includes(newTab) ? newTab : (changed ? 'log' : (names.includes(tab) ? tab : 'log'));
+        tab = newTab && names.includes(newTab) ? newTab : (changed ? names[0] : (names.includes(tab) ? tab : names[0]));
         if (changed) logOffset = null;
-        try { history.replaceState(null, '', '#' + sel + (tab !== 'log' ? '/' + tab : '')); } catch (e) { /* file:// */ }
+        try { history.replaceState(null, '', '#' + sel + (tab !== names[0] ? '/' + tab : '')); } catch (e) { /* file:// */ }
         document.querySelectorAll('#botPick .kw-seg-item').forEach((x) => {
             const on = x.dataset.bot === sel;
             x.classList.toggle('is-on', on); x.setAttribute('aria-selected', on);
@@ -174,6 +175,9 @@
         } else if (tab === 'folders') {
             v.innerHTML = '<p class="bot-muted">Reading the folders…</p>';
             getJSON('/admin/bots/reduction/overview' + (fresh ? '?fresh=1' : '')).then(renderFolders).catch((e) => { v.innerHTML = '<p class="bot-alert is-bad">' + esc(e.message) + '</p>'; });
+        } else if (tab === 'moves') {
+            if (fresh) v.innerHTML = '<p class="bot-muted">Reading the folders…</p>';
+            getJSON('/admin/bots/nas_backup/overview' + (fresh ? '?fresh=1' : '')).then(renderMoves).catch((e) => { v.innerHTML = '<p class="bot-alert is-bad">' + esc(e.message) + '</p>'; });
         } else if (tab === 'overview') {
             v.innerHTML = '<p class="bot-muted">Reading the database…</p>';
             getJSON('/admin/bots/detect/overview').then(renderDetect).catch((e) => { v.innerHTML = '<p class="bot-alert is-bad">' + esc(e.message) + '</p>'; });
@@ -234,6 +238,43 @@
             '<span class="bot-detect-names"><input type="text" id="detectNames" placeholder="2026abdm, 2026abnn" aria-label="Object names" spellcheck="false">' +
             '<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-detect-run="names">Run on objects</button></span>' +
             '<span id="detectRunMsg" class="bot-muted"></span></div>';
+    }
+    function size(n) {
+        if (n == null) return '—';
+        if (n >= 1e12) return (n / 1e12).toFixed(2) + ' TB';
+        if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
+        if (n >= 1e6) return (n / 1e6).toFixed(0) + ' MB';
+        return Math.round(n / 1e3) + ' kB';
+    }
+    function renderMoves(o) {
+        if (tab !== 'moves') return;
+        const counts = Object.entries(o.pending_counts || {});
+        const moves = o.moves || [], pending = o.pending || [];
+        const npend = counts.reduce((a, c) => a + c[1], 0);
+        const inside = (m) => m.path.indexOf(m.folder + '/') === 0 ? m.path.slice(m.folder.length + 1) : m.path;
+        $('botView').innerHTML =
+            (o.problem ? '<p class="bot-alert is-warn">' + esc(o.problem) + '</p>' : '') +
+            (o.busy ? '<p class="bot-alert is-info"><b>Pipeline busy:</b> ' + esc(o.busy) + ' — a run now is skipped.</p>' : '') +
+            (o.dry_run ? '<p class="bot-alert is-info">NAS_ARCHIVE_DRY_RUN is on: runs only log what they would move.</p>' : '') +
+            '<div class="kw-kpis bot-kpis">' +
+            kpi('Moved, last 30 days', size(o.month.bytes), o.month.items + ' items · ' + o.month.files + ' files', '') +
+            kpi('Last move', moves.length ? ago(moves[0].at) : '—', moves.length ? stamp(moves[0].at) + ' · ' + moves[0].path : 'nothing moved yet', '') +
+            kpi('Next run would move', npend ? size(o.pending_bytes) + (npend > pending.length ? '+' : '') : 'nothing', counts.map((c) => c[1] + ' ' + c[0]).join(' · ') || 'all within the rules', '') +
+            '</div>' +
+            '<dl class="bot-paths"><div><dt>From</dt><dd class="sys-mono">' + esc(o.root || '—') + '</dd></div>' +
+            '<div><dt>To</dt><dd class="sys-mono">' + esc(o.target || '—') + '</dd></div>' +
+            '<div><dt>Schedule</dt><dd>Every ' + o.interval_min + ' min, up to ' + o.budget_min + ' min of copying per run</dd></div></dl>' +
+            '<h3>Recently moved</h3>' +
+            (moves.length ? '<div class="kw-table-wrap"><table class="kw-table"><thead><tr><th>When</th><th>Folder</th><th>Moved</th><th>Files</th><th>Size</th></tr></thead><tbody>' +
+                moves.map((m) => '<tr><td class="bot-nowrap" title="' + esc(stamp(m.at)) + '">' + esc(ago(m.at)) + '</td><td>' + esc(m.folder) + '</td><td class="sys-mono bot-wrap">' + esc(inside(m)) +
+                    (m.finished ? '' : ' <span class="kw-chip kw-chip-gold">partial</span>') + '</td><td>' + m.files + '</td><td class="bot-nowrap">' + size(m.bytes) + '</td></tr>').join('') +
+                '</tbody></table></div>' : '<p class="bot-muted">Nothing moved yet.</p>') +
+            '<h3>Next to move</h3>' +
+            (pending.length ? '<div class="kw-table-wrap"><table class="kw-table"><thead><tr><th>Folder</th><th>Path</th><th>Size</th></tr></thead><tbody>' +
+                pending.map((m) => '<tr><td>' + esc(m.folder) + '</td><td class="sys-mono bot-wrap">' + esc(inside(m)) + '</td><td class="bot-nowrap">' + size(m.bytes) + '</td></tr>').join('') +
+                '</tbody></table></div>' + (npend > pending.length ? '<p class="bot-muted">…and ' + (npend - pending.length) + ' more.</p>' : '')
+                : '<p class="bot-muted">Nothing is old enough to move.</p>') +
+            '<p class="bot-muted">Rules: raw nights not from this month or last month; dated masters older than 30 days (the newest of each setup stays); calibrated targets with no new frame for 60 days. Nothing moves while its raw frames are still here.</p>';
     }
     function renderFolders(o) {
         const rows = (list, empty) => list.length ? '<div class="kw-table-wrap"><table class="kw-table"><thead><tr><th>Folder</th><th>FITS</th><th>Changed</th></tr></thead><tbody>' +
@@ -322,7 +363,7 @@
         if (!btn) return;
         const id = btn.dataset.bot;
         if (btn.dataset.act === 'open') {
-            select(id, 'log');
+            select(id);
             $('botDetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
             return;
         }
@@ -356,7 +397,7 @@
     $('botRefresh').addEventListener('click', () => { refresh(); if (tab !== 'log') renderView(true); });
     window.addEventListener('hashchange', () => {
         const h = (location.hash || '').slice(1).split('/');
-        if (h[0] && (h[0] !== sel || (h[1] || 'log') !== tab)) select(h[0], h[1] || 'log');
+        if (h[0] && (h[0] !== sel || (h[1] && h[1] !== tab))) select(h[0], h[1]);
     });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { refresh(); if (tab === 'log') pollLog(); } });
 

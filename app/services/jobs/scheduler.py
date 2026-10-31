@@ -30,6 +30,7 @@ these jobs in UTC too):
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
     bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
     bot_reduction                  REDUCTION_HOUR_UTC (unset: by hand only)  reduction pipeline
+    bot_nas_backup                 every NAS_ARCHIVE_INTERVAL_MIN (60)  old reduction data -> lab NAS (only with NAS_* set)
 
 Daemon threads: ``auto_tns_download`` (hourly/daily TNS sync, real UTC clock),
 ``tns_gap_filler`` (hourly kinder_id gap fill), ``nist-spec-lines`` (one-shot),
@@ -94,7 +95,7 @@ def _add_bot_jobs(scheduler):
     from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 
     from app.services import bots
-    from app.services.bots import astronote, obs_log, reduction
+    from app.services.bots import astronote, nas_backup, obs_log, reduction
     from app.services.bots import status as bot_status
 
     off = bots.disabled()
@@ -104,6 +105,8 @@ def _add_bot_jobs(scheduler):
         scheduler.add_job(obs_log.run, 'cron', hour=4, minute=0, id='bot_obs_log')     # 12:00 UTC+8
     if 'reduction' not in off and reduction.hour_utc() is not None:
         scheduler.add_job(reduction.run, 'cron', hour=reduction.hour_utc(), minute=0, id='bot_reduction')
+    if 'nas_backup' not in off and nas_backup.configured():
+        scheduler.add_job(nas_backup.run, 'interval', minutes=nas_backup.interval_min(), id='bot_nas_backup')
 
     def note_next_run(ev):
         bot_id = _BOT_OF_JOB.get(ev.job_id) or (ev.job_id[4:] if ev.job_id.startswith('bot_') else None)

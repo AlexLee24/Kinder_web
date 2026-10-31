@@ -306,9 +306,9 @@
 
 ### Lab bots（`app/services/bots/`，2026-10 從獨立的 lab_bot 合併進來）
 
-- 四個 bot：`gcn`（GCN + Einstein Probe，常駐執行緒）、`astronote`（每 5 分）、`obs_log`（每日 04:00 UTC）、`reduction`（`REDUCTION_HOUR_UTC` 或手動）。只在持有背景工作鎖的 process 啟動，`DEBUG=True` 時全部不啟動；`BOTS_DISABLED` 可逐一關閉。
+- 五個排程 / 常駐 bot：`gcn`（GCN + Einstein Probe，常駐執行緒）、`astronote`（每 5 分）、`obs_log`（每日 04:00 UTC）、`reduction`（`REDUCTION_HOUR_UTC` 或手動）、`nas_backup`（每 `NAS_ARCHIVE_INTERVAL_MIN` 分，預設 60；需設 `NAS_IP` / `NAS_PATH`；pipeline 正在跑時跳過，每次最多複製 `NAS_ARCHIVE_MINUTES` 分鐘，搬移紀錄寫在 `app/log/bots/nas_backup_moves.jsonl`）。只在持有背景工作鎖的 process 啟動，`DEBUG=True` 時全部不啟動；`BOTS_DISABLED` 可逐一關閉。
 - 狀態：`app/log/.bot_status.json`（flock 讀改寫，任何 worker 可讀）；log：logger `bot.<id>` → `app/log/bots/<id>.log`（1 MB × 3）+ 每日 web log。
-- 管理頁 `/admin/bots`：卡片（健康燈、上次執行 / 下次執行 / 心跳、今日事件數、最近事件）、Log（即時追蹤）、Events、reduction 的 Steps / Folders、obs_log 的 Nights；Run now、reduction 的 Stop。
+- 管理頁 `/admin/bots`：卡片（健康燈、上次執行 / 下次執行 / 心跳、今日事件數、最近事件）、Log（即時追蹤）、Events、reduction 的 Steps / Folders、obs_log 的 Nights、nas_backup 的 Moves（最近搬移與下一輪會搬的）；Run now、reduction 的 Stop。
 - 與舊版 lab_bot 的差異：EP 命名、日夜頻道與訊息文字照舊版 EP.py；已發送 ID 存在 `app/data/bots/`（circular 另有「比已發送最大號還舊就跳過」）；obs_log 只更新 observed 欄位，不碰 trigger 資料。
 
 ### 舊 `GCN_alert.py`（已由 `app/services/bots/gcn.py` 取代，以下為原始稽核紀錄）
