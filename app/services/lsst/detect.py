@@ -154,8 +154,11 @@ def _image_key(rows: list[dict], screen: dict) -> str:
 
 def _save(alert: dict, name: str, rows: list[dict], screen: dict, image: bytes | None, image_key: str,
           screened_lastmjd) -> None:
+    from function.database import CatalogueService
     from function.module.screening import _plain  # numpy scalars -> Python (psycopg2 / JSON)
     rows, screen = _plain(rows), _plain(screen)
+    for r in rows:      # DETECT's own upload names the catalogue this way: Lens_Lens_UNKNOWN -> Lens_UNKNOWN
+        r["catalog_name"] = CatalogueService.build_catalog_name(r["catalog_name"], None)
     f = screen.get("flags") or {}
     with get_db_connection() as conn:
         cur = conn.cursor()
@@ -483,7 +486,8 @@ def followup_tracker() -> list[dict]:
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(_SCREEN_SELECT.replace("SELECT s.oid,", """SELECT
-               (SELECT m.catalog FROM transient.lsst_detect_matches m WHERE m.oid = s.oid
+               (SELECT regexp_replace(m.catalog, '^(Lens_)+', 'Lens_')        -- rows saved before build_catalog_name
+                  FROM transient.lsst_detect_matches m WHERE m.oid = s.oid
                  ORDER BY m.is_host DESC, m.separation LIMIT 1) AS catalog_name,
                (SELECT m.separation FROM transient.lsst_detect_matches m WHERE m.oid = s.oid
                  ORDER BY m.is_host DESC, m.separation LIMIT 1) AS separation_arcsec,

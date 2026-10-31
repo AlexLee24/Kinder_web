@@ -39,6 +39,34 @@ def _safe_coord(v):
     except (TypeError, ValueError):
         return str(v) if v else ''
 
+def _match_coord(row, match_data) -> dict | None:
+    """A candidate's catalogue position: {'ra', 'dec'} in degrees and the sexagesimal 'hms' / 'dms'."""
+    def first(*vals):
+        for v in vals:
+            try:
+                if v is not None and v != '':
+                    return float(v)
+            except (TypeError, ValueError):
+                pass
+        return None
+    md = match_data or {}
+    ra = first(row.get('match_ra'), md.get('ra'), md.get('RA'), md.get('_RAJ2000'))
+    dec = first(row.get('match_dec'), md.get('dec'), md.get('DEC'), md.get('_DEJ2000'))
+    if ra is None or dec is None:
+        return None
+    h, rem = divmod(ra % 360.0 / 15.0 * 3600.0, 3600.0)
+    m, s = divmod(rem, 60.0)
+    sign = '-' if dec < 0 else '+'
+    d, rem = divmod(abs(dec) * 3600.0, 3600.0)
+    dm, ds = divmod(rem, 60.0)
+    if round(s, 2) >= 60.0:
+        s, m = 0.0, m + 1
+    if round(ds, 1) >= 60.0:
+        ds, dm = 0.0, dm + 1
+    return {'ra': ra, 'dec': dec,
+            'hms': f'{int(h):02d}:{int(m):02d}:{s:05.2f}', 'dms': f'{sign}{int(d):02d}:{int(dm):02d}:{ds:04.1f}'}
+
+
 def _detect_abs_mag_inputs(latest_point, tns_details, tns_info):
     latest_mag = None
     filter_name = 'V'
@@ -61,6 +89,22 @@ def _detect_abs_mag_inputs(latest_point, tns_details, tns_info):
     )
 
     return latest_mag, filter_name, ra, dec
+
+def _catalog_label(catalog_name, match_data) -> str:
+    """What the page calls a candidate's catalogue: DETECT's name with a doubled ``Lens_`` collapsed
+    (as CatalogueService.normalize_catalog_name does on upload), and the merged lens table
+    (cat.lens, stored as Lens_UNKNOWN / LENS_CATALOGUE) named by the row's ``reference``."""
+    name = str(catalog_name or '')
+    low = name.lower()
+    if not low.startswith('lens'):
+        return name
+    while low.startswith('lens_lens_'):
+        name, low = name[5:], low[5:]
+    ref = str((match_data or {}).get('reference') or '').strip()
+    if ref and low in ('lens', 'lens_unknown', 'lens_catalogue'):
+        return f'Lens · {ref}'
+    return name
+
 
 def _calculate_detect_abs_mag(target_name, apparent_mag, redshift, extinction, catalog_name=''):
     apparent_mag = _parse_float_or_none(apparent_mag)
@@ -186,7 +230,7 @@ def _detect_verdict(screen: dict | None, matches: list, host_match: dict | None)
                 'hint': 'Wait for the next DETECT run, or judge from the image and the candidate table.'}
     if host_match and hm.get('host_user') is True:
         return {'kind': 'user',
-                'headline': f"Host chosen by {hm.get('host_user_by') or 'a reviewer'}: {host_match['catalog_name']} · {host_line()}",
+                'headline': f"Host chosen by {hm.get('host_user_by') or 'a reviewer'}: {host_match['catalog_label']} · {host_line()}",
                 'hint': 'Decide Follow-up or Done. Pick another row to change the host, Reopen to hand it back to the pipeline.'}
     if not host_match and any((m.get('rule') or {}).get('host_user') is False for m in matches):
         by = next((m['rule'].get('host_user_by') for m in matches if m['rule'].get('host_user_by')), None)
@@ -196,7 +240,7 @@ def _detect_verdict(screen: dict | None, matches: list, host_match: dict | None)
 
     if hs == 'confirmed' and host_match:
         return {'kind': 'confirmed',
-                'headline': f"Host found · {host_match['catalog_name']} · {host_line()}",
+                'headline': f"Host found · {host_match['catalog_label']} · {host_line()}",
                 'hint': 'Check the image, then Follow-up or Done (either accepts the host). Set host on another row if the rule picked the wrong galaxy.'}
 
     if hs == 'review':
@@ -365,6 +409,8 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
             row['flag_id'] = row.get('id')
             row['is_host'] = bool(row.get('is_host'))
             row['rule'] = _match_rule(match_data, row['is_host'])
+            row['catalog_label'] = _catalog_label(row.get('catalog_name'), match_data)
+            row['coord'] = _match_coord(row, match_data)
             processed_matches.append(row)
 
         if not processed_matches:
@@ -511,6 +557,7 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
             matches_clean.append({
                 'id':                m.get('id'),
                 'catalog_name':      str(m.get('catalog_name') or ''),
+                'catalog_label':     str(m.get('catalog_label') or m.get('catalog_name') or ''),
                 'separation_arcsec': _safe_float(m.get('separation_arcsec')),
                 'z':                 _safe_float(m.get('z')),
                 'abs_mag':           _safe_float(m.get('abs_mag')),
