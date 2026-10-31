@@ -72,3 +72,20 @@ html.ui-bg-solid .st-preview::before { display: none; }
     .st-row-top { grid-template-columns: 1fr; gap: 8px; }
     .st-row-top .st-lbl { padding-top: 0; }
 }
+
+/* Push notifications (js/push.js): state on the left, actions on the right; data-state = loading|on|off|denied|ios|na */
+.st-push { margin-top: 16px; scroll-margin-top: 90px; }
+.st-push-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.st-push-ic { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--kw-text-faint); }
+.st-push[data-state="on"] .st-push-ic { background: var(--kw-color-success); box-shadow: 0 0 0 4px rgba(48, 209, 88, 0.15); }
+.st-push[data-state="denied"] .st-push-ic { background: var(--kw-color-danger); }
+.st-push[data-state="off"] .st-push-ic { background: var(--color-accent); }
+.st-push-state { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.st-push-state b { font-size: 0.92rem; font-weight: 600; color: var(--kw-text-white); }
+.st-push-state small { font-size: 0.8rem; line-height: 1.55; color: var(--kw-text-secondary); }
+.st-push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.st-push-actions:empty { display: none; }
+.st-push-help { margin-top: 14px; font-size: 0.8rem; color: var(--kw-text-secondary); }
+.st-push-help summary { cursor: pointer; color: var(--kw-text-muted); }
+.st-push-help ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; }
+.st-push-help li.is-mine { color: var(--kw-text-primary); }

@@ -9,7 +9,8 @@
 //   · Pages (HTML): always from the network — they depend on who is logged in and on live data.
 //     Only when the network fails is the pre-cached /offline page shown.
 //   · /api/..., POSTs, uploads, anything without ?v=: untouched, the browser behaves as without a worker.
-const VERSION = 'kinder-2026-10-03a';
+// Web Push (2026-10-31, after EAU_Web): shows what app/services/notifications/webpush.py sends and opens its url.
+const VERSION = 'kinder-2026-10-31a';
 const SHELL = VERSION + '-shell';
 const STATIC = 'kinder-static-v1';     // not tied to VERSION: a new worker doesn't re-download every file
 const IMAGES = 'kinder-img-v1';
@@ -113,4 +114,54 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(cacheFirst(event, url).catch(() => caches.match(req).then((r) => r || Response.error())));
     }
     // everything else (/api, /object data, un-versioned files): not intercepted
+});
+
+// ── Web Push: payload {title, body, url, tag} from app/services/notifications/webpush.py ──
+self.addEventListener('push', (event) => {
+    let d = {};
+    try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'Kinder', body: event.data ? event.data.text() : '' }; }
+    event.waitUntil(self.registration.showNotification(d.title || 'Kinder', {
+        body: d.body || '',
+        icon: '/static/pwa/icon-192.png',
+        badge: '/static/pwa/icon-96.png',
+        tag: d.tag || undefined,
+        data: { url: d.url || '/' },
+        lang: 'en',
+    }));
+});
+
+// Tap: focus an open Kinder window and go to the url, or open a new one
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin);
+    if (target.origin !== self.location.origin) {           // an outside link: open it as it is
+        event.waitUntil(self.clients.openWindow(target.href));
+        return;
+    }
+    event.waitUntil((async () => {
+        for (const c of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+            if (new URL(c.url).origin === self.location.origin && 'focus' in c) {
+                await c.focus();
+                if ('navigate' in c) { try { await c.navigate(target.href); } catch (e) { /* uncontrolled tab */ } }
+                return;
+            }
+        }
+        await self.clients.openWindow(target.href);
+    })());
+});
+
+// The browser replaced the subscription (expired / rotated): register the new one for the same account
+self.addEventListener('pushsubscriptionchange', (event) => {
+    event.waitUntil((async () => {
+        try {
+            const k = await (await fetch('/api/push/key', { credentials: 'include' })).json();
+            if (!k.key) return;
+            const pad = '='.repeat((4 - k.key.length % 4) % 4);
+            const raw = atob((k.key + pad).replace(/-/g, '+').replace(/_/g, '/'));
+            const sub = await self.registration.pushManager.subscribe({
+                userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (ch) => ch.charCodeAt(0)) });
+            await fetch('/api/push/subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription: sub.toJSON() }) });
+        } catch (e) { /* signed out or offline: the Settings panel shows "off" next time */ }
+    })());
 });

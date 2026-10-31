@@ -1,5 +1,6 @@
 {% extends '_base.html' %}
-{#- Settings (/settings, after EAU's): background, background mask, accent colour, glass colour and opacity.
+{#- Settings (/settings, after EAU's): background, background mask, accent colour, glass colour and opacity, and
+    (signed in) push notifications for this device.
     Changes apply at once (js/ui_prefs.js KinderUi.apply) and are saved 0.4 s later — signed in: to the account
     (settings.py), everyone: also in this browser. -#}
 {% block title %}Settings - Kinder{% endblock %}
@@ -73,10 +74,31 @@
         </section>
     </div>
     <div class="st-foot"><button type="button" class="st-reset" id="st-reset">Reset to defaults</button></div>
+
+    {% if session.user %}
+    {#- Push notifications for this device: js/push.js fills the state, the buttons and the help -#}
+    <section class="kw-panel st-push" id="push" aria-labelledby="st-push-h" data-state="loading">
+        <div class="kw-panel-head"><h2 id="st-push-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>Push notifications</h2></div>
+        <div class="st-push-row">
+            <span class="st-push-ic" aria-hidden="true"></span>
+            <div class="st-push-state" aria-live="polite"><b>Checking this device…</b></div>
+            <div class="st-push-actions"></div>
+        </div>
+        <details class="st-push-help">
+            <summary>Not arriving?</summary>
+            <ul>
+                <li data-platform="ios"><b>iPhone / iPad:</b> push only works in the Home Screen app (iOS 16.4 or later). In Safari tap Share → Add to Home Screen, open Kinder from that icon and turn push on there. Check Settings → Notifications → Kinder.</li>
+                <li data-platform="android"><b>Android:</b> allow notifications for Chrome (or the installed Kinder app) in the phone's settings, and turn battery optimisation off for it if pushes come late.</li>
+                <li data-platform="desktop"><b>Computer:</b> the browser must be allowed to show notifications in the system settings (macOS: System Settings → Notifications → your browser; Windows: Settings → System → Notifications), and Focus / Do Not Disturb must be off. Chrome and Edge only receive while they are running.</li>
+            </ul>
+        </details>
+    </section>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>window.ST_CFG = { loggedIn: {{ 'true' if session.user else 'false' }} };</script>
 <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% if session.user %}<script src="{{ url_for('static', filename='js/push.js') }}"></script>{% endif %}
 {% endblock %}

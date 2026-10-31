@@ -1,0 +1,117 @@
+{% extends '_base.html' %}
+{#- Admin › Push (admin/push.py), after EAU_Web's push broadcast + push devices pages: KPIs, compose (to me / GREAT Lab /
+    admins / a group / everyone with push / picked people) with a phone preview, everyone's push state (on / off) with
+    their devices (test, remove), and the send history. admin_push.js drives it from #pushPeople. -#}
+{% block title %}Push - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_push.css') }}">{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page ap-page" id="apPage" data-me="{{ me }}">
+    <header class="kw-page-head">
+        <div><h1>Push</h1><p>Who has push notifications on, on which devices, and messages to their phones and computers. Members turn it on in Settings.</p></div>
+    </header>
+
+    {% if not push_on %}
+    <div class="ap-warn">Push is not set up on this server: nothing can be sent. Run <code>.venv/bin/python scripts/gen_vapid_keys.py</code>, add the three lines to <code>kinder.env</code> and restart. Every server that sends must use the same pair.</div>
+    {% endif %}
+
+    <div class="kw-kpis">
+        <div class="kw-kpi"><span class="kw-kpi-label">GREAT Lab with push</span><b>{{ summary.members_on }}<small class="ap-of"> / {{ summary.members }}</small></b><small>{{ ((summary.members_on * 100 / summary.members)|round|int) if summary.members else 0 }}% of members</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Everyone with push</span><b>{{ summary.people_on }}<small class="ap-of"> / {{ summary.people }}</small></b><small>accounts</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Devices</span><b>{{ summary.devices }}</b><small>{% for p, n in summary.platforms %}{{ p }} {{ n }}{% if not loop.last %} · {% endif %}{% else %}none yet{% endfor %}</small></div>
+        <div class="kw-kpi{% if summary.failing %} is-alert{% endif %}"><span class="kw-kpi-label">Delivery problems</span><b>{{ summary.failing }}</b><small>failing · {{ summary.never_ok }} never delivered yet</small></div>
+    </div>
+
+    <div class="ap-top">
+        <section class="kw-panel ap-compose" aria-labelledby="apComposeT">
+            <div class="kw-panel-head"><h2 id="apComposeT">Send a notification</h2></div>
+            <form id="apForm" novalidate>
+                <div class="kw-field"><label for="apTitle">Title <small class="ap-n" id="apTitleN">0/120</small></label><input id="apTitle" name="title" maxlength="120" required placeholder="e.g. EP alert tonight: check Slack"></div>
+                <div class="kw-field"><label for="apBody">Message (optional) <small class="ap-n" id="apBodyN">0/500</small></label><textarea id="apBody" name="body" maxlength="500" rows="3" placeholder="Phones show about two lines"></textarea></div>
+                <div class="kw-field"><label for="apUrl">Opens when tapped (optional)</label><input id="apUrl" name="url" maxlength="500" placeholder="/daily_trigger, /object/2026abc or https://… (empty = Kinder home)"></div>
+                <fieldset class="ap-targets">
+                    <legend class="kw-label">Send to</legend>
+                    {% for key, label in targets.items() %}
+                    <label class="ap-target{% if key == 'all' %} is-wide{% endif %}"><input type="radio" name="target" value="{{ key }}"{% if key == 'me' %} checked{% endif %}><span>{{ label }}</span></label>
+                    {% endfor %}
+                </fieldset>
+                <div class="kw-field" id="apGroupWrap" hidden>
+                    <label for="apGroup">Group</label>
+                    <select id="apGroup" class="kw-select">{% for g in groups %}<option value="{{ g }}">{{ g }}</option>{% endfor %}</select>
+                </div>
+                <div class="ap-picked" id="apPickedWrap" hidden>
+                    <span class="kw-label">Picked</span>
+                    <div class="ap-chips" id="apChips"></div>
+                    <small class="kw-muted">Tick people in the list below, or use Message on their row.</small>
+                </div>
+                <div class="ap-foot">
+                    <span class="ap-est" id="apEst">—</span>
+                    <button type="submit" class="kw-btn kw-btn-primary" id="apSend"{% if not push_on %} disabled{% endif %}>Send</button>
+                </div>
+            </form>
+        </section>
+
+        <aside class="ap-phone" aria-label="Preview">
+            <div class="ap-phone-label">On a phone</div>
+            <div class="ap-phone-screen">
+                <div class="ap-phone-time" id="apClock">21:30</div>
+                <div class="ap-noti">
+                    <img src="{{ url_for('static', filename='pwa/icon-96.png') }}" alt="">
+                    <div><div class="ap-noti-top"><b>Kinder</b><span>now</span></div><b class="ap-noti-title" id="apPTitle">Title</b><span class="ap-noti-body" id="apPBody"></span></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="kw-panel ap-people" aria-labelledby="apPeopleT">
+        <div class="kw-panel-head">
+            <h2 id="apPeopleT">People</h2>
+            <span class="kw-panel-meta" id="apCount"></span>
+        </div>
+        <div class="ap-toolbar">
+            <div class="kw-search ap-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="search" id="apQ" placeholder="Search name, email or group…" aria-label="Search people"></div>
+            <div class="kw-seg" role="group" aria-label="Push state">
+                <button type="button" class="kw-seg-item is-on" data-state="all">All</button>
+                <button type="button" class="kw-seg-item" data-state="on">Push on</button>
+                <button type="button" class="kw-seg-item" data-state="off">Push off</button>
+            </div>
+            <label class="ap-members"><input type="checkbox" id="apMembersOnly" checked> GREAT Lab only</label>
+        </div>
+        <div class="ap-list" id="apList" role="list"></div>
+    </section>
+
+    <section class="kw-panel ap-history" aria-labelledby="apHistT">
+        <div class="kw-panel-head"><h2 id="apHistT">Sent</h2><span class="kw-panel-meta">last {{ history|length }}</span></div>
+        {% if history %}
+        <div class="kw-table-wrap">
+            <table class="kw-table ap-table">
+                <thead><tr><th>When</th><th>Message</th><th>To</th><th class="num">Reached</th><th>By</th><th></th></tr></thead>
+                <tbody>
+                {% for b in history %}
+                <tr>
+                    <td class="nowrap"><time datetime="{{ b.created_at.isoformat() }}" data-local>{{ b.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</time></td>
+                    <td class="ap-msg"><b>{{ b.title }}</b>{% if b.body %}<small>{{ b.body|truncate(90) }}</small>{% endif %}{% if b.url %}<small class="ap-url">{{ b.url|truncate(50) }}</small>{% endif %}</td>
+                    <td>{{ targets.get(b.target, b.target) }}{% if b.target_desc %}<small class="ap-desc">{{ b.target_desc|truncate(70) }}</small>{% endif %}</td>
+                    <td class="num nowrap">{% if b.delivered is none %}sending… / {{ b.devices }}{% else %}{{ b.delivered }} / {{ b.devices }} devices{% if b.failed %} <span class="ap-bad">· {{ b.failed }} failed</span>{% endif %}{% endif %}<small>{{ b.recipients }} people</small></td>
+                    <td class="kw-muted">{{ b.author_email or '—' }}</td>
+                    <td><button type="button" class="kw-btn kw-btn-sm" data-reuse='{{ {"title": b.title, "body": b.body, "url": b.url}|tojson }}'>Reuse</button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="kw-empty">Nothing sent yet. Send one to “Only me” first to check that your own device gets it.</p>
+        {% endif %}
+    </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="apPeople">{{ people|tojson }}</script>
+<script src="{{ url_for('static', filename='js/admin_push.js') }}"></script>
+{% endblock %}
