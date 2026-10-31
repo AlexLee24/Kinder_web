@@ -396,7 +396,7 @@
                                     {% if r.ambiguous and m.is_host %}<span class="rule-note" title="Runner-up is within 1.5× in d_DLR">ambiguous</span>{% endif %}
                                     {% if r.z_conflict %}<span class="rule-note" title="Another spectrum on this galaxy model has a different z">z-conflict</span>{% endif %}
                                 </td>
-                                <td><span class="badge">{{ m.catalog_name }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}</td>
+                                <td><span class="badge">{{ m.catalog_label or m.catalog_name }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}</td>
                                 <td class="td-spec">{{ r.spectype or '—' }}{% if r.survey %}<span class="fact-sub">{{ r.survey }}/{{ r.program }}{% if r.zwarn %} · zwarn {{ r.zwarn }}{% endif %}</span>{% endif %}
                                     {% if md.get('grade') or md.get('Grade') %}<span class="fact-sub">grade {{ md.get('grade') or md.get('Grade') }}</span>{% endif %}
                                     {% if md.get('lens_probability') or md.get('LENS_PROBABILITY') %}<span class="fact-sub">P(lens) {{ "%.2f"|format((md.get('lens_probability') or md.get('LENS_PROBABILITY'))|float) }}</span>{% endif %}
