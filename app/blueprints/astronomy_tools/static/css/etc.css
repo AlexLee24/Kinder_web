@@ -8,34 +8,35 @@
    host's _theme.css already defines --kw-accent, --kw-border, --kw-space-* and
    friends, so the calculator inherits the site's theme; standalone (or on any
    host without those variables) the fallbacks kick in and it renders
-   identically on its own. The fallbacks are the same numbers as
-   castorGUI/constant.py's Design tokens — keep the two in step.
+   identically on its own. The fallbacks are Kinder's own values, read off
+   kinder.astro.ncu.edu.tw on 2026-10-30, so standalone looks like mounted.
+   When Kinder's theme moves, update them here.
 ============================================================================ */
 
 .castor-etc {
     /* ── Brand ─────────────────────────────────────────────────────────── */
-    --etc-accent:        var(--kw-accent, #C5A059);
-    --etc-accent-hover:  var(--kw-accent-hover, #d4b06a);
+    --etc-accent:        var(--kw-accent, #F39F5A);
+    --etc-accent-hover:  var(--kw-accent-hover, #F5B078);
     --etc-moon:          #6FA8DC;   /* Design.MOON — second series in the chart */
     --etc-sun:           #8F8FA8;   /* third series — context, so dimmer than the other two */
 
     /* ── Surfaces ──────────────────────────────────────────────────────── */
-    --etc-panel-bg:      var(--kw-glass-bg, rgba(20, 20, 30, 0.60));
+    --etc-panel-bg:      var(--kw-glass-bg, rgba(14, 14, 18, 0.70));
     --etc-surface-1:     #14141E;
     /* One step brighter than the cards: a dialog floating above them has to read as
        nearer the viewer, and matching their surface makes it look flat instead. */
     --etc-surface-2:     #1c1c28;
-    --etc-border-color:  var(--kw-border, rgba(255, 255, 255, 0.10));
+    --etc-border-color:  var(--kw-border, rgba(255, 255, 255, 0.14));
     --etc-border-width:  2px;
 
     /* ── Text ──────────────────────────────────────────────────────────── */
-    --etc-text-main:     var(--kw-text-primary, #e5e7eb);
-    --etc-text-muted:    var(--kw-text-muted, #9ca3af);
+    --etc-text-main:     var(--kw-text-primary, #F5F5F7);
+    --etc-text-muted:    var(--kw-text-muted, rgba(245, 245, 247, 0.5));
 
     /* ── Status ────────────────────────────────────────────────────────── */
-    --etc-error:         var(--kw-color-danger, #f87171);
+    --etc-error:         var(--kw-color-danger, #FF453A);
     --etc-error-bg:      #2a1414;
-    --etc-warning:       var(--kw-color-warning, #fbbf24);
+    --etc-warning:       var(--kw-color-warning, #FFD60A);
     --etc-warning-bg:    #2a2114;
 
     /* ── Spacing (4px baseline scale) ──────────────────────────────────── */
@@ -214,11 +215,91 @@
     color: var(--etc-text-muted);
     font-size: 12px;
 }
+/* A label that shares its line with a small control acting on the same field.
+   Where both do not fit, the control drops below rather than squeezing the label. */
+.castor-etc .etc-field-label-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px var(--etc-gap-field);
+    margin-bottom: 4px;
+}
+.castor-etc .etc-field-label-row .etc-field-label { margin-bottom: 0; white-space: nowrap; }
+.castor-etc .etc-check,
+.castor-etc .etc-check-note {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    color: var(--etc-text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+.castor-etc .etc-check { cursor: pointer; user-select: none; }
+/* Drawn rather than native: the browser's own box is solid white on this dark
+   surface and outshouts the label beside it. Same frame and accent as the inputs. */
+.castor-etc .etc-check input {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1.5px solid var(--etc-border-color);
+    border-radius: 4px;
+    background: transparent center / 10px 10px no-repeat;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.castor-etc .etc-check:hover input { border-color: var(--etc-text-muted); }
+.castor-etc .etc-check input:checked {
+    border-color: var(--etc-accent);
+    background-color: var(--etc-accent);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5.2 4.2 7.4 8 3' fill='none' stroke='%2314141E' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.castor-etc .etc-check input:focus-visible { outline: 2px solid var(--etc-accent-hover); outline-offset: 2px; }
+.castor-etc .etc-check:has(input:checked) { color: var(--etc-text-main); }
+.castor-etc .etc-check[hidden],
+.castor-etc .etc-check-note[hidden] { display: none; }
 .castor-etc .etc-field-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--etc-gap-field);
 }
+
+/* Segmented control — a radio group drawn as one bar of equal halves, so both
+   choices stay in view and either is a single click. Same frame as an input. */
+.castor-etc .etc-segmented {
+    display: flex;
+    border: var(--etc-border-width) solid var(--etc-border-color);
+    border-radius: var(--etc-radius-base);
+    padding: 2px;
+    gap: 2px;
+}
+.castor-etc .etc-segment { flex: 1 1 0; position: relative; cursor: pointer; }
+.castor-etc .etc-segment input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.castor-etc .etc-segment span {
+    display: block;
+    padding: 7px 8px;
+    border-radius: 4px;
+    color: var(--etc-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+.castor-etc .etc-segment:hover span { color: var(--etc-text-main); }
+.castor-etc .etc-segment input:checked + span {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--etc-accent);
+}
+.castor-etc .etc-segment input:focus-visible + span { outline: 2px solid var(--etc-accent-hover); outline-offset: -2px; }
 
 .castor-etc .etc-input-wrap {
     display: flex;
@@ -384,6 +465,45 @@
 .castor-etc .etc-switch-label { color: var(--etc-text-muted); font-size: 12px; }
 
 /* ============================================================================
+   Calculate button — pinned under the form frame, outside its scroll. Kinder's
+   plain tool button (.kw-btn), rule for rule, at full width.
+============================================================================ */
+.castor-etc .etc-form-footer { margin-top: 16px; }
+.castor-etc .etc-calc {
+    appearance: none;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--kw-border-med, rgba(255, 255, 255, 0.2));
+    border-radius: var(--etc-radius-base);
+    background: var(--kw-surface, rgba(255, 255, 255, 0.06));
+    color: var(--etc-text-main);
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-color 0.15s cubic-bezier(0.2, 0.8, 0.2, 1),
+                color 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.castor-etc .etc-calc:hover {
+    background: var(--kw-surface-hover, rgba(255, 255, 255, 0.10));
+    border-color: rgba(255, 255, 255, 0.28);
+    color: var(--kw-text-white, #FFFFFF);
+}
+/* The results on show no longer match the form (or there are none yet): the
+   button takes the accent, since pressing it is the next thing to do. */
+.castor-etc .etc-calc.is-due {
+    border-color: var(--etc-accent);
+    color: var(--etc-accent);
+}
+.castor-etc .etc-calc.is-due:hover {
+    border-color: var(--etc-accent-hover);
+    color: var(--etc-accent-hover);
+}
+.castor-etc .etc-calc:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--etc-accent) 45%, transparent); }
+
+/* ============================================================================
    Results panel
 ============================================================================ */
 .castor-etc .etc-results-scroll {
@@ -394,6 +514,54 @@
     flex-direction: column;
     gap: var(--etc-gap-group);
 }
+
+.castor-etc .etc-panel-results { position: relative; }
+
+/* Before the first calculation and while one is running, the beaver stands in for
+   the results. visibility rather than display on the results: the Plotly chart
+   inside must keep its width, or a sweep landing mid-wait draws at zero size. */
+.castor-etc .etc-beaver {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    pointer-events: none;
+}
+.castor-etc .etc-beaver::before {
+    content: "";
+    width: 140px;
+    aspect-ratio: 618 / 900;
+    /* Resolved against this stylesheet, so it holds in any host that serves
+       css/ and img/ side by side — which both hosts do. */
+    background: url("../img/castor-logo-white.png") center / contain no-repeat;
+}
+.castor-etc .etc-beaver-caption {
+    /* The section titles' size and weight, in the muted colour. */
+    color: var(--etc-text-muted);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.castor-etc .is-idle > .etc-beaver,
+.castor-etc .is-busy > .etc-beaver { display: flex; }
+.castor-etc .is-idle > .etc-results-scroll,
+.castor-etc .is-busy > .etc-results-scroll { visibility: hidden; }
+.castor-etc .is-busy > .etc-beaver::before { animation: etc-beaver-bob 0.9s ease-in-out infinite; }
+@keyframes etc-beaver-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .castor-etc .is-busy > .etc-beaver::before { animation: none; }
+}
+
+/* The form changed since these numbers were computed: still the answer to the last
+   question, no longer to this one. */
+.castor-etc .etc-results-scroll { transition: opacity 0.15s ease; }
+.castor-etc .is-stale > .etc-results-scroll { opacity: 0.35; }
 
 .castor-etc .etc-hero { text-align: center; }
 .castor-etc .etc-hero-label {

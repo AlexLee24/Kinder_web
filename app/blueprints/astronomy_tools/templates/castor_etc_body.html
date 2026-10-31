@@ -33,16 +33,6 @@
                     <button type="button" class="etc-tab" data-tab="options" role="tab" aria-selected="false">Options</button>
                 </div>
                 <div class="etc-tabbar-actions">
-                    <!-- Kinder-specific deviation from upstream CASTOR: the shipped etc.js
-                         recalculates live on every input/change event and runs once on load.
-                         This button + the matching change in etc.js instead require an explicit
-                         click before any request is sent, and the results panel starts on its
-                         markup default (—) rather than a computed result. See etc.js's
-                         "EXECUTE — Kinder-specific" comment block for the other half of this. -->
-                    <button type="button" class="etc-action etc-action-primary" id="btn-execute" title="Run the calculation">
-                        <span class="etc-execute-spinner" aria-hidden="true"></span>
-                        <span id="btn-execute-label">EXECUTE</span>
-                    </button>
                     <button type="button" class="etc-action" id="btn-load" title="Load a saved request (JSON)">LOAD</button>
                     <button type="button" class="etc-action" id="btn-save" title="Save the current request (JSON)">SAVE</button>
                     <input type="file" id="load-file-input" accept="application/json,.json" hidden>
@@ -159,6 +149,13 @@
                                 <span class="etc-unit">e-</span>
                                 </span>
                                 </label>
+                                <label class="etc-field">
+                                <span class="etc-field-label">Background Flatness</span>
+                                <span class="etc-input-wrap">
+                                <input type="number" name="instrument.camera.background_flatness_fraction" value="0" step="any" min="0" max="100" data-percent required>
+                                <span class="etc-unit">%</span>
+                                </span>
+                                </label>
                             </div>
                         </details>
 
@@ -213,8 +210,7 @@
                     <div class="etc-tabpanel" data-panel="target" role="tabpanel" hidden>
                         <h3 class="etc-section-title">Coordinates (J2000, decimal degrees)</h3>
                         <!-- One coordinate, not two settings: a pair that is always read
-                             and edited together sits on one row, like the FWHM pairs on the
-                             Environment tab. -->
+                             and edited together sits on one row. -->
                         <!-- The default target is SN 2025wny ("SN Winny"), image A: the
                              strongly lensed superluminous supernova at z=2.01 that Lulin's
                              own LOT resolved into its separate lensed images on 2025-09-29
@@ -280,7 +276,7 @@
                                 <span class="etc-field-label" id="label-target-mag">Apparent Magnitude</span>
                                 <span class="etc-input-wrap">
                                     <input type="number" name="target.brightness.target_mag" value="19.6" step="any">
-                                    <span class="etc-unit">mag</span>
+                                    <span class="etc-unit" id="unit-target-mag">mag</span>
                                 </span>
                             </label>
                         </div>
@@ -318,15 +314,14 @@
                             </label>
                         </div>
 
-                        <hr class="etc-divider">
-
-                        <h3 class="etc-section-title">Spectral Energy Distribution (SED)</h3>
-                        <label class="etc-field">
-                            <span class="etc-field-label">SED Model</span>
-                            <select name="target.sed.type" id="select-sed-type">
-                                <option value="flat">Flat Spectrum</option>
-                            </select>
-                        </label>
+                        <!-- The whole SED section is hidden, not just Blackbody: a selector
+                             with one option, read by nothing, is a control that controls
+                             nothing. The schema still requires target.sed, so the value rides
+                             along as a hidden input and payloads and saved files are unchanged.
+                             Bringing the section back means restoring the divider, the
+                             "Spectral Energy Distribution (SED)" heading and a select of the
+                             same name (id select-sed-type) in place of this input. -->
+                        <input type="hidden" name="target.sed.type" value="flat">
                         <!-- Blackbody is hidden rather than offered, because choosing it could
                              only ever fail. schema.TempSED declares nothing but its own tag, so
                              the temperature field below was rejected as an extra input and the
@@ -335,7 +330,7 @@
                              The engine does not read target.sed at all yet — calculator's
                              _unify_flux branches on target.brightness and never looks at the
                              SED — so flat is not one model among two, it is the only behaviour
-                             there is, and the selector above says so honestly.
+                             there is.
 
                              Restoring this means three things, not one: give TempSED a
                              temperature_k field, make the engine actually integrate a blackbody
@@ -355,62 +350,17 @@
 
                     <!-- ══ Environment ══ -->
                     <div class="etc-tabpanel" data-panel="environment" role="tabpanel" hidden>
-                        <h3 class="etc-section-title">Spatial Spreading (FWHM, arcsec)</h3>
-                        <div class="etc-field-row">
-                            <label class="etc-field">
-                                <span class="etc-field-label">Seeing</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.seeing_fwhm" value="1.5" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                            <label class="etc-field">
-                                <span class="etc-field-label">Diffraction</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.diffraction_fwhm" value="0.2" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                        </div>
-                        <div class="etc-field-row">
-                            <label class="etc-field">
-                                <span class="etc-field-label">Optical</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.optical_fwhm" value="0.1" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                            <label class="etc-field">
-                                <span class="etc-field-label">Tracking</span>
-                                <span class="etc-input-wrap">
-                                    <input type="number" name="environment.tracking_fwhm" value="0.1" step="any" min="0.001" required>
-                                </span>
-                            </label>
-                        </div>
-
-                        <hr class="etc-divider">
-
-                        <h3 class="etc-section-title">Atmosphere &amp; Background</h3>
-                        <!-- Renamed from "Auto sky background", which claimed too much: it
-                             reads as though the sky brightness gets derived for you and the
-                             field below stops mattering. Nothing is derived - mu_dark is
-                             required either way and is always the baseline. All this adds is
-                             moonlight. -->
-                        <label class="etc-switch-row" title="Adds scattered moonlight (Krisciunas &amp; Schaefer 1991) on top of the mu_dark baseline below, from the Moon's phase, its separation from the target, and both altitudes at the observing time you set. mu_dark is never derived: with this off the sky is exactly mu_dark, and with it on and the Moon below the horizon it adds nothing. Single-instant results only - a time sweep always includes moonlight, whatever this is set to.">
-                            <input type="checkbox" class="etc-switch-input" name="environment.auto_calc_background">
-                            <span class="etc-switch" aria-hidden="true"></span>
-                            <span class="etc-switch-label">Add moonlight to sky background</span>
-                        </label>
+                        <h3 class="etc-section-title">Atmosphere &amp; Sky</h3>
+                        <!-- A measured stellar width already contains atmospheric and
+                             instrumental spreading. Send that total directly; a site's
+                             median seeing alone cannot supply it. -->
                         <label class="etc-field">
-                            <span class="etc-field-label">Dark Sky Brightness (mu_dark, baseline)</span>
+                            <span class="etc-field-label">Image FWHM</span>
                             <span class="etc-input-wrap">
-                                <input type="number" name="environment.mu_dark" value="21.0" step="any" required>
-                                <span class="etc-unit">mag/arcsec&sup2;</span>
+                                <input type="number" name="environment.total_fwhm" value="1.5" step="any" min="0.001" required>
+                                <span class="etc-unit">arcsec</span>
                             </span>
                         </label>
-                        <!-- Not a field anyone fills in - it is a preset-only pass-through. A
-                             handful of Lulin's filters carry it (see presets.json's comment on
-                             the split it depends on) and applyFragment fills it same as any
-                             other; PayloadBuilder skips it whenever it's left empty, which is
-                             every profile that has never had this measured. -->
-                        <input type="number" name="environment.zodiacal_share" step="any" min="0" max="0.999" hidden>
                         <label class="etc-field">
                             <span class="etc-field-label">Extinction Coefficient</span>
                             <span class="etc-input-wrap">
@@ -418,6 +368,33 @@
                                 <span class="etc-unit">mag/airmass</span>
                             </span>
                         </label>
+                        <!-- The moonlight checkbox sits on mu_dark's label row because it
+                             changes what that number means: off, it is the whole sky; on,
+                             moonlight is layered over it. Nothing is derived either way -
+                             mu_dark is required and always the baseline. -->
+                        <div class="etc-field">
+                            <div class="etc-field-label-row">
+                                <label class="etc-field-label" for="input-mu-dark">Dark Sky Brightness (mu_dark)</label>
+                                <label class="etc-check" data-when="single" title="Adds scattered moonlight (Krisciunas &amp; Schaefer 1991) on top of mu_dark, from the Moon's phase, its separation from the target, and both altitudes at the observing time you set. Off, the sky is exactly mu_dark; on with the Moon below the horizon, it adds nothing.">
+                                    <input type="checkbox" name="environment.auto_calc_background">
+                                    <span>Add moonlight</span>
+                                </label>
+                                <!-- A time sweep always layers moonlight, so the checkbox would
+                                     be a control that does nothing. Its value is kept for when
+                                     the sweep is switched off. -->
+                                <span class="etc-check-note" data-when="batch" hidden title="A time sweep always includes moonlight; the checkbox returns when the sweep is off.">Moonlight included</span>
+                            </div>
+                            <span class="etc-input-wrap">
+                                <input type="number" id="input-mu-dark" name="environment.mu_dark" value="21.0" step="any" required>
+                                <span class="etc-unit">mag/arcsec&sup2;</span>
+                            </span>
+                        </div>
+                        <!-- Not a field anyone fills in - it is a preset-only pass-through. A
+                             handful of Lulin's filters carry it (see presets.json's comment on
+                             the split it depends on) and applyFragment fills it same as any
+                             other; PayloadBuilder skips it whenever it's left empty, which is
+                             every profile that has never had this measured. -->
+                        <input type="number" name="environment.zodiacal_share" step="any" min="0" max="0.999" hidden>
 
                         <hr class="etc-divider">
 
@@ -459,13 +436,21 @@
                                 <span class="etc-unit">s</span>
                             </span>
                         </label>
-                        <label class="etc-field">
-                            <span class="etc-field-label">Calculation Goal</span>
-                            <select name="options.type" id="select-options-type">
-                                <option value="solve_snr">Solve for SNR (given exposures)</option>
-                                <option value="solve_time">Solve for Exposures (given target SNR)</option>
-                            </select>
-                        </label>
+                        <!-- Two choices, both always visible: one click switches, where a
+                             dropdown took two and hid the alternative. -->
+                        <div class="etc-field">
+                            <span class="etc-field-label" id="label-options-type">Calculation Goal</span>
+                            <div class="etc-segmented" role="radiogroup" aria-labelledby="label-options-type">
+                                <label class="etc-segment">
+                                    <input type="radio" name="options.type" value="solve_snr" checked>
+                                    <span>Solve for SNR</span>
+                                </label>
+                                <label class="etc-segment">
+                                    <input type="radio" name="options.type" value="solve_time">
+                                    <span>Solve for Exposures</span>
+                                </label>
+                            </div>
+                        </div>
                         <div class="dynamic-group" data-options="solve_snr">
                             <label class="etc-field">
                                 <span class="etc-field-label">Number of Exposures</span>
@@ -555,7 +540,7 @@
                                              frames, an aperture that tight tracks the seeing so closely that
                                              extraction systematics dominate well before the photon limit. -->
                                         <input type="number" name="options.aperture_factor" value="0.85" step="any" min="0.001" required
-                                               title="Photometric aperture radius as a multiple of the total FWHM. 0.85 keeps within 5% of the best achievable SNR whether the target or the sky dominates; 1.5 collects nearly all the star but pays three times the sky for it.">
+                                               title="Photometric aperture radius as a multiple of the total FWHM. 0.85 is photon-optimal but needs a stable PSF or aperture correction; for simple aperture photometry, enter the larger aperture your reduction will actually use.">
                                     </span>
                                 </label>
                                 <!-- The sky taken out of the aperture is measured in this annulus, and
@@ -585,19 +570,36 @@
 
                 </form>
             </div>
+
+            <!-- Outside the scrolling frame so it is on screen whichever tab is open.
+                 type="submit" with form= ties it to the form, which also makes Enter in
+                 any field run the calculation. -->
+            <div class="etc-form-footer">
+                <button type="submit" form="castor-form" class="etc-calc is-due" id="btn-calculate">Calculate</button>
+            </div>
         </section>
 
         <!-- ══════════════════════════════════════════════════════════════
-             RIGHT: live results. No buttons — a pure render target, same
+             RIGHT: results. No buttons — a pure render target, same
              contract as rightPanel.py.
+
+             Three states, as classes on this section (see etc.js):
+               is-idle   nothing calculated yet — the beaver stands in
+               is-busy   a calculation is in flight — the beaver again
+               is-stale  the form changed since the numbers below were computed
         ══════════════════════════════════════════════════════════════ -->
-        <section class="etc-panel etc-panel-results">
+        <section class="etc-panel etc-panel-results is-idle" id="results-panel">
+            <!-- role="status" so a screen reader hears the wait without stealing focus. -->
+            <div class="etc-beaver" role="status" aria-live="polite">
+                <span class="etc-beaver-caption" id="beaver-status">Waiting for input</span>
+            </div>
+
             <div class="etc-results-scroll">
 
                 <div class="etc-hero">
                     <div class="etc-hero-label" id="hero-label">Primary Result</div>
                     <div class="etc-hero-value" id="hero-value">&mdash;</div>
-                    <div class="etc-hero-desc" id="hero-desc">Waiting for input&hellip;</div>
+                    <div class="etc-hero-desc" id="hero-desc"></div>
                 </div>
 
                 <div class="etc-alert etc-alert-error" id="error-box" hidden>
@@ -675,7 +677,7 @@
                         <div class="etc-metric-value"><span id="res-sat-time">&mdash;</span><span class="etc-unit">s</span></div>
                     </div>
                     <div class="etc-metric">
-                        <div class="etc-metric-label">Optimal Exposure Time</div>
+                        <div class="etc-metric-label" title="Single-frame duration where sky and dark-current shot-noise variance equals readout-noise variance. This is a crossover, not a recommended exposure length.">Background/Read Noise Crossover</div>
                         <div class="etc-metric-value"><span id="res-optimal-time">&mdash;</span><span class="etc-unit">s</span></div>
                     </div>
                 </div>
