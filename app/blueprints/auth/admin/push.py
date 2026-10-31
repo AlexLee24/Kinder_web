@@ -44,11 +44,14 @@ def _people():
             'created_at': s['created_at'].isoformat(timespec='seconds') if s['created_at'] else '',
             'last_ok_at': s['last_ok_at'].isoformat(timespec='seconds') if s['last_ok_at'] else '',
             'fail_count': s['fail_count'], 'last_error': s['last_error'] or '', 'user_agent': s['user_agent'] or '',
-            'categories': list(s['categories'] or []),
+            'muted': list(s['muted'] or []),
         })
     people = []
     for email, u in get_users().items():
         groups = u.get('groups') or []
+        kinds = webpush.categories_for(u)
+        for d in by_user.get(u['usr_id'], []):        # the kinds this device takes: all it may get, minus muted ones
+            d['categories'] = [k for k in kinds if k not in d['muted']]
         people.append({
             'usr_id': u['usr_id'], 'email': email, 'name': u.get('display_name') or u.get('name') or email,
             'picture': u.get('picture') or '', 'groups': groups, 'is_admin': bool(u.get('is_admin')),

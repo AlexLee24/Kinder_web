@@ -49,8 +49,10 @@ def api_push_status():
     if not uid:
         return _login_needed()
     from app.db import push as db
-    cats, n = db.status(uid, str((request.get_json(silent=True) or {}).get('endpoint') or ''))
-    return jsonify(ok=True, subscribed=cats is not None, categories=cats or [], devices=n)
+    from app.services.notifications import webpush
+    muted, n = db.status(uid, str((request.get_json(silent=True) or {}).get('endpoint') or ''))
+    takes = [c for c in webpush.categories_for(_me()) if c not in (muted or [])]
+    return jsonify(ok=True, subscribed=muted is not None, categories=takes if muted is not None else [], devices=n)
 
 
 @basic_bp.route('/api/push/subscribe', methods=['POST'])
@@ -67,12 +69,12 @@ def api_push_subscribe():
     if not sub:
         return jsonify(ok=False, error='Invalid subscription.'), 400
     allowed = webpush.categories_for(_me())
-    asked = data.get('categories')
+    asked = data.get('categories')                    # the kinds ticked in Settings; missing = all of them
+    muted = [c for c in allowed if c not in asked] if isinstance(asked, list) else []
     old = str(data.get('old_endpoint') or '')
     if not isinstance(asked, list) and old:          # sw.js: the browser replaced the subscription — keep its choice
-        asked, _ = db.status(uid, old)
-    cats = [c for c in allowed if c in asked] if isinstance(asked, list) else list(allowed)   # default: all of them
-    db.save(uid, *sub, cats, user_agent=request.headers.get('User-Agent', ''))
+        muted = db.status(uid, old)[0] or []
+    db.save(uid, *sub, muted, user_agent=request.headers.get('User-Agent', ''))
     if old and old != sub[0]:
         db.remove(uid, old)
     logger.info('push subscribe usr=%s host=%s', uid, sub[0].split('/')[2])

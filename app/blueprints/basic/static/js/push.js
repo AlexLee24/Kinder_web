@@ -36,8 +36,10 @@
     var mine = box.querySelector('.st-push-help [data-platform="' + (isIOS ? 'ios' : /Android/i.test(ua) ? 'android' : 'desktop') + '"]');
     if (mine) { mine.classList.add('is-mine'); mine.parentNode.insertBefore(mine, mine.parentNode.firstChild); }
 
-    function renderCats(selected) {
-        catsEl.innerHTML = '<span class="st-push-cats-h">Send to this device:</span>';
+    // The alert kinds are listed whenever push can work here: while it is on they save at once; while it is off they
+    // are what "Turn on" subscribes to (all ticked until changed)
+    function renderCats(selected, on) {
+        catsEl.innerHTML = '<span class="st-push-cats-h">' + (on ? 'Send to this device:' : 'Turning on sends:') + '</span>';
         Object.keys(CATS).forEach(function (k) {
             var lab = document.createElement('label');
             lab.className = 'st-push-cat';
@@ -48,7 +50,7 @@
     }
     function chosen() { return Array.prototype.map.call(catsEl.querySelectorAll('input:checked'), function (i) { return i.value; }); }
     function saveCats() {
-        if (!sub) return;
+        if (!sub || box.getAttribute('data-state') !== 'on') return;      // off: kept for the Turn on button
         post('/api/push/subscribe', { subscription: sub.toJSON(), categories: chosen() }).then(function (d) {
             toast(d.ok ? 'Saved' : (d.error || 'Could not save'), d.ok ? 'success' : 'error');
         });
@@ -56,7 +58,7 @@
 
     function show(state, title, text, buttons) {
         box.setAttribute('data-state', state);
-        catsEl.hidden = state !== 'on';
+        catsEl.hidden = !(state === 'on' || state === 'off') || !Object.keys(CATS).length;
         stateEl.innerHTML = '<b>' + esc(title) + '</b>' + (text ? '<small>' + esc(text) + '</small>' : '');
         actions.innerHTML = '';
         (buttons || []).forEach(function (b) {
@@ -82,9 +84,9 @@
             [{ label: 'Send a test', primary: true, run: test }, { label: 'Turn off', run: off }]);
     }
     function offState() {
+        renderCats(Object.keys(CATS), false);
         show('off', 'Push is off on this ' + (mobile ? 'device' : 'computer'),
-            'Turn it on to get ' + (Object.keys(CATS).map(function (k) { return CATS[k].replace(/ \(.*\)$/, '').replace(/^Messages/, 'messages'); }).join(' and ') || 'messages from the Kinder admins') +
-            ' as notifications, even when Kinder is closed.',
+            'Turn it on to get what is ticked below as notifications on this ' + (mobile ? 'device' : 'computer') + ', even when Kinder is closed.',
             [{ label: 'Turn on', primary: true, run: on }]);
     }
     function deniedState() {
@@ -107,12 +109,12 @@
                 });
             }).then(function (s) {
                 sub = s;
-                return post('/api/push/subscribe', { subscription: s.toJSON(), categories: Object.keys(CATS) });
+                return post('/api/push/subscribe', { subscription: s.toJSON(), categories: chosen() });
             }).then(function (d) {
                 if (!d.ok) throw new Error(d.error || 'save');
                 return post('/api/push/status', { endpoint: sub.endpoint });
             }).then(function (st) {
-                renderCats(st.categories || Object.keys(CATS));
+                renderCats(st.categories || Object.keys(CATS), true);
                 onState(st.devices || 1);
                 toast('Push is on', 'success');
                 return test();
@@ -142,7 +144,7 @@
             sub = s;
             if (!s) { offState(); return; }
             return post('/api/push/status', { endpoint: s.endpoint }).then(function (st) {
-                if (st.subscribed) { renderCats(st.categories || []); onState(st.devices); }
+                if (st.subscribed) { renderCats(st.categories || [], true); onState(st.devices); }
                 else offState();      // the browser is subscribed, but for another account (logged in as someone else)
             });
         });

@@ -47,6 +47,20 @@ def _can_edit(row):
                                                or (row.get('assignee_email') or '').lower() == me)
 
 
+def _duty_denied(fields, row=None):
+    """Members put only themselves on Trigger duty; admins put anyone. A 403 response, or None when allowed."""
+    u = session.get('user') or {}
+    if u.get('is_admin'):
+        return None
+    me = (u.get('email') or '').lower()
+    new = (fields.get('assignee_email') or '').lower() if fields.get('category') == 'trigger' else ''
+    old = (row.get('assignee_email') or '').lower() if row and row.get('category') == 'trigger' else ''
+    if (new and new != me) or (old and old != me and new != old):
+        return jsonify({'success': False, 'error': 'Only admins can put someone else on Trigger duty. '
+                                                   'Volunteer for a week yourself instead.'}), 403
+    return None
+
+
 def _members():
     """{email: name} of the people who can take Trigger duty: GREAT Lab members and admins, by name."""
     from app.db.auth import get_users
@@ -115,13 +129,16 @@ def lab_calendar():
     last = max([(this_month + timedelta(days=62)).replace(day=1)] + [e['d'].replace(day=1) for e in evs])
 
     user = session['user']
+    members = _members()
     return render_template(
         'lab_calendar.html', current_path='/lab_calendar',
         today_events=today_evs, soon_events=soon_evs, today_date=today,
         past_n=sum(1 for e in evs if e['is_past']), total=len(evs),
         categories=cal.CATEGORIES, sources=cal.SOURCES, lab_categories=cal.LAB_CATEGORIES,
         repeat_labels=cal.REPEAT_LABELS, src=src, kind=kind, q=q,
-        members=_members(), duty_tonight=duty_tonight,
+        members=members, duty_tonight=duty_tonight,
+        duty_choices={e: n for e, n in members.items()
+                      if user.get('is_admin') or e.lower() == (user.get('email') or '').lower()},
         duty_weeks=duty_weeks, sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
         cal_data={**cal.compact(evs), 'today': today.isoformat(), 'this_month': this_month.strftime('%Y-%m'),
                   'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m'),
@@ -172,6 +189,9 @@ def api_lab_calendar_add():
     fields, err = cal.parse_form(request.get_json(silent=True) or {}, _members())
     if err:
         return jsonify({'success': False, 'error': err}), 400
+    duty = _duty_denied(fields)
+    if duty:
+        return duty
     u = session['user']
     new_id = db.add_event(fields, u.get('email'), u.get('name') or u.get('email') or '')
     logger.info('audit action=lab_calendar_add actor=%s target=%s title=%r', u.get('email'), new_id, fields['title'])
@@ -198,6 +218,9 @@ def api_lab_calendar_change(event_id):
     fields, err = cal.parse_form(request.get_json(silent=True) or {}, _members())
     if err:
         return jsonify({'success': False, 'error': err}), 400
+    duty = _duty_denied(fields, row)
+    if duty:
+        return duty
     db.update_event(event_id, fields)
     logger.info('audit action=lab_calendar_edit actor=%s target=%s', who, event_id)
     return jsonify({'success': True})
@@ -205,20 +228,30 @@ def api_lab_calendar_change(event_id):
 
 @private_area_bp.route('/api/lab_calendar/volunteer', methods=['POST'])
 def api_lab_calendar_volunteer():
-    """Sign yourself up for a free Trigger duty week: {"week": "<its Monday, YYYY-MM-DD>"} → one Monday–Sunday
-    event on duty for you. Withdraw = delete that event (the member on duty may)."""
+    """Put someone on Trigger duty for one week: {"week": "<its Monday>", "assignee": email, "replace": bool}.
+    Members volunteer themselves for a free week (no assignee); admins may name any member, and with ``replace`` hand
+    a taken week to someone else (only single-week duties: a rotation is edited as a whole). Creates one
+    Monday–Sunday event. Withdraw = delete that event (the member on duty may)."""
     denied = _denied()
     if denied:
         return denied
     from app.db import lab_calendar as db
     from app.services import lab_calendar as cal
     u = session['user']
+    is_admin = bool(u.get('is_admin'))
+    data = request.get_json(silent=True) or {}
     members = _members()
-    email = next((e for e in members if e.lower() == (u.get('email') or '').lower()), None)
+    me = next((e for e in members if e.lower() == (u.get('email') or '').lower()), None)
+    want = str(data.get('assignee') or '') or me
+    email = next((e for e in members if e.lower() == want.lower()), None)
     if not email:
+        if data.get('assignee'):
+            return jsonify({'success': False, 'error': 'Pick a GREAT Lab member.'}), 400
         return jsonify({'success': False, 'error': 'Only GREAT Lab members take Trigger duty.'}), 403
+    if email != me and not is_admin:
+        return jsonify({'success': False, 'error': 'Only admins can put someone else on Trigger duty.'}), 403
     try:
-        mon = date.fromisoformat(str((request.get_json(silent=True) or {}).get('week') or ''))
+        mon = date.fromisoformat(str(data.get('week') or ''))
     except ValueError:
         return jsonify({'success': False, 'error': 'Pick a week.'}), 400
     today = datetime.now(cal.TZ).date()
@@ -227,16 +260,24 @@ def api_lab_calendar_volunteer():
     week = cal.duty_weeks(cal.events(today=today, past_days=7, future_days=200), mon, 1)[0]
     if week['people']:
         names = ', '.join(p['name'] for p in week['people'])
-        return jsonify({'success': False, 'error': f'{names} already has duty that week.'}), 409
+        if not (is_admin and data.get('replace')):
+            return jsonify({'success': False, 'error': f'{names} already has duty that week.'}), 409
+        if any(p['repeat'] or not p['whole'] for p in week['people']):
+            return jsonify({'success': False, 'error': f'{names} has that week as part of a rotation: open the event '
+                                                       'and edit the rotation instead.'}), 409
+        for p in week['people']:
+            db.delete_event(p['db_id'])
     name = members[email]
+    me_name = u.get('name') or u.get('email') or ''
     new_id = db.add_event({
         'category': 'trigger', 'title': f'Trigger: {name}', 'all_day': True,
         'start_at': datetime.combine(mon, datetime.min.time(), cal.TZ),
         'end_at': datetime.combine(mon + timedelta(days=7), datetime.min.time(), cal.TZ),
         'repeat': '', 'repeat_until': None, 'assignee_email': email, 'assignee_name': name,
-    }, email, name)
-    logger.info('audit action=lab_calendar_volunteer actor=%s target=%s week=%s', email, new_id, mon)
-    return jsonify({'success': True, 'id': new_id})
+    }, u.get('email'), me_name)
+    logger.info('audit action=lab_calendar_%s actor=%s target=%s week=%s assignee=%s',
+                'volunteer' if email == me else 'assign_duty', u.get('email'), new_id, mon, email)
+    return jsonify({'success': True, 'id': new_id, 'name': name})
 
 
 @private_area_bp.route('/api/lab_calendar/sync', methods=['POST'])

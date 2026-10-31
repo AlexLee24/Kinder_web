@@ -55,7 +55,7 @@
             <section class="kw-panel lc-duty" aria-labelledby="lcDutyT">
                 <div class="kw-panel-head">
                     <h2 id="lcDutyT">Trigger duty</h2>
-                    <button type="button" class="kw-btn kw-btn-sm" id="lcDutyAdd" data-week="{{ (duty_weeks|rejectattr('people')|map(attribute='monday')|first or duty_weeks[0].monday).isoformat() }}" title="Put someone (or a rotation) on duty">Assign</button>
+                    {% if is_admin %}<button type="button" class="kw-btn kw-btn-sm" id="lcDutyAdd" data-week="{{ (duty_weeks|rejectattr('people')|map(attribute='monday')|first or duty_weeks[0].monday).isoformat() }}" title="Put someone (or a rotation) on duty">Assign</button>{% endif %}
                 </div>
                 <div class="lc-duty-tonight">
                     <span class="kw-label">Tonight</span>
@@ -81,6 +81,13 @@
                             {% for p in mine if p.whole and not p.repeat %}<button type="button" class="lc-week-out" data-withdraw="{{ p.db_id }}" data-week="{{ w.label }}">Withdraw</button>{% endfor %}
                             {% else %}
                             <button type="button" class="kw-btn kw-btn-sm lc-volunteer" data-volunteer="{{ w.monday.isoformat() }}" data-week="{{ w.label }}">Volunteer</button>
+                            {% endif %}
+                            {% if is_admin %}
+                            {% set rota = w.people|selectattr('repeat')|list or w.people|rejectattr('whole')|list %}
+                            <select class="lc-week-assign" data-week="{{ w.monday.isoformat() }}" data-label="{{ w.label }}" data-taken="{{ '1' if w.people else '' }}" aria-label="Assign {{ w.label }}"{% if rota %} disabled title="Part of a rotation: open the event to edit it"{% endif %}>
+                                <option value="">{{ 'Change…' if w.people else 'Assign…' }}</option>
+                                {% for email, name in members.items() %}<option value="{{ email }}">{{ name }}</option>{% endfor %}
+                            </select>
                             {% endif %}
                         </span>
                     </li>
@@ -194,7 +201,7 @@
             <div class="kw-field lc-duty-only"><label for="lcFWho">On duty</label>
                 <select id="lcFWho" name="assignee" class="kw-select">
                     <option value="">Choose a member…</option>
-                    {% for email, name in members.items() %}<option value="{{ email }}">{{ name }}</option>{% endfor %}
+                    {% for email, name in duty_choices.items() %}<option value="{{ email }}">{{ name }}</option>{% endfor %}
                 </select>
             </div>
         </div>

@@ -220,6 +220,8 @@
 .lc-week-out { padding: 0; border: 0; background: none; color: var(--kw-text-muted); font: inherit; font-size: 0.72rem; text-decoration: underline; cursor: pointer; }
 .lc-week-out:hover { color: #FF8A80; }
 .lc-week.is-open .lc-week-d { color: #FF8A80; }
+.lc-week-assign { max-width: 104px; min-height: 28px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--kw-border); background: transparent; color: var(--kw-text-muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.lc-week-assign:disabled { opacity: 0.4; cursor: not-allowed; }
 .lc-volunteer { border-color: rgba(242, 201, 76, 0.5); color: #F2C94C; }
 
 /* Daily Trigger page bar: tonight's Trigger duty */

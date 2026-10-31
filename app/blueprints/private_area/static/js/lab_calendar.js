@@ -203,6 +203,17 @@
             .then(() => { toast('Thanks! You are on Trigger duty for ' + b.dataset.week, 'success'); setTimeout(() => location.reload(), 900); })
             .catch((err) => { toast(err.message, 'error'); b.disabled = false; });
     }));
+    // Admins: put any member on a week, or hand a taken (single) week to someone else
+    document.querySelectorAll('.lc-week-assign').forEach((sel) => sel.addEventListener('change', () => {
+        const who = sel.value, name = sel.options[sel.selectedIndex].text;
+        if (!who) return;
+        const taken = !!sel.dataset.taken;
+        if (!confirm((taken ? 'Hand Trigger duty for ' : 'Put ') + (taken ? sel.dataset.label + ' to ' + name : name + ' on Trigger duty for ' + sel.dataset.label) + '?')) { sel.value = ''; return; }
+        sel.disabled = true;
+        api('/api/lab_calendar/volunteer', 'POST', { week: sel.dataset.week, assignee: who, replace: taken })
+            .then((d) => { toast(d.name + ' is on Trigger duty for ' + sel.dataset.label, 'success'); setTimeout(() => location.reload(), 900); })
+            .catch((err) => { toast(err.message, 'error'); sel.disabled = false; sel.value = ''; });
+    }));
     document.querySelectorAll('[data-withdraw]').forEach((b) => b.addEventListener('click', () => {
         if (!confirm('Give up your Trigger duty for ' + b.dataset.week + '? The week becomes open again.')) return;
         b.disabled = true;
