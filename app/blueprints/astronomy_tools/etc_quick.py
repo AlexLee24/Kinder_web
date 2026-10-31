@@ -12,16 +12,18 @@ answer is then checked by running CASTOR on it like every other row.
 import copy
 import math
 
-# Frame lengths a plan is written in. Not a physical scale: these are the round numbers an
-# observer would type into the telescope's script, so every suggestion is one of them.
-NICE_EXPOSURES = (1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 450, 600)
+# Frame lengths a plan is written in: the round numbers an observer would type into the
+# telescope's script, so every suggestion is one of them. Not a physical scale.
+PREFERRED_EXPOSURES = (15, 30, 45, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600)
 
-# Longer frames always cost slightly less total time (read noise is paid once per frame), so
-# "the fastest" alone would push every faint target to the longest frame on the list. Past the
-# point where the sky dominates, that saving is a few percent while each frame risks more to
-# a satellite, a cosmic ray or a tracking error — so the suggestion is the shortest frame whose
-# total time is within this factor of the fastest one.
-TOTAL_TIME_TOLERANCE = 1.10
+# Only for targets that saturate a 15 s frame: then the longest of these that does not.
+SHORT_EXPOSURES = (1, 2, 3, 5, 10)
+
+# Every frame also costs a readout and a save, which CASTOR does not model (its total is
+# integration time only). The exact figure depends on the camera's readout mode; this is an
+# assumption, not a measurement. What matters is that it is not zero: ranking plans by time
+# spent rather than time integrating is what makes one 30 s frame beat four 8 s ones.
+READOUT_OVERHEAD_S = 10
 
 # A plan longer than this on one target is reported, not hidden: the numbers are right, the
 # plan is not one anybody will run.
@@ -131,6 +133,7 @@ def compute_plan(catalogue, *, site, telescope, camera, optic_filter, ra, dec, m
             'sky_mag_arcsec2': probe.diagnostics.sky_surface_brightness,
         },
         'target_snr': target_snr,
+        'readout_overhead_s': READOUT_OVERHEAD_S,
         'single_frame_time_s': None,
         'recommended': None,
         'rows': [],
@@ -142,7 +145,8 @@ def compute_plan(catalogue, *, site, telescope, camera, optic_filter, ra, dec, m
         result['status'] = 'below_horizon'
         return result
 
-    usable = [t for t in NICE_EXPOSURES if t < t_sat]
+    usable = ([t for t in PREFERRED_EXPOSURES if t < t_sat]
+              or [t for t in SHORT_EXPOSURES if t < t_sat][-1:])
     if not usable:
         result['status'] = 'saturated'
         return result
@@ -156,15 +160,16 @@ def compute_plan(catalogue, *, site, telescope, camera, optic_filter, ra, dec, m
         n = resp.core.required_exposures
         if n is None:   # above the background-flatness ceiling: no count of these frames reaches it
             continue
-        rows.append({'exp_s': t, 'frames': int(n), 'total_s': t * int(n), 'snr': resp.core.total_snr})
+        rows.append({'exp_s': t, 'frames': int(n), 'total_s': t * int(n),
+                     'elapsed_s': (t + READOUT_OVERHEAD_S) * int(n), 'snr': resp.core.total_snr})
         if n == 1:      # every longer frame is also one frame, just longer
             break
     if not rows:
         result['status'] = 'unreachable'
         return result
 
-    fastest = min(row['total_s'] for row in rows)
-    recommended = next(row for row in rows if row['total_s'] <= fastest * TOTAL_TIME_TOLERANCE)
+    # Least time at the telescope, and on a tie the fewer frames.
+    recommended = min(rows, key=lambda row: (row['elapsed_s'], row['frames']))
     recommended['recommended'] = True
     result['rows'] = rows
     result['recommended'] = recommended
