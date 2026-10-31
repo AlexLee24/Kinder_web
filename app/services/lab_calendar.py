@@ -23,8 +23,9 @@ event says otherwise or "No reminder"; all-day events count from 09:00 on their 
 runs every minute (job ``lab_calendar_reminders``); subscribed calendar apps get the same time as a VALARM.
 
 LOT closed nights: a Lulin event whose title names UVEX, LISA or TRIPOL2, or whose program code starts with E
-(``E05 -- …``, not ``R05 -- …``), means LOT takes no triggers that night (``lot_closed()``). Daily Trigger and
-Direct Trigger refuse LOT sends then, and the sunset reminder says to send SLT only.
+(``E05 -- …``, not ``R05 -- …``) unless that E program is a LATTE run (``E01 - LATTE``), means LOT takes no triggers
+that night (``lot_closed()``). Daily Trigger and Direct Trigger refuse LOT sends then, and the sunset reminder says to
+send SLT only.
 """
 import calendar
 import json
@@ -70,8 +71,11 @@ ALL_DAY_REMIND_HOUR = 9        # an all-day event's reminder counts from 09:00 o
 REMIND_GRACE = timedelta(minutes=15)   # a reminder missed by more than this (server down) is skipped
 _REPEAT_WEEKS = {'weekly': 1, 'biweekly': 2, '3weekly': 3, '4weekly': 4}
 LULIN = ('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-# a Lulin event that keeps LOT from taking triggers: these instruments, or an E program (E05, not R05)
-LOT_CLOSED_RE = re.compile(r'UVEX|LISA|TRIPOL\s*2|^\s*E\d+', re.I)
+# a Lulin event that keeps LOT from taking triggers: these instruments, or an E program (E05, not R05) unless it is
+# a LATTE run (E01 - LATTE leaves LOT open; E05 - UVEX, LATTE does not, because of UVEX)
+LOT_CLOSED_RE = re.compile(r'UVEX|LISA|TRIPOL\s*2', re.I)
+LOT_E_PROGRAM_RE = re.compile(r'^\s*E\d+', re.I)
+LOT_OPEN_E_RE = re.compile(r'LATTE', re.I)
 FEED_NAMES = {None: 'GREAT Lab Calendar', 'lab': 'GREAT Lab Calendar (lab only)', 'lulin': 'Lulin LOT Schedule'}
 
 
@@ -625,8 +629,11 @@ def duty_on(day):
 
 
 def closes_lot(e):
-    """True when this Lulin occurrence (or row) keeps LOT from taking triggers (LOT_CLOSED_RE)."""
-    return e.get('source') == 'lulin' and bool(LOT_CLOSED_RE.search(e.get('title') or ''))
+    """True when this Lulin occurrence (or row) keeps LOT from taking triggers: UVEX / LISA / TRIPOL2, or an E
+    program that is not a LATTE run."""
+    title = e.get('title') or ''
+    return e.get('source') == 'lulin' and bool(
+        LOT_CLOSED_RE.search(title) or (LOT_E_PROGRAM_RE.search(title) and not LOT_OPEN_E_RE.search(title)))
 
 
 def lot_closed(day):

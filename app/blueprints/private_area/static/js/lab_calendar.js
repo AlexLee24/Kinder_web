@@ -108,7 +108,7 @@
         if (e.url) h += svg('link') + '<a href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">' + esc(e.url) + '</a>';
         h += '</div>';
         if (e.description) h += '<p class="lc-ev-desc">' + esc(e.description) + '</p>';
-        if (e.no_lot) h += '<p class="lc-ev-desc"><span class="lc-nolot">No LOT trigger</span> UVEX, LISA, TRIPOL2 or an E program is on LOT that night, so Daily Trigger only sends SLT.</p>';
+        if (e.no_lot) h += '<p class="lc-ev-desc"><span class="lc-nolot">No LOT trigger</span> UVEX, LISA, TRIPOL2 or an E program (other than a LATTE run) is on LOT that night, so Daily Trigger only sends SLT.</p>';
         if (e.source === 'lulin') h += '<p class="lc-ev-by">From the Lulin LOT schedule (Lulin TAC calendar). It is read only here.</p>';
         else if (e.created_by_name) h += '<p class="lc-ev-by">Added by ' + esc(e.created_by_name) + '</p>';
         $('lcEvBody').innerHTML = h;
