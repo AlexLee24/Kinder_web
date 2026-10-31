@@ -1,4 +1,4 @@
-"""What the lab bots produced, for Lab › Bots (/bots, private area). The reduction pipeline has its own page.
+"""What the lab bots produced, for Triggers › Alerts (/bots, private area). The reduction pipeline has its own page.
 
     gcn         the newest GCN circulars and Einstein Probe alerts (app/data/gcn.json, ep.json)
     astronote   the AstroNotes posted to Slack (app/data/bots/astronotes_posted.json)

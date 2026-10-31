@@ -1,4 +1,4 @@
-"""Private area: Lab › Bots — the lab bots' state and what they produced (GCN / EP alerts, AstroNotes, the
+"""Private area: Triggers › Alerts — the lab bots' state and what they produced (GCN / EP alerts, AstroNotes, the
 observation log). Read only, except that admins can cancel / restore a robot alert; running, stopping and logs stay
 in Admin › Bots. The reduction pipeline is not here
 (it has the Pipeline page)."""

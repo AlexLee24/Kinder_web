@@ -1,8 +1,8 @@
 {% extends '_base.html' %}
-{#- Lab › Bots: each lab bot's state (cards) and what it produced (results panel). lab_bots.js polls
+{#- Lab › Triggers › Alerts: each lab bot's state (cards) and what it produced (results panel). lab_bots.js polls
     /api/bots/status every 15 s and loads /api/bots/<id>/results for the open bot. The reduction pipeline lives on the
     Pipeline page; running, stopping and logs stay in Admin › Bots. -#}
-{% block title %}Bots - Kinder{% endblock %}
+{% block title %}Alerts - Kinder{% endblock %}
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/lab_bots.css') }}">
     <meta name="description" content="The lab bots: GCN and Einstein Probe alerts, TNS AstroNotes and the observation log">
