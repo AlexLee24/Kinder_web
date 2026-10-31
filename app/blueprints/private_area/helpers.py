@@ -104,7 +104,7 @@ def can_view_private_area():
 # ---------------------------------------------------------------------------
 # Per-page permission helpers
 # ---------------------------------------------------------------------------
-_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots']
+_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots', 'lab_calendar']
 
 _PRIVATE_PAGE_LABELS = {
     'daily_trigger': 'Daily Trigger',
@@ -114,6 +114,7 @@ _PRIVATE_PAGE_LABELS = {
     'epessto_support': 'ePessto++ Support',
     'documents': 'Documents',
     'bots': 'Lab Bots',
+    'lab_calendar': 'Lab Calendar',
 }
 
 def _get_page_extra_groups(page_key: str) -> list:

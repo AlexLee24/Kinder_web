@@ -5,7 +5,8 @@
                                              Slack: Lulin night (10–22 UTC) SLACK_CHANNEL_ID_CONTROL_ROOM,
                                              otherwise SLACK_CHANNEL_ID_ToO with "We can trigger … tonight";
                                              both also to SLACK_CHANNEL_ID_EP_COPY when set; email to EP_EMAIL_TO;
-                                             first of all published for the Lulin robot (robot.py)
+                                             first of all published for the Lulin robot (robot.py), then pushed
+                                             to GREAT Lab members' devices that take 'alerts' (Web Push)
 
 Started by ``start()`` as a daemon thread in the background-jobs process. Credentials and channels from kinder.env.
 Outputs in app/data/: gcn.json / ep.json (latest alerts), ep_observing_track.jpg, target_objects.txt (EP names),
@@ -281,6 +282,8 @@ def handle_ep(raw, client, sent):
     from . import robot  # first: the Lulin robot polls for it (GET /api/v1/robot/alert)
     robot_id = robot.publish(uid or f'ep_{name}', 'einstein_probe', name, ra, dec, slt_script(name, ra, dec),
                              trigger_time=trigger_time, log=log)
+    from app.services.notifications import webpush  # next: GREAT Lab phones (in the background, never raises)
+    webpush.push_ep_alert(name, ra, dec, log=log)
     text = ep_message(name, ra, dec, lulin_night)
 
     plot = _ep_plot(name, ra, dec)

@@ -26,6 +26,12 @@ def _usr_id():
     return u['usr_id'] if u else None
 
 
+def _me():
+    from app.db.auth import get_user
+    email = (session.get('user') or {}).get('email')
+    return get_user(email) if email else None
+
+
 def _login_needed():
     return jsonify(ok=False, error='Please log in.'), 401
 
@@ -33,7 +39,8 @@ def _login_needed():
 @basic_bp.route('/api/push/key')
 def api_push_key():
     from app.services.notifications import webpush
-    return jsonify(ok=webpush.enabled(), key=webpush.public_key())
+    return jsonify(ok=webpush.enabled(), key=webpush.public_key(),
+                   categories=list(webpush.categories_for(_me()).items()))     # [[key, label], …] in this order
 
 
 @basic_bp.route('/api/push/status', methods=['POST'])
@@ -42,8 +49,10 @@ def api_push_status():
     if not uid:
         return _login_needed()
     from app.db import push as db
-    mine, n = db.status(uid, str((request.get_json(silent=True) or {}).get('endpoint') or ''))
-    return jsonify(ok=True, subscribed=mine, devices=n)
+    from app.services.notifications import webpush
+    muted, n = db.status(uid, str((request.get_json(silent=True) or {}).get('endpoint') or ''))
+    takes = [c for c in webpush.categories_for(_me()) if c not in (muted or [])]
+    return jsonify(ok=True, subscribed=muted is not None, categories=takes if muted is not None else [], devices=n)
 
 
 @basic_bp.route('/api/push/subscribe', methods=['POST'])
@@ -55,10 +64,19 @@ def api_push_subscribe():
     from app.services.notifications import webpush
     if not webpush.enabled():
         return jsonify(ok=False, error='Push is not set up on this server.'), 503
-    sub = webpush.valid_subscription((request.get_json(silent=True) or {}).get('subscription'))
+    data = request.get_json(silent=True) or {}
+    sub = webpush.valid_subscription(data.get('subscription'))
     if not sub:
         return jsonify(ok=False, error='Invalid subscription.'), 400
-    db.save(uid, *sub, user_agent=request.headers.get('User-Agent', ''))
+    allowed = webpush.categories_for(_me())
+    asked = data.get('categories')                    # the kinds ticked in Settings; missing = all of them
+    muted = [c for c in allowed if c not in asked] if isinstance(asked, list) else []
+    old = str(data.get('old_endpoint') or '')
+    if not isinstance(asked, list) and old:          # sw.js: the browser replaced the subscription — keep its choice
+        muted = db.status(uid, old)[0] or []
+    db.save(uid, *sub, muted, user_agent=request.headers.get('User-Agent', ''))
+    if old and old != sub[0]:
+        db.remove(uid, old)
     logger.info('push subscribe usr=%s host=%s', uid, sub[0].split('/')[2])
     return jsonify(ok=True)
 
@@ -83,5 +101,6 @@ def api_push_test():
         return jsonify(ok=False, error='Please wait a minute before testing again.'), 429
     from app.services.notifications import webpush
     ok, bad = webpush.send_to_users([uid], 'Kinder test notification',
-                                    'If you can read this, push works on this device.', '/settings#push', wait=True)
+                                    'If you can read this, push works on this device.', '/settings#push',
+                                    category=None, wait=True)
     return jsonify(ok=ok > 0, delivered=ok, failed=bad)

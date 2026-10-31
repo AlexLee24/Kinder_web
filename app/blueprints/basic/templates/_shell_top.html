@@ -14,6 +14,19 @@
    Installing the app lives in the menu, like EAU's app entry (and in the About menu for guests). #}
 <div class="sh-acct">
     {% if session.user %}
+    {#- The bell (js/notify.js, after EAU's): unread count, the latest notifications, mark read / delete -#}
+    <div class="sh-notif" id="notif">
+        <button type="button" class="sh-notif-btn" id="notif-btn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" title="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 5a2 2 0 1 1 4 0 7 7 0 0 1 4 6v3a4 4 0 0 0 2 3H4a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>
+            <span class="sh-notif-badge" id="notif-badge" hidden></span>
+        </button>
+        <div class="sh-notif-panel" id="notif-panel" role="dialog" aria-label="Notifications">
+            <div class="sh-notif-head"><b>Notifications</b><span><button type="button" id="notif-readall">Mark all read</button><button type="button" id="notif-delread" class="is-danger">Clear read</button></span></div>
+            <div class="sh-notif-list" id="notif-list"><div class="sh-notif-empty">Loading…</div></div>
+            <a href="/settings#push" class="sh-notif-hint" id="notif-push-hint" hidden>Turn on push to get these on this device even when Kinder is closed</a>
+            <a href="/settings#push" class="sh-notif-foot">Notification settings</a>
+        </div>
+    </div>
     <div class="sh-user">
         <button type="button" class="sh-user-btn{% if request.path.startswith(('/admin', '/settings', '/profile', '/account')) %} is-here{% endif %}" aria-haspopup="true" aria-expanded="false" aria-label="Account menu" title="{{ session.user.name }}">
             <img src="{{ g.current_user.picture if g.current_user and g.current_user.picture else session.user.picture }}" alt="" class="sh-avatar">

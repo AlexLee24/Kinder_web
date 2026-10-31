@@ -85,6 +85,10 @@ html.ui-bg-solid .st-preview::before { display: none; }
 .st-push-state small { font-size: 0.8rem; line-height: 1.55; color: var(--kw-text-secondary); }
 .st-push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .st-push-actions:empty { display: none; }
+.st-push-cats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--kw-hairline); font-size: 0.84rem; }
+.st-push-cats[hidden] { display: none; }
+.st-push-cats-h { color: var(--kw-text-muted); }
+.st-push-cat { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; color: var(--kw-text-primary); }
 .st-push-help { margin-top: 14px; font-size: 0.8rem; color: var(--kw-text-secondary); }
 .st-push-help summary { cursor: pointer; color: var(--kw-text-muted); }
 .st-push-help ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; line-height: 1.55; }

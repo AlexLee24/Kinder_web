@@ -74,7 +74,7 @@
 |---|---|---|
 | Daily Trigger（`.pa-trigger-section`） | Pre-Trigger Checklist：A. New Objects（ATLAS、TNS AstroNotes、group message & DETECT）、B. Follow-up（Urgent kilonova、High、Normal）、C. Target List & Notes（target-sync、note-greatlab、note-staff）。共 9 個 checkbox；`note-staff` 為 disabled，只能由「Check Urgent Notes」按鈕（`checkUrgentTargetNotes`）依 `allTargetsCache` 中 Urgent 且 active 的目標是否都有 `plan`（Note）來勾選 | 全部勾選才解鎖右欄（`updateTriggerChecklistProgress`）；勾滿後清單收起（`setTriggerChecklistCollapsed`，標題列 Show / Hide 按鈕 `#trigger-checklist-toggle`），≤900px 時自動捲到右欄；只有使用者勾滿才觸發（載入時不收）|
 | 同上 | Trigger Script Message：SLT/LOT 分頁（`switchScriptTelescope`）、LOT 時顯示 Program 下拉（由 active LOT 目標的 `program` 去重）、Generate 按鈕、唯讀 textarea、Visibility 縮圖（點擊開 lightbox `scriptVisImageModal`）、已送出狀態 chips（`SLT: not sent` + 每個 LOT program 一顆）、Copy、Send Message | Generate → `POST /astronomy_tools/generate_trigger_script`、`POST /generate_plot`；Send → 三步 Modal（`sendStep1Modal`/`sendStep2Modal`/`sendStep3Modal`）→ `POST /daily_trigger/send_message`；chips 由 `GET /daily_trigger/send_status` 填入 |
-| Observation Targets（`.pa-obs-section`） | SLT Targets / LOT Targets 分頁（`switchTab`）；工具列：Weather（`weatherModal`，meteoblue iframe，lazy-load）、Update Mag（`updateTargetMags`）、Calendar（`calendarModal`，Google Calendar iframe，lazy-load）、Visibility（`openVisibilityPlot`，Plotly modal `visibilityPlotModal`）、Add SLT / Add LOT（`openTargetModal`） | Update Mag → `POST /api/targets/update-mags` 後 2.5 秒 `loadTargets`；Visibility → `POST /api/visibility_data`，右側 checkbox 同時 `PUT /api/targets/<id>/toggle` |
+| Observation Targets（`.pa-obs-section`） | SLT Targets / LOT Targets 分頁（`switchTab`）；工具列：Weather（`weatherModal`，meteoblue iframe，lazy-load）、Update Mag（`updateTargetMags`）、Calendar（`calendarModal`：今天起兩週的 Lab › Calendar，`GET /api/lab_calendar/events`，第一次打開才載入；2026-10-31 前是 Google Calendar iframe）、Visibility（`openVisibilityPlot`，Plotly modal `visibilityPlotModal`）、Add SLT / Add LOT（`openTargetModal`） | Update Mag → `POST /api/targets/update-mags` 後 2.5 秒 `loadTargets`；Visibility → `POST /api/visibility_data`，右側 checkbox 同時 `PUT /api/targets/<id>/toggle` |
 | 同上 | 目標表格欄位：Target（連 `/object/<name>`，附 `[Mag]`、月距/中天/最高仰角、迷你可見度 SVG）、RA/DEC（點擊切換 sexagesimal/decimal）、Priority（可排序）、Filter/Exposure、Total Exp（可排序）、Note、Note for GREATLab、Actions（active 開關、刪除、Edit、Copy 到另一望遠鏡、Trigger） | 資料 `GET /api/targets`；天文資訊 `POST /api/visibility_data`（telescope `ALL`, `n_steps` 80）；開關 `PUT /api/targets/<id>/toggle`；刪除 `DELETE /api/targets/<id>`；Trigger → `openSingleTriggerModal` |
 | New Target Modal（`targetModal`） | 表單 `add-target-form`：Target Name（自動完成下拉 + 名稱提示）、Newest Mag、RA、Dec、Priority（Normal/High/Urgent）、Repeat、hidden telescope、Program (LOT)（LOT 才顯示）、Auto Exposure 按鈕（SLT 才顯示）、Filter rows（up/gp/rp/ip/zp/custom + exp + count；Add Filter、add All ugriz）、Note、Note for GREATLab、Cancel / Save Target | 自動完成 `GET /api/search_target?q=`（僅 SN/AT 開頭才查）；Auto Exposure `GET /api/auto_exposure?mag=&telescope=`；送出 `POST /api/targets` 或 `PUT /api/targets/<id>`（`editingTargetId`）。前端驗證：survey ID（ATLAS/PS/…）阻擋、ZTF 或非 AT/SN/EP 需 confirm、Urgent 必填 Note、LOT 必填 Program、至少一個 filter |
 | Observation Log（`.pa-obs-log-section`） | 年/月下拉、Today、Refresh、Data（開 Google Drive 資料夾）、Show Filter 切換、Search target；圖例；月曆式表格（列 = 目標，欄 = 日期；順序 Urgent → LOT → SLT → Inactive → Orphan → Discontinued → Calibration）；每格顯示成員頭像/名稱、priority(-program)、repeat、Trigger/Observed 勾叉與 filter 明細、編輯鉛筆 | `GET /api/observation_log_months`、`GET /api/members`、`GET /api/targets`、`GET /api/observation_logs?year=&month=`；快取 `logDataCacheByMonth` |
@@ -82,7 +82,7 @@
 | Single-target Trigger Modal（`singleTriggerConfirmModal`） | 腳本預覽、可見度圖、Cancel / Send Now | `POST /astronomy_tools/generate_trigger_script`、`POST /generate_plot`、`POST /daily_trigger/send_message`（`mark_sent:false`）|
 | 其他 | 回到頂端按鈕；`openDataBtn` 開 Google Drive；Show Filter 按鈕切換 hidden checkbox | — |
 
-- 導向：從 navbar / home「Private → Daily Trigger」進入；未登入 → `/login`；無權 → `/`。頁內外連：`/object/<name>`（新分頁）、Google Drive、Google Calendar、meteoblue。
+- 導向：從 navbar / home「Private → Daily Trigger」進入；未登入 → `/login`；無權 → `/`。頁內外連：`/object/<name>`（新分頁）、Google Drive、`/lab_calendar`、meteoblue。
 
 ### /greatlab_info — Lab Info
 
@@ -92,6 +92,21 @@
 - 頁面區塊：標題；`#links-container` 由內嵌 JS 依 `[{title, cards:[{title, links:[{url,title,desc}]}]}]` 渲染 section → card → link；編輯模式（`body.is-editing`）可改標題/新增刪除 section、card、link；「New Section Block」按鈕。
 - 呼叫：`GET /api/greatlab_links`（載入）、`POST /api/greatlab_links {data}`（Save Layout）。
 - 導向：navbar / home「Lab Info」。連結皆 `target="_blank"`。
+
+### /lab_calendar — Lab Calendar（2026-10-31，仿 EAU 行事曆）
+
+- `GET /lab_calendar` → `private_area.lab_calendar`；權限 `can_access_page('lab_calendar')`（未登入 → `/login`，無權 → home）。導覽：Lab › Calendar。
+- 兩種來源存在同一張表 `obs.lab_calendar_events`（`app/db/lab_calendar.py`，首次使用自動建表）：
+  - `lab`：成員在頁面新增（Group meeting / Observing / Talk / Deadline / Conference / Leave / Other），可「每週 / 每兩週 / 每月」重複（`repeat`、`repeat_until`）。新增者本人或 admin 才能改 / 刪；改重複事件會改整個系列。
+  - `lulin`：鹿林 LOT 排程，`app/services/lab_calendar.sync_lulin()` 抓 Lulin TAC Google 日曆的公開 iCal（`LULIN_CALENDAR_ICS`，預設 `lottac2014@gm.astro.ncu.edu.tw`），以 Google UID 對應新增 / 更新 / 刪除，只保留兩年內。排程 `lab_calendar_lulin_sync` 每 6 小時一次（啟動時也跑一次）；頁面上「Sync now」可手動（每人每分鐘 3 次）；DEBUG 或排程沒跑時，開頁面發現上次成功同步超過 12 小時會在背景補跑。最後結果存在 `auth.system_settings` key `lab_calendar:lulin_sync`。
+- **Trigger duty**（類別 `trigger`，2026-11-01）：指定一位 GREAT Lab 成員（`assignee_email` / `assignee_name`），值班一律是一整週（週一到週日）：表單只選「哪一週」（選哪天都對齊到那週，伺服器端也強制），N 人輪值 = 每人一週、每 N 週重複（Trigger duty 只能每 1 / 2 / 3 / 4 週重複，不能每月）。新增者、值班本人或 admin 可以改；**只有 admin 能把別人排上值班**（一般成員只能排自己：Volunteer，或表單的 On duty 只列自己；伺服器端也擋）。側欄「Trigger duty」面板顯示今晚值班的人與提醒狀態、接下來的輪值、Assign 按鈕；Daily Trigger 頁的 page bar 顯示今晚值班（以 08:00 換日的 trigger night 為準）。
+- **值班週（週一到週日）與自行認領**：側欄列出本週起 8 週，每週顯示值班的人（自己顯示 You）；沒人的週有 **Volunteer**（`POST /api/lab_calendar/volunteer {week: <週一>}` → 為自己建一個週一到週日的 Trigger duty 事件；那週已有人則 409），自己認領的整週（非重複）可 **Withdraw**（刪除該事件）。Assign 預設帶第一個沒人的週一到週日。
+- **Admin 指定**：值班週每列有「Assign… / Change…」選單（只有 admin 看得到），選人即排上那週；已有人的單週會改成選的人（`/api/lab_calendar/volunteer` 帶 `assignee` + `replace`），屬於輪值（重複事件）的週不能這樣改，要編輯該輪值。側欄的 Assign 按鈕（建輪值用）也只有 admin 有。
+- **週五檢查**：排程 `lab_trigger_duty_check` 每週五 02:00 UTC（台灣 10:00）跑 `check_duty_weeks()`：下下週（10 天後的週一起）若有任何一晚沒人值班，就用 `SLACK_BOT_TOKEN` 發英文訊息到 `SLACK_CHANNEL_ID_TRIGGER_DUTY`（預設 `C06BT4DALM6`），請大家到 Lab › Calendar 認領；同一天只發一次（`auth.system_settings` key `lab_calendar:duty_check`）。Slack bot 必須已加入該頻道。
+- **日落提醒**：排程 `lab_trigger_reminder` 每 5 分鐘跑 `services.lab_calendar.send_trigger_reminders()`；鹿林當天日落（ephem，`lulin_sunset()`）之後，對每位值班的人只處理一次（`obs.lab_trigger_reminders` 主鍵 (day, email)）：若當晚 SLT 已從 Daily Trigger 送出就記 `already_sent` 不推；否則推「Trigger duty tonight」（推播分類 `trigger`，點了開 `/daily_trigger`），沒有裝置則記 `no_device`。
+- 頁面：右側 Today / Trigger duty / Coming up / Lulin 同步狀態；主欄搜尋、來源（All / GREAT Lab / Lulin LOT）、類別篩選（query string `src` / `type` / `q`），Month（一次一個月，週一開頭，點空白日期 = 在那天新增）/ List（依月份分組，可顯示已過事件）。月曆與列表由 `js/lab_calendar.js` 依 `#lcData`（`services.lab_calendar.compact()`：每個系列一份 + 每次發生只有日期）繪製，範圍過去 60 天到未來 480 天。
+- 訂閱：每位成員一條私人連結 `GET /lab_calendar/feed/<token>.ics`（`obs.lab_calendar_feeds`，不需登入，所以會檢查連結主人是否仍能看這頁；`?src=lab|lulin` 只訂一種來源；可 Reset 換新連結）。對話框提供 Google（`calendar.google.com/calendar/r?cid=webcal://…`）、Apple（`webcal://`）、Outlook 與複製網址。Feed 內重複事件用 RRULE，有時間的組內事件開始前 30 分鐘提醒，全天事件不佔忙碌時段；網址用 `APP_BASE_URL`（DEBUG 用 request host）。
+- API：`GET /api/lab_calendar/events?from=&to=&src=`（預設今天 +14 天，Daily Trigger 用）、`POST /api/lab_calendar/events`（新增）、`POST|DELETE /api/lab_calendar/events/<id>`（修改 / 刪除）、`POST /api/lab_calendar/sync`、`POST /api/lab_calendar/feed_link {reset}`、`GET /lab_calendar/event/<id>.ics`（單一事件檔）。
 
 ### /epessto_support — ePessto++ Support Team
 

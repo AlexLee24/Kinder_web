@@ -8,6 +8,8 @@
     if (!page) return;
     let PEOPLE = [];
     try { PEOPLE = JSON.parse($('apPeople').textContent) || []; } catch (e) { /* empty */ }
+    let CATS = {};
+    try { (JSON.parse($('apCategories').textContent) || []).forEach((c) => { CATS[c[0]] = c[1]; }); } catch (e) { /* none */ }
     const byId = new Map(PEOPLE.map((p) => [p.usr_id, p]));
     const picked = new Set();
     const open = new Set();
@@ -47,6 +49,8 @@
             : d.last_ok_at ? 'last delivered ' + esc(ago(d.last_ok_at)) : '<span class="ap-warn-t">not delivered yet</span>';
         return '<div class="ap-dev" data-sid="' + d.id + '"><span class="ap-dev-ic" aria-hidden="true">' + (PLAT_IC[d.platform] || '🔔') + '</span>' +
             '<div class="ap-dev-main"><b>' + esc(d.platform) + ' · ' + esc(d.browser) + '</b>' +
+            '<span class="ap-dev-cats">' + Object.keys(CATS).map((k) => '<span class="ap-cat' + (d.categories.includes(k) ? ' is-on' : '') +
+                '" title="' + (d.categories.includes(k) ? 'Takes: ' : 'Unticked: ') + esc(CATS[k]) + '">' + esc(CATS[k].replace(/ \(.*\)$/, '')) + '</span>').join('') + '</span>' +
             '<small>on since ' + esc(day(d.created_at)) + ' · ' + health + ' · <span title="' + esc(d.user_agent) + '">' + esc(d.host) + '</span></small></div>' +
             '<div class="ap-dev-acts"><button type="button" class="kw-btn kw-btn-sm" data-act="dev-test">Test</button>' +
             '<button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-act="dev-del">Remove</button></div></div>';
@@ -177,7 +181,7 @@
         estTimer = setTimeout(() => {
             post('/admin/push/preview', { target: target(), group: $('apGroup') ? $('apGroup').value : '', usr_ids: Array.from(picked) }).then((d) => {
                 est = d;
-                $('apEst').textContent = d.recipients + ' ' + (d.recipients === 1 ? 'person' : 'people') + ' · ' + d.with_push + ' with push · ' + d.devices + ' device' + (d.devices === 1 ? '' : 's');
+                $('apEst').textContent = d.recipients + ' ' + (d.recipients === 1 ? 'person' : 'people') + ' (bell) · ' + d.with_push + ' with push · ' + d.devices + ' device' + (d.devices === 1 ? '' : 's');
             });
         }, 120);
     }
@@ -197,14 +201,14 @@
         ev.preventDefault();
         if (!$('apTitle').value.trim()) { toast('Write a title', 'error'); $('apTitle').focus(); return; }
         if (target() === 'users' && !picked.size) { toast('Pick at least one person in the list below', 'error'); return; }
-        if (!est.devices) { toast('Nobody in that list has push turned on', 'error'); return; }
-        if (target() !== 'me' && !confirm('Send this to ' + est.with_push + ' ' + (est.with_push === 1 ? 'person' : 'people') + ' (' + est.devices + ' devices)? It cannot be taken back.')) return;
+        if (!est.recipients) { toast('Nobody is in that list', 'error'); return; }
+        if (target() !== 'me' && !confirm('Send this to ' + est.recipients + ' ' + (est.recipients === 1 ? 'person' : 'people') + ' (under their bell; pushed to ' + est.devices + ' device' + (est.devices === 1 ? '' : 's') + ')? It cannot be taken back.')) return;
         const btn = $('apSend');
         btn.disabled = true;
         post('/admin/push/send', { title: $('apTitle').value, body: $('apBody').value, url: $('apUrl').value, target: target(),
             group: $('apGroup') ? $('apGroup').value : '', usr_ids: Array.from(picked) }).then((d) => {
             if (!d.ok) { btn.disabled = false; toast(d.error || 'Could not send', 'error'); return; }
-            toast('Sending to ' + d.devices + ' device(s)…', 'success');
+            toast('Sent to ' + d.recipients + ' bell(s), pushing to ' + d.devices + ' device(s)…', 'success');
             setTimeout(() => location.reload(), 2500);      // the history row then shows how many took it
         }).catch(() => { btn.disabled = false; toast('Could not send', 'error'); });
     });

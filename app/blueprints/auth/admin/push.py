@@ -1,6 +1,6 @@
 """Admin › Push (/admin/push), after EAU_Web's push broadcast + push devices pages: who has push on (and who has not),
 their devices, a test push to one device or one person, and messages to me / GREAT Lab / admins / a group / everyone /
-picked people. Sending: app/services/notifications/webpush.py; tables: app/db/push.py."""
+picked people (under everyone's bell, and pushed to the devices that take admin messages). Sending: app/services/notifications/webpush.py; tables: app/db/push.py."""
 import logging
 
 from flask import jsonify, render_template, request, session
@@ -17,7 +17,7 @@ TARGETS = {
     'members': 'GREAT Lab members',
     'admins': 'Admins',
     'group': 'A group',
-    'all': 'Everyone with push',
+    'all': 'Everyone',
     'users': 'Picked people',
 }
 
@@ -44,10 +44,14 @@ def _people():
             'created_at': s['created_at'].isoformat(timespec='seconds') if s['created_at'] else '',
             'last_ok_at': s['last_ok_at'].isoformat(timespec='seconds') if s['last_ok_at'] else '',
             'fail_count': s['fail_count'], 'last_error': s['last_error'] or '', 'user_agent': s['user_agent'] or '',
+            'muted': list(s['muted'] or []),
         })
     people = []
     for email, u in get_users().items():
         groups = u.get('groups') or []
+        kinds = webpush.categories_for(u)
+        for d in by_user.get(u['usr_id'], []):        # the kinds this device takes: all it may get, minus muted ones
+            d['categories'] = [k for k in kinds if k not in d['muted']]
         people.append({
             'usr_id': u['usr_id'], 'email': email, 'name': u.get('display_name') or u.get('name') or email,
             'picture': u.get('picture') or '', 'groups': groups, 'is_admin': bool(u.get('is_admin')),
@@ -71,7 +75,7 @@ def _resolve(target, usr_ids, group, people):
     if target == 'group':
         return [p['usr_id'] for p in people if group and group in p['groups']]
     if target == 'all':
-        return [p['usr_id'] for p in people if p['devices']]
+        return [p['usr_id'] for p in people]
     if target == 'users':
         wanted = {int(i) for i in usr_ids or [] if str(i).isdigit()}
         return [p['usr_id'] for p in people if p['usr_id'] in wanted]
@@ -81,8 +85,9 @@ def _resolve(target, usr_ids, group, people):
 def _estimate(ids, people):
     idset = set(ids)
     chosen = [p for p in people if p['usr_id'] in idset]
-    return {'recipients': len(chosen), 'with_push': sum(1 for p in chosen if p['devices']),
-            'devices': sum(len(p['devices']) for p in chosen)}
+    # admin messages go out as 'announce': devices that unticked it in Settings do not count
+    takes = [[d for d in p['devices'] if 'announce' in d['categories']] for p in chosen]
+    return {'recipients': len(chosen), 'with_push': sum(1 for t in takes if t), 'devices': sum(len(t) for t in takes)}
 
 
 @admin_bp.route('/admin/push')
@@ -105,6 +110,7 @@ def push_page():
         'platforms': sorted(plats.items(), key=lambda x: -x[1]),
     }
     return render_template('admin_push.html', current_path='/admin/push', people=people, summary=summary,
+                           categories=[[k, v['label']] for k, v in webpush.CATEGORIES.items()],
                            history=db.recent_broadcasts(), targets=TARGETS, groups=sorted(get_groups().keys()),
                            push_on=webpush.enabled(), me=(session.get('user') or {}).get('email'))
 
@@ -124,8 +130,6 @@ def push_send():
     from app.db import push as db
     from app.services.notifications import webpush
     data = request.get_json(silent=True) or {}
-    if not webpush.enabled():
-        return jsonify({'ok': False, 'error': 'Push is not set up: add the VAPID keys to kinder.env.'}), 503
     title = str(data.get('title') or '').strip()[:120]
     body = str(data.get('body') or '').strip()[:500]
     url = _clean_url(data.get('url'))
@@ -140,8 +144,8 @@ def push_send():
     group = str(data.get('group') or '')
     ids = _resolve(target, data.get('usr_ids'), group, people)
     est = _estimate(ids, people)
-    if not est['devices']:
-        return jsonify({'ok': False, 'error': 'Nobody in that list has push turned on.'}), 400
+    if not est['recipients']:
+        return jsonify({'ok': False, 'error': 'Nobody is in that list.'}), 400
     desc = ''
     if target == 'users':
         idset = set(ids)
@@ -180,7 +184,8 @@ def push_user_test(usr_id):
     if not webpush.enabled():
         return jsonify({'ok': False, 'error': 'Push is not set up on this server.'}), 503
     ok, bad = webpush.send_to_users([usr_id], 'Kinder test notification',
-                                    'An admin sent this test to check push on your devices.', '/', wait=True)
+                                    'An admin sent this test to check push on your devices.', '/', category=None,
+                                    wait=True)
     audit('push_test_user', str(usr_id), f'delivered={ok} failed={bad}')
     return jsonify({'ok': ok > 0, 'delivered': ok, 'failed': bad})
 

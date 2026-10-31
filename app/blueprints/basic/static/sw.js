@@ -10,7 +10,7 @@
 //     Only when the network fails is the pre-cached /offline page shown.
 //   · /api/..., POSTs, uploads, anything without ?v=: untouched, the browser behaves as without a worker.
 // Web Push (2026-10-31, after EAU_Web): shows what app/services/notifications/webpush.py sends and opens its url.
-const VERSION = 'kinder-2026-10-31a';
+const VERSION = 'kinder-2026-11-01a';
 const SHELL = VERSION + '-shell';
 const STATIC = 'kinder-static-v1';     // not tied to VERSION: a new worker doesn't re-download every file
 const IMAGES = 'kinder-img-v1';
@@ -116,18 +116,23 @@ self.addEventListener('fetch', (event) => {
     // everything else (/api, /object data, un-versioned files): not intercepted
 });
 
-// ── Web Push: payload {title, body, url, tag} from app/services/notifications/webpush.py ──
+// ── Web Push: payload {title, body, url, tag, unread} from app/services/notifications/webpush.py ──
 self.addEventListener('push', (event) => {
     let d = {};
     try { d = event.data ? event.data.json() : {}; } catch (e) { d = { title: 'Kinder', body: event.data ? event.data.text() : '' }; }
-    event.waitUntil(self.registration.showNotification(d.title || 'Kinder', {
-        body: d.body || '',
-        icon: '/static/pwa/icon-192.png',
-        badge: '/static/pwa/icon-96.png',
-        tag: d.tag || undefined,
-        data: { url: d.url || '/' },
-        lang: 'en',
-    }));
+    event.waitUntil((async () => {
+        await self.registration.showNotification(d.title || 'Kinder', {
+            body: d.body || '',
+            icon: '/static/pwa/icon-192.png',
+            badge: '/static/pwa/icon-96.png',
+            tag: d.tag || undefined,
+            data: { url: d.url || '/' },
+            lang: 'en',
+        });
+        // the app icon badge = unread under the bell; open tabs update their bell at once (js/notify.js)
+        try { if (self.navigator.setAppBadge && typeof d.unread === 'number') await self.navigator.setAppBadge(d.unread); } catch (e) { /* unsupported */ }
+        for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'kinder-push', unread: d.unread });
+    })());
 });
 
 // Tap: focus an open Kinder window and go to the url, or open a new one
@@ -161,7 +166,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
             const sub = await self.registration.pushManager.subscribe({
                 userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (ch) => ch.charCodeAt(0)) });
             await fetch('/api/push/subscribe', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ subscription: sub.toJSON() }) });
+                body: JSON.stringify({ subscription: sub.toJSON(), old_endpoint: event.oldSubscription ? event.oldSubscription.endpoint : '' }) });
         } catch (e) { /* signed out or offline: the Settings panel shows "off" next time */ }
     })());
 });

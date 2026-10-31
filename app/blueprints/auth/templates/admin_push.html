@@ -11,11 +11,11 @@
 {% include '_admin_nav.html' %}
 <div class="kw-page admin-page ap-page" id="apPage" data-me="{{ me }}">
     <header class="kw-page-head">
-        <div><h1>Push</h1><p>Who has push notifications on, on which devices, and messages to their phones and computers. Members turn it on in Settings.</p></div>
+        <div><h1>Push</h1><p>Messages under everyone's bell and on their phones and computers; who has push on, on which devices. Members turn push on in Settings.</p></div>
     </header>
 
     {% if not push_on %}
-    <div class="ap-warn">Push is not set up on this server: nothing can be sent. Run <code>.venv/bin/python scripts/gen_vapid_keys.py</code>, add the three lines to <code>kinder.env</code> and restart. Every server that sends must use the same pair.</div>
+    <div class="ap-warn">Push is not set up on this server: messages only go under the bell, no phone gets them. Run <code>.venv/bin/python scripts/gen_vapid_keys.py</code>, add the three lines to <code>kinder.env</code> and restart. Every server that sends must use the same pair.</div>
     {% endif %}
 
     <div class="kw-kpis">
@@ -49,7 +49,7 @@
                 </div>
                 <div class="ap-foot">
                     <span class="ap-est" id="apEst">—</span>
-                    <button type="submit" class="kw-btn kw-btn-primary" id="apSend"{% if not push_on %} disabled{% endif %}>Send</button>
+                    <button type="submit" class="kw-btn kw-btn-primary" id="apSend">Send</button>
                 </div>
             </form>
         </section>
@@ -113,5 +113,6 @@
 
 {% block scripts %}
 <script type="application/json" id="apPeople">{{ people|tojson }}</script>
+<script type="application/json" id="apCategories">{{ categories|tojson }}</script>
 <script src="{{ url_for('static', filename='js/admin_push.js') }}"></script>
 {% endblock %}

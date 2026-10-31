@@ -1,10 +1,11 @@
 {% extends '_base.html' %}
 {#- Daily Trigger (on the navigation, Triggers › Daily | Direct in the page bar centre): checklist + script, tonight's
-    SLT / LOT targets and the Observation Log, stacked panels. daily_trigger.js drives it; the night's Weather and
-    Calendar open from the page bar. -#}
+    SLT / LOT targets and the Observation Log, stacked panels. daily_trigger.js drives it; tonight's Trigger duty (Lab ›
+    Calendar), the night's Weather and Calendar open from the page bar. -#}
 {% block title %}Daily Trigger - Kinder{% endblock %}
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lab_calendar.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
@@ -298,6 +299,10 @@
 {% endblock %}
 
 {% block bar_right %}
+    <a href="/lab_calendar" class="dt-duty{% if on_duty %} is-me{% elif not duty %} is-none{% endif %}" title="Trigger duty tonight (Lab › Calendar)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+        {% if on_duty %}You are on duty tonight{% elif duty %}On duty: {{ duty|map(attribute='name')|join(', ') }}{% else %}No one on duty tonight{% endif %}
+    </a>
     <button type="button" class="kw-btn kw-btn-sm" onclick="document.getElementById('weatherModal').style.display='flex'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
         Weather
@@ -639,14 +644,17 @@
 {% endblock %}
 
 {% block after_main %}
-    <!-- Calendar Modal -->
+    <!-- Calendar Modal: the next two weeks of Lab › Calendar (lab events + the Lulin LOT schedule) -->
     <div id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
-        <div class="pa-modal-box" style="max-width:1100px;width:96vw;">
-            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;">
-                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">GREAT Lab Calendar</h3>
-                <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
+        <div class="pa-modal-box" style="max-width:560px;width:96vw;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:12px;">
+                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Next two weeks</h3>
+                <div style="display:flex;gap:8px;">
+                    <a href="/lab_calendar" class="kw-btn kw-btn-sm">Open calendar</a>
+                    <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
+                </div>
             </div>
-            <iframe data-lazy-src="https://calendar.google.com/calendar/embed?height=900&wkst=1&ctz=Asia%2FTaipei&mode=MONTH&hl=en_GB&title=GREAT%20Lab&src=Y183ODMyOGFlNGI5MmFkMTM3MWU0ZmYxNTFlYWVlN2NkOWJiMTczNDFkOTdkYWIyMGFlZGZhN2EwM2RmNTQwYjYxQGdyb3VwLmNhbGVuZGFyLmdvb2dsZS5jb20&src=bG90dGFjMjAxNEBnbS5hc3Ryby5uY3UuZWR1LnR3&color=%23d7aeff&color=%23f09300" frameborder="0" scrolling="no" style="width:100%;height:min(780px,75vh);border:none;display:block;"></iframe>
+            <div id="dtCalendarList" style="max-height:min(640px,70vh);overflow-y:auto;"><p class="kw-empty">Loading…</p></div>
         </div>
     </div>
 
@@ -995,9 +1003,45 @@
         })();
     </script>
     <script>
+        // Calendar dialog: load /api/lab_calendar/events (today … +14 days) the first time it opens
+        (function() {
+            var modal = document.getElementById('calendarModal'), box = document.getElementById('dtCalendarList');
+            if (!modal || !box) return;
+            var esc = function(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+            var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            function day(iso) { var p = iso.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2])); return WD[d.getUTCDay()] + ' ' + p[2] + ' ' + MON[p[1] - 1]; }
+            function render(d) {
+                var byDay = {}, days = [], t = new Date(d.today + 'T00:00:00Z');
+                for (var i = 0; i <= 14; i++) { var k = new Date(t.getTime() + i * 864e5).toISOString().slice(0, 10); byDay[k] = []; days.push(k); }
+                d.events.filter(function(e) { return e.source === 'lab'; }).concat(d.events.filter(function(e) { return e.source !== 'lab'; }))   // the group's own events first
+                    .forEach(function(e) { days.forEach(function(k) { if (e.date <= k && k <= e.end_date) byDay[k].push(e); }); });
+                var h = '<ul class="lc-mini">';
+                days.forEach(function(k) {
+                    if (!byDay[k].length) return;
+                    h += '<li class="lc-mini-day' + (k === d.today ? ' is-today' : '') + '"><p class="lc-mini-d">' + (k === d.today ? 'Tonight · ' : '') + esc(day(k)) + '</p>';
+                    byDay[k].forEach(function(e) {
+                        h += '<div class="lc-mini-ev"><span class="lc-chip lc-c-' + esc(e.color) + '">' + esc(e.category_label) + '</span><span>' + esc(e.title) +
+                             (e.time_label ? ' <small>' + esc(e.time_label) + '</small>' : '') + (e.location ? ' <small>· ' + esc(e.location) + '</small>' : '') + '</span></div>';
+                    });
+                    h += '</li>';
+                });
+                box.innerHTML = h === '<ul class="lc-mini">' ? '<p class="kw-empty">Nothing in the next two weeks.</p>' : h + '</ul>';
+            }
+            var loaded = false;
+            new MutationObserver(function() {
+                if (modal.style.display !== 'flex' || loaded) return;
+                loaded = true;
+                fetch('/api/lab_calendar/events', { headers: { Accept: 'application/json' } })
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) { if (!d.success) throw new Error(d.error); render(d); })
+                    .catch(function() { loaded = false; box.innerHTML = '<p class="kw-empty">Could not load the calendar.</p>'; });
+            }).observe(modal, { attributes: true, attributeFilter: ['style'] });
+        })();
+    </script>
+    <script>
         // Lazy-load modal iframes: only set src when the modal becomes visible
         (function() {
-            var modals = ['calendarModal', 'weatherModal'];
+            var modals = ['weatherModal'];
             modals.forEach(function(id) {
                 var modal = document.getElementById(id);
                 if (!modal) return;
