@@ -184,10 +184,10 @@
 
     function tableHtml(data) {
         var rows = data.rows;
-        var fastest = Math.min.apply(null, rows.map(function (r) { return r.total_s; }));
-        // The rows a person might actually pick; the rest (very short frames, or very
-        // slow totals) stay one click away.
-        var shown = rows.filter(function (r) { return r.recommended || r.total_s <= 2 * fastest; });
+        var fastest = Math.min.apply(null, rows.map(function (r) { return r.elapsed_s; }));
+        // The rows a person might actually pick; the rest (short frames that spend most of
+        // the time reading out) stay one click away.
+        var shown = rows.filter(function (r) { return r.recommended || r.elapsed_s <= 2 * fastest; });
         function rowHtml(r) {
             return '<tr class="' + (r.recommended ? 'is-rec' : '') + '">' +
                 '<td>' + fmtSeconds(r.exp_s) + (r.recommended ? ' <span class="kw-chip kw-chip-gold">Suggested</span>' : '') + '</td>' +
@@ -236,10 +236,10 @@
             var rec = data.recommended;
             html += hero('Suggested exposure',
                 esc(fmtSeconds(rec.exp_s)) + '<span class="etc-simple-x">×</span>' + esc(plural(rec.frames, 'frame')),
-                fmtDuration(rec.total_s) + ' on target · reaches SNR ' + rec.snr.toFixed(1),
+                fmtDuration(rec.total_s) + ' on target (about ' + fmtDuration(rec.elapsed_s) + ' with readout) · reaches SNR ' + rec.snr.toFixed(1),
                 rec.frames === 1
                     ? 'One frame of ' + fmtSeconds(rec.exp_s) + ' already reaches the target (exactly ' + fmtSeconds(data.single_frame_time_s) + ' would). Take a few more frames if you want to reject cosmic rays.'
-                    : 'Shortest frame length that is within 10% of the fastest total time — longer frames would save almost nothing. Never longer than the saturation limit.',
+                    : 'The least time at the telescope, counting about ' + data.readout_overhead_s + ' s of readout per frame — so as few frames as that allows. Frames are 15, 30 or 45 s or whole minutes, and never longer than the saturation limit.',
                 false);
             if (data.status === 'impractical') {
                 alerts.unshift('This needs ' + fmtDuration(rec.total_s) + ' on one target. Consider a lower SNR or a larger telescope.');
@@ -254,7 +254,7 @@
         }
         html += conditionsHtml(data);
         if (data.rows && data.rows.length) { html += tableHtml(data); }
-        html += '<p class="etc-simple-foot">' + esc(setup) + ', seeing ' + c.fwhm_arcsec + '″. Times are integration only — readout and slewing are extra. ' +
+        html += '<p class="etc-simple-foot">' + esc(setup) + ', seeing ' + c.fwhm_arcsec + '″. Total is integration only; the suggestion assumes about ' + data.readout_overhead_s + ' s of readout per frame (not measured), and slewing is extra. ' +
             'Switch to <b>Advanced</b> for the full noise budget and how it changes over the night.</p>';
 
         body.innerHTML = html;

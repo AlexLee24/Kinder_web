@@ -20,6 +20,9 @@ def catalogue():
     return presets.load()
 
 
+from app.blueprints.astronomy_tools.etc_quick import PREFERRED_EXPOSURES  # noqa: E402
+
+
 def plan(catalogue, **overrides):
     from app.blueprints.astronomy_tools.etc_quick import compute_plan
     args = dict(site="lulin", telescope="LOT", camera="Sophia", optic_filter="Sloan_r",
@@ -35,10 +38,17 @@ def test_recommended_plan_reaches_the_target(catalogue):
     rec = result["recommended"]
     assert rec["snr"] >= 10.0
     assert rec["exp_s"] < result["conditions"]["saturation_time_s"]
-    # Within the stated tolerance of the fastest row, and the shortest frame that is.
-    fastest = min(row["total_s"] for row in result["rows"])
-    assert rec["total_s"] <= fastest * 1.10
-    assert all(row["total_s"] > fastest * 1.10 for row in result["rows"] if row["exp_s"] < rec["exp_s"])
+    # The least time at the telescope once each frame's readout is paid for.
+    assert rec["elapsed_s"] == min(row["elapsed_s"] for row in result["rows"])
+    assert rec["exp_s"] in PREFERRED_EXPOSURES
+
+
+def test_few_long_frames_beat_many_short_ones(catalogue):
+    """30 s x 1 rather than 8 s x 4: the same integration, three readouts fewer."""
+    result = plan(catalogue, ra=109.143762, dec=38.352239, mag=19.8, fwhm=1.0,
+                  observing_time_utc="2026-10-31T22:00:00Z")
+    assert result["recommended"]["frames"] == 1
+    assert min(row["exp_s"] for row in result["rows"]) == 15
 
 
 def test_single_frame_time_is_what_castor_says(catalogue):
