@@ -601,7 +601,7 @@ def _fetch_phot_for_new_objects(names, debug=False):
         try:
             from download_phot import process_single_object_workflow
         except ImportError as exc:
-            # download_phot is a private module and may be absent from this deployment.
+            # download_phot cannot be imported here (e.g. a dependency is missing).
             logger.warning("Fetch LC skipped for %d new object(s): download_phot unavailable (%s)",
                            len(names), exc)
             return

@@ -147,7 +147,7 @@ Kinder（Logo → /）
 | 種類 | 名稱 | 時間 | 做什麼 |
 |---|---|---|---|
 | cron | `daily_backup` | 03:00 | `pg_dump` 整庫到 `app/data/backups/`（保留 15 份）；啟動時也同步跑一次 |
-| cron | `daily_phot_fetch` | 03:30 | 對所有 Inbox 物件跑 `download_phot.process_single_object_workflow`（ATLAS / PS / ZTF / LSST / TNS） |
+| cron | `daily_phot_fetch` | 03:30 | 對所有 Inbox 物件跑 `download_phot.process_single_object_workflow`（ZTF / LSST / TNS；ATLAS / PS 自 2026-10-31 移到未追蹤的 `download_phot_backup.py`） |
 | cron | `daily_target_mag_update` | 05:00 | 更新 `obs.targets` 的最新星等（**目前寫到不存在的表，見已知問題**） |
 | cron | `daily_retire_stale_followups` | 05:30 | Follow-up / Snoozed 物件退役成 Finish（**有 bug，見已知問題**） |
 | cron | `daily_host_redshift_sync` | 06:00 | `sync_host_redshifts`：把 DETECT host 的紅移寫回物件 |
@@ -209,7 +209,7 @@ Kinder（Logo → /）
 | `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` | PostgreSQL（DB 名稱硬編碼 `Kinder`） | `database/__init__.py`、`backup.py`、DETECT | 必填 |
 | `PG_DATABASE` | 只有 DETECT 讀（web 端會覆寫成 `Kinder`） | DETECT | 否 |
 | `TNS_BOT_ID` / `TNS_BOT_NAME` / `TNS_API_KEY` | TNS bot | `auto_tns_download`、`tns_gap_filler`、`download_phot` | TNS 同步必填 |
-| `ATLAS_USER` / `ATLAS_PASS`、`PANSTARRS_USER` / `PANSTARRS_PASS` | QUB 網站登入（Playwright） | `download_phot` | 光度抓取必填 |
+| `ATLAS_USER` / `ATLAS_PASS`、`PANSTARRS_USER` / `PANSTARRS_PASS` | QUB 網站登入（Playwright） | `download_phot_backup.py`（未追蹤，2026-10-31 起） | 只有備份檔用到 |
 | `SLACK_BOT_TOKEN`、`SLACK_CHANNEL_ID_CONTROL_ROOM`、`SLACK_CHANNEL_ID_test` | Daily Trigger 送 Slack（DEBUG 用 test 頻道） | `trigger_send` | Trigger 必填 |
 | `SLACK_CHANNEL_ID_GCN` / `_ToO` / `_EP_COPY` / `_ALERT`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET`、`BOTS_DISABLED`、`OBS_RAW_DIR`、`REDUCTION_*` | lab bots | `app/services/bots` | 否（缺少時該 bot 在 Admin › Bots 顯示 Needs setup） |
 | `ACCESS_LOG_ENABLED` | HTTP access log | `main.py` | 否（預設關） |

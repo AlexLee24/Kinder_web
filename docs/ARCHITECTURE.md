@@ -38,7 +38,7 @@ kinder_web_blueprint/
     │   └── catalog.py         cat.* 表：DESI / Lens cone search、NED 快取
     ├── services/          領域邏輯（不碰 Flask request；依主題分包）
     │   ├── tns/               auto_tns_download（每小時/每日同步）、manual_tns_download、tns_gap_filler
-    │   ├── photometry/        download_phot（私有檔，git 忽略）、phot_scheduler、data_processing（繪圖）
+    │   ├── photometry/        download_phot（ZTF / LSST / TNS）、phot_scheduler、data_processing（繪圖）
     │   ├── detect/            detect_pipeline（呼叫 vendor/DETECT）、detect_cross_match
     │   ├── planning/          obsplan（可見度圖）、observation_script / trigger_script（ACP 腳本）、trigger_send（Slack）
     │   ├── astro/             astronomy_calculator、coordinate_converter、date_converter、ext_M_calculator、filter_colors、spectral_lines
@@ -113,7 +113,7 @@ kinder_web_blueprint/
 3. **before_request 順序**（`app/core/hooks.py`）：Host 檢查必須最先。
 4. **`app/paths.py` 必須是 `app` 套件第一個 import**（`app/__init__.py` 第一行），否則 `import castor` / `import function` 會失敗，`DETECT_DATA_DIR` 預設值也不會設好。
 5. **`app/vendor/`**：CASTOR 用 `git -C app/vendor/CASTOR pull` 更新；DETECT 用 `scripts/sync_detect.sh`。不要手改裡面的檔案。
-6. **`app/services/photometry/download_phot.py` 不在 git 內**（含外站爬取憑證邏輯）；部署與備份要另外攜帶。它現在改用 `from app.db import ...`（原本裸 `from database import` 會造成第二個連線池，已修正）。
+6. **`app/services/photometry/download_phot.py` 自 2026-10-31 起在 git 內**：只剩 ALeRCE（ZTF / LSST）與 TNS，憑證都從 kinder.env 讀。需要登入 QUB 網站的 ATLAS / Pan-STARRS 下載器移到 `download_phot_backup.py`（git 忽略，部署與備份要另外攜帶）。它現在改用 `from app.db import ...`（原本裸 `from database import` 會造成第二個連線池，已修正）。
 7. **DEBUG=True** 會關掉所有背景工作、縮小連線池、關閉 Secure cookie、Slack 改打測試頻道。
 8. `app/blueprints/marshal/objects` 的 blueprint 名稱是 `marshal_bp`（歷史因素），模板裡 `url_for('marshal_bp.object_detail_generic', ...)` 都指它；不要改名。
 
@@ -143,7 +143,7 @@ kinder_web_blueprint/
 | `database/{__init__,auth,catalog,obs,transient}.py` | `app/db/…`（內容不變） |
 | `auto_tns_download.py`、`tns_gap_filler.py` | `app/services/tns/…` |
 | `Manual_tns_download_snoozed.py` | `app/services/tns/manual_tns_download.py`（改名） |
-| `download_phot.py`（未追蹤）、`phot_scheduler.py`、`data_processing.py` | `app/services/photometry/…` |
+| `download_phot.py`、`phot_scheduler.py`、`data_processing.py` | `app/services/photometry/…` |
 | `detect_pipeline.py`、`detect_cross_match.py` | `app/services/detect/…` |
 | `obsplan.py`、`observation_script.py`、`trigger_script.py`、`trigger_send.py` | `app/services/planning/…` |
 | `astronomy_calculator.py`、`coordinate_converter.py`、`date_converter.py`、`ext_M_calculator.py`、`filter_colors.py`、`spectral_lines.py` | `app/services/astro/…` |

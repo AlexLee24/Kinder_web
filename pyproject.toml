@@ -65,7 +65,7 @@ markers = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-extend-exclude = ["app/vendor", "app/services/photometry/download_phot.py"]
+extend-exclude = ["app/vendor", "app/services/photometry/download_phot_backup.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
