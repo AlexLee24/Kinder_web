@@ -1,4 +1,4 @@
-Filled hourly by `app/services/lsst/alerts.py` (shown on DETECT › LSST, `/detect/lsst`). Only objects with a Lens or DESI match are stored.
+Filled hourly by `app/services/lsst/alerts.py` (screened by DETECT and shown on DETECT › LSST-DETECT, `/detect/lsst`). Only objects with a Lens or DESI match are stored.
 
 | Column       | Type             | Describe                                                                 |
 | ------------ | ---------------- | ------------------------------------------------------------------------ |
@@ -26,6 +26,6 @@ Filled hourly by `app/services/lsst/alerts.py` (shown on DETECT › LSST, `/dete
 | n_points     | int              | binned LSST points                                                       |
 | mags_lastmjd / mags_at | double / timestamptz | ALeRCE lastmjd the magnitudes were computed from, and when |
 | lc_points    | jsonb            | the binned LSST light curve, [[mjd, mag, mag_err, filter], ...] (DETECT's screen reads it) |
-| review_status / review_by / review_at | text / text / timestamptz | DETECT LSST Review status: Inbox / Follow-up / Snoozed / Finish, who and when |
+| review_status / review_by / review_at | text / text / timestamptz | LSST-DETECT review status: Inbox / Follow-up / Snoozed / Finish, who and when |
 | first_seen   | timestamptz      | first time the watch stored it                                           |
 | updated_at   | timestamptz      | last update                                                              |

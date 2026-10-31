@@ -1,11 +1,12 @@
-{% extends 'detect_results.html' %}
-{#- DETECT › LSST-DETECT (/detect/lsst?day=YYYY-MM-DD): DETECT's review page (detect_results.html) on LSST
-    alerts, with the hourly watch's run panel / live log and the LSST-oid cross-match on top.
+{% extends 'detect_home.html' %}
+{#- DETECT › LSST-DETECT overview (/detect/lsst): DETECT's home page (detect_home.html) on LSST alerts, with the
+    hourly watch's run panel / live log and the LSST-oid cross-match under the latest run. Each day's review is
+    DETECT's review page (detect_results.html) at /detect/lsst?day=YYYY-MM-DD.
     Data: app/services/lsst/alerts.py (watch) + app/services/lsst/detect.py (DETECT); routes in lsst_review.py. -#}
 {% block head %}
     {{ super() }}
     <style>
-        .lsst-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+        .lsst-tools { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin: 16px 0; }
         .lsst-tools .kw-panel + .kw-panel { margin-top: 0; }
         .lsst-tools h2 { margin: 0 0 6px; font-size: 0.95rem; }
         .lsst-tools p { margin: 0 0 10px; font-size: 0.8rem; color: var(--kw-text-secondary); }
@@ -25,11 +26,21 @@
     </style>
 {% endblock %}
 
-{% block before_review %}
-    {% if missing_oid %}
-    <div class="kw-panel lsst-note">LSST object <b>{{ missing_oid }}</b> has not been screened by DETECT
-        (no Lens / DESI match, or not read yet). <a href="{{ alerce_url }}" target="_blank" rel="noopener noreferrer">Open it on ALeRCE</a></div>
-    {% endif %}
+{% block lead %}
+        <p class="kw-lead lead">
+            <strong>DETECT on LSST alerts.</strong> Every LSST alert ALeRCE puts near a lens or a DESI galaxy is screened
+            by DETECT exactly as a TNS report is: <em>is it in a galaxy with a known redshift, how luminous is it,
+            and is it worth a large-telescope spectrum?</em> Alerts without a DESI or Lens candidate are left out.
+            The rest is handed to a person on the
+            <a href="{{ day_url ~ latest_date if latest_date else '#' }}">review page</a>.
+        </p>
+        {% if missing_oid %}
+        <div class="kw-panel lsst-note">LSST object <b>{{ missing_oid }}</b> has no DETECT candidate
+            (no Lens / DESI galaxy around it, or not read yet). <a href="{{ alerce_url }}" target="_blank" rel="noopener noreferrer">Open it on ALeRCE</a></div>
+        {% endif %}
+{% endblock %}
+
+{% block after_overview %}
     {% set _admin_user = session.get('user') and session['user'].get('is_admin') %}
     <div class="lsst-tools">
         <section class="kw-panel">
@@ -59,7 +70,7 @@
         <section class="kw-panel">
             <h2>Cross-match an LSST object</h2>
             <p>Enter an LSST oid (diaObjectId, or LSST-AP-DO-…). It is matched against Lens and DESI like the watch
-               (DESI for every class) and screened by DETECT; a match gets a card here. For any position use
+               (DESI for every class) and screened by DETECT; a match gets a card on its review day. For any position use
                <a href="{{ url_for('detect.detect_crossmatch') }}">Cross-match</a>.</p>
             <form class="lsst-row" id="lsstOidForm">
                 <input type="text" class="kw-input" id="lsstOid" placeholder="171141197314654355" autocomplete="off" style="flex:1; min-width: 200px">
@@ -68,6 +79,44 @@
             <div class="lsst-msg" id="lsstOidMsg"></div>
         </section>
     </div>
+{% endblock %}
+
+
+{% block pipeline_intro %}
+            <p class="pipeline-intro">Runs every hour at hh:25 UTC on the ALeRCE LSST stream, and once a day at 14:30 UTC on the
+            last 1.5 days for objects ALeRCE ingested late — DETECT's own code (<code>app/vendor/DETECT</code>) on LSST alerts
+            instead of TNS reports; results go to LSST tables, never to <code>transient.objects</code>. One run, seven steps:</p>
+{% endblock %}
+
+{% block pipeline_intake %}
+                <li class="flow-step">
+                    <div class="flow-num">1</div>
+                    <div class="flow-body">
+                        <div class="flow-title">ALeRCE ingest</div>
+                        <div class="flow-sum">LSST alerts ALeRCE classifies as SN, AGN or VS, kept when they sit near a lens or a DESI galaxy, in <code>transient.lsst_alerts</code>.</div>
+                        <details><summary>details</summary>
+                            <ul>
+                                <li><code>cat.lens</code> ≤ 10″ for every class; <code>cat.desi</code> for SN only, ≤ 30″ and ≤ 3 R<sub>e</sub>, ZWARN = 0.</li>
+                                <li>Linked to a TNS object by position when TNS has one; its type and redshift are used, its status is never touched.</li>
+                                <li>The binned LSST light curve is read from ALeRCE and kept with the alert.</li>
+                            </ul>
+                        </details>
+                    </div>
+                </li>
+                <li class="flow-step">
+                    <div class="flow-num">2</div>
+                    <div class="flow-body">
+                        <div class="flow-title">Targets</div>
+                        <div class="flow-sum">New alerts, alerts whose light curve gained a point within 30 days of the first detection, and alerts whose host a reviewer changed — at most 150 per run, the rest next hour.</div>
+                    </div>
+                </li>
+{% endblock %}
+
+{% block pipeline_upload %}
+                                <li><code>transient.lsst_detect_matches</code>: one row per candidate, <code>is_host</code>, the rule's numbers in <code>match_data</code>.</li>
+                                <li><code>transient.lsst_detect_screen</code>: the verdict — host_status, score, tags, M (peak and discovery), z, d_DLR, offset; the review day is the UTC date of the first LSST detection.</li>
+                                <li><code>transient.lsst_target_images</code>: the finder, redrawn only when the verdict changes.</li>
+                                <li>The review status lives on <code>transient.lsst_alerts</code> and is never touched by the pipeline.</li>
 {% endblock %}
 
 {% block scripts %}

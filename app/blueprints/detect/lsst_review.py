@@ -1,13 +1,18 @@
-"""DETECT › LSST-DETECT (/detect/lsst?day=YYYY-MM-DD): DETECT's daily review page
-(detect_results.html + detect_results.js, via detect_lsst.html) on the LSST alerts DETECT
-screened (app/services/lsst/detect.py), with the watch's run panel and LSST-oid cross-match
-on top. Same cards, verdicts, tags, image and one-key decisions; decisions go to the LSST
-tables, never to transient.objects."""
+"""DETECT › LSST-DETECT: DETECT's pages on the LSST alerts DETECT screened
+(app/services/lsst/detect.py), alerts without a DESI / Lens candidate left out.
+
+* /detect/lsst                 DETECT's home (detect_home.html via detect_lsst.html): latest run, results,
+                               pipeline, with the watch's run panel and LSST-oid cross-match
+* /detect/lsst?day=YYYY-MM-DD  DETECT's review page (detect_results.html + detect_results.js)
+* /detect/lsst/archives        DETECT's archives (detect_archives.html)
+
+Same cards, verdicts, tags, image and one-key decisions; decisions go to the LSST tables,
+never to transient.objects."""
 import io
 import logging
 import re
 
-from flask import jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import flash, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from app.services.lsst import alerce_api
 from app.services.lsst import detect as lsst_detect
@@ -35,9 +40,13 @@ def _detect_api() -> dict:
         'lightcurve':     '/api/detect/lsst/review/lightcurve/',
         'fetchPhot':      '/api/detect/lsst/review/fetch_photometry/{name}',
         'fetchPhotLabel': 'Downloading from ALeRCE…',
-        'dateUrl':        url_for('detect.detect_lsst') + '?day=',
+        'dateUrl':        _day_url(),
         'homeUrl':        url_for('detect.detect_lsst'),
     }
+
+
+def _day_url() -> str:
+    return url_for('detect.detect_lsst') + '?day='
 
 
 def _links(oid: int, ra, dec, detail: dict | None) -> list[tuple[str, str]]:
@@ -85,25 +94,49 @@ def detect_lsst():
     missing_oid = None
     if oid and not day:                              # /detect/lsst?oid=… → that alert's day and card
         found = day_of(oid)
-        missing_oid = None if found else oid
-        if found:
-            return redirect(url_for('detect.detect_lsst', day=found) + f'#t={lsst_detect.target_name(oid)}')
+        if found in days:
+            return redirect(_day_url() + found + f'#t={lsst_detect.target_name(oid)}')
+        missing_oid = oid
+    if not day:
+        return _overview(metadata, missing_oid)
     if not _DAY_RE.match(day) or day not in days:
-        if day:
-            return redirect(url_for('detect.detect_lsst'))
-        day = days[0] if days else ''
-    page_data = lsst_detect.review_page_data(day) if day else {}
+        flash('Invalid or unknown LSST-DETECT date.', 'error')
+        return redirect(url_for('detect.detect_lsst'))
+    page_data = lsst_detect.review_page_data(day)
     payload = _assemble_detect_payload(day, metadata=metadata, page_data=page_data,
                                        current_path='/detect/lsst')
     # every LSST alert is new: no "old TNS edits" section
-    payload['none_list'] = sorted(payload['none_list'] + payload['old_list'],
-                                  key=lambda x: (-x['score'], x['target_name']))
     payload['old_list'], payload['unmatched_recent_days'] = [], None
-    payload['counts'].update(unmatched=len(payload['none_list']), old=0)
-    return render_template('detect_lsst.html', page_title='LSST-DETECT', detect_api=_detect_api(),
-                           missing_oid=missing_oid,
-                           alerce_url=alerce_api.explorer_url(missing_oid) if missing_oid else None,
+    payload['counts']['old'] = 0
+    return render_template('detect_results.html', page_title='LSST-DETECT', detect_api=_detect_api(),
                            **_decorate(payload, page_data))
+
+
+def _overview(metadata: dict, missing_oid: int | None):
+    """DETECT's home page on LSST: the stat tiles open the newest review day, each top
+    alert its own day's card."""
+    days = metadata['available_dates']
+    overview = lsst_detect.review_overview()
+    overview['run_day'] = days[0] if days else None
+    for t in overview['top']:
+        t['obj_href'] = lsst_detect.object_href(t, t['oid'])
+        t['judge_href'] = _day_url() + t['review_day'] + '#t=' + t['name'] if t['review_day'] else None
+    return render_template('detect_lsst.html', page_title='LSST-DETECT', current_path='/detect/lsst',
+                           latest_date=days[0] if days else None, daily_counts=metadata['daily_counts'],
+                           overview=overview, day_url=_day_url(),
+                           archives_url=url_for('detect.detect_lsst_archives'),
+                           missing_oid=missing_oid,
+                           alerce_url=alerce_api.explorer_url(missing_oid) if missing_oid else None)
+
+
+@detect_bp.route('/detect/lsst/archives')
+def detect_lsst_archives():
+    denied = _member_or_redirect()
+    if denied:
+        return denied
+    return render_template('detect_archives.html', page_title='LSST-DETECT Archives', day_url=_day_url(),
+                           daily_counts=lsst_detect.review_metadata()['daily_counts'],
+                           current_path='/detect/lsst/archives')
 
 
 @detect_bp.route('/detect/lsst/review/image/<int:oid>')
