@@ -20,6 +20,21 @@ Production (behind an HTTPS proxy), from the project root:
 gunicorn --workers 4 --worker-class gthread --threads 4 --bind 127.0.0.1:8000 wsgi:app
 ```
 
+On a Mac, run it as a launchd service instead (starts on its own, restarts if it crashes, like a
+systemd unit):
+
+```bash
+scripts/kinder_service.sh install          # once: LaunchAgent, runs while this user is logged in (no sudo)
+scripts/kinder_service.sh install --system # or: LaunchDaemon, runs from boot without a login (sudo)
+scripts/kinder_service.sh deploy           # git pull --ff-only (+ app/vendor/CASTOR) + uv sync --frozen + restart
+scripts/kinder_service.sh restart | stop | start | status | logs [-f] | uninstall
+```
+
+It runs the same gunicorn command (change it at install with `KINDER_BIND`, `KINDER_WORKERS`,
+`KINDER_THREADS`); its own output goes to `~/Library/Logs/Kinder/tw.edu.ncu.kinder.log`. `install` first checks
+that a background job may read the project: on an external disk (or in Documents / Desktop / Downloads) the
+venv's Python needs Full Disk Access, and the script prints the exact path to add.
+
 Both entry points start immediately (the start-up backup runs in a background thread) and
 write every log line to the terminal as well as `app/log/<date>.log`.
 `cd app && gunicorn main:app` still works through the `app/main.py` shim.
