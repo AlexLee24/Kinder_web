@@ -1,10 +1,10 @@
 """Alerts for the Lulin observing robot: stored in obs.robot_alerts (app/db/robot.py), served by one keyless,
 read-only endpoint, GET /api/v1/robot/alert (astronomy_tools/robot_api.py).
 
-The endpoint shows at most ONE alert: the newest one that is active (not cancelled on Lab › Bots) and not expired,
-with its ACP script; ``alert`` is null when there is none. The robot remembers the id it last ran and runs an alert
-only when its id is LARGER (ids only grow): a repeated poll never runs an alert twice, and when the newest alert is
-cancelled and an older one shows again, that older one is not run a second time. If the id it is running
+The endpoint shows at most ONE alert: the newest one that is active (not cancelled on Triggers › Alerts) and not
+expired, with its ACP script; ``alert`` is null when there is none. The robot remembers the id it last ran and runs an
+alert only when its id is LARGER (ids only grow): a repeated poll never runs an alert twice, and when the newest alert
+is cancelled and an older one shows again, that older one is not run a second time. If the id it is running
 disappears (cancelled or expired) it can stop.
 Each alert also says whether it rises above MIN_ALT during tonight's dark time at Lulin (``observable_tonight``);
 the robot decides what to do with that.
@@ -16,7 +16,7 @@ from . import status
 
 MIN_ALT = 30.0              # degrees, during astronomical darkness
 EXPIRES_AFTER = timedelta(hours=24)
-MAX_CLIENTS = 10            # robot clients remembered for Lab › Bots
+MAX_CLIENTS = 10            # robot clients remembered for Triggers › Alerts
 LULIN = ('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
 
 
@@ -87,7 +87,7 @@ def feed():
 
 
 def note_client(ip, alert_id, agent):
-    """Remember who polls and which alert id it got (shown on Lab › Bots under GCN & Einstein Probe)."""
+    """Remember who polls and which alert id it got (shown on Triggers › Alerts under GCN & Einstein Probe)."""
     at = status.now_iso()
 
     def mutate(e):

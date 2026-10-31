@@ -429,7 +429,8 @@ def get_observation_logs(year_or_month: int | str | None = None,
 
 
 def get_observed_since(since) -> list[dict]:
-    """Observed rows of obs.logs from ``since`` (a date) on, newest night first (Lab › Bots, observation-log bot)."""
+    """Observed rows of obs.logs from ``since`` (a date) on, newest night first (Triggers › Alerts, observation-log
+    bot)."""
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(f"{_LOG_SELECT} WHERE l.observed AND l.date >= %s ORDER BY l.date DESC, l.telescope, l.name", (since,))

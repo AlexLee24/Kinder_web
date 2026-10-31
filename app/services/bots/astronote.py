@@ -4,7 +4,7 @@
 not in app/data/bots/astronotes_sent_ids.json, oldest first. A note's id is saved before it is posted, so a
 restart can never post it twice; a failed post is rolled back and retried next time. With no sent-ids file yet
 (first run) every note in the window is marked as sent without posting, so the channel is not flooded.
-Each posted note is also kept in app/data/bots/astronotes_posted.json (newest MAX_POSTED) for Lab › Bots.
+Each posted note is also kept in app/data/bots/astronotes_posted.json (newest MAX_POSTED) for Triggers › Alerts.
 
 TNS login: TNS_BOT_ID + TNS_BOT_NAME + TNS_API_KEY, or TNS_USER_ID + TNS_USERNAME (kinder.env).
 """

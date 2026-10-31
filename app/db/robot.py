@@ -2,7 +2,7 @@
 
 One row per alert. ``id`` only grows and is never reused, so the robot can tell a new alert from one it already
 ran; ``uid`` is the source's own key (EP: 'ep_<trigger time>'), so an alert delivered twice is stored once.
-A row can be cancelled (and restored) from Lab › Bots; past ``expires_at`` it counts as expired.
+A row can be cancelled (and restored) from Triggers › Alerts; past ``expires_at`` it counts as expired.
 """
 import logging
 
@@ -84,7 +84,7 @@ def newest_active():
 
 
 def recent_alerts(limit=20):
-    """The newest alerts, newest first (Lab › Bots)."""
+    """The newest alerts, newest first (Triggers › Alerts)."""
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         _ensure(cur)
