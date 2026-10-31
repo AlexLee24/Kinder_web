@@ -1,0 +1,235 @@
+{% extends '_base.html' %}
+{#- Lab › Calendar (/lab_calendar): the group's events plus the Lulin LOT schedule (synced from Lulin's Google calendar).
+    Month view (one month at a time) or list, Today / Coming up on the side, filters as query parameters.
+    lab_calendar.js draws the month and the list from #lcData and drives the event / form / subscribe dialogs. -#}
+{% block title %}Calendar - Kinder{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lab_calendar.css') }}">
+    <meta name="description" content="GREAT Lab calendar: group meetings, observing runs, deadlines and the Lulin LOT schedule">
+{% endblock %}
+
+{% macro ic(path) -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ path|safe }}</svg>
+{%- endmacro %}
+{% set IC_PLUS = '<path d="M12 5v14M5 12h14"/>' %}
+{% set IC_RSS = '<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1" fill="currentColor"/>' %}
+{% set IC_REPEAT = '<path d="M4 12V9a3 3 0 0 1 3-3h13l-3-3M20 12v3a3 3 0 0 1-3 3H4l3 3"/>' %}
+
+{% block bar_left %}<p class="kw-lead">Group meetings, observing runs, deadlines and trips, with the Lulin LOT schedule. Subscribe once and it stays up to date in your own calendar.</p>{% endblock %}
+{% block bar_right %}
+    <button type="button" class="kw-btn kw-btn-sm" id="lcSubscribeOpen">{{ ic(IC_RSS) }}Subscribe</button>
+    <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="lcAddOpen">{{ ic(IC_PLUS) }}Add event</button>
+{% endblock %}
+
+{% macro chip(e) -%}<span class="lc-chip lc-c-{{ e.cat.color }}">{{ e.cat.label }}</span>{%- endmacro %}
+
+{% macro hl_row(e, today=False) -%}
+<li class="lc-hl-row{% if e.source == 'lab' %} is-lab{% endif %}">
+    <div class="lc-hl-cats">{{ chip(e) }}{% if e.repeat %}<span class="lc-rep" title="{{ e.repeat_label }}">{{ ic(IC_REPEAT) }}</span>{% endif %}</div>
+    <button type="button" class="lc-hl-main" data-ev="{{ e.id }}">
+        <span class="lc-hl-title">{{ e.title }}</span>
+        {%- set bits = [] if today else [e.d.strftime('%a %d %b')] -%}
+        {%- if e.time_label %}{% set _ = bits.append(e.time_label) %}{% endif -%}
+        {%- if e.location %}{% set _ = bits.append(e.location) %}{% endif -%}
+        {%- if e.end_d != e.d %}{% set _ = bits.append('until ' ~ e.end_d.strftime('%a %d %b')) %}{% endif %}
+        <span class="lc-hl-sub">{{ bits|join(' · ') }}</span>
+    </button>
+    {% if today %}
+    <span class="lc-hl-when is-today">{% if e.d < today_date %}Ongoing{% else %}Today{% endif %}</span>
+    {% else %}
+    <span class="lc-hl-when">{% if e.days_left == 1 %}Tomorrow{% else %}in {{ e.days_left }} d{% endif %}</span>
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% block content %}
+<div class="kw-page lc-page" id="lcPage" data-email="{{ user_email }}" data-admin="{{ '1' if is_admin else '' }}">
+    <div class="lc-layout">
+        <aside class="lc-side">
+            {% if today_events %}
+            <section class="kw-panel lc-hl lc-hl-today" aria-labelledby="lcTodayT">
+                <div class="kw-panel-head"><h2 id="lcTodayT"><span class="lc-live" aria-hidden="true"></span>Today <span class="lc-hl-date">{{ today_date.strftime('%a %d %b') }}</span></h2></div>
+                <ul class="lc-hl-list">{% for e in today_events %}{{ hl_row(e, True) }}{% endfor %}</ul>
+            </section>
+            {% endif %}
+            <section class="kw-panel lc-hl" aria-labelledby="lcSoonT">
+                <div class="kw-panel-head"><h2 id="lcSoonT">Coming up</h2></div>
+                {% if soon_events %}
+                <ul class="lc-hl-list">{% for e in soon_events %}{{ hl_row(e) }}{% endfor %}</ul>
+                {% else %}
+                <p class="kw-empty">Nothing planned yet.</p>
+                {% endif %}
+            </section>
+            <section class="kw-panel lc-sync" aria-labelledby="lcSyncT">
+                <div class="kw-panel-head">
+                    <h2 id="lcSyncT">Lulin LOT schedule</h2>
+                    <button type="button" class="kw-btn kw-btn-sm" id="lcSyncNow">Sync now</button>
+                </div>
+                <p class="kw-panel-desc">Copied from the Lulin TAC Google calendar every 6 hours. Changes there show up here and in every subscription.</p>
+                <p class="lc-sync-state" id="lcSyncState" data-at="{{ sync.at or '' }}" data-ok="{{ '1' if sync.ok else '' }}">
+                    {%- if not sync.at %}Not synced yet.
+                    {%- elif sync.ok %}<span class="kw-dot is-ok"></span> {{ sync.count }} events · synced <time datetime="{{ sync.at }}">{{ sync.at[:16].replace('T', ' ') }} UTC</time>
+                    {%- else %}<span class="kw-dot is-bad"></span> {{ sync.error }} (<time datetime="{{ sync.at }}">{{ sync.at[:16].replace('T', ' ') }} UTC</time>){% endif -%}
+                </p>
+            </section>
+        </aside>
+
+        <div class="lc-main">
+            <section class="kw-panel lc-tools" aria-label="Filters">
+                <div class="lc-toolbar">
+                    <form method="GET" class="kw-search lc-search" role="search">
+                        {% if src != 'all' %}<input type="hidden" name="src" value="{{ src }}">{% endif %}
+                        {% if kind != 'all' %}<input type="hidden" name="type" value="{{ kind }}">{% endif %}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="search" name="q" value="{{ q }}" placeholder="Search events, places…" aria-label="Search events">
+                    </form>
+                    <div class="kw-seg" role="group" aria-label="Source">
+                        <a href="{{ url_for('private_area.lab_calendar', q=q or None) }}" class="kw-seg-item{% if src == 'all' %} is-on{% endif %}">All</a>
+                        {% for sk, sl in sources.items() %}
+                        <a href="{{ url_for('private_area.lab_calendar', src=sk, q=q or None) }}" class="kw-seg-item{% if src == sk %} is-on{% endif %}">{{ sl }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% if src != 'lulin' %}
+                <div class="lc-filters" aria-label="Category">
+                    <a href="{{ url_for('private_area.lab_calendar', src='lab', q=q or None) }}" class="lc-filter{% if kind == 'all' and src == 'lab' %} is-on{% endif %}">All lab events</a>
+                    {% for key in lab_categories %}{% set c = categories[key] %}
+                    <a href="{{ url_for('private_area.lab_calendar', type=key, q=q or None) }}" class="lc-filter{% if kind == key %} is-on{% endif %}"><span class="lc-dot lc-c-{{ c.color }}"></span>{{ c.label }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="lc-viewbar">
+                    <div class="kw-seg" role="group" aria-label="View">
+                        <button type="button" class="kw-seg-item is-on" data-view="month">Month</button>
+                        <button type="button" class="kw-seg-item" data-view="list">List</button>
+                    </div>
+                    {% if past_n %}<label class="lc-past-toggle" id="lcPastWrap"><input type="checkbox" id="lcShowPast"> Show past events ({{ past_n }})</label>{% endif %}
+                    {% if q or kind != 'all' or src != 'all' %}<span class="lc-count">{{ total }} event{{ '' if total == 1 else 's' }} · <a href="{{ url_for('private_area.lab_calendar') }}">Clear filters</a></span>{% endif %}
+                </div>
+            </section>
+
+            {# Month view (one month at a time) and list, both drawn by lab_calendar.js from #lcData #}
+            <section class="kw-panel lc-month-view" id="lcGrid" aria-label="Month view">
+                <div class="lc-pager">
+                    <button type="button" class="kw-icon-btn" id="lcPrev" aria-label="Previous month">{{ ic('<path d="m15 6-6 6 6 6"/>') }}</button>
+                    <h2 class="lc-pager-title" id="lcPagerTitle" aria-live="polite"></h2>
+                    <button type="button" class="kw-icon-btn" id="lcNext" aria-label="Next month">{{ ic('<path d="m9 6 6 6-6 6"/>') }}</button>
+                    <button type="button" class="kw-btn kw-btn-sm" id="lcToday">Today</button>
+                </div>
+                <div class="lc-cal-grid" id="lcCalGrid" role="grid"></div>
+                <p class="lc-hint">Click a day to add an event on it.</p>
+            </section>
+            <div class="lc-timeline hide-past" id="lcList" hidden></div>
+            <p class="lc-note">Times are Taiwan time (UTC+8). Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block after_main %}
+{# Event details #}
+<div class="kw-modal" id="lcEvModal" role="dialog" aria-modal="true" aria-labelledby="lcEvTitle">
+    <div class="kw-modal-card is-wide">
+        <div class="kw-modal-head">
+            <h3 id="lcEvTitle"></h3>
+            <button type="button" class="kw-icon-btn" data-close aria-label="Close">✕</button>
+        </div>
+        <div class="lc-ev-body" id="lcEvBody"></div>
+        <div class="kw-modal-actions lc-ev-actions" id="lcEvActions"></div>
+    </div>
+</div>
+
+{# Add / edit #}
+<div class="kw-modal" id="lcFormModal" role="dialog" aria-modal="true" aria-labelledby="lcFormTitle">
+    <form class="kw-modal-card is-wide lc-form" id="lcForm" novalidate>
+        <div class="kw-modal-head">
+            <h3 id="lcFormTitle">Add event</h3>
+            <button type="button" class="kw-icon-btn" data-close aria-label="Close">✕</button>
+        </div>
+        <input type="hidden" name="id">
+        <div class="kw-field"><label for="lcFTitle">Title</label><input id="lcFTitle" name="title" maxlength="200" required placeholder="e.g. Group meeting"></div>
+        <div class="lc-form-row">
+            <div class="kw-field"><label for="lcFCat">Category</label>
+                <select id="lcFCat" name="category" class="kw-select">
+                    {% for key in lab_categories %}<option value="{{ key }}">{{ categories[key].label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="kw-field lc-allday"><span class="kw-label">All day</span>
+                <label class="kw-switch"><input type="checkbox" name="all_day" id="lcFAllDay"><span></span><span>All-day event</span></label>
+            </div>
+        </div>
+        <div class="lc-form-row">
+            <div class="kw-field"><label for="lcFDate">Starts</label><input type="date" id="lcFDate" name="date" required></div>
+            <div class="kw-field lc-timefield"><label for="lcFStart">Time</label><input type="time" id="lcFStart" name="start_time" value="14:00"></div>
+        </div>
+        <div class="lc-form-row">
+            <div class="kw-field"><label for="lcFEndDate">Ends</label><input type="date" id="lcFEndDate" name="end_date"></div>
+            <div class="kw-field lc-timefield"><label for="lcFEnd">Time</label><input type="time" id="lcFEnd" name="end_time" value="15:00"></div>
+        </div>
+        <div class="lc-form-row">
+            <div class="kw-field"><label for="lcFRepeat">Repeat</label>
+                <select id="lcFRepeat" name="repeat" class="kw-select">
+                    {% for rk, rl in repeat_labels.items() %}<option value="{{ rk }}">{{ rl }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="kw-field" id="lcFUntilWrap" hidden><label for="lcFUntil">Repeat until (optional)</label><input type="date" id="lcFUntil" name="repeat_until"></div>
+        </div>
+        <div class="kw-field"><label for="lcFLoc">Location</label><input id="lcFLoc" name="location" maxlength="300" placeholder="e.g. S4-911, Zoom, Lulin"></div>
+        <div class="kw-field"><label for="lcFUrl">Link</label><input id="lcFUrl" name="url" maxlength="1000" placeholder="https://…"></div>
+        <div class="kw-field"><label for="lcFDesc">Notes</label><textarea id="lcFDesc" name="description" maxlength="4000" rows="3"></textarea></div>
+        <p class="lc-form-note" id="lcFormNote" hidden>Changes apply to every occurrence of this repeating event.</p>
+        <p class="lc-form-err" id="lcFormErr" role="alert" hidden></p>
+        <div class="kw-modal-actions">
+            <button type="button" class="kw-btn kw-btn-danger lc-form-del" id="lcFormDelete" hidden>Delete</button>
+            <button type="button" class="kw-btn" data-close>Cancel</button>
+            <button type="submit" class="kw-btn kw-btn-primary" id="lcFormSave">Save</button>
+        </div>
+    </form>
+</div>
+
+{# Subscribe #}
+<div class="kw-modal" id="lcSubModal" role="dialog" aria-modal="true" aria-labelledby="lcSubTitle">
+    <div class="kw-modal-card is-wide">
+        <div class="kw-modal-head">
+            <h3 id="lcSubTitle">Subscribe to the lab calendar</h3>
+            <button type="button" class="kw-icon-btn" data-close aria-label="Close">✕</button>
+        </div>
+        <p class="lc-sub-help">New and changed events reach your calendar app by themselves (most apps check every few hours). Timed lab events remind you 30 minutes before they start.</p>
+        <div class="kw-seg lc-sub-src" role="group" aria-label="What to include">
+            <button type="button" class="kw-seg-item is-on" data-src="">Everything</button>
+            <button type="button" class="kw-seg-item" data-src="lab">GREAT Lab only</button>
+            <button type="button" class="kw-seg-item" data-src="lulin">Lulin LOT only</button>
+        </div>
+        <div class="lc-sub-list" id="lcSubList" aria-busy="true">
+            <a class="lc-sub-item" data-sub="google" href="#" target="_blank" rel="noopener">
+                <span class="lc-sub-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.3 3-7.4z"/><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4l-3.2-2.5c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3.1v2.6A10 10 0 0 0 12 22z"/><path fill="#FBBC05" d="M6.4 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.4H3.1a10 10 0 0 0 0 9.2L6.4 14z"/><path fill="#EA4335" d="M12 6c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 3.1 7.4L6.4 10c.8-2.3 3-4 5.6-4z"/></svg></span>
+                <span><b>Google Calendar</b><small>Opens Google Calendar and adds the subscription</small></span>
+            </a>
+            <a class="lc-sub-item" data-sub="apple" href="#">
+                <span class="lc-sub-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.7c0-2.5 2-3.7 2.1-3.8-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.8 1.3 10.3.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.8-1.1-2.8-4.2zM14 5.3c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg></span>
+                <span><b>Apple Calendar</b><small>iPhone / iPad / Mac: opens the “Subscribe” sheet</small></span>
+            </a>
+            <a class="lc-sub-item" data-sub="outlook" href="#" target="_blank" rel="noopener">
+                <span class="lc-sub-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#0364B8" d="M22 6.5v11a1 1 0 0 1-1 1h-8V5.5h8a1 1 0 0 1 1 1z"/><path fill="#28A8EA" d="M13 5.5h8L13 11z"/><path fill="#0078D4" d="M13 11h9v6.5a1 1 0 0 1-1 1h-8z"/><rect x="2" y="7" width="11" height="11" rx="1" fill="#0078D4"/><ellipse cx="7.5" cy="12.5" rx="2.6" ry="3.1" fill="none" stroke="#fff" stroke-width="1.5"/></svg></span>
+                <span><b>Outlook</b><small>Adds the subscription in Outlook on the web</small></span>
+            </a>
+        </div>
+        <div class="kw-field lc-sub-url">
+            <label for="lcFeedUrl">Other apps: subscribe by URL</label>
+            <div class="lc-sub-url-row">
+                <input type="text" readonly id="lcFeedUrl" value="" placeholder="Loading…">
+                <button type="button" class="kw-btn" id="lcFeedCopy">Copy</button>
+            </div>
+        </div>
+        <p class="lc-sub-warn">This link is yours alone: anyone who has it can read the lab calendar, and it stops working if you leave the lab. If it leaks, <button type="button" class="lc-linkbtn" id="lcFeedReset">reset it</button> (your old subscription then stops updating).</p>
+        <div class="kw-modal-actions">
+            <button type="button" class="kw-btn kw-btn-primary" data-close>Done</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="lcData">{{ cal_data|tojson }}</script>
+<script src="{{ url_for('static', filename='js/lab_calendar.js') }}"></script>
+{% endblock %}

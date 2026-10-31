@@ -1,4 +1,4 @@
-"""Private area (GREAT_Lab only): Daily Trigger, ePessto++ support, Documents, Lab info,
+"""Private area (GREAT_Lab only): Daily Trigger, ePessto++ support, Documents, Lab info, Lab calendar,
 observation targets/logs, Lab Bots and the page-permission admin API."""
 from flask import Blueprint
 
@@ -13,6 +13,7 @@ from . import (  # noqa: E402,F401
     documents,
     epessto,
     helpers,
+    lab_calendar,
     lab_info,
     observation_logs,
     page_perms,
