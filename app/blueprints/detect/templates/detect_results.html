@@ -194,7 +194,7 @@
                             data-host-status="{{ t.host_status }}"
                             data-has-host="{{ 'true' if t.target_is_host else 'false' }}"
                             onclick="jumpToCard({{ loop.index0 }})"
-                            class="row-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}row-unreviewed{% endif %}"
+                            class="row-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}row-unreviewed{% endif %} {% if t.has_lens %}row-lens{% endif %}"
                             title="Open card">
 
                             {% if can_edit %}
@@ -203,7 +203,7 @@
                             </td>
                             {% endif %}
 
-                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a></td>
+                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a>{% if t.has_lens %} <span class="lens-badge-small" title="On a lens-catalogue object">LENS</span>{% endif %}</td>
 
                             <td style="text-align:center;">
                                 {% if t.tns_info and t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>
@@ -254,7 +254,7 @@
             {% for t in results %}
             {% set sc = t.screen or {} %}
             {% set hm = t.host_match %}
-            <div class="target-card card-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}card-unreviewed{% endif %}"
+            <div class="target-card card-hs-{{ t.host_status }} {% if t.obj_status == 'object' %}card-unreviewed{% endif %} {% if t.has_lens %}card-lens{% endif %}"
                  id="card-{{ loop.index0 }}" data-index="{{ loop.index0 }}"
                  data-name="{{ t.target_name }}"
                  data-status="{{ t.obj_status }}"
@@ -272,6 +272,7 @@
                             <a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" target="_blank" rel="noopener noreferrer">
                                 {{ t.target_name }}<span class="card-extlink">↗</span>
                             </a>
+                            {% if t.has_lens %}<span class="lens-badge" title="On a lens-catalogue object">LENS</span>{% endif %}
                             <span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}" title="DETECT priority score">score {{ t.score }}</span>
                             {% if t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}
                         </h3>

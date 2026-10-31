@@ -56,7 +56,7 @@
                     <tbody>
                     {% for t in overview.top %}
                     <tr>
-                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a></td>
+                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a>{% if t.has_lens %} <span class="lens-badge-small" title="On a lens-catalogue object">LENS</span>{% endif %}</td>
                         <td><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
                         <td>{{ host_badge(t.host_status) }}</td>
                         <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>

@@ -279,6 +279,9 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
 
 # an alert DETECT found DESI / Lens candidates for; the pages show only these
 _MATCHED = "EXISTS (SELECT 1 FROM transient.lsst_detect_matches m WHERE m.oid = s.oid)"
+# ... on a lens-catalogue object: marked and pinned to the top
+_ON_LENS = ("EXISTS (SELECT 1 FROM transient.lsst_detect_matches m"
+            " WHERE m.oid = s.oid AND left(lower(m.catalog), 4) = 'lens')")      # no %: used with and without params
 
 _SCREEN_SELECT = """
     SELECT s.oid, s.name, s.score, s.host_status, s.tags, s.flags, s.host_targetid,
@@ -286,11 +289,12 @@ _SCREEN_SELECT = """
            s.peak_mag, s.peak_filter, s.peak_mjd, s.center_sep_arcsec, s.d_dlr, s.offset_kpc,
            s.run_date, o.type AS tns_type, a.review_status AS obj_status, a.ra, a.dec, o.redshift AS tns_z,
            to_char(TIMESTAMP '1858-11-17' + a.firstmjd * INTERVAL '1 day', 'YYYY-MM-DD') AS discoverydate,
-           a.tns_name, o.name AS obj_name, to_char(s.review_day, 'YYYY-MM-DD') AS review_day
+           a.tns_name, o.name AS obj_name, to_char(s.review_day, 'YYYY-MM-DD') AS review_day,
+           {on_lens} AS has_lens
       FROM transient.lsst_detect_screen s
       JOIN transient.lsst_alerts a ON a.oid = s.oid
       LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
-"""
+""".replace("{on_lens}", _ON_LENS)
 
 
 def _screen_row(r) -> dict:
@@ -337,7 +341,8 @@ def review_metadata() -> dict:
 
 def review_overview() -> dict:
     """get_detect_overview() for LSST: the latest run, how the alerts it screened split by host
-    status, what is still waiting for a person, and the highest-scoring alerts."""
+    status, what is still waiting for a person, and the highest-scoring alerts — after every
+    lens-catalogue alert still in Inbox or Follow-up, from any day."""
     result = {"last_run": None, "run_day": None, "counts": {}, "pending": 0, "top": []}
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
@@ -359,10 +364,15 @@ def review_overview() -> dict:
                 result["pending"] += r["pending"]
         result["counts"]["total"] = sum(result["counts"].values())
         cur.execute(_SCREEN_SELECT + f"""
-             WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED}
+             WHERE {_ON_LENS} AND a.review_status IN ('Inbox', 'Follow-up')
+             ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name
+        """)
+        lens = [_screen_row(r) for r in cur.fetchall()]
+        cur.execute(_SCREEN_SELECT + f"""
+             WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED} AND NOT {_ON_LENS}
              ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
         """, (last_run,))
-        result["top"] = [_screen_row(r) for r in cur.fetchall()]
+        result["top"] = lens + [_screen_row(r) for r in cur.fetchall()]
     return result
 
 

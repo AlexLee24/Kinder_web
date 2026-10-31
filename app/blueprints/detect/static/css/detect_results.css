@@ -1172,3 +1172,16 @@ kbd {
 @media (max-width: 860px) {
     .tracker-toggle-btn, .help-toggle-btn { min-height: 40px; }
 }
+
+/* Lens-catalogue objects: pinned to the top of the queue, marked like the home page's LENS MATCH */
+.lens-badge, .lens-badge-small {
+    display: inline-block; vertical-align: middle;
+    background: linear-gradient(45deg, #ff007f, #ff8c00);
+    color: white; font-weight: 700; letter-spacing: 0.04em;
+    box-shadow: 0 0 10px rgba(255, 0, 127, 0.45);
+}
+.lens-badge { padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; }
+.lens-badge-small { padding: 1px 7px; border-radius: 999px; font-size: 0.66rem; margin-left: 4px; }
+#summaryTable tbody tr.row-lens td { background: rgba(255, 0, 127, 0.06); }
+#summaryTable tbody tr.row-lens td:first-child { border-left: 3px solid #ff007f; }
+.target-card.card-lens { border-color: rgba(255, 0, 127, 0.55); box-shadow: 0 0 18px rgba(255, 0, 127, 0.18); }
