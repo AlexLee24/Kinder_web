@@ -168,12 +168,14 @@ function searchTarget(query) {
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(async () => {
         try {
-            // Only search database for SN or AT prefixes; other names must be entered manually
+            // Search the database for SN / AT names and for LSST objects (LSST-<oid> or the oid digits);
+            // other names must be entered manually
             const queryUpper = query.toUpperCase();
             const isSNorAT = queryUpper.startsWith('SN') || queryUpper.startsWith('AT');
+            const isLSST = queryUpper.startsWith('LSST') || /^\d{4,}$/.test(query);
 
-            if (!isSNorAT) {
-                dropdown.innerHTML = '<div class="pa-search-empty">Enter name manually + coordinates for non-SN/AT targets</div>';
+            if (!isSNorAT && !isLSST) {
+                dropdown.innerHTML = '<div class="pa-search-empty">Enter name manually + coordinates for non-SN/AT/LSST targets</div>';
                 dropdown.style.display = 'block';
                 return;
             }
@@ -233,9 +235,26 @@ function selectSearchResult(obj) {
     // Fill magnitude
     if (obj.mag != null) {
         document.getElementById('obs-mag').value = parseFloat(obj.mag).toFixed(1);
+    } else if (obj.lsst_oid) {
+        fillLsstMag(obj.lsst_oid);
     }
 
     document.getElementById('search-results-dropdown').style.display = 'none';
+}
+
+// An LSST object without a TNS name has no stored magnitude: use its latest LSST point (ALeRCE).
+async function fillLsstMag(oid) {
+    try {
+        const resp = await _apiFetch('/api/detect/lsst/lightcurve/' + encodeURIComponent(oid));
+        const data = await resp.json();
+        const pts = (data.points || []).slice().sort((a, b) => a.mjd - b.mjd);
+        const magInput = document.getElementById('obs-mag');
+        if (pts.length && magInput && !magInput.value) {
+            magInput.value = parseFloat(pts[pts.length - 1].mag).toFixed(1);
+        }
+    } catch (e) {
+        console.error('LSST magnitude lookup failed:', e);
+    }
 }
 
 function degToHMS(deg) {
@@ -373,6 +392,9 @@ function checkTargetNameHint(value) {
             hint.className = 'pa-name-hint error';
         } else if (/^(AT|SN|EPt?)\s/i.test(v) || /^(AT|SN|EPt?)\d/i.test(v)) {
             hint.textContent = '\u2713 Good \u2014 TNS/IAU or EP name detected.';
+            hint.className = 'pa-name-hint ok';
+        } else if (/^LSST-\d{6,}$/i.test(v)) {
+            hint.textContent = '\u2713 LSST object without a TNS name \u2014 renamed automatically once TNS has it.';
             hint.className = 'pa-name-hint ok';
         } else {
             hint.textContent = '\u26a0\ufe0f Prefix not AT/SN/EP \u2014 confirmation required on submit.';
@@ -584,7 +606,9 @@ async function addObservationTarget(event) {
 // Hard-block (ATLAS, PS1, etc.) but ZTF only needs confirm
     const SURVEY_BLOCK = ['ATLAS', 'PS', 'PS1', 'PS2', 'MASTER', 'GAIA', 'TNS', 'CSS', 'CRTS', 'ASAS', 'OGLE', 'SDSS', 'DES', 'LSQ', 'MLS', 'SSS', 'PTF', 'IPTF', 'MUSSES'];
     const hasBlockPrefix = SURVEY_BLOCK.some(function(p) { return upperName.startsWith(p); });
-    const hasGoodPrefix = /^(AT|SN|EP)\s/i.test(nameTrimmed) || /^(AT|SN|EP)\d/i.test(nameTrimmed);
+    // LSST-<oid>: an LSST object not in TNS yet (DETECT › LSST); renamed to its TNS name automatically
+    const hasGoodPrefix = /^(AT|SN|EP)\s/i.test(nameTrimmed) || /^(AT|SN|EP)\d/i.test(nameTrimmed)
+        || /^LSST-\d{6,}$/i.test(nameTrimmed);
     const isZTF = upperName.startsWith('ZTF');
 
     if (hasBlockPrefix) {
@@ -943,8 +967,14 @@ function getObjectRouteName(name) {
 }
 
 function renderObjectNameLink(name, label) {
-    const routeName = getObjectRouteName(name);
     const displayLabel = label || name || '-';
+    // LSST-<oid>: an LSST object without a TNS name yet -> DETECT › LSST (redirects to the
+    // object page once TNS has it)
+    const lsst = /^LSST-(?:AP-DO-)?(\d{6,})$/i.exec((name || '').trim());
+    if (lsst) {
+        return '<a href="/detect/lsst/' + lsst[1] + '" target="_blank" rel="noopener noreferrer" style="vertical-align:middle; color: inherit; text-decoration: none;">' + escapeHtml(displayLabel) + '</a>';
+    }
+    const routeName = getObjectRouteName(name);
 
     if (!routeName) {
         return '<span style="vertical-align:middle;">' + escapeHtml(displayLabel) + '</span>';

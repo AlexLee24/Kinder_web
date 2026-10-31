@@ -17,6 +17,7 @@ Scheduled hourly at :25 UTC (app/services/jobs/scheduler.py); disable with LSST_
 import json
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -295,6 +296,10 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True) -> di
         if lookback_days is None and items:
             newest = max(float(i["firstmjd"]) for i in items)
             set_setting(CURSOR_KEY, f"{max(newest, cursor or 0):.6f}")
+        try:
+            res["trigger_renamed"] = sync_trigger_targets()
+        except Exception as e:
+            logger.error("event=lsst_trigger_sync_error error=%s", e)
         res.update(window=[round(mjd_from, 4), round(now, 4)], seconds=round(time.monotonic() - started, 1))
         logger.info("event=lsst_watch_done %s", " ".join(f"{k}={v}" for k, v in res.items()))
         if refresh_lc:
@@ -319,18 +324,94 @@ def is_running() -> bool:
     return _lock.locked()
 
 
+# --------------------------------------------------------------------------- Daily Trigger
+
+TRIGGER_PREFIX = "LSST-"          # obs.targets name of an LSST object without a TNS name: LSST-<oid>
+_TRIGGER_NAME_RE = re.compile(r"^LSST-(?:AP-DO-)?(\d{6,})$", re.I)
+
+
+def oid_from_target_name(name: str | None) -> int | None:
+    m = _TRIGGER_NAME_RE.match((name or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def tns_name_for_oid(cur, oid: int) -> str | None:
+    """'AT2026xyz' / 'SN2026xyz' when the oid has a TNS object (linked alert or internal name)."""
+    cur.execute("""
+        SELECT COALESCE(o.name_prefix, '') || o.name
+          FROM transient.objects o
+         WHERE o.obj_id = (SELECT obj_id FROM transient.lsst_alerts WHERE oid = %s)
+            OR o.internal_name ~ %s
+         LIMIT 1
+    """, (oid, rf"(^|[ ,])(LSST-AP-DO-)?{oid}([ ,]|$)"))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def sync_trigger_targets() -> int:
+    """Rename Daily Trigger targets (obs.targets, obs.logs) called LSST-<oid> once TNS has
+    the object, so a target follows its object to the TNS name. Returns #targets renamed."""
+    renamed = 0
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT target_id, name, telescope FROM obs.targets WHERE name ILIKE 'LSST-%%'")
+        for target_id, name, telescope in cur.fetchall():
+            oid = oid_from_target_name(name)
+            new = tns_name_for_oid(cur, oid) if oid else None
+            if not new:
+                continue
+            cur.execute("SELECT 1 FROM obs.targets WHERE name = %s AND telescope = %s", (new, telescope))
+            if cur.fetchone():          # already queued under its TNS name on this telescope
+                logger.info("event=lsst_trigger_rename_skipped target=%s tns=%s telescope=%s", name, new, telescope)
+                continue
+            cur.execute("UPDATE obs.targets SET name = %s WHERE target_id = %s", (new, target_id))
+            cur.execute("UPDATE obs.logs SET name = %s WHERE name = %s", (new, name))
+            renamed += 1
+            logger.info("event=lsst_trigger_renamed old=%s new=%s telescope=%s", name, new, telescope)
+        conn.commit()
+    return renamed
+
+
+def search_alerts(q: str, limit: int = 15) -> list[dict]:
+    """Daily Trigger autocomplete: watched LSST objects whose oid starts with the digits in q."""
+    digits = re.sub(r"\D", "", q or "")
+    if len(digits) < 4:
+        return []
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute("""
+            SELECT a.oid, a.ra, a.dec, a.class_name, a.probability, a.n_lens, a.n_desi, a.firstmjd,
+                   o.name AS obj_name, o.name_prefix, o.type AS obj_type
+              FROM transient.lsst_alerts a
+              LEFT JOIN transient.objects o ON o.obj_id = a.obj_id
+             WHERE a.oid::text LIKE %s
+             ORDER BY a.firstmjd DESC
+             LIMIT %s
+        """, (digits + "%", limit))
+        return cur.fetchall()
+
+
+def get_alert(oid: int) -> dict | None:
+    rows = list_alerts(oid=oid, limit=1)
+    return rows[0] if rows else None
+
+
 # --------------------------------------------------------------------------- page data
 
-def list_alerts(view: str = "pre_tns", catalog: str = "all", days: float = 14.0, limit: int = 500) -> list[dict]:
+def list_alerts(view: str = "pre_tns", catalog: str = "all", days: float = 14.0, limit: int = 500,
+                oid: int | None = None) -> list[dict]:
+    """Rows for /detect/lsst; with ``oid`` just that object, whatever the filters."""
     clauses = ["a.firstmjd >= %s"]
     params = [_now_mjd() - days]
-    if view == "pre_tns":
+    if oid is not None:
+        clauses, params = ["a.oid = %s"], [int(oid)]
+    elif view == "pre_tns":
         clauses.append("a.obj_id IS NULL")
     elif view == "in_tns":
         clauses.append("a.obj_id IS NOT NULL")
-    if catalog == "lens":
+    if oid is None and catalog == "lens":
         clauses.append("a.n_lens > 0")
-    elif catalog == "desi":
+    elif oid is None and catalog == "desi":
         clauses.append("a.n_desi > 0")
     params.append(limit)
     with get_db_connection() as conn:
