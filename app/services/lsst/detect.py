@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 
 NAME_PREFIX = "LSST-"
 RESCREEN_DAYS = 30.0          # new LSST points re-screen an alert this long after its first detection
-MAX_PER_RUN = 150             # alerts screened per run; the rest waits for the next hour
+MAX_PER_RUN = 150             # alerts screened per scheduled run; the rest waits for the next hour
+MAX_PER_MANUAL_RUN = 1000     # a run started from the page screens everything it read
 LENS_RADIUS_ARCSEC = 10.0     # DETECT's LENS_SEARCH_RADIUS_ARCSEC
 REVIEW_STATUSES = {"object": "Inbox", "followup": "Follow-up", "snoozed": "Snoozed", "finished": "Finish"}
 _NAME_RE = re.compile(r"^LSST-(\d{6,})$")
@@ -219,6 +220,8 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
     from function.module.Lens_cross_match import lens_cross_match
     from function.module.screening import screen_target
 
+    from app.services.detect.detect_pipeline import _pin_db_env
+
     say = progress or (lambda _m: None)
     started = time.monotonic()
     todo = _alerts_to_screen(oids, max_objects)
@@ -227,8 +230,14 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
     names = {a["oid"]: target_name(a["oid"]) for a in todo}
     targets = [(float(a["ra"]), float(a["dec"]), names[a["oid"]]) for a in todo]
     say(f"{len(todo)} alert(s) to screen; DETECT's DESI and Lens cross-match…")
+    _pin_db_env()          # DETECT reads PG_DATABASE; the app's database is app.db.DB_NAME
     desi = desi_cross_match(targets)
     lens = lens_cross_match(targets, search_radius=LENS_RADIUS_ARCSEC)
+    # both return {} on any error (printed, not raised) but a key per target on success:
+    # never save a failed cross-match as "no candidates"
+    for label, got in (("DESI", desi), ("Lens", lens)):
+        if any(t[2] not in got for t in targets):
+            raise RuntimeError(f"DETECT's {label} cross-match failed (see the server log); nothing saved")
     decisions = _user_decisions([a["oid"] for a in todo])
     stars = _desi_stars_near({names[a["oid"]]: {"ra": float(a["ra"]), "dec": float(a["dec"])} for a in todo})
 

@@ -398,7 +398,9 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
         log.line("DETECT: host rule, score, tags and images…", phase="DETECT")
         try:
             from app.services.lsst import detect
-            res["detect"] = detect.screen_alerts(progress=lambda m: log.line("  " + m, force=False))
+            res["detect"] = detect.screen_alerts(
+                progress=lambda m: log.line("  " + m, force=False),
+                max_objects=detect.MAX_PER_MANUAL_RUN if trigger == "manual" else detect.MAX_PER_RUN)
             d = res["detect"]
             log.line(f"  {d['screened']} screened, {d['images']} image(s), {d['failed']} failed")
         except Exception as e:
