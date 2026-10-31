@@ -160,7 +160,13 @@
                     <button type="button" class="kw-btn kw-btn-sm" id="lcToday">Today</button>
                 </div>
                 <div class="lc-cal-grid" id="lcCalGrid" role="grid"></div>
-                <p class="lc-hint">Click a day to add an event on it.</p>
+                <ul class="lc-legend" aria-label="Legend">
+                    <li><span class="lc-bar lc-c-gold"><span>Trigger</span></span>Trigger duty</li>
+                    <li><span class="lc-bar lc-c-gold is-struck"><span>Trigger</span></span>No LOT trigger that night (SLT only)</li>
+                    <li><span class="lc-bar lc-c-teal is-lulin"><span>R01 -- CCD</span></span>Lulin LOT schedule</li>
+                    <li><span class="lc-bar lc-c-blue is-timed"></span>Timed event</li>
+                    <li>Click a day to add an event on it.</li>
+                </ul>
             </section>
             <div class="lc-timeline hide-past" id="lcList" hidden></div>
             <p class="lc-note">Times are Taiwan time (UTC+8). Lulin LOT entries are the observatory's schedule; ask the TAC about changes there, not here.</p>

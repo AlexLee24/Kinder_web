@@ -110,6 +110,9 @@ def lab_calendar():
             duty_tonight.append({'id': e['id'], 'email': e['assignee_email'], 'name': e['assignee_name'],
                                  'status': status, 'ok': bool(r) and r['outcome'] != 'no_device'})
     lot_closed = list(dict.fromkeys(e['title'] for e in evs if e['is_today'] and cal.closes_lot(e)))
+    # nights LOT takes no triggers (the month view strikes Trigger duty through on them), whatever the filters
+    lot_closed_days = sorted({(e['d'] + timedelta(days=i)).isoformat() for e in evs if cal.closes_lot(e)
+                              for i in range((e['end_d'] - e['d']).days + 1)})
     if src != 'all':
         evs = [e for e in evs if e['source'] == src]
     if kind != 'all':
@@ -144,7 +147,7 @@ def lab_calendar():
         duty_weeks=duty_weeks, sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
         cal_data={**cal.compact(evs), 'today': today.isoformat(), 'this_month': this_month.strftime('%Y-%m'),
                   'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m'),
-                  'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'),
+                  'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'), 'lot_closed_days': lot_closed_days,
                   'reminders': {f'{d}|{e}': r for (d, e), r in reminders.items()}},
         sync=cal.sync_status(), user_email=user.get('email') or '', is_admin=bool(user.get('is_admin')))
 
