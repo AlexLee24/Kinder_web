@@ -6,11 +6,10 @@
    Kinder points it at its own Flask blueprint; the standalone server.py points
    it at the identical paths it serves itself.
 
-   Interaction model: four freely switchable tabs, no submit button, every edit
-   recalculates. Recalculating over the network is what makes that last part
-   delicate — a slow earlier response can land after a fast later one and
-   overwrite it, so each request family keeps a single AbortController and
-   cancels its own predecessor.
+   Interaction model: four freely switchable tabs and one Calculate button.
+   Edits only fade the results already on show; the button runs the request.
+   Each request family keeps a single AbortController and cancels its own
+   predecessor, so a slow earlier response can never land after a later one.
 ============================================================================ */
 (function () {
     'use strict';
@@ -20,11 +19,6 @@
         batchUrl: '/api/exposure_time_calculator/batch',
         presetsUrl: '/api/exposure_time_calculator/presets'
     }, window.CASTOR_ETC_CONFIG || {});
-
-    // Single-point is cheap; batch runs astropy ephemeris over the whole window,
-    // so it waits longer before firing (same split as app.py's BATCH_DEBOUNCE).
-    var SINGLE_DEBOUNCE_MS = 250;
-    var BATCH_DEBOUNCE_MS = 500;
 
     var root = document.getElementById('castor-etc');
     var form = document.getElementById('castor-form');
@@ -90,6 +84,8 @@
 
         _read: function (input) {
             if (input.type === 'checkbox') { return input.checked; }
+            // Every radio in a group carries the shared name; only the checked one speaks.
+            if (input.type === 'radio') { return input.checked ? input.value : null; }
             if (input.type === 'datetime-local') {
                 if (!input.value) { return null; }
                 var d = new Date(input.value);   // parsed as local wall-clock time
@@ -140,10 +136,7 @@
                 mu_dark: env.mu_dark,
                 zodiacal_share: env.zodiacal_share,
                 extinction_coeff: env.extinction_coeff,
-                seeing_fwhm: env.seeing_fwhm,
-                diffraction_fwhm: env.diffraction_fwhm,
-                optical_fwhm: env.optical_fwhm,
-                tracking_fwhm: env.tracking_fwhm
+                total_fwhm: env.total_fwhm
             },
             options: base.options
         };
@@ -222,13 +215,21 @@
 
         var core = data.core, budget = data.budget, diag = data.diagnostics, flags = data.flags;
 
-        lastSingleHero = (core.required_exposures === null || core.required_exposures === undefined)
-            ? { label: 'Signal-to-Noise Ratio (SNR)',
+        if (core.target_reachable === false) {
+            // Target sits above the non-averaging background-flatness ceiling:
+            // no exposure count reaches it, so the ceiling is the best on offer.
+            lastSingleHero = { label: 'Target Unreachable',
+                value: '≤ ' + fmt(core.snr_ceiling, 2),
+                desc:  'Requested SNR is above the background-flatness ceiling; no exposure count reaches it.' };
+        } else if (core.required_exposures === null || core.required_exposures === undefined) {
+            lastSingleHero = { label: 'Signal-to-Noise Ratio (SNR)',
                 value: fmt(core.total_snr, 2),
-                desc:  'Calculated based on the given exposure time.' }
-            : { label: 'Required Exposures',
+                desc:  'Calculated based on the given exposure time.' };
+        } else {
+            lastSingleHero = { label: 'Required Exposures',
                 value: core.required_exposures + ' frames',
                 desc:  'Target SNR achieved: ' + fmt(core.total_snr, 2) };
+        }
 
         /* Computed either way, written only when it is the answer on show. While
            sweeping the headline belongs to renderBatch, and painting an instant's
@@ -336,7 +337,7 @@
             return;
         }
 
-        var accent = themeColor('--etc-accent', '#C5A059');
+        var accent = themeColor('--etc-accent', '#F39F5A');
         var moon = themeColor('--etc-moon', '#6FA8DC');
         var warning = themeColor('--etc-warning', '#fbbf24');
         var sun = themeColor('--etc-sun', '#8f8fa8');
@@ -641,7 +642,8 @@
         var best = null;
         for (var i = 0; i < series.length; i++) {
             if (anyObservable && !mask[i]) { continue; }
-            if (!isFinite(series[i])) { continue; }
+            // null is an unreachable timestamp (a gap), and isFinite(null) is true.
+            if (series[i] === null || !isFinite(series[i])) { continue; }
             if (best === null || better(series[i], series[best])) { best = i; }
         }
         if (best === null) { restoreHero(); return; }
@@ -678,76 +680,92 @@
     }
 
     // ========================================================================
-    // Scheduling — debounce + cancel-the-predecessor
+    // Scheduling — run on Calculate, cancel-the-predecessor
     // ========================================================================
 
-    function makeRunner(delay, buildBody, url, onResult) {
-        var timer = null;
+    /* Calculation runs when asked, not on every edit. Recalculating live meant the
+       numbers kept moving while a field was still half-typed, and a reader could not
+       tell an answer from an intermediate state; a button makes "this is the result
+       for what I entered" an explicit moment.
+
+       The results panel is in one of three states, kept as classes on it:
+         is-idle   nothing has been calculated yet
+         is-busy   the single-point request is in flight
+         is-stale  the form has changed since the numbers on show were computed
+       The first two show the beaver in place of the results; the third fades them,
+       since they still answer the previous question but no longer this one. While
+       idle or stale the Calculate button carries is-due and takes the accent. */
+    var resultsPanel = el('results-panel');
+    var calcButton = el('btn-calculate');
+
+    /* A local run comes back in a few tens of milliseconds, which made the beaver a
+       flicker. Holding it this long reads as "it ran" rather than as a glitch. */
+    var BEAVER_MIN_MS = 700;
+    var busySince = 0;
+    var busyHoldTimer = null;
+
+    function setSingleBusy(active) {
+        clearTimeout(busyHoldTimer);
+        if (active) {
+            busySince = Date.now();
+            resultsPanel.classList.add('is-busy');
+            el('beaver-status').textContent = 'Calculating…';
+            return;
+        }
+        busyHoldTimer = setTimeout(function () {
+            resultsPanel.classList.remove('is-busy');
+        }, Math.max(0, BEAVER_MIN_MS - (Date.now() - busySince)));
+    }
+
+    function markStale() {
+        if (resultsPanel.classList.contains('is-idle')) { return; }
+        resultsPanel.classList.add('is-stale');
+        calcButton.classList.add('is-due');
+    }
+
+    function makeRunner(buildBody, url, onResult, onBusy) {
         var controller = null;
 
-        return function schedule() {
-            clearTimeout(timer);
-            timer = setTimeout(function () {
-                if (controller) { controller.abort(); }
-                controller = new AbortController();
-                var mine = controller;
+        return function run() {
+            // A second click while the first is still out supersedes it.
+            if (controller) { controller.abort(); }
+            controller = new AbortController();
+            var mine = controller;
 
-                var body;
-                try {
-                    body = buildBody();
-                } catch (err) {
-                    onResult(null, err.message);
-                    return;
-                }
+            var body;
+            try {
+                body = buildBody();
+            } catch (err) {
+                onResult(null, err.message);
+                return;
+            }
 
-                postJSON(url, body, mine.signal).then(function (data) {
-                    if (mine.signal.aborted) { return; }
-                    onResult(data, null);
-                }).catch(function (err) {
-                    if (err.name === 'AbortError') { return; }
-                    onResult(null, err.message);
-                });
-            }, delay);
+            if (onBusy) { onBusy(true); }
+            postJSON(url, body, mine.signal).then(function (data) {
+                if (mine.signal.aborted) { return; }
+                onResult(data, null);
+            }).catch(function (err) {
+                if (err.name === 'AbortError') { return; }
+                onResult(null, err.message);
+            }).then(function () {
+                // Clear busy only for the request that is still current. A superseded
+                // one was aborted by its successor, which has already turned the cue
+                // back on — clearing it here would hide the wait that is still running.
+                if (onBusy && !mine.signal.aborted) { onBusy(false); }
+            });
         };
     }
 
-    // ── Execute-button loading state — Kinder-specific ──────────────────────
-    // recalculate() can kick off one or two in-flight requests (single-point,
-    // plus batch when sweeping); the button stays disabled and shows a spinner
-    // until every one of them has called back, not just the first.
-    var pendingRequests = 0;
-    var executeBtn = el('btn-execute');
-    var executeLabel = el('btn-execute-label');
+    var runSingle = makeRunner(buildSingleRequest, CONFIG.apiUrl, renderSingle, setSingleBusy);
+    var runBatch = makeRunner(buildBatchRequest, CONFIG.batchUrl, renderBatch);
 
-    function beginRequest() {
-        pendingRequests++;
-        executeBtn.disabled = true;
-        executeBtn.classList.add('is-loading');
-        executeLabel.textContent = 'RUNNING…';
-    }
-    function endRequest() {
-        pendingRequests = Math.max(0, pendingRequests - 1);
-        if (pendingRequests === 0) {
-            executeBtn.disabled = false;
-            executeBtn.classList.remove('is-loading');
-            executeLabel.textContent = 'EXECUTE';
-        }
-    }
+    function calculate() {
+        resultsPanel.classList.remove('is-idle', 'is-stale');
+        calcButton.classList.remove('is-due');
 
-    var scheduleSingle = makeRunner(SINGLE_DEBOUNCE_MS, buildSingleRequest, CONFIG.apiUrl, function (data, error) {
-        renderSingle(data, error);
-        endRequest();
-    });
-    var scheduleBatch = makeRunner(BATCH_DEBOUNCE_MS, buildBatchRequest, CONFIG.batchUrl, function (data, error) {
-        renderBatch(data, error);
-        endRequest();
-    });
-
-    function recalculate() {
         // The single-point result is always computed — the sweep is an addition on
         // top of it, not an alternate mode.
-        beginRequest();
-        scheduleSingle();
+        runSingle();
 
         if (!el('toggle-batch').checked) {
             el('observing-window').hidden = true;
@@ -758,14 +776,11 @@
             refreshWarnings();
             return;
         }
-        // Reveal the section immediately so flipping the switch has a visible
-        // effect, rather than nothing happening until the request comes back.
         el('observing-window').hidden = false;
         // Promotes the chart to the top of the results panel — see etc.css.
         resultsScroll.classList.add('is-sweep');
         setChartStatus('Calculating…');
-        beginRequest();
-        scheduleBatch();
+        runBatch();
     }
 
     // ========================================================================
@@ -774,6 +789,7 @@
 
     function initTabs() {
         var tabs = root.querySelectorAll('.etc-tab');
+        var tabsBar = root.querySelector('.etc-tabs');
         Array.prototype.forEach.call(tabs, function (tab) {
             tab.addEventListener('click', function () {
                 Array.prototype.forEach.call(tabs, function (other) {
@@ -784,8 +800,29 @@
                 Array.prototype.forEach.call(root.querySelectorAll('.etc-tabpanel'), function (panel) {
                     panel.hidden = panel.dataset.panel !== tab.dataset.tab;
                 });
+                // Only matters once the bar has scrolled a tab partway out of view
+                // (see the wheel handler below); a no-op otherwise.
+                tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
             });
         });
+
+        /* The bar is overflow-x:auto with its scrollbar hidden (etc.css), which a
+           trackpad's horizontal swipe or a shift+wheel drives fine — but a plain
+           vertical-wheel mouse has no gesture for it and there is no visible scrollbar
+           to drag, so on that hardware alone the tabs past the edge are simply stuck.
+           Remap vertical wheel input onto scrollLeft to cover that case too, same as a
+           horizontally-scrolling row anywhere else on the web. Guarded on there being
+           somewhere to scroll and on the vertical delta actually dominating, so this
+           never fights a trackpad's own horizontal scroll or swallows a genuine page
+           scroll once the bar is already at its edge. */
+        if (tabsBar) {
+            tabsBar.addEventListener('wheel', function (event) {
+                if (tabsBar.scrollWidth <= tabsBar.clientWidth) { return; }
+                if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) { return; }
+                tabsBar.scrollLeft += event.deltaY;
+                event.preventDefault();
+            }, { passive: false });
+        }
     }
 
     function syncGroups(attribute, selected) {
@@ -851,8 +888,13 @@
         syncGroups('brightness', brightness);
         el('label-target-mag').textContent =
             brightness === 'ab_mag' ? 'Apparent Magnitude (AB)' : 'Apparent Magnitude';
+        // An extended target is read per square arcsecond in every brightness
+        // system, so the unit says so; a total magnitude there is silently wrong.
+        var perArea = form.elements['target.morphology.type'].value === 'extended'
+            ? '/arcsec&sup2;' : '';
+        el('unit-target-mag').innerHTML = 'mag' + perArea;
         el('unit-flux-value').innerHTML =
-            brightness === 'jansky_flux' ? 'Jy' : 'erg/s/cm&sup2;/&Aring;';
+            (brightness === 'jansky_flux' ? 'Jy' : 'erg/s/cm&sup2;/&Aring;') + perArea;
 
         syncGroups('sed', form.elements['target.sed.type'].value);
         syncGroups('options', form.elements['options.type'].value);
@@ -891,8 +933,26 @@
         return out;
     }
 
-    function applyFragment(section, fragment) {
+    /* resetMissing is for a catalogue entry's own section (instrument.telescope,
+       .camera, .optic_filter): those are self-contained specs, so a field one
+       sibling entry carries and another does not -- e.g. background_flatness_fraction,
+       measured for one camera and not yet for its neighbours -- must fall back to
+       the field's own declared default, not silently keep whatever the previous
+       selection left sitting in the input. Left off (the default) for the
+       environment section, where a fragment is deliberately partial by design --
+       see applyBand below, which handles its own staleness by taking the previous
+       band's correction back out and re-applying the site before layering the new
+       band's on top. */
+    function applyFragment(section, fragment, resetMissing) {
         var flat = flattenFragment(section, fragment || {}, {});
+        if (resetMissing) {
+            var prefix = section + '.';
+            Array.prototype.forEach.call(form.elements, function (input) {
+                if (!input.name || input.name.indexOf(prefix) !== 0) { return; }
+                if (Object.prototype.hasOwnProperty.call(flat, input.name)) { return; }
+                input.value = input.defaultValue;
+            });
+        }
         Object.keys(flat).forEach(function (path) {
             var input = form.elements[path];
             if (!input) { return; }
@@ -998,6 +1058,34 @@
         { kind: 'filters', select: 'select-filter', section: 'instrument.optic_filter', key: 'optic_filter', panel: 'filter' }
     ];
 
+    /* What the chosen filter's own sky correction wrote into the form, by field: the
+       value it replaced and the value it wrote. The correction is that band's sky at
+       that filter's site, so it leaves with the filter, whatever is chosen next -- the
+       way castorCLI/presets.py builds each fragment afresh and simply never adds a
+       filter's sky anywhere but under its own site. */
+    var bandSky = {};
+
+    function layBandSky(sky) {
+        var replaced = {};
+        Object.keys(flattenFragment('environment', sky, {})).forEach(function (name) {
+            if (form.elements[name]) { replaced[name] = form.elements[name].value; }
+        });
+        applyFragment('environment', sky);
+        Object.keys(replaced).forEach(function (name) {
+            bandSky[name] = { replaced: replaced[name], wrote: form.elements[name].value };
+        });
+    }
+
+    /* Only a field still holding what the band wrote is put back. One typed over since
+       is the reader's own, and no selector has any business undoing it. */
+    function liftBandSky() {
+        Object.keys(bandSky).forEach(function (name) {
+            var input = form.elements[name];
+            if (input.value === bandSky[name].wrote) { input.value = bandSky[name].replaced; }
+        });
+        bandSky = {};
+    }
+
     /* A filter may also speak for the sky it looks through and for the efficiency of
        everything in front of it, because both depend on the band while the request has
        one number for each. Mirrors _overlay in castorCLI/presets.py.
@@ -1007,7 +1095,10 @@
        that carries a correction to one that does not would leave the previous band's
        numbers sitting in the form, looking like the new filter's. Bands with no
        measurement must fall back to the site and the rig, not to whatever was chosen
-       before them.
+       before them. Re-applying the site cannot do that alone, though: it puts back
+       mu_dark and extinction_coeff, which every site sets, but not zodiacal_share,
+       which only a band sets, and a hardware family has no environment to re-apply at
+       all. So the band's correction is also taken back out by name (liftBandSky).
 
        A catalogue sitting on Custom is left alone in both steps. Those numbers are the
        reader's own, and a filter has no business overwriting them. */
@@ -1015,11 +1106,20 @@
         var profile = profiles()[el('select-profile').value];
         if (!profile) { return; }
 
+        liftBandSky();
         if (profile.environment) {
             applyFragment('environment', profile.environment);
-            if (entry && entry.environment) { applyFragment('environment', entry.environment); }
+            if (entry && entry.environment) { layBandSky(entry.environment); }
         }
 
+        applyRig(profile, entry);
+    }
+
+    /* The selected telescope's own numbers, then whatever the chosen filter (entry)
+       measured on that telescope. Run when either of the two changes: the measurement
+       belongs to the pair, so a new telescope under the same filter needs it as much
+       as a new filter on the same telescope does. */
+    function applyRig(profile, entry) {
         var telescopeId = el('select-telescope').value;
         var rig = (profile.telescopes || {})[telescopeId];
         if (rig) {
@@ -1055,8 +1155,13 @@
             renderSpecs();
             return;
         }
+        // The filter whose correction the sky holds is being replaced, whatever this
+        // profile offers in its place -- possibly no filters at all.
+        liftBandSky();
         // A profile with an environment block is a real site; one without is a hardware
-        // family and must not invent a location. See data/presets.json.
+        // family and must not invent a location. See data/presets.json. A family keeps
+        // the sky already in the form, less that correction: Lulin's site-wide sky, not
+        // Lulin's r' sky, under a filter that was never measured there.
         if (profile.environment) { applyFragment('environment', profile.environment); }
 
         CATALOGUES.forEach(function (cat) {
@@ -1068,7 +1173,7 @@
             var first = Object.keys(entries)[0];
             if (first) {
                 select.value = first;
-                applyFragment(cat.section, entries[first][cat.key]);
+                applyFragment(cat.section, entries[first][cat.key], true);
                 if (cat.kind === 'filters') { applyBand(entries[first]); }
                 collapseDetails(cat.panel);
             } else {
@@ -1094,13 +1199,18 @@
             select.addEventListener('change', function () {
                 var preset = catalogue(kind)[select.value];
                 if (preset) {
-                    applyFragment(section, preset[key]);
+                    applyFragment(section, preset[key], true);
                     if (kind === 'filters') { applyBand(preset); }
+                    // The telescope's slice only: the filter's sky stays as it is.
+                    if (kind === 'telescopes') {
+                        applyRig(profiles()[profileSelect.value], catalogue('filters')[el('select-filter').value]);
+                    }
                     collapseDetails(panel);
                 } else {
                     revealDetails(panel);
                 }
                 renderSpecs();
+                markStale();
             });
             bindCustomReselect(select, panel);
         }
@@ -1126,6 +1236,7 @@
 
             profileSelect.addEventListener('change', function () {
                 applyProfile(profileSelect.value);
+                markStale();
             });
             profileSelect.addEventListener('click', function () {
                 if (!profileSelect.value) { CATALOGUES.forEach(function (c) { revealDetails(c.panel); }); }
@@ -1195,9 +1306,26 @@
         }
     }
 
-    function setDialogError(message) {
+    function setDialogError(message, isWarning) {
         el('json-dialog-error-text').textContent = message;
         el('json-dialog-error').hidden = !message;
+        el('json-dialog-error').classList.toggle('etc-alert-error', !isWarning);
+        el('json-dialog-error').classList.toggle('etc-alert-warning', Boolean(isWarning));
+    }
+
+    var LEGACY_FWHM_FIELDS = ['seeing_fwhm', 'diffraction_fwhm', 'optical_fwhm', 'tracking_fwhm'];
+
+    /* A file saved under the four-component contract already states its width: the
+       engine used to take the quadrature sum, so doing the same here loses nothing.
+       Returns the total, or undefined when the file does not hold all four. */
+    function combineLegacyFwhm(data) {
+        var sum = 0;
+        for (var i = 0; i < LEGACY_FWHM_FIELDS.length; i++) {
+            var part = lookup(data, 'environment.' + LEGACY_FWHM_FIELDS[i]);
+            if (typeof part !== 'number' || !(part > 0)) { return undefined; }
+            sum += part * part;
+        }
+        return Math.sqrt(sum);
     }
 
     /* Every branch's value is kept, not just the ones the current discriminators
@@ -1232,6 +1360,25 @@
         }
         if (data === null || typeof data !== 'object' || Array.isArray(data)) {
             setDialogError('Expected a JSON object like the one SAVE produces.');
+            return;
+        }
+        // LOAD normally retains fields missing from an older file. Doing that for
+        // FWHM would replace its old four-component budget with the current form's
+        // unrelated total, so the new field is required before changing anything.
+        if (lookup(data, 'environment.total_fwhm') === undefined ||
+                lookup(data, 'environment.total_fwhm') === null) {
+            var total = combineLegacyFwhm(data);
+            if (total === undefined) {
+                setDialogError('environment.total_fwhm is required (image FWHM in arcsec).');
+                return;
+            }
+            // Rewritten in the box rather than applied, so the converted width is seen
+            // before it is used, the same as anything else this dialog loads.
+            data.environment.total_fwhm = Number(total.toPrecision(6));
+            LEGACY_FWHM_FIELDS.forEach(function (name) { delete data.environment[name]; });
+            el('json-dialog-text').value = JSON.stringify(data, null, 2);
+            setDialogError('This file has the old four FWHM components. They combine in quadrature to ' +
+                Number(total.toPrecision(4)) + '", now written above as environment.total_fwhm. Import again to apply.', true);
             return;
         }
         applyLoaded(data);
@@ -1336,6 +1483,8 @@
 
             if (input.type === 'checkbox') {
                 input.checked = Boolean(value);
+            } else if (input.type === 'radio') {
+                input.checked = input.value === value;
             } else if (input.type === 'datetime-local') {
                 input.value = isoToLocalInputValue(value);
             } else if (input.hasAttribute('data-percent')) {
@@ -1343,6 +1492,9 @@
             } else {
                 input.value = String(value);
             }
+            // The file's number now, not a band's: choosing a profile later must not
+            // take it back out as if a filter had put it there (see liftBandSky).
+            delete bandSky[input.name];
         }
 
         if (typeof data.batch_enabled === 'boolean') {
@@ -1362,6 +1514,7 @@
         CATALOGUES.forEach(function (cat) { revealDetails(cat.panel); });
         renderSpecs();
         syncConditionalFields();
+        markStale();
     }
 
     // ========================================================================
@@ -1404,16 +1557,15 @@
     form.addEventListener('input', function () {
         syncConditionalFields();
         renderSpecs();
+        markStale();
     });
     form.addEventListener('change', function () {
         syncConditionalFields();
+        markStale();
     });
-
-    // ── EXECUTE — Kinder-specific ───────────────────────────────────────────
-    // Upstream CASTOR recalculates live on every input/change event and once
-    // more on load, so the results panel is never empty. Kinder instead waits
-    // for an explicit click: recalculate() only ever runs from here, and the
-    // results panel starts on its markup default (—) — see the matching
-    // comment on #btn-execute in etc_body.html.
-    el('btn-execute').addEventListener('click', recalculate);
+    // The Calculate button is the form's submit button, so Enter in a field lands here too.
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        calculate();
+    });
 })();
