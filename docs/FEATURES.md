@@ -65,6 +65,7 @@ Kinder（Logo → /）
 ├── Private ▾（僅 session.user.is_great_lab_member）
 │     ├── DETECT                    /detect、/detect?detect_results=<date>、/detect/archives   非 guest（審核僅 admin） → 05
 │     ├── Daily Trigger             /daily_trigger                  can_access_page('daily_trigger')         → 07
+│     ├── Lab Calendar              /lab_calendar、/lab_calendar/feed/<token>.ics   can_access_page('lab_calendar') → 07
 │     ├── ePessto++ Support Team    /epessto_support                can_access_page('epessto_support')       → 07
 │     ├── Documents                 /documents、/documents/<file>   can_access_page('documents')             → 07
 │     └── Lab Info                  /greatlab_info                  can_access_page('greatlab_info')         → 07
@@ -162,6 +163,7 @@ Kinder（Logo → /）
 | 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email + Web Push 給 GREAT Lab 成員（分類 `alerts`）（`app/services/bots/gcn.py`） |
 | interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
 | cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
+| interval | `lab_calendar_lulin_sync` | 每 6 小時（啟動時一次） | 鹿林 LOT Google 日曆 → `obs.lab_calendar_events`（source `lulin`），Lab › Calendar 與訂閱 feed 用 |
 | cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
 | 手動（管理頁） | TNS hourly / daily 下載、auto-snooze、光度抓取、缺漏光度、目標星等、DETECT run、備份 | – | `/admin/*` 按鈕，各自另起 thread（狀態為 process 內變數） |
 
@@ -214,6 +216,7 @@ Kinder（Logo → /）
 | `SLACK_BOT_TOKEN`、`SLACK_CHANNEL_ID_CONTROL_ROOM`、`SLACK_CHANNEL_ID_test` | Daily Trigger 送 Slack（DEBUG 用 test 頻道） | `trigger_send` | Trigger 必填 |
 | `SLACK_CHANNEL_ID_GCN` / `_ToO` / `_EP_COPY` / `_ALERT`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET`、`BOTS_DISABLED`、`OBS_RAW_DIR`、`REDUCTION_*` | lab bots | `app/services/bots` | 否（缺少時該 bot 在 Admin › Bots 顯示 Needs setup） |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push 金鑰（`scripts/gen_vapid_keys.py` 產生；所有發送的伺服器要同一組，換掉 = 大家要重開推播） | `app/services/notifications/webpush.py` | 推播必填（缺少時 Settings 顯示未設定、Admin › Push 不能送） |
+| `LULIN_CALENDAR_ICS` | 鹿林 LOT 排程的 iCal 網址（Lab › Calendar 同步） | `app/services/lab_calendar.py` | 否（預設 Lulin TAC 公開日曆） |
 | `ACCESS_LOG_ENABLED` | HTTP access log | `main.py` | 否（預設關） |
 | `LOG_MAX_FILE_BYTES` / `LOG_MAX_LINE_CHARS` | 日誌上限 | `log_setup` | 否 |
 | `DETECT_IN_WEB` | `0/false` 時停用 web 內 DETECT | `detect_pipeline` | 否（預設啟用） |
