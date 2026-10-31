@@ -31,6 +31,7 @@
 {% endblock %}
 
 {% block content %}
+    {% from '_detect_badges.html' import day_badges %}
     {% set day_url = day_url|default(url_for('detect.detect_results') ~ '?detect_results=') %}
     <div class="kw-page archive-page-container">
         <p class="kw-lead">Historical cross-matching results, newest first. Days with no matched target are dimmed.</p>
@@ -44,7 +45,7 @@
                {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                 <span class="date">{{ item.date }}</span>
                 <span class="count">{{ item.count }} targets</span>
-                {% if item.has_lens %}<span class="lens-badge-small">🔭 LENS</span>{% endif %}
+                {{ day_badges(item, small=true) }}
             </a>
             {% endfor %}
         </div>

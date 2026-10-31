@@ -106,8 +106,13 @@ function _loadCardImage(img) {
 
 function jumpToCard(idx) {
     _showCard(idx);
+    // the nav bar is sticky: scrolling to it lands anywhere once it is stuck, so scroll to
+    // the card and leave room for the bar (and whatever it sticks under) above it
     const bar = document.getElementById('cardNavBar');
-    if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const card = document.getElementById(`card-${idx}`);
+    if (!bar || !card) return;
+    const above = (parseFloat(getComputedStyle(bar).top) || 0) + bar.offsetHeight + 12;
+    window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - above, behavior: 'smooth' });
 }
 function prevCard() { jumpToCard(_cur - 1); }
 function nextCard() { jumpToCard(_cur + 1); }
@@ -675,15 +680,15 @@ function _initBackToTop() {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
-// Deep link from the DETECT home page: /detect?detect_results=<date>#t=<name> scrolls to
-// that object's card and highlights it briefly.
+// Deep link from the overview's Judge → (/detect?detect_results=<date>#t=<name>, /detect/lsst?day=<date>#t=<name>):
+// opens that object's card (only one card is shown at a time), scrolls to it and highlights it briefly.
 function jumpToHashTarget() {
     const m = (location.hash || '').match(/^#t=(.+)$/);
     if (!m) return;
     const name = decodeURIComponent(m[1]);
     const card = document.querySelector(`.target-card[data-name="${CSS.escape(name)}"]`);
-    if (!card) return;
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!card) { _toast(`${name} is not on this day.`); return; }
+    jumpToCard(parseInt(card.dataset.index, 10));
     card.classList.add('card-jump');
     setTimeout(() => card.classList.remove('card-jump'), 3000);
 }

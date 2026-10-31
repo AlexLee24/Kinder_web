@@ -1517,7 +1517,7 @@ def get_daily_match_counts() -> list[dict]:
                 )
                 SELECT d.date,
                        COUNT(DISTINCT c.obj_id) AS unique_targets,
-                       COALESCE(BOOL_OR(c.catalog LIKE 'Lens_%'), FALSE) AS has_lens
+                       COALESCE(BOOL_OR(c.catalog ILIKE 'lens%'), FALSE) AS has_lens
                 FROM dates d
                 LEFT JOIN transient.cross_matches c ON d.date = c.updated_date::date
                 GROUP BY d.date ORDER BY d.date DESC
@@ -1709,7 +1709,7 @@ def _load_detect_metadata(cache_ttl: int) -> dict:
                 )
                 SELECT d.date,
                        COUNT(DISTINCT c.obj_id) AS unique_targets,
-                       COALESCE(BOOL_OR(c.catalog LIKE 'Lens_%'), FALSE) AS has_lens
+                       COALESCE(BOOL_OR(c.catalog ILIKE 'lens%'), FALSE) AS has_lens
                 FROM dates d
                 LEFT JOIN transient.cross_matches c ON d.date = c.updated_date::date
                 GROUP BY d.date ORDER BY d.date DESC
@@ -1728,16 +1728,21 @@ def _load_detect_metadata(cache_ttl: int) -> dict:
             try:
                 cur.execute("""
                     SELECT run_date::date AS d, host_status, COUNT(*) AS n,
-                           MAX(run_date) AS last_run
+                           MAX(run_date) AS last_run,
+                           COUNT(*) FILTER (WHERE 'glSN?' = ANY(tags) AND NOT 'Lens' = ANY(tags)) AS lens_cand,
+                           COUNT(*) FILTER (WHERE 'SLSN?' = ANY(tags)) AS slsn
                     FROM transient.detect_screen
                     GROUP BY 1, 2
                 """)
                 for r in cur.fetchall():
                     day = r['d'].strftime('%Y-%m-%d')
                     entry = screen_counts.setdefault(day, {'confirmed': 0, 'review': 0, 'none': 0,
-                                                           'total': 0, 'last_run': None})
+                                                           'total': 0, 'last_run': None,
+                                                           'lens_cand': 0, 'slsn': 0})
                     entry[r['host_status'] or 'none'] = r['n']
                     entry['total'] += r['n']
+                    entry['lens_cand'] += r['lens_cand']
+                    entry['slsn'] += r['slsn']
                     if entry['last_run'] is None or r['last_run'] > entry['last_run']:
                         entry['last_run'] = r['last_run']
                 for entry in screen_counts.values():
@@ -1748,6 +1753,9 @@ def _load_detect_metadata(cache_ttl: int) -> dict:
                 conn.rollback()
             for dc in daily_counts:
                 dc['screen'] = screen_counts.get(dc['date'])
+                # day badges (_detect_badges.html): glSN? off a lens catalogue = "Lens?", SLSN?
+                dc['lens_cand'] = (dc['screen'] or {}).get('lens_cand', 0)
+                dc['slsn'] = (dc['screen'] or {}).get('slsn', 0)
 
         result = {'available_dates': available_dates, 'daily_counts': daily_counts,
                   'screen_counts': screen_counts}

@@ -33,6 +33,7 @@
 {% endblock %}
 
 {% block content %}
+    {% from '_detect_badges.html' import obj_badges %}
     {% set can_edit = session.user and session.user.is_admin %}
     {% macro render_abs_mag(value, sep=None) -%}
         {% if value is not none %}
@@ -203,7 +204,7 @@
                             </td>
                             {% endif %}
 
-                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a>{% if t.has_lens %} <span class="lens-badge-small" title="On a lens-catalogue object">LENS</span>{% endif %}</td>
+                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a> {{ obj_badges(t.has_lens, sc.tags) }}</td>
 
                             <td style="text-align:center;">
                                 {% if t.tns_info and t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>
@@ -272,7 +273,7 @@
                             <a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" target="_blank" rel="noopener noreferrer">
                                 {{ t.target_name }}<span class="card-extlink">↗</span>
                             </a>
-                            {% if t.has_lens %}<span class="lens-badge" title="On a lens-catalogue object">LENS</span>{% endif %}
+                            {{ obj_badges(t.has_lens, sc.tags, small=false) }}
                             <span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}" title="DETECT priority score">score {{ t.score }}</span>
                             {% if t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>{% else %}<span class="badge-type-unclassified">Unclassified</span>{% endif %}
                         </h3>

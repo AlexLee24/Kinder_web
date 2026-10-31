@@ -313,8 +313,9 @@ def review_metadata() -> dict:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(f"""
             SELECT s.review_day AS d, s.host_status, count(*) AS n, max(s.run_date) AS last_run,
-                   bool_or(EXISTS (SELECT 1 FROM transient.lsst_detect_matches m
-                                    WHERE m.oid = s.oid AND m.catalog LIKE 'Lens%%')) AS has_lens
+                   bool_or({_ON_LENS}) AS has_lens,
+                   count(*) FILTER (WHERE 'glSN?' = ANY(s.tags) AND NOT {_ON_LENS}) AS lens_cand,
+                   count(*) FILTER (WHERE 'SLSN?' = ANY(s.tags)) AS slsn
               FROM transient.lsst_detect_screen s
              WHERE s.review_day IS NOT NULL AND {_MATCHED}
              GROUP BY 1, 2
@@ -323,9 +324,11 @@ def review_metadata() -> dict:
         for r in cur.fetchall():
             day = r["d"].strftime("%Y-%m-%d")
             e = screen_counts.setdefault(day, {"confirmed": 0, "review": 0, "none": 0, "total": 0,
-                                               "has_lens": False, "last_run": None})
+                                               "has_lens": False, "lens_cand": 0, "slsn": 0, "last_run": None})
             e[r["host_status"] or "none"] = r["n"]
             e["total"] += r["n"]
+            e["lens_cand"] += r["lens_cand"]
+            e["slsn"] += r["slsn"]
             e["has_lens"] = e["has_lens"] or bool(r["has_lens"])
             if e["last_run"] is None or r["last_run"] > e["last_run"]:
                 e["last_run"] = r["last_run"]
@@ -334,8 +337,9 @@ def review_metadata() -> dict:
             e["last_run"] = e["last_run"].strftime("%Y-%m-%d %H:%M %Z")
     days = sorted(screen_counts, reverse=True)
     return {"available_dates": days,
-            "daily_counts": [{"date": d, "count": screen_counts[d]["total"],
-                              "has_lens": screen_counts[d]["has_lens"], "screen": screen_counts[d]} for d in days],
+            "daily_counts": [{"date": d, "count": screen_counts[d]["total"], "has_lens": screen_counts[d]["has_lens"],
+                              "lens_cand": screen_counts[d]["lens_cand"], "slsn": screen_counts[d]["slsn"],
+                              "screen": screen_counts[d]} for d in days],
             "screen_counts": screen_counts}
 
 
