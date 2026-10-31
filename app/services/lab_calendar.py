@@ -13,6 +13,9 @@ Trigger duty (category 'trigger', one member per event, all day; a week of duty 
 people is N events repeating every N weeks): ``send_trigger_reminders()`` runs every 5 minutes (scheduler job
 ``lab_trigger_reminder``) and, once the Sun has set at Lulin, pushes "Trigger duty tonight" to that member's devices
 that take 'trigger' (Web Push) — unless the night's SLT trigger was already sent from Daily Trigger.
+Duty weeks run Monday to Sunday: members volunteer for a free week on the page (one 7-day event), and every Friday
+``check_duty_weeks()`` (job ``lab_trigger_duty_check``) posts to Slack (SLACK_CHANNEL_ID_TRIGGER_DUTY) when nobody
+covers the week after next.
 """
 import calendar
 import json
@@ -467,7 +470,91 @@ def parse_form(data, members=None):
     }, None
 
 
-# ── Trigger duty: who is on duty, Lulin sunset, the reminder ──
+# ── Trigger duty: who is on duty, duty weeks (Mon–Sun), Lulin sunset, the reminder, the Friday check ──
+
+DUTY_SLACK_CHANNEL = os.getenv('SLACK_CHANNEL_ID_TRIGGER_DUTY', 'C06BT4DALM6')
+DUTY_CHECK_KEY = 'lab_calendar:duty_check'
+
+
+def week_monday(day):
+    return day - timedelta(days=day.weekday())
+
+
+def duty_weeks(occurrences, first_monday, n=8):
+    """Coverage of ``n`` duty weeks (Monday–Sunday) from ``first_monday``, from the occurrences of ``events()``:
+    [{'monday', 'sunday', 'people': [{'email', 'name', 'id', 'db_id', 'repeat', 'whole'}], 'gaps': [dates]}].
+    ``whole``: that occurrence is exactly this Monday–Sunday."""
+    duty = [e for e in occurrences if e['category'] == 'trigger' and e['assignee_email']]
+    weeks = []
+    for w in range(n):
+        mon = first_monday + timedelta(weeks=w)
+        days = [mon + timedelta(days=i) for i in range(7)]
+        people, covered = [], set()
+        for e in duty:
+            on = [d for d in days if e['d'] <= d <= e['end_d']]
+            if not on:
+                continue
+            covered.update(on)
+            if not any(p['email'] == e['assignee_email'] for p in people):
+                people.append({'email': e['assignee_email'], 'name': e['assignee_name'] or e['assignee_email'],
+                               'id': e['id'], 'db_id': e['db_id'], 'repeat': e['repeat'],
+                               'whole': e['d'] == mon and e['end_d'] == days[-1]})
+        weeks.append({'monday': mon, 'sunday': days[-1], 'people': people,
+                      'gaps': [d for d in days if d not in covered]})
+    return weeks
+
+
+def week_label(mon):
+    sun = mon + timedelta(days=6)
+    if mon.month == sun.month:
+        return f"{mon.strftime('%a %-d')} – {sun.strftime('%a %-d %b')}"
+    return f"{mon.strftime('%a %-d %b')} – {sun.strftime('%a %-d %b')}"
+
+
+def _post_slack(channel, text):
+    from slack_sdk import WebClient
+    token = os.getenv('SLACK_BOT_TOKEN', '').strip()
+    if not token:
+        raise RuntimeError('SLACK_BOT_TOKEN is not set')
+    resp = WebClient(token=token).chat_postMessage(channel=channel, text=text, unfurl_links=False)
+    if not resp.get('ok'):
+        raise RuntimeError(f"Slack refused the message: {resp.get('error')}")
+
+
+def check_duty_weeks(today=None, post=True):
+    """Fridays: if any night of the week after next (Monday in 10 days) has no Trigger duty, post a reminder to
+    the Slack channel asking members to volunteer on Lab › Calendar. Posts at most once a day. Returns what it did."""
+    from app.config import config
+    from app.db.auth import get_setting, set_setting
+
+    today = today or datetime.now(TZ).date()
+    mon = week_monday(today) + timedelta(weeks=2)
+    week = duty_weeks(events(today=today, past_days=0, future_days=30), mon, 1)[0]
+    res = {'week': mon.isoformat(), 'people': [p['name'] for p in week['people']],
+           'gaps': [d.isoformat() for d in week['gaps']], 'posted': False}
+    if not week['gaps']:
+        return res
+    url = f"{config.APP_BASE_URL.rstrip('/')}/lab_calendar"
+    if not week['people']:
+        text = (f":rotating_light: *Trigger duty needed for {week_label(mon)}*\n"
+                f"Nobody has signed up for Trigger duty that week yet. Please pick it up on Kinder: "
+                f"<{url}|Lab › Calendar> → Trigger duty → *Volunteer*.")
+    else:
+        nights = ', '.join(d.strftime('%a %-d %b') for d in week['gaps'])
+        text = (f":rotating_light: *Trigger duty still open for {week_label(mon)}*\n"
+                f"No one is on duty on {nights}. Please sign up on Kinder: <{url}|Lab › Calendar> → Trigger duty.")
+    res['text'] = text
+    if not post:
+        return res
+    if get_setting(DUTY_CHECK_KEY) == today.isoformat():
+        res['skipped'] = 'already posted today'
+        return res
+    _post_slack(DUTY_SLACK_CHANNEL, text)
+    set_setting(DUTY_CHECK_KEY, today.isoformat())
+    res['posted'] = True
+    logger.info('Trigger duty check: posted to %s for the week of %s', DUTY_SLACK_CHANNEL, mon)
+    return res
+
 
 def duty_on(day):
     """Trigger duty occurrences covering ``day`` (a date): [{'email', 'name', 'event_id', 'title'}]."""

@@ -199,11 +199,22 @@
 .lc-duty-who span.is-bad { color: #FF8A80; }
 .lc-duty-tonight small { font-size: 0.76rem; color: var(--kw-text-secondary); }
 .lc-duty-none { color: var(--kw-text-muted) !important; font-weight: 500 !important; }
-.lc-duty-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.lc-duty-list button { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 7px 2px; border: 0; border-top: 1px solid var(--kw-hairline); background: none; color: var(--kw-text-secondary); font: inherit; font-size: 0.82rem; text-align: left; cursor: pointer; }
-.lc-duty-list li:first-child button { border-top: 0; }
-.lc-duty-list button b { color: var(--kw-text-white); font-weight: 600; white-space: nowrap; }
-.lc-duty-list button:hover b { color: #F2C94C; }
+.lc-weeks-h { margin: 12px 0 4px; }
+.lc-weeks { list-style: none; margin: 0; padding: 0; }
+.lc-week { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 5px 2px; border-top: 1px solid var(--kw-hairline); font-size: 0.82rem; }
+.lc-week:first-child { border-top: 0; }
+.lc-week-d { display: flex; flex-direction: column; color: var(--kw-text-secondary); white-space: nowrap; }
+.lc-week-d small { font-size: 0.68rem; color: var(--kw-text-faint); }
+.lc-week.is-now .lc-week-d { color: var(--kw-text-white); }
+.lc-week-who { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 6px; text-align: right; }
+.lc-week-who .lc-linkbtn { color: var(--kw-text-white); font-weight: 600; text-decoration: none; }
+.lc-week-who .lc-linkbtn:hover { color: #F2C94C; }
+.lc-week.is-mine .lc-week-who .lc-linkbtn { color: #F2C94C; }
+.lc-week-who small { width: 100%; font-size: 0.7rem; color: #FF8A80; }
+.lc-week-out { padding: 0; border: 0; background: none; color: var(--kw-text-muted); font: inherit; font-size: 0.72rem; text-decoration: underline; cursor: pointer; }
+.lc-week-out:hover { color: #FF8A80; }
+.lc-week.is-open .lc-week-d { color: #FF8A80; }
+.lc-volunteer { border-color: rgba(242, 201, 76, 0.5); color: #F2C94C; }
 
 /* Daily Trigger page bar: tonight's Trigger duty */
 .dt-duty { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(242, 201, 76, 0.14); color: #F2C94C; font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap; }

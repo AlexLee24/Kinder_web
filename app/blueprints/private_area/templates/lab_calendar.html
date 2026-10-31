@@ -55,7 +55,7 @@
             <section class="kw-panel lc-duty" aria-labelledby="lcDutyT">
                 <div class="kw-panel-head">
                     <h2 id="lcDutyT">Trigger duty</h2>
-                    <button type="button" class="kw-btn kw-btn-sm" id="lcDutyAdd">Assign</button>
+                    <button type="button" class="kw-btn kw-btn-sm" id="lcDutyAdd" data-week="{{ (duty_weeks|rejectattr('people')|map(attribute='monday')|first or duty_weeks[0].monday).isoformat() }}" title="Put someone (or a rotation) on duty">Assign</button>
                 </div>
                 <div class="lc-duty-tonight">
                     <span class="kw-label">Tonight</span>
@@ -68,13 +68,24 @@
                     <b class="lc-duty-none">Nobody assigned</b>
                     {% endif %}
                 </div>
-                {% if duty_next %}
-                <ul class="lc-duty-list">
-                    {% for e in duty_next %}
-                    <li><button type="button" data-ev="{{ e.id }}"><span>{{ e.d.strftime('%a %d %b') }}{% if e.end_d != e.d %} – {{ e.end_d.strftime('%a %d %b') }}{% endif %}</span><b>{{ e.assignee_name }}</b></button></li>
+                <div class="lc-weeks-h"><span class="kw-label">Duty weeks · Mon – Sun</span></div>
+                <ul class="lc-weeks">
+                    {% for w in duty_weeks %}
+                    {% set mine = w.people|selectattr('email', 'equalto', user_email)|list %}
+                    <li class="lc-week{% if not w.people %} is-open{% elif w.gaps %} is-part{% endif %}{% if mine %} is-mine{% endif %}{% if loop.first %} is-now{% endif %}">
+                        <span class="lc-week-d">{{ w.label }}{% if loop.first %}<small>this week</small>{% endif %}</span>
+                        <span class="lc-week-who">
+                            {% if w.people %}
+                            {% for p in w.people %}<button type="button" class="lc-linkbtn" data-ev="{{ p.id }}">{{ 'You' if p.email == user_email else p.name }}</button>{% if not loop.last %}, {% endif %}{% endfor %}
+                            {% if w.gaps %}<small>open: {{ w.gaps_label }}</small>{% endif %}
+                            {% for p in mine if p.whole and not p.repeat %}<button type="button" class="lc-week-out" data-withdraw="{{ p.db_id }}" data-week="{{ w.label }}">Withdraw</button>{% endfor %}
+                            {% else %}
+                            <button type="button" class="kw-btn kw-btn-sm lc-volunteer" data-volunteer="{{ w.monday.isoformat() }}" data-week="{{ w.label }}">Volunteer</button>
+                            {% endif %}
+                        </span>
+                    </li>
                     {% endfor %}
                 </ul>
-                {% endif %}
             </section>
             <section class="kw-panel lc-hl" aria-labelledby="lcSoonT">
                 <div class="kw-panel-head"><h2 id="lcSoonT">Coming up</h2></div>

@@ -163,6 +163,7 @@ Kinder（Logo → /）
 | 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email + Web Push 給 GREAT Lab 成員（分類 `alerts`）（`app/services/bots/gcn.py`） |
 | interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
 | cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
+| cron | `lab_trigger_duty_check` | 週五 02:00（台灣 10:00） | 下下週有沒人值班的晚上 → Slack `SLACK_CHANNEL_ID_TRIGGER_DUTY`（預設 C06BT4DALM6）提醒大家去 Lab › Calendar 認領 |
 | interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推） |
 | interval | `lab_calendar_lulin_sync` | 每 6 小時（啟動時一次） | 鹿林 LOT Google 日曆 → `obs.lab_calendar_events`（source `lulin`），Lab › Calendar 與訂閱 feed 用 |
 | cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
@@ -215,6 +216,7 @@ Kinder（Logo → /）
 | `TNS_BOT_ID` / `TNS_BOT_NAME` / `TNS_API_KEY` | TNS bot | `auto_tns_download`、`tns_gap_filler`、`download_phot` | TNS 同步必填 |
 | `ATLAS_USER` / `ATLAS_PASS`、`PANSTARRS_USER` / `PANSTARRS_PASS` | QUB 網站登入（Playwright） | `download_phot_backup.py`（未追蹤，2026-10-31 起） | 只有備份檔用到 |
 | `SLACK_BOT_TOKEN`、`SLACK_CHANNEL_ID_CONTROL_ROOM`、`SLACK_CHANNEL_ID_test` | Daily Trigger 送 Slack（DEBUG 用 test 頻道） | `trigger_send` | Trigger 必填 |
+| `SLACK_CHANNEL_ID_TRIGGER_DUTY` | 週五 Trigger 值班檢查的 Slack 頻道 | `app/services/lab_calendar.py` | 否（預設 C06BT4DALM6） |
 | `SLACK_CHANNEL_ID_GCN` / `_ToO` / `_EP_COPY` / `_ALERT`、`GCN_CLIENT_ID` / `GCN_CLIENT_SECRET`、`BOTS_DISABLED`、`OBS_RAW_DIR`、`REDUCTION_*` | lab bots | `app/services/bots` | 否（缺少時該 bot 在 Admin › Bots 顯示 Needs setup） |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Web Push 金鑰（`scripts/gen_vapid_keys.py` 產生；所有發送的伺服器要同一組，換掉 = 大家要重開推播） | `app/services/notifications/webpush.py` | 推播必填（缺少時 Settings 顯示未設定、Admin › Push 不能送） |
 | `LULIN_CALENDAR_ICS` | 鹿林 LOT 排程的 iCal 網址（Lab › Calendar 同步） | `app/services/lab_calendar.py` | 否（預設 Lulin TAC 公開日曆） |

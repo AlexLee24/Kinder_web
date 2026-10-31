@@ -176,7 +176,27 @@
         (F('category').value === 'trigger' && !F('assignee').value ? F('assignee') : F('title')).focus();
     }
     $('lcAddOpen').addEventListener('click', () => openForm(null));
-    if ($('lcDutyAdd')) $('lcDutyAdd').addEventListener('click', () => openForm(null, TODAY, 'trigger'));
+    if ($('lcDutyAdd')) $('lcDutyAdd').addEventListener('click', () => {
+        // a duty week runs Monday–Sunday: start on the first week nobody has
+        const mon = $('lcDutyAdd').dataset.week || TODAY;
+        openForm(null, mon, 'trigger');
+        F('end_date').value = addDays(mon, 6);
+    });
+    // Duty weeks: volunteer for a free week, or withdraw from your own
+    document.querySelectorAll('[data-volunteer]').forEach((b) => b.addEventListener('click', () => {
+        if (!confirm('Take Trigger duty for ' + b.dataset.week + '? You will get a push at Lulin sunset each night.')) return;
+        b.disabled = true;
+        api('/api/lab_calendar/volunteer', 'POST', { week: b.dataset.volunteer })
+            .then(() => { toast('Thanks! You are on Trigger duty for ' + b.dataset.week, 'success'); setTimeout(() => location.reload(), 900); })
+            .catch((err) => { toast(err.message, 'error'); b.disabled = false; });
+    }));
+    document.querySelectorAll('[data-withdraw]').forEach((b) => b.addEventListener('click', () => {
+        if (!confirm('Give up your Trigger duty for ' + b.dataset.week + '? The week becomes open again.')) return;
+        b.disabled = true;
+        api('/api/lab_calendar/events/' + b.dataset.withdraw, 'DELETE')
+            .then(() => { toast('You are off duty for ' + b.dataset.week, 'info'); setTimeout(() => location.reload(), 900); })
+            .catch((err) => { toast(err.message, 'error'); b.disabled = false; });
+    }));
     $('lcFormDelete').addEventListener('click', () => {
         const e = Object.values(EVENTS).find((x) => String(x.db_id) === F('id').value);
         if (e) { closeModal($('lcFormModal')); removeEvent(e); }

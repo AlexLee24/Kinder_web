@@ -80,6 +80,9 @@ def lab_calendar():
     today = datetime.now(cal.TZ).date()
     evs = cal.events(today)
     duties = [e for e in evs if e['category'] == 'trigger' and e['end_d'] >= today]
+    # the next 8 duty weeks (Monday–Sunday) from this one, from every event (not only the filtered ones)
+    duty_weeks = [dict(w, label=cal.week_label(w['monday']), gaps_label=', '.join(d.strftime('%a') for d in w['gaps']))
+                  for w in cal.duty_weeks(evs, cal.week_monday(today), 8)]
     reminders = _reminders(today)
     duty_tonight = []                  # one line per member on duty tonight, with how the sunset push went
     for e in duties:
@@ -119,7 +122,7 @@ def lab_calendar():
         categories=cal.CATEGORIES, sources=cal.SOURCES, lab_categories=cal.LAB_CATEGORIES,
         repeat_labels=cal.REPEAT_LABELS, src=src, kind=kind, q=q,
         members=_members(), duty_tonight=duty_tonight,
-        duty_next=[e for e in duties if not e['is_today']][:6], sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
+        duty_weeks=duty_weeks, sunset_today=cal.lulin_sunset(today).strftime('%H:%M'),
         cal_data={**cal.compact(evs), 'today': today.isoformat(), 'this_month': this_month.strftime('%Y-%m'),
                   'first_month': first.strftime('%Y-%m'), 'last_month': last.strftime('%Y-%m'),
                   'sunset_today': cal.lulin_sunset(today).strftime('%H:%M'),
@@ -198,6 +201,42 @@ def api_lab_calendar_change(event_id):
     db.update_event(event_id, fields)
     logger.info('audit action=lab_calendar_edit actor=%s target=%s', who, event_id)
     return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/lab_calendar/volunteer', methods=['POST'])
+def api_lab_calendar_volunteer():
+    """Sign yourself up for a free Trigger duty week: {"week": "<its Monday, YYYY-MM-DD>"} → one Monday–Sunday
+    event on duty for you. Withdraw = delete that event (the member on duty may)."""
+    denied = _denied()
+    if denied:
+        return denied
+    from app.db import lab_calendar as db
+    from app.services import lab_calendar as cal
+    u = session['user']
+    members = _members()
+    email = next((e for e in members if e.lower() == (u.get('email') or '').lower()), None)
+    if not email:
+        return jsonify({'success': False, 'error': 'Only GREAT Lab members take Trigger duty.'}), 403
+    try:
+        mon = date.fromisoformat(str((request.get_json(silent=True) or {}).get('week') or ''))
+    except ValueError:
+        return jsonify({'success': False, 'error': 'Pick a week.'}), 400
+    today = datetime.now(cal.TZ).date()
+    if mon.weekday() != 0 or mon + timedelta(days=6) < today or mon > today + timedelta(weeks=26):
+        return jsonify({'success': False, 'error': 'Pick a week (Monday) from this week to six months ahead.'}), 400
+    week = cal.duty_weeks(cal.events(today=today, past_days=7, future_days=200), mon, 1)[0]
+    if week['people']:
+        names = ', '.join(p['name'] for p in week['people'])
+        return jsonify({'success': False, 'error': f'{names} already has duty that week.'}), 409
+    name = members[email]
+    new_id = db.add_event({
+        'category': 'trigger', 'title': f'Trigger: {name}', 'all_day': True,
+        'start_at': datetime.combine(mon, datetime.min.time(), cal.TZ),
+        'end_at': datetime.combine(mon + timedelta(days=7), datetime.min.time(), cal.TZ),
+        'repeat': '', 'repeat_until': None, 'assignee_email': email, 'assignee_name': name,
+    }, email, name)
+    logger.info('audit action=lab_calendar_volunteer actor=%s target=%s week=%s', email, new_id, mon)
+    return jsonify({'success': True, 'id': new_id})
 
 
 @private_area_bp.route('/api/lab_calendar/sync', methods=['POST'])
