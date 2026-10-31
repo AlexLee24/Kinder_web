@@ -12,3 +12,5 @@
 | [[`transient.comments`]]            | comments                   | comments                                |
 | [[`transient.default_permissions`]] | default_source_permissions | default permissions                     |
 
+| [[`transient.lsst_alerts`]]         | —                          | LSST (ALeRCE) objects near a Lens / DESI galaxy, in TNS or not |
+| [[`transient.lsst_lc_state`]]       | —                          | last ALeRCE lastmjd per TNS object (LSST light-curve refresh) |

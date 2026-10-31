@@ -20,6 +20,8 @@ these jobs in UTC too):
     db_monitor                     every 10m  pool / pg_stat_activity check + email alert
     db_recycle                     every 30m  close idle pooled connections
     detect_page_prewarm            every 30m  rebuild DETECT page cache
+    lsst_watch                     hh:25      new ALeRCE LSST objects vs Lens/DESI + LSST light curves of TNS objects
+    lsst_daily_sweep               14:30      re-read the last 1.5 days of LSST objects (late ingests)
 
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
     bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
@@ -142,6 +144,7 @@ def start_background_jobs(app) -> bool:
     from app.services.jobs import scheduler_state as _sched_state
     from app.services.jobs.backup import run_daily_backup
     from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
+    from app.services.lsst import alerts as _lsst_alerts
     from app.services.photometry.phot_scheduler import (
         fetch_inbox_photometry,
         retire_stale_followups,
@@ -173,6 +176,10 @@ def start_background_jobs(app) -> bool:
             # DETECT re-screens every Follow-up object once a day (M from the latest light
             # curve, host against the latest catalogue); hourly runs hang off the TNS import.
             _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=4, minute=0, id='daily_detect_followups')  # after the 03:30 UTC photometry fetch
+        if _lsst_alerts.ENABLED:
+            # :25 = after the :15 TNS import, so new TNS names are there to link to
+            _scheduler.add_job(_tracked('lsst_watch', _lsst_alerts.run_watch),                'cron', minute=25,        id='lsst_watch')
+            _scheduler.add_job(_tracked('lsst_daily_sweep', _lsst_alerts.run_daily_sweep),    'cron', hour=14, minute=30, id='lsst_daily_sweep')  # Chilean night is over by ~11 UTC
         _add_bot_jobs(_scheduler)
     _scheduler.start()
     if not config.DEBUG:
