@@ -102,11 +102,13 @@
         h += svg('clock') + '<span>' + esc(whenText(e)) + '</span>';
         const dn = dutyNote(e);
         if (dn) h += svg('bell') + '<span>' + esc(dn) + '</span>';
+        if (e.remind_label) h += svg('bell') + '<span>Reminder ' + esc(e.remind_label.toLowerCase()) + '</span>';
         if (e.repeat) h += svg('repeat') + '<span>' + esc(e.repeat_label) + (e.repeat_until ? ' until ' + esc(fmtDay(e.repeat_until)) : '') + '</span>';
         if (e.location) h += svg('pin') + '<span>' + esc(e.location) + '</span>';
         if (e.url) h += svg('link') + '<a href="' + esc(e.url) + '" target="_blank" rel="noopener noreferrer">' + esc(e.url) + '</a>';
         h += '</div>';
         if (e.description) h += '<p class="lc-ev-desc">' + esc(e.description) + '</p>';
+        if (e.no_lot) h += '<p class="lc-ev-desc"><span class="lc-nolot">No LOT trigger</span> UVEX, LISA, TRIPOL2 or an E program is on LOT that night, so Daily Trigger only sends SLT.</p>';
         if (e.source === 'lulin') h += '<p class="lc-ev-by">From the Lulin LOT schedule (Lulin TAC calendar). It is read only here.</p>';
         else if (e.created_by_name) h += '<p class="lc-ev-by">Added by ' + esc(e.created_by_name) + '</p>';
         $('lcEvBody').innerHTML = h;
@@ -177,6 +179,7 @@
             F('assignee').value = e.assignee_email || '';
             F('repeat').value = e.repeat || '';
             F('repeat_until').value = e.repeat_until || '';
+            F('remind').value = e.remind === null || e.remind === undefined ? '' : String(e.remind);
             F('location').value = e.location;
             F('url').value = e.url;
             F('description').value = e.description;
@@ -232,6 +235,7 @@
             date: F('date').value, end_date: F('end_date').value || F('date').value,
             start_time: F('start_time').value, end_time: F('end_time').value,
             repeat: F('repeat').value, repeat_until: F('repeat').value ? F('repeat_until').value : '',
+            remind: F('remind').value,
             location: F('location').value, url: F('url').value, description: F('description').value,
         };
         const id = F('id').value;
@@ -259,9 +263,9 @@
     Object.values(byDay).forEach((l) => l.sort((a, b) => (a.source === 'lab' ? 0 : 1) - (b.source === 'lab' ? 0 : 1)));
     function evButton(e, day) {
         const start = e.time_label && day === e.date ? '<b>' + esc(e.time_label.split('–')[0].trim()) + '</b> ' : '';
-        const tip = e.title + (e.time_label ? ' · ' + e.time_label : '') + (e.location ? ' · ' + e.location : '');
+        const tip = e.title + (e.time_label ? ' · ' + e.time_label : '') + (e.location ? ' · ' + e.location : '') + (e.no_lot ? ' · No LOT trigger' : '');
         return '<button type="button" class="lc-cal-ev lc-c-' + esc(e.color) + (e.source === 'lulin' ? ' is-lulin' : '') + '" data-ev="' + esc(e.id) + '" title="' + esc(tip) + '">' +
-            start + (e.source === 'lulin' ? '<i>LOT</i> ' : '') + esc(e.title) + '</button>';
+            start + (e.source === 'lulin' ? (e.no_lot ? '<i class="is-nolot">LOT</i> ' : '<i>LOT</i> ') : '') + esc(e.title) + '</button>';
     }
     let shown = DATA.this_month;
     function showMonth(key) {
@@ -308,6 +312,7 @@
             '<div class="lc-card-body"><div class="lc-card-top"><span class="lc-chip lc-c-' + esc(e.color) + '">' + esc(e.category_label) + '</span>' +
             (e.time_label ? '<span class="lc-time">' + esc(e.time_label) + '</span>' : '') +
             (e.repeat ? '<span class="lc-time">' + REP + esc(e.repeat_label) + '</span>' : '') +
+            (e.no_lot ? '<span class="lc-nolot">No LOT trigger</span>' : '') +
             '<span class="lc-remaining">' + rem + '</span></div>' +
             '<h3 class="lc-card-title"><button type="button" data-ev="' + esc(e.id) + '">' + esc(e.title) + '</button></h3>' +
             (e.description ? '<p class="lc-card-desc">' + esc(e.description) + '</p>' : '') +
@@ -340,7 +345,27 @@
         if (past) $('lcPastWrap').hidden = v === 'month';
         document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('is-on', b.dataset.view === v));
         store.set('kinder-lc-view', v);
+        fitMonth();
     }
+    // wide screens: the month grid reaches down to the bottom of the side column (or of the window, when that is
+    // lower), so both columns end together; its week rows share the height (lab_calendar.css)
+    const wide = window.matchMedia('(min-width: 1100px)');
+    function fitMonth() {
+        const cal = $('lcCalGrid');
+        cal.style.minHeight = '';
+        if (!wide.matches || grid.hidden) return;
+        const layout = document.querySelector('.lc-layout'), side = document.querySelector('.lc-side');
+        const top = cal.getBoundingClientRect().top + window.scrollY;
+        const below = grid.getBoundingClientRect().bottom - cal.getBoundingClientRect().bottom;   // hint + panel padding
+        // the side column is sticky: measure it from the layout's top, not where it sits while scrolled
+        const sideBottom = layout.getBoundingClientRect().top + window.scrollY + side.offsetHeight;
+        const note = grid.nextElementSibling && grid.nextElementSibling.hidden ? grid.nextElementSibling.nextElementSibling : grid.nextElementSibling;
+        const noteH = note ? note.offsetHeight + 16 : 0;          // the time-zone note under the month stays inside
+        const bottom = Math.max(window.innerHeight - 20, sideBottom - noteH);
+        cal.style.minHeight = Math.max(0, Math.round(bottom - below - top)) + 'px';
+    }
+    window.addEventListener('resize', fitMonth);
+    window.addEventListener('load', fitMonth);      // web fonts can change the heights above the grid
     document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view)));
     if (past) {
         past.checked = store.get('kinder-lc-past') === '1';
@@ -349,6 +374,7 @@
     }
     const q = new URLSearchParams(location.search);
     setView(q.get('q') ? 'list' : (store.get('kinder-lc-view') === 'list' ? 'list' : 'month'));
+    if (q.get('ev') && EVENTS[q.get('ev')]) showEvent(q.get('ev'));     // a reminder opened from the bell / a push
 
     // ── Lulin sync ──
     const syncBtn = $('lcSyncNow');

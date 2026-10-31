@@ -42,10 +42,11 @@ def daily_trigger():
         duty = lab_calendar.duty_on(_date.fromisoformat(_trigger_day_key()))
     except Exception:
         logger.exception('daily_trigger: Trigger duty not read')
+    from app.services.lab_calendar import lot_closed_tonight
 
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
                             user_display_name=user_display_name, user_email=user_email,
-                            app_debug=config.DEBUG, duty=duty,
+                            app_debug=config.DEBUG, duty=duty, lot_closed=lot_closed_tonight(),
                             on_duty=any(d['email'].lower() == user_email.lower() for d in duty))
 
 @private_area_bp.route('/daily_trigger/send_status', methods=['GET'])
@@ -89,6 +90,10 @@ def daily_trigger_send_message():
     if telescope not in ('SLT', 'LOT'):
         logger.warning('daily_trigger_send_message: rejected — invalid telescope %r (by=%s)', telescope, requester)
         return jsonify({'success': False, 'error': 'Invalid telescope'}), 400
+    if telescope == 'LOT':
+        denied = lot_closed_response(requester)
+        if denied:
+            return denied
     if not script.strip():
         logger.warning('daily_trigger_send_message: rejected — empty script (by=%s telescope=%s)', requester, telescope)
         return jsonify({'success': False, 'error': 'Script message is empty'}), 400
@@ -134,6 +139,17 @@ def daily_trigger_send_message():
     logger.info('daily_trigger_send_message: observation log warnings=%s', log_warnings or '(none)')
 
     return jsonify({'success': True, 'status': status, 'log_warnings': log_warnings})
+
+def lot_closed_response(requester):
+    """409 when tonight's Lulin schedule closes LOT to triggers (Lab › Calendar, lab_calendar.lot_closed), else None."""
+    from app.services.lab_calendar import lot_closed_tonight
+    closed = lot_closed_tonight()
+    if not closed:
+        return None
+    logger.warning('LOT send refused — LOT closed tonight (%s) by=%s', '; '.join(closed), requester)
+    return jsonify({'success': False, 'lot_closed': closed,
+                    'error': f"LOT is closed to triggers tonight (Lulin schedule: {'; '.join(closed)}). "
+                             'Send the SLT script only.'}), 409
 
 def _render_trigger_visibility_image(telescope, targets):
     """Fresh visibility JPG for the targets (trigger_send.render_trigger_plot), in a private temp file the caller

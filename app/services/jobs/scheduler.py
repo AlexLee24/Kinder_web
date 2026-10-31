@@ -24,6 +24,7 @@ these jobs in UTC too):
     lsst_daily_sweep               14:30      re-read the last 1.5 days of LSST objects (late ingests)
     lab_calendar_lulin_sync        every 6h   Lulin LOT Google calendar -> Lab › Calendar (also once at start)
     lab_trigger_reminder           every 5m   after Lulin sunset: push "Trigger duty tonight" to today's duty (once)
+    lab_calendar_reminders         every 1m   Lab Calendar events: remind the members (bell + push) before they start
     lab_trigger_duty_check         Fri 02:00  week after next has a night without Trigger duty -> Slack (UTC+8 10:00)
 
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
@@ -148,6 +149,7 @@ def start_background_jobs(app) -> bool:
     from app.services.jobs.backup import run_daily_backup
     from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
     from app.services.lab_calendar import check_duty_weeks as _lab_duty_check
+    from app.services.lab_calendar import send_event_reminders as _lab_event_reminders
     from app.services.lab_calendar import send_trigger_reminders as _lab_trigger_reminders
     from app.services.lab_calendar import sync_lulin as _lab_calendar_sync_lulin
     from app.services.lsst import alerts as _lsst_alerts
@@ -180,6 +182,7 @@ def start_background_jobs(app) -> bool:
         _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm', kwargs={'app_obj': app})  # needs the app: no request context in the scheduler thread
         _scheduler.add_job(_tracked('lab_calendar_lulin_sync', _lab_calendar_sync_lulin),     'interval', hours=6,      id='lab_calendar_lulin_sync')
         _scheduler.add_job(_tracked('lab_trigger_reminder', _lab_trigger_reminders),         'interval', minutes=5,    id='lab_trigger_reminder')
+        _scheduler.add_job(_tracked('lab_calendar_reminders', _lab_event_reminders),         'interval', minutes=1,    id='lab_calendar_reminders')
         _scheduler.add_job(_tracked('lab_trigger_duty_check', _lab_duty_check),              'cron', day_of_week='fri', hour=2, minute=0, id='lab_trigger_duty_check')  # 10:00 UTC+8
         if _detect_pipeline.ENABLED:
             # DETECT re-screens every Follow-up object once a day (M from the latest light

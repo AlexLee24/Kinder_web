@@ -50,8 +50,9 @@ def direct_trigger():
     if not can_access_page(PAGE_KEY):
         flash('Access denied.', 'error')
         return redirect(url_for('basic.home'))
+    from app.services.lab_calendar import lot_closed_tonight
     return render_template('direct_trigger.html', current_path='/direct_trigger',
-                           filters=FILTERS, priorities=PRIORITIES)
+                           filters=FILTERS, priorities=PRIORITIES, lot_closed=lot_closed_tonight())
 
 
 @private_area_bp.route('/api/direct_trigger/targets', methods=['GET'])
@@ -260,11 +261,15 @@ def direct_trigger_send():
     from app.db.obs import mark_direct_trigger_sent
     from app.services.planning.trigger_send import send_to_slack
 
-    from .daily_trigger import _log_triggered_targets, _render_trigger_visibility_image
+    from .daily_trigger import _log_triggered_targets, _render_trigger_visibility_image, lot_closed_response
 
     tel = _telescope((request.get_json(silent=True) or {}).get('telescope'))
     if not tel:
         return jsonify({'success': False, 'error': 'Choose SLT or LOT.'}), 400
+    if tel == 'LOT':
+        denied = lot_closed_response(_actor())
+        if denied:
+            return denied
     try:
         rows, payload, greeting, script = _build_message(tel)
     except ValueError as exc:

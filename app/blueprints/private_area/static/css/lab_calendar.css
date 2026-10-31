@@ -73,6 +73,9 @@
 .lc-pager .kw-icon-btn svg { width: 18px; height: 18px; }
 .lc-pager .kw-icon-btn:disabled { opacity: 0.3; cursor: default; }
 .lc-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--kw-border); border-radius: var(--kw-radius-md); overflow: hidden; }
+@media (min-width: 1100px) {   /* lab_calendar.js fitMonth() sets the grid's min-height; the week rows share it */
+    .lc-cal-grid { grid-template-rows: auto; grid-auto-rows: minmax(104px, 1fr); }
+}
 .lc-cal-wd { padding: 6px 0; text-align: center; font-size: 0.74rem; color: var(--kw-text-muted); border-bottom: 1px solid var(--kw-border); }
 .lc-cal-wd.is-we { color: #E0788B; }
 .lc-cal-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; min-height: 104px; padding: 4px; border-right: 1px solid var(--kw-hairline); border-bottom: 1px solid var(--kw-hairline); cursor: copy; }
@@ -86,6 +89,7 @@
 .lc-cal-ev { display: block; width: 100%; padding: 1px 5px; border: 0; border-radius: 4px; background: var(--lc-bg); color: var(--lc); font: 500 0.72rem/1.4 var(--kw-font-sans); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .lc-cal-ev b { font-weight: 600; opacity: 0.85; }
 .lc-cal-ev i { font-style: normal; font-weight: 700; font-size: 0.62rem; letter-spacing: 0.04em; opacity: 0.75; }
+.lc-cal-ev i.is-nolot { color: #FF8A80; opacity: 1; text-decoration: line-through; text-decoration-thickness: 1.5px; }   /* LOT takes no triggers that night */
 .lc-cal-ev.is-lulin { background: transparent; box-shadow: inset 2px 0 0 var(--lc); border-radius: 0 4px 4px 0; }
 .lc-cal-ev:hover { filter: brightness(1.25); }
 .lc-hint { margin: 10px 0 0; font-size: 0.74rem; color: var(--kw-text-faint); }
@@ -156,6 +160,7 @@
 .lc-form.is-duty label .lc-duty-only { display: inline; }
 .lc-form.is-duty .lc-form-row.lc-not-duty { display: none; }
 .lc-form .lc-form-row.lc-not-duty { display: grid; }
+.lc-field-hint { align-self: end; margin: 0 0 6px; font-size: 0.76rem; line-height: 1.4; color: var(--kw-text-muted); }
 .lc-week-pick { font-size: 0.8rem; font-weight: 600; color: #F2C94C; }
 .lc-form-hint { margin: -6px 0 14px; font-size: 0.78rem; line-height: 1.55; color: var(--kw-text-muted); }
 .lc-form-note { margin: 0 0 8px; font-size: 0.78rem; color: var(--kw-text-muted); }
@@ -191,6 +196,9 @@
 .lc-mini-ev { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 0.86rem; color: var(--kw-text-primary); }
 .lc-mini-ev .lc-chip { flex-shrink: 0; }
 .lc-mini-ev small { color: var(--kw-text-muted); }
+/* a Lulin night that closes LOT to triggers (lab_calendar.LOT_CLOSED_RE) */
+.lc-nolot, .lc-mini-ev small.lc-nolot { display: inline-block; padding: 1px 7px; border-radius: 999px; background: rgba(255, 69, 58, 0.16); color: #FF8A80; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+.lc-duty-nolot { display: block; margin-top: 6px; color: #FF8A80; font-size: 0.78rem; }
 
 /* Trigger duty panel (side column) */
 .lc-duty { border-color: rgba(242, 201, 76, 0.35); }
