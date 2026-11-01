@@ -36,6 +36,7 @@ SENT_IDS_FILE = DATA_DIR / 'bots' / 'gcn_sent_ids.json'
 MAX_ENTRIES = 20
 MAX_SENT_IDS = 5000
 HEARTBEAT_EVERY = 60
+STALL_AFTER = 300            # watchdog: a listener that has not gone round its loop for this long is hung and replaced
 TOPICS = ['gcn.circulars', 'gcn.notices.einstein_probe.wxt.alert']
 DEFAULT_EP_EMAIL_TO = 'kinder@astro.ncu.edu.tw,amar@astro.ncu.edu.tw'
 
@@ -323,8 +324,9 @@ def setup_problem():
     return ('Missing in kinder.env: ' + ', '.join(missing)) if missing else ''
 
 
-def _loop():
+def _loop(gen=0):
     from slack_sdk import WebClient
+    global _last_beat
 
     missing = _missing_settings()
     if missing:
@@ -344,6 +346,11 @@ def _loop():
             backoff = 5
             last_beat = 0.0
             while True:
+                if gen != _gen:                     # the watchdog replaced this (hung) thread
+                    consumer.close()
+                    log.warning('Replaced listener thread stops')
+                    return
+                _last_beat = time.monotonic()
                 if time.monotonic() - last_beat >= HEARTBEAT_EVERY:
                     status.heartbeat(BOT, state='listening', pid=os.getpid())
                     last_beat = time.monotonic()
@@ -368,13 +375,31 @@ def _loop():
 
 _thread = None
 _thread_lock = threading.Lock()
+_gen = 0                     # bumped when the watchdog replaces a hung thread; the old one returns when it wakes
+_last_beat = 0.0             # monotonic time the listener last went round its loop
 
 
-def start():
-    """Start the listener thread once per process."""
-    global _thread
+def start(replace=False):
+    """Start the listener thread once per process (``replace``: also when the current one is alive but hung)."""
+    global _thread, _gen, _last_beat
     with _thread_lock:
-        if _thread is not None and _thread.is_alive():
+        if _thread is not None and _thread.is_alive() and not replace:
             return
-        _thread = threading.Thread(target=_loop, name='bot-gcn', daemon=True)
+        _gen += 1
+        _last_beat = time.monotonic()
+        _thread = threading.Thread(target=_loop, args=(_gen,), name='bot-gcn', daemon=True)
         _thread.start()
+
+
+def watchdog():
+    """Every minute in the process that owns the bots: start the listener again if its thread died, or replace it
+    when it has not gone round its loop for STALL_AFTER seconds (stuck in Kafka or in a handler)."""
+    if _missing_settings():
+        return                                 # _loop records the setup problem once; nothing to restart
+    stuck = time.monotonic() - _last_beat
+    if _thread is None or not _thread.is_alive():
+        status.event(BOT, 'Listener was not running: started again', level='warn', count=False)
+        start()
+    elif stuck > STALL_AFTER:
+        status.event(BOT, f'Listener stuck for {stuck:.0f} s: started a new one', level='warn', count=False)
+        start(replace=True)
