@@ -93,6 +93,9 @@ def test_move_to_nas(root, tmp_path, monkeypatch):
     old = root / 'Calibrated_Science' / 'SN2025old'
     first = sorted(old.iterdir())[0]
     touch(nas / 'Auto_Backup' / 'Calibrated_Science' / 'SN2025old' / first.name)
+    # Synology metadata from a night rsynced off a Synology: dropped, not moved (the NAS refuses @eaDir)
+    eadir = root / 'RAW_IMG_Sync/home/janet/lulin_data/LOT20260830/janet/@eaDir'
+    touch(eadir / 'LOT20260830_001.fits' / 'SYNOINDEX_MEDIA_INFO', 10)
     lines = []
     assert nb.step(root, lines.append, today=TODAY) == 0, lines
     dest = nas / 'Auto_Backup'
@@ -100,7 +103,7 @@ def test_move_to_nas(root, tmp_path, monkeypatch):
     assert (dest / 'RAW_IMG_Sync/home/janet/lulin_data/SLT20260930/flat/SLT20260930_flat.fits').is_file()
     assert len(list((dest / 'Calibrated_Science' / 'SN2025old').iterdir())) == 2
     assert len(list((dest / 'MasterBDF').iterdir())) == 2
-    assert not list(dest.rglob('*' + nb.PART))
+    assert not list(dest.rglob('*' + nb.PART)) and not list(dest.rglob('@eaDir'))
     lulin = root / 'RAW_IMG_Sync' / 'home' / 'janet' / 'lulin_data'
     assert sorted(p.name for p in lulin.iterdir()) == ['LOT20261005', 'LOT20261101', 'notes.txt']
     assert not old.exists() and (root / 'Calibrated_Science' / 'SN2026new').is_dir()
@@ -111,6 +114,19 @@ def test_move_to_nas(root, tmp_path, monkeypatch):
     assert 'p@ss' not in '\n'.join(lines)
     assert nb.step(root, lines.append, today=TODAY) == 0
     assert lines[-1] == 'Nothing to move to the NAS.'
+
+
+def test_overview_totals_count_every_move(root):
+    """The 30-day total adds up every move, not just the rows the page lists."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    with open(nb.MOVES_FILE, 'w') as fh:
+        for i in range(250):
+            fh.write(json.dumps({'at': now, 'folder': 'MasterBDF', 'path': f'MasterBDF/m{i}.fits',
+                                 'files': 1, 'bytes': 1000, 'finished': True}) + '\n')
+    o = nb.overview(max_age=0)
+    assert o['month'] == {'items': 250, 'files': 250, 'bytes': 250000}
+    assert len(o['moves']) == 100 and o['moves'][0]['path'] == 'MasterBDF/m249.fits'
 
 
 def test_dry_run_moves_nothing(root, monkeypatch):

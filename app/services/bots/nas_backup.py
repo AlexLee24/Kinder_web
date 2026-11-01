@@ -53,6 +53,9 @@ FOLDERS = ('RAW_IMG_Sync', 'MasterBDF', 'Calibrated_Science')
 FITS = ('.fits', '.fit', '.fts')
 MOUNT_BASE = Path.home() / 'Library' / 'Kinder' / 'nas'
 PART = '.kinder-part'
+# Synology's thumbnail/index folders, copied along with nights rsynced off a Synology: a Synology share refuses
+# to create them (ENOENT), so they are deleted here instead of moved
+JUNK_DIRS = ('@eaDir',)
 _DATE_RE = re.compile(r'(?<!\d)(20\d\d)(0[1-9]|1[0-2])[0-3]\d(?!\d)')
 _MJD_RE = re.compile(r'_MJD(\d{5})(?!\d)')
 _MJD0 = date(1858, 11, 17)
@@ -281,6 +284,9 @@ def move(src, dest, deadline, should_stop):
     if src.is_file():
         return 1, _move_file(src, dest), True
     for dirpath, dirnames, names in os.walk(src):
+        for junk in [d for d in dirnames if d in JUNK_DIRS]:
+            dirnames.remove(junk)
+            shutil.rmtree(os.path.join(dirpath, junk), ignore_errors=True)
         dirnames.sort()
         for name in sorted(names):
             if name == '.DS_Store':
@@ -425,10 +431,12 @@ def _record(folder, rel, files, size, finished):
 
 
 def recent_moves(limit=200):
-    """The latest moves, newest first."""
+    """The latest moves, newest first (limit=None: all of them)."""
     try:
         with open(MOVES_FILE) as fh:
-            lines = fh.readlines()[-limit:]
+            lines = fh.readlines()
+            if limit:
+                lines = lines[-limit:]
     except OSError:
         return []
     out = []
@@ -450,9 +458,9 @@ def overview(max_age=300):
         return _overview_cache['value']
     from .reduction import root as reduction_root
     r = reduction_root()
-    moves = recent_moves()
+    moves = recent_moves(limit=None)
     since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    month = [m for m in moves if m.get('at', '') >= since]
+    month = [m for m in moves if m.get('at', '') >= since]     # all of them: a first run moves thousands
     out = {'target': target_label(), 'problem': setup_problem(), 'root': str(r or ''), 'interval_min': interval_min(),
            'budget_min': budget_secs() // 60, 'dry_run': dry_run(), 'moves': moves[:100],
            'month': {'items': len(month), 'files': sum(m.get('files', 0) for m in month),
