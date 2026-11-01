@@ -428,6 +428,19 @@
 .bot-ev-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--kw-text-secondary); }
 .bot-ev-text.lvl-error { color: #FF8A80; }
 .bot-ev-text.lvl-warn { color: #ffe8a8; }
+/* DETECT card: TNS-DETECT and LSST-DETECT blocks */
+.bot-src { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--kw-radius-md); background: var(--kw-card-bg-2); border: 1px solid var(--kw-hairline); }
+.bot-src h3 { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 0.86rem; font-weight: 700; letter-spacing: 0.02em; color: var(--kw-text-white); }
+.bot-src h3 a { margin-left: auto; font-size: 0.76rem; font-weight: 500; color: var(--kw-text-muted); text-decoration: none; }
+.bot-src h3 a:hover { color: var(--kw-text-primary); }
+.bot-src dd small, .bot-src-runs small { display: block; margin-top: 1px; font-size: 0.74rem; color: var(--kw-text-muted); overflow-wrap: anywhere; }
+.bot-src-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bot-src-runs { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.bot-src-runs th, .bot-src-runs td { padding: 6px 8px 6px 0; text-align: left; vertical-align: top; border-top: 1px solid var(--kw-hairline); }
+.bot-src-runs thead th { padding-top: 0; border-top: 0; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); }
+.bot-src-runs tbody th { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--kw-text-primary); width: 32%; }
+.bot-src-runs td { color: var(--kw-text-primary); }
+.bot-src-note { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--kw-text-muted); }
 .bot-wrap { white-space: normal !important; overflow-wrap: anywhere; font-weight: 400 !important; }
 
 .bot-detail .kw-panel-head { align-items: flex-start; }
@@ -486,6 +499,8 @@
 }
 @media (max-width: 520px) {
     .bot-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .bot-src-facts { grid-template-columns: minmax(0, 1fr); }
+    .bot-src-runs tbody th { width: auto; }
     .bot-card > .kw-panel-foot .kw-btn { flex: 1 1 auto; }
     .bot-step { flex-wrap: wrap; }
     .bot-step-main { flex-basis: calc(100% - 40px); }

@@ -363,19 +363,21 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
             cursor = _f(get_setting(CURSOR_KEY))
             mjd_from = (cursor - OVERLAP_DAYS) if cursor else now - FIRST_RUN_DAYS
         log.line(f"Reading ALeRCE LSST objects first detected {_mjd_to_utc(mjd_from)} – now (UTC)", phase="fetching")
-        items = []
+        items, by_class = [], {}
         for cls in FETCH_CLASSES:
             n0, t0 = len(items), time.monotonic()
             for k, it in enumerate(alerce_api.iter_new_objects(mjd_from, now + 0.1, cls), 1):
                 items.append(it)
                 if k % (alerce_api.PAGE_SIZE * 10) == 0:
                     log.line(f"  {cls}: {k} objects so far…", force=False)
-            log.line(f"  {cls}: {len(items) - n0} objects ({time.monotonic() - t0:.0f} s)")
+            by_class[cls] = len(items) - n0
+            log.line(f"  {cls}: {by_class[cls]} objects ({time.monotonic() - t0:.0f} s)")
         pruned = prune_zwarn_matches()
         if pruned:
             log.line(f"Removed ZWARN DESI matches from {pruned} stored alert(s)")
         log.line(f"Cross-matching {len(items)} objects with Lens and DESI, linking to TNS…", phase="matching")
         res = process_objects(items)
+        res["by_class"] = by_class
         log.line(f"  {res.get('lens', 0)} near a lens, {res.get('desi', 0)} near a DESI galaxy; "
                  f"{res.get('stored', 0)} stored, {res.get('linked', 0)} in TNS, {res.get('relinked', 0)} older ones newly linked")
         if lookback_days is None and items:
@@ -405,6 +407,7 @@ def run_watch(lookback_days: float | None = None, refresh_lc: bool = True, trigg
             log.line(f"  {d['screened']} screened, {d['images']} image(s), {d['failed']} failed")
         except Exception as e:
             logger.error("event=lsst_detect_error error=%s", e)
+            res["detect"] = {"error": str(e)[:200]}
             log.line(f"  DETECT failed: {e}")
         res.update(window=[round(mjd_from, 4), round(now, 4)], seconds=round(time.monotonic() - started, 1))
         logger.info("event=lsst_watch_done %s", " ".join(f"{k}={v}" for k, v in res.items()))
