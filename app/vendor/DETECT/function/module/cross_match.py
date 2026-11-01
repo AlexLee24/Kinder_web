@@ -540,38 +540,106 @@ def _make_fallback_image_bytes(target_name: str, target_ra: float, target_dec: f
     return buf.read()
 
 
-def _fetch_dss_image_bytes(target_name: str, target_ra: float, target_dec: float,
-                           candidates: list[dict], fov_arcsec: float = 60) -> bytes | None:
-    """
-    Download DSS2 Red sky image from NASA SkyView (all-sky coverage) and overlay
-    candidate positions.  Returns PNG bytes, or None if unavailable.
-    """
+_LS_CUTOUT_URL = "https://www.legacysurvey.org/viewer/cutout.jpg"
+_SKYVIEW_URL = "https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl"
+
+
+def _ls_dr10_covers(ra: float, dec: float) -> bool:
+    """Whether LS DR10 has grz imaging at (ra, dec). Outside the footprint the viewer serves
+    one flat colour (std 0), so a flat centre means no coverage. An unanswered check counts
+    as covered: the LS plots then try themselves and have their own fallbacks."""
     import io as _io
     import requests
     import numpy as np
+    from PIL import Image as _PILImage
+    try:
+        resp = requests.get(_LS_CUTOUT_URL, params={'ra': ra, 'dec': dec, 'layer': 'ls-dr10-grz',
+                                                     'pixscale': 1.0, 'size': 64}, timeout=30)
+        resp.raise_for_status()
+        centre = np.asarray(_PILImage.open(_io.BytesIO(resp.content)).convert('RGB'), dtype=float)[16:48, 16:48]
+    except Exception as e:
+        print(f"[WARNING] LS DR10 coverage check failed ({type(e).__name__}: {e}); trying LS anyway")
+        return True
+    return float(centre.std()) > 1.0
+
+
+def _skyview_png(survey: str, ra: float, dec: float, size_deg: float, pixels: int):
+    """One SkyView survey as a 2-D float array, or None where it has no plate (SkyView then
+    serves a blank image) or answers with an error image of another size."""
+    import io as _io
+    import requests
+    import numpy as np
+    from PIL import Image as _PILImage
+    params = {'Survey': survey, 'position': f"{ra},{dec}", 'Size': size_deg,
+              'Pixels': pixels, 'Return': 'PNG', 'Coordinates': 'J2000'}
+    img = None
+    for attempt in range(2):                     # SkyView drops a connection now and then
+        try:
+            resp = requests.get(_SKYVIEW_URL, params=params, timeout=30)
+            resp.raise_for_status()
+            img = np.asarray(_PILImage.open(_io.BytesIO(resp.content)).convert('L'), dtype=float)
+            break
+        except Exception as e:
+            print(f"[WARNING] SkyView {survey} (attempt {attempt + 1}/2): {type(e).__name__} - {e}")
+    if img is None:
+        return None
+    if img.shape != (pixels, pixels) or float(img.std()) < 1.0:
+        return None
+    return img
+
+
+# R, G, B of the DSS colour image, each with the plates to use where the first has none
+_DSS_COLOR_BANDS = (('DSS2 IR', 'DSS2 Red'), ('DSS2 Red', 'DSS1 Red'), ('DSS2 Blue', 'DSS1 Blue'))
+
+
+def _dss_color_array(ra: float, dec: float, size_deg: float, pixels: int):
+    """DSS colour composite, R = DSS2 IR, G = DSS2 Red, B = DSS2 Blue (as CDS's DSS2 colour),
+    from SkyView; a band without a plate takes the next survey in _DSS_COLOR_BANDS. Each band
+    is stretched between its 1st and 99.7th percentile. None if a band has nothing at all."""
+    import numpy as np
+    fetched: dict = {}
+    bands = []
+    for choices in _DSS_COLOR_BANDS:
+        band = None
+        for survey in choices:
+            if survey not in fetched:
+                fetched[survey] = _skyview_png(survey, ra, dec, size_deg, pixels)
+            band = fetched[survey]
+            if band is not None:
+                break
+        if band is None:
+            return None
+        bands.append(band)
+    rgb = np.stack(bands, axis=-1)
+    lo, hi = np.percentile(rgb, [1.0, 99.7], axis=(0, 1))
+    rgb = np.clip((rgb - lo) / np.maximum(hi - lo, 1.0), 0.0, 1.0)
+    return (rgb * 255).astype(np.uint8)
+
+
+def _fetch_dss_image_bytes(target_name: str, target_ra: float, target_dec: float,
+                           candidates: list[dict], fov_arcsec: float = 60) -> bytes | None:
+    """
+    DSS2 sky image from NASA SkyView (all-sky coverage) for targets outside LS DR10: the
+    IR / Red / Blue colour composite, else DSS2 Red alone; candidate positions overlaid.
+    Returns PNG bytes, or None if unavailable.
+    """
+    import io as _io
     import matplotlib.pyplot as plt
     import matplotlib
     matplotlib.use('Agg')
-    from PIL import Image as _PILImage
 
     size_deg = max(fov_arcsec / 3600.0, 0.008)
     pixels = 512
-    url = (
-        "https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl"
-        f"?Survey=DSS2+Red&position={target_ra},{target_dec}"
-        f"&Size={size_deg}&Pixels={pixels}&Return=PNG&Coordinates=J2000"
-    )
 
     try:
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        if len(resp.content) < 2000:
+        img_data, survey = _dss_color_array(target_ra, target_dec, size_deg, pixels), "DSS colour (IR/R/B)"
+        if img_data is None:
+            img_data, survey = _skyview_png('DSS2 Red', target_ra, target_dec, size_deg, pixels), "DSS2 Red"
+        if img_data is None:
             return None
 
-        img = _PILImage.open(_io.BytesIO(resp.content))
-        img_data = np.array(img)
         img_h, img_w = img_data.shape[:2]
-        pixscale = fov_arcsec / pixels            # arcsec/pixel
+        pixscale = size_deg * 3600.0 / pixels     # arcsec/pixel
 
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.imshow(img_data, origin='upper',
@@ -581,8 +649,8 @@ def _fetch_dss_image_bytes(target_name: str, target_ra: float, target_dec: float
         ax.plot(img_w / 2, img_h / 2, 'c+', markersize=16, mew=3,
                 zorder=5, label='Target')
 
-        # Mark Lens candidates
-        lens_colors = ['cyan', 'lime', 'yellow', 'orange', 'magenta', 'red', 'white']
+        # Mark candidates (DESI spectra / lens-catalogue entries)
+        colors = ['cyan', 'lime', 'yellow', 'orange', 'magenta', 'red', 'white']
         cosdec = math.cos(math.radians(target_dec))
         for i, cand in enumerate(candidates):
             cra  = cand.get('ra')
@@ -593,19 +661,20 @@ def _fetch_dss_image_bytes(target_name: str, target_ra: float, target_dec: float
             dy    = (cdec - target_dec) * 3600.0 / pixscale
             xpix  = img_w / 2 + dx
             ypix  = img_h / 2 - dy
-            color = lens_colors[i % len(lens_colors)]
-            name  = cand.get('name', f'Lens_{i + 1}')
+            color = colors[i % len(colors)]
+            is_lens = CatalogueService.is_lens_catalog(cand.get('catalog_name') or '')
+            name  = cand.get('name', f'#{i + 1}')
             z     = cand.get('redshift')
             z_s   = f" z={z:.3f}" if z is not None else ""
-            ax.plot(xpix, ypix, 'D', color=color, markersize=12,
+            ax.plot(xpix, ypix, 'D' if is_lens else 'o', color=color, markersize=12,
                     mfc='none', mew=2, zorder=4,
-                    label=f'Lens: {name}{z_s}')
+                    label=f"{'Lens' if is_lens else cand.get('catalog_name') or 'DESI'}: {name}{z_s}")
 
         ax.legend(loc='upper right', fontsize=9, framealpha=0.75)
         ax.set_title(
             f"{target_name}  RA={target_ra:.5f} Dec={target_dec:.5f}\n"
-            f"DSS2 Red | FOV={fov_arcsec}\"",
-            fontsize=10,
+            f"{survey} (no LS DR10 here) | FOV={fov_arcsec:.0f}\"",
+            fontsize=10, color='white',
         )
         ax.axis('off')
 
@@ -645,8 +714,11 @@ def build_target_image_bytes(target_name: str, target_ra: float, target_dec: flo
                              has_desi: bool = True,
                              analyzed: list[dict] | None = None,
                              screen: dict | None = None) -> bytes | None:
-    """The review image (LS DR10 host-model overlay, else a marked cutout / DSS2, else a
-    text-only card) as PNG bytes; None only when even the fallback fails."""
+    """The review image as PNG bytes, the same for every target wherever LS DR10 has imaging:
+    the LS DR10 grz host-model overlay, else a marked LS cutout. Outside the LS footprint, the
+    DSS2 colour image (DSS2 Red if a band is missing); last, a text-only card. None only when
+    even that fails. ``has_desi`` is kept for callers; the source no longer depends on it
+    (lens-only targets used to go straight to grey DSS2 Red)."""
     image_candidates = _build_image_candidates(upload_rows)
     host_row = next((r for r in upload_rows if r.get('is_host')), None)
     shared_uids = {r['crossmatch_uid'] for r in upload_rows
@@ -655,8 +727,7 @@ def build_target_image_bytes(target_name: str, target_ra: float, target_dec: flo
     fov_arcsec = _estimate_fov_arcsec(target_ra, target_dec, image_candidates, analyzed)
     image_bytes = None
 
-    if has_desi:
-        # ── DESI / mixed path ─────────────────────────────────────────
+    if _ls_dr10_covers(target_ra, target_dec):
         # 1st try: LS DR10 ellipse overlay
         if image_candidates:
             try:
@@ -691,28 +762,10 @@ def build_target_image_bytes(target_name: str, target_ra: float, target_dec: flo
             except Exception as e:
                 print(f"[WARNING] {target_name}: create_marked_image failed: {type(e).__name__} - {e}")
     else:
-        # ── Lens-only path ────────────────────────────────────────────
-        # 1st try: DSS2 Red via SkyView (full-sky coverage)
-        print(f"[INFO] {target_name}: Lens-only — trying DSS2 sky image...")
+        # Outside LS DR10: DSS2 colour via SkyView (full-sky coverage)
+        print(f"[INFO] {target_name}: no LS DR10 imaging — DSS2 colour image...")
         image_bytes = _fetch_dss_image_bytes(target_name, target_ra, target_dec,
                                              image_candidates, fov_arcsec)
-
-        # 2nd try: Legacy Survey marked image (has built-in placeholder)
-        if not isinstance(image_bytes, (bytes, bytearray)):
-            print(f"[INFO] {target_name}: DSS2 unavailable — trying Legacy Survey cutout...")
-            try:
-                image_bytes = create_marked_image(
-                    obj_name=target_name,
-                    obj_ra=target_ra,
-                    obj_dec=target_dec,
-                    matched_coords=_build_marked_coords(image_candidates),
-                    output_path=None,
-                    fov_arcsec=fov_arcsec,
-                    max_retries=2,
-                    save_to_data_dir=False,
-                )
-            except Exception as e:
-                print(f"[WARNING] {target_name}: create_marked_image failed: {type(e).__name__} - {e}")
 
     # ── Final fallback: pure-matplotlib text summary (no network) ─────
     if not isinstance(image_bytes, (bytes, bytearray)):
