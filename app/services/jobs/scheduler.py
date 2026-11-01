@@ -2,7 +2,11 @@
 
 Started once per server by ``create_app()`` (``start_background_jobs(app)``). A file lock
 (``app/log/.background_jobs.lock``) guarantees that only one process runs them when
-gunicorn forks several workers; the others just serve HTTP.
+gunicorn forks several workers; the others serve HTTP and stand by: they retry the lock
+every STANDBY_EVERY seconds, so when the owner stops (killed, recycled, an old worker
+outliving a restart) another worker takes the jobs and the bots over at once. A gunicorn
+worker exits at most EXIT_GRACE seconds after SIGTERM or after its master dies, so a
+restart never leaves an old worker holding the lock.
 
 With ``DEBUG=True`` every job and daemon thread is disabled — only the NIST spectral-line
 cache warm-up still runs.
@@ -27,6 +31,7 @@ these jobs in UTC too):
     lab_calendar_reminders         every 1m   Lab Calendar events: remind the members (bell + push) before they start
     lab_trigger_duty_check         Fri 02:00  week after next has a night without Trigger duty -> Slack (UTC+8 10:00)
 
+    gcn_watchdog                   every 1m   GCN listener thread dead or not beating for 5 min -> start a new one
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
     bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
     bot_reduction                  REDUCTION_HOUR_UTC (unset: by hand only)  reduction pipeline
@@ -43,6 +48,7 @@ import fcntl
 import logging
 import os
 import threading
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -78,12 +84,73 @@ def acquire_background_lock() -> bool:
     """Try to become the process that owns the background jobs (non-blocking file lock)."""
     global _bg_lock_fd
     os.makedirs(LOG_DIR, exist_ok=True)
-    _bg_lock_fd = open(os.path.join(LOG_DIR, '.background_jobs.lock'), 'w')
+    fh = open(os.path.join(LOG_DIR, '.background_jobs.lock'), 'w')
     try:
-        fcntl.flock(_bg_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        fh.close()          # standby workers try again every STANDBY_EVERY s: do not leak a descriptor each time
         return False
+    _bg_lock_fd = fh
+    return True
+
+
+STANDBY_EVERY = 15      # seconds between a standby worker's attempts to take the background jobs over
+EXIT_GRACE = 10         # seconds a gunicorn worker may take to exit after SIGTERM / SIGINT / SIGQUIT
+
+
+def _take_over_when_free(app):
+    """Standby: every worker that lost the start-up race keeps trying the lock. When the owner stops (its worker
+    exits, is killed or recycled, or an old worker from before a restart finally ends) one of them takes the jobs
+    and the bots over within STANDBY_EVERY seconds, so they never stay down until the next restart."""
+    while True:
+        time.sleep(STANDBY_EVERY)
+        try:
+            if acquire_background_lock():
+                logger.warning("[PID %s] Background jobs: the previous owner stopped, taking over", os.getpid())
+                print(f"[PID {os.getpid()}] Background jobs: the previous owner stopped, taking over.")
+                _run_background_jobs(app)
+                return
+        except Exception:
+            logger.exception("Background jobs: take-over failed, trying again")
+
+
+def _exit_in(seconds):
+    t = threading.Timer(seconds, os._exit, args=(0,))
+    t.daemon = True
+    t.start()
+
+
+def _exit_when_orphaned(ppid):
+    """The master died without stopping this worker (SIGKILL, crash): gunicorn's worker notices and returns, but
+    Python then waits for the scheduler's threads. Make sure it is gone EXIT_GRACE s later."""
+    while os.getppid() == ppid:
+        time.sleep(1)
+    _exit_in(EXIT_GRACE)
+
+
+def exit_soon_after_sigterm():
+    """In a gunicorn worker: exit for sure EXIT_GRACE s after SIGTERM / SIGINT / SIGQUIT or after the master dies.
+
+    gunicorn's own handler lets the worker finish, but Python then waits for every non-daemon thread (a scheduler
+    job can run for an hour), and launchd SIGKILLs the master after its ExitTimeOut: the orphaned worker went on
+    holding the background-jobs lock (and the bots) long after a restart. Only wraps gunicorn's handlers, so the
+    Flask dev server and tests are untouched; must run in the main thread (create_app in the worker)."""
+    import signal
+    if threading.current_thread() is not threading.main_thread():
+        return
+    wrapped = False
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGQUIT):
+        prev = signal.getsignal(sig)
+        if not callable(prev) or not str(getattr(prev, '__module__', '')).startswith('gunicorn'):
+            continue
+
+        def handler(signum, frame, prev=prev):
+            _exit_in(EXIT_GRACE)
+            prev(signum, frame)
+        signal.signal(sig, handler)
+        wrapped = True
+    if wrapped:
+        threading.Thread(target=_exit_when_orphaned, args=(os.getppid(),), name='exit-when-orphaned', daemon=True).start()
 
 
 # Scheduler jobs that are not named bot_<id> but belong to a bot of Admin › Bots (the page shows their next run)
@@ -99,6 +166,9 @@ def _add_bot_jobs(scheduler):
     from app.services.bots import status as bot_status
 
     off = bots.disabled()
+    if 'gcn' not in off:
+        from app.services.bots import gcn
+        scheduler.add_job(gcn.watchdog, 'interval', minutes=1, id='gcn_watchdog')   # not bot_*: no next run on the page
     if 'astronote' not in off:
         scheduler.add_job(astronote.run, 'interval', minutes=5, id='bot_astronote')
     if 'obs_log' not in off:
@@ -140,7 +210,18 @@ def _start_bots(scheduler):
 
 
 def start_background_jobs(app) -> bool:
-    """Register and start all background work. Returns True if this process owns them."""
+    """Start all background work if this process wins the lock (returns True); otherwise stand by to take it over."""
+    exit_soon_after_sigterm()
+    if not acquire_background_lock():
+        print(f"[PID {os.getpid()}] Background jobs already running in another process, standing by.")
+        threading.Thread(target=_take_over_when_free, args=(app,), name='background-jobs-standby', daemon=True).start()
+        return False
+    _run_background_jobs(app)
+    return True
+
+
+def _run_background_jobs(app):
+    """Register and start all background work (this process holds the lock)."""
     # The DETECT page cache lives with its blueprint; warming it is the one place a
     # background job reaches into app.blueprints.
     from app.blueprints.detect.cache import prewarm_detect_page_cache
@@ -164,10 +245,6 @@ def start_background_jobs(app) -> bool:
     from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
     from app.services.tns.auto_tns_download import start_auto_tns_downloader
     from app.services.tns.tns_gap_filler import start_gap_filler
-
-    if not acquire_background_lock():
-        print(f"[PID {os.getpid()}] Background jobs already running in another process, skipping.")
-        return False
 
     log_dir = str(LOG_DIR)
     _scheduler = BackgroundScheduler(daemon=True, timezone='UTC')
@@ -210,4 +287,3 @@ def start_background_jobs(app) -> bool:
         print("DEBUG mode: all background scheduled jobs are disabled.")
     # Warm NIST spectral-line cache regardless of DEBUG mode
     _warm_spec_lines()
-    return True

@@ -3,7 +3,7 @@
 # it starts on its own, comes back if it crashes, and restarts with one command.
 #
 #   scripts/kinder_service.sh install      write the plist and start the service (once)
-#   scripts/kinder_service.sh restart      stop + start (new code, new kinder.env)
+#   scripts/kinder_service.sh restart      stop (old processes gone, at most ~15 s) + start (new code, new kinder.env)
 #   scripts/kinder_service.sh deploy       git pull --ff-only (Kinder, then app/vendor/CASTOR), uv sync, restart,
 #                                          wait until it answers
 #   scripts/kinder_service.sh status       running? pid, last exit, does the port answer
@@ -95,6 +95,7 @@ $user_line
         <key>HOME</key><string>$(xml "$HOME")</string>
         <key>LANG</key><string>en_US.UTF-8</string>
         <key>PYTHONUNBUFFERED</key><string>1</string>
+        <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key><string>YES</string>
         <key>KINDER_BIND</key><string>$(xml "$BIND")</string>
 $env_extra
     </dict>
@@ -211,24 +212,73 @@ cmd_install() {
 cmd_start() {
     detect
     rotate_log
+    upgrade_plist
     if loaded; then $SUDO launchctl kickstart "$DOMAIN/$LABEL"; else $SUDO launchctl bootstrap "$DOMAIN" "$PLIST"; fi
     wait_up
 }
 
 cmd_stop() {       # bootout: KeepAlive would bring a killed process straight back
     detect
-    if loaded; then $SUDO launchctl bootout "$DOMAIN/$LABEL" && echo "Stopped ($DOMAIN/$LABEL)"; else echo "Not running"; fi
+    if loaded; then
+        local old
+        old="$(kinder_pids)"
+        $SUDO launchctl bootout "$DOMAIN/$LABEL" && echo "Stopped ($DOMAIN/$LABEL)"
+        reap "$old" 15
+    else
+        echo "Not running"
+    fi
 }
 
-cmd_restart() {
+# Every process of this Kinder: the launchd job's gunicorn master and every worker (each has the project's
+# background-jobs lock file open), including a worker orphaned by an earlier restart.
+kinder_pids() {
+    { $SUDO launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk -F' = ' '/^\tpid = /{print $2}' || true
+      lsof -t "$ROOT/app/log/.background_jobs.lock" 2>/dev/null || true; } | sort -un | tr '\n' ' '
+}
+
+# Wait until the given pids are gone; SIGKILL whatever still runs after $2 s. A worker left behind would keep the
+# background-jobs lock, and with it the bots, away from the new workers.
+reap() {
+    local pids="$1" secs="$2" i p alive
+    for i in $(seq 1 $((secs * 2))); do
+        alive=""
+        for p in $pids; do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done
+        [[ -z "$alive" ]] && return 0
+        sleep 0.5
+    done
+    echo "Still running after $secs s, killing:$alive"
+    $SUDO kill -9 $alive 2>/dev/null || true
+    sleep 1
+}
+
+# Settings every installed plist must have, added in place to one written by an older install:
+# OBJC_DISABLE_INITIALIZE_FORK_SAFETY — without it macOS kills every worker gunicorn forks once the master has run
+# for a while ("+[NSCharacterSet initialize] may have been in progress in another thread when fork() was called"),
+# so a worker that dies is never replaced.
+upgrade_plist() {
+    if ! plutil -extract EnvironmentVariables.OBJC_DISABLE_INITIALIZE_FORK_SAFETY raw "$PLIST" >/dev/null 2>&1; then
+        $SUDO plutil -replace EnvironmentVariables.OBJC_DISABLE_INITIALIZE_FORK_SAFETY -string YES "$PLIST"
+        echo "Updated $PLIST: OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES"
+    fi
+}
+
+cmd_restart() {      # stop, make sure no old process is left, start: the new workers get the jobs and the bots at once
     detect
     rotate_log
+    upgrade_plist
     if loaded; then
-        echo "Restarting $DOMAIN/$LABEL …"
-        $SUDO launchctl kickstart -k "$DOMAIN/$LABEL"
-    else
-        $SUDO launchctl bootstrap "$DOMAIN" "$PLIST"
+        local old
+        old="$(kinder_pids)"
+        echo "Restarting $DOMAIN/$LABEL (stopping: ${old:-nothing}) …"
+        $SUDO launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+        reap "$old" 15
     fi
+    local i
+    for i in 1 2 3 4 5; do      # right after a bootout launchd may still answer "Input/output error" for a moment
+        $SUDO launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null && break
+        [[ "$i" == 5 ]] && $SUDO launchctl bootstrap "$DOMAIN" "$PLIST"
+        sleep 1
+    done
     sleep 2
     wait_up
 }
