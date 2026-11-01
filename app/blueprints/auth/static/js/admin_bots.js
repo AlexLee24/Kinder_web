@@ -80,6 +80,67 @@
     function fact(label, value, title) {
         return '<div><dt>' + esc(label) + '</dt><dd' + (title ? ' title="' + esc(title) + '"' : '') + '>' + value + '</dd></div>';
     }
+    // DETECT: one block per half instead of the generic facts (last / next run of every trigger, what ALeRCE returned)
+    function hoursAgo(iso) {          // "33 h ago" rather than "1 d ago": how long ALeRCE has had nothing new matters to the hour
+        const h = (Date.now() - new Date(iso).getTime()) / 3600000;
+        return isNaN(h) ? '—' : h < 1 || h >= 72 ? ago(iso) : Math.round(h) + ' h ago';
+    }
+    function when(iso, fn) {
+        return iso ? esc(fn(iso)) + '<small>' + esc(stamp(iso)) + '</small>' : '—';
+    }
+    function srcTNS(t) {
+        if (t.unavailable) return '<p class="bot-alert is-warn">TNS-DETECT status unavailable: ' + esc(t.unavailable) + '</p>';
+        const rows = (t.runs || []).map((r) => {
+            let last = '<span class="bot-muted">no run recorded yet</span>';
+            if (r.started_at && !r.finished_at) last = '<span class="bot-busy">running since ' + esc(ago(r.started_at).replace(' ago', '')) + '</span>';
+            else if (r.finished_at) last = '<span class="' + (r.ok ? 'bot-good' : 'bot-bad') + '">' + (r.ok ? 'OK' : 'Failed') + '</span> · ' + esc(ago(r.finished_at)) +
+                '<small>' + esc(stamp(r.finished_at)) + (r.message ? ' · ' + esc(r.message) : '') + '</small>';
+            return '<tr><th scope="row">' + esc(r.name) + '</th><td>' + last + '</td><td>' + when(r.next_run, until) + '</td></tr>';
+        }).join('');
+        return '<table class="bot-src-runs"><thead><tr><th>Trigger</th><th>Last run</th><th>Next run</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+            '<p class="bot-src-note">An import runs DETECT right after it, on the objects it added or changed; an import with nothing new skips it.</p>';
+    }
+    function srcLSST(l) {
+        if (l.unavailable) return '<p class="bot-alert is-warn">LSST-DETECT status unavailable: ' + esc(l.unavailable) + '</p>';
+        if (!l.enabled) return '<p class="bot-alert is-warn">LSST-DETECT is switched off (LSST_WATCH=0 in kinder.env).</p>';
+        const o = l.last_ok || {};
+        const dl = [];
+        let st = '<span class="bot-muted">not run yet</span>';
+        if (l.state === 'running') st = '<span class="bot-busy">Running · ' + esc(l.phase || '') + ' · since ' + esc(ago(l.started_at).replace(' ago', '')) + '</span>';
+        else if (l.state === 'error') st = '<span class="bot-bad">Failed</span> · ' + esc(ago(l.finished_at));
+        else if (l.state === 'interrupted') st = '<span class="bot-bad">Interrupted</span> (server restarted mid-run) · ' + esc(ago(l.started_at));
+        else if (l.state === 'done') st = '<span class="bot-good">OK</span> · ' + esc(ago(l.finished_at));
+        if (l.trigger) st += ' · ' + esc(l.trigger) + ' run';
+        dl.push(fact('Last run', st + '<small>' + esc(stamp(l.finished_at || l.started_at)) + (l.state === 'done' && o.seconds != null ? ' · took ' + esc(dur(Math.round(o.seconds))) : '') + '</small>'));
+        if (o.at) {
+            const cls = ['SN', 'AGN', 'VS'].filter((k) => k in (o.by_class || {})).map((k) => k + ' ' + o.by_class[k]).join(' · ');
+            const win = o.window && o.window[0] ? 'first detected ' + stamp(o.window[0]) + ' – ' + stamp(o.window[1]) : '';
+            dl.push(fact('ALeRCE returned', '<b class="bot-n">' + (o.fetched || 0) + '</b> objects' + (cls ? ' (' + esc(cls) + ')' : '') +
+                '<small>' + esc(win) + (l.state === 'error' ? ' · last successful run, ' + esc(ago(o.at)) : '') + '</small>'));
+            dl.push(fact('Matched', esc((o.lens || 0) + ' near a lens · ' + (o.desi || 0) + ' near a DESI galaxy') +
+                '<small>' + esc((o.stored || 0) + ' stored · ' + (o.linked || 0) + ' in TNS' + (o.relinked ? ' · ' + o.relinked + ' older ones newly in TNS' : '')) + '</small>'));
+            const d = o.detect || {};
+            dl.push(fact('DETECT', d.error ? '<span class="bot-bad">Failed</span><small>' + esc(d.error) + '</small>'
+                : esc((d.screened || 0) + ' screened · ' + (d.images || 0) + ' images') + (d.failed ? ' · <span class="bot-bad">' + d.failed + ' failed</span>' : ' · 0 failed')));
+        }
+        dl.push(fact('Newest LSST object', l.newest_alert_at ? '<span class="' + (l.stale ? 'bot-bad' : 'bot-good') + '">' + esc(hoursAgo(l.newest_alert_at)) + '</span><small>first detected ' + esc(stamp(l.newest_alert_at)) + '</small>' : '—'));
+        dl.push(fact('Next run', 'hourly ' + when(l.next_hourly, until)));
+        dl.push(fact('Next daily sweep', when(l.next_sweep, until) + '<small>re-reads the last 1.5 days</small>'));
+        let alert = '';
+        if (l.state === 'error') {
+            alert = '<p class="bot-alert is-bad"><b>Last run failed:</b> ' + esc(l.error || 'see the run log on LSST-DETECT') +
+                (/alerce/i.test(l.error || '') ? ' — Kinder could not read ALeRCE (blocked, down or timing out).' : '') + '</p>';
+        } else if (l.stale && l.state === 'done') {
+            alert = '<p class="bot-alert is-warn"><b>No new LSST object at ALeRCE for ' + esc(hoursAgo(l.newest_alert_at).replace(' ago', '')) + '.</b> ' +
+                'Kinder is not blocked: the last run read ALeRCE without errors. Rubin did not observe since, or ALeRCE has not ingested it yet.</p>';
+        }
+        return alert + '<dl class="bot-facts bot-src-facts">' + dl.join('') + '</dl>';
+    }
+    function detectSources(src) {
+        const t = src.tns || {}, l = src.lsst || {};
+        return '<section class="bot-src"><h3>TNS-DETECT <a href="/detect">Open →</a></h3>' + srcTNS(t) + '</section>' +
+            '<section class="bot-src"><h3>LSST-DETECT <a href="/detect/lsst">Open →</a></h3>' + srcLSST(l) + '</section>';
+    }
     function card(b) {
         const facts = [];
         if (b.kind === 'listener') {
@@ -106,16 +167,18 @@
             kinds.forEach((k) => acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-act="run" data-bot="' + b.id + '"' + (k[0] ? ' data-kind="' + k[0] + '"' : '') + (busy[b.id] ? ' disabled' : '') + '>' + k[1] + '</button>'));
         }
         if (b.can_stop && running) acts.push('<button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-act="stop" data-bot="' + b.id + '"' + (busy[b.id] ? ' disabled' : '') + '>Stop</button>');
-        (b.links || []).forEach((l) => acts.push('<a class="kw-btn kw-btn-sm kw-btn-ghost" href="' + esc(l[1]) + '">' + esc(l[0]) + ' →</a>'));
+        if (b.sources) acts.push('<a class="kw-btn kw-btn-sm kw-btn-ghost" href="/detect/lsst">LSST run log →</a>');
+        else (b.links || []).forEach((l) => acts.push('<a class="kw-btn kw-btn-sm kw-btn-ghost" href="' + esc(l[1]) + '">' + esc(l[0]) + ' →</a>'));
         return '<article class="kw-panel bot-card' + (b.id === sel ? ' is-sel' : '') + '" data-bot="' + b.id + '">' +
             '<div class="bot-card-head"><span class="bot-dot is-' + b.health + '" aria-hidden="true"></span><h2>' + esc(b.name) + '</h2>' +
             '<span class="kw-chip ' + (b.kind === 'listener' ? 'kw-chip-blue' : 'kw-chip-purple') + '">' + (b.kind === 'listener' ? 'Listener' : 'Scheduled') + '</span></div>' +
             '<p class="bot-sub"><b class="bot-h-' + b.health + '">' + esc(b.health_label) + '</b> · ' + esc(b.schedule) + '</p>' +
-            '<p class="bot-about">' + esc(b.about) + '</p>' +
+            (b.sources ? '' : '<p class="bot-about">' + esc(b.about) + '</p>') +
             (setup ? '<p class="bot-alert is-warn">' + esc(setup) + '</p>' : '') +
             (err ? '<p class="bot-alert is-bad"><b>' + esc(ago(err.at)) + ':</b> ' + esc(err.text) + '</p>' : '') +
-            '<dl class="bot-facts">' + facts.join('') + '</dl>' +
-            '<div class="bot-last">' + (ev ? '<span class="bot-ev-time" title="' + esc(stamp(ev.at)) + '">' + esc(ago(ev.at)) + '</span><span class="bot-ev-text lvl-' + esc(ev.level) + '">' + esc(ev.text) + '</span>' : '<span class="bot-muted">No events yet</span>') + '</div>' +
+            (b.sources ? detectSources(b.sources) :
+                '<dl class="bot-facts">' + facts.join('') + '</dl>' +
+                '<div class="bot-last">' + (ev ? '<span class="bot-ev-time" title="' + esc(stamp(ev.at)) + '">' + esc(ago(ev.at)) + '</span><span class="bot-ev-text lvl-' + esc(ev.level) + '">' + esc(ev.text) + '</span>' : '<span class="bot-muted">No events yet</span>') + '</div>') +
             '<div class="kw-panel-foot">' + acts.join('') + '</div></article>';
     }
     function renderCards() { $('botCards').innerHTML = bots.map(card).join(''); }

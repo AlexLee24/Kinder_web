@@ -42,10 +42,9 @@ BOTS = (
     Bot('reduction', 'Reduction pipeline', 'scheduled', 'Manual unless REDUCTION_HOUR_UTC is set',
         'Runs the Lulin reduction pipeline (auto_calibration.sh): sync raw frames, calibrate, plate solve.',
         can_run=True, can_stop=True, links=(('Pipeline', '/pipeline/reduction'),)),
-    Bot('detect', 'DETECT', 'scheduled', 'After every TNS import · daily 04:00 UTC Follow-up re-screen',
-        'Cross-matches new TNS objects with galaxy catalogues, applies the host rule, scores and screens them for the '
-        'review queue. Runs after each TNS import, once a day on every Follow-up object, and from the object page.',
-        can_run=True, links=(('Review queue', '/detect'),)),
+    Bot('detect', 'DETECT', 'scheduled', 'TNS-DETECT · LSST-DETECT',
+        'Cross-matches TNS objects and LSST alerts with galaxy and lens catalogues, applies the host rule and screens '
+        'them for review.', can_run=True, links=(('TNS-DETECT', '/detect'), ('LSST-DETECT', '/detect/lsst'))),
     Bot('nas_backup', 'NAS backup', 'scheduled', 'Every 60 min once NAS_IP / NAS_PATH are set',
         'Moves what the reduction pipeline no longer needs to the lab NAS: raw nights older than last month, masters '
         'older than 30 days, calibrated targets without a new frame for 60 days.', can_run=True),

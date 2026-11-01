@@ -12,9 +12,14 @@ from .helpers import audit
 
 
 def _view():
-    from app.services.bots import nas_backup, reduction, setup_problems, status
+    from app.services.bots import detect, nas_backup, reduction, setup_problems, status
     bots = status.view(debug=config.DEBUG, setup=setup_problems())
     for b in bots:
+        if b['id'] == 'detect':                        # the card shows TNS-DETECT and LSST-DETECT separately
+            b['sources'] = detect.sources()
+            lsst = b['sources'].get('lsst') or {}
+            if lsst.get('state') == 'error' and b['health'] in ('ok', 'idle'):
+                b['health'], b['health_label'] = 'warn', 'LSST-DETECT failed'
         if b['id'] == 'nas_backup':
             b['schedule'] = f'Every {nas_backup.interval_min()} min' if nas_backup.configured() else 'Off until NAS_IP / NAS_PATH are set'
         if b['id'] == 'reduction':
