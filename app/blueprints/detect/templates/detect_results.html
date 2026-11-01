@@ -204,7 +204,7 @@
                             </td>
                             {% endif %}
 
-                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a> {{ obj_badges(t.has_lens, sc.tags) }}</td>
+                            <td><a href="{{ t.obj_href or ('/object/' ~ t.target_name) }}" class="obj-name-link" onclick="event.stopPropagation()">{{ t.target_name }}</a><span class="row-check-mark" data-check-mark="{{ t.target_name }}" title="Checked" hidden>✓</span> {{ obj_badges(t.has_lens, sc.tags) }}</td>
 
                             <td style="text-align:center;">
                                 {% if t.tns_info and t.tns_info.type %}<span class="badge-type">{{ t.tns_info.type }}</span>
@@ -288,6 +288,8 @@
                         </div>
                     </div>
                     <div class="card-header-actions">
+                        <button type="button" class="kw-btn kw-btn-sm card-check-btn" data-check-name="{{ t.target_name }}"
+                                onclick="toggleChecked(this.dataset.checkName)" aria-pressed="false" title="Mark as checked (C); a host decision checks it too">Check</button>
                         <div id="card-status-{{ t.target_name }}" class="card-status-badge">{{ status_badge(t.obj_status, t.target_is_host) }}</div>
                     </div>
                 </div>

@@ -30,6 +30,9 @@ const API = Object.assign({
     objectUrl:      '/object/',                                // + name (tracker links)
     dateUrl:        '/detect?detect_results=',                 // + date
     homeUrl:        '/detect',
+    check:          '/api/detect/check',                       // "checked" marks (checks.py)
+    checkedState:   '/api/detect/checked_state',
+    checkKind:      'tns',                                     // 'lsst' on LSST-DETECT
 }, window.DETECT_API || {});
 
 // Escape server data before it goes into innerHTML / attribute values.
@@ -146,6 +149,7 @@ document.addEventListener('keydown', e => {
         case 'd': case 'D': if (CAN_EDIT && name) decideDone(name); break;
         case 'n': case 'N': if (CAN_EDIT && name) decideNoHost(name); break;
         case 'r': case 'R': if (CAN_EDIT && name) decideReopen(name); break;
+        case 'c': case 'C': if (name) toggleChecked(name); break;
         default: return;
     }
 });
@@ -450,6 +454,40 @@ function _setCardBusy(card, busy, message = 'Saving…') {
     if (overlay) overlay.remove();
 }
 
+// ── Checked: "a person has looked at it" (transient.detect_checks), shared with the overview ──
+const _checked = new Set();
+
+function _paintChecked(name, on) {
+    if (on) _checked.add(name); else _checked.delete(name);
+    document.querySelectorAll(`[data-check-name="${CSS.escape(name)}"]`).forEach(b => {
+        b.classList.toggle('is-checked', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.textContent = on ? '✓ Checked' : 'Check';
+    });
+    document.querySelectorAll(`[data-check-mark="${CSS.escape(name)}"]`).forEach(m => { m.hidden = !on; });
+}
+
+/** Check / uncheck (C). A host decision checks the object on the server as well. */
+function toggleChecked(name) {
+    const on = !_checked.has(name);
+    _paintChecked(name, on);
+    _post(API.check, { kind: API.checkKind, name, checked: on })
+        .then(d => {
+            if (!d.success) throw new Error(d.message || 'failed');
+            _toast(`${name} ${on ? 'checked' : 'unchecked'}`, 'ok');
+        })
+        .catch(() => { _paintChecked(name, !on); _toast('Could not save the check', 'error'); });
+}
+
+/** The page payload is cached, so the checked state is asked for once on load. */
+function _loadChecked() {
+    const names = [...document.querySelectorAll('.target-card')].map(c => c.dataset.name);
+    if (!names.length) return;
+    _post(API.checkedState, { kind: API.checkKind, names })
+        .then(d => { if (d && d.success) Object.keys(d.checked || {}).forEach(n => _paintChecked(n, true)); })
+        .catch(() => {});
+}
+
 /** Follow-up: accept the current host (pinning it if a person has not yet), status → Follow-up. */
 function decideFollowup(name) { _decide(name, 'followup'); }
 /** Done: same as Follow-up but the object is closed (status → Snoozed). */
@@ -469,6 +507,7 @@ function _decide(name, status) {
         if (!d.success) { _toast('Failed: ' + (d.message || 'unknown'), 'error'); return; }
         if (hostId) { card.dataset.hostPinned = 'true'; _markPinnedRow(card, hostId); }
         _applyStatus(card, status);
+        _paintChecked(name, true);                       // the server checked it with the decision
         _toast(`${name} → ${status === 'followup' ? 'Follow-up' : 'Done'}${hostId ? ' · host accepted' : ''}`, 'ok');
         if (status === 'snoozed') setTimeout(nextUnreviewed, 350);
     })
@@ -493,6 +532,7 @@ function decideNoHost(name) {
                 if (r.dataset.ruleKind === 'host') r.dataset.ruleKind = 'member';
             });
             _applyStatus(card, 'snoozed');
+            _paintChecked(name, true);
             _toast(`${name} → No host`, 'ok');
             setTimeout(nextUnreviewed, 350);
         })
@@ -545,6 +585,7 @@ function pickHost(name, matchId, z) {
             });
             _markPinnedRow(card, matchId);
             _renderCard(card);
+            _paintChecked(name, true);
             const hint = document.getElementById(`verdict-hint-${name}`);
             if (hint) hint.textContent = 'Host chosen by you. Now Follow-up (F) or Done (D).';
             _toast(`${name}: host set${z ? ' · z = ' + Number(z).toFixed(4) : ''}. Now F or D.`, 'ok');
@@ -688,13 +729,24 @@ function jumpToHashTarget() {
     const name = decodeURIComponent(m[1]);
     const card = document.querySelector(`.target-card[data-name="${CSS.escape(name)}"]`);
     if (!card) { _toast(`${name} is not on this day.`); return; }
-    jumpToCard(parseInt(card.dataset.index, 10));
+    const idx = parseInt(card.dataset.index, 10);
+    jumpToCard(idx);
     card.classList.add('card-jump');
     setTimeout(() => card.classList.remove('card-jump'), 3000);
+    // web fonts / the page finishing to load re-wrap the summary table above and push the card
+    // down: align once more then, unless the reviewer has moved on meanwhile
+    let moved = false;
+    const stop = () => { moved = true; };
+    ['wheel', 'touchmove', 'keydown'].forEach(t => window.addEventListener(t, stop, { once: true, passive: true }));
+    const loaded = document.readyState === 'complete' ? Promise.resolve()
+        : new Promise(r => window.addEventListener('load', r, { once: true }));
+    Promise.all([loaded, document.fonts ? document.fonts.ready : null])
+        .then(() => setTimeout(() => { if (!moved && _cur === idx) jumpToCard(idx); }, 100));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(jumpToHashTarget, 150);
+    _loadChecked();
     const cards = document.querySelectorAll('.target-card');
     _total = cards.length;
     const totalEl = document.getElementById('cardTotal');

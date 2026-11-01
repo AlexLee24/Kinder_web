@@ -1190,3 +1190,6 @@ kbd {
 .match-detail-table .td-coord { white-space: nowrap; font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.74rem; }
 .match-detail-table .td-coord .coord-deg { user-select: all; }
 .match-detail-table .td-coord .fact-sub { display: block; font-family: inherit; }
+/* Checked marks: the card's Check button and the ✓ beside a checked row's name */
+.card-check-btn.is-checked { background: rgba(70, 255, 175, 0.14); border-color: rgba(70, 255, 175, 0.55); color: #6dffc2; }
+.row-check-mark { margin-left: 6px; color: #6dffc2; font-weight: 700; }

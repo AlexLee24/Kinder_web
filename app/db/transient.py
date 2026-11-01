@@ -1934,9 +1934,10 @@ def _load_detect_overview(cache_ttl: int) -> dict:
                     if (r['host_status'] or 'none') != 'none':
                         result['pending'] += r['pending']
                 result['counts']['total'] = sum(v for k, v in result['counts'].items() if k != 'total')
+                # more than the 8 shown: the page leaves out the ones already checked
                 cur.execute(_DETECT_SCREEN_SELECT + """
                     WHERE s.run_date::date = %s::date AND s.host_status <> 'none'
-                    ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
+                    ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 40
                 """, (last_run,))
                 result['top'] = [_screen_row(r) for r in cur.fetchall()]
     except Exception as e:
@@ -1947,6 +1948,42 @@ def _load_detect_overview(cache_ttl: int) -> dict:
 
 
 _detect_overview_cache: dict = {'expires_at': 0.0, 'value': None}
+
+
+def get_detect_screen_rows(names) -> list[dict]:
+    """detect_screen rows (as in get_detect_overview's top list) of ``names``, in that order."""
+    names = [n for n in (names or []) if n]
+    if not names:
+        return []
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(_DETECT_SCREEN_SELECT + " WHERE s.name = ANY(%s)", (names,))
+            rows = {r['name']: _screen_row(r) for r in cur.fetchall()}
+        return [rows[n] for n in names if n in rows]
+    except Exception as e:
+        logger.warning('get_detect_screen_rows: %s', e)
+        return []
+
+
+def get_detect_review_days(names) -> dict[str, str]:
+    """{name: 'YYYY-MM-DD'}: the DETECT review day an object's card is on (its latest
+    cross-match update, the day /detect?detect_results= lists it)."""
+    names = [n for n in (names or []) if n]
+    if not names:
+        return {}
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT o.name, MAX(c.updated_date)::date
+                  FROM transient.objects o JOIN transient.cross_matches c ON c.obj_id = o.obj_id
+                 WHERE o.name = ANY(%s) GROUP BY o.name
+            """, (names,))
+            return {n: d.strftime('%Y-%m-%d') for n, d in cur.fetchall() if d}
+    except Exception as e:
+        logger.warning('get_detect_review_days: %s', e)
+        return {}
 
 
 def get_detect_lc_data(target_name: str) -> dict:

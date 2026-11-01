@@ -13,6 +13,8 @@ from app.db.transient import (
     update_object_status,
     get_detect_metadata,
     get_detect_overview,
+    get_detect_review_days,
+    get_detect_screen_rows,
 )
 import io
 import urllib.parse
@@ -34,6 +36,7 @@ from .cache import (
 from .helpers import _TRACKER_CACHE
 from .payload import _build_detect_lc_payload, _parse_float_or_none
 from .cache import _is_valid_date_string
+from .checks import mark_seen, overview_lists
 
 
 def _json_body():
@@ -149,6 +152,7 @@ def set_host():
     # 1. cross_matches: is_host + the person's pin (DETECT keeps it on re-runs).
     #    Fails (changes nothing) when match_id is not a candidate of target_name.
     if set_cross_match_host(match_id, target_name, session['user'].get('email')):
+        mark_seen('tns', target_name)                      # a host decision = looked at
         # 2. object status is the reviewer's call
         if status != 'keep':
             update_object_status(target_name, status)
@@ -220,6 +224,8 @@ def set_object_status():
         return jsonify({'success': False, 'message': 'Missing or invalid parameters'}), 400
 
     if update_object_status(target_name, status):
+        if status != 'object':
+            mark_seen('tns', target_name)                  # Follow-up / Done = looked at
         # Invalidate page cache so next load gets fresh data
         _soft_invalidate_page_cache()
         # Soft-invalidate tracker cache: keep stale value for SWR, trigger bg rebuild
@@ -243,6 +249,7 @@ def mark_no_host():
 
     # Every candidate rejected by this person; DETECT honours that on re-runs.
     reject_cross_match_hosts(target_name, session['user'].get('email'))
+    mark_seen('tns', target_name)                          # "no host" = looked at
     # Set status to Snoozed
     if update_object_status(target_name, 'snoozed'):
         _soft_invalidate_page_cache()
@@ -250,6 +257,15 @@ def mark_no_host():
         _start_tracker_build()
         return jsonify({'success': True})
     return jsonify({'success': False, 'message': 'Database error'})
+
+def _judge_links(rows):
+    """Judge → opens the object's card on the review day it is listed on."""
+    days = get_detect_review_days([t['name'] for t in rows])
+    for t in rows:
+        day = days.get(t['name'])
+        t['judge_href'] = (url_for('detect.detect_results', detect_results=day) + '#t=' + urllib.parse.quote(t['name'])
+                           if day else None)
+
 
 @detect_bp.route('/detect')
 def detect_results():
@@ -283,10 +299,14 @@ def detect_results():
             cached_latest, _ = _get_detect_page_payload_swr(latest_date)
             if cached_latest is None and not _detect_page_is_building(latest_date):
                 _start_detect_page_build(latest_date)
+        overview = dict(overview or {})
+        overview['top'], overview['checked'] = overview_lists(
+            'tns', overview.get('top') or [], get_detect_screen_rows, _judge_links)
         return render_template('detect_home.html',
                                latest_date=latest_date,
                                daily_counts=daily_counts,
                                overview=overview,
+                               check_kind='tns',
                                current_path='/detect')
 
     if not _is_known_detect_date(selected_date, metadata):
