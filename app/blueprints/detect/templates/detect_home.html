@@ -50,24 +50,39 @@
                     <a class="ov-stat ov-pending" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ overview.pending }}</span><span class="ov-l">waiting for a person</span></a>
                 </div>
-                {% if overview.top %}
-                <div class="overview-top-title">Highest priority right now</div>
-                <div class="overview-top-wrap"><table class="overview-top">
-                    <thead><tr><th>Object</th><th>Score</th><th>Host</th><th>M</th><th>z</th><th>Tags</th><th class="ov-act"></th></tr></thead>
-                    <tbody>
-                    {% for t in overview.top %}
-                    <tr>
-                        <td><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a> {{ obj_badges(t.has_lens, t.tags) }}</td>
+                {% if overview.top or overview.checked %}
+                {% macro top_row(t, checked, judge_fallback) -%}
+                    <tr data-name="{{ t.name }}" data-score="{{ t.score }}" data-lens="{{ '1' if t.has_lens else '' }}"
+                        {% if t.spare %}class="ov-spare" hidden{% endif %}>
+                        <td><label class="ov-check" title="{{ ('Checked by ' ~ (t.checked_by or '?') ~ ' · ' ~ t.checked_at) if checked else 'Mark as checked' }}"><input type="checkbox" class="ov-check-box" {% if checked %}checked{% endif %} aria-label="Checked: {{ t.name }}"></label><a href="{{ t.obj_href or ('/object/' ~ t.name) }}" class="ov-link">{{ t.name }}</a> {{ obj_badges(t.has_lens, t.tags) }}</td>
                         <td><span class="score-chip score-{{ 'hi' if t.score >= 7 else 'mid' if t.score >= 3 else 'lo' if t.score >= 0 else 'neg' }}">{{ t.score }}</span></td>
                         <td>{{ host_badge(t.host_status) }}</td>
                         <td class="num">{% if t.abs_mag is not none %}<span class="{{ 'am-hot' if t.abs_mag <= -20 else 'am-peak' if t.abs_mag <= -18 else '' }}">{{ "%.2f"|format(t.abs_mag) }}</span>{% else %}—{% endif %}</td>
                         <td class="num">{% if t.z is not none %}{{ "%.4f"|format(t.z) }}{% else %}—{% endif %}</td>
                         <td class="tags">{% for tag in t.tags if not tag.startswith('Host-') %}{{ tag_chip(tag) }}{% endfor %}</td>
-                        <td class="ov-act">{% if t.judge_href or latest_date %}<a class="kw-btn kw-btn-sm kw-btn-tinted ov-judge" href="{{ t.judge_href or (day_url ~ latest_date ~ '#t=' ~ t.name) }}" title="Open this object on the review page">Judge →</a>{% endif %}</td>
+                        <td class="ov-act">{% if t.judge_href or judge_fallback %}<a class="kw-btn kw-btn-sm kw-btn-tinted ov-judge" href="{{ t.judge_href or (judge_fallback ~ '#t=' ~ t.name) }}" title="Open this object's card on the review page">Judge →</a>{% endif %}</td>
                     </tr>
-                    {% endfor %}
-                    </tbody>
-                </table></div>
+                {%- endmacro %}
+                {% set judge_fallback = (day_url ~ latest_date) if latest_date else '' %}
+                <div class="overview-top-head">
+                    <div class="overview-top-title">Highest priority right now</div>
+                    <div class="kw-seg ov-tabs" role="tablist" aria-label="Checked or not">
+                        <button type="button" class="kw-seg-item is-on" role="tab" aria-selected="true" data-ov-tab="todo">To check <span class="kw-n" id="ovTodoN">·</span></button>
+                        <button type="button" class="kw-seg-item" role="tab" aria-selected="false" data-ov-tab="done">Checked <span class="kw-n" id="ovDoneN">·</span></button>
+                    </div>
+                </div>
+                <div class="overview-top-wrap" id="ovTop" data-check-kind="{{ check_kind|default('tns') }}">
+                    <table class="overview-top" data-ov-panel="todo">
+                        <thead><tr><th>Object</th><th>Score</th><th>Host</th><th>M</th><th>z</th><th>Tags</th><th class="ov-act"></th></tr></thead>
+                        <tbody id="ovTodo">{% for t in overview.top %}{{ top_row(t, false, judge_fallback) }}{% endfor %}</tbody>
+                    </table>
+                    <table class="overview-top" data-ov-panel="done" hidden>
+                        <thead><tr><th>Object</th><th>Score</th><th>Host</th><th>M</th><th>z</th><th>Tags</th><th class="ov-act"></th></tr></thead>
+                        <tbody id="ovDone">{% for t in overview.checked %}{{ top_row(t, true, judge_fallback) }}{% endfor %}</tbody>
+                    </table>
+                    <p class="overview-empty ov-empty" data-ov-empty="todo" hidden>Everything here has been checked.</p>
+                    <p class="overview-empty ov-empty" data-ov-empty="done" hidden>Nothing checked yet. Tick the box beside an object, or decide its host on the review page.</p>
+                </div>
                 {% endif %}
                 {% else %}
                 <p class="overview-empty">No DETECT run recorded yet.</p>
@@ -270,4 +285,73 @@
             </section>
         </div>
     </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// "Highest priority right now": To check / Checked tabs; a tick moves the row across
+// (POST /api/detect/check, app/blueprints/detect/checks.py). Lens rows always show; of the
+// others, the first VISIBLE are shown and a hidden spare fills each gap.
+(function () {
+    const box = document.getElementById('ovTop');
+    if (!box) return;
+    const KIND = box.dataset.checkKind, VISIBLE = 8;
+    const todo = document.getElementById('ovTodo'), done = document.getElementById('ovDone');
+
+    function reflow() {
+        let others = 0;
+        todo.querySelectorAll('tr').forEach(tr => {
+            const show = tr.dataset.lens === '1' || others++ < VISIBLE;
+            tr.hidden = !show;
+        });
+        done.querySelectorAll('tr').forEach(tr => { tr.hidden = false; });
+        const nTodo = [...todo.querySelectorAll('tr')].filter(tr => !tr.hidden).length;
+        document.getElementById('ovTodoN').textContent = nTodo;
+        document.getElementById('ovDoneN').textContent = done.querySelectorAll('tr').length;
+        box.querySelector('[data-ov-empty="todo"]').hidden = !!nTodo || box.querySelector('[data-ov-panel="todo"]').hidden;
+        box.querySelector('[data-ov-empty="done"]').hidden = !!done.children.length || box.querySelector('[data-ov-panel="done"]').hidden;
+    }
+
+    function show(tab) {
+        document.querySelectorAll('[data-ov-tab]').forEach(b => {
+            const on = b.dataset.ovTab === tab;
+            b.classList.toggle('is-on', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        box.querySelectorAll('[data-ov-panel]').forEach(t => { t.hidden = t.dataset.ovPanel !== tab; });
+        reflow();
+    }
+    document.querySelectorAll('[data-ov-tab]').forEach(b => b.addEventListener('click', () => show(b.dataset.ovTab)));
+
+    // back into To check: lens rows first, then by score
+    function insertTodo(tr) {
+        const score = Number(tr.dataset.score) || 0, lens = tr.dataset.lens === '1';
+        const before = [...todo.querySelectorAll('tr')].find(o => {
+            const oLens = o.dataset.lens === '1';
+            return lens ? !oLens || (Number(o.dataset.score) || 0) < score : !oLens && (Number(o.dataset.score) || 0) < score;
+        });
+        todo.insertBefore(tr, before || null);
+    }
+
+    box.addEventListener('change', ev => {
+        const cb = ev.target.closest('.ov-check-box');
+        if (!cb) return;
+        const tr = cb.closest('tr'), checked = cb.checked;
+        cb.disabled = true;
+        fetch('/api/detect/check', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                     body: JSON.stringify({ kind: KIND, name: tr.dataset.name, checked }) })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) throw new Error(d.message || 'failed');
+                tr.classList.remove('ov-spare');
+                tr.querySelector('.ov-check').title = checked ? 'Checked just now' : 'Mark as checked';
+                if (checked) done.insertBefore(tr, done.firstChild); else insertTodo(tr);
+                reflow();
+            })
+            .catch(() => { cb.checked = !checked; alert('Could not save the check.'); })
+            .finally(() => { cb.disabled = false; });
+    });
+    reflow();
+})();
+</script>
 {% endblock %}

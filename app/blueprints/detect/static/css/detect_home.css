@@ -224,3 +224,12 @@
 .hl-lens { background: linear-gradient(45deg, #ff007f, #ff8c00); color: #fff; box-shadow: 0 0 10px rgba(255, 0, 127, 0.45); }
 .hl-lens-cand { background: rgba(255, 0, 127, 0.12); color: #ff6fb4; border: 1px dashed rgba(255, 0, 127, 0.7); }
 .hl-slsn { background: rgba(255, 107, 97, 0.14); color: #ff8a80; border: 1px solid rgba(255, 107, 97, 0.65); }
+
+/* "Highest priority right now": To check / Checked tabs, a tick box before each name */
+.overview-top-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.overview-top-head .overview-top-title { margin-bottom: 0; }
+.ov-tabs .kw-seg-item { min-height: 28px; padding: 0 10px; font-size: 0.78rem; }
+.ov-tabs .kw-n { margin-left: 4px; }
+.ov-check { display: inline-flex; align-items: center; margin-right: 8px; vertical-align: middle; cursor: pointer; }
+.ov-check-box { width: 16px; height: 16px; margin: 0; accent-color: var(--kw-accent); cursor: pointer; }
+.ov-empty { margin: 10px 0 0; }

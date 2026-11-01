@@ -17,3 +17,4 @@
 | [[`transient.lsst_detect_matches`]] | —                          | DETECT's DESI / Lens candidates of an LSST alert (host rule, reviewer's host) |
 | [[`transient.lsst_detect_screen`]]  | —                          | DETECT's verdict per LSST alert: score, host status, tags, M |
 | [[`transient.lsst_target_images`]]  | —                          | DETECT review image (LS DR10 host model) per LSST alert |
+| [[`transient.detect_checks`]]      | —                          | objects a person checked on TNS-DETECT / LSST-DETECT |

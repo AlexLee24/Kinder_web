@@ -20,6 +20,7 @@ from app.services.lsst.detect import review_day_for as day_of
 from app.services.photometry.data_processing import DataVisualization
 
 from . import detect_bp
+from .checks import mark_seen, overview_lists
 from .lsst import _member_api_denied, _member_or_redirect
 from .payload import _assemble_detect_payload
 
@@ -42,6 +43,7 @@ def _detect_api() -> dict:
         'fetchPhotLabel': 'Downloading from ALeRCE…',
         'dateUrl':        _day_url(),
         'homeUrl':        url_for('detect.detect_lsst'),
+        'checkKind':      'lsst',
     }
 
 
@@ -118,10 +120,14 @@ def _overview(metadata: dict, missing_oid: int | None):
     days = metadata['available_dates']
     overview = lsst_detect.review_overview()
     overview['run_day'] = days[0] if days else None
-    for t in overview['top']:
-        t['obj_href'] = lsst_detect.object_href(t, t['oid'])
-        t['judge_href'] = _day_url() + t['review_day'] + '#t=' + t['name'] if t['review_day'] else None
-    return render_template('detect_lsst.html', page_title='LSST-DETECT', current_path='/detect/lsst',
+
+    def links(rows):
+        for t in rows:
+            t['obj_href'] = lsst_detect.object_href(t, t['oid'])
+            t['judge_href'] = _day_url() + t['review_day'] + '#t=' + t['name'] if t['review_day'] else None
+
+    overview['top'], overview['checked'] = overview_lists('lsst', overview['top'], lsst_detect.screen_rows, links)
+    return render_template('detect_lsst.html', page_title='LSST-DETECT', current_path='/detect/lsst', check_kind='lsst',
                            latest_date=days[0] if days else None, daily_counts=metadata['daily_counts'],
                            overview=overview, day_url=_day_url(),
                            archives_url=url_for('detect.detect_lsst_archives'),
@@ -220,6 +226,7 @@ def lsst_review_set_host():
     by = session['user'].get('email')
     if not lsst_detect.set_host(oid, match_id, by):
         return jsonify({'success': False, 'message': 'Host candidate not found for this target'}), 404
+    mark_seen('lsst', lsst_detect.target_name(oid))       # a host decision = looked at
     if status != 'keep':
         lsst_detect.set_review_status(oid, status, by)
     return jsonify({'success': True})
@@ -249,6 +256,7 @@ def lsst_review_mark_no_host():
     by = session['user'].get('email')
     lsst_detect.reject_hosts(oid, by)
     lsst_detect.set_review_status(oid, 'snoozed', by)
+    mark_seen('lsst', lsst_detect.target_name(oid))       # "no host" = looked at
     return jsonify({'success': True})
 
 
@@ -264,6 +272,8 @@ def lsst_review_set_status():
     if data.get('status') not in lsst_detect.REVIEW_STATUSES:
         return jsonify({'success': False, 'message': 'Missing or invalid parameters'}), 400
     if lsst_detect.set_review_status(oid, data['status'], session['user'].get('email')):
+        if data['status'] != 'object':
+            mark_seen('lsst', lsst_detect.target_name(oid))   # Follow-up / Done = looked at
         return jsonify({'success': True})
     return jsonify({'success': False, 'message': 'Unknown LSST alert'}), 404
 

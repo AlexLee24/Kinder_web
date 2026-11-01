@@ -309,6 +309,18 @@ def _screen_row(r) -> dict:
     return d
 
 
+def screen_rows(names) -> list[dict]:
+    """Screen rows (as in review_overview's top list) of the alerts called ``names``, in that order."""
+    names = [n for n in (names or []) if n]
+    if not names:
+        return []
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute(_SCREEN_SELECT + " WHERE s.name = ANY(%s)", (names,))
+        rows = {r["name"]: _screen_row(r) for r in cur.fetchall()}
+    return [rows[n] for n in names if n in rows]
+
+
 def review_metadata() -> dict:
     """available_dates / daily_counts / screen_counts in the shape of get_detect_metadata(),
     over the alerts with DETECT candidates."""
@@ -377,8 +389,8 @@ def review_overview() -> dict:
         lens = [_screen_row(r) for r in cur.fetchall()]
         cur.execute(_SCREEN_SELECT + f"""
              WHERE s.run_date::date = %s::date AND s.host_status <> 'none' AND {_MATCHED} AND NOT {_ON_LENS}
-             ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 8
-        """, (last_run,))
+             ORDER BY s.score DESC, s.abs_mag ASC NULLS LAST, s.name LIMIT 40
+        """, (last_run,))      # more than the 8 shown: the page leaves out the ones already checked
         result["top"] = lens + [_screen_row(r) for r in cur.fetchall()]
     return result
 
