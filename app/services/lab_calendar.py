@@ -15,7 +15,8 @@ rotation of N people is N weeks repeating every N weeks): ``send_trigger_reminde
 that take 'trigger' (Web Push) — unless the night's SLT trigger was already sent from Daily Trigger.
 Duty weeks run Monday to Sunday: members volunteer for a free week on the page (one 7-day event), and every Friday
 ``check_duty_weeks()`` (job ``lab_trigger_duty_check``) posts to Slack (SLACK_CHANNEL_ID_TRIGGER_DUTY) when nobody
-covers the week after next.
+covers the week after next. If the week starting tomorrow is still not covered on the Sunday before it,
+``check_duty_eve()`` (jobs ``lab_trigger_duty_eve_am`` / ``_pm``, 10:00 and 16:00) posts twice more.
 
 Event reminders: each lab event (not Trigger duty, which has its sunset push, and not the Lulin schedule) reminds the
 GREAT Lab members under the bell and by push (category 'calendar') ``remind_minutes`` before it starts — 30 unless the
@@ -535,6 +536,7 @@ def parse_form(data, members=None):
 
 DUTY_SLACK_CHANNEL = os.getenv('SLACK_CHANNEL_ID_TRIGGER_DUTY', 'C06BT4DALM6')
 DUTY_CHECK_KEY = 'lab_calendar:duty_check'
+DUTY_EVE_KEY = 'lab_calendar:duty_eve'          # "<date> <slot>" of the last eve reminder posted
 
 
 def week_monday(day):
@@ -582,39 +584,62 @@ def _post_slack(channel, text):
         raise RuntimeError(f"Slack refused the message: {resp.get('error')}")
 
 
-def check_duty_weeks(today=None, post=True):
-    """Fridays: if any night of the week after next (Monday in 10 days) has no Trigger duty, post a reminder to
-    the Slack channel asking members to volunteer on Lab › Calendar. Posts at most once a day. Returns what it did."""
+def _duty_open_text(mon, week, eve=False):
+    """The Slack text for a duty week with uncovered nights; ``eve``: the week starts tomorrow."""
     from app.config import config
+    url = f"{config.APP_BASE_URL.rstrip('/')}/lab_calendar"
+    when = 'tomorrow' if eve else week_label(mon)
+    if eve:
+        head = f":rotating_light: *Trigger duty starts tomorrow ({week_label(mon)}) and is still open*"
+    elif not week['people']:
+        head = f":rotating_light: *Trigger duty needed for {when}*"
+    else:
+        head = f":rotating_light: *Trigger duty still open for {when}*"
+    if not week['people']:
+        return (f"{head}\nNobody has signed up for Trigger duty that week yet. Please pick it up on Kinder: "
+                f"<{url}|Lab › Calendar> → Trigger duty → *Volunteer*.")
+    nights = ', '.join(d.strftime('%a %-d %b') for d in week['gaps'])
+    return f"{head}\nNo one is on duty on {nights}. Please sign up on Kinder: <{url}|Lab › Calendar> → Trigger duty."
+
+
+def _post_duty_open(mon, today, post, key, stamp, eve=False):
+    """Check the duty week from ``mon``; post to Slack when a night is open, at most once per ``stamp`` under ``key``."""
     from app.db.auth import get_setting, set_setting
 
-    today = today or datetime.now(TZ).date()
-    mon = week_monday(today) + timedelta(weeks=2)
     week = duty_weeks(events(today=today, past_days=0, future_days=30), mon, 1)[0]
     res = {'week': mon.isoformat(), 'people': [p['name'] for p in week['people']],
            'gaps': [d.isoformat() for d in week['gaps']], 'posted': False}
     if not week['gaps']:
         return res
-    url = f"{config.APP_BASE_URL.rstrip('/')}/lab_calendar"
-    if not week['people']:
-        text = (f":rotating_light: *Trigger duty needed for {week_label(mon)}*\n"
-                f"Nobody has signed up for Trigger duty that week yet. Please pick it up on Kinder: "
-                f"<{url}|Lab › Calendar> → Trigger duty → *Volunteer*.")
-    else:
-        nights = ', '.join(d.strftime('%a %-d %b') for d in week['gaps'])
-        text = (f":rotating_light: *Trigger duty still open for {week_label(mon)}*\n"
-                f"No one is on duty on {nights}. Please sign up on Kinder: <{url}|Lab › Calendar> → Trigger duty.")
-    res['text'] = text
+    text = res['text'] = _duty_open_text(mon, week, eve=eve)
     if not post:
         return res
-    if get_setting(DUTY_CHECK_KEY) == today.isoformat():
-        res['skipped'] = 'already posted today'
+    if get_setting(key) == stamp:
+        res['skipped'] = 'already posted'
         return res
     _post_slack(DUTY_SLACK_CHANNEL, text)
-    set_setting(DUTY_CHECK_KEY, today.isoformat())
+    set_setting(key, stamp)
     res['posted'] = True
-    logger.info('Trigger duty check: posted to %s for the week of %s', DUTY_SLACK_CHANNEL, mon)
+    logger.info('Trigger duty check: posted to %s for the week of %s (%s)', DUTY_SLACK_CHANNEL, mon, stamp)
     return res
+
+
+def check_duty_weeks(today=None, post=True):
+    """Fridays: if any night of the week after next (Monday in 10 days) has no Trigger duty, post a reminder to
+    the Slack channel asking members to volunteer on Lab › Calendar. Posts at most once a day. Returns what it did."""
+    today = today or datetime.now(TZ).date()
+    mon = week_monday(today) + timedelta(weeks=2)
+    return _post_duty_open(mon, today, post, DUTY_CHECK_KEY, today.isoformat())
+
+
+def check_duty_eve(today=None, post=True, slot='am'):
+    """The Sunday before a duty week, twice (``slot`` 'am' 10:00, 'pm' 16:00): if a night of the week starting
+    tomorrow still has no Trigger duty, post to Slack again. Each slot posts at most once. Returns what it did."""
+    today = today or datetime.now(TZ).date()
+    mon = today + timedelta(days=1)
+    if mon.weekday() != 0:
+        return {'week': None, 'posted': False, 'skipped': 'not the day before a duty week'}
+    return _post_duty_open(mon, today, post, DUTY_EVE_KEY, f'{today.isoformat()} {slot}', eve=True)
 
 
 def duty_on(day):
