@@ -114,7 +114,7 @@ def create_app(start_jobs: bool = True) -> Flask:
     # Secure requires HTTPS; local DEBUG runs over plain http://127.0.0.1, so it
     # defaults to off only in DEBUG (env SESSION_COOKIE_SECURE overrides).
     app.config['SESSION_COOKIE_SECURE'] = config.SESSION_COOKIE_SECURE
-    # Absolute session lifetime; idle timeouts (8 h / 1 h admins) are enforced in
+    # Absolute session lifetime; the 14-day idle timeout is enforced in
     # app.core.auth.refresh_user_session.
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
