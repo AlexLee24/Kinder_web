@@ -13,7 +13,7 @@ Session policy (enforced in ``refresh_user_session``):
 
     * ``iat`` (login time, epoch s) missing  -> legacy cookie, session cleared
     * older than ``SESSION_ABSOLUTE_MAX_S`` (30 days)              -> expired
-    * idle longer than 1 h (admins) / 8 h (everyone else)          -> expired
+    * idle longer than ``SESSION_IDLE_S`` (14 days, admins too)     -> expired
     * ``session_version`` differs from the DB (password change, "log out all
       devices", admin force-logout)                                -> revoked
     * ``last_seen`` is re-written at most once per minute (cookie churn)
@@ -48,8 +48,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 SESSION_ABSOLUTE_MAX_S = 30 * 24 * 3600   # matches PERMANENT_SESSION_LIFETIME
-SESSION_IDLE_USER_S = 8 * 3600
-SESSION_IDLE_ADMIN_S = 1 * 3600
+SESSION_IDLE_S = 14 * 24 * 3600          # admins too: a phone with the Kinder app stays signed in
 LAST_SEEN_WRITE_INTERVAL_S = 60           # limit Set-Cookie churn
 # refresh_user_session reuses a user's DB row for this long (per process) instead of
 # reading it on every request (two round trips, ~0.5 s each to a remote DB). Role,
@@ -76,10 +75,6 @@ def forget_cached_user(email: str | None = None) -> None:
         _user_rows.clear()
     else:
         _user_rows.pop(email, None)
-
-
-def idle_limit_seconds(is_admin: bool) -> int:
-    return SESSION_IDLE_ADMIN_S if is_admin else SESSION_IDLE_USER_S
 
 
 def start_user_session(user_data: dict, auth_method: str) -> None:
@@ -122,7 +117,7 @@ def _session_expiry_reason(user: dict, now: float) -> str | None:
     last_seen = user.get('last_seen')
     if not isinstance(last_seen, (int, float)):
         last_seen = iat
-    if now - last_seen > idle_limit_seconds(bool(user.get('is_admin'))):
+    if now - last_seen > SESSION_IDLE_S:
         return 'idle'
     return None
 

@@ -104,16 +104,20 @@ def test_legacy_cookie_without_iat_is_cleared(app):
 
 def test_idle_session_expires(app):
     user = session_user('member')
-    user['last_seen'] = int(time.time()) - 9 * 3600      # > 8 h idle
+    user['last_seen'] = int(time.time()) - 15 * 24 * 3600   # > 14 days idle
     c = _client_with(app, user)
     r = c.get('/', base_url=BASE_URL)
     assert r.status_code == 302 and '/login' in r.headers['Location']
     assert _session_user_of(c) is None
 
 
-def test_admin_idle_limit_is_shorter(app):
+def test_admin_idle_limit_matches_everyone(app):
     user = session_user('admin')
-    user['last_seen'] = int(time.time()) - 2 * 3600      # > 1 h idle for admins
+    user['last_seen'] = int(time.time()) - 3 * 24 * 3600   # days idle: still signed in
+    c = _client_with(app, user)
+    c.get('/', base_url=BASE_URL)
+    assert _session_user_of(c) is not None
+    user['last_seen'] = int(time.time()) - 15 * 24 * 3600
     c = _client_with(app, user)
     r = c.get('/api/anything-json', base_url=BASE_URL)
     assert r.status_code == 401
