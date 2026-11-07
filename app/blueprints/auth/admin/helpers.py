@@ -100,4 +100,6 @@ _SCHEDULED_JOBS = {
     'lab_trigger_reminder':         ('Trigger duty reminder',     'Every 5 min (after Lulin sunset)', 'interval', {'minutes': 5}),
     'lab_calendar_reminders':       ('Lab Calendar reminders',    'Every 1 min',      'interval', {'minutes': 1}),
     'lab_trigger_duty_check':       ('Trigger duty: Friday check', 'Fridays 02:00 UTC', 'cron',     {'hour': 2,  'minute': 0}),
+    'lab_trigger_duty_eve_am':      ('Trigger duty: eve check (1)', 'Sundays 02:00 UTC', 'cron',    {'hour': 2,  'minute': 0}),
+    'lab_trigger_duty_eve_pm':      ('Trigger duty: eve check (2)', 'Sundays 08:00 UTC', 'cron',    {'hour': 8,  'minute': 0}),
 }

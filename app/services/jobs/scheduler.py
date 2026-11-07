@@ -30,6 +30,7 @@ these jobs in UTC too):
     lab_trigger_reminder           every 5m   after Lulin sunset: push "Trigger duty tonight" to today's duty (once)
     lab_calendar_reminders         every 1m   Lab Calendar events: remind the members (bell + push) before they start
     lab_trigger_duty_check         Fri 02:00  week after next has a night without Trigger duty -> Slack (UTC+8 10:00)
+    lab_trigger_duty_eve_am/_pm    Sun 02:00 / 08:00  the duty week starting tomorrow is still open -> Slack again (UTC+8 10:00 / 16:00)
 
     gcn_watchdog                   every 1m   GCN listener thread dead or not beating for 5 min -> start a new one
     bot_astronote                  every 5m   new TNS AstroNotes -> Slack
@@ -232,6 +233,7 @@ def _run_background_jobs(app):
     from app.services.jobs import scheduler_state as _sched_state
     from app.services.jobs.backup import run_daily_backup
     from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
+    from app.services.lab_calendar import check_duty_eve as _lab_duty_eve
     from app.services.lab_calendar import check_duty_weeks as _lab_duty_check
     from app.services.lab_calendar import send_event_reminders as _lab_event_reminders
     from app.services.lab_calendar import send_trigger_reminders as _lab_trigger_reminders
@@ -264,6 +266,8 @@ def _run_background_jobs(app):
         _scheduler.add_job(_tracked('lab_trigger_reminder', _lab_trigger_reminders),         'interval', minutes=5,    id='lab_trigger_reminder')
         _scheduler.add_job(_tracked('lab_calendar_reminders', _lab_event_reminders),         'interval', minutes=1,    id='lab_calendar_reminders')
         _scheduler.add_job(_tracked('lab_trigger_duty_check', _lab_duty_check),              'cron', day_of_week='fri', hour=2, minute=0, id='lab_trigger_duty_check')  # 10:00 UTC+8
+        _scheduler.add_job(_tracked('lab_trigger_duty_eve_am', _lab_duty_eve),               'cron', day_of_week='sun', hour=2, minute=0, id='lab_trigger_duty_eve_am', kwargs={'slot': 'am'})  # 10:00 UTC+8
+        _scheduler.add_job(_tracked('lab_trigger_duty_eve_pm', _lab_duty_eve),               'cron', day_of_week='sun', hour=8, minute=0, id='lab_trigger_duty_eve_pm', kwargs={'slot': 'pm'})  # 16:00 UTC+8
         if _detect_pipeline.ENABLED:
             # DETECT re-screens every Follow-up object once a day (M from the latest light
             # curve, host against the latest catalogue); hourly runs hang off the TNS import.
