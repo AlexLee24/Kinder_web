@@ -1,0 +1,103 @@
+{% extends '_base.html' %}
+{#- Admin › Slack (admin/slack.py), next to Admin › Push: compose a Slack message (blank or a ready-made one filled with
+    today's data), pick the channel, see it as Slack shows it, send; the last messages sent with Reuse.
+    admin_slack.js drives it from #asTemplates. -#}
+{% block title %}Slack - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_push.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_slack.css') }}">{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page ap-page as-page" id="asPage">
+    <header class="kw-page-head">
+        <div><h1>Slack</h1><p>Post a message to the lab's Slack as the Kinder bot. Start from a ready-made one — filled in with today's duty, sunset and push data — and edit it before it goes.</p></div>
+    </header>
+
+    {% if not slack_on %}
+    <div class="ap-warn">Slack is not set up on this server: add <code>SLACK_BOT_TOKEN</code> to <code>kinder.env</code> and restart.</div>
+    {% endif %}
+
+    <div class="ap-top as-top">
+        <section class="kw-panel ap-compose" aria-labelledby="asComposeT">
+            <div class="kw-panel-head"><h2 id="asComposeT">Send a Slack message</h2></div>
+            <form id="asForm" novalidate>
+                <fieldset class="ap-targets">
+                    <legend class="kw-label">Start from</legend>
+                    <label class="ap-target"><input type="radio" name="template" value="" checked><span>Blank</span></label>
+                    {% for t in templates %}
+                    <label class="ap-target"><input type="radio" name="template" value="{{ t.key }}"><span>{{ t.label }}</span></label>
+                    {% endfor %}
+                </fieldset>
+
+                <fieldset class="ap-targets">
+                    <legend class="kw-label">Channel</legend>
+                    {% for c in channels %}
+                    <label class="ap-target" title="{{ c.what }}{% if c.id %} · {{ c.id }}{% else %} · not set{% endif %}"><input type="radio" name="channel" value="{{ c.key }}"{% if loop.first %} checked{% endif %}{% if not c.id %} disabled{% endif %}><span>#&nbsp;{{ c.label }}</span></label>
+                    {% endfor %}
+                    <label class="ap-target"><input type="radio" name="channel" value="custom"><span>Other…</span></label>
+                </fieldset>
+                <div class="kw-field" id="asCustomWrap" hidden>
+                    <label for="asCustom">Channel id <small class="kw-muted">(Slack: channel name → About → Channel ID; invite the Kinder bot first)</small></label>
+                    <input id="asCustom" maxlength="24" placeholder="C0123ABCD" autocomplete="off" spellcheck="false">
+                </div>
+
+                <div class="kw-field">
+                    <label for="asText">Message <small class="ap-n" id="asTextN">0/3000</small></label>
+                    <textarea id="asText" maxlength="3000" rows="9" placeholder="*bold*  _italic_  ~strike~  `code`  <https://…|link text>  :emoji:"></textarea>
+                    <small class="kw-muted">Slack formatting: <code>*bold*</code> <code>_italic_</code> <code>&lt;https://…|link&gt;</code> <code>:rotating_light:</code>. Names are plain text (no @-mentions).</small>
+                </div>
+                <div class="ap-foot">
+                    <span class="ap-est" id="asEst">—</span>
+                    <button type="submit" class="kw-btn kw-btn-primary" id="asSend"{% if not slack_on %} disabled{% endif %}>Send to Slack</button>
+                </div>
+            </form>
+        </section>
+
+        <aside class="as-preview" aria-label="Preview">
+            <div class="ap-phone-label">In Slack</div>
+            <div class="as-slack">
+                <div class="as-slack-ch" id="asPCh"># channel</div>
+                <div class="as-msg">
+                    <img src="{{ url_for('static', filename='pwa/icon-96.png') }}" alt="">
+                    <div>
+                        <div class="as-msg-top"><b>Kinder</b><span class="as-app">APP</span><span class="as-time" id="asPTime">now</span></div>
+                        <div class="as-msg-body" id="asPBody"><span class="kw-muted">Your message</span></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <section class="kw-panel ap-history" aria-labelledby="asHistT">
+        <div class="kw-panel-head"><h2 id="asHistT">Sent</h2><span class="kw-panel-meta">last {{ history|length }}</span></div>
+        {% if history %}
+        <div class="kw-table-wrap">
+            <table class="kw-table ap-table">
+                <thead><tr><th>When</th><th>Message</th><th>Channel</th><th>By</th><th></th></tr></thead>
+                <tbody>
+                {% for h in history %}
+                <tr>
+                    <td class="nowrap"><time datetime="{{ h.at }}" data-local>{{ h.at[:16]|replace('T', ' ') }} UTC</time></td>
+                    <td class="ap-msg as-hist-msg">{{ h.text|truncate(160) }}</td>
+                    <td class="nowrap">#&nbsp;{{ h.label }}<small class="ap-desc">{{ h.channel }}</small></td>
+                    <td class="kw-muted">{{ h.by or '—' }}</td>
+                    <td><button type="button" class="kw-btn kw-btn-sm" data-reuse='{{ {"text": h.text, "channel": h.channel_key, "channel_id": h.channel}|tojson }}'>Reuse</button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="kw-empty">Nothing sent from here yet.</p>
+        {% endif %}
+    </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="asTemplates">{{ templates|tojson }}</script>
+<script type="application/json" id="asChannels">{{ channels|tojson }}</script>
+<script src="{{ url_for('static', filename='js/admin_slack.js') }}"></script>
+{% endblock %}
