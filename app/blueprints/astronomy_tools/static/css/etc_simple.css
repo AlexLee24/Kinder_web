@@ -1,8 +1,12 @@
 /* Exposure Time Calculator — Kinder's Simple mode and the Simple / Advanced switch.
    Kinder-only: CASTOR's etc.css stays a verbatim copy, so nothing here touches .castor-etc. */
 
+/* Room left under the panels; .sh-main's own bottom margin is cut to match below. */
+.etc-page { --etc-bottom-gap: 20px; }
 .etc-mode-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
-.etc-mode-hint { font-size: 0.84rem; }
+/* One line: on narrower windows the hint gives way (ellipsis) so the credits stay on the bar's row. */
+.etc-mode-hint { flex: 1 1 0; min-width: 0; font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 960px) { .etc-mode-hint { flex-basis: 100%; white-space: normal; } }
 [data-etc-mode-panel][hidden], .etc-mode-hint[hidden] { display: none !important; }
 .etc-advanced { margin-bottom: 16px; }
 
@@ -23,11 +27,15 @@
     font-size: 0.76rem;
     line-height: 1.45;
 }
-.etc-simple-go { width: 100%; min-height: 44px; justify-content: center; margin-top: 4px; }
+.etc-simple-when { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.etc-simple-note { display: block; margin: -6px 0 4px; }
+.etc-simple-note:empty { display: none; }
+.etc-simple-go { width: 100%; min-height: 44px; justify-content: center; }
+.etc-simple-actions { margin-top: 14px; }
 .etc-simple-go:disabled { cursor: wait; }
 
 /* ── Result ───────────────────────────────────────────────────────────── */
-.etc-simple-result { position: relative; min-height: 420px; scroll-margin-top: calc(var(--kw-nav-h) + 12px); }
+.etc-simple-result { position: relative; min-height: 420px; scroll-margin-top: calc(var(--kw-nav-h) + 12px); container-type: inline-size; }
 .etc-simple-empty {
     display: none;
     flex-direction: column;
@@ -87,6 +95,42 @@
 .etc-simple-table tr.is-rec td:first-child { box-shadow: inset 3px 0 0 var(--kw-accent); }
 .etc-simple-more { margin-top: 10px; }
 .etc-simple-foot { margin: 14px 0 0; color: var(--kw-text-muted); font-size: 0.76rem; line-height: 1.5; }
+
+/* A wide answer panel: the plan and tonight's conditions on the left, the other options beside them. */
+@container (min-width: 760px) {
+    .etc-simple-body.has-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 28px; align-items: start; }
+    .etc-simple-body.has-detail .etc-simple-hero { padding-top: 18px; }
+    .etc-simple-body.has-detail .kw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Fit the viewport (two columns) ─────────────────────────────────────
+   Form and answer share the height left under the mode bar, each scrolling inside, so a short
+   window never scrolls the page between the fields, the Calculate button and the answer.
+   The form is denser here, and Calculate stays pinned at the bottom of its card. */
+@media (min-width: 961px) {
+    .etc-mode-bar { flex-wrap: nowrap; }
+    .etc-mode-bar .etc-github-note { flex: none; }
+    body.shell:has(.etc-page) .sh-main { margin-bottom: var(--etc-bottom-gap, 20px); }
+    .etc-simple {
+        --etc-fit-h: max(420px, calc(100dvh - var(--etc-top, 190px) - var(--etc-bottom-gap)));
+        height: var(--etc-fit-h);
+        grid-template-rows: minmax(0, 1fr);    /* an auto row would grow with the answer */
+        align-items: stretch;
+        margin-bottom: 0;
+    }
+    .etc-simple > .kw-tool-side { position: static; min-height: 0; }
+    .etc-simple :is(.etc-simple-form, .etc-simple-result) { box-sizing: border-box; }   /* .kw-panel is content-box */
+    .etc-simple-form { display: flex; flex-direction: column; min-height: 0; max-height: 100%; padding: 0; overflow: hidden; }
+    .etc-simple-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 4px; }
+    .etc-simple-actions { flex: none; margin: 0; padding: 10px 20px 14px; border-top: 1px solid var(--kw-hairline); }
+    .etc-simple-form .kw-panel-head h2 { margin-bottom: 8px; font-size: 0.92rem; }
+    .etc-simple-form .etc-simple-head { margin-top: 2px; padding-top: 10px; }
+    .etc-simple-form .kw-field { gap: 4px; margin-bottom: 8px; }
+    .etc-simple-form .kw-field :is(input, select) { min-height: 34px; }
+    .etc-simple-result { min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+    .etc-simple-empty { min-height: 100%; }
+    .etc-advanced { margin-bottom: 0; }
+}
 
 @media (max-width: 960px) {
     .etc-simple-result { min-height: 0; }

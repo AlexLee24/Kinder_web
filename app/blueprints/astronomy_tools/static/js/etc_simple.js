@@ -21,6 +21,20 @@
     function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ } }
     function recall(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
 
+    // ── Fit the viewport ────────────────────────────────────────────────────
+    // Both modes size their panels to the height left under the mode bar (--etc-top,
+    // read by etc_simple.css and the page's CASTOR overrides). The bar wraps on narrow
+    // windows, so where the panels start is measured rather than assumed.
+    var page = document.querySelector('.etc-page');
+
+    function measureTop() {
+        var panel = document.querySelector('[data-etc-mode-panel]:not([hidden])');
+        if (!page || !panel) { return; }
+        page.style.setProperty('--etc-top', Math.round(panel.getBoundingClientRect().top + window.scrollY) + 'px');
+    }
+    window.addEventListener('resize', measureTop);
+    window.addEventListener('load', measureTop);
+
     // ── Mode switch ─────────────────────────────────────────────────────────
     var tabs = document.querySelectorAll('[data-etc-mode]');
 
@@ -36,6 +50,7 @@
         document.querySelectorAll('[data-etc-mode-hint]').forEach(function (hint) {
             hint.hidden = hint.getAttribute('data-etc-mode-hint') !== mode;
         });
+        measureTop();
         // Plotly sizes its chart from the container, which had no width while hidden.
         if (mode === 'advanced') { window.dispatchEvent(new Event('resize')); }
         store(MODE_KEY, mode);
@@ -253,11 +268,16 @@
             }).join('') + '</div>';
         }
         html += conditionsHtml(data);
-        if (data.rows && data.rows.length) { html += tableHtml(data); }
+        // Wide panels lay the plan and the other options side by side (etc_simple.css).
+        var detail = data.rows && data.rows.length;
+        html = '<div class="etc-simple-main">' + html + '</div><div class="etc-simple-detail">' +
+            (detail ? tableHtml(data) : '');
         html += '<p class="etc-simple-foot">' + esc(setup) + ', seeing ' + c.fwhm_arcsec + '″. Total is integration only; the suggestion assumes about ' + data.readout_overhead_s + ' s of readout per frame (not measured), and slewing is extra. ' +
-            'Switch to <b>Advanced</b> for the full noise budget and how it changes over the night.</p>';
+            'Switch to <b>Advanced</b> for the full noise budget and how it changes over the night.</p></div>';
 
         body.innerHTML = html;
+        body.classList.toggle('has-detail', !!detail);
+        result.scrollTop = 0;
         var more = el('qs-more');
         if (more) {
             more.addEventListener('click', function () {
@@ -268,6 +288,7 @@
     }
 
     function renderError(message) {
+        body.classList.remove('has-detail');
         body.innerHTML = '<div class="etc-simple-alerts"><div class="etc-simple-alert is-error">' + esc(message) + '</div></div>';
     }
 
