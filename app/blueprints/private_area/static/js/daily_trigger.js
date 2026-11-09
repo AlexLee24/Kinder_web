@@ -2869,10 +2869,6 @@ function _buildScriptPayloadTarget(t) {
 }
 
 async function generateTriggerScriptMessage() {
-    if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
-        setTriggerSendStatus(_LOT_CLOSED_MSG, 'error');
-        return;
-    }
     const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
     const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
     if (done < checkboxes.length) {
@@ -3051,9 +3047,19 @@ const _APP_DEBUG = (document.querySelector('meta[name="x-app-debug"]') || {}).co
 const _SLACK_CHANNEL_LABEL = _APP_DEBUG ? 'Test' : 'Control Room';
 // Tonight's Lulin schedule closes LOT to triggers (UVEX / LISA / TRIPOL2 / an E program
 // that is not a LATTE run; lab_calendar.closes_lot).
-// The server refuses LOT sends too; this only says so before anyone builds a LOT script.
+// LOT can still be sent, but only after three confirmations: the server refuses a LOT send
+// without lot_closed_confirmed >= 3 (daily_trigger.lot_closed_response).
 const _LOT_CLOSED = (document.querySelector('meta[name="x-lot-closed"]') || {}).content || '';
-const _LOT_CLOSED_MSG = _LOT_CLOSED ? `No LOT trigger tonight (Lulin schedule: ${_LOT_CLOSED}). Send the SLT script only.` : '';
+const _LOT_CLOSED_MSG = _LOT_CLOSED ? `No LOT trigger tonight (Lulin schedule: ${_LOT_CLOSED}). Send the SLT script only; sending LOT asks you to confirm three times.` : '';
+
+function _confirmLotClosedSend(what) {
+    const steps = [
+        `LOT is closed tonight (Lulin schedule: ${_LOT_CLOSED}), so LOT cannot observe our targets.\n\nSend ${what} to LOT anyway? (1 of 3)`,
+        `Are you sure? This posts a LOT trigger to the ${_SLACK_CHANNEL_LABEL} Slack channel on a night LOT is closed. (2 of 3)`,
+        'Last check: send the LOT trigger tonight anyway? (3 of 3)',
+    ];
+    return steps.every(text => window.confirm(text)) ? steps.length : 0;
+}
 // Not on Trigger duty this week (and not an admin): the whole trigger is the duty's; single targets stay open.
 const _DUTY_LOCK = (document.querySelector('meta[name="x-duty-lock"]') || {}).content || '';
 const _DUTY_LOCK_MSG = _DUTY_LOCK ? `Only tonight's Trigger duty (${_DUTY_LOCK}) or an admin can send the trigger. You can still trigger a single target (Trigger this target, on its row).` : '';
@@ -3069,10 +3075,6 @@ function startSendTriggerFlow() {
         setTriggerSendStatus(_DUTY_LOCK_MSG, 'error');
         return;
     }
-    if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
-        setTriggerSendStatus(_LOT_CLOSED_MSG, 'error');
-        return;
-    }
     if (!lastGeneratedScriptBody.trim()) {
         setTriggerSendStatus('Generate a script first before sending.', 'error');
         return;
@@ -3086,7 +3088,17 @@ function startSendTriggerFlow() {
     }
 
     const sendScopeLabel = scriptProgram ? `${scriptTelescope} (${scriptProgram})` : scriptTelescope;
+    let lotClosedConfirmed = 0;
+    if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
+        const n = lastGeneratedTargets.length;
+        lotClosedConfirmed = _confirmLotClosedSend(`the ${sendScopeLabel} trigger (${n} target${n === 1 ? '' : 's'})`);
+        if (!lotClosedConfirmed) {
+            setTriggerSendStatus('Not sent. ' + _LOT_CLOSED_MSG, 'error');
+            return;
+        }
+    }
     _sendFlowState = {
+        lotClosedConfirmed: lotClosedConfirmed,
         telescope: scriptTelescope,
         program: scriptProgram,
         greeting: lastGeneratedGreeting,
@@ -3167,7 +3179,8 @@ async function _finalizeSendTrigger() {
                 program: state.program || '',
                 greeting: state.greeting,
                 script: state.scriptBody,
-                targets: state.targets
+                targets: state.targets,
+                lot_closed_confirmed: state.lotClosedConfirmed || 0
             })
         });
         const data = await resp.json();
@@ -3268,10 +3281,6 @@ async function loadSentStatus() {
 let _singleTriggerState = null;
 
 async function startSingleTargetTriggerFlow(targetData, targetId) {
-    if (targetData.telescope === 'LOT' && _LOT_CLOSED) {
-        alert(_LOT_CLOSED_MSG);
-        return;
-    }
     const statusEl = document.getElementById('single-trigger-status');
     const modal = document.getElementById('singleTriggerConfirmModal');
     document.getElementById('single-trigger-target-name').textContent = targetData.name || 'Target';
@@ -3360,6 +3369,14 @@ async function confirmSingleTriggerSend() {
     const state = _singleTriggerState;
     const statusEl = document.getElementById('single-trigger-status');
     const sendBtn = document.getElementById('single-trigger-send-btn');
+    let lotClosedConfirmed = 0;
+    if (state.telescope === 'LOT' && _LOT_CLOSED) {
+        lotClosedConfirmed = _confirmLotClosedSend(`${(state.targets[0] || {}).name || 'this target'}`);
+        if (!lotClosedConfirmed) {
+            if (statusEl) { statusEl.textContent = 'Not sent. ' + _LOT_CLOSED_MSG; statusEl.className = 'pa-trigger-send-status error'; }
+            return;
+        }
+    }
     if (sendBtn) sendBtn.disabled = true;
     if (statusEl) { statusEl.textContent = 'Sending to Slack...'; statusEl.className = 'pa-trigger-send-status pending'; }
 
@@ -3372,7 +3389,8 @@ async function confirmSingleTriggerSend() {
                 greeting: state.greeting,
                 script: state.scriptBody,
                 targets: state.targets,
-                mark_sent: false
+                mark_sent: false,
+                lot_closed_confirmed: lotClosedConfirmed
             })
         });
         const data = await resp.json();

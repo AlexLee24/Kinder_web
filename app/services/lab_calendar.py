@@ -25,7 +25,7 @@ runs every minute (job ``lab_calendar_reminders``); subscribed calendar apps get
 
 LOT closed nights: a Lulin event whose title names UVEX, LISA or TRIPOL2, or whose program code starts with E
 (``E05 -- …``, not ``R05 -- …``) unless that E program is a LATTE run (``E01 - LATTE``), means LOT takes no triggers
-that night (``lot_closed()``). Daily Trigger and Direct Trigger refuse LOT sends then, and the sunset reminder says to
+that night (``lot_closed()``). Daily Trigger and Direct Trigger refuse LOT sends then unless the sender confirms three times, and the sunset reminder says to
 send SLT only.
 """
 import calendar

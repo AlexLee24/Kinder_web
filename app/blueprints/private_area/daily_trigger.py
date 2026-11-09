@@ -121,7 +121,7 @@ def daily_trigger_send_message():
         logger.warning('daily_trigger_send_message: rejected — invalid telescope %r (by=%s)', telescope, requester)
         return jsonify({'success': False, 'error': 'Invalid telescope'}), 400
     if telescope == 'LOT':
-        denied = lot_closed_response(requester)
+        denied = lot_closed_response(requester, data.get('lot_closed_confirmed'))
         if denied:
             return denied
     # A single target (mark_sent False, one target) is open to everyone; the whole trigger is the duty's.
@@ -175,16 +175,28 @@ def daily_trigger_send_message():
 
     return jsonify({'success': True, 'status': status, 'log_warnings': log_warnings})
 
-def lot_closed_response(requester):
-    """409 when tonight's Lulin schedule closes LOT to triggers (Lab › Calendar, lab_calendar.lot_closed), else None."""
+LOT_CLOSED_CONFIRMS = 3   # times the page asks before a LOT send on a night the Lulin schedule closes LOT
+
+
+def lot_closed_response(requester, confirmed=None):
+    """409 when tonight's Lulin schedule closes LOT to triggers (Lab › Calendar, lab_calendar.lot_closed) and the
+    sender has not confirmed it LOT_CLOSED_CONFIRMS times on the page (``confirmed`` = that count), else None."""
     from app.services.lab_calendar import lot_closed_tonight
     closed = lot_closed_tonight()
     if not closed:
         return None
-    logger.warning('LOT send refused — LOT closed tonight (%s) by=%s', '; '.join(closed), requester)
-    return jsonify({'success': False, 'lot_closed': closed,
+    try:
+        confirmed = int(confirmed or 0)
+    except (TypeError, ValueError):
+        confirmed = 0
+    if confirmed >= LOT_CLOSED_CONFIRMS:
+        logger.warning('LOT send on a closed night (%s), confirmed %d times by=%s', '; '.join(closed), confirmed,
+                       requester)
+        return None
+    logger.warning('LOT send refused — LOT closed tonight (%s), not confirmed by=%s', '; '.join(closed), requester)
+    return jsonify({'success': False, 'lot_closed': closed, 'confirms_needed': LOT_CLOSED_CONFIRMS,
                     'error': f"LOT is closed to triggers tonight (Lulin schedule: {'; '.join(closed)}). "
-                             'Send the SLT script only.'}), 409
+                             f'Confirm {LOT_CLOSED_CONFIRMS} times to send LOT anyway.'}), 409
 
 def _render_trigger_visibility_image(telescope, targets):
     """Fresh visibility JPG for the targets (trigger_send.render_trigger_plot), in a private temp file the caller

@@ -8,10 +8,19 @@
     const FILTERS = (page.dataset.filters || 'up,gp,rp,ip,zp').split(',');
     const TEL_KEY = 'kinder.directTrigger.telescope';
     const CONFIRM_MS = 5000;
-    // tonight's Lulin schedule closes LOT to triggers (lab_calendar.lot_closed); the server refuses LOT sends too
+    // tonight's Lulin schedule closes LOT to triggers (lab_calendar.lot_closed): LOT can still be sent, but only
+    // after three confirmations (the server refuses a LOT send without lot_closed_confirmed >= 3)
     const LOT_CLOSED = page.dataset.lotClosed || '';
-    const LOT_CLOSED_MSG = `No LOT trigger tonight (Lulin schedule: ${LOT_CLOSED}). Send SLT only.`;
+    const LOT_CLOSED_MSG = `No LOT trigger tonight (Lulin schedule: ${LOT_CLOSED}). Send SLT only; sending LOT asks you to confirm three times.`;
     const lotShut = () => state.tel === 'LOT' && !!LOT_CLOSED;
+    function confirmLotClosed(n) {
+        const steps = [
+            `LOT is closed tonight (Lulin schedule: ${LOT_CLOSED}), so LOT cannot observe our targets.\n\nSend ${n} target${n === 1 ? '' : 's'} to LOT anyway? (1 of 3)`,
+            'Are you sure? This posts a LOT trigger to Slack on a night LOT is closed. (2 of 3)',
+            'Last check: send the LOT trigger tonight anyway? (3 of 3)',
+        ];
+        return steps.every(text => window.confirm(text)) ? steps.length : 0;
+    }
 
     const $ = id => document.getElementById(id);
     const state = { tel: 'SLT', mode: 'auto', lists: { SLT: [], LOT: [] }, scriptFor: null, loaded: false };
@@ -299,10 +308,10 @@
             $('dtScript').value = data.greeting + data.script;
             state.scriptFor = state.tel;
             $('dtCopy').disabled = false;
+            $('dtSend').disabled = false;
             if (lotShut()) {
                 setMsg($('dtSendMsg'), LOT_CLOSED_MSG, 'error');
             } else {
-                $('dtSend').disabled = false;
                 setMsg($('dtSendMsg'), `${data.count} target${data.count === 1 ? '' : 's'} ready. Press Send twice to confirm.`);
             }
         } catch (err) {
@@ -324,18 +333,23 @@
 
     armable($('dtSend'), () => `Confirm: send ${(state.lists[state.tel] || []).length} to ${state.tel}`, async () => {
         if (state.scriptFor !== state.tel) { setMsg($('dtSendMsg'), 'Build the script first.', 'error'); return; }
+        const body = { telescope: state.tel };
+        if (lotShut()) {
+            body.lot_closed_confirmed = confirmLotClosed((state.lists[state.tel] || []).length);
+            if (!body.lot_closed_confirmed) { setMsg($('dtSendMsg'), 'Not sent. ' + LOT_CLOSED_MSG, 'error'); return; }
+        }
         const btn = $('dtSend');
         btn.disabled = true;
         setMsg($('dtSendMsg'), `Sending to ${state.tel}…`);
         try {
-            const data = await postJson('/api/direct_trigger/send', { telescope: state.tel });
+            const data = await postJson('/api/direct_trigger/send', body);
             const warn = (data.log_warnings || []).length ? ` Observation Log: ${data.log_warnings.join('; ')}` : '';
             setMsg($('dtSendMsg'), `Sent ${data.sent} target${data.sent === 1 ? '' : 's'} to ${state.tel}.${warn}`, warn ? 'error' : 'ok');
             await loadLists();
         } catch (err) {
             setMsg($('dtSendMsg'), err.message, 'error');
         } finally {
-            btn.disabled = state.scriptFor !== state.tel || lotShut();
+            btn.disabled = state.scriptFor !== state.tel;
         }
     });
 
