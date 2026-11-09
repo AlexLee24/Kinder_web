@@ -15,7 +15,7 @@
 {% endblock %}
 
 {% block content %}
-    <div class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}" data-lot-closed="{{ lot_closed|join('; ') }}" data-duty-lock="{{ duty_lock|join(', ') }}">
+    <div class="kw-page dt-page" id="dtPage" data-filters="{{ filters|join(',') }}" data-lot-closed="{{ lot_closed|join('; ') }}">
         {% include '_lot_closed.html' %}
         <p class="kw-lead">Change tonight's plan without touching the Daily Trigger list. Add targets, check the script, then send it to the Control Room.</p>
 
