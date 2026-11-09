@@ -12,9 +12,6 @@
     const LOT_CLOSED = page.dataset.lotClosed || '';
     const LOT_CLOSED_MSG = `No LOT trigger tonight (Lulin schedule: ${LOT_CLOSED}). Send SLT only.`;
     const lotShut = () => state.tel === 'LOT' && !!LOT_CLOSED;
-    // Not on Trigger duty this week (and not an admin): build and copy, but sending is the duty's.
-    const DUTY_LOCK = page.dataset.dutyLock || '';
-    const DUTY_LOCK_MSG = `Only tonight's Trigger duty (${DUTY_LOCK}) or an admin can send. Single targets go from Daily Trigger.`;
 
     const $ = id => document.getElementById(id);
     const state = { tel: 'SLT', mode: 'auto', lists: { SLT: [], LOT: [] }, scriptFor: null, loaded: false };
@@ -289,7 +286,7 @@
         $('dtScript').value = '';
         $('dtSend').disabled = true;
         $('dtCopy').disabled = true;
-        const why = DUTY_LOCK ? DUTY_LOCK_MSG : (lotShut() ? LOT_CLOSED_MSG : '');
+        const why = lotShut() ? LOT_CLOSED_MSG : '';
         setMsg($('dtSendMsg'), why, why ? 'error' : undefined);
     }
 
@@ -302,9 +299,7 @@
             $('dtScript').value = data.greeting + data.script;
             state.scriptFor = state.tel;
             $('dtCopy').disabled = false;
-            if (DUTY_LOCK) {
-                setMsg($('dtSendMsg'), DUTY_LOCK_MSG, 'error');
-            } else if (lotShut()) {
+            if (lotShut()) {
                 setMsg($('dtSendMsg'), LOT_CLOSED_MSG, 'error');
             } else {
                 $('dtSend').disabled = false;

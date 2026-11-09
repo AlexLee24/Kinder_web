@@ -74,15 +74,13 @@ def test_nobody_on_duty_leaves_it_open(client_factory, sent):
     assert r.get_json()['success'] is True
 
 
-def test_direct_trigger_is_the_duty_s_too(client_factory, sent):
+def test_direct_trigger_is_open_to_everyone(client_factory, sent):
     with _on_duty('someone@kinder.test'):
         r = client_factory('member').post('/api/direct_trigger/send', json={'telescope': 'SLT'})
-    assert r.status_code == 403 and sent == []
+    assert r.status_code != 403
 
 
-@pytest.mark.parametrize('path, marker', [('/daily_trigger', 'name="x-duty-lock" content="someone"'),
-                                          ('/direct_trigger', 'data-duty-lock="someone"')])
-def test_pages_say_who_is_on_duty(client_factory, sent, path, marker):
+def test_daily_trigger_page_says_who_is_on_duty(client_factory, sent):
     with _on_duty('someone@kinder.test'):
-        r = client_factory('member').get(path)
-    assert r.status_code == 200 and marker in r.get_data(as_text=True)
+        r = client_factory('member').get('/daily_trigger')
+    assert r.status_code == 200 and 'name="x-duty-lock" content="someone"' in r.get_data(as_text=True)
