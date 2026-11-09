@@ -3054,10 +3054,21 @@ const _SLACK_CHANNEL_LABEL = _APP_DEBUG ? 'Test' : 'Control Room';
 // The server refuses LOT sends too; this only says so before anyone builds a LOT script.
 const _LOT_CLOSED = (document.querySelector('meta[name="x-lot-closed"]') || {}).content || '';
 const _LOT_CLOSED_MSG = _LOT_CLOSED ? `No LOT trigger tonight (Lulin schedule: ${_LOT_CLOSED}). Send the SLT script only.` : '';
+// Not on Trigger duty this week (and not an admin): the whole trigger is the duty's; single targets stay open.
+const _DUTY_LOCK = (document.querySelector('meta[name="x-duty-lock"]') || {}).content || '';
+const _DUTY_LOCK_MSG = _DUTY_LOCK ? `Only tonight's Trigger duty (${_DUTY_LOCK}) or an admin can send the trigger. You can still trigger a single target (Trigger this target, on its row).` : '';
+if (_DUTY_LOCK) {
+    const sendBtn = document.getElementById('btn-send-script');
+    if (sendBtn) { sendBtn.classList.add('is-duty-locked'); sendBtn.title = _DUTY_LOCK_MSG; }
+}
 
 let _sendFlowState = null;
 
 function startSendTriggerFlow() {
+    if (_DUTY_LOCK) {
+        setTriggerSendStatus(_DUTY_LOCK_MSG, 'error');
+        return;
+    }
     if (scriptTelescope === 'LOT' && _LOT_CLOSED) {
         setTriggerSendStatus(_LOT_CLOSED_MSG, 'error');
         return;
