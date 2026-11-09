@@ -32,22 +32,52 @@ def daily_trigger():
 
     user_display_name = session['user'].get('name') or user_email
 
-    # Tonight's Trigger duty from Lab › Calendar (the trigger night turns over at 08:00)
-    duty = []
-    try:
-        from datetime import date as _date
-
-        from app.services import lab_calendar
-        from app.services.planning.trigger_send import _trigger_day_key
-        duty = lab_calendar.duty_on(_date.fromisoformat(_trigger_day_key()))
-    except Exception:
-        logger.exception('daily_trigger: Trigger duty not read')
+    duty = tonight_duty()
     from app.services.lab_calendar import lot_closed_tonight
 
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
                             user_display_name=user_display_name, user_email=user_email,
                             app_debug=config.DEBUG, duty=duty, lot_closed=lot_closed_tonight(),
-                            on_duty=any(d['email'].lower() == user_email.lower() for d in duty))
+                            on_duty=any(d['email'].lower() == user_email.lower() for d in duty),
+                            duty_lock=duty_lock(duty))
+
+
+def tonight_duty():
+    """Tonight's Trigger duty from Lab › Calendar (the trigger night turns over at 08:00): [{'email', 'name', …}]."""
+    try:
+        from datetime import date as _date
+
+        from app.services import lab_calendar
+        from app.services.planning.trigger_send import _trigger_day_key
+        return lab_calendar.duty_on(_date.fromisoformat(_trigger_day_key()))
+    except Exception:
+        logger.exception('daily_trigger: Trigger duty not read')
+        return []
+
+
+def duty_lock(duty=None):
+    """Names of tonight's Trigger duty when the signed-in user may not send a whole trigger, else [].
+    Only the person on duty this week (or an admin) sends the Daily / Direct Trigger; everyone else can still
+    send a single target. With nobody on duty there is no lock, so a night is never left without a trigger."""
+    user = session.get('user') or {}
+    if user.get('is_admin'):
+        return []
+    duty = tonight_duty() if duty is None else duty
+    me = (user.get('email') or '').lower()
+    if not duty or any(d['email'].lower() == me for d in duty):
+        return []
+    return [d['name'] for d in duty]
+
+
+def duty_locked_response(requester):
+    """403 when the requester is not tonight's Trigger duty (duty_lock), else None."""
+    names = duty_lock()
+    if not names:
+        return None
+    logger.warning('Trigger send refused — %s is not on Trigger duty tonight (%s)', requester, ', '.join(names))
+    return jsonify({'success': False, 'duty_lock': names,
+                    'error': f"Only tonight's Trigger duty ({', '.join(names)}) or an admin can send the trigger. "
+                             'You can still trigger a single target (Trigger this target, on its row).'}), 403
 
 @private_area_bp.route('/daily_trigger/send_status', methods=['GET'])
 def daily_trigger_send_status():
@@ -92,6 +122,11 @@ def daily_trigger_send_message():
         return jsonify({'success': False, 'error': 'Invalid telescope'}), 400
     if telescope == 'LOT':
         denied = lot_closed_response(requester)
+        if denied:
+            return denied
+    # A single target (mark_sent False, one target) is open to everyone; the whole trigger is the duty's.
+    if should_mark_sent or len(targets) != 1:
+        denied = duty_locked_response(requester)
         if denied:
             return denied
     if not script.strip():

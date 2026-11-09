@@ -748,7 +748,8 @@ body::before {
     filter: brightness(1.1);
 }
 
-.pa-btn-send-trigger:disabled {
+.pa-btn-send-trigger:disabled,
+.pa-btn-send-trigger.is-duty-locked {   /* not on Trigger duty: still clickable, to say why */
     opacity: 0.5;
     cursor: not-allowed;
     filter: none;

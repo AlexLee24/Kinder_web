@@ -10,6 +10,7 @@
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
     <meta name="x-lot-closed" content="{{ lot_closed|join('; ') }}">
+    <meta name="x-duty-lock" content="{{ duty_lock|join(', ') }}">
     <meta name="x-app-debug" content="{{ 'true' if app_debug else 'false' }}">
     <style>
         /* Targets switched off: one compact, dimmed line (name + Off, coordinates on one line, notes cut to one
