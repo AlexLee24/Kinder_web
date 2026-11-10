@@ -8,6 +8,7 @@ from app.db.obs import (
     _parse_dec_deg,
     _parse_ra_deg,
     delete_observation_target,
+    delete_observation_targets,
     get_observation_targets,
     save_observation_target,
     update_observation_target,
@@ -92,6 +93,24 @@ def api_observation_target_delete(target_id):
         return jsonify({'success': True})
     else:
         return jsonify({'error': 'Database error'}), 500
+
+@private_area_bp.route('/api/targets/bulk_delete', methods=['POST'])
+@login_required
+def api_observation_targets_bulk_delete():
+    if not (session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True)
+    raw = data.get('ids') if isinstance(data, dict) else None
+    if not isinstance(raw, list) or not raw or len(raw) > 500:
+        return jsonify({'error': 'ids must be a non-empty list'}), 400
+    try:
+        ids = [int(i) for i in raw]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'ids must be integers'}), 400
+    n = delete_observation_targets(ids)
+    if n < 0:
+        return jsonify({'error': 'Database error'}), 500
+    return jsonify({'success': True, 'deleted': n})
 
 @private_area_bp.route('/api/targets/<int:target_id>/toggle', methods=['PUT'])
 @login_required

@@ -711,6 +711,10 @@ function applySort(targets, column, dir) {
         if (column === 'priority') {
             valA = priorityValues[a.priority] || 0;
             valB = priorityValues[b.priority] || 0;
+        } else if (column === 'last_observed') {
+            // never observed sorts as the oldest
+            valA = a.last_observed || '';
+            valB = b.last_observed || '';
         } else if (column === 'total_exp') {
             valA = 0;
             if (a.filters) {
@@ -788,6 +792,8 @@ async function loadTargets() {
         const data = await response.json();
         if (data.success) {
             allTargetsCache = data.targets;
+            const liveIds = new Set(allTargetsCache.map(function (t) { return t.id; }));
+            Array.from(selectedTargetIds).forEach(function (i) { if (!liveIds.has(i)) selectedTargetIds.delete(i); });
             _rebuildSentChips();
 
             // Ensure first programmatic sort triggers 'desc' order
@@ -983,6 +989,77 @@ function renderObjectNameLink(name, label) {
     return '<a href="/object/' + encodeURIComponent(routeName) + '" target="_blank" rel="noopener noreferrer" style="vertical-align:middle; color: inherit; text-decoration: none;">' + escapeHtml(displayLabel) + '</a>';
 }
 
+// ===================== Selection / bulk delete / last observed =====================
+const selectedTargetIds = new Set();
+
+function toggleNoteOpen(td) { td.classList.toggle('pa-note-open'); }
+
+function formatLastObserved(dateStr) {
+    if (!dateStr) return '<span style="color:var(--kw-text-muted)">never</span>';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return escapeHtml(dateStr);
+    const days = Math.round((new Date().setHours(0, 0, 0, 0) - d.getTime()) / 86400000);
+    const ago = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days + ' d ago';
+    return escapeHtml(dateStr) + '<small>' + ago + '</small>';
+}
+
+function updateBulkDeleteUi() {
+    const btn = document.getElementById('bulkDeleteBtn');
+    if (!btn) return;
+    const n = selectedTargetIds.size;
+    btn.style.display = n ? '' : 'none';
+    const label = document.getElementById('bulkDeleteLabel');
+    if (label) label.textContent = 'Delete selected (' + n + ')';
+    ['SLT', 'LOT'].forEach(function (tel) {
+        const ids = allTargetsCache.filter(function (t) { return t.telescope === tel; }).map(function (t) { return t.id; });
+        const box = document.querySelector('#' + tel.toLowerCase() + '-head .pa-sel-box');
+        if (box) {
+            const k = ids.filter(function (i) { return selectedTargetIds.has(i); }).length;
+            box.checked = ids.length > 0 && k === ids.length;
+            box.indeterminate = k > 0 && k < ids.length;
+        }
+    });
+}
+
+function toggleTargetSelected(id, on) {
+    if (on) selectedTargetIds.add(id); else selectedTargetIds.delete(id);
+    updateBulkDeleteUi();
+}
+
+function toggleSelectAllTargets(telescope, on) {
+    allTargetsCache.filter(function (t) { return t.telescope === telescope; }).forEach(function (t) {
+        if (on) selectedTargetIds.add(t.id); else selectedTargetIds.delete(t.id);
+    });
+    document.querySelectorAll('#' + telescope.toLowerCase() + '-list .pa-sel-box').forEach(function (b) { b.checked = on; });
+    updateBulkDeleteUi();
+}
+
+async function bulkDeleteTargets() {
+    const ids = Array.from(selectedTargetIds);
+    if (!ids.length) return;
+    const names = allTargetsCache.filter(function (t) { return selectedTargetIds.has(t.id); })
+        .map(function (t) { return t.name + ' (' + t.telescope + ')'; });
+    const preview = names.slice(0, 15).join(', ') + (names.length > 15 ? ', … +' + (names.length - 15) + ' more' : '');
+    if (!confirm('Delete ' + ids.length + ' target(s)? This cannot be undone.\n\n' + preview)) return;
+    try {
+        const response = await _apiFetch('/api/targets/bulk_delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({ ids: ids })
+        });
+        const data = await response.json();
+        if (data.success) {
+            selectedTargetIds.clear();
+            loadTargets();
+        } else {
+            alert('Failed to delete targets: ' + (data.error || 'unknown error'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error deleting targets');
+    }
+}
+
 function renderTable(telescope, targets) {
     const tableBody = document.getElementById(telescope.toLowerCase() + '-list');
     if (!tableBody) return;
@@ -991,7 +1068,7 @@ function renderTable(telescope, targets) {
 
     if (targets.length === 0) {
         const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="8" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
+        emptyRow.innerHTML = '<td colspan="9" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
         tableBody.appendChild(emptyRow);
         return;
     }
@@ -1072,7 +1149,8 @@ function renderTable(telescope, targets) {
 
         tr.innerHTML = '<td class="pa-td-name" style="vertical-align: middle;">' +
             '<div class="pa-td-name-content" style="display:flex; flex-direction:column; align-items:flex-start; justify-content:center;">' +
-                '<div style="display:flex; align-items:center; gap:8px;">' + targetNameHtml + ' ' + programBadge +
+                '<div style="display:flex; align-items:center; gap:8px;">' +
+                    '<input type="checkbox" class="pa-sel-box" data-tid="' + t.id + '" title="Select for bulk delete" onchange="toggleTargetSelected(' + t.id + ', this.checked)"' + (selectedTargetIds.has(t.id) ? ' checked' : '') + '>' + targetNameHtml + ' ' + programBadge +
                     (isOff ? '<span class="pa-off-chip" title="Switched off: not in the API target list">Off</span>' : '') + '</div>' +
                 '<div class="pa-name-mag" style="margin-top: 4px;">' + magDisplay + '</div>' +
                 '<div class="pa-astro-row" id="astro-row-' + t.id + '">' +
@@ -1087,8 +1165,9 @@ function renderTable(telescope, targets) {
             '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</td>' +
             '<td class="pa-td-filter-exp">' + filterExpHTML + '</td>' +
             '<td class="pa-td-total-exp">' + totalExp + ' s</td>' +
-            '<td class="pa-td-note">' + escapeHtml(t.plan || '-') + '</td>' +
-            '<td class="pa-td-note-gl">' + escapeHtml(t.note_gl || '-') + '</td>' +
+            '<td class="pa-td-last-obs">' + formatLastObserved(t.last_observed) + '</td>' +
+            '<td class="pa-td-note" title="' + escapeHtml(t.plan || '') + '" onclick="toggleNoteOpen(this)"><span class="pa-note-text">' + escapeHtml(t.plan || '-') + '</span></td>' +
+            '<td class="pa-td-note-gl" title="' + escapeHtml(t.note_gl || '') + '" onclick="toggleNoteOpen(this)"><span class="pa-note-text">' + escapeHtml(t.note_gl || '-') + '</span></td>' +
             '<td class="pa-td-actions">' +
                 '<div class="pa-action-cell">' +
                     '<div class="pa-action-row-top">' +
@@ -1118,6 +1197,7 @@ function renderTable(telescope, targets) {
             '</td>';
         tableBody.appendChild(tr);
     });
+    updateBulkDeleteUi();
 }
 
 // ===================== Edit Target =====================

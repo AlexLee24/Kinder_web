@@ -40,8 +40,9 @@ def test_route_count_is_stable(app):
     # unsubscribe, test and Admin › Push: page, preview, send, device test, person test, device delete); 372 with
     # Trigger duty volunteering (/api/lab_calendar/volunteer); 377 with the bell (/api/notifications, count, read,
     # delete and /notifications/<id>); 378 with Admin › Bots › NAS backup (its Moves overview); 380 with DETECT's
-    # checked marks (/api/detect/check, /api/detect/checked_state); 382 with Admin › Slack (page + send).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 382
+    # checked marks (/api/detect/check, /api/detect/checked_state); 382 with Admin › Slack (page + send);
+    # 383 with bulk target delete (/api/targets/bulk_delete).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 383
 
 
 def test_duplicate_rules_keep_precedence(app):
