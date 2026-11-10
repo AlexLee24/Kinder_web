@@ -37,8 +37,22 @@
         .dt-page .pa-sel-box { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--kw-accent); cursor: pointer; }
         .dt-page .pa-sel-all { display: inline-flex; }
         .dt-page .pa-bulk-delete { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); }
-        .dt-page .pa-td-last-obs { font-family: monospace; font-size: 0.82rem; color: var(--kw-text-secondary); white-space: nowrap; }
-        .dt-page .pa-td-last-obs small { display: block; color: var(--kw-text-muted); font-family: inherit; font-size: 0.72rem; }
+        /* Column widths for the nine columns (private_area.css only sizes the old eight, which left
+           Last Observed at 0 px under table-layout: fixed). Sum = 100%. */
+        .dt-page .pa-target-table th.pa-col-target    { width: 15%; }
+        .dt-page .pa-target-table th.pa-col-ra-dec    { width: 10%; }
+        .dt-page .pa-target-table th.pa-col-priority  { width: 7%; }
+        .dt-page .pa-target-table th.pa-col-filter    { width: 11%; }
+        .dt-page .pa-target-table th.pa-col-total-exp { width: 7%; }
+        .dt-page .pa-target-table th.pa-col-last-obs  { width: 9%; }
+        .dt-page .pa-target-table th.col-note         { width: 14%; }
+        .dt-page .pa-target-table th.pa-col-actions   { width: 13%; }
+        .dt-page .pa-target-table th { vertical-align: bottom; white-space: normal; }
+        .dt-page .pa-td-last-obs { font-size: 0.82rem; color: var(--kw-text-secondary); line-height: 1.35; }
+        .dt-page .pa-last-obs-val { display: inline-block; font-family: var(--kw-font-mono, monospace); }
+        @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: right; } }
+        .dt-page .pa-td-last-obs small { display: block; margin-top: 2px; color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); font-size: 0.72rem; }
+        .dt-page .pa-td-last-obs .pa-never { color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); }
         .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; justify-content: center; gap: 6px; }
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action { font-size: 0; gap: 0; }   /* icon only; the title says what it does */
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action svg { width: 13px; height: 13px; }
@@ -546,7 +560,7 @@
                                     <th class="pa-col-ra-dec">RA / DEC</th>
                                     <th class="pa-col-priority pa-sortable" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></th>
                                     <th class="pa-col-filter">Filter / Exposure</th>
-                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. <span>↕</span></th>
                                     <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('SLT', 'last_observed')">Last Observed <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>
@@ -568,7 +582,7 @@
                                     <th class="pa-col-ra-dec">RA / DEC</th>
                                     <th class="pa-col-priority pa-sortable" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></th>
                                     <th class="pa-col-filter">Filter / Exposure</th>
-                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. <span>↕</span></th>
                                     <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('LOT', 'last_observed')">Last Observed <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>

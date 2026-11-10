@@ -995,12 +995,12 @@ const selectedTargetIds = new Set();
 function toggleNoteOpen(td) { td.classList.toggle('pa-note-open'); }
 
 function formatLastObserved(dateStr) {
-    if (!dateStr) return '<span style="color:var(--kw-text-muted)">never</span>';
+    if (!dateStr) return '<span class="pa-never">Never</span>';
     const d = new Date(dateStr + 'T00:00:00');
     if (isNaN(d)) return escapeHtml(dateStr);
     const days = Math.round((new Date().setHours(0, 0, 0, 0) - d.getTime()) / 86400000);
     const ago = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days + ' d ago';
-    return escapeHtml(dateStr) + '<small>' + ago + '</small>';
+    return '<span class="pa-last-obs-val">' + escapeHtml(dateStr) + '<small>' + ago + '</small></span>';
 }
 
 function updateBulkDeleteUi() {
