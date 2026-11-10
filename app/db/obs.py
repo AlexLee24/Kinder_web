@@ -122,6 +122,7 @@ _TARGET_SELECT = (
     "t.telescope, t.program, t.priority, t.plan_filter, t.plan_count, "
     "t.plan_time, t.repeat, t.plan, t.note, t.create_by, "
     "t.auto_exposure, "
+    "(SELECT MAX(l.date) FROM obs.logs l WHERE l.target_id = t.target_id AND l.observed) AS last_observed, "
     "u.email AS created_by_email "
     "FROM obs.targets t "
     "LEFT JOIN auth.users u ON t.create_by = u.usr_id"
@@ -138,6 +139,8 @@ def _target_to_dict(row) -> dict:
         for f, c, t in zip(filters, counts, times)
     ]
     d['created_by'] = d.pop('created_by_email', None)
+    lo = d.get('last_observed')
+    d['last_observed'] = lo.strftime('%Y-%m-%d') if hasattr(lo, 'strftime') else (str(lo) if lo else None)
     d['id'] = d.get('target_id')
     d['is_active'] = d.get('active', True)
     d['repeat_count'] = d.get('repeat', 0)
@@ -331,6 +334,23 @@ def delete_observation_target(target_id: int) -> bool:
     except Exception as e:
         logger.error("delete_observation_target %d: %s", target_id, e)
         return False
+
+
+def delete_observation_targets(target_ids: list[int]) -> int:
+    """Delete several targets at once; returns how many rows went."""
+    ids = [int(i) for i in target_ids]
+    if not ids:
+        return 0
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM obs.targets WHERE target_id = ANY(%s)", (ids,))
+            n = cur.rowcount
+            conn.commit()
+        return n
+    except Exception as e:
+        logger.error("delete_observation_targets %s: %s", ids, e)
+        return -1
 
 
 # ---------------------------------------------------------------------------

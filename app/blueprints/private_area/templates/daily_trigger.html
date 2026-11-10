@@ -30,13 +30,21 @@
         .dt-page .pa-filter-more { display: none; font-size: 0.72rem; color: var(--kw-text-muted); }
         .dt-page tr.pa-row-off .pa-filter-stack > :not(:first-child):not(.pa-filter-more) { display: none !important; }
         .dt-page tr.pa-row-off .pa-filter-more { display: block; }
-        .dt-page tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* off rows: notes wrap to two lines instead of one clipped line; a click opens the whole note */
+        .dt-page tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { min-width: 140px; cursor: pointer; }
+        .dt-page tr.pa-row-off .pa-note-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.8rem; line-height: 1.35; }
+        .dt-page tr.pa-row-off .pa-note-open .pa-note-text { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; }
+        .dt-page .pa-sel-box { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--kw-accent); cursor: pointer; }
+        .dt-page .pa-sel-all { display: inline-flex; }
+        .dt-page .pa-bulk-delete { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); }
+        .dt-page .pa-td-last-obs { font-family: monospace; font-size: 0.82rem; color: var(--kw-text-secondary); white-space: nowrap; }
+        .dt-page .pa-td-last-obs small { display: block; color: var(--kw-text-muted); font-family: inherit; font-size: 0.72rem; }
         .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; justify-content: center; gap: 6px; }
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action { font-size: 0; gap: 0; }   /* icon only; the title says what it does */
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action svg { width: 13px; height: 13px; }
         @media (max-width: 768px) {
             /* phone cards: an off target keeps Target, RA / Dec and Actions only */
-            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+7) { display: none; }
+            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+8) { display: none; }
             .dt-page .pa-target-table tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { max-width: none; }
         }
 
@@ -506,6 +514,10 @@
                         </div>
                         <h2 id="dtObsTitle">Observation Targets</h2>
                         <div class="pa-obs-actions">
+                            <button id="bulkDeleteBtn" onclick="bulkDeleteTargets()" class="kw-btn kw-btn-sm pa-bulk-delete" style="display: none;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                <span id="bulkDeleteLabel">Delete selected</span>
+                            </button>
                             <button id="updateMagBtn" onclick="updateTargetMags()" class="kw-btn kw-btn-sm">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                                 Update Mag
@@ -530,18 +542,19 @@
                         <table class="pa-target-table">
                             <thead id="slt-head">
                                 <tr>
-                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all SLT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('SLT', this.checked)"></label> Target</th>
                                     <th class="pa-col-ra-dec">RA / DEC</th>
                                     <th class="pa-col-priority pa-sortable" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></th>
                                     <th class="pa-col-filter">Filter / Exposure</th>
                                     <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('SLT', 'last_observed')">Last Observed <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>
                                     <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="slt-list">
-                                <tr><td colspan="8" class="pa-empty-row">No SLT targets added yet.</td></tr>
+                                <tr><td colspan="9" class="pa-empty-row">No SLT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -551,18 +564,19 @@
                         <table class="pa-target-table">
                             <thead id="lot-head">
                                 <tr>
-                                    <th class="pa-col-target">Target</th>
+                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all LOT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('LOT', this.checked)"></label> Target</th>
                                     <th class="pa-col-ra-dec">RA / DEC</th>
                                     <th class="pa-col-priority pa-sortable" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></th>
                                     <th class="pa-col-filter">Filter / Exposure</th>
                                     <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. (s) <span>↕</span></th>
+                                    <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('LOT', 'last_observed')">Last Observed <span>↕</span></th>
                                     <th class="col-note">Note</th>
                                     <th class="col-note">Note for GREATLab</th>
                                     <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lot-list">
-                                <tr><td colspan="8" class="pa-empty-row">No LOT targets added yet.</td></tr>
+                                <tr><td colspan="9" class="pa-empty-row">No LOT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
