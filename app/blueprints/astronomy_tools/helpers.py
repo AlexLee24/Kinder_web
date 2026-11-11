@@ -128,6 +128,17 @@ _API_DOCS = {
                        'observable_tonight, max_alt_deg, moon_sep_deg, script, script_sha256} or null',
             'example': '/api/v1/robot/alert',
         },
+        'GET /api/v1/robot/alert-run': {
+            'description': 'Like /api/v1/robot/alert, but the newest alert shows only while it can be taken right now '
+                           'at Lulin: astronomical night (Sun below -18°) and the target at least 30° up. Its script '
+                           '#COUNT is cut so the frames (#INTERVAL + 30 s each) end before the target sinks under 20° '
+                           'or 30 min after astronomical dawn, whichever is first. alert is null otherwise (reason says '
+                           'why). Run it only when its id is larger than the one you ran last. Rate limit: 60 req/min.',
+            'params': {},
+            'returns': 'alert{...same as /api/v1/robot/alert, script cut to fit, alt_now_deg, count, run_until, '
+                       'run_until_reason ("alt" | "dawn")} or null, reason',
+            'example': '/api/v1/robot/alert-run',
+        },
         'GET /api/visibility/image': {
             'description': 'Nightly visibility (altitude vs time) plot returned as JPEG. Rate limit: 1 req/15s.',
             'params': {
