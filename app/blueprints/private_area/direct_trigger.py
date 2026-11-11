@@ -264,11 +264,12 @@ def direct_trigger_send():
 
     from .daily_trigger import _log_triggered_targets, _render_trigger_visibility_image, lot_closed_response
 
-    tel = _telescope((request.get_json(silent=True) or {}).get('telescope'))
+    body = request.get_json(silent=True) or {}
+    tel = _telescope(body.get('telescope'))
     if not tel:
         return jsonify({'success': False, 'error': 'Choose SLT or LOT.'}), 400
     if tel == 'LOT':
-        denied = lot_closed_response(_actor())
+        denied = lot_closed_response(_actor(), body.get('lot_closed_confirmed'))
         if denied:
             return denied
     try:
