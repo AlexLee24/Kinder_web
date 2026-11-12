@@ -278,7 +278,7 @@
         buildGrid();
         $('srMissBox').hidden = !miss.length;
         $('srMissN').textContent = miss.length;
-        $('srMiss').innerHTML = miss.map((m) => `<li>${esc(m.name)}</li>`).join('');
+        $('srMiss').innerHTML = miss.map((m) => `<li${m.reason && !m.reason.startsWith("outside") ? ` title="${esc(m.reason)}"` : ""}>${esc(m.name)}${m.reason && !m.reason.startsWith("outside") ? " *" : ""}</li>`).join('');
     }
 
     function renderStatus(s) {

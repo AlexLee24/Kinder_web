@@ -258,8 +258,10 @@ def _tile_centres(E):
 
 
 def _mosaics_at(E, ra, dec):
-    """Best covering MER tile for each release in RELEASES order (DR1 first): the tile that has the most of
-    BANDS, nearest centre on ties; every band then comes from that same tile."""
+    """Covering MER tiles, best first: RELEASES order (DR1 first), then the tile with the most of BANDS, nearest
+    centre on ties. Each candidate is {band: mosaic} from one tile. A tile's fov can include corners the survey
+    never observed (all-zero pixels), so _process tries the next candidate when the VIS cutout is empty."""
+    cands = []
     for rel in RELEASES:
         q = (f"SELECT file_name, file_path, filter_name, instrument_name, tile_index, ra, dec FROM {rel}.mosaic_product "
              "WHERE product_type='DpdMerBksMosaic' "
@@ -277,11 +279,26 @@ def _mosaics_at(E, ra, dec):
             tile['bands'].setdefault(band, {'file': f"{r['file_path']}/{r['file_name']}",
                                             'instrument': str(r['instrument_name']),
                                             'tile': str(r['tile_index']), 'release': rel})
-        if tiles:
-            best = min(tiles.values(), key=lambda x: (-len(x['bands']), x['sep']))
-            if 'VIS' in best['bands'] or len(best['bands']) >= 2:
-                return best['bands']
-    return {}
+        for tile in sorted(tiles.values(), key=lambda x: (-len(x['bands']), x['sep'])):
+            if 'VIS' in tile['bands'] or len(tile['bands']) >= 2:
+                cands.append(tile['bands'])
+    return cands
+
+
+def _has_data(path: Path, ra: float, dec: float, box: int = 20) -> bool:
+    """True when the cutout holds real pixels around the target (not the zero / NaN fill of unobserved sky)."""
+    import numpy as np
+    from astropy.io import fits
+    from astropy.wcs import WCS
+    with fits.open(path) as h:
+        hdu = next(x for x in h if x.data is not None)
+        a = np.asarray(hdu.data, dtype=float)
+        try:
+            x, y = (int(round(float(v))) for v in WCS(hdu.header).world_to_pixel_values(ra, dec))
+        except Exception:
+            y, x = a.shape[0] // 2, a.shape[1] // 2
+    cut = a[max(y - box, 0):y + box + 1, max(x - box, 0):x + box + 1]
+    return cut.size > 0 and float(np.mean(np.isfinite(cut) & (cut != 0))) > 0.5
 
 
 _tls = threading.local()
@@ -469,9 +486,25 @@ def make_png(t: dict, files: dict, out: Path):
 
 # ---------------------------------------------------------------- run
 
-def _process(t, mosaics, refresh, prog):
+def _process(t, cands, refresh, prog):
     d = OUT_DIR / slug(t['name'])
     d.mkdir(parents=True, exist_ok=True)
+    mosaics = None
+    for c in cands:   # first candidate tile whose cutout has real pixels at the target
+        band = 'VIS' if 'VIS' in c else next(iter(c))
+        try:
+            probe = _cutout(c[band], t['ra'], t['dec'], d / f'{band}.fits', refresh)
+        except Exception as e:
+            prog.log(f"{t['name']}: tile {c[band]['tile']} {band} failed ({e})")
+            continue
+        if _has_data(probe, t['ra'], t['dec']):
+            mosaics = c
+            break
+        prog.log(f"{t['name']}: {c[band]['release'].upper()} tile {c[band]['tile']} has no data at the target")
+    if mosaics is None:
+        for f in d.glob('*'):
+            f.unlink(missing_ok=True)
+        return {**t, 'covered': False, 'reason': 'inside a tile footprint, but no Euclid pixels there'}
     files, errors = {}, []
     for band, m in mosaics.items():
         try:
@@ -516,7 +549,7 @@ def run(refresh=False):
 
         covered = []
         for t in near:
-            m = {}
+            m = []
             for attempt in range(2):
                 try:
                     m = _timed(_mosaics_at, QUERY_TIMEOUT, E, t['ra'], t['dec'])
@@ -525,8 +558,9 @@ def run(refresh=False):
                     prog.log(f"{t['name']}: footprint query failed ({e})" + (', retrying' if attempt == 0 else ''))
             if m:
                 covered.append((t, m))
-            first = next(iter(m.values()), {})
-            prog.log(f"{t['name']}: " + (f"{first['release'].upper()} tile {first['tile']}" if m else 'outside Euclid'))
+            first = next(iter(m[0].values())) if m else {}
+            prog.log(f"{t['name']}: " + (f"{first['release'].upper()} tile {first['tile']}"
+                                          + (f" (+{len(m) - 1} more)" if len(m) > 1 else '') if m else 'outside Euclid'))
             prog.tick()
         prog.log(f'{len(covered)} targets inside Euclid mosaics; downloading cutouts', step='Cutouts',
                  done=0, total=len(covered))
@@ -537,6 +571,11 @@ def run(refresh=False):
             for f in futs:
                 out.append(f.result())
                 prog.tick()
+        empty = [r for r in out if not r.get('covered')]
+        out = [r for r in out if r.get('covered')]
+        if empty:
+            prog.log(f"{len(empty)} target(s) inside a tile footprint but with no Euclid pixels: "
+                     + ', '.join(r['name'] for r in empty))
 
         prog.log('Fetching Legacy Survey DR10 / DR11 comparison cutouts', step='Legacy Survey',
                  done=0, total=len(out))
@@ -549,10 +588,12 @@ def run(refresh=False):
                     got.append(key)
             r['ls'] = got
             prog.tick()
-        covered_names = {t['name'] for t, _ in covered}
+        covered_names = {r['name'] for r in out}
+        reasons = {r['name']: r['reason'] for r in empty}
         res = {'finished': _now(), 'n_targets': len(targets), 'n_tiles': len(tiles),
                'covered': sorted(out, key=lambda r: r['name']),
-               'not_covered': [{'name': t['name'], 'ra': t['ra'], 'dec': t['dec'], 'in_db': t['in_db']}
+               'not_covered': [{'name': t['name'], 'ra': t['ra'], 'dec': t['dec'], 'in_db': t['in_db'],
+                                'reason': reasons.get(t['name'], 'outside Euclid DR1 / Q1')}
                                for t in targets if t['name'] not in covered_names],
                'cutout_arcsec': CUTOUT_ARCSEC * 2}
         _write_json(RESULTS_FILE, res)
