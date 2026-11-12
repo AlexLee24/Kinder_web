@@ -173,7 +173,7 @@
 
     function panels(c, big) {
         const out = [];
-        if (S.show.vis) out.push(`<figure class="sr-panel"><canvas class="sr-cv" data-slug="${esc(c.slug)}" data-kind="vis"></canvas><figcaption>Euclid VIS</figcaption></figure>`);
+        if (S.show.vis) out.push(`<figure class="sr-panel"><canvas class="sr-cv" data-slug="${esc(c.slug)}" data-kind="vis"></canvas><figcaption>Euclid ${esc((c.release || 'q1').toUpperCase())} VIS</figcaption></figure>`);
         if (S.show.nisp) out.push(`<figure class="sr-panel"><canvas class="sr-cv" data-slug="${esc(c.slug)}" data-kind="nisp"></canvas><figcaption>${nispLabel()}</figcaption></figure>`);
         for (const [key, layer, label] of [['dr10', 'ls-dr10', 'LS DR10'], ['dr11', 'ls-dr11', 'LS DR11']]) {
             if (!S.show[key]) continue;

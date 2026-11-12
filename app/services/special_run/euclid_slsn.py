@@ -1,10 +1,10 @@
-"""Lab › Special Run › Euclid-SLSN: Euclid Q1 host-galaxy cutouts of every SLSN Kinder knows.
+"""Lab › Special Run › Euclid-SLSN: Euclid DR1-Foundation (+ Q1) host-galaxy cutouts of every SLSN Kinder knows.
 
 Targets = transient.objects whose type starts with 'SLSN' + the literature list in slsn_list.txt
 (an entry within MATCH_ARCSEC of a DB object is the same SN; the DB name wins, the list name is kept as alias).
 
 run() (one at a time across gunicorn workers, via an flock on OUT_DIR/.run.lock):
-  1. one ADQL query lists every Q1 MER VIS mosaic tile centre (~350 tiles, 0.5° wide);
+  1. async ADQL lists every MER VIS tile centre of DR1-Foundation and Q1 (~14 000 tiles, 0.5° wide);
   2. targets within 0.45° of a tile centre get an exact footprint query (INTERSECTS on fov);
   3. covered targets get VIS + NISP Y/J/H cutouts (CUTOUT_ARCSEC radius) and a PNG
      (VIS asinh stretch | NISP H/J/Y colour), all under DATA_DIR/special_run/euclid_slsn/<slug>/.
@@ -32,6 +32,7 @@ LOCK_FILE = OUT_DIR / '.run.lock'
 LIST_FILE = Path(__file__).with_name('slsn_list.txt')
 
 MATCH_ARCSEC = 3.0          # list entry ↔ DB object
+RELEASES = ('dr1', 'q1')    # schemas on the ESA archive, preferred first
 TILE_NEAR_DEG = 0.45        # pre-selection around a tile centre (tiles are ~0.53° on a side)
 CUTOUT_ARCSEC = 15.0        # cutout radius → 30" × 30" (300 px VIS at 0.1"/px)
 BANDS = ('VIS', 'NIR_Y', 'NIR_J', 'NIR_H')
@@ -242,26 +243,45 @@ def _euclid():
 
 
 def _tile_centres(E):
-    r = E.launch_job("SELECT tile_index, ra, dec FROM q1.mosaic_product "
-                     "WHERE product_type='DpdMerBksMosaic' AND filter_name='VIS'").get_results()
-    return [(int(t), float(a), float(d)) for t, a, d in zip(r['tile_index'], r['ra'], r['dec'])]
+    """Distinct MER VIS tile centres of every release. Async job: synchronous TAP stops at 2000 rows
+    (DR1-Foundation alone has ~14 000 VIS mosaics)."""
+    out = {}
+    for rel in RELEASES:
+        job = E.launch_job_async(f"SELECT DISTINCT tile_index, ra, dec FROM {rel}.mosaic_product "
+                                 "WHERE product_type='DpdMerBksMosaic' AND filter_name='VIS'")
+        if job is None:
+            raise RuntimeError(f'Euclid {rel} tile listing failed')
+        r = job.get_results()
+        for t, a, d in zip(r['tile_index'], r['ra'], r['dec']):
+            out[(rel, int(t))] = (float(a), float(d))
+    return [(rel, t, a, d) for (rel, t), (a, d) in out.items()]
 
 
 def _mosaics_at(E, ra, dec):
-    q = ("SELECT file_name, file_path, filter_name, instrument_name, tile_index FROM q1.mosaic_product "
-         "WHERE product_type='DpdMerBksMosaic' "
-         f"AND INTERSECTS(CIRCLE({ra:.7f},{dec:.7f},0.0003),fov)=1")
-    job = E.launch_job(q)
-    if job is None:
-        raise RuntimeError('Euclid footprint query failed')
-    rows = job.get_results()
-    by_band = {}
-    for r in rows:
-        band = str(r['filter_name'])
-        if band in BANDS and band not in by_band:
-            by_band[band] = {'file': f"{r['file_path']}/{r['file_name']}", 'instrument': str(r['instrument_name']),
-                             'tile': str(r['tile_index'])}
-    return by_band
+    """Best covering MER tile for each release in RELEASES order (DR1 first): the tile that has the most of
+    BANDS, nearest centre on ties; every band then comes from that same tile."""
+    for rel in RELEASES:
+        q = (f"SELECT file_name, file_path, filter_name, instrument_name, tile_index, ra, dec FROM {rel}.mosaic_product "
+             "WHERE product_type='DpdMerBksMosaic' "
+             f"AND INTERSECTS(CIRCLE({ra:.7f},{dec:.7f},0.0003),fov)=1")
+        job = E.launch_job(q)
+        if job is None:
+            raise RuntimeError(f'Euclid {rel} footprint query failed')
+        tiles = {}
+        for r in job.get_results():
+            band = str(r['filter_name'])
+            if band not in BANDS:
+                continue
+            tile = tiles.setdefault(str(r['tile_index']), {'bands': {}, 'sep': float(
+                _sep_arcsec(float(r['ra']), float(r['dec']), ra, dec))})
+            tile['bands'].setdefault(band, {'file': f"{r['file_path']}/{r['file_name']}",
+                                            'instrument': str(r['instrument_name']),
+                                            'tile': str(r['tile_index']), 'release': rel})
+        if tiles:
+            best = min(tiles.values(), key=lambda x: (-len(x['bands']), x['sep']))
+            if 'VIS' in best['bands'] or len(best['bands']) >= 2:
+                return best['bands']
+    return {}
 
 
 _tls = threading.local()
@@ -289,7 +309,8 @@ def _fits_ok(path: Path) -> bool:
 def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3):
     from astropy.coordinates import SkyCoord
     import astropy.units as u
-    if not refresh and _fits_ok(out):
+    src = out.with_suffix('.src')      # which mosaic the cached cutout came from (Q1 → DR1 re-downloads)
+    if not refresh and _fits_ok(out) and src.exists() and src.read_text() == mosaic['file']:
         return out
     for attempt in range(tries):
         out.unlink(missing_ok=True)
@@ -302,6 +323,7 @@ def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3):
             if isinstance(e, TimeoutError):
                 _tls.__dict__.pop('client', None)   # the abandoned call may still be using it
         if _fits_ok(out):
+            src.write_text(mosaic['file'])
             return out
         time.sleep(1.5 * (attempt + 1))
     out.unlink(missing_ok=True)
@@ -463,7 +485,8 @@ def _process(t, mosaics, refresh, prog):
         errors.append(f'png: {e}')
         logger.exception('[EUCLID-SLSN] png %s', t['name'])
     prog.log(f"{t['name']}: {len(files)} band(s)" + (f" — {'; '.join(errors)}" if errors else ''))
-    return {**t, 'covered': True, 'tile': next(iter(mosaics.values()))['tile'],
+    first = next(iter(mosaics.values()))
+    return {**t, 'covered': True, 'tile': first['tile'], 'release': first['release'],
             'bands': sorted(files), 'png': png is not None, 'slug': slug(t['name']), 'errors': errors}
 
 
@@ -484,12 +507,12 @@ def run(refresh=False):
         prog.log(f'{len(targets)} targets ({sum(t["in_db"] for t in targets)} in Kinder DB)')
 
         E = _euclid()
-        prog.log('Listing Euclid Q1 MER tiles', step='Tiles')
-        tiles = _timed(_tile_centres, QUERY_TIMEOUT, E)
-        tra = np.array([a for _, a, _ in tiles])
-        tdec = np.array([d for _, _, d in tiles])
+        prog.log('Listing Euclid DR1 + Q1 MER tiles', step='Tiles')
+        tiles = _timed(_tile_centres, 4 * QUERY_TIMEOUT, E)
+        tra = np.array([a for _, _, a, _ in tiles])
+        tdec = np.array([d for _, _, _, d in tiles])
         near = [t for t in targets if _sep_arcsec(tra, tdec, t['ra'], t['dec']).min() < TILE_NEAR_DEG * 3600]
-        prog.log(f'{len(tiles)} tiles; {len(near)} targets near Q1 coverage', step='Footprints', total=len(near))
+        prog.log(f'{len(tiles)} tiles; {len(near)} targets near Euclid coverage', step='Footprints', total=len(near))
 
         covered = []
         for t in near:
@@ -502,9 +525,10 @@ def run(refresh=False):
                     prog.log(f"{t['name']}: footprint query failed ({e})" + (', retrying' if attempt == 0 else ''))
             if m:
                 covered.append((t, m))
-            prog.log(f"{t['name']}: {'inside ' + next(iter(m.values()))['tile'] if m else 'outside'} Q1")
+            first = next(iter(m.values()), {})
+            prog.log(f"{t['name']}: " + (f"{first['release'].upper()} tile {first['tile']}" if m else 'outside Euclid'))
             prog.tick()
-        prog.log(f'{len(covered)} targets inside Q1 mosaics; downloading cutouts', step='Cutouts',
+        prog.log(f'{len(covered)} targets inside Euclid mosaics; downloading cutouts', step='Cutouts',
                  done=0, total=len(covered))
 
         out = []
