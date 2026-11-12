@@ -3,26 +3,30 @@ import os
 import logging
 from flask import render_template, request, jsonify, Response
 from . import astronomy_tools_bp
-from .helpers import _CASTOR_ETC_BODY_PATH, _CASTOR_PRESETS_PATH
+from .helpers import _CASTOR_ETC_BODY_PATH, _CASTOR_ETC_SIMPLE_BODY_PATH, _CASTOR_PRESETS_PATH
 
 logger = logging.getLogger(__name__)
 
 
 @astronomy_tools_bp.route('/exposure_time_calculator')
 def exposure_time_calculator():
-    # castor_etc_body.html is copied verbatim from CASTOR's src/castorGUI/frontend.
-    # It is deliberately read as raw text and injected with `| safe` rather than
-    # `{% include %}`d: one of its HTML comments contains a literal example
+    # castor_etc_body.html (Advanced) and castor_etc_simple_body.html (Simple) are copied
+    # verbatim from CASTOR's src/castorGUI/frontend (etc_body.html, etc_simple_body.html).
+    # They are deliberately read as raw text and injected with `| safe` rather than
+    # `{% include %}`d: one of their HTML comments contains a literal example
     # `{% include 'castor_etc_body.html' %}` line, which Jinja would execute if it
     # parsed the file — recursing into the file itself. Injecting raw text mirrors how
-    # CASTOR's own server.py mounts the partial, and keeps the file byte-for-byte
-    # identical to the engine repo's copy.
+    # CASTOR's own server.py mounts the partials, and keeps the files byte-for-byte
+    # identical to the engine repo's copies.
     with open(_CASTOR_ETC_BODY_PATH, encoding='utf-8') as f:
         castor_etc_body = f.read()
+    with open(_CASTOR_ETC_SIMPLE_BODY_PATH, encoding='utf-8') as f:
+        castor_etc_simple_body = f.read()
     return render_template(
         'exposure_time_calculator.html',
         current_path='/exposure_time_calculator',
         castor_etc_body=castor_etc_body,
+        castor_etc_simple_body=castor_etc_simple_body,
     )
 
 @astronomy_tools_bp.route('/api/exposure_time_calculator/presets')
@@ -64,35 +68,45 @@ def api_exposure_time_calculator():
 
 @astronomy_tools_bp.route('/api/exposure_time_calculator/quick', methods=['POST'])
 def api_exposure_time_calculator_quick():
-    """Simple mode: hardware + target + SNR in, a frame length and frame count out (see etc_quick)."""
+    """Simple mode: hardware + target, then Advanced mode's goals. ``goal: "solve_time"`` (the default) takes
+    target_snr and answers with a frame length and count; ``"solve_snr"`` takes single_exp_time and num_exposures
+    and answers with the SNR they reach. The planner is CASTOR's (castorCLI/plan.py), as in its own server.py."""
     from pydantic import ValidationError
-    from castorCLI import presets
-    from .etc_quick import QuickInputError, compute_plan, parse_coordinates
+    from castorCLI import plan, presets
 
     data = request.get_json(silent=True)
     if not data:
         return jsonify({'error': 'No data provided'}), 400
+    goal = data.get('goal') or 'solve_time'
+    if goal not in ('solve_time', 'solve_snr'):
+        return jsonify({'error': f'Unknown goal {goal!r}: use solve_time or solve_snr.'}), 400
     try:
-        ra, dec = parse_coordinates(data.get('ra'), data.get('dec'))
-        plan = compute_plan(
-            presets.load(_CASTOR_PRESETS_PATH),
+        ra, dec = plan.parse_coordinates(data.get('ra'), data.get('dec'))
+        common = dict(
             site=data.get('site'),
             telescope=data.get('telescope') or None,
             camera=data.get('camera') or None,
             optic_filter=data.get('filter') or None,
             ra=ra, dec=dec,
             mag=float(data['mag']),
-            target_snr=float(data['target_snr']),
             observing_time_utc=data.get('observing_time_utc'),
             fwhm=float(data['fwhm']),
         )
-        return jsonify(plan)
-    except QuickInputError as e:
+        catalogue = presets.load(_CASTOR_PRESETS_PATH)
+        if goal == 'solve_snr':
+            result = plan.compute_snr(catalogue, **common,
+                                      single_exp_time=float(data['single_exp_time']),
+                                      num_exposures=float(data.get('num_exposures', 1)))
+        else:
+            result = plan.compute_plan(catalogue, **common, target_snr=float(data['target_snr']))
+        return jsonify(result)
+    except plan.QuickInputError as e:
         return jsonify({'error': str(e)}), 400
     except ValidationError as e:
         return _castor_validation_error_response(e)
     except (KeyError, TypeError, ValueError):
-        return jsonify({'error': 'Fill in the magnitude, target SNR and seeing.'}), 400
+        wanted = 'exposure time' if goal == 'solve_snr' else 'target SNR'
+        return jsonify({'error': f'Fill in the magnitude, {wanted} and seeing.'}), 400
     except Exception:
         logger.exception('quick exposure time calculation failed')
         return jsonify({'error': 'Calculation failed; check the input values.'}), 400

@@ -42,6 +42,9 @@ _SHARE_TTL_SECS = 60 * 86400  # 60 days
 _CASTOR_ETC_BODY_PATH = os.path.join(
     os.path.dirname(__file__), 'templates', 'castor_etc_body.html'
 )
+_CASTOR_ETC_SIMPLE_BODY_PATH = os.path.join(
+    os.path.dirname(__file__), 'templates', 'castor_etc_simple_body.html'
+)
 
 _CASTOR_PRESETS_PATH = str(CASTOR_SRC / 'castorGUI' / 'data' / 'presets.json')
 

@@ -1,9 +1,14 @@
-/* Exposure Time Calculator — Kinder's Simple mode and the Simple / Advanced switch.
-   Kinder-only: CASTOR's etc.css stays a verbatim copy, so nothing here touches .castor-etc. */
+/* CASTOR ETC — Simple mode (etc_simple_body.html) and the Simple / Advanced switch.
+   Written for Kinder and moved here unchanged apart from the logo rule; nothing here
+   touches .castor-etc. It builds on Kinder's kw-* components, which a host other than
+   Kinder gets from css/kinder_shim.css. */
 
 /* Room left under the panels; .sh-main's own bottom margin is cut to match below. */
 .etc-page { --etc-bottom-gap: 20px; }
 .etc-mode-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+/* border-box, or the 44px minimum is the content alone: the bar grows to 54px and
+   leaves 9px over and under the 34px tabs against 4px beside them. */
+.etc-mode-bar .kw-tabbar { box-sizing: border-box; }
 /* One line: on narrower windows the hint gives way (ellipsis) so the credits stay on the bar's row. */
 .etc-mode-hint { flex: 1 1 0; min-width: 0; font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 960px) { .etc-mode-hint { flex-basis: 100%; white-space: normal; } }
@@ -12,11 +17,73 @@
 
 /* ── Form ─────────────────────────────────────────────────────────────── */
 .etc-simple { margin-bottom: 16px; }
+/* The same 20px on every side, as etc.css's cards: Kinder's 18px top and bottom
+   left Calculate nearer the bottom edge than the sides. */
+.etc-simple-form, .etc-simple-result { padding: 20px; }   /* after .kw-panel's own */
 .etc-simple-form .kw-panel-head h2 { font-size: 1rem; margin: 0 0 12px; color: var(--kw-text-white); }
 .etc-simple-form .etc-simple-head { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--kw-hairline); }
 .etc-simple-form .kw-select { width: 100%; }
-.etc-simple-pair { gap: 12px; }
+/* No row gap: each field brings its own bottom margin, and once the pair stacks on a
+   narrow window a 12px row gap on top of it put 26px inside a pair against 14px
+   between pairs, so RA and Dec read as further apart than Dec and the magnitude. */
+.etc-simple-pair { gap: 0 12px; }
 .etc-simple-pair .kw-field { min-width: 0; }
+[data-qs-goal][hidden] { display: none !important; }
+/* Both goals' fields sit in a grid, so each field's bottom margin stays inside its group
+   the same way; a bare field let its margin merge with the next heading's, and the two
+   goals ended a few pixels apart. */
+.etc-simple-goal { display: grid; }
+/* Pairs of short values stay two columns where the hardware pairs, whose names are long,
+   stack (Kinder's .kw-grid-2 goes to one below 820px). RA / Dec is one coordinate; the
+   frames pair swaps with the one-row Target SNR field, and stacking it made everything
+   under the goal jump by a row on each switch. */
+.etc-simple-pair.etc-simple-keep { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.etc-simple-keep label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.etc-simple-unit { position: relative; display: block; }
+.etc-simple-unit input { width: 100%; padding-right: 28px; appearance: textfield; -moz-appearance: textfield; }
+.etc-simple-unit input::-webkit-outer-spin-button,
+.etc-simple-unit input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.etc-simple-unit::after {
+    content: attr(data-unit);
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    color: var(--kw-text-muted);
+    font-size: 0.72rem;
+    pointer-events: none;
+}
+/* Calculation Goal: Advanced mode's segmented control (.etc-segmented in etc.css), drawn
+   with Kinder's tokens since this panel is outside .castor-etc. Both choices stay in
+   view and either is one click. */
+.etc-simple-label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.etc-simple-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    min-height: 40px;
+    box-sizing: border-box;
+    border: 1px solid var(--kw-border-med);
+    border-radius: var(--kw-radius-md);
+}
+.etc-simple-seg label { flex: 1 1 0; position: relative; display: flex; cursor: pointer; }
+.etc-simple-seg input { position: absolute; opacity: 0; pointer-events: none; }
+.etc-simple-seg span {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 8px;   /* the frame's 10 less its 2px padding */
+    color: var(--kw-text-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+.etc-simple-seg label:hover span { color: var(--kw-text-primary); }
+.etc-simple-seg input:checked + span { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); }
+.etc-simple-seg input:focus-visible + span { box-shadow: var(--kw-focus-ring); }
 .etc-simple-form small { font-size: 0.74rem; }
 .etc-simple-caveat {
     margin: -4px 0 14px;
@@ -48,14 +115,22 @@
     font-weight: 600;
     text-align: center;
 }
-.etc-simple-empty img { opacity: 0.9; }
+/* Drawn here rather than as an <img> so the partial names no URL: resolved against this
+   stylesheet, it holds in any host that serves css/ and img/ side by side, as etc.css's
+   beaver does. 96px wide, the width Kinder's <img> had. */
+.etc-simple-logo {
+    width: 96px;
+    aspect-ratio: 618 / 900;
+    background: url("../img/castor-logo-white.png") center / contain no-repeat;
+    opacity: 0.9;
+}
 .etc-simple-result.is-idle .etc-simple-empty,
 .etc-simple-result.is-busy .etc-simple-empty { display: flex; }
 .etc-simple-result.is-idle .etc-simple-body,
 .etc-simple-result.is-busy .etc-simple-body { display: none; }
-.etc-simple-result.is-busy .etc-simple-empty img { animation: etc-simple-bob 0.9s ease-in-out infinite; }
+.etc-simple-result.is-busy .etc-simple-logo { animation: etc-simple-bob 0.9s ease-in-out infinite; }
 @keyframes etc-simple-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-@media (prefers-reduced-motion: reduce) { .etc-simple-result.is-busy .etc-simple-empty img { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .etc-simple-result.is-busy .etc-simple-logo { animation: none; } }
 /* An edit since the last answer: keep it readable, but plainly not current. */
 .etc-simple-result.is-stale .etc-simple-body { opacity: 0.45; transition: opacity 0.15s; }
 
@@ -118,15 +193,19 @@
         align-items: stretch;
         margin-bottom: 0;
     }
-    .etc-simple > .kw-tool-side { position: static; min-height: 0; }
+    .etc-simple > .kw-tool-side { position: static; min-height: 0; grid-template-rows: minmax(0, 1fr); }
     .etc-simple :is(.etc-simple-form, .etc-simple-result) { box-sizing: border-box; }   /* .kw-panel is content-box */
-    .etc-simple-form { display: flex; flex-direction: column; min-height: 0; max-height: 100%; padding: 0; overflow: hidden; }
-    .etc-simple-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 4px; }
-    .etc-simple-actions { flex: none; margin: 0; padding: 10px 20px 14px; border-top: 1px solid var(--kw-hairline); }
-    .etc-simple-form .kw-panel-head h2 { margin-bottom: 8px; font-size: 0.92rem; }
+    /* The full height, as the Advanced form card stands: with a short form Kinder left
+       the card ending mid-page beside a full-height answer. */
+    .etc-simple-form { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 0; overflow: hidden; }
+    .etc-simple-fields { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 20px 4px; }
+    .etc-simple-actions { flex: none; margin: 0; padding: 10px 20px 20px; border-top: 1px solid var(--kw-hairline); }
+    /* Titles stay Kinder's 1rem, the size the Advanced form's use too. */
+    .etc-simple-form .kw-panel-head h2 { margin-bottom: 8px; }
     .etc-simple-form .etc-simple-head { margin-top: 2px; padding-top: 10px; }
     .etc-simple-form .kw-field { gap: 4px; margin-bottom: 8px; }
     .etc-simple-form .kw-field :is(input, select) { min-height: 34px; }
+    .etc-simple-seg { min-height: 34px; }
     .etc-simple-result { min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
     .etc-simple-empty { min-height: 100%; }
     .etc-advanced { margin-bottom: 0; }

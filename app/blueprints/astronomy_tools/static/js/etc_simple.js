@@ -1,13 +1,18 @@
 /* ============================================================================
-   Exposure Time Calculator — Kinder's Simple mode, and the Simple / Advanced switch.
+   CASTOR ETC — Simple mode (etc_simple_body.html), and the Simple / Advanced switch.
 
-   Kinder-only. The Advanced mode is CASTOR's own calculator (etc.js, verbatim);
-   this file never reaches into it. Simple mode asks for hardware, a target and
-   an SNR, posts them to /api/exposure_time_calculator/quick (etc_quick.py), and
-   shows the frame length and frame count it recommends plus the alternatives.
+   Written for Kinder and moved here so both hosts serve one copy. The Advanced
+   mode is etc.js; this file never reaches into it. Simple mode asks for hardware,
+   a target and one of Advanced mode's two goals, posts them to the quick route
+   (castorCLI/plan.py), and shows either the frame length and frame count it
+   recommends for an SNR (solve_time), or the SNR given frames reach (solve_snr),
+   each with the alternatives beside it.
 
-   Hardware lists come from the same presets route CASTOR's form reads, so both
-   modes always offer the same telescopes, cameras and filters.
+   Hardware lists come from the same presets route the Advanced form reads, so
+   both modes always offer the same telescopes, cameras and filters.
+
+   The localStorage keys keep their Kinder names so a viewer's remembered mode
+   and form survive Kinder switching to this copy.
    ============================================================================ */
 (function () {
     'use strict';
@@ -68,6 +73,10 @@
     var body = el('qs-body');
     var goBtn = el('qs-go');
     var CONFIG = window.CASTOR_ETC_CONFIG || {};
+    // quickUrl is the fourth key of the host contract; KINDER_ETC_QUICK_URL is what
+    // Kinder's template set before this file moved here, still honoured so that
+    // template keeps working unchanged.
+    var QUICK_URL = CONFIG.quickUrl || window.KINDER_ETC_QUICK_URL;
     var profiles = {};
 
     function entries(obj) {
@@ -151,12 +160,31 @@
     }
     el('qs-time').addEventListener('input', syncTimeNote);
 
+    // ── Calculation Goal ────────────────────────────────────────────────────
+    // Advanced mode's choice and names: solve_snr takes the frames, solve_time the SNR.
+    function currentGoal() {
+        var on = form.querySelector('input[name="goal"]:checked');
+        return on ? on.value : 'solve_time';
+    }
+    function setGoal(goal) {
+        form.querySelectorAll('input[name="goal"]').forEach(function (radio) { radio.checked = radio.value === goal; });
+        syncGoal();
+    }
+    function syncGoal() {
+        var goal = currentGoal();
+        form.querySelectorAll('[data-qs-goal]').forEach(function (group) {
+            group.hidden = group.getAttribute('data-qs-goal') !== goal;
+        });
+    }
+    form.querySelectorAll('input[name="goal"]').forEach(function (radio) { radio.addEventListener('change', syncGoal); });
+
     function formValues() {
         return {
             site: el('qs-site').value, telescope: el('qs-telescope').value,
             camera: el('qs-camera').value, filter: el('qs-filter').value,
             ra: el('qs-ra').value.trim(), dec: el('qs-dec').value.trim(),
-            mag: el('qs-mag').value, target_snr: el('qs-snr').value,
+            mag: el('qs-mag').value, goal: currentGoal(), target_snr: el('qs-snr').value,
+            single_exp_time: el('qs-exp').value, num_exposures: el('qs-num').value,
             time: el('qs-time').value, fwhm: el('qs-fwhm').value
         };
     }
@@ -220,6 +248,24 @@
             (hidden ? '<button type="button" class="kw-btn kw-btn-sm etc-simple-more" id="qs-more">Show ' + plural(hidden, 'slower option') + '</button>' : '');
     }
 
+    /* solve_snr: the same total integration cut into other frame counts. Fewer, longer
+       frames pay less read noise; more, shorter ones survive a cosmic ray or a satellite. */
+    function splitTableHtml(data) {
+        function rowHtml(r) {
+            return '<tr class="' + (r.chosen ? 'is-rec' : '') + '">' +
+                '<td>' + fmtSeconds(r.exp_s) +
+                (r.chosen ? ' <span class="kw-chip kw-chip-gold">Yours</span>' : '') +
+                (r.saturates ? ' <span class="kw-chip">Saturates</span>' : '') + '</td>' +
+                '<td>' + r.frames + '</td>' +
+                '<td>' + fmtDuration(r.elapsed_s) + '</td>' +
+                '<td>' + r.snr.toFixed(1) + '</td></tr>';
+        }
+        return '<h3 class="etc-simple-section">The same ' + esc(fmtDuration(data.chosen.total_s)) + ', split differently</h3>' +
+            '<div class="kw-table-wrap"><table class="kw-table etc-simple-table">' +
+            '<thead><tr><th>Each frame</th><th>Frames</th><th>With readout</th><th>SNR</th></tr></thead>' +
+            '<tbody>' + data.rows.map(rowHtml).join('') + '</tbody></table></div>';
+    }
+
     function hero(eyebrow, planHtml, sub, why, problem) {
         return '<div class="etc-simple-hero"><div class="kw-eyebrow">' + esc(eyebrow) + '</div>' +
             '<div class="etc-simple-plan' + (problem ? ' is-problem' : '') + '">' + planHtml + '</div>' +
@@ -234,7 +280,22 @@
         var labels = data.labels || {};
         var setup = [labels.telescope, labels.camera, labels.optic_filter].filter(Boolean).join(' · ');
 
-        if (data.status === 'below_horizon') {
+        if (data.goal === 'solve_snr' && data.status !== 'below_horizon') {
+            var mine = data.chosen;
+            var ceiling = data.snr_ceiling;
+            html += hero('Expected SNR', esc(mine.snr.toFixed(1)),
+                esc(fmtSeconds(mine.exp_s)) + ' × ' + esc(plural(mine.frames, 'frame')) + ' · ' +
+                    fmtDuration(mine.total_s) + ' on target (about ' + fmtDuration(mine.elapsed_s) + ' with readout)' +
+                    (mine.frames > 1 ? ' · SNR ' + mine.single_snr.toFixed(1) + ' per frame' : ''),
+                ceiling && mine.snr > 0.8 * ceiling
+                    ? 'Close to the ' + ceiling.toFixed(1) + ' that flat-field residuals allow: more frames will barely raise it.'
+                    : '',
+                false);
+            if (data.status === 'saturated') {
+                alerts.unshift('Each frame saturates after ' + fmtSeconds(c.saturation_time_s) + ', so a ' + fmtSeconds(mine.exp_s) +
+                    ' frame overfills the brightest pixel and this SNR overstates what you would measure. Use shorter frames.');
+            }
+        } else if (data.status === 'below_horizon') {
             alerts = [];    // airmass caveats about a target nobody can point at
             html += hero('Not observable', 'The target is below the horizon',
                 'Altitude ' + Math.round(c.target_elevation_deg) + '° at this time.',
@@ -271,8 +332,10 @@
         // Wide panels lay the plan and the other options side by side (etc_simple.css).
         var detail = data.rows && data.rows.length;
         html = '<div class="etc-simple-main">' + html + '</div><div class="etc-simple-detail">' +
-            (detail ? tableHtml(data) : '');
-        html += '<p class="etc-simple-foot">' + esc(setup) + ', seeing ' + c.fwhm_arcsec + '″. Total is integration only; the suggestion assumes about ' + data.readout_overhead_s + ' s of readout per frame (not measured), and slewing is extra. ' +
+            (detail ? (data.goal === 'solve_snr' ? splitTableHtml(data) : tableHtml(data)) : '');
+        html += '<p class="etc-simple-foot">' + esc(setup) + ', seeing ' + c.fwhm_arcsec + '″. Total is integration only; ' +
+            (data.goal === 'solve_snr' ? 'the time with readout assumes' : 'the suggestion assumes') +
+            ' about ' + data.readout_overhead_s + ' s of readout per frame (not measured), and slewing is extra. ' +
             'Switch to <b>Advanced</b> for the full noise budget and how it changes over the night.</p></div>';
 
         body.innerHTML = html;
@@ -309,6 +372,11 @@
             renderError('Enter the target’s RA, Dec and magnitude.');
             return;
         }
+        if (v.goal === 'solve_snr' && (v.single_exp_time === '' || v.num_exposures === '')) {
+            setState('');
+            renderError('Enter the exposure time and the number of exposures.');
+            return;
+        }
         var when = v.time ? new Date(v.time) : new Date();
         if (isNaN(when.getTime())) { when = new Date(); }
 
@@ -318,15 +386,18 @@
         el('qs-empty-text').textContent = 'Calculating…';
         goBtn.disabled = true;
 
-        fetch(window.KINDER_ETC_QUICK_URL, {
+        fetch(QUICK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: inflight.signal,
-            body: JSON.stringify({
+            body: JSON.stringify(Object.assign({
+                goal: v.goal,
                 site: v.site, telescope: v.telescope, camera: v.camera, filter: v.filter,
-                ra: v.ra, dec: v.dec, mag: parseFloat(v.mag), target_snr: parseFloat(v.target_snr),
+                ra: v.ra, dec: v.dec, mag: parseFloat(v.mag),
                 fwhm: parseFloat(v.fwhm), observing_time_utc: when.toISOString().replace(/\.\d{3}Z$/, 'Z')
-            })
+            }, v.goal === 'solve_snr'
+                ? { single_exp_time: parseFloat(v.single_exp_time), num_exposures: parseFloat(v.num_exposures) }
+                : { target_snr: parseFloat(v.target_snr) }))
         }).then(function (response) {
             return response.json().then(function (data) {
                 if (!response.ok) { throw new Error(data.error || ('HTTP ' + response.status)); }
@@ -370,6 +441,9 @@
         syncHardware(saved.site === el('qs-site').value ? saved : null);
         ['ra', 'dec', 'mag'].forEach(function (k) { if (saved[k]) { el('qs-' + k).value = saved[k]; } });
         if (saved.target_snr) { el('qs-snr').value = saved.target_snr; }
+        if (saved.single_exp_time) { el('qs-exp').value = saved.single_exp_time; }
+        if (saved.num_exposures) { el('qs-num').value = saved.num_exposures; }
+        setGoal(saved.goal === 'solve_snr' ? 'solve_snr' : 'solve_time');
         el('qs-time').value = defaultTime();
         syncTimeNote();
     }).catch(function () {

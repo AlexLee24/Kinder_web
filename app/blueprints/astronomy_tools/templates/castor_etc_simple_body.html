@@ -1,0 +1,124 @@
+<!--
+    CASTOR ETC — Simple mode, the second shared partial beside etc_body.html.
+
+    Hardware and a target in, then Advanced mode's two goals: an SNR in and a frame
+    length and frame count out (solve_time), or the frames in and their SNR out
+    (solve_snr), from POST quickUrl (castorCLI/plan.py). Written for Kinder and moved
+    here; the logo is now drawn by etc_simple.css like etc.css draws the beaver, so
+    this fragment carries no host-specific URL.
+
+    Its classes are Kinder's site components (kw-*): mounted in Kinder the site's
+    _theme.css styles them, and the standalone shell loads css/kinder_shim.css for
+    the same rules. A host showing both modes wraps this fragment and etc_body.html
+    in [data-etc-mode-panel="simple"|"advanced"] and puts [data-etc-mode] tabs above
+    them; etc_simple.js does the switching. See frontend/README.md.
+-->
+<div class="kw-tool etc-simple" id="etc-simple" data-etc-mode-panel="simple">
+    <aside class="kw-tool-side">
+        <form class="kw-panel etc-simple-form" id="etc-simple-form" novalidate>
+            <div class="etc-simple-fields">
+                <div class="kw-panel-head"><h2>Setup</h2></div>
+                <!-- Advanced mode's order and names: Site, Telescope, Camera, Filter. Each narrows or
+                     sets a default for the next (the telescope picks its camera), so that is
+                     the order they are read in, side by side or stacked. -->
+                <div class="kw-grid-2 etc-simple-pair">
+                    <div class="kw-field">
+                        <label for="qs-site">Site</label>
+                        <select class="kw-select" id="qs-site" name="site"></select>
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-telescope">Telescope</label>
+                        <select class="kw-select" id="qs-telescope" name="telescope"></select>
+                    </div>
+                </div>
+                <div class="kw-grid-2 etc-simple-pair">
+                    <div class="kw-field">
+                        <label for="qs-camera">Camera</label>
+                        <select class="kw-select" id="qs-camera" name="camera"></select>
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-filter">Filter</label>
+                        <select class="kw-select" id="qs-filter" name="filter"></select>
+                    </div>
+                </div>
+                <p class="etc-simple-caveat" id="qs-caveat" hidden></p>
+
+                <div class="kw-panel-head etc-simple-head"><h2>Target</h2></div>
+                <!-- One coordinate pair, so side by side at every width: stacked, Dec read
+                     as belonging with the magnitude below it. -->
+                <div class="kw-grid-2 etc-simple-pair etc-simple-keep">
+                    <div class="kw-field">
+                        <label for="qs-ra">RA</label>
+                        <input type="text" id="qs-ra" name="ra" placeholder="22:00:00 or 330.0" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-dec">Dec</label>
+                        <input type="text" id="qs-dec" name="dec" placeholder="+20:00:00 or 20.0" autocomplete="off" spellcheck="false">
+                    </div>
+                </div>
+                <div class="kw-field">
+                    <label for="qs-mag">Magnitude (AB)</label>
+                    <input type="number" id="qs-mag" name="mag" step="any" placeholder="e.g. 19.5">
+                </div>
+
+                <!-- Advanced mode's Exposure Strategy, with its names and its choice: give
+                     the frames and get the SNR, or give the SNR and get the frames. -->
+                <div class="kw-panel-head etc-simple-head"><h2>Exposure Strategy</h2></div>
+                <div class="kw-field">
+                    <span class="etc-simple-label" id="qs-goal-label">Calculation Goal</span>
+                    <div class="etc-simple-seg" role="radiogroup" aria-labelledby="qs-goal-label">
+                        <label><input type="radio" name="goal" value="solve_snr"><span>Solve for SNR</span></label>
+                        <label><input type="radio" name="goal" value="solve_time" checked><span>Solve for Exposures</span></label>
+                    </div>
+                </div>
+                <!-- One row at every width, like the single Target SNR field it swaps with, so
+                     switching the goal never moves what is below. The unit sits in the field,
+                     as Advanced shows it, which keeps the labels short enough for a phone. -->
+                <div class="kw-grid-2 etc-simple-pair etc-simple-keep etc-simple-goal" data-qs-goal="solve_snr" hidden>
+                    <div class="kw-field">
+                        <label for="qs-exp">Single Exposure Time</label>
+                        <span class="etc-simple-unit" data-unit="s">
+                            <input type="number" id="qs-exp" name="single_exp_time" step="any" min="0" value="120">
+                        </span>
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-num">Number of Exposures</label>
+                        <input type="number" id="qs-num" name="num_exposures" step="1" min="1" value="1">
+                    </div>
+                </div>
+                <div class="etc-simple-goal" data-qs-goal="solve_time">
+                    <div class="kw-field">
+                        <label for="qs-snr">Target SNR</label>
+                        <input type="number" id="qs-snr" name="target_snr" step="any" min="0" value="10">
+                    </div>
+                </div>
+
+                <div class="kw-panel-head etc-simple-head"><h2>When</h2></div>
+                <div class="etc-simple-pair etc-simple-when">
+                    <div class="kw-field">
+                        <label for="qs-time">Time (<span id="qs-tz">your local time</span>)</label>
+                        <input type="datetime-local" id="qs-time" name="time">
+                        <small class="kw-muted" id="qs-time-utc"></small>
+                    </div>
+                    <div class="kw-field">
+                        <label for="qs-fwhm">Seeing (″)</label>
+                        <input type="number" id="qs-fwhm" name="fwhm" step="any" min="0">
+                    </div>
+                </div>
+                <small class="kw-muted etc-simple-note" id="qs-fwhm-note"></small>
+            </div>
+
+            <div class="etc-simple-actions">
+                <button type="submit" class="kw-btn kw-btn-primary etc-simple-go" id="qs-go">Calculate</button>
+            </div>
+        </form>
+    </aside>
+
+    <section class="kw-panel etc-simple-result is-idle" id="qs-result" aria-live="polite">
+        <div class="etc-simple-empty">
+            <span class="etc-simple-logo" aria-hidden="true"></span>
+            <span id="qs-empty-text">Fill in the target and press Calculate</span>
+        </div>
+        <div class="etc-simple-body" id="qs-body"></div>
+    </section>
+</div>
