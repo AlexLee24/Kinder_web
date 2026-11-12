@@ -1,0 +1,98 @@
+{% extends '_base.html' %}
+{#- Tools › Euclid (/euclid, euclid_compare.py → services/astro/euclid_cutout.py): Euclid DR1 / Q1 cutouts at any
+    position in 2–4 panels, each panel's source chosen freely (Euclid VIS, NISP colour or one band, Legacy Survey
+    DR10 / DR11). js/euclid_compare.js stretches the raw Euclid pixels with js/fits_stretch.js. -#}
+{% block title %}Euclid - Kinder{% endblock %}
+{% block head %}
+<script defer src="{{ url_for('static', filename='js/fits_stretch.js') }}"></script>
+<script defer src="{{ url_for('astronomy_tools.static', filename='js/euclid_compare.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/spectrum.css') }}">
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/euclid_compare.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set sources = [('vis', 'Euclid VIS'), ('nisp', 'Euclid NISP H / J / Y colour'), ('nisp_y', 'Euclid NISP Y'),
+                  ('nisp_j', 'Euclid NISP J'), ('nisp_h', 'Euclid NISP H'), ('dr10', 'Legacy Survey DR10'),
+                  ('dr11', 'Legacy Survey DR11')] %}
+<div class="kw-page sp-page ec-page" id="ecPage" data-mode="stf"
+     data-q="{{ q }}" data-panels="{{ panels|join(',') }}" data-default-panels="{{ default_panels|join(',') }}"
+     data-api-resolve="{{ url_for('astronomy_tools.euclid_resolve_api') }}"
+     data-api-coverage="{{ url_for('astronomy_tools.euclid_coverage_api') }}"
+     data-api-pixels="{{ url_for('astronomy_tools.euclid_pixels_api') }}"
+     data-api-survey="{{ url_for('astronomy_tools.euclid_survey_api') }}">
+    <div class="kw-tool">
+        <aside class="kw-tool-side">
+            <form class="kw-panel" id="ecForm" autocomplete="off">
+                <div class="sp-hd">Position</div>
+                <label class="sp-field">RA Dec or object name
+                    <input class="kw-input sp-mono" id="ecQ" name="q" value="{{ q }}" required
+                           placeholder="60.378544 -65.427484">
+                </label>
+                <div class="sp-hint">Degrees, hh:mm:ss ±dd:mm:ss, a Kinder object (2018ibb) or any name Sesame knows.</div>
+                <label class="sp-field">Field of view
+                    <select class="kw-input" id="ecFov">
+                        {% for f in fov_choices %}<option value="{{ f }}"{% if f == fov %} selected{% endif %}>{{ f }}″ × {{ f }}″</option>{% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="kw-btn kw-btn-primary sp-load">Show</button>
+            </form>
+
+            <section class="kw-panel">
+                <div class="sp-hd">Panels</div>
+                <div class="kw-seg ec-count" role="group" aria-label="Number of panels">
+                    {% for n in (2, 3, 4) %}<button type="button" class="kw-seg-item" data-count="{{ n }}">{{ n }}</button>{% endfor %}
+                </div>
+                {% for i in range(4) %}
+                <label class="sp-field ec-src" data-slot="{{ i }}">Panel {{ i + 1 }}
+                    <select class="kw-input" data-slot="{{ i }}">
+                        {% for v, label in sources %}<option value="{{ v }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </label>
+                {% endfor %}
+            </section>
+
+            <section class="kw-panel">
+                <div class="sp-hd">Display <button type="button" class="sp-copy ec-reset" id="cReset">Reset</button></div>
+                <label class="sp-field">Stretch
+                    <select class="kw-input" id="cMode">
+                        <option value="stf">Auto STF (PixInsight / Siril)</option>
+                        <option value="asinh">Asinh</option>
+                        <option value="log">Log</option>
+                        <option value="sqrt">Sqrt</option>
+                        <option value="linear">Linear</option>
+                    </select>
+                </label>
+                <label class="sp-field ec-stf">Shadows clip <span class="sp-val" data-out="shadows"></span>
+                    <input type="range" id="cShadows" min="-8" max="0" step="0.1"></label>
+                <label class="sp-field ec-stf">Target background <span class="sp-val" data-out="target"></span>
+                    <input type="range" id="cTarget" min="0.02" max="0.6" step="0.01"></label>
+                <label class="sp-field ec-manual">Black point <span class="sp-val" data-out="black"></span>
+                    <input type="range" id="cBlack" min="0" max="60" step="0.5"></label>
+                <label class="sp-field ec-manual">White point <span class="sp-val" data-out="white"></span>
+                    <input type="range" id="cWhite" min="90" max="100" step="0.05"></label>
+                <label class="sp-field ec-soft">Softening <span class="sp-val" data-out="soft"></span>
+                    <input type="range" id="cSoft" min="0.002" max="1" step="0.002"></label>
+                <label class="sp-field">Colour map
+                    <select class="kw-input" id="cCmap">
+                        <option value="gray">Gray</option>
+                        <option value="inferno">Inferno</option>
+                        <option value="viridis">Viridis</option>
+                        <option value="cubehelix">Cubehelix</option>
+                    </select>
+                </label>
+                <div class="sp-row">
+                    <label class="sp-check"><input type="checkbox" id="cInvert"> Invert</label>
+                    <label class="sp-check"><input type="checkbox" id="cLinked"> Linked RGB</label>
+                    <label class="sp-check"><input type="checkbox" id="cMarker"> Marker</label>
+                </div>
+            </section>
+        </aside>
+
+        <section class="sp-main">
+            <div class="kw-panel ec-info" id="ecInfo" hidden></div>
+            <div class="sp-status" id="ecStatus">Enter a position to compare Euclid with Legacy Survey.</div>
+            <div class="ec-grid" id="ecGrid" hidden></div>
+        </section>
+    </div>
+</div>
+{% endblock %}

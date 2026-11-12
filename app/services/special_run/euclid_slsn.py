@@ -323,7 +323,7 @@ def _fits_ok(path: Path) -> bool:
         return False
 
 
-def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3):
+def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3, radius_arcsec=None):
     from astropy.coordinates import SkyCoord
     import astropy.units as u
     src = out.with_suffix('.src')      # which mosaic the cached cutout came from (Q1 → DR1 re-downloads)
@@ -334,7 +334,8 @@ def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3):
         try:
             _timed(_thread_client().get_cutout, CUTOUT_TIMEOUT,
                    file_path=mosaic['file'], instrument=mosaic['instrument'], id=mosaic['tile'],
-                   coordinate=SkyCoord(ra, dec, unit='deg'), radius=CUTOUT_ARCSEC * u.arcsec, output_file=str(out))
+                   coordinate=SkyCoord(ra, dec, unit='deg'), radius=(radius_arcsec or CUTOUT_ARCSEC) * u.arcsec,
+                   output_file=str(out))
         except Exception as e:
             logger.warning('[EUCLID-SLSN] cutout %s try %d: %s', out, attempt + 1, e)
             if isinstance(e, TimeoutError):
@@ -378,7 +379,6 @@ _ls_lock = threading.Lock()   # the viewer answers 429 to parallel requests: one
 
 def ls_cutout(slug_: str, key: str, t: dict | None = None) -> Path | None:
     """Legacy Survey colour JPEG on the Euclid cutout grid (0.1"/px, same size), cached next to the FITS."""
-    import requests
     layer = LS_LAYERS.get(key)
     if not layer:
         return None
@@ -389,16 +389,21 @@ def ls_cutout(slug_: str, key: str, t: dict | None = None) -> Path | None:
         t = next((r for r in results().get('covered', []) if r.get('slug') == slug_), None)
     if t is None:
         return None
-    size = int(round(CUTOUT_ARCSEC * 2 / 0.1)) + 1
+    return ls_jpeg(t['ra'], t['dec'], layer, out, size=int(round(CUTOUT_ARCSEC * 2 / 0.1)) + 1, pixscale=0.1)
+
+
+def ls_jpeg(ra: float, dec: float, layer: str, out: Path, size: int, pixscale: float, tries: int = 5) -> Path | None:
+    """One Legacy Survey viewer JPEG (serially per process: the viewer answers 429 to parallel calls), cached."""
+    import requests
     with _ls_lock:
         if out.exists() and out.stat().st_size > 500:
             return out
-        for attempt in range(5):
+        for attempt in range(tries):
             try:
-                r = requests.get(LS_URL, params={'ra': f"{t['ra']:.6f}", 'dec': f"{t['dec']:.6f}", 'layer': layer,
-                                                 'pixscale': '0.1', 'size': size}, timeout=40)
+                r = requests.get(LS_URL, params={'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'layer': layer,
+                                                 'pixscale': f'{pixscale:.4f}', 'size': size}, timeout=40)
             except requests.RequestException as e:
-                logger.warning('[EUCLID-SLSN] LS %s %s: %s', slug_, key, e)
+                logger.warning('[EUCLID] LS %s %.5f %.5f: %s', layer, ra, dec, e)
                 r = None
             if r is not None and r.status_code == 200 and r.headers.get('content-type', '').startswith('image/'):
                 out.parent.mkdir(parents=True, exist_ok=True)

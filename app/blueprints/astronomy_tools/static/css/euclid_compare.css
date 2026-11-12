@@ -1,0 +1,37 @@
+/* Tools › Euclid (euclid_compare.html). Shares the Spectrum tool's side-column styles (sp-*). */
+.ec-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+.ec-page .sp-hd { display: flex; justify-content: space-between; align-items: center; }
+.ec-count { display: flex; }
+.ec-count .kw-seg-item { flex: 1; justify-content: center; }
+.ec-count .kw-seg-item.is-on { background: var(--color-accent); color: var(--color-accent-text); font-weight: 600; }
+.ec-src[hidden] { display: none; }
+#ecPage[data-mode="stf"] .ec-manual, #ecPage:not([data-mode="stf"]) .ec-stf { display: none; }
+#ecPage:not([data-mode="asinh"]):not([data-mode="log"]) .ec-soft { display: none; }
+
+.ec-info { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: 0.85rem; }
+.ec-info b { font-family: var(--kw-font-mono); color: var(--kw-text-white); }
+.ec-info a { color: var(--kw-link); text-decoration: none; }
+.ec-info .ec-muted { color: var(--kw-text-muted); }
+.ec-info .ec-warn { color: var(--kw-color-warning); }
+
+.ec-grid { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); gap: 3px; background: #000;
+           border-radius: var(--kw-radius-xl); overflow: hidden; }
+.ec-grid[data-n="3"] { --n: 3; }
+.ec-grid[data-n="2"] { --n: 2; }
+@media (max-width: 1100px) { .ec-grid[data-n="4"] { --n: 2; } }
+@media (max-width: 640px) { .ec-grid { --n: 1 !important; } }
+.ec-panel { position: relative; margin: 0; aspect-ratio: 1; background: #000; overflow: hidden; }
+.ec-panel canvas, .ec-panel img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.ec-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: 0.75rem; color: #fff;
+                       text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.ec-panel figcaption a { color: var(--kw-accent); text-decoration: none; }
+.ec-panel .ec-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center;
+                    color: var(--kw-text-muted); font-size: 0.8rem; }
+.ec-panel.is-loading .ec-msg::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px;
+    border: 2px solid var(--kw-border); border-top-color: var(--kw-accent); border-radius: 50%; animation: sp-spin 0.8s linear infinite; }
+.ec-panel.has-mark::before, .ec-panel.has-mark::after { content: ''; position: absolute; background: var(--color-accent); pointer-events: none; }
+.ec-panel.has-mark::before { left: 53.5%; top: calc(50% - 1px); width: 7%; height: 2px; }
+.ec-panel.has-mark::after { left: calc(50% - 1px); top: 39.5%; width: 2px; height: 7%; }
+.ec-scale { position: absolute; left: 6%; bottom: 5%; height: 2px; background: #fff; box-shadow: 0 0 2px #000; }
+.ec-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 0.7rem; color: #fff;
+                 text-shadow: 0 0 3px #000; white-space: nowrap; }
