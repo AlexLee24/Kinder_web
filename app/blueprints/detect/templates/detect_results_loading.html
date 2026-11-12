@@ -68,7 +68,10 @@
                     if (!response.ok) return;
                     const data = await response.json();
                     if (data && data.success && data.ready) {
-                        window.location.replace(targetUrl + location.hash);   // keeps a Judge → #t=<name>
+                        // Keeps a Judge → #t=<name>. Already on the target URL (the usual case) a replace with
+                        // the same URL and hash is only a fragment change and never reloads: reload instead.
+                        if (location.pathname + location.search === targetUrl) window.location.reload();
+                        else window.location.replace(targetUrl + location.hash);
                     }
                 } catch (err) {
                     // Keep polling; transient network failures are expected.

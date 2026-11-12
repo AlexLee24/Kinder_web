@@ -2021,6 +2021,24 @@ def get_detect_lc_data(target_name: str) -> dict:
         return {}
 
 
+def get_detect_match_rows(target_name: str) -> list:
+    """Every DETECT candidate stored for *target_name* (transient.cross_matches): catalogue, separation, host flag,
+    redshift and match_data, host first. For the light curve's one-axis-per-redshift; [] on error."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+            cur.execute(
+                "SELECT catalog AS catalog_name, separation AS separation_arcsec, is_host, redshift AS z, match_data "
+                "FROM transient.cross_matches WHERE name = %s "
+                "ORDER BY is_host DESC NULLS LAST, separation ASC NULLS LAST",
+                (target_name,)
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.error('get_detect_match_rows(%s): %s', target_name, e)
+        return []
+
+
 def get_followup_objects_for_tracking() -> list:
     """Return all Follow-up objects with their host cross-match info for abs mag tracking."""
     try:

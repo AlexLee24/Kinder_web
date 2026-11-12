@@ -65,7 +65,7 @@ class DataVisualization:
             gridcolor='rgba(120,120,120,0.25)',
             zerolinecolor='rgba(120,120,120,0.25)'
         )
-        for axis_name in ('xaxis', 'xaxis2', 'yaxis', 'yaxis2'):
+        for axis_name in ('xaxis', 'xaxis2', 'yaxis', *(f'yaxis{i}' for i in range(2, 12))):
             axis_obj = getattr(layout, axis_name, None)
             if axis_obj:
                 axis_obj.update(**axis_style)
@@ -73,8 +73,40 @@ class DataVisualization:
         return layout
     
     @staticmethod
-    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False, apply_extinction=True, apply_k_corr=True):
-        """Create interactive photometry plot from database data"""
+    def _abs_mag_shift(redshift, ra, dec, apply_extinction=True, apply_k_corr=True):
+        """m - M at *redshift* for the right-hand axis: distance modulus, K term 2.5 log(1+z) and the
+        Galactic extinction in V at (ra, dec). 0 when z is missing or not positive."""
+        if not (redshift and redshift > 0):
+            return 0
+        if ext_M_calculator:
+            try:
+                distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
+                if not isinstance(distance_mpc, (int, float)):
+                    return 0
+                shift = 5 * math.log10(distance_mpc * 1e6) - 5
+                if apply_k_corr:
+                    shift += 2.5 * math.log10(1 + redshift)
+                if ra is not None and dec is not None and apply_extinction:
+                    ext = ext_M_calculator.get_extinction(ra, dec, 'V')
+                    if isinstance(ext, (int, float)):
+                        shift += ext
+                return shift
+            except Exception as e:
+                logger.error('Error calculating absolute magnitude parameters: %s', e)
+                return 0
+        try:                       # fallback without the module: Hubble law, H0 = 70
+            return 5 * np.log10((299792.458 * redshift) / 70.0 * 1e6) - 5
+        except Exception:
+            return 0
+
+    @staticmethod
+    def create_photometry_plot_from_db(photometry_data, redshift=None, ra=None, dec=None, as_json=False, apply_extinction=True, apply_k_corr=True,
+                                       z_axes=None):
+        """Create interactive photometry plot from database data.
+
+        ``z_axes``: [{'z': float, 'label': str}, ...] draws one absolute-magnitude axis on the right per entry
+        (DETECT: every matched redshift, host first) instead of the single axis at *redshift*. The hover's
+        Abs. Mag stays at *redshift*."""
         if not photometry_data:
             return None
             
@@ -207,42 +239,10 @@ class DataVisualization:
             grouped_data[key]['magnitude_error'].append(err)
         
         # Calculate distance modulus and extinction shift
-        distance_modulus = 0
-        k_correction = 0
-        extinction_shift = 0
-        ref_filter = 'r'
-        
-        if redshift and redshift > 0 and ext_M_calculator:
-            try:
-                # Use ext_M_calculator for distance
-                distance_mpc, _ = ext_M_calculator.z_to_lmd(redshift)
-                if isinstance(distance_mpc, (int, float)):
-                    distance_modulus = 5 * math.log10(distance_mpc * 1e6) - 5
-                    if apply_k_corr:
-                        k_correction = 2.5 * math.log10(1 + redshift)
-                    
-                    # Calculate extinction if RA/Dec available
-                    if ra is not None and dec is not None and apply_extinction:
-                        # Use V band as reference for the axis
-                        ref_filter = 'V'
-                        
-                        extinction_shift = ext_M_calculator.get_extinction(ra, dec, ref_filter)
-                        if not isinstance(extinction_shift, (int, float)):
-                            extinction_shift = 0
-            except Exception as e:
-                logger.error('Error calculating absolute magnitude parameters: %s', e)
-                distance_modulus = 0
-        elif redshift and redshift > 0:
-            # Fallback to simple calculation if module not available
-            try:
-                c = 299792.458 # km/s
-                H0 = 70.0 # km/s/Mpc
-                d_L_Mpc = (c * redshift) / H0
-                distance_modulus = 5 * np.log10(d_L_Mpc * 1e6) - 5
-            except Exception:
-                distance_modulus = 0
-        
-        total_shift = distance_modulus + k_correction + extinction_shift
+        # (the hover's per-filter Abs. Mag uses distance_modulus + k_correction + that filter's extinction)
+        distance_modulus = DataVisualization._abs_mag_shift(redshift, None, None, apply_k_corr=False)
+        k_correction = 2.5 * math.log10(1 + redshift) if apply_k_corr and distance_modulus else 0
+        total_shift = DataVisualization._abs_mag_shift(redshift, ra, dec, apply_extinction, apply_k_corr)
         
         # Create traces for each group
         traces = []
@@ -457,41 +457,58 @@ class DataVisualization:
             # Reversed Y-axis: [max, min]
             layout.yaxis.range = [plot_max_mag, plot_min_mag]
 
-            has_abs_mag_axis = bool(total_shift > 0)
+            # One right-hand axis per redshift: the single *redshift*, or every entry of z_axes. Each is the
+            # apparent axis shifted by its own m - M; the first sits on the plot edge, the rest are pushed out
+            # beside it (autoshift) and the right margin grows to fit them.
+            axes = []
+            for entry in (z_axes or []):
+                z = entry.get('z')
+                shift = DataVisualization._abs_mag_shift(z, ra, dec, apply_extinction, apply_k_corr)
+                if shift > 0:
+                    axes.append((f"M · z={z:.4f} {entry.get('label') or ''}".strip(), shift))
+            if not axes:
+                axes = [("Abs Mag" if total_shift > 0 else "Abs Mag (z N/A)", total_shift)]
 
-            if has_abs_mag_axis:
-                abs_min = plot_min_mag - total_shift
-                abs_max = plot_max_mag - total_shift
-            else:
-                # No redshift — mirror the apparent-mag axis so the right axis
-                # still renders (labelled "Abs Mag" with N/A hint in title).
-                abs_min = plot_min_mag
-                abs_max = plot_max_mag
+            for i, (title, shift) in enumerate(axes):
+                has_abs_mag_axis = bool(shift > 0)
+                if has_abs_mag_axis:
+                    abs_min = plot_min_mag - shift
+                    abs_max = plot_max_mag - shift
+                else:
+                    # No redshift — mirror the apparent-mag axis so the right axis
+                    # still renders (labelled "Abs Mag" with N/A hint in title).
+                    abs_min = plot_min_mag
+                    abs_max = plot_max_mag
+                name = f'yaxis{i + 2}'
+                axis = dict(
+                    title=dict(text=title, standoff=4) if i else title,
+                    overlaying='y',
+                    side='right',
+                    range=[abs_max, abs_min],
+                    showgrid=False,
+                    tickformat=".2f",
+                    showticklabels=has_abs_mag_axis,
+                )
+                if i:
+                    axis.update(anchor='free', autoshift=True, shift=8, title_font=dict(size=11))
+                # Keep the absolute-mag ticks on the same grid as the apparent axis when locked
+                if mag_span < MIN_SPAN_MAG and has_abs_mag_axis:
+                    axis.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
+                layout[name] = axis
 
-            layout.yaxis2 = dict(
-                title="Abs Mag" if has_abs_mag_axis else "Abs Mag (z N/A)",
-                overlaying='y',
-                side='right',
-                range=[abs_max, abs_min],
-                showgrid=False,
-                tickformat=".2f",
-                showticklabels=has_abs_mag_axis,
-            )
-            # Keep the absolute-mag ticks on the same 0.5-mag grid when locked
-            if mag_span < MIN_SPAN_MAG and has_abs_mag_axis:
-                layout.yaxis2.update(tickmode='linear', dtick=GRID_INTERVAL_MAG)
-
-            # Add dummy trace to force yaxis2 to appear
-            traces.append(go.Scatter(
-                x=[plot_min_mjd],
-                y=[abs_max],
-                xaxis='x',
-                yaxis='y2',
-                mode='markers',
-                marker=dict(opacity=0),
-                showlegend=False,
-                hoverinfo='skip'
-            ))
+                # Add dummy trace to force the axis to appear
+                traces.append(go.Scatter(
+                    x=[plot_min_mjd],
+                    y=[abs_max],
+                    xaxis='x',
+                    yaxis=f'y{i + 2}',
+                    mode='markers',
+                    marker=dict(opacity=0),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+            if len(axes) > 1:
+                layout.margin.r = 60 + 62 * (len(axes) - 1)
         else:
              layout.yaxis.autorange = "reversed"
              

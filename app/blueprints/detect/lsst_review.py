@@ -22,7 +22,7 @@ from app.services.photometry.data_processing import DataVisualization
 from . import detect_bp
 from .checks import mark_seen, overview_lists
 from .lsst import _member_api_denied, _member_or_redirect
-from .payload import _assemble_detect_payload
+from .payload import _assemble_detect_payload, detect_z_axes
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +176,10 @@ def lsst_review_lightcurve(name):
     if not phot:
         return jsonify({'success': True, 'plot_json': None, 'data_count': 0,
                         'message': 'No LSST photometry stored yet'})
+    # The screen's z is DETECT's pick (the host's); each matched redshift gets its own axis beside it
+    z_axes = detect_z_axes(info.get('matches'), info.get('z'), own_label='DETECT z')
     plot_json = DataVisualization.create_photometry_plot_from_db(
-        phot, info.get('z'), info.get('ra'), info.get('dec'), as_json=True)
+        phot, info.get('z'), info.get('ra'), info.get('dec'), as_json=True, z_axes=z_axes)
     return jsonify({'success': True, 'plot_json': plot_json, 'data_count': len(phot), 'cached': False})
 
 

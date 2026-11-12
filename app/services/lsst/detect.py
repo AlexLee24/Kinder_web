@@ -468,17 +468,22 @@ def get_image(oid: int) -> bytes | None:
 
 
 def lightcurve_rows(oid: int) -> tuple[list[dict], dict]:
-    """Stored LSST points as photometry rows for DataVisualization, plus z / ra / dec."""
+    """Stored LSST points as photometry rows for DataVisualization, plus z / ra / dec and the DETECT candidates
+    (``matches``: catalog_name, is_host, z, match_data; host first) for the one-axis-per-redshift light curve."""
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute("""SELECT a.ra, a.dec, a.lc_points, s.z FROM transient.lsst_alerts a
                        LEFT JOIN transient.lsst_detect_screen s ON s.oid = a.oid WHERE a.oid = %s""", (int(oid),))
         row = cur.fetchone()
-    if not row:
-        return [], {}
+        if not row:
+            return [], {}
+        cur.execute("""SELECT catalog AS catalog_name, separation AS separation_arcsec, is_host, redshift AS z, match_data
+                         FROM transient.lsst_detect_matches WHERE oid = %s
+                        ORDER BY is_host DESC NULLS LAST, separation ASC NULLS LAST""", (int(oid),))
+        matches = [dict(r) for r in cur.fetchall()]
     phot = [{"id": i, "mjd": m, "magnitude": mag, "magnitude_error": e, "filter": f, "telescope": SOURCE}
             for i, (m, mag, e, f) in enumerate(row["lc_points"] or [])]
-    return phot, {"z": row["z"], "ra": row["ra"], "dec": row["dec"]}
+    return phot, {"z": row["z"], "ra": row["ra"], "dec": row["dec"], "matches": matches}
 
 
 def refetch_lightcurve(oid: int) -> int:
