@@ -1,5 +1,5 @@
 {% extends '_base.html' %}
-{#- Lab › Special Run › Euclid-SLSN (special_run.py → services/special_run/euclid_slsn.py): Euclid Q1 VIS + NISP
+{#- Lab › Special Run › Euclid-SLSN (special_run.py → services/special_run/euclid_slsn.py): Euclid DR1 / Q1 VIS + NISP
     host cutouts of every SLSN in Kinder plus the literature list, with Legacy Survey DR10 / DR11 for comparison.
     The run is a background thread polled here; js/special_run_euclid.js stretches the raw cutouts in the browser. -#}
 {% block title %}Euclid-SLSN - Special Run - Kinder{% endblock %}
@@ -71,7 +71,7 @@
     <div class="kw-page-head">
         <div>
             <h1>Euclid-SLSN</h1>
-            <p>Euclid Q1 host-galaxy cutouts ({{ cutout_arcsec }}″ × {{ cutout_arcsec }}″, VIS + NISP Y/J/H) of every
+            <p>Euclid DR1-Foundation host-galaxy cutouts (Q1 where DR1 has none) ({{ cutout_arcsec }}″ × {{ cutout_arcsec }}″, VIS + NISP Y/J/H) of every
                SLSN in Kinder and the SLSN literature list, next to Legacy Survey DR10 / DR11. North up, east left.</p>
         </div>
         <div class="sr-head-actions">
@@ -83,8 +83,8 @@
 
     <div class="kw-kpis">
         <div class="kw-kpi"><span class="kw-kpi-label">SLSN targets</span><b id="kTargets">–</b><small>Kinder DB + list</small></div>
-        <div class="kw-kpi"><span class="kw-kpi-label">With Euclid imaging</span><b id="kCovered">–</b><small>inside Q1 MER mosaics</small></div>
-        <div class="kw-kpi"><span class="kw-kpi-label">Q1 tiles</span><b id="kTiles">–</b><small>MER VIS mosaics</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">With Euclid imaging</span><b id="kCovered">–</b><small>inside DR1 / Q1 MER mosaics</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Euclid tiles</span><b id="kTiles">–</b><small>DR1 + Q1 MER VIS</small></div>
         <div class="kw-kpi"><span class="kw-kpi-label">Last run</span><b id="kLast" style="font-size:1rem">–</b><small id="kState">never</small></div>
     </div>
 
@@ -152,7 +152,7 @@
     <div class="kw-empty" id="srEmpty" hidden>No results yet — press <b>Run</b>.</div>
 
     <details class="kw-panel" id="srMissBox" hidden>
-        <summary><span id="srMissN"></span> targets outside Euclid Q1</summary>
+        <summary><span id="srMissN"></span> targets outside Euclid DR1 / Q1</summary>
         <ul class="sr-miss" id="srMiss"></ul>
     </details>
 </div>
