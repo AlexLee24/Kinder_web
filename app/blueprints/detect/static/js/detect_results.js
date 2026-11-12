@@ -274,6 +274,11 @@ function _renderPlotly(plotDiv, plotJsonStr, targetName) {
             plotData.layout.margin = { l: 48, r: 44, t: 36, b: 44, pad: 0 };
             plotData.layout.font = Object.assign({}, plotData.layout.font, { size: 10 });
             plotData.layout.title = Object.assign({}, typeof t === 'string' ? { text: t } : (t || {}), { font: { size: 13 } });
+            // One Abs Mag axis per matched redshift needs room a phone does not have: keep the first (the host's)
+            Object.keys(plotData.layout).forEach(k => {
+                const n = /^yaxis(\d+)$/.exec(k);
+                if (n && +n[1] >= 3) plotData.layout[k].visible = false;
+            });
         }
         Plotly.newPlot(plotDiv, plotData.data, plotData.layout,
             Object.assign({ responsive: true, displayModeBar: !phone }, plotData.config || {}));

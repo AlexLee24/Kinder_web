@@ -1,7 +1,7 @@
 """DETECT host screening pages and review APIs — payload (split from detect_routes.py)."""
 import math
 from datetime import datetime, timedelta, timezone
-from app.db.transient import get_detect_metadata, get_detect_page_data, get_detect_lc_data
+from app.db.transient import get_detect_metadata, get_detect_page_data, get_detect_lc_data, get_detect_match_rows
 from app.services.photometry.data_processing import DataVisualization
 from app.services.astro.ext_M_calculator import apm_to_abm, get_extinction
 import json
@@ -121,6 +121,50 @@ def _calculate_detect_abs_mag(target_name, apparent_mag, redshift, extinction, c
         logger.error('DETECT abs_mag calculation error for %s %s: %s', target_name, catalog_name, e)
         return None
 
+_Z_KEYS = ('Z', 'z', 'redshift', 'z(s)', 'z_spec', 'z_phot', 'z_lens')
+MAX_Z_AXES = 6          # right-hand axes on the light curve; more would squeeze the plot to nothing
+
+
+def _match_z(z, match_data):
+    """A candidate's redshift as the card shows it: the row's own z, else the first one match_data carries."""
+    z = _safe_float(z)
+    for key in _Z_KEYS:
+        if z is not None:
+            break
+        if match_data.get(key) not in (None, ''):
+            z = _safe_float(match_data[key])
+    return z
+
+
+def detect_z_axes(match_rows, own_z=None, own_label='object z'):
+    """[{'z', 'label'}] for the light curve: one absolute-magnitude axis per distinct redshift among the matched
+    candidates (rows host first, as the card orders them), with the object's own z after the host. Equal
+    redshifts (to 4 decimals) share one axis; at most MAX_Z_AXES."""
+    entries = []
+    for row in match_rows or []:
+        md = row.get('match_data') or {}
+        if isinstance(md, str):
+            try:
+                md = json.loads(md)
+            except Exception:
+                md = {}
+        z = _match_z(row.get('z'), md)
+        if z is not None and z > 0:
+            label = _catalog_label(row.get('catalog_name'), md) + (' host' if row.get('is_host') else '')
+            entries.append({'z': z, 'label': label, 'host': bool(row.get('is_host'))})
+    own_z = _safe_float(own_z)
+    if own_z is not None and own_z > 0:
+        n_host = sum(1 for e in entries if e['host'])
+        entries.insert(n_host, {'z': own_z, 'label': own_label, 'host': False})
+    out, seen = [], set()
+    for e in entries:
+        key = round(e['z'], 4)
+        if key not in seen:
+            seen.add(key)
+            out.append({'z': e['z'], 'label': e['label']})
+    return out[:MAX_Z_AXES]
+
+
 def _build_detect_lc_payload(target_name):
     # Single DB connection for both object details and photometry (Marshal pattern)
     lc_data = get_detect_lc_data(target_name)
@@ -139,12 +183,14 @@ def _build_detect_lc_payload(target_name):
     ra = _parse_float_or_none(details.get('ra'))
     dec = _parse_float_or_none(details.get('declination'))
 
+    z_axes = detect_z_axes(get_detect_match_rows(target_name), z)
     plot_json = DataVisualization.create_photometry_plot_from_db(
         photometry,
-        z,
+        z if z is not None else (z_axes[0]['z'] if z_axes else None),
         ra,
         dec,
         as_json=True,
+        z_axes=z_axes,
     )
 
     return {
@@ -396,14 +442,7 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
                     'tns_z': None,
                 }
 
-            redshift = _safe_float(row.get('z'))
-            if redshift is None:
-                for z_key in ['Z', 'z', 'redshift', 'z(s)', 'z_spec', 'z_phot', 'z_lens']:
-                    if z_key in match_data and match_data[z_key] is not None and match_data[z_key] != '':
-                        redshift = _safe_float(match_data[z_key])
-                        if redshift is not None:
-                            break
-            row['z'] = redshift
+            row['z'] = _match_z(row.get('z'), match_data)
             row['abs_mag'] = None
             row['is_flagged'] = bool(row.get('flag'))
             row['flag_id'] = row.get('id')
