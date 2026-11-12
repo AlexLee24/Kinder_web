@@ -36,6 +36,27 @@ TILE_NEAR_DEG = 0.45        # pre-selection around a tile centre (tiles are ~0.5
 CUTOUT_ARCSEC = 15.0        # cutout radius → 30" × 30" (300 px VIS at 0.1"/px)
 BANDS = ('VIS', 'NIR_Y', 'NIR_J', 'NIR_H')
 WORKERS = 4
+QUERY_TIMEOUT = 90          # s per ESA TAP query (astroquery's http.client calls have no timeout of their own)
+CUTOUT_TIMEOUT = 180        # s per cutout download
+
+
+def _timed(fn, timeout, *args, **kwargs):
+    """Call fn in a daemon thread and give up after `timeout` s, so a silent ESA server cannot hang the run."""
+    box = {}
+
+    def _call():
+        try:
+            box['r'] = fn(*args, **kwargs)
+        except BaseException as e:  # noqa: BLE001 -- re-raised in the caller
+            box['e'] = e
+    th = threading.Thread(target=_call, daemon=True, name='euclid-call')
+    th.start()
+    th.join(timeout)
+    if th.is_alive():
+        raise TimeoutError(f'no answer from ESA in {timeout} s')
+    if 'e' in box:
+        raise box['e']
+    return box.get('r')
 
 _SLUG = re.compile(r'[^A-Za-z0-9_.+-]+')
 
@@ -272,11 +293,13 @@ def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3):
     for attempt in range(tries):
         out.unlink(missing_ok=True)
         try:
-            _thread_client().get_cutout(file_path=mosaic['file'], instrument=mosaic['instrument'], id=mosaic['tile'],
-                                        coordinate=SkyCoord(ra, dec, unit='deg'),
-                                        radius=CUTOUT_ARCSEC * u.arcsec, output_file=str(out))
+            _timed(_thread_client().get_cutout, CUTOUT_TIMEOUT,
+                   file_path=mosaic['file'], instrument=mosaic['instrument'], id=mosaic['tile'],
+                   coordinate=SkyCoord(ra, dec, unit='deg'), radius=CUTOUT_ARCSEC * u.arcsec, output_file=str(out))
         except Exception as e:
             logger.warning('[EUCLID-SLSN] cutout %s try %d: %s', out, attempt + 1, e)
+            if isinstance(e, TimeoutError):
+                _tls.__dict__.pop('client', None)   # the abandoned call may still be using it
         if _fits_ok(out):
             return out
         time.sleep(1.5 * (attempt + 1))
@@ -461,7 +484,7 @@ def run(refresh=False):
 
         E = _euclid()
         prog.log('Listing Euclid Q1 MER tiles', step='Tiles')
-        tiles = _tile_centres(E)
+        tiles = _timed(_tile_centres, QUERY_TIMEOUT, E)
         tra = np.array([a for _, a, _ in tiles])
         tdec = np.array([d for _, _, d in tiles])
         near = [t for t in targets if _sep_arcsec(tra, tdec, t['ra'], t['dec']).min() < TILE_NEAR_DEG * 3600]
@@ -469,13 +492,17 @@ def run(refresh=False):
 
         covered = []
         for t in near:
-            try:
-                m = _mosaics_at(E, t['ra'], t['dec'])
-            except Exception as e:
-                prog.log(f"{t['name']}: footprint query failed ({e})")
-                m = {}
+            m = {}
+            for attempt in range(2):
+                try:
+                    m = _timed(_mosaics_at, QUERY_TIMEOUT, E, t['ra'], t['dec'])
+                    break
+                except Exception as e:
+                    prog.log(f"{t['name']}: footprint query failed ({e})" + (', retrying' if attempt == 0 else ''))
             if m:
                 covered.append((t, m))
+            prog.log(f"{t['name']}: {'inside ' + next(iter(m.values()))['tile'] if m else 'outside'} Q1")
+            prog.tick()
         prog.log(f'{len(covered)} targets inside Q1 mosaics; downloading cutouts', step='Cutouts',
                  done=0, total=len(covered))
 
