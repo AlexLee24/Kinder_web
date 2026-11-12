@@ -1056,6 +1056,9 @@ kbd {
     white-space: nowrap;
 }
 .td-spec .fact-sub, .td-dlr .fact-sub, .td-galaxy .fact-sub { display: block; margin-left: 0; }
+.td-spec .spec-id { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.74em; user-select: all; }
+.td-spec a.spec-id { color: var(--kw-link, inherit); text-decoration: none; }
+.td-spec a.spec-id:hover { text-decoration: underline; }
 .td-galaxy { font-size: 0.86em; color: #bbb; white-space: nowrap; }
 .dlr-in   { color: #46ffaf; font-weight: 700; }
 .dlr-tent { color: var(--hs-review); font-weight: 700; }

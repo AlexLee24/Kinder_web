@@ -41,8 +41,9 @@ def test_route_count_is_stable(app):
     # Trigger duty volunteering (/api/lab_calendar/volunteer); 377 with the bell (/api/notifications, count, read,
     # delete and /notifications/<id>); 378 with Admin › Bots › NAS backup (its Moves overview); 380 with DETECT's
     # checked marks (/api/detect/check, /api/detect/checked_state); 382 with Admin › Slack (page + send);
-    # 383 with bulk target delete (/api/targets/bulk_delete); 384 with /api/v1/robot/alert-run; 385 with /detect/lens/sugohi.
-    assert sum(1 for _ in app.url_map.iter_rules()) == 385
+    # 383 with bulk target delete (/api/targets/bulk_delete); 384 with /api/v1/robot/alert-run; 385 with /detect/lens/sugohi;
+    # 387 with Tools › Spectrum (/spectrum, /api/spectrum/desi/<targetid>).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 387
 
 
 def test_duplicate_rules_keep_precedence(app):

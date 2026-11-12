@@ -100,7 +100,7 @@
                 <td class="num">{{ num(m.sep) }}″</td><td class="num">{{ num(m.sep_re, '%.1f') }}</td>
                 <td class="num">{{ num(m.z, '%.4f') }}{% if m.zwarn %}<small>ZWARN {{ m.zwarn }}</small>{% endif %}</td>
                 <td>{{ m.spectype or '—' }}</td><td class="num">{{ num(m.shape_r) }}″</td><td class="num">{{ num(m.mag_r, '%.1f') }}</td>
-                <td class="xm-mono">{{ m.targetid }}</td>
+                <td class="xm-mono"><a href="{{ url_for('astronomy_tools.spectrum', targetid=m.targetid) }}" target="_blank" rel="noopener" title="Open the DESI spectrum">{{ m.targetid }}</a></td>
             </tr>{% endfor %}</tbody>
         </table></div>
         {% else %}<div class="kw-panel xm-none">No DESI galaxy within these limits.</div>{% endif %}

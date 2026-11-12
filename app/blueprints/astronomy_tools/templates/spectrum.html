@@ -1,0 +1,79 @@
+{% extends '_base.html' %}
+{#- Tools › Spectrum (/spectrum): a DESI DR1 / EDR coadded spectrum by TARGETID (spectrum.py → services/astro/desi_spectrum.py),
+    plotted by js/spectrum.js with Plotly. Smoothing, rest frame, line markers and CSV export all run in the browser. -#}
+{% block title %}Spectrum - Kinder{% endblock %}
+{% block head %}
+<script defer src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8"></script>
+<script defer src="{{ url_for('astronomy_tools.static', filename='js/spectrum.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/spectrum.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="kw-page sp-page" data-api="{{ url_for('astronomy_tools.spectrum_desi_api', targetid=0)[:-1] }}"
+     data-targetid="{{ targetid }}" data-release="{{ release }}" data-survey="{{ survey }}" data-program="{{ program }}">
+    <div class="kw-tool">
+        <aside class="kw-tool-side">
+            <form class="kw-panel sp-form" id="spForm" autocomplete="off">
+                <div class="sp-hd">DESI spectrum</div>
+                <label class="sp-field">TARGETID
+                    <input class="kw-input sp-mono" id="spTargetid" name="targetid" inputmode="numeric" pattern="[0-9]+"
+                           placeholder="39627857210645888" value="{{ targetid }}" required>
+                </label>
+                <label class="sp-field">Release
+                    <select class="kw-input" id="spRelease" name="release">
+                        <option value="">Auto (DR1, then EDR)</option>
+                        <option value="dr1"{% if release == 'dr1' %} selected{% endif %}>DR1 (iron)</option>
+                        <option value="edr"{% if release == 'edr' %} selected{% endif %}>EDR (fuji)</option>
+                    </select>
+                </label>
+                <details class="sp-more"{% if survey or program %} open{% endif %}>
+                    <summary>Survey / program / position</summary>
+                    <div class="sp-grid2">
+                        <label class="sp-field">Survey <input class="kw-input" id="spSurvey" name="survey" placeholder="main" value="{{ survey }}"></label>
+                        <label class="sp-field">Program <input class="kw-input" id="spProgram" name="program" placeholder="dark" value="{{ program }}"></label>
+                        <label class="sp-field">RA (°) <input class="kw-input" id="spRa" name="ra" inputmode="decimal" placeholder="if not in cat.desi"></label>
+                        <label class="sp-field">Dec (°) <input class="kw-input" id="spDec" name="dec" inputmode="decimal" placeholder="if not in cat.desi"></label>
+                    </div>
+                    <div class="sp-hint">Only needed when a TARGETID has several coadds, or is not in Kinder's DESI catalogue (the RA / Dec gives its HEALPix pixel).</div>
+                </details>
+                <button type="submit" class="kw-btn kw-btn-primary sp-load" id="spLoad">Load spectrum</button>
+                <div class="sp-recent" id="spRecent" hidden></div>
+            </form>
+
+            <section class="kw-panel sp-controls" id="spControls">
+                <div class="sp-hd">Display</div>
+                <label class="sp-field">Smoothing <span class="sp-val" id="spSmoothVal">5 px</span>
+                    <input type="range" id="spSmooth" min="1" max="41" step="2" value="5">
+                </label>
+                <div class="sp-row">
+                    <label class="sp-check"><input type="checkbox" id="spRest"> Rest frame</label>
+                    <label class="sp-check"><input type="checkbox" id="spErr" checked> 1σ band</label>
+                    <label class="sp-check"><input type="checkbox" id="spRaw"> Unsmoothed</label>
+                </div>
+                <div class="sp-row">
+                    <label class="sp-check"><input type="checkbox" id="spEmLines" checked> Emission lines</label>
+                    <label class="sp-check"><input type="checkbox" id="spAbsLines"> Absorption lines</label>
+                </div>
+                <label class="sp-field">Redshift for lines / rest frame
+                    <div class="sp-zrow">
+                        <input class="kw-input sp-mono" id="spZ" inputmode="decimal" placeholder="z">
+                        <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="spZReset" title="Back to the redrock redshift">Redrock z</button>
+                    </div>
+                </label>
+                <div class="sp-row">
+                    <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="spCsv" disabled>Download CSV</button>
+                    <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="spPng" disabled>Save PNG</button>
+                </div>
+            </section>
+        </aside>
+
+        <div class="sp-main">
+            <section class="kw-panel sp-info" id="spInfo" hidden></section>
+            <section class="kw-panel sp-plot-panel">
+                <div class="sp-status" id="spStatus">Enter a DESI TARGETID to plot its coadded spectrum (b + r + z arms, 3600–9800 Å).</div>
+                <div id="spPlot" class="sp-plot" hidden></div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

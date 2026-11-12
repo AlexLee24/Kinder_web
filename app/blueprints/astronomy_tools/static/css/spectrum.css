@@ -1,0 +1,58 @@
+/* Tools › Spectrum (spectrum.html). kw-tool layout: settings column + plot. */
+.sp-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+.sp-hd { font-size: var(--kw-text-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kw-text-secondary); }
+.sp-field { display: flex; flex-direction: column; gap: 5px; font-size: 0.78rem; color: var(--kw-text-secondary); }
+.sp-field .kw-input { min-height: 38px; width: 100%; box-sizing: border-box; }
+.sp-mono { font-family: var(--kw-font-mono); font-variant-numeric: tabular-nums; }
+.sp-val { float: right; color: var(--kw-text-primary); font-variant-numeric: tabular-nums; }
+.sp-field input[type="range"] { width: 100%; accent-color: var(--kw-accent); }
+.sp-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.sp-more summary { cursor: pointer; font-size: 0.78rem; color: var(--kw-text-secondary); }
+.sp-hint { margin-top: 8px; font-size: 0.72rem; color: var(--kw-text-muted); line-height: 1.45; }
+.sp-load { width: 100%; justify-content: center; }
+.sp-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.sp-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--kw-text-primary); cursor: pointer; }
+.sp-check input { accent-color: var(--kw-accent); }
+.sp-zrow { display: flex; gap: 8px; }
+.sp-zrow .kw-input { flex: 1; }
+.sp-recent { display: flex; flex-wrap: wrap; gap: 6px; }
+.sp-recent button { font: 0.72rem var(--kw-font-mono); padding: 3px 8px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--kw-border); background: var(--kw-surface); color: var(--kw-text-secondary); }
+.sp-recent button:hover { background: var(--kw-surface-hover); color: var(--kw-text-primary); }
+
+.sp-main { display: grid; gap: 16px; min-width: 0; }
+.sp-main [hidden] { display: none !important; }
+.sp-alts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sp-alts-label { font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); margin-right: 4px; }
+.sp-alt { font: 0.74rem var(--kw-font-mono); padding: 3px 9px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--kw-border); background: var(--kw-surface); color: var(--kw-text-secondary); }
+.sp-alt:hover { background: var(--kw-surface-hover); color: var(--kw-text-primary); }
+.sp-alt.is-current { border-color: var(--kw-accent-border); background: var(--kw-accent-dim); color: var(--kw-text-white); cursor: default; }
+.sp-info { display: grid; gap: 12px; }
+.sp-info-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.sp-info-id { font: 600 1.05rem var(--kw-font-mono); color: var(--kw-text-white); }
+.sp-copy { font-size: 0.72rem; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--kw-border); background: transparent;
+    color: var(--kw-text-secondary); cursor: pointer; }
+.sp-copy:hover { color: var(--kw-text-primary); background: var(--kw-surface-hover); }
+.sp-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px 16px; margin: 0; }
+.sp-facts div { min-width: 0; }
+.sp-facts dt { font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); }
+.sp-facts dd { margin: 2px 0 0; font-size: 0.9rem; color: var(--kw-text-primary); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sp-facts dd small { display: block; font-size: 0.72rem; color: var(--kw-text-muted); }
+.sp-warn { color: var(--kw-color-warning); }
+.sp-links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 0.8rem; }
+.sp-links a { color: var(--kw-link); text-decoration: none; }
+.sp-links a:hover { text-decoration: underline; }
+
+.sp-plot-panel { padding: 12px; }
+.sp-plot { width: 100%; height: min(62vh, 560px); min-height: 360px; }
+.sp-status { padding: 28px 12px; text-align: center; font-size: 0.85rem; color: var(--kw-text-muted); }
+.sp-status.is-error { color: #FF6B61; }
+.sp-status.is-loading::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 8px; vertical-align: -1px;
+    border: 2px solid var(--kw-border); border-top-color: var(--kw-accent); border-radius: 50%; animation: sp-spin 0.8s linear infinite; }
+@keyframes sp-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 640px) {
+    .sp-plot { height: 420px; min-height: 300px; }
+    .sp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
