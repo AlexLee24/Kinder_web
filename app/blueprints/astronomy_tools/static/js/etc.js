@@ -180,7 +180,8 @@
     var METRIC_IDS = [
         'res-source-rate', 'res-sky-rate', 'res-peak-rate', 'res-single-snr',
         'res-total-fwhm', 'res-pixel-scale', 'res-eff-area', 'res-throughput',
-        'res-enclosed-flux', 'res-num-pixels', 'res-sat-time', 'res-optimal-time'
+        'res-enclosed-flux', 'res-num-pixels', 'res-sat-time', 'res-optimal-time',
+        'res-moon-lit'
     ];
 
     var resultsScroll = root.querySelector('.etc-results-scroll');
@@ -196,7 +197,26 @@
         el('hero-desc').textContent = lastSingleHero.desc;
     }
 
-    function renderSingle(data, error) {
+    /* The moon beside the sky rate (#33): how lit it is, and either how far it sits
+       from the target or that it is down. Lit fraction from the phase angle,
+       (1 + cos alpha) / 2, with alpha the angle the moonlight model takes. When the moon
+       is up but Add moonlight is off, the sky rate above does not include it, and
+       the note says so rather than letting the card explain a sky it did not shape. */
+    function renderMoon(eph, moonlightAdded) {
+        var lit = Math.round((1 + Math.cos(eph.moon_phase_angle_deg * Math.PI / 180)) / 2 * 100);
+        el('res-moon-lit').textContent = lit + '% lit';
+        var note;
+        if (eph.moon_elevation_deg <= 0) {
+            note = 'below the horizon';
+        } else {
+            note = Math.round(eph.moon_separation_deg) + '° from target, ' +
+                   Math.round(eph.moon_elevation_deg) + '° up';
+            if (!moonlightAdded) { note += ' · not in sky'; }
+        }
+        el('res-moon-note').textContent = note;
+    }
+
+    function renderSingle(data, error, request) {
         if (error) {
             el('error-text').textContent = error;
             el('error-box').hidden = false;
@@ -208,6 +228,7 @@
             // Blank the cards rather than leaving the last good run's numbers sitting
             // next to an error message, where they read as current results.
             METRIC_IDS.forEach(function (id) { el(id).textContent = '—'; });
+            el('res-moon-note').textContent = '';
             return;
         }
 
@@ -245,6 +266,7 @@
 
         el('res-source-rate').textContent = fmt(budget.source_count_rate, 2);
         el('res-sky-rate').textContent = fmt(budget.sky_count_rate, 2);
+        renderMoon(data.ephemeris, request && request.environment.auto_calc_background);
         el('res-peak-rate').textContent = fmt(budget.peak_pixel_rate, 2);
         el('res-single-snr').textContent = fmt(core.single_snr, 2);
 
@@ -743,7 +765,7 @@
             if (onBusy) { onBusy(true); }
             postJSON(url, body, mine.signal).then(function (data) {
                 if (mine.signal.aborted) { return; }
-                onResult(data, null);
+                onResult(data, null, body);
             }).catch(function (err) {
                 if (err.name === 'AbortError') { return; }
                 onResult(null, err.message);
@@ -790,6 +812,18 @@
     function initTabs() {
         var tabs = root.querySelectorAll('.etc-tab');
         var tabsBar = root.querySelector('.etc-tabs');
+
+        // The edge fade (etc.css .is-clipped) only while tabs are scrolled out to the
+        // right; on a bar that shows them all it would just dim the last one.
+        function markClipped() {
+            tabsBar.classList.toggle('is-clipped',
+                tabsBar.scrollLeft + tabsBar.clientWidth < tabsBar.scrollWidth - 1);
+        }
+        tabsBar.addEventListener('scroll', markClipped, { passive: true });
+        // The bar's own size is what decides, and it changes with the window, the
+        // mode switch and the panel stacking alike: one observer covers them all.
+        if (window.ResizeObserver) { new ResizeObserver(markClipped).observe(tabsBar); }
+        markClipped();
         Array.prototype.forEach.call(tabs, function (tab) {
             tab.addEventListener('click', function () {
                 Array.prototype.forEach.call(tabs, function (other) {
@@ -1479,9 +1513,18 @@
                 ? input.name.replace('batch.', 'batch_time.')
                 : input.name;
             var value = lookup(data, path);
-            if (value === undefined || value === null) { continue; }
+            if (value === undefined) { continue; }
 
-            if (input.type === 'checkbox') {
+            if (value === null) {
+                // An explicit null is a value, not a gap (#50): zodiacal_share is null
+                // on purpose in u' and z'. Skipping it left the previous band's number
+                // in the field, which was then posted. An empty field posts nothing,
+                // which is how the form already says null. Only for fields that can
+                // be empty; a null parent (sky_annulus: null) still leaves its
+                // children alone, since lookup stops there and returns undefined.
+                if (input.type !== 'number' && input.type !== 'text') { continue; }
+                input.value = '';
+            } else if (input.type === 'checkbox') {
                 input.checked = Boolean(value);
             } else if (input.type === 'radio') {
                 input.checked = input.value === value;
