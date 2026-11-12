@@ -15,5 +15,6 @@ from . import (  # noqa: E402,F401
     planner,
     public_api,
     robot_api,
+    spectrum,
     tools,
 )
