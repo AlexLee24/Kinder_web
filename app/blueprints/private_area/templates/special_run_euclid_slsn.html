@@ -1,0 +1,163 @@
+{% extends '_base.html' %}
+{#- Lab › Special Run › Euclid-SLSN (special_run.py → services/special_run/euclid_slsn.py): Euclid Q1 VIS + NISP
+    host cutouts of every SLSN in Kinder plus the literature list, with Legacy Survey DR10 / DR11 for comparison.
+    The run is a background thread polled here; js/special_run_euclid.js stretches the raw cutouts in the browser. -#}
+{% block title %}Euclid-SLSN - Special Run - Kinder{% endblock %}
+{% block head %}
+<script defer src="{{ url_for('private_area.static', filename='js/special_run_euclid.js') }}"></script>
+<style>
+    .sr-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .sr-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--kw-text-secondary); }
+    .sr-progress { display: none; }
+    .sr-progress.is-on { display: block; }
+    .sr-progress .kw-panel-head { display: flex; justify-content: space-between; gap: 12px; }
+    .sr-bar { height: 8px; border-radius: 4px; background: var(--kw-border); overflow: hidden; margin: 10px 0; }
+    .sr-bar > i { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width .4s; }
+    .sr-log { max-height: 180px; overflow: auto; margin: 0; padding: 10px 12px; border-radius: var(--kw-radius-md);
+              background: rgba(0, 0, 0, .35); font: 0.78rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+              color: var(--kw-text-secondary); white-space: pre-wrap; }
+
+    /* display controls: sticky strip */
+    .sr-ctl { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end;
+              backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+    .sr-f { display: flex; flex-direction: column; gap: 4px; min-width: 130px; font-size: 0.74rem; color: var(--kw-text-muted);
+            text-transform: uppercase; letter-spacing: .06em; }
+    .sr-f output { float: right; text-transform: none; color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
+    .sr-f input[type=range] { width: 150px; accent-color: var(--color-accent); }
+    .sr-f .kw-select { min-width: 130px; }
+    .sr-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+    .sr-checks label { display: inline-flex; gap: 5px; align-items: center; font-size: 0.82rem; color: var(--kw-text-secondary); text-transform: none; letter-spacing: 0; }
+    #srPage[data-mode="stf"] .sr-manual, #srPage:not([data-mode="stf"]) .sr-stf { display: none; }
+    #srPage:not([data-mode="asinh"]):not([data-mode="log"]) .sr-soft { display: none; }
+
+    .sr-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .sr-card { padding: 0; overflow: hidden; }
+    .sr-card-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding: 10px 14px; font-size: 0.85rem; }
+    .sr-card-body b { font-size: 0.95rem; color: var(--kw-text-white); }
+    .sr-card-body a, .sr-panel figcaption a { color: var(--kw-accent); text-decoration: none; }
+    .sr-fits { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--kw-text-muted); }
+    .sr-muted { color: var(--kw-text-muted); }
+    .sr-panels { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 2px; background: #000; }
+    .sr-panel { position: relative; margin: 0; background: #000; aspect-ratio: 1; overflow: hidden; }
+    .sr-panel canvas, .sr-panel img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .sr-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: 0.75rem; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+    .sr-panel.is-err::after { content: 'not available'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--kw-text-muted); font-size: .8rem; }
+    .sr-ls.has-mark::before, .sr-ls.has-mark::after { content: ''; position: absolute; background: var(--color-accent); pointer-events: none; }
+    .sr-ls.has-mark::before { left: calc(53.5%); top: calc(50% - 0.5px); width: 7%; height: 2px; }
+    .sr-ls.has-mark::after { left: calc(50% - 1px); top: calc(39.5%); width: 2px; height: 7%; }
+    @media (max-width: 700px) { .sr-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+    .sr-miss { columns: 4 160px; font-size: 0.8rem; color: var(--kw-text-secondary); margin: 10px 0 0; padding: 0; list-style: none; }
+    .sr-box { width: min(96vw, 1500px); max-height: 94vh; padding: 0; border: 1px solid var(--kw-border-med); border-radius: var(--kw-radius-xl);
+              background: #0b0b0b; color: #fff; }
+    .sr-box::backdrop { background: rgba(0, 0, 0, .8); }
+    .sr-box-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
+    .sr-box .sr-panels.is-big { grid-template-columns: repeat(min(var(--n), 2), minmax(0, 1fr)); }
+    @media (min-width: 1200px) { .sr-box .sr-panels.is-big { grid-template-columns: repeat(var(--n), minmax(0, 1fr)); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="kw-page" id="srPage" data-mode="stf"
+     data-status="{{ url_for('private_area.special_run_euclid_slsn_status') }}"
+     data-run="{{ url_for('private_area.special_run_euclid_slsn_run') }}"
+     data-file="{{ url_for('private_area.special_run_euclid_slsn_file', slug='SLUG', fname='FNAME') }}"
+     data-pixels="{{ url_for('private_area.special_run_euclid_slsn_pixels', slug='SLUG', band='BAND') }}"
+     data-ls="{{ url_for('private_area.special_run_euclid_slsn_ls', slug='SLUG', key='KEY') }}">
+    <nav class="kw-tabbar" aria-label="Special Run">
+        <a class="kw-tab is-on" href="{{ url_for('private_area.special_run_euclid_slsn') }}" aria-current="page">Euclid-SLSN</a>
+    </nav>
+
+    <div class="kw-page-head">
+        <div>
+            <h1>Euclid-SLSN</h1>
+            <p>Euclid Q1 host-galaxy cutouts ({{ cutout_arcsec }}″ × {{ cutout_arcsec }}″, VIS + NISP Y/J/H) of every
+               SLSN in Kinder and the SLSN literature list, next to Legacy Survey DR10 / DR11. North up, east left.</p>
+        </div>
+        <div class="sr-head-actions">
+            <label class="sr-check"><input type="checkbox" id="srRefresh"> Re-download cutouts</label>
+            <a class="kw-btn kw-btn-ghost" id="srZip" href="{{ url_for('private_area.special_run_euclid_slsn_zip') }}" hidden>Download ZIP</a>
+            <button type="button" class="kw-btn kw-btn-primary" id="srRun">Run</button>
+        </div>
+    </div>
+
+    <div class="kw-kpis">
+        <div class="kw-kpi"><span class="kw-kpi-label">SLSN targets</span><b id="kTargets">–</b><small>Kinder DB + list</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">With Euclid imaging</span><b id="kCovered">–</b><small>inside Q1 MER mosaics</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Q1 tiles</span><b id="kTiles">–</b><small>MER VIS mosaics</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Last run</span><b id="kLast" style="font-size:1rem">–</b><small id="kState">never</small></div>
+    </div>
+
+    <section class="kw-panel sr-progress" id="srProgress">
+        <div class="kw-panel-head"><span id="srStep">Starting</span><span class="sr-muted" id="srCount"></span></div>
+        <div class="sr-bar"><i id="srBar"></i></div>
+        <pre class="sr-log" id="srLog"></pre>
+    </section>
+
+    <section class="kw-panel sr-ctl" aria-label="Display">
+        <label class="sr-f">Stretch
+            <select class="kw-select" id="cMode">
+                <option value="stf">Auto STF (PixInsight / Siril)</option>
+                <option value="asinh">Asinh</option>
+                <option value="log">Log</option>
+                <option value="sqrt">Sqrt</option>
+                <option value="linear">Linear</option>
+            </select>
+        </label>
+        <label class="sr-f sr-stf">Shadows clip <output data-out="shadows"></output>
+            <input type="range" id="cShadows" min="-8" max="0" step="0.1"></label>
+        <label class="sr-f sr-stf">Target background <output data-out="target"></output>
+            <input type="range" id="cTarget" min="0.02" max="0.6" step="0.01"></label>
+        <label class="sr-f sr-manual">Black point <output data-out="black"></output>
+            <input type="range" id="cBlack" min="0" max="60" step="0.5"></label>
+        <label class="sr-f sr-manual">White point <output data-out="white"></output>
+            <input type="range" id="cWhite" min="90" max="100" step="0.05"></label>
+        <label class="sr-f sr-soft">Softening <output data-out="soft"></output>
+            <input type="range" id="cSoft" min="0.002" max="1" step="0.002"></label>
+        <label class="sr-f">Colour map
+            <select class="kw-select" id="cCmap">
+                <option value="gray">Gray</option>
+                <option value="inferno">Inferno</option>
+                <option value="viridis">Viridis</option>
+                <option value="cubehelix">Cubehelix</option>
+            </select>
+        </label>
+        <label class="sr-f">NISP
+            <select class="kw-select" id="cNisp">
+                <option value="rgb">H / J / Y colour</option>
+                <option value="NIR_Y">Y</option>
+                <option value="NIR_J">J</option>
+                <option value="NIR_H">H</option>
+            </select>
+        </label>
+        <div class="sr-f">Options
+            <div class="sr-checks">
+                <label><input type="checkbox" id="cInvert"> Invert</label>
+                <label><input type="checkbox" id="cLinked"> Linked RGB</label>
+                <label><input type="checkbox" id="cMarker"> SN marker</label>
+            </div>
+        </div>
+        <div class="sr-f">Panels
+            <div class="sr-checks">
+                <label><input type="checkbox" data-show="vis"> VIS</label>
+                <label><input type="checkbox" data-show="nisp"> NISP</label>
+                <label><input type="checkbox" data-show="dr10"> LS DR10</label>
+                <label><input type="checkbox" data-show="dr11"> LS DR11</label>
+            </div>
+        </div>
+        <button type="button" class="kw-btn kw-btn-ghost kw-btn-sm" id="cReset">Reset</button>
+    </section>
+
+    <div class="sr-grid" id="srGrid"></div>
+    <div class="kw-empty" id="srEmpty" hidden>No results yet — press <b>Run</b>.</div>
+
+    <details class="kw-panel" id="srMissBox" hidden>
+        <summary><span id="srMissN"></span> targets outside Euclid Q1</summary>
+        <ul class="sr-miss" id="srMiss"></ul>
+    </details>
+</div>
+<dialog class="sr-box" id="srBox">
+    <div class="sr-box-head"><b class="sr-box-title"></b><button type="button" class="kw-btn kw-btn-ghost kw-btn-sm sr-box-close">Close</button></div>
+    <div class="sr-box-body"></div>
+</dialog>
+{% endblock %}
