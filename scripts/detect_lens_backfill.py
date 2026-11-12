@@ -7,7 +7,7 @@ what it would have caught in the last ``--days``:
 
 * TNS: transient.objects discovered in the window within the lens radius (10") of one of the catalogue's lenses,
   re-run through DETECT (app/services/detect/detect_pipeline.run_for_names), as the object page's Run does.
-* LSST: the ALeRCE LSST objects (SN / AGN / VS) first detected in the window are read again, those near one of the
+* LSST: the ALeRCE LSST objects of ``--classes`` (default SN only) first detected in the window are read again, those near one of the
   catalogue's lenses go through the hourly watch's cross-match and store (app/services/lsst/alerts.process_objects,
   which also keeps an alert the watch had dropped for having no candidate), then DETECT screens them
   (app/services/lsst/detect.screen_alerts) — alerts already stored are re-screened too.
@@ -46,6 +46,7 @@ def main(argv=None) -> int:
     ap.add_argument('--run', action='store_true', help='re-run DETECT (default: only list)')
     ap.add_argument('--skip-tns', action='store_true')
     ap.add_argument('--skip-lsst', action='store_true')
+    ap.add_argument('--classes', default='SN', help='ALeRCE classes to read again, comma separated (SN,AGN,VS)')
     args = ap.parse_args(argv)
 
     from astropy import units as u
@@ -83,7 +84,7 @@ def main(argv=None) -> int:
     lsst_items = []
     if not args.skip_lsst:
         from app.services.lsst import alerce_api, alerts
-        for cls in alerts.FETCH_CLASSES:
+        for cls in [c.strip() for c in args.classes.split(',') if c.strip()]:
             n, t0, kept = 0, time.monotonic(), 0
             batch = []
             for it in alerce_api.iter_new_objects(since, now_mjd + 0.1, cls):
