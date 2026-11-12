@@ -126,11 +126,12 @@ def merged_targets() -> list[dict]:
     if db:
         dra = np.array([t['ra'] for t in db])
         ddec = np.array([t['dec'] for t in db])
+    by_name = {t['obj_name'].lower(): i for i, t in enumerate(db)}
     for row in load_list():
         if db:
             sep = _sep_arcsec(dra, ddec, row['ra'], row['dec'])
-            i = int(np.argmin(sep))
-            if sep[i] < MATCH_ARCSEC:
+            i = by_name.get(row['name'].lower(), int(np.argmin(sep)))   # same name wins even when positions differ
+            if row['name'].lower() in by_name or sep[i] < MATCH_ARCSEC:
                 db[i].setdefault('aliases', []).append(row['name'])
                 db[i].update(quality=row['quality'], survey=row['survey'])
                 if db[i]['redshift'] is None:
