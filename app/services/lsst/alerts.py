@@ -80,16 +80,25 @@ def _f(v):
 # --------------------------------------------------------------------------- catalogs
 
 def _lens_catalog():
-    """cat.lens (~25k rows since Euclid DR1) in memory, reloaded every 6 h."""
+    """cat.lens (~25k rows since Euclid DR1) in memory, reloaded every 6 h (reload_lens_catalog() forces it)."""
     if _lens_cache["rows"] is None or time.time() - _lens_cache["at"] > 6 * 3600:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
-            cur.execute("SELECT lens_id, ra, dec, z_lens, z_source, lens_grade, known, reference "
-                        "FROM cat.lens WHERE ra IS NOT NULL AND dec IS NOT NULL")
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'cat' "
+                        "AND table_name = 'lens' AND column_name = 'catalogue_ids'")
+            ids = ", catalogue_ids" if cur.fetchone() else ""
+            cur.execute("SELECT lens_id, ra, dec, z_lens, z_source, lens_grade, lens_probability, known, reference"
+                        f"{ids} FROM cat.lens WHERE ra IS NOT NULL AND dec IS NOT NULL")
             rows = cur.fetchall()
         _lens_cache.update(at=time.time(), rows=rows, coords=SkyCoord(
             np.array([r["ra"] for r in rows]) * u.deg, np.array([r["dec"] for r in rows]) * u.deg))
     return _lens_cache["rows"], _lens_cache["coords"]
+
+
+def reload_lens_catalog() -> int:
+    """Drop the in-memory cat.lens, so the next match reads it again (after a catalogue is added)."""
+    _lens_cache.update(at=0.0, rows=None, coords=None)
+    return len(_lens_catalog()[0])
 
 
 def match_lens(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = LENS_RADIUS_ARCSEC) -> dict:
@@ -105,7 +114,8 @@ def match_lens(ra: np.ndarray, dec: np.ndarray, radius_arcsec: float = LENS_RADI
         out.setdefault(int(ia), []).append({
             "lens_id": r["lens_id"], "ra": r["ra"], "dec": r["dec"], "sep": round(float(s), 2),
             "z_lens": _f(r["z_lens"]), "z_source": _f(r["z_source"]),
-            "grade": r["lens_grade"], "known": r["known"], "reference": r["reference"],
+            "grade": r["lens_grade"], "lens_probability": _f(r.get("lens_probability")), "known": r["known"],
+            "reference": r["reference"], "catalogue_ids": r.get("catalogue_ids"),
         })
     for v in out.values():
         v.sort(key=lambda m: m["sep"])

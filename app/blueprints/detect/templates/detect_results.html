@@ -34,6 +34,7 @@
 
 {% block content %}
     {% from '_detect_badges.html' import obj_badges %}
+    {% from '_lens_info.html' import lens_info %}
     {% set can_edit = session.user and session.user.is_admin %}
     {% macro render_abs_mag(value, sep=None) -%}
         {% if value is not none %}
@@ -399,11 +400,11 @@
                                     {% if r.ambiguous and m.is_host %}<span class="rule-note" title="Runner-up is within 1.5× in d_DLR">ambiguous</span>{% endif %}
                                     {% if r.z_conflict %}<span class="rule-note" title="Another spectrum on this galaxy model has a different z">z-conflict</span>{% endif %}
                                 </td>
-                                <td><span class="badge">{{ m.catalog_label or m.catalog_name }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}</td>
+                                <td><span class="badge">{{ 'Lens' if m.lens else (m.catalog_label or m.catalog_name) }}</span>{% if r.release == 'edr' %} <span class="fact-sub">EDR</span>{% endif %}{{ lens_info(m.lens) }}</td>
                                 <td class="td-coord">{% if m.coord %}<span class="coord-deg">{{ "%.6f"|format(m.coord.ra) }}, {{ "%+.6f"|format(m.coord.dec) }}</span><span class="fact-sub">{{ m.coord.hms }} {{ m.coord.dms }}</span>{% else %}—{% endif %}</td>
                                 <td class="td-spec">{{ r.spectype or '—' }}{% if r.survey %}<span class="fact-sub">{{ r.survey }}/{{ r.program }}{% if r.zwarn %} · zwarn {{ r.zwarn }}{% endif %}</span>{% endif %}
-                                    {% if md.get('grade') or md.get('Grade') %}<span class="fact-sub">grade {{ md.get('grade') or md.get('Grade') }}</span>{% endif %}
-                                    {% if md.get('lens_probability') or md.get('LENS_PROBABILITY') %}<span class="fact-sub">P(lens) {{ "%.2f"|format((md.get('lens_probability') or md.get('LENS_PROBABILITY'))|float) }}</span>{% endif %}
+                                    {% if not m.lens %}{% if md.get('grade') or md.get('Grade') %}<span class="fact-sub">grade {{ md.get('grade') or md.get('Grade') }}</span>{% endif %}
+                                    {% if md.get('lens_probability') or md.get('LENS_PROBABILITY') %}<span class="fact-sub">P(lens) {{ "%.2f"|format((md.get('lens_probability') or md.get('LENS_PROBABILITY'))|float) }}</span>{% endif %}{% endif %}
                                 </td>
                                 <td>{% if m.z is not none %}{{ "%.4f"|format(m.z) }}{% else %}—{% endif %}</td>
                                 <td>{{ "%.2f"|format(m.separation_arcsec or 0) }}</td>

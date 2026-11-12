@@ -10,6 +10,8 @@
         .xm-form .kw-input { min-height: 38px; }
         .xm-form .xm-wide { grid-column: span 2; }
         .xm-opts { margin-top: 12px; }
+        .xm-lens-cat { white-space: nowrap; }
+        .xm-lens-cat small, .xm-lens-photo { font-size: 0.74rem; color: var(--kw-text-secondary); }
         .xm-opts summary { cursor: pointer; font-size: 0.8rem; color: var(--kw-text-secondary); }
         .xm-opts .xm-form { margin-top: 10px; }
         .xm-hint { font-size: 0.74rem; color: var(--kw-text-muted); margin-top: 8px; }
@@ -74,9 +76,12 @@
         <h2>Lens catalogue <small>≤ {{ opts.lens_r|round(1) }}″ · {{ result.lens|length }} found</small></h2>
         {% if result.lens %}
         <div class="kw-table-wrap"><table class="kw-table xm-table">
-            <thead><tr><th>Sep</th><th>Reference</th><th>Grade</th><th>Status</th><th>z<sub>lens</sub></th><th>z<sub>source</sub></th><th>RA / Dec</th></tr></thead>
-            <tbody>{% for m in result.lens %}<tr>
-                <td class="num">{{ num(m.sep) }}″</td><td>{{ m.reference or '—' }}</td><td>{{ m.grade or '—' }}</td><td>{{ m.known or '—' }}</td>
+            <thead><tr><th>Sep</th><th>Catalogue</th><th>Grade / P(lens)</th><th>Status</th><th>z<sub>lens</sub></th><th>z<sub>source</sub></th><th>RA / Dec</th></tr></thead>
+            <tbody>{% for m in result.lens %}{% set li = lens_describe(m) %}<tr>
+                <td class="num">{{ num(m.sep) }}″</td>
+                <td>{% for c in li.catalogues %}<div class="xm-lens-cat">{% if c.url or c.site %}<a href="{{ c.url or c.site }}" target="_blank" rel="noopener noreferrer">{{ c.name }} ↗</a>{% else %}{{ c.name }}{% endif %}{% if c.id %} <small>{{ c.id }}</small>{% endif %}</div>{% else %}—{% endfor %}
+                    {% if li.photo_url %}<a class="xm-lens-photo" href="{{ li.photo_url }}" target="_blank" rel="noopener noreferrer">Image ↗</a>{% endif %}</td>
+                <td>{{ li.measure or '—' }}</td><td>{{ m.known or '—' }}</td>
                 <td class="num">{{ num(m.z_lens, '%.3f') }}</td><td class="num">{{ num(m.z_source, '%.3f') }}</td>
                 <td class="num">{{ "%.5f"|format(m.ra) }}, {{ "%+.5f"|format(m.dec) }}</td>
             </tr>{% endfor %}</tbody>

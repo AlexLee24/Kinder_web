@@ -33,7 +33,8 @@ CREATE TABLE cat.lens (
     lens_probability DOUBLE PRECISION,
     lens_grade       TEXT,
     known            TEXT CHECK (known IN ('known', 'unknown', 'candidate')),
-    reference        TEXT  -- source catalogue name
+    reference        TEXT,  -- source catalogue names, space separated (rows within 2" are merged)
+    catalogue_ids    JSONB  -- {"<reference>": {"name": ..., "id": ...}}: each catalogue's own name / page id
 );
 
 CREATE INDEX cat_lens_ra_dec_idx ON cat.lens (ra, dec);
