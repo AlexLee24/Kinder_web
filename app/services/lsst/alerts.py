@@ -80,7 +80,7 @@ def _f(v):
 # --------------------------------------------------------------------------- catalogs
 
 def _lens_catalog():
-    """cat.lens (~10k rows) in memory, reloaded every 6 h."""
+    """cat.lens (~25k rows since Euclid DR1) in memory, reloaded every 6 h."""
     if _lens_cache["rows"] is None or time.time() - _lens_cache["at"] > 6 * 3600:
         with get_db_connection() as conn:
             cur = conn.cursor(cursor_factory=extras.RealDictCursor)
