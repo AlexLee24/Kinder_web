@@ -547,6 +547,14 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
         'last_run': screen_counts.get('last_run'),
     }
 
+    # Lens-catalogue candidates: which catalogue(s), grade or probability, and links (one cat.lens query).
+    lens_rows = [m for t in final_target_list for m in t['matches']
+                 if str(m.get('catalog_name') or '').lower().startswith('lens')]
+    if lens_rows:
+        from app.services.detect.lens_catalogues import describe_matches
+        for m, info in zip(lens_rows, describe_matches(m.get('match_data') or {} for m in lens_rows)):
+            m['lens'] = info
+
     # ── Compact JSON-safe data for client-side rendering ─────────────────
     cards_data = []
     for t in final_target_list:
@@ -567,9 +575,10 @@ def _assemble_detect_payload(selected_date, metadata=None, page_data=None, curre
                 'match_ra':          _safe_coord(m.get('match_ra') or md.get('ra') or md.get('_RAJ2000')),
                 'match_dec':         _safe_coord(m.get('match_dec') or md.get('dec') or md.get('_DEJ2000')),
                 'obj_id':            str(md.get('TARGETID') or md.get('id') or ''),
-                'grade':             str(md.get('grade') or md.get('Grade') or ''),
+                'grade':             str(md.get('grade') or md.get('Grade') or md.get('lens_grade') or ''),
                 'lens_prob':         _safe_float(md.get('lens_probability') or md.get('LENS_PROBABILITY')),
                 'rule':              m.get('rule'),
+                'lens':              m.get('lens'),
             })
         cards_data.append({
             'target_name': str(t['target_name']),

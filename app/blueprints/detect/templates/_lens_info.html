@@ -1,0 +1,11 @@
+{#- A lens-catalogue candidate (app/services/detect/lens_catalogues.describe): each catalogue it is in, linked to this
+    lens on the catalogue's site (or the catalogue's home page), its grade or probability, and a sky image. -#}
+{% macro lens_info(info) -%}
+{% if info %}<span class="lens-info">
+    {%- for c in info.catalogues %}<span class="lens-cat">
+        {%- if c.url or c.site %}<a href="{{ c.url or c.site }}" target="_blank" rel="noopener noreferrer" title="{{ 'Open this lens in ' ~ c.name if c.url else c.name ~ ' (catalogue home page)' }}">{{ c.name }} ↗</a>{% else %}{{ c.name }}{% endif %}
+        {%- if c.id %} <span class="lens-id">{{ c.id }}</span>{% endif %}</span>{% endfor %}
+    {%- if info.measure %}<span class="lens-measure">{{ info.measure }}</span>{% endif %}
+    {%- if info.photo_url %}<a class="lens-photo" href="{{ info.photo_url }}" target="_blank" rel="noopener noreferrer" title="Legacy Survey DR10 image at the lens">Image ↗</a>{% endif %}
+</span>{% endif %}
+{%- endmacro %}

@@ -376,8 +376,18 @@ function renderDetectData(results, screen) {
         }
 
         if (has(mdata, 'z_source')) extraInfo += ` | z_src=${parseFloat(mdata.z_source).toFixed(3)}`;
-        if (has(mdata, 'grade')) extraInfo += ` | grade=${escapeHtml(mdata.grade)}`;
-        if (has(mdata, 'lens_probability')) extraInfo += ` | prob=${parseFloat(mdata.lens_probability).toFixed(3)}`;
+        if (res.lens) {
+            // Lens catalogue: each catalogue it is in (linked to this lens there), grade / P(lens), a sky image.
+            const link = (url, text) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color:var(--color-accent);">${escapeHtml(text)} ↗</a>`;
+            const cats = (res.lens.catalogues || []).map(c =>
+                ((c.url || c.site) ? link(c.url || c.site, c.name) : escapeHtml(c.name)) + (c.id ? ` <small>${escapeHtml(c.id)}</small>` : ''));
+            if (cats.length) extraInfo += ` | ${cats.join(', ')}`;
+            if (res.lens.measure) extraInfo += ` | <strong>${escapeHtml(res.lens.measure)}</strong>`;
+            if (res.lens.photo_url) extraInfo += ` | ${link(res.lens.photo_url, 'Image')}`;
+        } else {
+            if (has(mdata, 'grade')) extraInfo += ` | grade=${escapeHtml(mdata.grade)}`;
+            if (has(mdata, 'lens_probability')) extraInfo += ` | prob=${parseFloat(mdata.lens_probability).toFixed(3)}`;
+        }
         if (has(mdata, 'rein')) extraInfo += ` | rein_E=${parseFloat(mdata.rein).toFixed(2)}"`;
 
         // Coords (match_ra/match_dec explicit columns, fallback to match_data)

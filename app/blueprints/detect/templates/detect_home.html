@@ -181,7 +181,7 @@
                             <ul>
                                 <li>NESTED, NSIDE 8192 (26″ pixels); <code>query_disc(inclusive)</code> → B-tree on <code>healpix_8192</code> → exact separation cut. Bounding-box fallback with 1/cos δ and RA wrap.</li>
                                 <li><code>cat.desi</code>: DESI DR1 (22.2 M, <code>zcat_primary</code>) + 22 k EDR-only targets (<code>data_release='edr'</code>), joined to LS DR10 Tractor shapes (R₅₀, e1/e2 → a, b, PA), WISE, stellar mass / SFR and AGN VACs. STAR spectra are kept aside as a “Star?” check.</li>
-                                <li><code>cat.lens</code>: Hsu, Karpenka and the merged lens catalogue.</li>
+                                <li><code>cat.lens</code> (25.5 k): Euclid DR1 (Euclid-DR1-26Nov12, 15 k, grade A/B), Karp+2023 (P<sub>lens</sub> only), Hsu+2022, SuGOHI, HOLISMOKES and smaller lists, merged within 2″ (<code>reference</code> names every catalogue a lens is in; the candidate table links each to the lens on its catalogue’s site, <code>app/services/detect/lens_catalogues.py</code>). Added with <code>scripts/add_lens_csv.py</code>.</li>
                             </ul>
                         </details>
                     </div>

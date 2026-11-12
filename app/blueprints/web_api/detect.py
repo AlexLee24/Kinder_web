@@ -59,7 +59,7 @@ def trigger_detect_cross_match(object_name):
         # ── Read path (GET): whatever DETECT (daemon or the hourly import) stored ──
         if not run_requested:
             already_run = bool(has_detect_run(object_name) or screen)
-            results = get_detect_results_for_target(object_name) if already_run else []
+            results = _with_lens_info(get_detect_results_for_target(object_name)) if already_run else []
             imgs = _get_imgs(canonical_name)
             return jsonify({'success': True, 'ran_now': False, 'never_run': not already_run,
                             'results': results, 'screen': screen,
@@ -78,7 +78,7 @@ def trigger_detect_cross_match(object_name):
         except Exception:
             pass
 
-        final_results = get_detect_results_for_target(object_name)
+        final_results = _with_lens_info(get_detect_results_for_target(object_name))
         imgs = _get_imgs(canonical_name)
         return jsonify({'success': True, 'ran_now': True, 'results': final_results,
                         'screen': get_detect_screen_for_target(object_name),
@@ -87,6 +87,24 @@ def trigger_detect_cross_match(object_name):
     except Exception as e:
         logger.error(f'Error running detect for {object_name}: {str(e)}')
         return jsonify({'success': False, 'error': 'DETECT request failed'}), 500
+
+def _with_lens_info(results):
+    """Each lens-catalogue row gets ``lens``: its catalogues, grade / probability and links (lens_catalogues)."""
+    rows = [r for r in (results or []) if str(r.get('catalog_name') or '').lower().startswith('lens')]
+    if rows:
+        import json
+        from app.services.detect.lens_catalogues import describe_matches
+
+        def md(r):
+            v = r.get('match_data')
+            try:
+                return json.loads(v) if isinstance(v, str) else (v or {})
+            except ValueError:
+                return {}
+        for r, info in zip(rows, describe_matches(md(r) for r in rows)):
+            r['lens'] = info
+    return results
+
 
 @web_api_bp.route('/api/object/<object_name>/detect_images', methods=['GET'])
 def list_detect_images(object_name):

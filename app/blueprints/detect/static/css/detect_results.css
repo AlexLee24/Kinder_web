@@ -1193,3 +1193,12 @@ kbd {
 /* Checked marks: the card's Check button and the ✓ beside a checked row's name */
 .card-check-btn.is-checked { background: rgba(70, 255, 175, 0.14); border-color: rgba(70, 255, 175, 0.55); color: #6dffc2; }
 .row-check-mark { margin-left: 6px; color: #6dffc2; font-weight: 700; }
+
+/* Lens-catalogue candidate (_lens_info.html): catalogues, grade / probability, links */
+.lens-info { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; font-size: 0.78rem; line-height: 1.35; }
+.lens-info a { color: var(--accent); text-decoration: none; }
+.lens-info a:hover { text-decoration: underline; }
+.lens-cat { white-space: nowrap; }
+.lens-id { color: var(--text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72rem; }
+.lens-measure { color: var(--kw-text-primary); font-weight: 600; }
+.lens-photo { font-size: 0.74rem; }
