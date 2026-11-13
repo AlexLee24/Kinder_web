@@ -100,6 +100,7 @@
                     <input type="range" id="lsSeeing" min="0" max="3" step="0.05"></label>
                 <label class="sp-field ls-obs">Exposure time <span class="sp-val" data-out="exp"></span>
                     <input type="range" id="lsExp" min="1" max="5.3" step="0.05"></label>
+                <label class="sp-check ls-obs"><input type="checkbox" id="lsNoiseOn"> Show sky noise (below 3σ stays black)</label>
                 <div class="sp-hint ls-obs">PSF = seeing ⊕ diffraction (1.03 λ/D); noise from sky, source photons and 5 e⁻ read noise,
                     zero point ≈ 24.3 + 5 log D (AB, 1 e⁻/s). Space telescopes: no seeing, zodiacal sky.</div>
             </section>

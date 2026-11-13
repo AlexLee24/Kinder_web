@@ -41,7 +41,7 @@
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
-                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 19, knee: 26, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
+                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 16.5, knee: 23.5, noiseOn: false, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
     // Telescopes: aperture D (m), median seeing (″), ground or space sky. Resolution = seeing ⊕ diffraction (no detector pixels).
     // Zero point (AB mag giving 1 e⁻/s) ≈ 24.3 + 5 log D — a broad-band, ~50 % throughput approximation.
     const BANDS = {g: 0.48, r: 0.62, i: 0.77, z: 0.91, J: 1.25, H: 1.6, K: 2.2};                     // µm
@@ -62,11 +62,11 @@
             src: 'clumpy', re: 1.6, sq: 0.8, bx: 0.04, by: 0.06, light: 0.6}],
         ['8 o\'clock arc (SDSS J0022+1431)', {mag: 23.5, logm: logMOfSigma(380), zl: 0.38, zs: 2.73, q: 0.75, pa: 40, gamma: 0.05,
             src: 'clumpy', re: 1.2, sq: 0.6, bx: 0.25, by: 0.12, light: 0.8}],
-        ['Abell 370 giant arc (cluster)', {mag: 22.5, logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
+        ['Abell 370 giant arc (cluster)', {mag: 22.5, knee: 25, logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
             src: 'clumpy', re: 8, sq: 0.5, spa: 10, bx: 0, by: 0.25, light: 1, n: 1}],
-        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
+        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, knee: 25, logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
             src: 'clumpy', re: 6, sq: 0.6, spa: 45, bx: 0, by: 0.22, light: 1}],
-        ['Einstein Cross (Q2237+0305)', {mag: 20.5, logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
+        ['Einstein Cross (Q2237+0305)', {mag: 20.5, white: 15, knee: 21.5, logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
             src: 'point', bx: 0.03, by: 0.02, light: 1}],
         ['Twin Quasar (Q0957+561)', {mag: 17.8, logm: logMOfSigma(450), zl: 0.36, zs: 1.41, q: 0.8, pa: 60, gamma: 0.2, gpa: 70,
             src: 'point', bx: 0.35, by: 0.15, light: 0.8}],
@@ -79,9 +79,9 @@
             gpa: 18.131, g2: 175.85, g2x: 0.967, g2y: 2.126, src: 'hostsn', re: 1.0, n: 1, sq: 0.8, spa: 0, bx: 0.1952, by: 0.34516,
             light: 1, mag: 25.5, snMag: 22.3, env: 'galaxy',
             obs: [[-1.213, 1.318, 'A'], [-1.813, -0.806, 'B'], [0.195, -1.595, 'C'], [2.705, 1.058, 'D'], [0.658, 2.542, 'E']]}],
-        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
+        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, knee: 25, logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
             snMag: 25, src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 1}],
-        ['Lensed supernova (iPTF16geu-like)', {mag: 23.3, logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
+        ['Lensed supernova (iPTF16geu-like)', {mag: 23.3, white: 15.5, knee: 22, logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
             src: 'point', bx: 0.05, by: 0.04, light: 1}],
         ['Point-mass lens (idealised)', {mag: 24, model: 'pm', logm: 12, zl: 0.5, zs: 2, gamma: 0, src: 'galaxy', re: 0.8,
             bx: 0.2, by: 0, light: 0}],
@@ -153,6 +153,7 @@
         $('lsCrit').checked = S.crit;
         $('lsCaus').checked = S.caus;
         $('lsField').checked = S.field;
+        $('lsNoiseOn').checked = S.noiseOn;
         $('lsEnv').value = S.env;
         $('lsTel').value = S.tel;
         $('lsBand').value = S.band;
@@ -184,6 +185,7 @@
     $('lsCrit').addEventListener('change', () => { S.crit = $('lsCrit').checked; schedule(); });
     $('lsCaus').addEventListener('change', () => { S.caus = $('lsCaus').checked; schedule(); });
     $('lsField').addEventListener('change', () => { S.field = $('lsField').checked; schedule(); });
+    $('lsNoiseOn').addEventListener('change', () => { S.noiseOn = $('lsNoiseOn').checked; schedule(); });
     $('lsEnv').addEventListener('change', () => { S.env = $('lsEnv').value; $('lsPreset').value = ''; schedule(); });
     $('lsObs').addEventListener('change', () => { S.showObs = $('lsObs').checked; schedule(); });
     $('lsTel').addEventListener('change', () => {
@@ -197,7 +199,7 @@
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'white', 'knee'];
+        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'noiseOn'];   // display white / knee follow the preset
         S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
@@ -579,7 +581,7 @@
             const Eu = 10 ** (-0.4 * (22 - T.zp)) * pe * pe * T.t;          // e⁻ per pixel for 1 unit
             const skyE = 10 ** (-0.4 * (T.sky - T.zp)) * pe * pe * T.t, RN2 = 25;
             const corr = pe / pix / 2.3548;                                // correlation length in simulation pixels
-            for (const [w, rgb] of out.entries()) {   // one unit-variance field, shared by R, G, B (grey noise)
+            if (S.noiseOn) for (const [w, rgb] of out.entries()) {   // one unit-variance field, shared by R, G, B (grey noise)
                 const rn = rng(31337 + w);
                 let draws = new Float32Array(NN);
                 for (let b = 0; b < NN; b++) draws[b] = gauss(rn);
@@ -604,6 +606,8 @@
         // change to one object never brightens or dims the others; lensing conserves surface brightness, so an arc and its
         // unlensed source look equally bright per pixel
         const norm = 1 / 10 ** (-0.4 * (S.white - 22)), soft = Math.min(0.5, 10 ** (-0.4 * (S.knee - 22)) * norm);
+        // with sky noise shown, everything below 3σ of the sky is black, so the background stays dark
+        const black = noise && S.noiseOn ? 3 * noise.skyU * norm : 0;
 
         // critical curves (det A changes sign between neighbours) and their caustics
         const crit = [], caus = [];
@@ -622,8 +626,8 @@
             }
         }
 
-        paint($('lsSrc'), out[1], norm, soft, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
-        paint($('lsImg'), out[0], norm, soft, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
+        paint($('lsSrc'), out[1], norm, soft, black, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
+        paint($('lsImg'), out[0], norm, soft, black, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
               S.obs && S.showObs ? S.obs : null);
         scaleBar('lsScaleS', fov); scaleBar('lsScaleI', fov);
         view = {fov, tE, pts};
@@ -636,11 +640,11 @@
         return steps.find((s) => s >= v) || 600;
     }
 
-    function paint(cv, rgb, norm, soft, fov, pts, col, mark, obs) {
-        const data = offCtx.createImageData(N, N), px = data.data, den = Math.asinh(1 / soft);
+    function paint(cv, rgb, norm, soft, black, fov, pts, col, mark, obs) {
+        const data = offCtx.createImageData(N, N), px = data.data, den = Math.asinh(Math.max(1e-6, 1 - black) / soft);
         for (let k = 0; k < N * N; k++) {
             for (let c = 0; c < 3; c++) {
-                const v = Math.asinh(rgb[c][k] * norm / soft) / den;
+                const v = Math.asinh((rgb[c][k] * norm - black) / soft) / den;
                 px[4 * k + c] = 255 * Math.min(1, Math.max(0, v));
             }
             px[4 * k + 3] = 255;
