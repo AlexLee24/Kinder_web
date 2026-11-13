@@ -1,6 +1,9 @@
-"""Lab › Special Run: one-off science runs started from the web. Tabs (in-page): Euclid-SLSN.
+"""Lab › Special Run: one-off science runs and lab tools. Tabs: Euclid-SLSN, Lens Simulator; each tab is its own
+private page (Admin › Permissions: who opens it — GREAT Lab members or admins only — plus added groups).
+Lens Simulator starts as admins only.
 
-* GET  /special_run                              → the first tab
+* GET  /special_run                              → the first tab the user may open
+* GET  /special_run/lens_sim                     Lens Simulator (special_run_lens_sim.html + js/lens_sim.js, all in-browser)
 * GET  /special_run/euclid_slsn                  page (special_run_euclid_slsn.html)
 * POST /api/special_run/euclid_slsn/run          start the background run ({"refresh": true} re-downloads cutouts)
 * GET  /api/special_run/euclid_slsn/status       progress (state.json) + results (results.json)
@@ -24,7 +27,8 @@ from .helpers import can_access_page
 
 logger = logging.getLogger(__name__)
 
-PAGE_KEY = 'special_run'
+PAGE_KEY = 'special_run_euclid_slsn'
+LENS_KEY = 'special_run_lens_sim'
 _FILE = re.compile(r'^(host\.png|(VIS|NIR_Y|NIR_J|NIR_H)\.fits|LS_dr1[01]\.jpg)$')
 _SLUG = re.compile(r'^[A-Za-z0-9_.+-]{1,80}$')
 
@@ -39,7 +43,17 @@ def _deny_page():
 
 @private_area_bp.route('/special_run')
 def special_run():
-    return redirect(url_for('private_area.special_run_euclid_slsn'))
+    for key, endpoint in ((PAGE_KEY, 'special_run_euclid_slsn'), (LENS_KEY, 'special_run_lens_sim')):
+        if can_access_page(key):
+            return redirect(url_for(f'private_area.{endpoint}'))
+    return _deny_page()
+
+
+@private_area_bp.route('/special_run/lens_sim')
+def special_run_lens_sim():
+    if not can_access_page(LENS_KEY):
+        return _deny_page()
+    return render_template('special_run_lens_sim.html', current_path='/special_run/lens_sim')
 
 
 @private_area_bp.route('/special_run/euclid_slsn')

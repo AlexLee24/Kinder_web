@@ -1,0 +1,123 @@
+{% extends '_base.html' %}
+{#- Lab › Special Run › Lens Simulator (special_run.py): strong gravitational lensing ray-traced in the browser
+    (js/lens_sim.js). Lens = point mass or SIE (+ external shear) at z_lens, Sérsic / clumpy / point source at z_source,
+    flat ΛCDM (H0 = 70, Ωm = 0.3). Shows the source plane with caustics, the lensed image with critical curves, an
+    optional seeing blur, the derived scales and θ_E against lens redshift. Nothing is sent to the server. -#}
+{% block title %}Lens Simulator - Special Run - Kinder{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/spectrum.css') }}">
+<link rel="stylesheet" href="{{ url_for('private_area.static', filename='css/lens_sim.css') }}">
+<script defer src="{{ url_for('private_area.static', filename='js/lens_sim.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="kw-page sp-page ls-page" id="lsPage">
+    <div class="kw-tool">
+        <aside class="kw-tool-side">
+            <section class="kw-panel">
+                <div class="sp-hd">Preset</div>
+                <select class="kw-input" id="lsPreset" aria-label="Preset">
+                    <option value="">Choose a system…</option>
+                </select>
+                <div class="sp-hint" id="lsPresetNote">Approximate parameters of real systems; every slider stays free.</div>
+            </section>
+
+            <section class="kw-panel">
+                <div class="sp-hd">Lens</div>
+                <div class="kw-seg ls-seg" role="group" aria-label="Lens model">
+                    <button type="button" class="kw-seg-item" data-model="sie">Galaxy / cluster (SIE)</button>
+                    <button type="button" class="kw-seg-item" data-model="pm">Point mass</button>
+                </div>
+                <label class="sp-field"><span id="lsMassLabel">Mass</span> <span class="sp-val" data-out="logm"></span>
+                    <input type="range" id="lsLogM" min="9" max="15.5" step="0.01"></label>
+                <label class="sp-field"><span>Lens redshift z<sub>l</sub></span> <span class="sp-val" data-out="zl"></span>
+                    <input type="range" id="lsZl" min="0.01" max="2.5" step="0.005"></label>
+                <label class="sp-field ls-sie">Axis ratio q <span class="sp-val" data-out="q"></span>
+                    <input type="range" id="lsQ" min="0.3" max="1" step="0.01"></label>
+                <label class="sp-field ls-sie">Position angle <span class="sp-val" data-out="pa"></span>
+                    <input type="range" id="lsPa" min="0" max="180" step="1"></label>
+                <label class="sp-field">External shear γ <span class="sp-val" data-out="gamma"></span>
+                    <input type="range" id="lsGamma" min="0" max="0.3" step="0.005"></label>
+                <label class="sp-field">Shear angle <span class="sp-val" data-out="gpa"></span>
+                    <input type="range" id="lsGpa" min="0" max="180" step="1"></label>
+                <label class="sp-field">Lens light <span class="sp-val" data-out="light"></span>
+                    <input type="range" id="lsLight" min="0" max="1" step="0.01"></label>
+            </section>
+
+            <section class="kw-panel">
+                <div class="sp-hd">Source</div>
+                <div class="kw-seg ls-seg" role="group" aria-label="Source type">
+                    <button type="button" class="kw-seg-item" data-src="galaxy">Galaxy</button>
+                    <button type="button" class="kw-seg-item" data-src="clumpy">Clumpy</button>
+                    <button type="button" class="kw-seg-item" data-src="point">Quasar / SN</button>
+                </div>
+                <label class="sp-field"><span>Source redshift z<sub>s</sub></span> <span class="sp-val" data-out="zs"></span>
+                    <input type="range" id="lsZs" min="0.05" max="6" step="0.005"></label>
+                <label class="sp-field ls-ext">Half-light radius <span class="sp-val" data-out="re"></span>
+                    <input type="range" id="lsRe" min="0.1" max="8" step="0.05"></label>
+                <label class="sp-field ls-ext">Sérsic n <span class="sp-val" data-out="n"></span>
+                    <input type="range" id="lsN" min="0.5" max="4" step="0.1"></label>
+                <label class="sp-field ls-ext">Axis ratio <span class="sp-val" data-out="sq"></span>
+                    <input type="range" id="lsSq" min="0.2" max="1" step="0.01"></label>
+                <label class="sp-field ls-ext">Position angle <span class="sp-val" data-out="spa"></span>
+                    <input type="range" id="lsSpa" min="0" max="180" step="1"></label>
+                <label class="sp-field"><span>Offset x (in θ<sub>E</sub>)</span> <span class="sp-val" data-out="bx"></span>
+                    <input type="range" id="lsBx" min="-2" max="2" step="0.005"></label>
+                <label class="sp-field"><span>Offset y (in θ<sub>E</sub>)</span> <span class="sp-val" data-out="by"></span>
+                    <input type="range" id="lsBy" min="-2" max="2" step="0.005"></label>
+                <div class="sp-hint">Or drag the source in the source-plane panel.</div>
+            </section>
+
+            <section class="kw-panel">
+                <div class="sp-hd">Observation <button type="button" class="sp-copy" id="lsReset">Reset</button></div>
+                <label class="sp-field">Field of view
+                    <select class="kw-input" id="lsFov">
+                        <option value="auto">Auto (≈ 5 θ<sub>E</sub>)</option>
+                        {% for f in (2, 5, 10, 20, 40, 80, 160, 300) %}<option value="{{ f }}">{{ f }}″</option>{% endfor %}
+                    </select>
+                </label>
+                <label class="sp-field">Seeing FWHM <span class="sp-val" data-out="seeing"></span>
+                    <input type="range" id="lsSeeing" min="0" max="3" step="0.05"></label>
+                <div class="sp-hint">0 = space-like. Lulin LOT is typically 1.2–1.5″.</div>
+                <div class="sp-row">
+                    <label class="sp-check"><input type="checkbox" id="lsCrit"> Critical curves</label>
+                    <label class="sp-check"><input type="checkbox" id="lsCaus"> Caustics</label>
+                </div>
+            </section>
+        </aside>
+
+        <section class="sp-main">
+            <div class="ls-panels">
+                <figure class="ls-fig">
+                    <canvas id="lsSrc" width="420" height="420" aria-label="Source plane"></canvas>
+                    <figcaption>Source plane (unlensed) · <span class="ls-caus-key">caustics</span></figcaption>
+                    <div class="ls-scale" id="lsScaleS"><span></span></div>
+                </figure>
+                <figure class="ls-fig">
+                    <canvas id="lsImg" width="420" height="420" aria-label="Lensed image"></canvas>
+                    <figcaption>Observed (lensed) · <span class="ls-crit-key">critical curves</span></figcaption>
+                    <div class="ls-scale" id="lsScaleI"><span></span></div>
+                </figure>
+            </div>
+
+            <div class="ls-stats kw-panel" id="lsStats"></div>
+
+            <div class="kw-panel ls-chart-panel">
+                <div class="sp-hd">Einstein radius vs lens redshift <span class="ls-muted">same mass, same z<sub>s</sub></span></div>
+                <canvas id="lsChart" width="900" height="260" aria-label="Einstein radius against lens redshift"></canvas>
+            </div>
+
+            <div class="kw-panel ls-notes">
+                <div class="sp-hd">Physics</div>
+                <p>θ<sub>E</sub> = √(4GM/c² · D<sub>ls</sub>/(D<sub>l</sub>D<sub>s</sub>)) for a point mass and
+                   θ<sub>E</sub> = 4π(σ/c)² D<sub>ls</sub>/D<sub>s</sub> for an isothermal galaxy or cluster, so the arc size grows
+                   only as √M (point) or σ² and shrinks when the lens sits close to the source.
+                   Strong lensing needs a projected density above Σ<sub>cr</sub> = c²D<sub>s</sub>/(4πG D<sub>l</sub>D<sub>ls</sub>).</p>
+                <p>Lensing conserves surface brightness: arcs are brighter in total because they are bigger, not brighter per
+                   arcsec². The SIE mass here is the projected mass inside 100 kpc of the lens centre (M = πσ²R/G).
+                   Cosmology: flat ΛCDM, H<sub>0</sub> = 70 km/s/Mpc, Ω<sub>m</sub> = 0.3.</p>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

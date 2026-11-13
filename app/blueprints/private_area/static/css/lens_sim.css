@@ -1,0 +1,33 @@
+/* Lab › Special Run › Lens Simulator (special_run_lens_sim.html). Side column uses the Spectrum tool's sp-* styles. */
+.ls-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+.ls-page .sp-hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ls-seg { display: flex; }
+.ls-seg .kw-seg-item { flex: 1; justify-content: center; font-size: 0.78rem; }
+.ls-seg .kw-seg-item.is-on { background: var(--color-accent); color: #1b1208; font-weight: 600; opacity: 1; }
+#lsPage[data-model="pm"] .ls-sie, #lsPage[data-src="point"] .ls-ext { display: none; }
+
+.ls-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; background: #000;
+             border-radius: var(--kw-radius-xl); overflow: hidden; }
+@media (max-width: 760px) { .ls-panels { grid-template-columns: 1fr; } }
+.ls-fig { position: relative; margin: 0; aspect-ratio: 1; background: #000; }
+.ls-fig canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#lsSrc { cursor: grab; }
+#lsSrc.is-drag { cursor: grabbing; }
+.ls-fig figcaption { position: absolute; left: 10px; top: 8px; font-size: 0.78rem; color: #fff; pointer-events: none;
+                     text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.ls-caus-key { color: #ff6b8a; }
+.ls-crit-key { color: var(--color-accent); }
+.ls-scale { position: absolute; left: 6%; bottom: 5%; height: 2px; background: #fff; box-shadow: 0 0 2px #000; pointer-events: none; }
+.ls-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 0.72rem; color: #fff;
+                 text-shadow: 0 0 3px #000; white-space: nowrap; }
+
+.ls-stats { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; }
+.ls-stat { display: flex; flex-direction: column; gap: 2px; }
+.ls-stat span { font-size: 0.75rem; color: var(--kw-text-muted); }
+.ls-stat b { font-family: var(--kw-font-mono); font-size: 0.95rem; color: var(--kw-text-white); font-weight: 600; }
+.ls-stat.is-key b { color: var(--color-accent); }
+
+.ls-chart-panel, .ls-notes { margin-top: 14px; }
+.ls-chart-panel canvas { display: block; width: 100%; height: auto; margin-top: 8px; }
+.ls-muted { font-size: 0.75rem; color: var(--kw-text-muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ls-notes p { margin: 8px 0 0; font-size: 0.84rem; line-height: 1.55; color: var(--kw-text-secondary); }

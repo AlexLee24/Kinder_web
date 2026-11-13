@@ -93,8 +93,7 @@ def permissions_check():
     u = next((dict(v, email=k) for k, v in users.items() if k.lower() == email.lower()), None)
     if not u:
         return jsonify({'success': False, 'error': 'Unknown account'}), 404
-    from app.blueprints.private_area.helpers import user_can_access_page
-    from app.db.auth import get_page_groups
+    from app.blueprints.private_area.helpers import _get_page_extra_groups, page_level, user_can_access_page
     rules = perms.get_rules()
     actions = []
     for key, (_area, label, _desc, _default) in perms.ACTIONS.items():
@@ -107,11 +106,15 @@ def permissions_check():
         ok = user_can_access_page(u, p)
         if u.get('is_admin'):
             why = 'admin'
-        elif 'GREAT_Lab' in groups:
-            why = 'GREAT Lab member'
         else:
-            hit = sorted(groups & set(get_page_groups(p)))
-            why = f'group {hit[0]}' if hit else 'not GREAT Lab, no added group'
+            hit = sorted(groups & set(_get_page_extra_groups(p)))
+            admins_only = page_level(p) == 'admin'
+            if 'GREAT_Lab' in groups and not admins_only:
+                why = 'GREAT Lab member'
+            elif hit:
+                why = f'group {hit[0]}'
+            else:
+                why = 'admins only, no added group' if admins_only else 'not GREAT Lab, no added group'
         page_rows.append({'key': p, 'label': labels.get(p, p), 'allowed': ok, 'why': why})
     return jsonify({'success': True, 'person': _person(u['email'], u), 'is_admin': bool(u.get('is_admin')),
                     'actions': actions, 'pages': page_rows})

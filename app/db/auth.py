@@ -935,10 +935,13 @@ def clean_accepted_invitations() -> int:
 # Page permissions  (stored in auth.system_settings as JSON)
 # ---------------------------------------------------------------------------
 
-def get_page_groups(page_key: str) -> list[str]:
-    """Return extra group names allowed to access a private-area page."""
+def get_page_groups(page_key: str, fallback: str | None = None) -> list[str]:
+    """Return extra group names allowed to access a private-area page.
+    ``fallback``: page key whose groups apply while this page has never been set (a page split into tabs)."""
     import json
     raw = get_setting(f'page_perm:{page_key}')
+    if raw is None and fallback:
+        raw = get_setting(f'page_perm:{fallback}')
     if not raw:
         return []
     try:
