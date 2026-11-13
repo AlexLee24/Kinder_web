@@ -11,7 +11,7 @@
     const ARC = 206264.806, ZS = 10;
     const COLS = ['#ffd166', '#06d6a0', '#ef476f', '#4cc9f0', '#c77dff', '#f78c6b', '#a7c957'];
     const CAMS = {oblique: {yaw: 58, pitch: 20, dist: 17}, side: {yaw: 90, pitch: 0, dist: 15.5}, observer: {yaw: 0, pitch: 0, dist: 7.5}};
-    const O = {rays: true, apparent: true, straight: true, arrows: false, labels: true, noLens: false, play: false};
+    const O = {mode: 'sim', rays: true, apparent: true, straight: true, arrows: false, labels: true, noLens: false, play: false};
     let cam = {...CAMS.oblique}, D = window.LensSim.last, t0 = performance.now(), raf = 0;
 
     /* ------------------------------------------------------------ projection */
@@ -20,16 +20,21 @@
     const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const norm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
     let W = 0, H = 0, F = 0, eye, R, U, Fw, dpr = 1;
+    const isEye = () => cam.yaw === 0 && cam.pitch === 0;
     function setupCamera() {
         dpr = window.devicePixelRatio || 1;
         W = Math.round(cv.clientWidth * dpr); H = Math.round(cv.clientHeight * dpr);
         if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-        const T = cam.yaw === 0 && cam.pitch === 0 ? [0, 0, ZS] : [0, 0, ZS / 2];
+        if (isEye()) {   // the camera is the observer's eye, looking along the line of sight; wheel = zoom
+            eye = [0, 0, 0]; Fw = [0, 0, 1]; R = [1, 0, 0]; U = [0, 1, 0];
+            F = Math.min(W, H) * 0.9 / (0.84) * (CAMS.observer.dist / cam.dist);
+            return;
+        }
+        const T = [0, 0, ZS / 2];
         const y = cam.yaw * Math.PI / 180, p = cam.pitch * Math.PI / 180;
-        eye = cam.yaw === 0 && cam.pitch === 0 ? [0, 0, -cam.dist + 7] :
-            [T[0] + cam.dist * Math.sin(y) * Math.cos(p), T[1] + cam.dist * Math.sin(p), T[2] - cam.dist * Math.cos(y) * Math.cos(p)];
+        eye = [T[0] + cam.dist * Math.sin(y) * Math.cos(p), T[1] + cam.dist * Math.sin(p), T[2] - cam.dist * Math.cos(y) * Math.cos(p)];
         Fw = norm(sub(T, eye)); R = norm(cross([0, 1, 0], Fw)); U = cross(Fw, R);
-        F = Math.min(W, H) * (cam.yaw === 0 && cam.pitch === 0 ? 1.9 : 1.15);
+        F = Math.min(W, H) * 1.15;
     }
     function P(p) {   // world → screen [x, y, depth]
         const v = sub(p, eye), z = dot(v, Fw);
@@ -79,6 +84,35 @@
     }
     const rgb = (c) => c.map((v) => Math.round(255 * v)).join(',');
 
+    // Simulated mode: paint a 2D panel (the simulator's canvas) onto a plane in perspective — split into small
+    // cells, each drawn as two affine-mapped triangles (a canvas cannot do a projective transform directly)
+    function tri(ctx, img, x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2) {
+        const dd = u0 * v1 + v0 * u2 + u1 * v2 - v1 * u2 - v0 * u1 - u0 * v2;
+        if (Math.abs(dd) < 1e-9) return;
+        const a = (x0 * v1 + v0 * x2 + x1 * v2 - v1 * x2 - v0 * x1 - x0 * v2) / dd, b = (y0 * v1 + v0 * y2 + y1 * v2 - v1 * y2 - v0 * y1 - y0 * v2) / dd;
+        const c = (u0 * x1 + x0 * u2 + u1 * x2 - x1 * u2 - x0 * u1 - u0 * x2) / dd, d = (u0 * y1 + y0 * u2 + u1 * y2 - y1 * u2 - y0 * u1 - u0 * y2) / dd;
+        const e = (u0 * v1 * x2 + v0 * x1 * u2 + x0 * u1 * v2 - x0 * v1 * u2 - v0 * u1 * x2 - u0 * x1 * v2) / dd;
+        const f = (u0 * v1 * y2 + v0 * y1 * u2 + y0 * u1 * v2 - y0 * v1 * u2 - v0 * u1 * y2 - u0 * y1 * v2) / dd;
+        const mx = (x0 + x1 + x2) / 3, my = (y0 + y1 + y2) / 3, g = (x, y) => [x + (x - mx) * 0.02, y + (y - my) * 0.02];   // tiny overlap: no seams
+        const [p0, p1, p2] = [g(x0, y0), g(x1, y1), g(x2, y2)];
+        ctx.save(); ctx.beginPath(); ctx.moveTo(...p0); ctx.lineTo(...p1); ctx.lineTo(...p2); ctx.closePath(); ctx.clip();
+        ctx.transform(a, b, c, d, e, f); ctx.drawImage(img, 0, 0); ctx.restore();
+    }
+    function texPlane(ctx, img, z, h, n = 8) {
+        if (!img || !img.width) return;
+        const Wi = img.width, Hi = img.height, pt = [];
+        for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) pt.push(P([-h + 2 * h * i / n, h - 2 * h * j / n, z]));
+        if (pt.some((q) => !q)) return;
+        ctx.globalAlpha = 0.95;
+        for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+            const A = pt[j * (n + 1) + i], B = pt[j * (n + 1) + i + 1], C = pt[(j + 1) * (n + 1) + i + 1], Dq = pt[(j + 1) * (n + 1) + i];
+            const u0 = Wi * i / n, u1 = Wi * (i + 1) / n, v0 = Hi * j / n, v1 = Hi * (j + 1) / n;
+            tri(ctx, img, A[0], A[1], B[0], B[1], C[0], C[1], u0, v0, u1, v0, u1, v1);
+            tri(ctx, img, A[0], A[1], C[0], C[1], Dq[0], Dq[1], u0, v0, u1, v1, u0, v1);
+        }
+        ctx.globalAlpha = 1;
+    }
+
     // a photon travels source → lens → observer; returns its world position at fraction u of the trip
     function along(path, u) {
         const segs = [], lens = [];
@@ -96,29 +130,83 @@
         return path[path.length - 1];
     }
 
+    // Observer's eye: what you see is the simulated observed image itself (copied from the 2D panel, same scale as the
+    // projection: a direction θ lands at F·s·θ). On top: the true source position β, and each ray's source → lens
+    // segment, which from the eye runs from where the source really is to where you see the image.
+    function drawEye(ctx, g, now) {
+        const img = document.getElementById('lsImg'), size = F * g.s * D.fov;
+        ctx.imageSmoothingEnabled = true;
+        if (O.mode === 'sim') {
+            if (img && img.width) ctx.drawImage(img, W / 2 - size / 2, H / 2 - size / 2, size, size);
+        } else if (!O.noLens) {   // schematic sky: lens galaxies as glows, the critical curve as dots
+            for (const l of D.lenses) glow(ctx, g.L(l.x, l.y), Math.max(0.05, l.re * g.s * g.zL * 2.5), rgb(l.col), Math.min(1, 0.35 + 0.15 * l.L));
+            for (const [x, y] of D.crit) { const p = P(g.L(x, y)); if (p) { ctx.fillStyle = 'rgba(243,159,90,.85)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+            for (const im of D.pts.filter((q) => Math.abs(q.mu) > 0.05)) glow(ctx, g.L(im.x, im.y), 0.05 + 0.02 * Math.sqrt(Math.abs(im.mu)), '200,225,255', 1);
+            if (!D.pts.length) for (const [x, y] of D.arcRays) glow(ctx, g.L(x, y), 0.06, '120,190,255', 0.5);
+        }
+        ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = dpr; ctx.strokeRect(W / 2 - size / 2, H / 2 - size / 2, size, size);
+        const srcW = g.Sx(D.src.x, D.src.y);
+        if (!O.noLens && O.apparent) for (const [x, y] of D.caus) { const p = P(g.Sx(x, y)); if (p) { ctx.fillStyle = 'rgba(255,107,138,.85)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+        const ims = O.noLens ? [] : D.pts.filter((im) => Math.abs(im.mu) > 0.05).sort((a, b) => (a.order || 9) - (b.order || 9));
+        const maxDt = Math.max(1e-9, ...ims.map((im) => im.dt));
+        if (O.rays && !O.noLens && !ims.length) for (const [x, y, bx, by] of D.arcRays.filter((_, i) => i % 3 === 0)) line(ctx, g.Sx(bx, by), g.L(x, y), 'rgba(255,209,102,.35)', 0.8);
+        ims.forEach((im, i) => {
+            const col = COLS[i % COLS.length], onL = g.L(im.x, im.y), p = P(onL);
+            if (O.rays) line(ctx, srcW, onL, col, 1.6, [6, 4]);
+            if (p) { ctx.strokeStyle = col; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(p[0], p[1], 9 * dpr, 0, 7); ctx.stroke(); }
+            if (O.play) {   // the photon slides from the true position to the image; the image flashes on arrival
+                const trip = 1.6, cycle = trip + 2.2 + 1.4, u = ((now % cycle) - (im.dt / maxDt) * 2.2) / trip;
+                if (u >= 0 && u < 1) { const q = P(along([srcW, onL], u)); if (q) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], 3.4 * dpr, 0, 7); ctx.fill(); } }
+                if (u >= 1 && u < 1.6 && p) { ctx.fillStyle = `rgba(255,255,255,${0.9 * (1.6 - u) / 0.6})`; ctx.beginPath(); ctx.arc(p[0], p[1], 14 * dpr, 0, 7); ctx.fill(); }
+            }
+        });
+        const ps = P(srcW);
+        if (ps) {
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([3 * dpr, 3 * dpr]);
+            ctx.beginPath(); ctx.arc(ps[0], ps[1], 11 * dpr, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        }
+        if (O.labels) {
+            label(ctx, srcW, 'β — where it really is', '#ffffff', 14, -10, 12);
+            if (ims[0]) label(ctx, g.L(ims[0].x, ims[0].y), 'θ — where you see it', COLS[0], 14, 20, 12);
+            ctx.font = `${12 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.7)';
+            ctx.fillText(O.mode === 'sim' ? 'Through the observer\'s eye: the same simulated image as above. Dashed circle = true source position.'
+                : 'Through the observer\'s eye (schematic). Dashed circle = true source position.', 14 * dpr, H - 14 * dpr);
+        }
+        if (O.play) { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+    }
+
     function draw() {
         if (!D) return;
         setupCamera();
         const ctx = cv.getContext('2d'), g = geom(), now = (performance.now() - t0) / 1000;
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = '#05070c'; ctx.fillRect(0, 0, W, H);
+        if (isEye()) { drawEye(ctx, g, now); $('ls3dExag').textContent = `same field as the observed image · ${D.fov}″ across`; return; }
         const hL = (D.fov / 2) * g.s * g.zL, hS = (D.fov / 2) * g.s * ZS;
         const obs = [0, 0, 0], srcW = g.Sx(D.src.x, D.src.y);
 
         // planes, far one first
         const planes = [[ZS, hS, 'rgba(76,201,240,.06)', 'rgba(76,201,240,.35)'], [g.zL, hL, 'rgba(255,190,120,.06)', 'rgba(255,190,120,.35)']]
             .map((q) => ({q, d: (P([0, 0, q[0]]) || [0, 0, 0])[2]})).sort((a, b) => b.d - a.d);
-        for (const {q} of planes) plane(ctx, ...q);
+        const sim = O.mode === 'sim';
+        for (const {q} of planes) {
+            plane(ctx, ...q);
+            if (sim) texPlane(ctx, document.getElementById(q[0] === ZS ? 'lsSrc' : 'lsImg'), q[0], q[1]);
+        }
 
         // source plane: caustics and the source
-        if (!O.noLens) for (const [x, y] of D.caus) { const p = P(g.Sx(x, y)); if (p) { ctx.fillStyle = 'rgba(255,107,138,.8)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
-        glow(ctx, srcW, Math.max(0.12, (D.src.re || 0) * g.s * ZS * 2.2), '120,190,255', 1);
-        if (D.src.sn) glow(ctx, g.Sx(D.src.sn[0], D.src.sn[1]), 0.08, '255,255,255', 1);
+        if (!sim) {   // schematic: caustic dots and a glow for the source (the simulated panels already show them)
+            if (!O.noLens) for (const [x, y] of D.caus) { const p = P(g.Sx(x, y)); if (p) { ctx.fillStyle = 'rgba(255,107,138,.8)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+            glow(ctx, srcW, Math.max(0.12, (D.src.re || 0) * g.s * ZS * 2.2), '120,190,255', 1);
+            if (D.src.sn) glow(ctx, g.Sx(D.src.sn[0], D.src.sn[1]), 0.08, '255,255,255', 1);
+        }
 
         // lens plane: galaxies, critical curve, deflection arrows
         if (!O.noLens) {
-            for (const l of D.lenses) glow(ctx, g.L(l.x, l.y), Math.max(0.05, l.re * g.s * g.zL * 2.5), rgb(l.col), Math.min(1, 0.35 + 0.15 * l.L));
-            for (const [x, y] of D.crit) { const p = P(g.L(x, y)); if (p) { ctx.fillStyle = 'rgba(243,159,90,.85)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+            if (!sim) {
+                for (const l of D.lenses) glow(ctx, g.L(l.x, l.y), Math.max(0.05, l.re * g.s * g.zL * 2.5), rgb(l.col), Math.min(1, 0.35 + 0.15 * l.L));
+                for (const [x, y] of D.crit) { const p = P(g.L(x, y)); if (p) { ctx.fillStyle = 'rgba(243,159,90,.85)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+            }
             if (O.arrows) {
                 const n = 7, step = D.fov * 0.9 / (n - 1);
                 let amax = 1e-9;
@@ -213,10 +301,12 @@
     function syncBar() {
         document.querySelectorAll('[data-cam]').forEach((b) => b.classList.toggle('is-on', CAMS[b.dataset.cam] && CAMS[b.dataset.cam].yaw === cam.yaw && CAMS[b.dataset.cam].pitch === cam.pitch));
         document.querySelectorAll('[data-opt]').forEach((c) => { c.checked = !!O[c.dataset.opt]; });
+        document.querySelectorAll('[data-mode3d]').forEach((b) => b.classList.toggle('is-on', b.dataset.mode3d === O.mode));
         $('ls3dPlay').textContent = O.play ? 'Pause photons' : 'Play photons';
     }
     document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => { cam = {...CAMS[b.dataset.cam]}; syncBar(); redraw(); }));
     document.querySelectorAll('[data-opt]').forEach((c) => c.addEventListener('change', () => { O[c.dataset.opt] = c.checked; redraw(); }));
+    document.querySelectorAll('[data-mode3d]').forEach((b) => b.addEventListener('click', () => { O.mode = b.dataset.mode3d; syncBar(); redraw(); }));
     $('ls3dPlay').addEventListener('click', () => { O.play = !O.play; t0 = performance.now(); syncBar(); draw(); });
     let drag = null;
     cv.addEventListener('pointerdown', (e) => { drag = [e.clientX, e.clientY, cam.yaw, cam.pitch]; cv.setPointerCapture(e.pointerId); });
@@ -263,7 +353,7 @@
         const s = STEPS[step];
         window.LensSim.preset(s.preset);
         if (Object.keys(s.patch).length) window.LensSim.apply(s.patch);
-        Object.assign(O, {noLens: false, arrows: false, apparent: true, rays: true, straight: true, labels: true, play: false}, s.o);
+        Object.assign(O, {mode: O.mode, noLens: false, arrows: false, apparent: true, rays: true, straight: true, labels: true, play: false}, s.o);
         cam = {...CAMS[s.cam]}; t0 = performance.now();
         $('lsGuideTitle').textContent = `${step + 1}. ${s.t}`;
         $('lsGuideBody').innerHTML = s.b;
