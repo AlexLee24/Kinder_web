@@ -20,16 +20,21 @@
     const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
     const norm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
     let W = 0, H = 0, F = 0, eye, R, U, Fw, dpr = 1;
+    const isEye = () => cam.yaw === 0 && cam.pitch === 0;
     function setupCamera() {
         dpr = window.devicePixelRatio || 1;
         W = Math.round(cv.clientWidth * dpr); H = Math.round(cv.clientHeight * dpr);
         if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-        const T = cam.yaw === 0 && cam.pitch === 0 ? [0, 0, ZS] : [0, 0, ZS / 2];
+        if (isEye()) {   // the camera is the observer's eye, looking along the line of sight; wheel = zoom
+            eye = [0, 0, 0]; Fw = [0, 0, 1]; R = [1, 0, 0]; U = [0, 1, 0];
+            F = Math.min(W, H) * 0.9 / (0.84) * (CAMS.observer.dist / cam.dist);
+            return;
+        }
+        const T = [0, 0, ZS / 2];
         const y = cam.yaw * Math.PI / 180, p = cam.pitch * Math.PI / 180;
-        eye = cam.yaw === 0 && cam.pitch === 0 ? [0, 0, -cam.dist + 7] :
-            [T[0] + cam.dist * Math.sin(y) * Math.cos(p), T[1] + cam.dist * Math.sin(p), T[2] - cam.dist * Math.cos(y) * Math.cos(p)];
+        eye = [T[0] + cam.dist * Math.sin(y) * Math.cos(p), T[1] + cam.dist * Math.sin(p), T[2] - cam.dist * Math.cos(y) * Math.cos(p)];
         Fw = norm(sub(T, eye)); R = norm(cross([0, 1, 0], Fw)); U = cross(Fw, R);
-        F = Math.min(W, H) * (cam.yaw === 0 && cam.pitch === 0 ? 1.9 : 1.15);
+        F = Math.min(W, H) * 1.15;
     }
     function P(p) {   // world → screen [x, y, depth]
         const v = sub(p, eye), z = dot(v, Fw);
@@ -96,12 +101,50 @@
         return path[path.length - 1];
     }
 
+    // Observer's eye: what you see is the simulated observed image itself (copied from the 2D panel, same scale as the
+    // projection: a direction θ lands at F·s·θ). On top: the true source position β, and each ray's source → lens
+    // segment, which from the eye runs from where the source really is to where you see the image.
+    function drawEye(ctx, g, now) {
+        const img = document.getElementById('lsImg'), size = F * g.s * D.fov;
+        ctx.imageSmoothingEnabled = true;
+        if (img && img.width) ctx.drawImage(img, W / 2 - size / 2, H / 2 - size / 2, size, size);
+        ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = dpr; ctx.strokeRect(W / 2 - size / 2, H / 2 - size / 2, size, size);
+        const srcW = g.Sx(D.src.x, D.src.y);
+        if (!O.noLens && O.apparent) for (const [x, y] of D.caus) { const p = P(g.Sx(x, y)); if (p) { ctx.fillStyle = 'rgba(255,107,138,.85)'; ctx.fillRect(p[0] - dpr, p[1] - dpr, 2 * dpr, 2 * dpr); } }
+        const ims = O.noLens ? [] : D.pts.filter((im) => Math.abs(im.mu) > 0.05).sort((a, b) => (a.order || 9) - (b.order || 9));
+        const maxDt = Math.max(1e-9, ...ims.map((im) => im.dt));
+        if (O.rays && !O.noLens && !ims.length) for (const [x, y, bx, by] of D.arcRays.filter((_, i) => i % 3 === 0)) line(ctx, g.Sx(bx, by), g.L(x, y), 'rgba(255,209,102,.35)', 0.8);
+        ims.forEach((im, i) => {
+            const col = COLS[i % COLS.length], onL = g.L(im.x, im.y), p = P(onL);
+            if (O.rays) line(ctx, srcW, onL, col, 1.6, [6, 4]);
+            if (p) { ctx.strokeStyle = col; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(p[0], p[1], 9 * dpr, 0, 7); ctx.stroke(); }
+            if (O.play) {   // the photon slides from the true position to the image; the image flashes on arrival
+                const trip = 1.6, cycle = trip + 2.2 + 1.4, u = ((now % cycle) - (im.dt / maxDt) * 2.2) / trip;
+                if (u >= 0 && u < 1) { const q = P(along([srcW, onL], u)); if (q) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], 3.4 * dpr, 0, 7); ctx.fill(); } }
+                if (u >= 1 && u < 1.6 && p) { ctx.fillStyle = `rgba(255,255,255,${0.9 * (1.6 - u) / 0.6})`; ctx.beginPath(); ctx.arc(p[0], p[1], 14 * dpr, 0, 7); ctx.fill(); }
+            }
+        });
+        const ps = P(srcW);
+        if (ps) {
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([3 * dpr, 3 * dpr]);
+            ctx.beginPath(); ctx.arc(ps[0], ps[1], 11 * dpr, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+        }
+        if (O.labels) {
+            label(ctx, srcW, 'β — where it really is', '#ffffff', 14, -10, 12);
+            if (ims[0]) label(ctx, g.L(ims[0].x, ims[0].y), 'θ — where you see it', COLS[0], 14, 20, 12);
+            ctx.font = `${12 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.7)';
+            ctx.fillText('Through the observer\'s eye: the same simulated image as above. Dashed circle = true source position.', 14 * dpr, H - 14 * dpr);
+        }
+        if (O.play) { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+    }
+
     function draw() {
         if (!D) return;
         setupCamera();
         const ctx = cv.getContext('2d'), g = geom(), now = (performance.now() - t0) / 1000;
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = '#05070c'; ctx.fillRect(0, 0, W, H);
+        if (isEye()) { drawEye(ctx, g, now); $('ls3dExag').textContent = `same field as the observed image · ${D.fov}″ across`; return; }
         const hL = (D.fov / 2) * g.s * g.zL, hS = (D.fov / 2) * g.s * ZS;
         const obs = [0, 0, 0], srcW = g.Sx(D.src.x, D.src.y);
 
