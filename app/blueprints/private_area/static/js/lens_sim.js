@@ -41,7 +41,7 @@
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
-                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 19, knee: 26, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
+                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 19, knee: 25, noiseOn: false, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
     // Telescopes: aperture D (m), median seeing (″), ground or space sky. Resolution = seeing ⊕ diffraction (no detector pixels).
     // Zero point (AB mag giving 1 e⁻/s) ≈ 24.3 + 5 log D — a broad-band, ~50 % throughput approximation.
     const BANDS = {g: 0.48, r: 0.62, i: 0.77, z: 0.91, J: 1.25, H: 1.6, K: 2.2};                     // µm
@@ -153,6 +153,7 @@
         $('lsCrit').checked = S.crit;
         $('lsCaus').checked = S.caus;
         $('lsField').checked = S.field;
+        $('lsNoiseOn').checked = S.noiseOn;
         $('lsEnv').value = S.env;
         $('lsTel').value = S.tel;
         $('lsBand').value = S.band;
@@ -184,6 +185,7 @@
     $('lsCrit').addEventListener('change', () => { S.crit = $('lsCrit').checked; schedule(); });
     $('lsCaus').addEventListener('change', () => { S.caus = $('lsCaus').checked; schedule(); });
     $('lsField').addEventListener('change', () => { S.field = $('lsField').checked; schedule(); });
+    $('lsNoiseOn').addEventListener('change', () => { S.noiseOn = $('lsNoiseOn').checked; schedule(); });
     $('lsEnv').addEventListener('change', () => { S.env = $('lsEnv').value; $('lsPreset').value = ''; schedule(); });
     $('lsObs').addEventListener('change', () => { S.showObs = $('lsObs').checked; schedule(); });
     $('lsTel').addEventListener('change', () => {
@@ -197,7 +199,7 @@
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'white', 'knee'];
+        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'white', 'knee', 'noiseOn'];
         S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
@@ -579,7 +581,7 @@
             const Eu = 10 ** (-0.4 * (22 - T.zp)) * pe * pe * T.t;          // e⁻ per pixel for 1 unit
             const skyE = 10 ** (-0.4 * (T.sky - T.zp)) * pe * pe * T.t, RN2 = 25;
             const corr = pe / pix / 2.3548;                                // correlation length in simulation pixels
-            for (const [w, rgb] of out.entries()) {   // one unit-variance field, shared by R, G, B (grey noise)
+            if (S.noiseOn) for (const [w, rgb] of out.entries()) {   // one unit-variance field, shared by R, G, B (grey noise)
                 const rn = rng(31337 + w);
                 let draws = new Float32Array(NN);
                 for (let b = 0; b < NN; b++) draws[b] = gauss(rn);
@@ -604,6 +606,8 @@
         // change to one object never brightens or dims the others; lensing conserves surface brightness, so an arc and its
         // unlensed source look equally bright per pixel
         const norm = 1 / 10 ** (-0.4 * (S.white - 22)), soft = Math.min(0.5, 10 ** (-0.4 * (S.knee - 22)) * norm);
+        // with sky noise shown, everything below 3σ of the sky is black, so the background stays dark
+        const black = noise && S.noiseOn ? 3 * noise.skyU * norm : 0;
 
         // critical curves (det A changes sign between neighbours) and their caustics
         const crit = [], caus = [];
@@ -622,8 +626,8 @@
             }
         }
 
-        paint($('lsSrc'), out[1], norm, soft, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
-        paint($('lsImg'), out[0], norm, soft, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
+        paint($('lsSrc'), out[1], norm, soft, black, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
+        paint($('lsImg'), out[0], norm, soft, black, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
               S.obs && S.showObs ? S.obs : null);
         scaleBar('lsScaleS', fov); scaleBar('lsScaleI', fov);
         view = {fov, tE, pts};
@@ -636,11 +640,11 @@
         return steps.find((s) => s >= v) || 600;
     }
 
-    function paint(cv, rgb, norm, soft, fov, pts, col, mark, obs) {
-        const data = offCtx.createImageData(N, N), px = data.data, den = Math.asinh(1 / soft);
+    function paint(cv, rgb, norm, soft, black, fov, pts, col, mark, obs) {
+        const data = offCtx.createImageData(N, N), px = data.data, den = Math.asinh(Math.max(1e-6, 1 - black) / soft);
         for (let k = 0; k < N * N; k++) {
             for (let c = 0; c < 3; c++) {
-                const v = Math.asinh(rgb[c][k] * norm / soft) / den;
+                const v = Math.asinh((rgb[c][k] * norm - black) / soft) / den;
                 px[4 * k + c] = 255 * Math.min(1, Math.max(0, v));
             }
             px[4 * k + 3] = 255;
