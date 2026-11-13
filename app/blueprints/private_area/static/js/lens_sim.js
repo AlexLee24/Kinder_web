@@ -41,19 +41,19 @@
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
-                 tel: 'ideal', band: 'r', D: 1, pixT: 0.35, exp: 3, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
-    // Telescopes: aperture D (m), pixel scale (″, per band), median seeing (″), ground or space sky.
+                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 19, knee: 26, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
+    // Telescopes: aperture D (m), median seeing (″), ground or space sky. Resolution = seeing ⊕ diffraction (no detector pixels).
     // Zero point (AB mag giving 1 e⁻/s) ≈ 24.3 + 5 log D — a broad-band, ~50 % throughput approximation.
     const BANDS = {g: 0.48, r: 0.62, i: 0.77, z: 0.91, J: 1.25, H: 1.6, K: 2.2};                     // µm
     const SKY = {ground: {g: 22.0, r: 21.0, i: 20.2, z: 19.3, J: 16.5, H: 14.5, K: 13.5},             // mag/arcsec² (dark site)
                  space: {g: 22.8, r: 22.5, i: 22.4, z: 22.3, J: 22.1, H: 21.9, K: 21.5}};             // zodiacal light
     const TELESCOPES = {
         ideal: {label: 'Ideal (no PSF, no noise)'},
-        lot: {label: 'Lulin LOT 1 m', D: 1.0, pix: () => 0.35, seeing: 1.3, sky: 'ground'},
-        subaru: {label: 'Subaru HSC 8.2 m', D: 8.2, pix: () => 0.168, seeing: 0.7, sky: 'ground'},
-        euclid: {label: 'Euclid 1.2 m (VIS / NISP)', D: 1.2, pix: (b) => (BANDS[b] > 1 ? 0.3 : 0.1), seeing: 0, sky: 'space'},
-        hst: {label: 'HST 2.4 m (WFC3 UVIS / IR)', D: 2.4, pix: (b) => (BANDS[b] > 1 ? 0.13 : 0.04), seeing: 0, sky: 'space'},
-        jwst: {label: 'JWST 6.5 m (NIRCam)', D: 6.5, pix: (b) => (BANDS[b] > 2.4 ? 0.063 : 0.031), seeing: 0, sky: 'space'},
+        lot: {label: 'Lulin LOT 1 m', D: 1.0, seeing: 1.3, sky: 'ground'},
+        subaru: {label: 'Subaru HSC 8.2 m', D: 8.2, seeing: 0.7, sky: 'ground'},
+        euclid: {label: 'Euclid 1.2 m (VIS / NISP)', D: 1.2, seeing: 0, sky: 'space'},
+        hst: {label: 'HST 2.4 m (WFC3 UVIS / IR)', D: 2.4, seeing: 0, sky: 'space'},
+        jwst: {label: 'JWST 6.5 m (NIRCam)', D: 6.5, seeing: 0, sky: 'space'},
         custom: {label: 'Custom', sky: 'ground'},
     };
     const PRESETS = [
@@ -91,7 +91,8 @@
     /* ------------------------------------------------------------ controls */
     const sliders = {logm: 'lsLogM', zl: 'lsZl', q: 'lsQ', pa: 'lsPa', gamma: 'lsGamma', gpa: 'lsGpa', light: 'lsLight',
                      zs: 'lsZs', re: 'lsRe', n: 'lsN', sq: 'lsSq', spa: 'lsSpa', bx: 'lsBx', by: 'lsBy', seeing: 'lsSeeing',
-                     g2: 'lsG2', g2x: 'lsG2x', g2y: 'lsG2y', mag: 'lsMag', snMag: 'lsSnMag', D: 'lsD', pixT: 'lsPixT', exp: 'lsExp'};
+                     g2: 'lsG2', g2x: 'lsG2x', g2y: 'lsG2y', mag: 'lsMag', snMag: 'lsSnMag', D: 'lsD', exp: 'lsExp',
+                     white: 'lsWhite', knee: 'lsKnee'};
     const fmt = {
         logm: (v) => `${(10 ** v).toExponential(1).replace('e+', '×10^')} M☉`.replace(/\^(\d+)/, (_, e) => sup(e)),
         zl: (v) => v.toFixed(3), zs: (v) => v.toFixed(3), q: (v) => v.toFixed(2), pa: (v) => `${v}°`, gpa: (v) => `${v}°`,
@@ -99,7 +100,7 @@
         sq: (v) => v.toFixed(2), spa: (v) => `${v}°`, bx: (v) => v.toFixed(3), by: (v) => v.toFixed(3),
         seeing: (v) => (v ? `${v.toFixed(2)}″` : 'off'), g2: (v) => (v ? `${v} km/s` : 'off'),
         g2x: (v) => `${v.toFixed(2)}″`, g2y: (v) => `${v.toFixed(2)}″`, mag: (v) => `${v.toFixed(1)} AB`, snMag: (v) => `${v.toFixed(1)} AB`,
-        D: (v) => `${v.toFixed(1)} m`, pixT: (v) => `${v.toFixed(3)}″/px`, exp: (v) => fmtTime(10 ** v),
+        D: (v) => `${v.toFixed(1)} m`, white: (v) => `${v.toFixed(1)}`, knee: (v) => `${v.toFixed(1)}`, exp: (v) => fmtTime(10 ** v),
     };
     function fmtTime(t) { return t < 120 ? `${t.toFixed(0)} s` : t < 7200 ? `${(t / 60).toFixed(0)} min` : `${(t / 3600).toFixed(1)} h`; }
     Object.entries(TELESCOPES).forEach(([k, t]) => $('lsTel').insertAdjacentHTML('beforeend', `<option value="${k}">${t.label}</option>`));
@@ -107,14 +108,15 @@
     function telescope() {   // the telescope actually used, with derived numbers
         const T = TELESCOPES[S.tel];
         if (S.tel === 'ideal') return {ideal: true};
-        const D = S.tel === 'custom' ? S.D : T.D, pixT = S.tel === 'custom' ? S.pixT : T.pix(S.band), lam = BANDS[S.band];
+        const D = S.tel === 'custom' ? S.D : T.D, lam = BANDS[S.band];
         const diff = 1.03 * lam * 1e-6 / D * ARC;
-        return {D, pixT, lam, diff, fwhm: Math.sqrt(S.seeing ** 2 + diff ** 2), zp: 24.3 + 5 * Math.log10(D),
+        return {D, lam, diff, fwhm: Math.sqrt(S.seeing ** 2 + diff ** 2), zp: 24.3 + 5 * Math.log10(D),
                 sky: SKY[T.sky][S.band], t: 10 ** S.exp, label: T.label};
     }
     // Every slider also has a number box (typed values are clamped to the slider's range)
     const UNIT = {logm: 'M☉', pa: '°', gpa: '°', re: 'kpc', spa: '°', bx: 'θE', by: 'θE', seeing: '″', g2: 'km/s', g2x: '″',
-                  g2y: '″', mag: 'AB', snMag: 'AB', D: 'm', pixT: '″/px', exp: 's'};
+                  g2y: '″', mag: 'AB', snMag: 'AB', D: 'm', exp: 's',
+                  white: 'mag/″²', knee: 'mag/″²'};
     const toUser = (k, v) => (k === 'logm' ? (10 ** v).toPrecision(3) : k === 'exp' ? String(Math.round(10 ** v))
         : String(+(+v).toFixed(Math.max(0, -Math.floor(Math.log10(+$(sliders[k]).step || 1))))));
     const fromUser = (k, t) => { const v = parseFloat(String(t).replace(/[^0-9eE+.\-]/g, '')); return k === 'logm' || k === 'exp' ? Math.log10(v) : v; };
@@ -187,7 +189,7 @@
     $('lsTel').addEventListener('change', () => {
         S.tel = $('lsTel').value;
         const T = TELESCOPES[S.tel];
-        if (T.D) { S.D = T.D; S.pixT = T.pix(S.band); S.seeing = T.seeing; }
+        if (T.D) { S.D = T.D; S.seeing = T.seeing; }
         if (S.tel === 'jwst' && BANDS[S.band] < 0.7) S.band = 'H';
         syncControls(); schedule();
     });
@@ -195,7 +197,7 @@
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        const keep = ['tel', 'band', 'D', 'pixT', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs'];
+        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'white', 'knee'];
         S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
@@ -366,7 +368,7 @@
         return {at, stars};
     }
 
-    // Gaussian blur by three box passes per axis (cost independent of the seeing in pixels)
+    // Gaussian blur by five box passes per axis (round, and the cost does not grow with the seeing in pixels)
     function boxPass(src, dst, N, r, horiz) {
         const w = 2 * r + 1;
         for (let a = 0; a < N; a++) {
@@ -437,9 +439,9 @@
 
     function blur(a, N, sigPix) {
         if (sigPix < 0.3) return a;
-        const r = Math.max(1, Math.round((Math.sqrt(12 * sigPix * sigPix / 3 + 1) - 1) / 2));
+        const passes = 5, r = Math.max(1, Math.round((Math.sqrt(12 * sigPix * sigPix / passes + 1) - 1) / 2));
         let x = Float32Array.from(a), y = new Float32Array(a.length);
-        for (const horiz of [true, false]) for (let i = 0; i < 3; i++) { boxPass(x, y, N, r, horiz); [x, y] = [y, x]; }
+        for (const horiz of [true, false]) for (let i = 0; i < passes; i++) { boxPass(x, y, N, r, horiz); [x, y] = [y, x]; }
         return x;
     }
 
@@ -516,7 +518,6 @@
             for (let c = 0; c < 3; c++) { img[c][k] += sImg[k] * SC[c]; pln[c][k] += sPln[k] * SC[c]; }
         }
         let pts = [];
-        const hostOnlyI = S.src === 'hostsn' ? Float32Array.from(sImg) : null, hostOnlyP = S.src === 'hostsn' ? Float32Array.from(sPln) : null;
         if (ptSrc) {   // quasar / supernova images from the lens equation
             const F = 10 ** (-0.4 * ((S.src === 'point' ? S.mag : S.snMag) - 22)), PT_RGB = S.src === 'point' ? SRC_RGB : [0.92, 0.95, 1.0];
             pts = pointImages(defl, ptX, ptY, AX, AY, fov, pix);
@@ -564,29 +565,33 @@
             }
         }
 
-        // the telescope: PSF (seeing ⊕ diffraction 1.03 λ/D), detector pixels, photon + sky + read noise
+        // the telescope: PSF (seeing ⊕ diffraction 1.03 λ/D), then photon + sky + read noise per simulation pixel
         const T = telescope();
         const sigPix = T.ideal ? 1 : T.fwhm / 2.3548 / pix;   // ideal: perfect optics, but a point still fills a pixel
-        const f = T.ideal ? 1 : T.pixT / pix;
-        const observe = (ch) => (f > 1.5 ? pixelate(blur(ch, N, sigPix), N, f) : blur(ch, N, sigPix));
+        const observe = (ch) => blur(ch, N, sigPix);
         const out = [img, pln].map((rgb) => rgb.map(observe));
         const maxOf = (arr) => { let m = 0; for (let k = 0; k < arr.length; k++) if (arr[k] > m) m = arr[k]; return m; };
-        // display: scaled to the brightest observed source pixel; with a supernova in a host the asinh knee follows the
-        // host, so faint arcs stay visible next to the bright SN images (as in a HST / JWST colour composite)
-        const peakI = maxOf(observe(sImg)), peakP = maxOf(observe(sPln));
-        const hostI = hostOnlyI ? maxOf(observe(hostOnlyI)) : peakI, hostP = hostOnlyP ? maxOf(observe(hostOnlyP)) : peakP;
+        const peakI = T.ideal ? 0 : maxOf(observe(sImg));                // brightest observed source pixel (for S/N)
         let noise = null;
         if (!T.ideal) {
-            const pe = Math.max(T.pixT, pix);                              // effective pixel (″)
+            // noise per Nyquist-sampled resolution element (FWHM / 2), drawn as a field correlated on that scale
+            const pe = Math.max(pix, T.fwhm / 2);
             const Eu = 10 ** (-0.4 * (22 - T.zp)) * pe * pe * T.t;          // e⁻ per pixel for 1 unit
             const skyE = 10 ** (-0.4 * (T.sky - T.zp)) * pe * pe * T.t, RN2 = 25;
-            const fb = Math.max(1, f);
-            const nb = Math.ceil(N / fb);
-            for (const [w, rgb] of out.entries()) {   // one draw per detector pixel, shared by R, G, B (grey noise)
-                const rn = rng(31337 + w), draws = new Float32Array(nb * nb);
-                for (let b = 0; b < draws.length; b++) draws[b] = gauss(rn);
+            const corr = pe / pix / 2.3548;                                // correlation length in simulation pixels
+            for (const [w, rgb] of out.entries()) {   // one unit-variance field, shared by R, G, B (grey noise)
+                const rn = rng(31337 + w);
+                let draws = new Float32Array(NN);
+                for (let b = 0; b < NN; b++) draws[b] = gauss(rn);
+                if (corr > 0.5) {
+                    draws = blur(draws, N, corr);
+                    let v = 0;
+                    for (let b = 0; b < NN; b++) v += draws[b] * draws[b];
+                    const sc = 1 / Math.sqrt(v / NN || 1);
+                    for (let b = 0; b < NN; b++) draws[b] *= sc;
+                }
                 for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-                    const k = j * N + i, dr = draws[Math.floor(j / fb) * nb + Math.floor(i / fb)];
+                    const k = j * N + i, dr = draws[k];
                     const e = Math.max(0, (rgb[0][k] + rgb[1][k] + rgb[2][k]) / 3) * Eu, sd = Math.sqrt(skyE + e + RN2) / Eu;
                     for (const ch of rgb) ch[k] += dr * sd;
                 }
@@ -595,9 +600,10 @@
             noise = {skyU, Eu, skyE, RN2, pe, snr: peakI * Eu / Math.sqrt(skyE + peakI * Eu + RN2),
                      mu1: 22 - 2.5 * Math.log10(skyU * pe)};               // 1σ surface-brightness limit per arcsec²
         }
-        const normI = peakI > 0 ? 1 / peakI : 1, normP = peakP > 0 ? 1 / peakP : 1;
-        const knee = (host, peak, norm) => Math.max(noise ? 2.5 * noise.skyU * norm : 0, Math.min(0.03, 0.3 * host / peak), 0.002);
-        const softI = knee(hostI, peakI, normI), softP = knee(hostP, peakP, normP);
+        // display: one fixed surface-brightness scale for both panels (white point and asinh knee in mag/arcsec²), so a
+        // change to one object never brightens or dims the others; lensing conserves surface brightness, so an arc and its
+        // unlensed source look equally bright per pixel
+        const norm = 1 / 10 ** (-0.4 * (S.white - 22)), soft = Math.min(0.5, 10 ** (-0.4 * (S.knee - 22)) * norm);
 
         // critical curves (det A changes sign between neighbours) and their caustics
         const crit = [], caus = [];
@@ -616,8 +622,8 @@
             }
         }
 
-        paint($('lsSrc'), out[1], normP, softP, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
-        paint($('lsImg'), out[0], normI, softI, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
+        paint($('lsSrc'), out[1], norm, soft, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
+        paint($('lsImg'), out[0], norm, soft, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
               S.obs && S.showObs ? S.obs : null);
         scaleBar('lsScaleS', fov); scaleBar('lsScaleI', fov);
         view = {fov, tE, pts};
@@ -628,17 +634,6 @@
     function niceFov(v) {
         const steps = [0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 60, 80, 120, 160, 240, 300, 480, 600];
         return steps.find((s) => s >= v) || 600;
-    }
-
-    function pixelate(ch, N, f) {   // block-average onto detector pixels f sim-pixels wide
-        const nb = Math.ceil(N / f), sum = new Float64Array(nb * nb), cnt = new Uint32Array(nb * nb), o = new Float32Array(ch.length);
-        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-            const b = Math.floor(j / f) * nb + Math.floor(i / f); sum[b] += ch[j * N + i]; cnt[b]++;
-        }
-        for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-            const b = Math.floor(j / f) * nb + Math.floor(i / f); o[j * N + i] = sum[b] / cnt[b];
-        }
-        return o;
     }
 
     function paint(cv, rgb, norm, soft, fov, pts, col, mark, obs) {
@@ -654,7 +649,7 @@
         const dpr = window.devicePixelRatio || 1, W = Math.round(cv.clientWidth * dpr) || 420;
         if (cv.width !== W) { cv.width = W; cv.height = W; }
         const ctx = cv.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
+        ctx.imageSmoothingEnabled = true;
         ctx.drawImage(off, 0, 0, W, W);
         const toPx = (x, y) => [(x / fov + 0.5) * W, (0.5 - y / fov) * W];
         ctx.fillStyle = col;
@@ -717,7 +712,6 @@
             S.src === 'point' ? null : ['Source r<sub>e</sub>', `${num(reArc, 3)}″`],
             ['Field', `${fov}″ × ${fov}″`],
             T.ideal ? null : ['PSF FWHM', `${num(T.fwhm)}″ <small>(diffraction ${num(T.diff, 3)}″)</small>`, true],
-            T.ideal ? null : ['Detector pixel', `${num(T.pixT, 3)}″`],
             noise ? ['S/N at the brightest image pixel', num(noise.snr, 1), true] : null,
             noise ? ['1σ depth', `${num(noise.mu1, 1)} mag/arcsec²`] : null,
             noise ? ['Sky', `${num(T.sky, 1)} mag/arcsec² · ${num(10 ** S.exp, 0)} s`] : null,
