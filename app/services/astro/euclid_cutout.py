@@ -1,4 +1,5 @@
-"""Tools › Euclid: Euclid DR1 / Q1 cutouts at any position, next to Legacy Survey DR10 / DR11.
+"""Tools › Sky Cutouts: Euclid DR1 / Q1 cutouts at any position, next to colour images of other surveys
+(Legacy Survey DR10 / DR11 / model / residual, HSC PDR3, Pan-STARRS1, SDSS, unWISE, GALEX, VLASS).
 
 Reuses the archive helpers of the Euclid-SLSN special run (app/services/special_run/euclid_slsn.py):
 footprint query (DR1 first, then Q1, every covering tile), astroquery cutouts with timeouts and retries, and the
@@ -7,7 +8,9 @@ serial, cached Legacy Survey viewer fetch.
     resolve(text)                       'ra dec' (deg or sexagesimal), a Kinder object name, or a Sesame name
     coverage(ra, dec)                   {'covered', 'release', 'tile', 'bands'} — the first tile with real pixels
     pixels(ra, dec, fov, band)          (float32 array, target x, target y, binning) for the browser stretch
-    survey_jpeg(ra, dec, fov, key)      Path of a Legacy Survey JPEG (key 'dr10' | 'dr11')
+    survey_jpeg(ra, dec, fov, key)      Path of a survey colour JPEG (key in SURVEYS); 404 when the survey has no data there
+    image_jpeg(ra, dec, fov, src)       Path of a JPEG for any source (SOURCES): Euclid is STF-stretched on the server
+    sources()                           [{key, label, group, kind, bands?}] — what /api/cutouts/sources lists
 
 Files live under DATA_DIR/euclid_cutouts/<ra>_<dec>/ (coverage.json, <band>_<fov>.fits, LS_<key>_<fov>.jpg);
 folders untouched for CACHE_DAYS are removed when a new position is fetched.
@@ -29,7 +32,22 @@ CACHE_DAYS = 14
 FOV_CHOICES = (10, 20, 30, 45, 60, 90, 120)      # arcsec, full width
 MAX_SIDE = 640                                   # px sent to the browser per band (larger cutouts are binned)
 BANDS = es.BANDS
-LS_KEYS = es.LS_LAYERS                           # {'dr10': 'ls-dr10', 'dr11': 'ls-dr11'}
+# key → Legacy Survey viewer layer (the viewer also serves HSC, SDSS, unWISE, … as layers), or None for Pan-STARRS1
+SURVEYS = {
+    'dr10': 'ls-dr10', 'dr11': 'ls-dr11', 'dr10_model': 'ls-dr10-model', 'dr10_resid': 'ls-dr10-resid',
+    'hsc': 'hsc-dr3', 'ps1': None, 'sdss': 'sdss', 'unwise': 'unwise-neo7', 'galex': 'galex', 'vlass': 'vlass1.2',
+}
+SURVEY_LABELS = {
+    'dr10': 'Legacy Survey DR10', 'dr11': 'Legacy Survey DR11', 'dr10_model': 'Legacy Survey DR10 model',
+    'dr10_resid': 'Legacy Survey DR10 residual', 'hsc': 'HSC PDR3', 'ps1': 'Pan-STARRS1', 'sdss': 'SDSS',
+    'unwise': 'unWISE', 'galex': 'GALEX', 'vlass': 'VLASS',
+}
+EUCLID_SOURCES = {    # key → (label, bands as R, G, B or a single band)
+    'vis': ('Euclid VIS', ('VIS',)), 'nisp': ('Euclid NISP H / J / Y colour', ('NIR_H', 'NIR_J', 'NIR_Y')),
+    'nisp_y': ('Euclid NISP Y', ('NIR_Y',)), 'nisp_j': ('Euclid NISP J', ('NIR_J',)), 'nisp_h': ('Euclid NISP H', ('NIR_H',)),
+}
+PS1_FILES = 'https://ps1images.stsci.edu/cgi-bin/ps1filenames.py'
+PS1_CUT = 'https://ps1images.stsci.edu/cgi-bin/fitscut.cgi'
 
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -186,6 +204,9 @@ def pixels(ra: float, dec: float, fov: int, band: str):
             px, py = (float(v) for v in WCS(hdu.header).world_to_pixel_values(ra, dec))
         except Exception:
             px, py = data.shape[1] / 2, data.shape[0] / 2
+    fin = data[np.isfinite(data)]
+    if fin.size == 0 or fin.min() == fin.max():   # tile lists the band but has no pixels here (e.g. NISP J / Y gaps)
+        raise EuclidError(f'No Euclid {band.replace("NIR_", "NISP ")} pixels here.', 404)
     f = int(np.ceil(max(data.shape) / MAX_SIDE))
     if f > 1:   # mean-bin big fields so the browser gets ≤ MAX_SIDE px a side
         hh, ww = data.shape[0] // f * f, data.shape[1] // f * f
@@ -194,17 +215,94 @@ def pixels(ra: float, dec: float, fov: int, band: str):
     return np.ascontiguousarray(data, dtype='<f4'), px, py, f
 
 
-# ---------------------------------------------------------------- Legacy Survey
+# ---------------------------------------------------------------- other surveys (colour JPEGs)
 
 def survey_jpeg(ra: float, dec: float, fov: int, key: str) -> Path:
-    layer = LS_KEYS.get(key)
-    if not layer:
+    if key not in SURVEYS:
         raise EuclidError('Unknown survey.', 404)
+    label = SURVEY_LABELS[key]
     d = _pos_dir(ra, dec)
     if not d.exists():
         _prune()
-    size = min(int(round(fov / 0.1)) + 1, MAX_SIDE)
-    path = es.ls_jpeg(ra, dec, layer, d / f'LS_{key}_{fov}.jpg', size=size, pixscale=fov / size)
+    out = d / f'S_{key}_{fov}.jpg'
+    if SURVEYS[key] is None:
+        path = _ps1_jpeg(ra, dec, fov, out)
+    else:
+        size = min(int(round(fov / 0.1)) + 1, MAX_SIDE)
+        path = es.ls_jpeg(ra, dec, SURVEYS[key], out, size=size, pixscale=fov / size)
     if path is None:
-        raise EuclidError('Legacy Survey did not answer.', 502)
+        raise EuclidError(f'{label} did not answer.', 502)
+    if _blank(path):
+        raise EuclidError(f'No {label} data here.', 404)
     return path
+
+
+def _blank(path: Path) -> bool:
+    """True for a flat image (the viewer answers outside a survey's footprint with an all-black JPEG)."""
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            return all(hi - lo <= 2 for lo, hi in im.convert('RGB').getextrema())
+    except Exception:
+        return False
+
+
+def _ps1_jpeg(ra: float, dec: float, fov: int, out: Path) -> Path | None:
+    """Pan-STARRS1 3π stack, i / r / g colour JPEG at the native 0.25″/px (dec > −30°)."""
+    import requests
+    if out.exists() and out.stat().st_size > 500:
+        return out
+    if dec < -30.5:
+        raise EuclidError('No Pan-STARRS1 data south of −30°.', 404)
+    with _lock(str(out)):
+        if out.exists() and out.stat().st_size > 500:
+            return out
+        try:
+            r = requests.get(PS1_FILES, params={'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'filters': 'gri'}, timeout=30)
+            r.raise_for_status()
+            rows = [ln.split() for ln in r.text.strip().splitlines()[1:]]
+            files = {row[4]: row[7] for row in rows if len(row) >= 8}
+            if not all(b in files for b in 'gri'):
+                raise EuclidError('No Pan-STARRS1 data here.', 404)
+            r = requests.get(PS1_CUT, params={'red': files['i'], 'green': files['r'], 'blue': files['g'],
+                                              'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'size': int(round(fov / 0.25)),
+                                              'format': 'jpg'}, timeout=60)
+        except requests.RequestException as e:
+            logger.warning('[EUCLID] PS1 %.5f %.5f: %s', ra, dec, e)
+            return None
+        if r.status_code != 200 or not r.headers.get('content-type', '').startswith('image/'):
+            return None
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(r.content)
+        return out
+
+
+# ---------------------------------------------------------------- any source as one JPEG (for other pages)
+
+def sources() -> list[dict]:
+    out = [{'key': k, 'label': lab, 'group': 'Euclid', 'kind': 'fits', 'bands': list(b)}
+           for k, (lab, b) in EUCLID_SOURCES.items()]
+    return out + [{'key': k, 'label': lab, 'group': 'Other surveys', 'kind': 'jpeg'} for k, lab in SURVEY_LABELS.items()]
+
+
+def image_jpeg(ra: float, dec: float, fov: int, src: str) -> Path:
+    """One JPEG of any source; Euclid bands get the default STF autostretch (linked for NISP colour), north up."""
+    if src in SURVEYS:
+        return survey_jpeg(ra, dec, fov, src)
+    if src not in EUCLID_SOURCES:
+        raise EuclidError('Unknown source.', 404)
+    import numpy as np
+    from PIL import Image
+    out = _pos_dir(ra, dec) / f'E_{src}_{fov}.jpg'
+    if out.exists() and out.stat().st_size > 500:
+        return out
+    chans = [pixels(ra, dec, fov, b)[0] for b in EUCLID_SOURCES[src][1]]
+    h = min(c.shape[0] for c in chans)
+    w = min(c.shape[1] for c in chans)
+    rgb = np.stack([es._stretch(c[:h, :w]) for c in chans], axis=-1)
+    if rgb.shape[-1] == 1:
+        rgb = np.repeat(rgb, 3, axis=-1)
+    img = Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)[::-1])   # FITS rows run south → north
+    with _lock(str(out)):
+        img.save(out, quality=92)
+    return out

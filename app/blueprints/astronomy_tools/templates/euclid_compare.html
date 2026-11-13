@@ -1,8 +1,8 @@
 {% extends '_base.html' %}
-{#- Tools › Euclid (/euclid, euclid_compare.py → services/astro/euclid_cutout.py): Euclid DR1 / Q1 cutouts at any
-    position in 2–4 panels, each panel's source chosen freely (Euclid VIS, NISP colour or one band, Legacy Survey
-    DR10 / DR11). js/euclid_compare.js stretches the raw Euclid pixels with js/fits_stretch.js. -#}
-{% block title %}Euclid - Kinder{% endblock %}
+{#- Tools › Sky Cutouts (/sky_cutouts, euclid_compare.py → services/astro/euclid_cutout.py): 2–4 panels at any
+    position, each panel's source chosen freely (Euclid VIS, NISP colour or one band; Legacy Survey, HSC, PS1, SDSS,
+    unWISE, GALEX, VLASS colour images). js/euclid_compare.js stretches the raw Euclid pixels with js/fits_stretch.js. -#}
+{% block title %}Sky Cutouts - Kinder{% endblock %}
 {% block head %}
 <script defer src="{{ url_for('static', filename='js/fits_stretch.js') }}"></script>
 <script defer src="{{ url_for('astronomy_tools.static', filename='js/euclid_compare.js') }}"></script>
@@ -11,9 +11,6 @@
 {% endblock %}
 
 {% block content %}
-{% set sources = [('vis', 'Euclid VIS'), ('nisp', 'Euclid NISP H / J / Y colour'), ('nisp_y', 'Euclid NISP Y'),
-                  ('nisp_j', 'Euclid NISP J'), ('nisp_h', 'Euclid NISP H'), ('dr10', 'Legacy Survey DR10'),
-                  ('dr11', 'Legacy Survey DR11')] %}
 <div class="kw-page sp-page ec-page" id="ecPage" data-mode="stf"
      data-q="{{ q }}" data-panels="{{ panels|join(',') }}" data-default-panels="{{ default_panels|join(',') }}"
      data-api-resolve="{{ url_for('astronomy_tools.euclid_resolve_api') }}"
@@ -45,7 +42,9 @@
                 {% for i in range(4) %}
                 <label class="sp-field ec-src" data-slot="{{ i }}">Panel {{ i + 1 }}
                     <select class="kw-input" data-slot="{{ i }}">
-                        {% for v, label in sources %}<option value="{{ v }}">{{ label }}</option>{% endfor %}
+                        {% for group, items in source_groups %}<optgroup label="{{ group }}">
+                            {% for v, label in items %}<option value="{{ v }}">{{ label }}</option>{% endfor %}
+                        </optgroup>{% endfor %}
                     </select>
                 </label>
                 {% endfor %}
@@ -90,7 +89,7 @@
 
         <section class="sp-main">
             <div class="kw-panel ec-info" id="ecInfo" hidden></div>
-            <div class="sp-status" id="ecStatus">Enter a position to compare Euclid with Legacy Survey.</div>
+            <div class="sp-status" id="ecStatus">Enter a position to compare Euclid with other surveys.</div>
             <div class="ec-grid" id="ecGrid" hidden></div>
         </section>
     </div>
