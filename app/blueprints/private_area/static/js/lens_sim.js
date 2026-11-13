@@ -1,6 +1,7 @@
 /* Lab › Special Run › Lens Simulator (special_run_lens_sim.html): strong lensing ray-traced in the browser.
    For every image-plane pixel θ the source is sampled at β = θ − α(θ). Lens: point mass, or SIE (Kormann et al.
-   1994 normalisation, tiny core) with external shear. Source: Sérsic, clumpy (Sérsic + knots) or a point (quasar / SN).
+   1994 normalisation, tiny core) with external shear. Source: Sérsic, clumpy (Sérsic + knots), a point (quasar / SN)
+   or a host galaxy with a supernova in it (Host + SN).
    Distances: flat ΛCDM (H0 = 70, Ωm = 0.3). Angles are in arcsec throughout. */
 (() => {
     const page = document.getElementById('lsPage');
@@ -52,6 +53,10 @@
             src: 'point', bx: 0.03, by: 0.02, light: 1}],
         ['Twin Quasar (Q0957+561)', {logm: logMOfSigma(450), zl: 0.36, zs: 1.41, q: 0.8, pa: 60, gamma: 0.2, gpa: 70,
             src: 'point', bx: 0.35, by: 0.15, light: 0.8}],
+        ['SN 2025wny (lensed SLSN, z = 2.01)', {logm: logMOfSigma(230), zl: 0.375, zs: 2.015, q: 0.75, pa: 120, gamma: 0.12,
+            gpa: 30, src: 'hostsn', re: 1.0, n: 1, sq: 0.8, spa: 40, bx: 0.06, by: 0.05, light: 1}],
+        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
+            src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 0.4}],
         ['Lensed supernova (iPTF16geu-like)', {logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
             src: 'point', bx: 0.05, by: 0.04, light: 1}],
         ['Point-mass lens (idealised)', {model: 'pm', logm: 12, zl: 0.5, zs: 2, gamma: 0, src: 'galaxy', re: 0.8,
@@ -158,6 +163,7 @@
             return (x, y) => { const dx = x - cx, dy = y - cy; return Math.exp(-(dx * dx + dy * dy) * k); };
         }
         const n = S.src === 'clumpy' ? 1 : S.n, bn = 1.9992 * n - 0.3271, inv = 1 / n;
+        const hostSn = S.src === 'hostsn';
         const c = Math.cos(S.spa * Math.PI / 180), s = Math.sin(S.spa * Math.PI / 180), q = S.sq;
         const re = Math.max(reArc, 0.3 * pix);
         const knots = S.src === 'clumpy' ? KNOTS.map(([u, v, w, sg]) => {
@@ -165,6 +171,10 @@
             const sig = Math.max(sg * re, 0.5 * pix);
             return [kx, ky, w, 1 / (2 * sig * sig)];
         }) : [];
+        if (hostSn) {   // the supernova: a bright point 0.4 r_e from the host centre along its major axis
+            const sg = Math.max(0.6 * pix, 0.005);
+            knots.push([cx + 0.4 * re * c, cy + 0.4 * re * s, 3, 1 / (2 * sg * sg)]);
+        }
         const base = S.src === 'clumpy' ? 0.45 : 1;
         return (x, y) => {
             const dx = x - cx, dy = y - cy;

@@ -1,8 +1,13 @@
 /* Lab › Special Run › Lens Simulator (special_run_lens_sim.html). Side column uses the Spectrum tool's sp-* styles. */
 .ls-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+/* The controls scroll on their own so the images on the right stay in view */
+.ls-page .kw-tool > .kw-tool-side { max-height: calc(100vh - var(--kw-nav-h) - 28px); overflow-y: auto; overscroll-behavior: contain;
+                                    padding-right: 6px; scrollbar-width: thin; }
+@media (max-width: 960px) { .ls-page .kw-tool > .kw-tool-side { max-height: none; overflow: visible; padding-right: 0; } }
 .ls-page .sp-hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ls-seg { display: flex; }
-.ls-seg .kw-seg-item { flex: 1; justify-content: center; font-size: 0.78rem; }
+.ls-seg { flex-wrap: wrap; }
+.ls-seg .kw-seg-item { flex: 1 1 40%; justify-content: center; font-size: 0.78rem; }
 .ls-seg .kw-seg-item.is-on { background: var(--color-accent); color: #1b1208; font-weight: 600; opacity: 1; }
 #lsPage[data-model="pm"] .ls-sie, #lsPage[data-src="point"] .ls-ext { display: none; }
 
