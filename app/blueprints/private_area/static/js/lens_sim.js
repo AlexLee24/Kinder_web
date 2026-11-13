@@ -38,7 +38,7 @@
     }
 
     /* ------------------------------------------------------------ state */
-    const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
+    const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, kext: 0, memberMass: true, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
                  tel: 'ideal', band: 'r', D: 1, exp: 3, white: 16.5, knee: 23.5, noiseOn: false, showDelays: true, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
@@ -58,18 +58,33 @@
     };
     const PRESETS = [
         ['Galaxy–galaxy lens (SLACS-like)', {mag: 21.5}],
-        ['Cosmic Horseshoe (SDSS J1148+1930)', {mag: 23.5, logm: logMOfSigma(500), zl: 0.444, zs: 2.379, q: 0.85, pa: 100, gamma: 0.02,
-            src: 'clumpy', re: 1.6, sq: 0.8, bx: 0.04, by: 0.06, light: 0.6}],
-        ['8 o\'clock arc (SDSS J0022+1431)', {mag: 23.5, logm: logMOfSigma(380), zl: 0.38, zs: 2.73, q: 0.75, pa: 40, gamma: 0.05,
-            src: 'clumpy', re: 1.2, sq: 0.6, bx: 0.25, by: 0.12, light: 0.8}],
-        ['Abell 370 giant arc (cluster)', {mag: 22.5, knee: 25, logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
-            src: 'clumpy', re: 8, sq: 0.5, spa: 10, bx: 0, by: 0.25, light: 1, n: 1}],
-        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, knee: 25, logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
+        // Real systems below follow published lens models (PA → pa = 90° + PA east of north; x = west, y = north).
+        // Cosmic Horseshoe: SIE + shear of Dye+08 (σ_SIE 496 km/s → θE 5.0″; q 0.81, PA 50°, γ 0.017 at 38°);
+        // z from Belokurov+07; a 2.5 kpc (≈ 0.3″) source makes the ≈ 300° ring (μ ≈ 35); magnitude set so the ring is g ≈ 20.1.
+        ['Cosmic Horseshoe (SDSS J1148+1930)', {mag: 24.0, logm: logMOfSigma(496), zl: 0.444, zs: 2.379, q: 0.81, pa: 139.8, gamma: 0.017,
+            gpa: 128.2, env: 'galaxy', src: 'clumpy', re: 2.5, sq: 0.8, bx: 0, by: 0.02, light: 0.6}],
+        // 8 o'clock arc: θE 2.91″ (σ_SIE ≈ 365 km/s) and PA 12° from Allam+07, q 0.62 and γ 0.062 from Shirazi+14;
+        // the arc lies north of the LRG (μ ≈ 10, paper 12.3) with r ≈ 19.2 lensed; source r_e 2.8 kpc.
+        ['8 o\'clock arc (SDSS J0022+1431)', {mag: 21.8, logm: logMOfSigma(365), zl: 0.38, zs: 2.73, q: 0.62, pa: 102, gamma: 0.062,
+            gpa: 100.6, env: 'galaxy', src: 'clumpy', re: 2.8, sq: 0.6, bx: 0, by: 0.18, light: 0.8}],
+        // Abell 370: halo σ chosen so the critical curve (with members) gives θE ≈ 39″ for z_s = 2 (Richard+10); the
+        // z = 0.725 giant arc forms south of the centre, ~20″ long, μ ≈ 17 (paper 32 ± 4); source an inclined 10 × 2.5 kpc disc.
+        ['Abell 370 giant arc (cluster)', {mag: 23.1, knee: 25, logm: logMOfSigma(1200), zl: 0.375, zs: 0.725, q: 0.65, pa: 90, gamma: 0.06, gpa: 90,
+            src: 'clumpy', re: 3, sq: 0.3, spa: 0, bx: 0, by: -0.18, light: 1, n: 1}],
+        // MACS J0717: halo σ chosen so the critical curve (with members) gives θE ≈ 55″ for z_s = 2.5 (Zitrin+09), elongated NW–SE.
+        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, knee: 25, logm: logMOfSigma(1425), zl: 0.546, zs: 2.5, q: 0.6, pa: 45, gamma: 0.08,
             src: 'clumpy', re: 6, sq: 0.6, spa: 45, bx: 0, by: 0.22, light: 1}],
-        ['Einstein Cross (Q2237+0305)', {mag: 20.5, white: 15, knee: 21.5, logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
-            src: 'point', bx: 0.03, by: 0.02, light: 1}],
-        ['Twin Quasar (Q0957+561)', {mag: 17.8, logm: logMOfSigma(450), zl: 0.36, zs: 1.41, q: 0.8, pa: 60, gamma: 0.2, gpa: 70,
-            src: 'point', bx: 0.35, by: 0.15, light: 0.8}],
+        // Einstein Cross: SIE + shear fitted to the four CASTLES image positions (residuals < 0.001″): θE 0.90″ (Wertz &
+        // Surdej 2014: 0.90″), q 0.63 (0.665), mass PA 65°; unlensed quasar ≈ 17.6 so image A is ≈ 15.9 (F814W).
+        ['Einstein Cross (Q2237+0305)', {mag: 17.6, white: 12.5, knee: 19, logm: 12.37335, zl: 0.0394, zs: 1.695, q: 0.6289, pa: 154.8, gamma: 0.0157,
+            gpa: 132.63, src: 'point', bx: 0.0733, by: -0.01133, light: 1, env: 'galaxy',
+            obs: [[-0.075, -0.939, 'A'], [0.598, 0.758, 'B'], [-0.710, 0.271, 'C'], [0.791, -0.411, 'D']]}],
+        // Twin Quasar: galaxy SIE + shear + the host cluster as a mass sheet (κ = 0.24; X-ray ≈ 0.22, Chartas+02) fitted to
+        // A and B relative to G1 (Fadely+10): positions exact, Δt = 417.1 d (Colley+03: 417.09 d), |μ_B/μ_A| = 0.64
+        // (radio 0.74, smooth models ≈ 0.5); unlensed quasar ≈ 18.2 so A ≈ 17.1 (F555W).
+        ['Twin Quasar (Q0957+561)', {mag: 18.2, logm: 12.81916, zl: 0.36, zs: 1.41, q: 0.81626, pa: 130.41, gamma: 0.22747, gpa: 72.498,
+            kext: 0.2355, env: 'galaxy', fov: 16, src: 'point', bx: 0.063866, by: 0.621853, light: 0.8,
+            obs: [[1.408, 5.034, 'A'], [0.182, -1.018, 'B']]}],
         // Fitted in the image plane to the five SN image positions of arXiv:2608.28413 (G1 SIE + G2 SIS + shear, no
         // unobserved bright images allowed), then moved 0.014″ in the source plane off a small G2 caustic so the
         // configuration is stable: A–E reproduced within 0.04–0.13″, exactly five images (checked on a 700² grid);
@@ -79,10 +94,21 @@
             gpa: 18.131, g2: 175.85, g2x: 0.967, g2y: 2.126, src: 'hostsn', re: 1.0, n: 1, sq: 0.8, spa: 0, bx: 0.1952, by: 0.34516,
             light: 1, mag: 25.5, snMag: 22.3, env: 'galaxy',
             obs: [[-1.213, 1.318, 'A'], [-1.813, -0.806, 'B'], [0.195, -1.595, 'C'], [2.705, 1.058, 'D'], [0.658, 2.542, 'E']]}],
-        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, knee: 25, logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
-            snMag: 25, src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 1}],
-        ['Lensed supernova (iPTF16geu-like)', {mag: 23.3, white: 15.5, knee: 22, logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
-            src: 'point', bx: 0.05, by: 0.04, light: 1}],
+        // SN Requiem (MACS J0138.0−2155): SIE + shear fitted to the glafic / GLEE image positions, magnifications and delays
+        // of Suyu et al. 2026 (A&A 708, A291): 2a–2c within 0.4″, μ −24 / 15 / 13 (paper −30 / 24–26 / 15), Δt(2b, 2c) =
+        // −43 / −75 d (−50 / −80…−86 d), and the future image 2d at +3856 d ≈ 10.6 yr after 2a (3711–3863 d) — Rodney+21's
+        // 2037 forecast has moved to ≈ 2026–27. Coordinates are from the fitted mass centre, 2.9″ from the BCG; the members
+        // are drawn but massless (the halo holds the cluster's mass). z_l 0.336, z_s 1.949; SN Ia at z = 1.95 ≈ 25.5 mag unlensed.
+        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, knee: 25, logm: 13.71513, zl: 0.336, zs: 1.949, q: 0.84463, pa: -12.703,
+            gamma: 0.114366, gpa: 21.2051, env: 'cluster', memberMass: false, snMag: 25.5, src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30,
+            bx: 0.0918475, by: -0.1594401, light: 1, obs: [[9.40, -13.26, '2a'], [0.09, -16.42, '2b'], [16.86, -4.51, '2c']]}],
+        // iPTF16geu: SIE fitted to the four image positions (Dhawan+20, Table A1), mass centre 0.03″ from the tabulated one:
+        // θE 0.290″ (More+17: 0.29″), q 0.79 (0.77–0.83), PA 65° (65.5°), delays < 1 d (measured −1.4…+1.4 ± 1 d).
+        // The smooth model's total μ ≈ 26 is below the observed ≈ 68 — iPTF16geu's well-known flux anomaly (microlensing
+        // by stars in the lens); unlensed SN Ia peak ≈ 23.4 mag (Goobar+17: m_B 19.1 boosted by −4.3 mag).
+        ['Lensed supernova iPTF16geu (SN Ia, z = 0.41)', {mag: 23.4, white: 15.5, knee: 22, logm: 12.21803, zl: 0.216, zs: 0.409, q: 0.78603,
+            pa: 155.379, gamma: 0, env: 'galaxy', src: 'point', bx: -0.005838, by: -0.035121, light: 1,
+            obs: [[0.273, -0.059, '1'], [-0.116, -0.288, '2'], [-0.223, 0.159, '3'], [0.142, 0.254, '4']]}],
         ['Point-mass lens (idealised)', {mag: 24, model: 'pm', logm: 12, zl: 0.5, zs: 2, gamma: 0, src: 'galaxy', re: 0.8,
             bx: 0.2, by: 0, light: 0}],
     ];
@@ -209,7 +235,7 @@
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
         const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'noiseOn', 'showDelays'];   // display white / knee follow the preset
-        S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
+        S = {...DEF, ...p[1], fov: p[1].fov || 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
     $('lsReset').addEventListener('click', () => { S = {...DEF}; $('lsPreset').value = '0'; syncControls(); schedule(); });
@@ -238,8 +264,9 @@
                 }
                 ax = ca * axr - sa * ayr; ay = sa * axr + ca * ayr;
             }
-            out[0] = ax + g1 * x + g2 * y;
-            out[1] = ay + g2 * x - g1 * y;
+            const k = S.kext || 0;   // external convergence (a mass sheet: e.g. Q0957+561's host cluster)
+            out[0] = ax + g1 * x + g2 * y + k * x;
+            out[1] = ay + g2 * x - g1 * y + k * y;
         };
     }
 
@@ -326,7 +353,8 @@
             const q = spiral ? 0.3 + 0.6 * r() : 0.6 + 0.4 * r(), pa = 180 * r();
             const x = arc(xk), y = arc(yk);
             const sigI = 220 * L ** 0.25 * (spiral ? 0.7 : 1);
-            if (Math.abs(x) < fov && Math.abs(y) < fov) perturbers.push([x, y, lensFac * sigI * sigI]);
+            // memberMass: false — members are drawn but the fitted main halo already holds the cluster's whole mass
+            if (S.memberMass !== false && Math.abs(x) < fov && Math.abs(y) < fov) perturbers.push([x, y, lensFac * sigI * sigI]);
             if (Math.abs(x) < 0.7 * fov && Math.abs(y) < 0.7 * fov) {
                 shown++;
                 add({x, y, L, re: (spiral ? 5 : 4) * L ** 0.6, n: spiral ? 1 : 4, q, pa, col: spiral ? BLUE_MEMBER : RED});
@@ -554,7 +582,8 @@
             const g1 = S.gamma * Math.cos(2 * S.gpa * Math.PI / 180), g2 = S.gamma * Math.sin(2 * S.gpa * Math.PI / 180), t2 = [0, 0];
             const psi = (x, y) => {
                 defl(x, y, t2);
-                let ax = t2[0] - (g1 * x + g2 * y), ay = t2[1] - (g2 * x - g1 * y), v = 0.5 * g1 * (x * x - y * y) + g2 * x * y;
+                const ke = S.kext || 0;
+                let ax = t2[0] - (g1 * x + g2 * y) - ke * x, ay = t2[1] - (g2 * x - g1 * y) - ke * y, v = 0.5 * g1 * (x * x - y * y) + g2 * x * y + 0.5 * ke * (x * x + y * y);
                 for (const [px, py, te] of P) {
                     const dx = x - px, dy = y - py, r0 = Math.hypot(dx, dy), rr = r0 + 0.02 * te + 1e-6;
                     ax -= te * dx / rr; ay -= te * dy / rr; v += te * r0;
@@ -683,7 +712,15 @@
             model: S.model, defl: (x, y) => { const o = [0, 0]; defl(x, y, o); return o; }};
         LS.last = detail;
         page.dispatchEvent(new CustomEvent('lenssim:render', {detail}));
-        stats(d, M, tE, kpcL, reArc, mu, fov, sc, T, noise, pts);
+        // circular-equivalent radius of the outer (tangential) critical curve: with cluster members it is larger than the
+        // main halo's θE, and it is what papers quote as a cluster's Einstein radius
+        const rMax = new Float32Array(72);
+        for (const [x, y] of crit) {
+            const r = Math.hypot(x, y); if (r > 0.45 * fov) continue;
+            const b = Math.floor(((Math.atan2(-x, y) * 180 / Math.PI + 360) % 360) / 5) % 72; if (r > rMax[b]) rMax[b] = r;
+        }
+        const tEff = rMax.every((r) => r > 0) ? Math.sqrt(rMax.reduce((t, r) => t + r * r, 0) / 72) : 0;
+        stats(d, M, tE, kpcL, reArc, mu, fov, sc, T, noise, pts, tEff);
         chart(M);
     }
 
@@ -758,13 +795,15 @@
         return v.toFixed(d);
     }
 
-    function stats(d, M, tE, kpcL, reArc, mu, fov, sc, T, noise, pts) {
+    function stats(d, M, tE, kpcL, reArc, mu, fov, sc, T, noise, allPts, tEff) {
+        const pts = allPts.filter((im) => Math.abs(im.mu) > 0.05);   // a singular profile's tiny central image is not observable
         const sigCr = d.Ds / (4 * Math.PI * G_C2 * d.Dl * d.Dls) / 1e12;       // M☉ / pc²
         const RE = tE * kpcL;                                                   // kpc
         const ME = sigCr * 1e6 * Math.PI * RE * RE;                             // M☉ (Σcr in M☉/kpc² × area)
         const rows = [
             ['Lens', sc.env === 'galaxy' || sc.env === 'none' ? ENV_LABEL[sc.env] : `${ENV_LABEL[sc.env]} · ${sc.n} members in view`, true],
-            ['Einstein radius θ<sub>E</sub>', `${num(tE)}″`, true],
+            ['Einstein radius θ<sub>E</sub>', `${num(tE)}″${sc.env === 'group' || sc.env === 'cluster' ? ' <small>main halo</small>' : ''}`, true],
+            (sc.env === 'group' || sc.env === 'cluster') && tEff ? ['Effective θ<sub>E</sub> <small>(critical curve, incl. members)</small>', `${num(tEff)}″`, true] : null,
             ['Physical R<sub>E</sub>', `${num(RE)} kpc`, true],
             ['Magnification μ', `${num(mu, 1)}×`, true],
             pts.some((im) => im.order > 1) ? ['Time delays (after the 1st image)', pts.filter((im) => im.order > 1).sort((p, q) => p.order - q.order).map((im) => fmtDays(im.dt)).join(', '), true] : null,
