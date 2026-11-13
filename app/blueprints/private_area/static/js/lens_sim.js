@@ -41,7 +41,7 @@
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
-                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 16.5, knee: 23.5, noiseOn: false, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
+                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 16.5, knee: 23.5, noiseOn: false, showDelays: true, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
     // Telescopes: aperture D (m), median seeing (″), ground or space sky. Resolution = seeing ⊕ diffraction (no detector pixels).
     // Zero point (AB mag giving 1 e⁻/s) ≈ 24.3 + 5 log D — a broad-band, ~50 % throughput approximation.
     const BANDS = {g: 0.48, r: 0.62, i: 0.77, z: 0.91, J: 1.25, H: 1.6, K: 2.2};                     // µm
@@ -87,6 +87,13 @@
             bx: 0.2, by: 0, light: 0}],
     ];
     let S = {...DEF};
+    // small API for the 3D view and the teaching guide (lens_sim_3d.js)
+    const LS = window.LensSim = {
+        apply(patch) { S = {...S, ...patch}; $('lsPreset').value = ''; syncControls(); schedule(); },
+        preset(i) { $('lsPreset').value = String(i); $('lsPreset').dispatchEvent(new Event('change')); },
+        get state() { return {...S}; },
+        last: null,
+    };
 
     /* ------------------------------------------------------------ controls */
     const sliders = {logm: 'lsLogM', zl: 'lsZl', q: 'lsQ', pa: 'lsPa', gamma: 'lsGamma', gpa: 'lsGpa', light: 'lsLight',
@@ -158,6 +165,7 @@
         $('lsTel').value = S.tel;
         $('lsBand').value = S.band;
         $('lsObs').checked = S.showObs;
+        $('lsDelays').checked = S.showDelays;
         $('lsObsRow').hidden = !S.obs;
         page.dataset.g2 = S.g2 > 0 ? '1' : '0';
         page.dataset.tel = S.tel === 'ideal' ? 'ideal' : S.tel === 'custom' ? 'custom' : 'preset';
@@ -188,6 +196,7 @@
     $('lsNoiseOn').addEventListener('change', () => { S.noiseOn = $('lsNoiseOn').checked; schedule(); });
     $('lsEnv').addEventListener('change', () => { S.env = $('lsEnv').value; $('lsPreset').value = ''; schedule(); });
     $('lsObs').addEventListener('change', () => { S.showObs = $('lsObs').checked; schedule(); });
+    $('lsDelays').addEventListener('change', () => { S.showDelays = $('lsDelays').checked; schedule(); });
     $('lsTel').addEventListener('change', () => {
         S.tel = $('lsTel').value;
         const T = TELESCOPES[S.tel];
@@ -199,7 +208,7 @@
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'noiseOn'];   // display white / knee follow the preset
+        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'noiseOn', 'showDelays'];   // display white / knee follow the preset
         S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
@@ -519,6 +528,20 @@
             sImg[k] *= srcAmp; sPln[k] *= srcAmp;
             for (let c = 0; c < 3; c++) { img[c][k] += sImg[k] * SC[c]; pln[c][k] += sPln[k] * SC[c]; }
         }
+        // a sample of rays from the lensed (extended) source, for the 3D light-path view: image pixel θ → source point β
+        const arcRays = [];
+        if (S.src !== 'point') {
+            let mx = 0;
+            for (let k = 0; k < NN; k++) if (sImg[k] > mx) mx = sImg[k];
+            const cand = [];
+            for (let k = 0; k < NN; k += 1) if (sImg[k] > 0.25 * mx) cand.push(k);
+            const rr = rng(77), want = Math.min(140, cand.length);
+            for (let n = 0; n < want; n++) {
+                const k = cand[Math.floor(rr() * cand.length)], i = k % N, j = Math.floor(k / N);
+                const x = (i + 0.5) * pix - fov / 2, y = fov / 2 - (j + 0.5) * pix;
+                arcRays.push([x, y, x - AX[k], y - AY[k]]);
+            }
+        }
         let pts = [];
         if (ptSrc) {   // quasar / supernova images from the lens equation
             const F = 10 ** (-0.4 * ((S.src === 'point' ? S.mag : S.snMag) - 22)), PT_RGB = S.src === 'point' ? SRC_RGB : [0.92, 0.95, 1.0];
@@ -526,6 +549,25 @@
             for (const im of pts) stamp([...img, sImg], [...PT_RGB, 1], im.x, im.y, Math.abs(im.mu) * F, fov, pix);
             stamp([...pln, sPln], [...PT_RGB, 1], ptX, ptY, F, fov, pix);
             if (S.src === 'point') mu = pts.reduce((t, im) => t + Math.abs(im.mu), 0);
+            // time delays from the Fermat potential τ(θ) = ½|θ − β|² − ψ(θ):
+            // Δt = (1 + z_l) D_l D_s / (c D_ls) · Δτ   (ψ: SIE θ·α, SIS θ_E|θ − θ_i|, shear ½γ₁(x² − y²) + γ₂xy, point mass θ_E² ln θ)
+            const g1 = S.gamma * Math.cos(2 * S.gpa * Math.PI / 180), g2 = S.gamma * Math.sin(2 * S.gpa * Math.PI / 180), t2 = [0, 0];
+            const psi = (x, y) => {
+                defl(x, y, t2);
+                let ax = t2[0] - (g1 * x + g2 * y), ay = t2[1] - (g2 * x - g1 * y), v = 0.5 * g1 * (x * x - y * y) + g2 * x * y;
+                for (const [px, py, te] of P) {
+                    const dx = x - px, dy = y - py, r0 = Math.hypot(dx, dy), rr = r0 + 0.02 * te + 1e-6;
+                    ax -= te * dx / rr; ay -= te * dy / rr; v += te * r0;
+                }
+                return v + (S.model === 'pm' ? tE * tE * Math.log(Math.hypot(x, y) + 1e-9) : x * ax + y * ay);
+            };
+            const C_MPC_DAY = 299792.458 / 3.0857e19 * 86400;                // c in Mpc / day
+            const fac = (1 + S.zl) * d.Dl * d.Ds / d.Dls / C_MPC_DAY / (ARC * ARC);
+            for (const im of pts) im.tau = 0.5 * ((im.x - ptX) ** 2 + (im.y - ptY) ** 2) - psi(im.x, im.y);
+            const bright = pts.filter((im) => Math.abs(im.mu) > 0.05);
+            const t0 = Math.min(...(bright.length ? bright : pts).map((im) => im.tau));
+            for (const im of pts) im.dt = (im.tau - t0) * fac;                      // days after the first image
+            bright.sort((p, q) => p.dt - q.dt).forEach((im, i) => { im.order = i + 1; });
         }
 
         // foreground light (not lensed): each object drawn in its own box
@@ -627,10 +669,20 @@
         }
 
         paint($('lsSrc'), out[1], norm, soft, black, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
+        const tags = S.showDelays ? pts.filter((im) => im.order).map((im) => [im.x, im.y, im.order === 1 ? '1st' : `+${fmtDays(im.dt)}`]) : null;
         paint($('lsImg'), out[0], norm, soft, black, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'), null,
-              S.obs && S.showObs ? S.obs : null);
+              S.obs && S.showObs ? S.obs : null, tags);
         scaleBar('lsScaleS', fov); scaleBar('lsScaleI', fov);
         view = {fov, tE, pts};
+        // hand the geometry to the 3D light-path view (lens_sim_3d.js)
+        const detail = {fov, tE, zl: S.zl, zs: S.zs, Dl: d.Dl, Ds: d.Ds, Dls: d.Dls, src: {x: S.src === 'point' ? ptX : cx,
+            y: S.src === 'point' ? ptY : cy, re: S.src === 'point' ? 0 : reArc, sn: S.src === 'hostsn' ? [ptX, ptY] : null},
+            pts: pts.map((im) => ({x: im.x, y: im.y, mu: im.mu, dt: im.dt || 0, order: im.order || 0})), arcRays,
+            crit: crit.filter((_, i) => i % 3 === 0), caus: caus.filter((_, i) => i % 3 === 0),
+            lenses: sc.objs.filter((o) => !o.icl).sort((p, q) => q.L - p.L).slice(0, 40).map((o) => ({x: o.x, y: o.y, re: o.reA, L: o.L, col: o.col})),
+            model: S.model, defl: (x, y) => { const o = [0, 0]; defl(x, y, o); return o; }};
+        LS.last = detail;
+        page.dispatchEvent(new CustomEvent('lenssim:render', {detail}));
         stats(d, M, tE, kpcL, reArc, mu, fov, sc, T, noise, pts);
         chart(M);
     }
@@ -640,7 +692,9 @@
         return steps.find((s) => s >= v) || 600;
     }
 
-    function paint(cv, rgb, norm, soft, black, fov, pts, col, mark, obs) {
+    function fmtDays(t) { return t < 1 ? `${(t * 24).toFixed(1)} h` : t < 400 ? `${t.toFixed(t < 10 ? 1 : 0)} d` : `${(t / 365.25).toFixed(1)} yr`; }
+
+    function paint(cv, rgb, norm, soft, black, fov, pts, col, mark, obs, tags) {
         const data = offCtx.createImageData(N, N), px = data.data, den = Math.asinh(Math.max(1e-6, 1 - black) / soft);
         for (let k = 0; k < N * N; k++) {
             for (let c = 0; c < 3; c++) {
@@ -669,6 +723,15 @@
                 const [u, v] = toPx(x, y), h = 6 * dpr;
                 ctx.beginPath(); ctx.moveTo(u - h, v - h); ctx.lineTo(u + h, v + h); ctx.moveTo(u + h, v - h); ctx.lineTo(u - h, v + h); ctx.stroke();
                 ctx.fillText(lab, u + 8 * dpr, v - 6 * dpr);
+            }
+        }
+        if (tags) {   // arrival order / time delay of each point image
+            ctx.font = `600 ${11 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'left';
+            for (const [x, y, t] of tags) {
+                const [u, v] = toPx(x, y);
+                ctx.fillStyle = 'rgba(0,0,0,.6)'; const w = ctx.measureText(t).width;
+                ctx.fillRect(u + 7 * dpr, v + 4 * dpr, w + 6 * dpr, 15 * dpr);
+                ctx.fillStyle = '#ffe08a'; ctx.fillText(t, u + 10 * dpr, v + 15 * dpr);
             }
         }
         if (mark) {   // source centre handle
@@ -704,6 +767,7 @@
             ['Einstein radius θ<sub>E</sub>', `${num(tE)}″`, true],
             ['Physical R<sub>E</sub>', `${num(RE)} kpc`, true],
             ['Magnification μ', `${num(mu, 1)}×`, true],
+            pts.some((im) => im.order > 1) ? ['Time delays (after the 1st image)', pts.filter((im) => im.order > 1).sort((p, q) => p.order - q.order).map((im) => fmtDays(im.dt)).join(', '), true] : null,
             pts.length ? [`${S.src === 'point' ? 'Point' : 'SN'} images`, `${pts.length} · |μ| ${pts.slice().sort((p, q) => Math.abs(q.mu) - Math.abs(p.mu)).map((im) => num(Math.abs(im.mu), 1)).join(', ')}`, true] : null,
             ['Mass inside θ<sub>E</sub>', `${num(ME)} M☉`],
             S.model === 'sie' ? ['Velocity dispersion σ', `${num(sigmaOf(M), 0)} km/s`] : null,
