@@ -3337,10 +3337,13 @@ function resetSpectrumUploadModal() {
     if (elements.fileDropZone) elements.fileDropZone.style.display = 'block';
     if (elements.uploadPreview) elements.uploadPreview.style.display = 'none';
     if (elements.uploadError) elements.uploadError.style.display = 'none';
+    const warningBox = document.getElementById('spectrumUploadWarning');
+    if (warningBox) warningBox.style.display = 'none';
     if (elements.uploadBtn) elements.uploadBtn.disabled = true;
     if (elements.telescopeInput) elements.telescopeInput.value = '';
     if (elements.obsDateInput) elements.obsDateInput.value = '';
     window.currentSpectrumData = [];
+    window.currentSpectrumCheck = null;
 }
 
 function setupSpectrumFileUpload() {
@@ -3359,6 +3362,10 @@ function setupSpectrumFileUpload() {
     
     newDropZone.addEventListener('click', () => { newFileInput.click(); });
     newFileInput.addEventListener('change', handleSpectrumFileSelect);
+    const obsDate = document.getElementById('spectrumObsDate');
+    const telescope = document.getElementById('spectrumTelescope');
+    if (obsDate) obsDate.oninput = renderSpectrumCheck;
+    if (telescope) telescope.oninput = renderSpectrumCheck;
     newDropZone.addEventListener('dragover', (e) => { e.preventDefault(); newDropZone.classList.add('dragover'); });
     newDropZone.addEventListener('dragleave', () => { newDropZone.classList.remove('dragover'); });
     newDropZone.addEventListener('drop', (e) => {
@@ -3394,8 +3401,22 @@ function handleSpectrumFileSelect() {
         if (inferredDate) obsDateInput.value = inferredDate;
     }
 
+    if (file.size > SPECTRUM_MAX_FILE_BYTES) {
+        window.currentSpectrumData = [];
+        window.currentSpectrumCheck = {
+            points: [], skipped: 0, warnings: [],
+            errors: [`The file is ${(file.size / 1048576).toFixed(1)} MB; the limit is ${SPECTRUM_MAX_FILE_BYTES / 1048576} MB. Bin the spectrum first.`],
+        };
+        renderSpectrumCheck();
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = function(e) { validateSpectrumData(e.target.result); };
+    reader.onerror = function() {
+        window.currentSpectrumCheck = { points: [], skipped: 0, warnings: [], errors: ['The file could not be read.'] };
+        renderSpectrumCheck();
+    };
     reader.readAsText(file);
 }
 
@@ -3403,65 +3424,152 @@ function removeSpectrumSelectedFile() {
     resetSpectrumUploadModal();
 }
 
-function validateSpectrumData(content) {
-    const lines = content.split('\n');
-    const validData = [];
+// Same rules as app/services/spectrum_upload.py (the server refuses what fails here).
+const SPECTRUM_MIN_POINTS = 10;
+const SPECTRUM_MAX_POINTS = 200000;
+const SPECTRUM_MIN_WL = 1000;      // Å
+const SPECTRUM_MAX_WL = 300000;    // Å
+const SPECTRUM_MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+function checkSpectrumPoints(points) {
     const errors = [];
-    let lineNumber = 0;
-    
-    for (let line of lines) {
-        lineNumber++;
-        line = line.trim();
-        
-        if (!line || line.startsWith('#') || /^[a-zA-Z]/.test(line)) continue;
-        
-        const parts = line.split(/[\s,]+/);
-        if (parts.length < 2) continue;
-        
-        const wavelength = parseFloat(parts[0]);
-        const intensity = parseFloat(parts[1]);
-        
-        if (isNaN(wavelength) || isNaN(intensity)) {
-            errors.push(`Line ${lineNumber}: Invalid number format`);
-            continue;
-        }
-        
-        validData.push({ wavelength, intensity });
+    const warnings = [];
+    if (points.length > SPECTRUM_MAX_POINTS) {
+        errors.push(`${points.length.toLocaleString()} points is more than the ${SPECTRUM_MAX_POINTS.toLocaleString()} allowed; bin the spectrum first.`);
+        return { errors, warnings };
     }
-    
-    window.currentSpectrumData = validData;
-    showSpectrumPreview(validData, errors);
+    if (points.length < SPECTRUM_MIN_POINTS) {
+        errors.push(`Only ${points.length} valid point(s) found; a spectrum needs at least ${SPECTRUM_MIN_POINTS}. Is this a two-column ASCII file?`);
+        return { errors, warnings };
+    }
+    let lo = Infinity, hi = -Infinity, fMin = Infinity, fMax = -Infinity, unsorted = false;
+    points.forEach((p, i) => {
+        lo = Math.min(lo, p.wavelength); hi = Math.max(hi, p.wavelength);
+        fMin = Math.min(fMin, p.intensity); fMax = Math.max(fMax, p.intensity);
+        if (i > 0 && p.wavelength < points[i - 1].wavelength) unsorted = true;
+    });
+    const range = `${+lo.toPrecision(6)}–${+hi.toPrecision(6)}`;
+    if (lo <= 0) errors.push('Wavelengths must be positive.');
+    else if (hi < 50) errors.push(`Wavelengths ${range} look like micrometres; Kinder stores Ångström (multiply by 10000).`);
+    else if (hi < SPECTRUM_MIN_WL) errors.push(`Wavelengths ${range} look like nanometres; Kinder stores Ångström (multiply by 10).`);
+    else if (lo < SPECTRUM_MIN_WL || hi > SPECTRUM_MAX_WL) errors.push(`Wavelengths ${range} Å are outside ${SPECTRUM_MIN_WL}–${SPECTRUM_MAX_WL} Å. Is the first column the wavelength in Ångström?`);
+    if (fMin === fMax) errors.push('Every intensity is the same value; is the second column the flux?');
+    if (unsorted) warnings.push('Wavelengths are not in increasing order; they will be sorted on upload.');
+    const sorted = unsorted ? [...points].sort((a, b) => a.wavelength - b.wavelength) : points;
+    let dupes = 0;
+    for (let i = 1; i < sorted.length; i++) if (sorted[i].wavelength === sorted[i - 1].wavelength) dupes++;
+    if (dupes) warnings.push(`${dupes} repeated wavelength value(s).`);
+    return { errors, warnings };
 }
 
-function showSpectrumPreview(data, errors) {
+function validateSpectrumData(content) {
+    const errors = [];
+    const warnings = [];
+    const points = [];
+    const badLines = [];
+    let extraColumns = false;
+
+    if (/^SIMPLE\s*=/.test(content.slice(0, 80))) {
+        errors.push('This is a FITS file. Export it to a two-column ASCII file (wavelength, flux) first.');
+    } else if (content.slice(0, 4096).includes('\u0000')) {
+        errors.push('This is not a text file. Upload a two-column ASCII file (wavelength, flux).');
+    } else {
+        content.split(/\r?\n/).forEach((raw, idx) => {
+            const line = raw.trim();
+            if (!line || line.startsWith('#') || /^[a-zA-Z]/.test(line)) return;
+            const parts = line.split(/[\s,;]+/).filter(Boolean);
+            if (parts.length < 2) { badLines.push(idx + 1); return; }
+            if (parts.length > 2) extraColumns = true;
+            const wavelength = Number(parts[0]);
+            const intensity = Number(parts[1]);
+            if (!Number.isFinite(wavelength) || !Number.isFinite(intensity)) { badLines.push(idx + 1); return; }
+            points.push({ wavelength, intensity });
+        });
+        const check = checkSpectrumPoints(points);
+        errors.push(...check.errors);
+        warnings.push(...check.warnings);
+        if (badLines.length) {
+            const shown = badLines.slice(0, 5).join(', ') + (badLines.length > 5 ? ` and ${badLines.length - 5} more` : '');
+            warnings.push(`${badLines.length} line(s) without two numbers were skipped (line ${shown}), e.g. NaN or a single column.`);
+        }
+        if (extraColumns) warnings.push('More than two columns found; only the first two (wavelength, intensity) are used.');
+    }
+
+    if (!errors.length && points.some((p, i) => i > 0 && p.wavelength < points[i - 1].wavelength)) {
+        points.sort((a, b) => a.wavelength - b.wavelength);
+    }
+    window.currentSpectrumData = errors.length ? [] : points;
+    window.currentSpectrumCheck = { points, errors, warnings };
+    renderSpectrumCheck();
+}
+
+// Form-level checks (date, telescope) join the file checks; Upload is enabled only without errors.
+function renderSpectrumCheck() {
+    const check = window.currentSpectrumCheck;
+    if (!check) return;
+    const errors = [...check.errors];
+    const warnings = [...check.warnings];
+
+    const obsDate = (document.getElementById('spectrumObsDate')?.value || '').trim();
+    if (!obsDate) {
+        errors.push('Observation date is required: it could not be read from the file name.');
+    } else {
+        const dt = new Date(`${obsDate}T00:00:00Z`);
+        if (Number.isNaN(dt.getTime())) errors.push('Observation date is not a valid date.');
+        else if (dt.getUTCFullYear() < 1950) errors.push(`Observation date ${obsDate} is before 1950; check the date.`);
+        else if (dt.getTime() > Date.now() + 86400000) errors.push(`Observation date ${obsDate} is in the future.`);
+    }
+    if (!(document.getElementById('spectrumTelescope')?.value || '').trim()) {
+        warnings.push('No telescope/instrument given; the spectrum will be labelled "Unknown".');
+    }
+
+    showSpectrumPreview(check.points, errors, warnings);
+}
+
+function _spectrumMessageList(messages) {
+    const ul = document.createElement('ul');
+    messages.forEach(msg => {
+        const li = document.createElement('li');
+        li.textContent = msg;
+        ul.appendChild(li);
+    });
+    return ul;
+}
+
+function showSpectrumPreview(data, errors, warnings = []) {
     const previewDiv = document.getElementById('spectrumUploadPreview');
     const errorDiv = document.getElementById('spectrumUploadError');
+    const warningDiv = document.getElementById('spectrumUploadWarning');
     const tableBody = document.getElementById('spectrumPreviewTableBody');
     const summary = document.getElementById('spectrumPreviewSummary');
     const uploadBtn = document.getElementById('spectrumUploadBtn');
-    
+
     tableBody.innerHTML = '';
-    
-    if (errors.length > 0 && errorDiv) {
-        errorDiv.style.display = 'flex';
-        const errorText = document.getElementById('spectrumErrorText');
-        if (errorText) errorText.innerHTML = errors.join('<br>');
-    } else if (errorDiv) {
-        errorDiv.style.display = 'none';
-    }
-    
+
+    [[errorDiv, 'spectrumErrorText', errors], [warningDiv, 'spectrumWarningText', warnings]].forEach(([box, textId, msgs]) => {
+        if (!box) return;
+        const text = document.getElementById(textId);
+        if (msgs.length && text) {
+            text.replaceChildren(_spectrumMessageList(msgs));
+            box.style.display = 'flex';
+        } else {
+            box.style.display = 'none';
+        }
+    });
+
+    uploadBtn.disabled = errors.length > 0 || data.length === 0;
     if (data.length === 0) {
-        uploadBtn.disabled = true;
+        previewDiv.style.display = 'none';
         return;
     }
-    
+
     previewDiv.style.display = 'block';
-    
+
     let displayData = data;
     if (data.length > 10) {
         displayData = [...data.slice(0, 5), { isEllipsis: true }, ...data.slice(-5)];
     }
-    
+
     displayData.forEach(point => {
         const row = document.createElement('tr');
         if (point.isEllipsis) {
@@ -3474,14 +3582,17 @@ function showSpectrumPreview(data, errors) {
         }
         tableBody.appendChild(row);
     });
-    
-    if (summary) summary.innerHTML = `<strong>Total valid points:</strong> ${data.length}`;
-    uploadBtn.disabled = false;
+
+    if (summary) {
+        const wls = data.map(d => d.wavelength);
+        summary.innerHTML = `<strong>Total valid points:</strong> ${data.length} &nbsp;·&nbsp; `
+            + `<strong>Range:</strong> ${Math.min(...wls).toFixed(1)}–${Math.max(...wls).toFixed(1)} Å`;
+    }
 }
 
 function submitSpectrumData() {
     if (!window.currentSpectrumData || window.currentSpectrumData.length === 0) return;
-    
+
     const telescope = document.getElementById('spectrumTelescope').value || 'Unknown';
     const observationDate = (document.getElementById('spectrumObsDate')?.value || '').trim();
     const spectrumFile = document.getElementById('spectrumFile');
@@ -3489,7 +3600,7 @@ function submitSpectrumData() {
     const uploadBtn = document.getElementById('spectrumUploadBtn');
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Uploading...';
-    
+
     const payload = {
         wavelength: window.currentSpectrumData.map(d => d.wavelength),
         intensity: window.currentSpectrumData.map(d => d.intensity),
@@ -3497,26 +3608,36 @@ function submitSpectrumData() {
         original_filename: originalFilename,
         observation_date: observationDate || null
     };
-    
+
     const apiUrl = `/api/object/${encodeURIComponent(cleanObjectName)}/spectroscopy`;
-    
     fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            closeSpectrumUploadModal();
-            showNotification('Spectroscopy uploaded successfully!', 'success');
-            loadSpectrumPlot();
-        } else {
-            throw new Error(data.error || 'Upload failed');
-        }
+    .then(async response => {
+        let data = null;
+        try { data = await response.json(); } catch (_) { /* HTML error page */ }
+        if (response.ok && data && data.success) return data;
+        const errors = (data && (data.errors || (data.error ? [data.error] : null)))
+            || [`Upload failed (HTTP ${response.status}).`];
+        const err = new Error(errors.join(' '));
+        err.errors = errors;
+        throw err;
+    })
+    .then(() => {
+        closeSpectrumUploadModal();
+        showNotification('Spectroscopy uploaded successfully!', 'success');
+        loadSpectrumPlot();
     })
     .catch(error => {
         console.error('Error uploading spectrum:', error);
+        const errorDiv = document.getElementById('spectrumUploadError');
+        const errorText = document.getElementById('spectrumErrorText');
+        if (errorDiv && errorText) {
+            errorText.replaceChildren(_spectrumMessageList(error.errors || [error.message]));
+            errorDiv.style.display = 'flex';
+        }
         showNotification('Failed to upload spectrum: ' + error.message, 'error');
     })
     .finally(() => {

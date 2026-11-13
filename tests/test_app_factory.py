@@ -43,7 +43,8 @@ def test_route_count_is_stable(app):
     # checked marks (/api/detect/check, /api/detect/checked_state); 382 with Admin › Slack (page + send);
     # 383 with bulk target delete (/api/targets/bulk_delete); 384 with /api/v1/robot/alert-run; 385 with /detect/lens/sugohi;
     # 387 with Tools › Spectrum (/spectrum, /api/spectrum/desi/<targetid>).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 400
+    # 402 with the public object query (/api/query, /api/query/objects).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 402
 
 
 def test_duplicate_rules_keep_precedence(app):
