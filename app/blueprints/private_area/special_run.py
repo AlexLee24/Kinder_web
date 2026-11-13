@@ -1,5 +1,6 @@
-"""Lab › Special Run: one-off science runs and lab tools. Tabs: Euclid-SLSN, Lens Simulator; each tab has its own
-private-page key (Admin › Permissions: extra groups per tab; GREAT Lab members and admins open every tab).
+"""Lab › Special Run: one-off science runs and lab tools. Tabs: Euclid-SLSN, Lens Simulator; each tab is its own
+private page (Admin › Permissions: who opens it — GREAT Lab members or admins only — plus added groups).
+Lens Simulator starts as admins only.
 
 * GET  /special_run                              → the first tab the user may open
 * GET  /special_run/lens_sim                     Lens Simulator (special_run_lens_sim.html + js/lens_sim.js, all in-browser)

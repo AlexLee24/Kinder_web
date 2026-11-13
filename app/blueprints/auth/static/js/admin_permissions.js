@@ -160,11 +160,13 @@
     $('apmCheckInput').addEventListener('change', check);
 
     // ── Private pages ────────────────────────────────────────────────────────
-    let pagePerms = {};
+    let pagePerms = {}, pageLevels = {}, levelLabels = {};
     async function loadPages() {
         try {
             const d = await call('/api/admin/private_area/page_perms');
             pagePerms = d.perms || {};
+            pageLevels = d.levels || {};
+            levelLabels = d.level_labels || {member: 'GREAT Lab members', admin: 'Admins only'};
             renderPages();
         } catch (e) {
             $('apmPages').innerHTML = `<div class="kw-empty">Could not load: ${esc(e.message)}</div>`;
@@ -175,14 +177,31 @@
         $('apmPages').innerHTML = (D.pages || []).map((pg) => {
             const extra = (pagePerms[pg.key] || []).filter((g) => g !== 'GREAT_Lab');
             const opts = choices.filter((g) => !extra.includes(g)).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+            const lvl = pageLevels[pg.key] || 'member';
+            const lvlOpts = Object.entries(levelLabels).map(([k, v]) => `<option value="${esc(k)}"${k === lvl ? ' selected' : ''}>${esc(v)}</option>`).join('');
+            const base = lvl === 'admin'
+                ? '<span class="perm-tag perm-locked" title="Only admins, plus the groups added here">Admins</span>'
+                : '<span class="perm-tag perm-locked" title="Always has access">GREAT_Lab</span>';
             return `<div class="pperm-card" data-page="${esc(pg.key)}">
                 <div class="pperm-title">${esc(pg.label)}</div>
-                <div class="pperm-tags"><span class="perm-tag perm-locked" title="Always has access">GREAT_Lab</span>${extra.map((g) => chip(g, `data-rm-page-group="${esc(g)}"`)).join('')}</div>
+                <select class="kw-select kw-select-sm" data-page-level aria-label="Who can open ${esc(pg.label)}">${lvlOpts}</select>
+                <div class="pperm-tags">${base}${extra.map((g) => chip(g, `data-rm-page-group="${esc(g)}"`)).join('')}</div>
                 ${opts ? `<div class="pperm-add"><select class="kw-select kw-select-sm" data-add-page-group aria-label="Add a group"><option value="">Add a group…</option>${opts}</select></div>` : ''}
             </div>`;
         }).join('');
     }
     $('apmPages').addEventListener('change', async (ev) => {
+        const lv = ev.target.closest('[data-page-level]');
+        if (lv) {
+            const page = lv.closest('[data-page]').dataset.page;
+            try {
+                await call('/api/admin/private_area/page_level', 'POST', { page, level: lv.value });
+                pageLevels[page] = lv.value;
+                toast(`${page.replace(/_/g, ' ')}: ${levelLabels[lv.value]}`, 'success');
+            } catch (e) { toast(e.message, 'error'); }
+            renderPages();
+            return;
+        }
         const sel = ev.target.closest('[data-add-page-group]');
         if (!sel || !sel.value) return;
         const page = sel.closest('[data-page]').dataset.page;

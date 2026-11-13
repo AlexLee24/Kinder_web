@@ -120,30 +120,53 @@ _PRIVATE_PAGE_LABELS = {
     'special_run_lens_sim': 'Special Run › Lens Simulator',
 }
 
-# Each Special Run tab has its own groups; until a tab is set it keeps the groups of the old single 'special_run' key.
-_PAGE_FALLBACK = {'special_run_euclid_slsn': 'special_run', 'special_run_lens_sim': 'special_run'}
+# Euclid-SLSN keeps the groups of the old single 'special_run' key until it is set on its own.
+_PAGE_FALLBACK = {'special_run_euclid_slsn': 'special_run'}
+
+# Who opens a private page besides the groups added to it (Admin › Permissions):
+#   'member' = admins + GREAT Lab members (the default) · 'admin' = admins only
+PAGE_LEVELS = {'member': 'GREAT Lab members', 'admin': 'Admins only'}
+_PAGE_DEFAULT_LEVEL = {'special_run_lens_sim': 'admin'}
+
+
+def page_level(page_key: str) -> str:
+    from app.db.auth import get_setting
+    v = get_setting(f'page_level:{page_key}')
+    return v if v in PAGE_LEVELS else _PAGE_DEFAULT_LEVEL.get(page_key, 'member')
+
+
+def set_page_level(page_key: str, level: str) -> bool:
+    from app.db.auth import set_setting
+    return bool(set_setting(f'page_level:{page_key}', level))
+
 
 def _get_page_extra_groups(page_key: str) -> list:
     """Return list of extra group names (beyond GREAT_Lab) that can access the page."""
     return get_page_groups(page_key, _PAGE_FALLBACK.get(page_key))
 
+def user_can_access_page(user: dict, page_key: str) -> bool:
+    """Admins always; GREAT Lab members unless the page is admins only; else one of the page's added groups."""
+    groups = set(user.get('groups') or [])
+    if user.get('is_admin'):
+        return True
+    if ('GREAT_Lab' in groups or user.get('is_great_lab_member')) and page_level(page_key) == 'member':
+        return True
+    return bool(groups & set(_get_page_extra_groups(page_key)))
+
 def can_access_page(page_key: str) -> bool:
     """Check if the current session user can access the given private page."""
     if 'user' not in session:
         return False
-    user = session['user']
-    if user.get('is_admin', False) or user.get('is_great_lab_member', False):
-        return True
-    user_groups = set(user.get('groups', []))
-    allowed = set(_get_page_extra_groups(page_key))
-    return bool(user_groups & allowed)
+    return user_can_access_page(session['user'], page_key)
 
-def user_can_access_page(user: dict, page_key: str) -> bool:
-    """Same rule as can_access_page, for any account (a dict from auth.get_users), not only the one in the session."""
-    groups = set(user.get('groups') or [])
-    if user.get('is_admin') or 'GREAT_Lab' in groups:
-        return True
-    return bool(groups & set(_get_page_extra_groups(page_key)))
+
+@private_area_bp.app_template_global('can_open_page')
+def _can_open_page(page_key: str) -> bool:
+    """For the navigation (_shell.html): hide tabs of private pages the viewer may not open."""
+    try:
+        return can_access_page(page_key)
+    except Exception:
+        return False
 
 _EPESSTO_DATE_RE = re.compile(r'^20\d{6}$')
 
