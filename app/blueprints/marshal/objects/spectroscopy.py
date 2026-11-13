@@ -9,7 +9,12 @@ from app.db.transient import (
     _build_spectrum_label,
     _format_spectrum_observation_label,
     _phase_from_stored_value,
+    _parse_manual_observation_date,
+    _resolve_spectrum_source_and_mjd,
+    spectrum_epoch_is_given,
+    SpectrumUploadError,
 )
+from app.services.spectrum_upload import check_spectrum_points, check_observation_mjd
 from app.db import get_tns_db_connection
 from app.services.photometry.data_processing import DataVisualization
 import logging
@@ -109,30 +114,79 @@ def get_spectrum_data(year, letters, spectrum_id):
 @objects_bp.route('/api/object/<string:object_name>/spectroscopy', methods=['POST'])
 @admin_required
 def upload_spectroscopy_generic(object_name):
-
+    """Store one uploaded spectrum. Bad uploads get 400 with every problem in ``errors``
+    (``error`` joins them for older clients); 404 unknown object; 409 duplicate spectrum."""
     object_name = urllib.parse.unquote(object_name)
-    data = request.get_json()
-    
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'success': False, 'error': 'Expected a JSON object.'}), 400
+
+    def _refuse(errors, status=400, warnings=None):
+        return jsonify({'success': False, 'error': ' '.join(errors), 'errors': errors,
+                        'warnings': warnings or []}), status
+
+    points, errors, warnings = check_spectrum_points(data.get('wavelength'), data.get('intensity'))
+
+    phase = data.get('phase')
+    if phase not in (None, ''):
+        try:
+            phase = float(phase)
+        except (TypeError, ValueError):
+            errors.append('phase must be a number.')
+            phase = None
+    else:
+        phase = None
+
+    texts = {}
+    for key in ('telescope', 'spectrum_id', 'original_filename', 'observation_date'):
+        value = data.get(key)
+        if value is not None and not isinstance(value, str):
+            errors.append(f'{key} must be text.')
+            value = None
+        texts[key] = (value or '').strip() or None
+
+    if texts['observation_date'] and not _parse_manual_observation_date(texts['observation_date']):
+        errors.append('observation_date must be YYYY-MM-DD.')
+    elif not spectrum_epoch_is_given(texts['spectrum_id'], texts['observation_date'],
+                                     texts['original_filename'], phase):
+        errors.append('Observation date is required (YYYY-MM-DD); it could not be read from the file name.')
+    else:
+        _, mjd = _resolve_spectrum_source_and_mjd(
+            telescope=texts['telescope'], spectrum_id=texts['spectrum_id'],
+            original_filename=texts['original_filename'], phase=phase,
+            observation_date=texts['observation_date'])
+        if mjd > 1000:  # values below are legacy phases, not epochs
+            date_error = check_observation_mjd(mjd)
+            if date_error:
+                errors.append(date_error)
+
+    if errors:
+        return _refuse(errors, warnings=warnings)
+
     try:
         spectrum_id = TNSObjectDB.add_spectrum_data(
             object_name=object_name,
-            wavelength_data=data.get('wavelength', []),
-            intensity_data=data.get('intensity', []),
-            phase=float(data.get('phase')) if data.get('phase') else None,
-            telescope=data.get('telescope'),
-            spectrum_id=data.get('spectrum_id'),
-            original_filename=data.get('original_filename'),
-            observation_date=data.get('observation_date')
+            wavelength_data=[p[0] for p in points],
+            intensity_data=[p[1] for p in points],
+            phase=phase,
+            telescope=texts['telescope'],
+            spectrum_id=texts['spectrum_id'],
+            original_filename=texts['original_filename'],
+            observation_date=texts['observation_date'],
         )
-        
-        return jsonify({
-            'success': True,
-            'message': 'Spectrum data added successfully',
-            'spectrum_id': spectrum_id
-        })
+    except SpectrumUploadError as exc:
+        return _refuse([str(exc)], exc.status, warnings)
     except Exception:
         logger.exception('Unhandled error in %s', request.path)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+    return jsonify({
+        'success': True,
+        'message': 'Spectrum data added successfully',
+        'spectrum_id': spectrum_id,
+        'points': len(points),
+        'warnings': warnings,
+    })
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectroscopy', methods=['POST'])
 def upload_spectroscopy(year, letters):
@@ -142,9 +196,12 @@ def upload_spectroscopy(year, letters):
 @objects_bp.route('/api/spectrum/<spectrum_id>', methods=['DELETE'])
 @admin_required
 def delete_spectrum(spectrum_id):
-    
+    """Delete one spectrum of ``?object=<name>`` (required: ids are only source+MJD)."""
+    object_name = (request.args.get('object') or '').strip()
+    if not object_name:
+        return jsonify({'error': 'Missing object parameter'}), 400
     try:
-        if TNSObjectDB.delete_spectrum(spectrum_id):
+        if TNSObjectDB.delete_spectrum(spectrum_id, object_name):
             return jsonify({
                 'success': True,
                 'message': 'Spectrum deleted successfully'

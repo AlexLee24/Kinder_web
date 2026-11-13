@@ -15,6 +15,7 @@ from . import (  # noqa: E402,F401
     lc_plotter,
     planner,
     public_api,
+    query_api,
     robot_api,
     spectrum,
     tools,

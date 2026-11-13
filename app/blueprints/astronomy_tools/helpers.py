@@ -122,6 +122,26 @@ _API_DOCS = {
             'example': '/api/objects/2025wny',
             'example_auth': '/api/objects/2025wny?api_key=YOUR_KEY',
         },
+        'GET /api/query': {
+            'description': 'What /api/query/objects can search on: parameters, the classifications with counts, '
+                           'sort keys, CSV columns, limits and example URLs',
+            'params': {},
+            'example': '/api/query',
+        },
+        'GET /api/query/objects': {
+            'description': 'Find objects by type, redshift, discovery date, magnitude, discoverer or position, as '
+                           'CSV (default) or JSON. Metadata only, no photometry or spectra. No login: public '
+                           'objects; api_key adds the restricted ones you may open. Rate limit: 10 req/10 s.',
+            'params': {
+                'type': '(optional) e.g. SLSN-I; comma list; SLSN* prefix; AT / Classified',
+                'z_min, z_max, discovered_after, discovered_before, mag_min, mag_max, peak_mag_min, '
+                'peak_mag_max, peak_abs_mag_min, peak_abs_mag_max, name, discoverer, status':
+                    '(optional) filters, see /api/query',
+                'ra, dec, radius': '(optional) cone search, radius in arcsec',
+                'sort, order, limit, offset, format': '(optional) default discovery_date desc, 1000 rows, csv',
+            },
+            'example': '/api/query/objects?type=SLSN-I',
+        },
         'GET /api/v1/robot/alert': {
             'description': 'For the Lulin observing robot: at most one alert, the newest active and unexpired one '
                            '(Einstein Probe for now), with its ACP script; alert is null when there is none. Run it '
