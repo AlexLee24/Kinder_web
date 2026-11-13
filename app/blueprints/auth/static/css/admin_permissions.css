@@ -1,0 +1,63 @@
+/* Admin › Permissions (admin_permissions.html). Shared pieces (.perm-tag, .pperm-*, .perm-vis) come from admin.css. */
+.apm-page .kw-panel { scroll-margin-top: 80px; }
+.apm-jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+
+.apm-page .kw-input {
+    min-height: 38px; padding: 0 12px; min-width: 0;
+    border-radius: var(--kw-radius-md); border: 1px solid var(--kw-border-med);
+    background: rgba(255, 255, 255, 0.06); color: var(--kw-text-primary);
+    font: 400 0.84rem var(--kw-font-sans);
+}
+.apm-page .kw-input.kw-input-sm { min-height: 30px; font-size: 0.78rem; width: 170px; }
+
+/* Actions */
+.apm-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.apm-action {
+    display: flex; flex-direction: column; gap: 12px; padding: 16px 18px;
+    border-radius: var(--kw-radius-lg, 14px); border: 1px solid var(--kw-border);
+    background: rgba(255, 255, 255, 0.025); transition: opacity 0.15s;
+}
+.apm-action.is-saving { opacity: 0.55; pointer-events: none; }
+.apm-action-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.apm-action-head h3 { margin: 2px 0 2px; font-size: 1rem; color: var(--kw-text-white); }
+.apm-action-head p { margin: 0; font-size: 0.8rem; color: var(--kw-text-secondary); line-height: 1.5; }
+.apm-area { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); }
+.apm-default { flex: none; font-size: 0.72rem; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--kw-text-muted); }
+.apm-level-row { display: flex; flex-direction: column; gap: 6px; }
+.apm-level-note { font-size: 0.76rem; color: var(--kw-text-muted); }
+.apm-levels { display: flex; flex-wrap: wrap; max-width: 100%; }
+.apm-levels .kw-seg-item { flex: 1 1 auto; justify-content: center; }
+.apm-extra { display: flex; flex-direction: column; gap: 8px; }
+.apm-extra-row { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px; }
+.apm-extra-label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.apm-add-user { display: inline-flex; gap: 6px; }
+.apm-who { border-top: 1px solid var(--kw-hairline); padding-top: 10px; }
+.apm-who-btn { background: none; border: 0; padding: 0; color: var(--kw-text-secondary); font: inherit; font-size: 0.82rem; cursor: pointer; }
+.apm-who-btn b { color: var(--kw-text-white); }
+.apm-who-btn:hover { color: var(--kw-text-white); }
+.apm-who-list { margin: 8px 0 0; padding: 0; list-style: none; columns: 2 180px; font-size: 0.8rem; color: var(--kw-text-primary); }
+.apm-who-list li { break-inside: avoid; padding: 2px 0; }
+.apm-who-list small { color: var(--kw-text-muted); margin-left: 4px; }
+
+/* Check someone */
+.apm-check-bar { display: flex; gap: 8px; max-width: 520px; }
+.apm-check-bar .kw-input { flex: 1; }
+.apm-check-out:not(:empty) { margin-top: 14px; }
+.apm-check-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.apm-check-who b { color: var(--kw-text-white); }
+.apm-role { font-size: 0.72rem; padding: 2px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); color: var(--kw-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.apm-check-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 18px; }
+.apm-check-cols h4 { margin: 0 0 6px; font-size: 0.8rem; color: var(--kw-text-secondary); }
+.apm-check-list { margin: 0; padding: 0; list-style: none; }
+.apm-check-list li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--kw-hairline); font-size: 0.84rem; }
+.apm-check-list small { color: var(--kw-text-muted); font-size: 0.74rem; text-align: right; }
+.apm-mark { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 0.72rem; font-weight: 700; }
+.apm-check-list .is-yes .apm-mark { background: rgba(52, 199, 89, 0.18); color: #4ade80; }
+.apm-check-list .is-no .apm-mark { background: rgba(255, 69, 58, 0.15); color: #f87171; }
+.apm-check-list .is-no span:nth-child(2) { color: var(--kw-text-secondary); }
+
+@media (max-width: 640px) {
+    .apm-extra-row { grid-template-columns: 1fr; gap: 4px; }
+    .apm-levels .kw-seg-item { flex: 1 1 45%; }
+    .apm-page .kw-input.kw-input-sm { width: 140px; }
+}

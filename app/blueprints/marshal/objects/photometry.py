@@ -9,7 +9,8 @@ from app.services.photometry.data_processing import DataVisualization
 from app.services.astro import ext_M_calculator
 import os as _os
 import logging
-from app.core.auth import admin_required, login_required
+from app.core.auth import login_required
+from app.core.permissions import action_required
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
@@ -111,7 +112,7 @@ def get_object_photometry(year, letters):
         return jsonify({'error': 'Failed to load photometry'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry', methods=['POST'])
-@admin_required
+@action_required('upload_photometry')
 def upload_photometry(year, letters):
     
     object_name = f"{year}{letters}"
@@ -137,7 +138,7 @@ def upload_photometry(year, letters):
         return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/photometry/batch', methods=['POST'])
-@admin_required
+@action_required('upload_photometry')
 def upload_photometry_batch(year, letters):
     object_name = f"{year}{letters}"
     data = request.get_json()
@@ -152,7 +153,7 @@ def upload_photometry_batch(year, letters):
         return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/photometry/<int:point_id>', methods=['DELETE'])
-@admin_required
+@action_required('edit_photometry')
 def delete_photometry_point(point_id):
     
     try:
@@ -279,7 +280,7 @@ def get_object_photometry_generic(object_name):
         return jsonify({'error': 'Failed to load photometry'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry', methods=['POST'])
-@admin_required
+@action_required('upload_photometry')
 def upload_photometry_generic(object_name):
     object_name = urllib.parse.unquote(object_name)
     data = request.get_json()
@@ -298,7 +299,7 @@ def upload_photometry_generic(object_name):
         return jsonify({'error': 'Internal server error'}), 500
 
 @objects_bp.route('/api/object/<object_name>/photometry/batch', methods=['POST'])
-@admin_required
+@action_required('upload_photometry')
 def upload_photometry_batch_generic(object_name):
     object_name = urllib.parse.unquote(object_name)
     data = request.get_json()

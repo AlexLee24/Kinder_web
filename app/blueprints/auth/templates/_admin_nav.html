@@ -1,5 +1,5 @@
 {#- Admin menu (after EAU's admin side menu): on desktop a sticky grouped column left of the content, on phones a row of
-    pills above it that scrolls sideways. Shared by /admin, /admin/system, /admin/push, /admin/slack, /admin/bots, /admin/database and /admin/log; styles in
+    pills above it that scrolls sideways. Shared by /admin, /admin/system, /admin/permissions, /admin/push, /admin/slack, /admin/bots, /admin/database and /admin/log; styles in
     css/admin_shell.css. Pages wrap their content as
         <div class="adm-layout">{% include '_admin_nav.html' %}<div class="kw-page …">…</div></div>
     On /admin the tab entries switch in-page tabs (admin.js showTab, URL hash #users …); elsewhere they are links to
@@ -24,7 +24,7 @@
 {#- (group, [(href, tab key or '', icon, label, count)]) -#}
 {% set _groups = [
     ('Overview', [('/admin#overview', 'overview', 'overview', 'Overview', 0), ('/admin/system', '', 'system', 'System', 0)]),
-    ('People', [('/admin#users', 'users', 'users', 'Users & API keys', _n_keys), ('/admin#groups', 'groups', 'groups', 'Groups', _n_groups), ('/admin#access', 'access', 'access', 'Access', 0), ('/admin/push', '', 'push', 'Push', 0), ('/admin/slack', '', 'slack', 'Slack', 0)]),
+    ('People', [('/admin#users', 'users', 'users', 'Users & API keys', _n_keys), ('/admin#groups', 'groups', 'groups', 'Groups', _n_groups), ('/admin/permissions', '', 'access', 'Permissions', 0), ('/admin/push', '', 'push', 'Push', 0), ('/admin/slack', '', 'slack', 'Slack', 0)]),
     ('Operations', [('/admin#operations', 'operations', 'operations', 'Jobs', 0), ('/admin/bots', '', 'bots', 'Bots', 0), ('/admin/database', '', 'database', 'DB Status', 0), ('/admin/log', '', 'log', 'Web Log', 0)]),
 ] %}
 <nav class="admin-nav" aria-label="Admin">
