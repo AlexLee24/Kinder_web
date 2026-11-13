@@ -114,6 +114,12 @@
                         {% for f in (2, 5, 10, 20, 40, 80, 160, 300) %}<option value="{{ f }}">{{ f }}″</option>{% endfor %}
                     </select>
                 </label>
+                <label class="sp-field">White point <span class="sp-val" data-out="white"></span>
+                    <input type="range" id="lsWhite" min="14" max="24" step="0.1"></label>
+                <label class="sp-field">Stretch knee <span class="sp-val" data-out="knee"></span>
+                    <input type="range" id="lsKnee" min="20" max="30" step="0.1"></label>
+                <div class="sp-hint">One surface-brightness scale for everything: brighter than the white point is white; the
+                    knee is where the asinh stretch turns from linear to logarithmic (fainter knee = faint arcs show more).</div>
                 <div class="sp-row">
                     <label class="sp-check"><input type="checkbox" id="lsCrit"> Critical curves</label>
                     <label class="sp-check"><input type="checkbox" id="lsCaus"> Caustics</label>
