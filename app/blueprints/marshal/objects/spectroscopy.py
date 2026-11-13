@@ -1,7 +1,7 @@
 """Object detail page and per-object data APIs (blueprint name 'marshal_bp') — spectroscopy (split from object_routes.py)."""
 import re
 import urllib.parse
-from flask import request, jsonify, Response
+from flask import request, jsonify, Response, session
 from app.db.transient import (
     search_tns_objects,
     TNSObjectDB,
@@ -19,6 +19,7 @@ from app.db import get_tns_db_connection
 from app.services.photometry.data_processing import DataVisualization
 import logging
 from app.core.auth import admin_required, login_required
+from app.core.permissions import action_required
 
 logger = logging.getLogger(__name__)
 from . import objects_bp
@@ -112,7 +113,7 @@ def get_spectrum_data(year, letters, spectrum_id):
         return jsonify({'error': 'Failed to load spectrum'}), 500
 
 @objects_bp.route('/api/object/<string:object_name>/spectroscopy', methods=['POST'])
-@admin_required
+@action_required('upload_spectrum')
 def upload_spectroscopy_generic(object_name):
     """Store one uploaded spectrum. Bad uploads get 400 with every problem in ``errors``
     (``error`` joins them for older clients); 404 unknown object; 409 duplicate spectrum."""
@@ -180,6 +181,9 @@ def upload_spectroscopy_generic(object_name):
         logger.exception('Unhandled error in %s', request.path)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
+    logger.info('spectrum %s uploaded to %s by %s (%d points)', spectrum_id, object_name,
+                (session.get('user') or {}).get('email'), len(points))
+
     return jsonify({
         'success': True,
         'message': 'Spectrum data added successfully',
@@ -194,7 +198,7 @@ def upload_spectroscopy(year, letters):
     return upload_spectroscopy_generic(object_name)
 
 @objects_bp.route('/api/spectrum/<spectrum_id>', methods=['DELETE'])
-@admin_required
+@action_required('delete_spectrum')
 def delete_spectrum(spectrum_id):
     """Delete one spectrum of ``?object=<name>`` (required: ids are only source+MJD)."""
     object_name = (request.args.get('object') or '').strip()
@@ -202,6 +206,8 @@ def delete_spectrum(spectrum_id):
         return jsonify({'error': 'Missing object parameter'}), 400
     try:
         if TNSObjectDB.delete_spectrum(spectrum_id, object_name):
+            logger.info('spectrum %s of %s deleted by %s', spectrum_id, object_name,
+                        (session.get('user') or {}).get('email'))
             return jsonify({
                 'success': True,
                 'message': 'Spectrum deleted successfully'

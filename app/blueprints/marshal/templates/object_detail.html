@@ -303,10 +303,12 @@
                     <div class="phot-actions">
                         {% if visibility.phot_controls %}
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="fetchPhotometry()">Fetch</button>
+                        {% endif %}
+                        {% if can('upload_photometry') %}
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="uploadPhotometry()">Upload</button>
                         {% endif %}
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="openDownloadModal()">Download</button>
-                        {% if visibility.phot_controls %}
+                        {% if can('edit_photometry') %}
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" id="photometryEditBtn" onclick="togglePhotometryEditMode()">Edit</button>
                         {% endif %}
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="loadPhotometryPlot()">Refresh</button>
@@ -405,7 +407,9 @@
                             </label>
                         </div>
                         <div class="action-row">
+                            {% if can('upload_spectrum') %}
                             <button type="button" class="kw-btn kw-btn-sm" onclick="uploadSpectrum()">Upload</button>
+                            {% endif %}
                             <button type="button" class="kw-btn kw-btn-sm" onclick="downloadCurrentSpectrum()">Download</button>
                             <button type="button" class="kw-btn kw-btn-sm" onclick="loadSpectrumPlot()">Refresh</button>
                         </div>

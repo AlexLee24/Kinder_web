@@ -140,6 +140,8 @@ def create_app(start_jobs: bool = True) -> Flask:
 
     oauth.init_app(app)
     register_hooks(app)          # before/after request hooks + error handlers (order matters)
+    from app.core import permissions
+    permissions.init_app(app)    # can('upload_spectrum') in templates
     register_blueprints(app)
 
     if start_jobs:

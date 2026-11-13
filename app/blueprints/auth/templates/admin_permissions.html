@@ -1,0 +1,89 @@
+{% extends '_base.html' %}
+{#- Admin › Permissions (admin/permissions.py): who may do what (actions), what one person may do (check),
+    extra groups per private page, default visibility per data source. admin_permissions.js renders it
+    from #permData; it saves each change as it is made (source visibility: Save all). -#}
+{% block title %}Permissions - Kinder{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_permissions.css') }}">
+{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page apm-page" id="apmPage">
+    <header class="kw-page-head adm-head">
+        <div><h1>Permissions</h1><p>Who may upload and change data, who can open each private page, and who sees each data source. Admins can always do everything. Changes save as you make them.</p></div>
+    </header>
+
+    <nav class="apm-jump" aria-label="Sections">
+        <a href="#apm-actions" class="kw-btn kw-btn-sm">Actions</a>
+        <a href="#apm-check" class="kw-btn kw-btn-sm">Check someone</a>
+        <a href="#apm-pages" class="kw-btn kw-btn-sm">Private pages</a>
+        <a href="#apm-sources" class="kw-btn kw-btn-sm">Source visibility</a>
+    </nav>
+
+    <!-- Actions -->
+    <section class="kw-panel" id="apm-actions" aria-labelledby="apmActionsT">
+        <div class="kw-panel-head">
+            <h2 id="apmActionsT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>Actions</h2>
+        </div>
+        <p class="kw-panel-desc">Pick the least role that may do each action, then add groups or single people who may do it anyway.</p>
+        <div class="apm-actions" id="apmActions"></div>
+    </section>
+
+    <!-- Check someone -->
+    <section class="kw-panel" id="apm-check" aria-labelledby="apmCheckT">
+        <div class="kw-panel-head">
+            <h2 id="apmCheckT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Check someone</h2>
+        </div>
+        <p class="kw-panel-desc">What one account may do and open right now, and why.</p>
+        <div class="apm-check-bar">
+            <input id="apmCheckInput" class="kw-input" list="apmPeopleList" placeholder="Name or email…" autocomplete="off" aria-label="Account to check">
+            <button type="button" class="kw-btn kw-btn-primary kw-btn-sm" id="apmCheckBtn">Check</button>
+        </div>
+        <div id="apmCheckOut" class="apm-check-out"></div>
+    </section>
+
+    <!-- Private pages -->
+    <section class="kw-panel" id="apm-pages" aria-labelledby="apmPagesT">
+        <div class="kw-panel-head">
+            <h2 id="apmPagesT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Private pages</h2>
+        </div>
+        <p class="kw-panel-desc"><em>GREAT_Lab</em> members and admins can always open every private page. Add other groups per page.</p>
+        <div id="apmPages" class="pperm-grid"><div class="kw-muted">Loading…</div></div>
+    </section>
+
+    <!-- Source visibility -->
+    <section class="kw-panel" id="apm-sources" aria-labelledby="apmSourcesT">
+        <div class="kw-panel-head">
+            <h2 id="apmSourcesT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Source visibility</h2>
+            <div class="kw-page-actions">
+                <select id="apmSourceAdd" class="kw-select" aria-label="Add a source"><option value="">Add a source…</option></select>
+                <button class="kw-btn kw-btn-primary kw-btn-sm" id="apmSourcesSave" disabled>Save all</button>
+            </div>
+        </div>
+        <p class="kw-panel-desc">Default visibility of each telescope / source's photometry and spectra. An object page can override it.</p>
+        <div class="kw-table-inset">
+            <table class="kw-table data-table apm-sources">
+                <thead><tr><th>Source</th><th>Visible to</th><th>Groups</th><th></th></tr></thead>
+                <tbody id="apmSourcesBody"></tbody>
+            </table>
+            <p id="apmSourcesEmpty" class="kw-empty" hidden>No default rules yet. Pick a source above to add one.</p>
+        </div>
+        <span id="apmSourcesStatus" class="settings-status"></span>
+    </section>
+
+    <datalist id="apmPeopleList">
+        {% for p in data.people %}<option value="{{ p.email }}">{{ p.name }}{% if p.shown != p.email %} ({{ p.shown }}){% endif %} · {{ p.role }}</option>{% endfor %}
+    </datalist>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script type="application/json" id="permData">{{ data | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/admin_permissions.js') }}"></script>
+{% endblock %}

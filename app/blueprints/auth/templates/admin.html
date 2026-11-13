@@ -1,5 +1,5 @@
 {% extends '_base.html' %}
-{#- Admin hub (/admin): five in-page tabs (admin.js showTab; URL hash #overview … #operations), picked from the
+{#- Admin hub (/admin): four in-page tabs (admin.js showTab; URL hash #overview … #operations; #access goes to /admin/permissions), picked from the
     admin menu (_admin_nav.html, left column). Each tab starts with a page head: title, one line, its own actions. -#}
 {% block title %}Admin Panel - Kinder{% endblock %}
 {% block head %}
@@ -425,45 +425,6 @@
         </section>
 
         <!-- ═══════════════ Access ═══════════════ -->
-        <section id="access-tab" class="tab-content" data-tab="access" aria-label="Access control">
-            <header class="kw-page-head adm-head">
-                <div><h1>Access</h1><p>Which groups can open each private page, and the default visibility of every photometry / spectra source.</p></div>
-            </header>
-
-            <section class="kw-panel">
-                <div class="kw-panel-head">
-                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Private area — per-page access</h2>
-                </div>
-                <p class="kw-panel-desc"><em>GREAT_Lab</em> members and admins can always open every private page. Add other groups per page.</p>
-                <div id="privatePagePermsTable" class="pperm-grid">
-                    <div class="kw-muted">Loading…</div>
-                </div>
-            </section>
-
-            <section class="kw-panel">
-                <div class="kw-panel-head">
-                    <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Default source permissions</h2>
-                    <div class="kw-page-actions">
-                        <select id="sourceAddSelect" class="kw-select" onchange="addDefaultPermFromSelect(this)" aria-label="Add a source">
-                            <option value="">— select source to add —</option>
-                        </select>
-                        <button class="kw-btn kw-btn-primary kw-btn-sm" id="saveDefaultPermsBtn" onclick="saveDefaultSourcePermissions()">Save all</button>
-                    </div>
-                </div>
-                <p class="kw-panel-desc">Global visibility rule for each telescope / source. Applies to every object unless the object page overrides it.</p>
-                <div id="defaultPermsTableWrap" class="kw-table-inset">
-                    <table class="kw-table data-table" id="defaultPermsTable">
-                        <thead>
-                            <tr><th>Source</th><th>Visibility</th><th>Allowed groups</th><th></th></tr>
-                        </thead>
-                        <tbody id="defaultPermsTbody"></tbody>
-                    </table>
-                    <p id="defaultPermsEmpty" class="kw-empty" style="display:none;">No default rules yet. Pick a source above to add one.</p>
-                </div>
-                <span id="defaultPermsSaveStatus" class="settings-status"></span>
-            </section>
-        </section>
-
         <!-- ═══════════════ Operations ═══════════════ -->
         <section id="operations-tab" class="tab-content" data-tab="operations" aria-label="Operations">
             <header class="kw-page-head adm-head">
