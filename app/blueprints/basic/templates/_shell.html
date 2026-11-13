@@ -34,7 +34,7 @@
         ('detect', 'shield-check', 'DETECT', '', [('/detect', 'TNS-DETECT'), ('/detect/lsst', 'LSST-DETECT'), ('/detect/crossmatch', 'Cross-match'), ('/detect/archives', 'Archives')]),
         ('triggers', 'send', 'Triggers', '', [('/daily_trigger', 'Daily Trigger'), ('/direct_trigger', 'Direct Trigger'), ('/bots', 'Alerts')]),
         ('calendar', 'calendar', 'Calendar', '', [('/lab_calendar', 'Calendar')]),
-        ('specialrun', 'bolt', 'Special Run', '', [('/special_run/euclid_slsn', 'Euclid-SLSN')]),
+        ('specialrun', 'bolt', 'Special Run', '', [('/special_run/euclid_slsn', 'Euclid-SLSN'), ('/special_run/lens_sim', 'Lens Simulator')]),
         ('epessto', 'users', 'ePessto++', '', [('/epessto_support', 'ePessto++ Support Team')]),
         ('labinfo', 'building', 'Lab Info', '', [('/documents', 'Docs'), ('/greatlab_info', 'Links')]),
     ]),
@@ -100,6 +100,7 @@
     'settings': '<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/>',
     'shield-lock': '<path d="M12 3a12 12 0 0 0 8.5 3A12 12 0 0 1 12 21 12 12 0 0 1 3.5 6 12 12 0 0 0 12 3"/><circle cx="12" cy="11" r="1"/><path d="M12 12v2.5"/>',
     'palette': '<path d="M12 21a9 9 0 0 1 0-18c4.97 0 9 3.582 9 8 0 1.06-.474 2.078-1.318 2.828S17.693 15 16.5 15H14a2 2 0 0 0-1 3.75A1.3 1.3 0 0 1 12 21"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/>',
+    'lens': '<circle cx="12" cy="12" r="2.5"/><path d="M4.5 9.5a8 8 0 0 1 15 0"/><path d="M19.5 14.5a8 8 0 0 1-15 0"/>',
     'layout': '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
     'key': '<circle cx="8" cy="15" r="4"/><path d="m10.85 12.15 8.65-8.65"/><path d="m18 5 2 2"/><path d="m15 8 2 2"/>',
     'logs': '<path d="M4 6h16M4 12h16M4 18h10"/>',
@@ -118,7 +119,7 @@
 {% macro ic(name, size=None) -%}
 <svg class="sh-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"{% if size %} width="{{ size }}" height="{{ size }}"{% endif %}>{{ _icons.get(name, '')|safe }}</svg>
 {%- endmacro %}
-{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/detect/lsst': 'telescope', '/detect/crossmatch': 'target', '/daily_trigger': 'send', '/direct_trigger': 'bolt', '/bots': 'robot', '/documents': 'file', '/greatlab_info': 'building'} %}
+{% set view_icons = {'/detect': 'shield-check', '/detect/archives': 'archive', '/detect/lsst': 'telescope', '/detect/crossmatch': 'target', '/daily_trigger': 'send', '/direct_trigger': 'bolt', '/bots': 'robot', '/documents': 'file', '/greatlab_info': 'building', '/special_run/euclid_slsn': 'bolt', '/special_run/lens_sim': 'lens'} %}
 
 {% macro _link(href, cls='', extra='') -%}
 <a href="{{ href }}"{% if cls %} class="{{ cls }}"{% endif %}{% if is_ext(href) %} target="_blank" rel="noopener noreferrer"{% endif %} {{ extra|safe }}

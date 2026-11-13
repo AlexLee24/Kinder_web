@@ -1,6 +1,6 @@
 """Private area (GREAT_Lab): Daily Trigger, ePessto++ support, Documents, Lab info, observation targets/logs — page_perms (split from private_area_routes.py)."""
 from flask import request, jsonify
-from app.db.auth import get_page_groups, set_page_groups
+from app.db.auth import set_page_groups
 from . import private_area_bp
 from .helpers import _PRIVATE_PAGES, _PRIVATE_PAGE_LABELS, _get_page_extra_groups, is_admin_user
 
@@ -25,7 +25,7 @@ def api_add_private_page_perm():
     group_name = str(data.get('group_name', '')).strip()
     if page not in _PRIVATE_PAGES or not group_name:
         return jsonify({'error': 'Invalid page or group'}), 400
-    current = get_page_groups(page)
+    current = _get_page_extra_groups(page)
     if group_name not in current:
         current.append(group_name)
     if set_page_groups(page, current):
@@ -41,7 +41,7 @@ def api_remove_private_page_perm():
     group_name = str(data.get('group_name', '')).strip()
     if page not in _PRIVATE_PAGES or not group_name:
         return jsonify({'error': 'Invalid page or group'}), 400
-    current = [g for g in get_page_groups(page) if g != group_name]
+    current = [g for g in _get_page_extra_groups(page) if g != group_name]
     if set_page_groups(page, current):
         return jsonify({'success': True})
     return jsonify({'error': 'Failed to save'}), 500

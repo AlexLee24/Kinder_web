@@ -104,7 +104,8 @@ def can_view_private_area():
 # ---------------------------------------------------------------------------
 # Per-page permission helpers
 # ---------------------------------------------------------------------------
-_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots', 'lab_calendar', 'special_run']
+_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots', 'lab_calendar',
+                  'special_run_euclid_slsn', 'special_run_lens_sim']
 
 _PRIVATE_PAGE_LABELS = {
     'daily_trigger': 'Daily Trigger',
@@ -115,12 +116,16 @@ _PRIVATE_PAGE_LABELS = {
     'documents': 'Documents',
     'bots': 'Lab Bots',
     'lab_calendar': 'Lab Calendar',
-    'special_run': 'Special Run',
+    'special_run_euclid_slsn': 'Special Run › Euclid-SLSN',
+    'special_run_lens_sim': 'Special Run › Lens Simulator',
 }
+
+# Each Special Run tab has its own groups; until a tab is set it keeps the groups of the old single 'special_run' key.
+_PAGE_FALLBACK = {'special_run_euclid_slsn': 'special_run', 'special_run_lens_sim': 'special_run'}
 
 def _get_page_extra_groups(page_key: str) -> list:
     """Return list of extra group names (beyond GREAT_Lab) that can access the page."""
-    return get_page_groups(page_key)
+    return get_page_groups(page_key, _PAGE_FALLBACK.get(page_key))
 
 def can_access_page(page_key: str) -> bool:
     """Check if the current session user can access the given private page."""
@@ -130,7 +135,7 @@ def can_access_page(page_key: str) -> bool:
     if user.get('is_admin', False) or user.get('is_great_lab_member', False):
         return True
     user_groups = set(user.get('groups', []))
-    allowed = set(get_page_groups(page_key))
+    allowed = set(_get_page_extra_groups(page_key))
     return bool(user_groups & allowed)
 
 def user_can_access_page(user: dict, page_key: str) -> bool:
@@ -138,7 +143,7 @@ def user_can_access_page(user: dict, page_key: str) -> bool:
     groups = set(user.get('groups') or [])
     if user.get('is_admin') or 'GREAT_Lab' in groups:
         return True
-    return bool(groups & set(get_page_groups(page_key)))
+    return bool(groups & set(_get_page_extra_groups(page_key)))
 
 _EPESSTO_DATE_RE = re.compile(r'^20\d{6}$')
 

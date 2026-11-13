@@ -46,7 +46,8 @@ def test_route_count_is_stable(app):
     # 402 with the public object query (/api/query, /api/query/objects).
     # 409 with Tools › Sky Cutouts (/sky_cutouts, /api/cutouts/{sources,image,resolve,coverage,pixels,survey}).
     # 412 with Admin › Permissions (/admin/permissions page, its action save and the account check).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 412
+    # 413 with Special Run › Lens Simulator (/special_run/lens_sim).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 413
 
 
 def test_duplicate_rules_keep_precedence(app):
