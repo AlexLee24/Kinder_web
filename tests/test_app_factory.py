@@ -44,7 +44,8 @@ def test_route_count_is_stable(app):
     # 383 with bulk target delete (/api/targets/bulk_delete); 384 with /api/v1/robot/alert-run; 385 with /detect/lens/sugohi;
     # 387 with Tools › Spectrum (/spectrum, /api/spectrum/desi/<targetid>).
     # 402 with the public object query (/api/query, /api/query/objects).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 402
+    # 409 with Tools › Sky Cutouts (/sky_cutouts, /api/cutouts/{sources,image,resolve,coverage,pixels,survey}).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 409
 
 
 def test_duplicate_rules_keep_precedence(app):

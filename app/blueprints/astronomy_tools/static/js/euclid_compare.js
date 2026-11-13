@@ -1,6 +1,6 @@
-/* Tools › Euclid (euclid_compare.html): resolve a position, check Euclid DR1 / Q1 coverage, then fill 2–4 panels.
+/* Tools › Sky Cutouts (euclid_compare.html): resolve a position, check Euclid DR1 / Q1 coverage, then fill 2–4 panels.
    Euclid panels are raw float32 from /api/euclid/pixels, stretched in the browser by window.FitsStretch
-   (static/js/fits_stretch.js); Legacy Survey panels are JPEGs from /api/euclid/survey.
+   (static/js/fits_stretch.js); every other survey is a colour JPEG from /api/euclid/survey (404 = no data there).
    State (position, field, panels) is mirrored in the URL (?q=&fov=&p=), display settings in localStorage. */
 (() => {
     const page = document.getElementById('ecPage');
@@ -14,9 +14,30 @@
         nisp_y: {label: 'Euclid NISP Y', bands: ['NIR_Y']},
         nisp_j: {label: 'Euclid NISP J', bands: ['NIR_J']},
         nisp_h: {label: 'Euclid NISP H', bands: ['NIR_H']},
-        dr10: {label: 'Legacy Survey DR10', ls: 'dr10', layer: 'ls-dr10'},
-        dr11: {label: 'Legacy Survey DR11', ls: 'dr11', layer: 'ls-dr11'},
+        dr10: {label: 'Legacy Survey DR10', jpeg: 'dr10', view: 'ls-dr10'},
+        dr11: {label: 'Legacy Survey DR11', jpeg: 'dr11', view: 'ls-dr11'},
+        dr10_model: {label: 'Legacy Survey DR10 model', jpeg: 'dr10_model', view: 'ls-dr10-model'},
+        dr10_resid: {label: 'Legacy Survey DR10 residual', jpeg: 'dr10_resid', view: 'ls-dr10-resid'},
+        hsc: {label: 'HSC PDR3', jpeg: 'hsc', view: 'hscmap'},
+        ps1: {label: 'Pan-STARRS1', jpeg: 'ps1', view: 'ps1'},
+        sdss: {label: 'SDSS', jpeg: 'sdss', view: 'sdss'},
+        unwise: {label: 'unWISE', jpeg: 'unwise', view: 'unwise-neo7'},
+        galex: {label: 'GALEX', jpeg: 'galex', view: 'galex'},
+        vlass: {label: 'VLASS', jpeg: 'vlass', view: 'vlass1.2'},
     };
+    /* Link of a panel's caption: the survey's own viewer at the position. */
+    const HSC_PARAMS = {type: 'SDSS_TRUE_COLOR', filter: ['HSC-I', 'HSC-R', 'HSC-G'],
+                        sdssTrueColor: {beta: 22026.465794806718, a: 1, bias: 0.05, b0: 0}};
+    function viewUrl(view) {
+        const rad = Math.PI / 180;
+        if (view === 'hscmap') {
+            const st = {view: {a: pos.ra * rad, d: pos.dec * rad, fovy: fov / 3600 * rad, roll: 0},
+                        sspParams: HSC_PARAMS, externalTiles: [], activeReruns: ['pdr3_wide', 'pdr3_dud']};
+            return `https://hscmap.mtk.nao.ac.jp/hscMap4/app/#/?_=${encodeURIComponent(JSON.stringify(st))}`;
+        }
+        if (view === 'ps1') return `https://ps1images.stsci.edu/cgi-bin/ps1cutouts?${qs({pos: `${pos.ra} ${pos.dec}`, filter: 'color', size: Math.round(fov / 0.25)})}`;
+        return `https://www.legacysurvey.org/viewer?${qs({ra: pos.ra, dec: pos.dec, layer: view, zoom: 16, mark: `${pos.ra},${pos.dec}`})}`;
+    }
     const accent = () => getComputedStyle(page).getPropertyValue('--color-accent').trim() || '#F39F5A';
 
     /* ------------------------------------------------------------ settings */
@@ -53,12 +74,12 @@
 
     function panelHtml(src, i) {
         const s = SOURCES[src];
-        if (s.ls) {
-            const url = `${page.dataset.apiSurvey}?${qs({ra: pos.ra, dec: pos.dec, fov, key: s.ls})}`;
-            const view = `https://www.legacysurvey.org/viewer?${qs({ra: pos.ra, dec: pos.dec, layer: s.layer, zoom: 16, mark: `${pos.ra},${pos.dec}`})}`;
+        if (s.jpeg) {
+            const url = `${page.dataset.apiSurvey}?${qs({ra: pos.ra, dec: pos.dec, fov, key: s.jpeg})}`;
+            const view = viewUrl(s.view);
             return `<figure class="ec-panel is-loading${S.marker ? ' has-mark' : ''}" data-i="${i}">
                 <img alt="" src="${url}" onload="this.parentNode.classList.remove('is-loading');this.nextElementSibling.remove()"
-                     onerror="this.parentNode.classList.remove('is-loading');this.nextElementSibling.textContent='No ${esc(s.label)} image here';this.remove()">
+                     onerror="this.parentNode.classList.remove('is-loading','has-mark');this.nextElementSibling.textContent='No ${esc(s.label)} data here';this.remove()">
                 <div class="ec-msg">Loading…</div>
                 <figcaption><a href="${view}" target="_blank" rel="noopener">${esc(s.label)} ↗</a></figcaption>${scaleBar()}</figure>`;
         }
