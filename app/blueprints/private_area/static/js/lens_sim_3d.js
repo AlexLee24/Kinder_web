@@ -13,6 +13,14 @@
     const CAMS = {oblique: {yaw: 58, pitch: 20, dist: 17}, side: {yaw: 90, pitch: 0, dist: 15.5}, observer: {yaw: 0, pitch: 0, dist: 7.5}};
     const O = {mode: 'sim', rays: true, apparent: true, straight: true, arrows: false, labels: true, noLens: false, play: false};
     let cam = {...CAMS.oblique}, D = window.LensSim.last, t0 = performance.now(), raf = 0;
+    // Photons: all leave the source together (one supernova explosion) and each takes TRIP + SPREAD × (its delay / the
+    // longest delay) seconds, so the image on the longer path arrives later. One run, no loop: an image switches on
+    // when its photon arrives and stays on; at the end the view holds (done) until Replay or a change.
+    const TRIP = 2.4, SPREAD = 3.2;
+    const anim = {done: false};
+    const travel = (frac) => TRIP + SPREAD * frac;
+    const elapsed = () => (anim.done ? Infinity : (performance.now() - t0) / 1000);
+    const fmtD = (d) => (d < 1 ? `${(d * 24).toFixed(1)} h` : `${d.toFixed(d < 10 ? 1 : 0)} d`);
 
     /* ------------------------------------------------------------ projection */
     const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -150,16 +158,27 @@
         const ims = O.noLens ? [] : D.pts.filter((im) => Math.abs(im.mu) > 0.05).sort((a, b) => (a.order || 9) - (b.order || 9));
         const maxDt = Math.max(1e-9, ...ims.map((im) => im.dt));
         if (O.rays && !O.noLens && !ims.length) for (const [x, y, bx, by] of D.arcRays.filter((_, i) => i % 3 === 0)) line(ctx, g.Sx(bx, by), g.L(x, y), 'rgba(255,209,102,.35)', 0.8);
+        const running = O.play || anim.done, t = elapsed();
         ims.forEach((im, i) => {
             const col = COLS[i % COLS.length], onL = g.L(im.x, im.y), p = P(onL);
-            if (O.rays) line(ctx, srcW, onL, col, 1.6, [6, 4]);
-            if (p) { ctx.strokeStyle = col; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.arc(p[0], p[1], 9 * dpr, 0, 7); ctx.stroke(); }
-            if (O.play) {   // the photon slides from the true position to the image; the image flashes on arrival
-                const trip = 1.6, cycle = trip + 2.2 + 1.4, u = ((now % cycle) - (im.dt / maxDt) * 2.2) / trip;
-                if (u >= 0 && u < 1) { const q = P(along([srcW, onL], u)); if (q) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], 3.4 * dpr, 0, 7); ctx.fill(); } }
-                if (u >= 1 && u < 1.6 && p) { ctx.fillStyle = `rgba(255,255,255,${0.9 * (1.6 - u) / 0.6})`; ctx.beginPath(); ctx.arc(p[0], p[1], 14 * dpr, 0, 7); ctx.fill(); }
+            const T = travel(im.dt / maxDt), on = !running || t >= T;
+            if (!on && p) {   // not arrived yet: the image is not there for the observer
+                ctx.fillStyle = 'rgba(5,7,12,.92)'; ctx.beginPath(); ctx.arc(p[0], p[1], 10 * dpr, 0, 7); ctx.fill();
+            }
+            if (O.rays) line(ctx, srcW, onL, on ? col : 'rgba(255,255,255,.25)', 1.6, [6, 4]);
+            if (p) {
+                ctx.strokeStyle = on ? col : 'rgba(255,255,255,.3)'; ctx.lineWidth = 2 * dpr; ctx.setLineDash(on ? [] : [3 * dpr, 3 * dpr]);
+                ctx.beginPath(); ctx.arc(p[0], p[1], 9 * dpr, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+            }
+            if (running && !on) {   // the photon on its way (left the source together with the others)
+                const q = P(along([srcW, onL], t / T));
+                if (q) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(q[0], q[1], 3.4 * dpr, 0, 7); ctx.fill(); }
+            }
+            if (running && on && t - T < 0.6 && p) {   // arrival flash
+                ctx.fillStyle = `rgba(255,255,255,${0.9 * (0.6 - (t - T)) / 0.6})`; ctx.beginPath(); ctx.arc(p[0], p[1], 15 * dpr, 0, 7); ctx.fill();
             }
         });
+        arrivals(ctx, ims.map((im, i) => ({im, col: COLS[i % COLS.length], T: travel(im.dt / maxDt)})));
         const ps = P(srcW);
         if (ps) {
             ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([3 * dpr, 3 * dpr]);
@@ -172,7 +191,26 @@
             ctx.fillText(O.mode === 'sim' ? 'Through the observer\'s eye: the same simulated image as above. Dashed circle = true source position.'
                 : 'Through the observer\'s eye (schematic). Dashed circle = true source position.', 14 * dpr, H - 14 * dpr);
         }
-        if (O.play) { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+        tick(ims.length ? travel(1) : TRIP);
+    }
+
+    // the arrival list and the clock (days after the first image), shared by both views
+    function arrivals(ctx, list) {
+        if (!(O.play || anim.done) || !list.length) return;
+        const t = elapsed(), first = Math.min(...list.map((r) => r.T)), span = Math.max(1e-9, ...list.map((r) => r.T)) - first;
+        const maxDt = Math.max(...list.map((r) => r.im.dt));
+        ctx.font = `600 ${13 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+        const day = t < first ? null : Math.min(maxDt, span > 0 ? (Math.min(t, first + span) - first) / span * maxDt : 0);
+        ctx.fillText(day === null ? 'Photons left the supernova together…' : `Day ${fmtD(day)} after the first image`, 14 * dpr, 22 * dpr);
+        list.filter((r) => t >= r.T).sort((a, b) => a.T - b.T).forEach((r, i) => {
+            ctx.fillStyle = r.col;
+            ctx.fillText(`● image ${i + 1} arrived${i ? `  (+${fmtD(r.im.dt)})` : ''}`, 14 * dpr, (42 + 18 * i) * dpr);
+        });
+    }
+    function tick(tMax) {   // keep animating until every photon is in, then hold the final frame
+        if (!O.play) return;
+        if ((performance.now() - t0) / 1000 > tMax + 0.8) { O.play = false; anim.done = true; syncBar(); return; }
+        cancelAnimationFrame(raf); raf = requestAnimationFrame(draw);
     }
 
     function draw() {
@@ -237,7 +275,7 @@
                 paths.push({path: [srcW, onL, obs], col, delay: im.dt / maxDt, im, onL});
             });
         } else {
-            for (const [x, y, bx, by] of D.arcRays) paths.push({path: [g.Sx(bx, by), g.L(x, y), obs], col: 'rgba(255,209,102,.28)', thin: true, delay: Math.random()});
+            for (const [x, y, bx, by] of D.arcRays) paths.push({path: [g.Sx(bx, by), g.L(x, y), obs], col: 'rgba(255,209,102,.28)', thin: true});
             if (O.apparent) for (const [x, y] of D.arcRays.filter((_, i) => i % 4 === 0)) line(ctx, obs, g.Sx(x, y), 'rgba(160,210,255,.12)', 1, [3, 5]);
         }
         if (O.straight) line(ctx, srcW, obs, 'rgba(200,200,200,.55)', 1.2, [2, 6]);
@@ -247,20 +285,17 @@
         }
         for (const r of paths) if (r.onL) { const p = P(r.onL); if (p) { ctx.fillStyle = r.col; ctx.beginPath(); ctx.arc(p[0], p[1], 3.2 * dpr, 0, 7); ctx.fill(); } }
 
-        // photons (source → observer); images with a longer delay leave the same event later
-        const arrived = [];
-        if (O.play) {
-            const trip = 2.6, cycle = trip + 2.2 + 1.2;
-            const tc = now % cycle;
-            for (const r of paths) {
-                if (r.thin && Math.random() > 0.5) continue;
-                const u = (tc - (r.thin ? r.delay * trip : r.delay * 2.2)) / trip;
-                if (u < 0) continue;
-                if (u >= 1) { if (r.im) arrived.push(r); continue; }
-                const p = P(along(r.path, u));
-                if (p) { ctx.fillStyle = r.thin ? 'rgba(255,240,200,.9)' : '#fff'; ctx.beginPath(); ctx.arc(p[0], p[1], (r.thin ? 1.6 : 3.4) * dpr, 0, 7); ctx.fill(); }
-            }
+        // photons: leave the source together, travel along each path, arrive in delay order and stay arrived
+        const running = O.play || anim.done, t = elapsed();
+        const maxD = Math.max(1e-9, ...paths.filter((r) => r.im).map((r) => r.im.dt));
+        if (running) for (const [k, r] of paths.entries()) {
+            if (r.thin && k % 2) continue;
+            const T = r.im ? travel(r.im.dt / maxD) : TRIP, u = t / T;
+            if (u >= 1) continue;   // arrived: the image stays on (listed below)
+            const p = P(along(r.path, u));
+            if (p) { ctx.fillStyle = r.thin ? 'rgba(255,240,200,.9)' : '#fff'; ctx.beginPath(); ctx.arc(p[0], p[1], (r.thin ? 1.6 : 3.4) * dpr, 0, 7); ctx.fill(); }
         }
+        const arrivedList = paths.filter((r) => r.im).map((r) => ({im: r.im, col: r.col, T: travel(r.im.dt / maxD)}));
 
         // observer (not drawn when we look through the observer's own eyes)
         const eyeView = cam.yaw === 0 && cam.pitch === 0;
@@ -285,15 +320,9 @@
                 label(ctx, paths[0].onL, 'bent by α̂ here', '#ffe08a', 10, 16, 11);
             }
         }
-        if (O.play && arrived.length) {
-            ctx.font = `600 ${13 * dpr}px system-ui, sans-serif`; ctx.textAlign = 'left';
-            arrived.sort((a, b) => a.delay - b.delay).forEach((r, i) => {
-                ctx.fillStyle = r.col;
-                ctx.fillText(`● image ${i + 1} arrived${r.im.order > 1 ? `  (+${r.im.dt < 1 ? (r.im.dt * 24).toFixed(1) + ' h' : r.im.dt.toFixed(r.im.dt < 10 ? 1 : 0) + ' d'})` : ''}`, 14 * dpr, (24 + 18 * i) * dpr);
-            });
-        }
+        arrivals(ctx, arrivedList);
         $('ls3dExag').textContent = `angles shown × ${Math.round(g.s * ARC).toLocaleString()} · distances to scale along the line of sight`;
-        if (O.play) { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+        tick(arrivedList.length ? travel(1) : TRIP);
     }
 
     /* ------------------------------------------------------------ controls */
@@ -302,12 +331,15 @@
         document.querySelectorAll('[data-cam]').forEach((b) => b.classList.toggle('is-on', CAMS[b.dataset.cam] && CAMS[b.dataset.cam].yaw === cam.yaw && CAMS[b.dataset.cam].pitch === cam.pitch));
         document.querySelectorAll('[data-opt]').forEach((c) => { c.checked = !!O[c.dataset.opt]; });
         document.querySelectorAll('[data-mode3d]').forEach((b) => b.classList.toggle('is-on', b.dataset.mode3d === O.mode));
-        $('ls3dPlay').textContent = O.play ? 'Pause photons' : 'Play photons';
+        $('ls3dPlay').textContent = O.play ? 'Stop' : anim.done ? 'Replay photons' : 'Play photons';
     }
     document.querySelectorAll('[data-cam]').forEach((b) => b.addEventListener('click', () => { cam = {...CAMS[b.dataset.cam]}; syncBar(); redraw(); }));
     document.querySelectorAll('[data-opt]').forEach((c) => c.addEventListener('change', () => { O[c.dataset.opt] = c.checked; redraw(); }));
     document.querySelectorAll('[data-mode3d]').forEach((b) => b.addEventListener('click', () => { O.mode = b.dataset.mode3d; syncBar(); redraw(); }));
-    $('ls3dPlay').addEventListener('click', () => { O.play = !O.play; t0 = performance.now(); syncBar(); draw(); });
+    $('ls3dPlay').addEventListener('click', () => {
+        if (O.play) { O.play = false; anim.done = false; } else { O.play = true; anim.done = false; t0 = performance.now(); }
+        syncBar(); draw();
+    });
     let drag = null;
     cv.addEventListener('pointerdown', (e) => { drag = [e.clientX, e.clientY, cam.yaw, cam.pitch]; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener('pointermove', (e) => {
@@ -319,7 +351,11 @@
     cv.addEventListener('pointerup', () => { drag = null; });
     cv.addEventListener('wheel', (e) => { e.preventDefault(); cam.dist = Math.max(4, Math.min(40, cam.dist * (e.deltaY > 0 ? 1.08 : 0.93))); redraw(); }, {passive: false});
     cv.addEventListener('dblclick', () => { cam = {...CAMS.oblique}; syncBar(); redraw(); });
-    page.addEventListener('lenssim:render', (e) => { D = e.detail; redraw(); });
+    page.addEventListener('lenssim:render', (e) => {   // a new lens / source: drop a finished run (its delays are stale)
+        D = e.detail;
+        if (anim.done) { anim.done = false; syncBar(); }
+        redraw();
+    });
     window.addEventListener('resize', redraw);
 
     /* ------------------------------------------------------------ teaching guide */
@@ -354,7 +390,7 @@
         window.LensSim.preset(s.preset);
         if (Object.keys(s.patch).length) window.LensSim.apply(s.patch);
         Object.assign(O, {mode: O.mode, noLens: false, arrows: false, apparent: true, rays: true, straight: true, labels: true, play: false}, s.o);
-        cam = {...CAMS[s.cam]}; t0 = performance.now();
+        cam = {...CAMS[s.cam]}; t0 = performance.now(); anim.done = false;
         $('lsGuideTitle').textContent = `${step + 1}. ${s.t}`;
         $('lsGuideBody').innerHTML = s.b;
         $('lsGuidePrev').disabled = step === 0; $('lsGuideNext').disabled = step === STEPS.length - 1;
