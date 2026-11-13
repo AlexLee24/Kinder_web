@@ -46,3 +46,28 @@
           color: var(--kw-text-white); font: 0.8rem var(--kw-font-mono, ui-monospace, monospace); text-align: right; }
 .ls-num:focus { outline: none; border-color: var(--color-accent); }
 .ls-unit { font-size: 0.72rem; color: var(--kw-text-muted); min-width: 14px; }
+
+/* 3D light paths + teaching guide */
+.ls-3d-panel, .ls-guide { margin-top: 14px; }
+.ls-3d-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 10px 0; }
+.ls-cams { flex: 0 0 auto; }
+.ls-cams .kw-seg-item { flex: 0 0 auto; padding: 0 12px; }
+.ls-play { margin-left: auto; }
+#ls3d { display: block; width: 100%; height: 520px; border-radius: var(--kw-radius-lg); background: #05070c; cursor: grab; touch-action: none; }
+#ls3d:active { cursor: grabbing; }
+@media (max-width: 760px) { #ls3d { height: 380px; } }
+.ls-3d-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 0.76rem; color: var(--kw-text-secondary); }
+.ls-3d-legend i { display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+.ls-3d-legend i.is-dash { height: 0; border-top: 2px dashed; background: none; }
+.ls-guide-grid { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 16px; margin-top: 10px; }
+@media (max-width: 760px) { .ls-guide-grid { grid-template-columns: 1fr; } }
+.ls-guide-list { display: grid; gap: 4px; align-content: start; }
+.ls-step { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid transparent; border-radius: 8px;
+           background: none; color: var(--kw-text-secondary); font: inherit; font-size: 0.84rem; text-align: left; cursor: pointer; }
+.ls-step span { flex: 0 0 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); font-size: 0.75rem; }
+.ls-step:hover { background: rgba(255,255,255,.05); }
+.ls-step.is-on { border-color: var(--color-accent); color: var(--kw-text-white); }
+.ls-step.is-on span { background: var(--color-accent); color: #1b1208; font-weight: 700; }
+.ls-guide-title { font-size: 1.05rem; font-weight: 600; color: var(--kw-text-white); }
+.ls-guide-text p { font-size: 0.9rem; line-height: 1.65; color: var(--kw-text-secondary); margin: 8px 0 14px; }
+.ls-guide-nav { display: flex; gap: 10px; }

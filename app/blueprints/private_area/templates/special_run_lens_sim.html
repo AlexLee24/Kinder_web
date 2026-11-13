@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/spectrum.css') }}">
 <link rel="stylesheet" href="{{ url_for('private_area.static', filename='css/lens_sim.css') }}">
 <script defer src="{{ url_for('private_area.static', filename='js/lens_sim.js') }}"></script>
+<script defer src="{{ url_for('private_area.static', filename='js/lens_sim_3d.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -124,6 +125,7 @@
                     <label class="sp-check"><input type="checkbox" id="lsCaus"> Caustics</label>
                 </div>
                 <label class="sp-check"><input type="checkbox" id="lsField"> Background galaxies &amp; stars</label>
+                <label class="sp-check"><input type="checkbox" id="lsDelays"> Arrival order / time delays of point images</label>
                 <label class="sp-check" id="lsObsRow" hidden><input type="checkbox" id="lsObs"> Observed image positions (HST / JWST)</label>
             </section>
         </aside>
@@ -143,6 +145,48 @@
             </div>
 
             <div class="ls-stats kw-panel" id="lsStats"></div>
+
+            <div class="kw-panel ls-3d-panel" id="ls3dPanel">
+                <div class="sp-hd">3D light paths <span class="ls-muted">drag to rotate · scroll to zoom · double-click to reset</span></div>
+                <div class="ls-3d-bar">
+                    <div class="kw-seg ls-seg ls-cams" role="group" aria-label="View">
+                        <button type="button" class="kw-seg-item" data-cam="oblique">Oblique</button>
+                        <button type="button" class="kw-seg-item" data-cam="side">Side (textbook)</button>
+                        <button type="button" class="kw-seg-item" data-cam="observer">Observer's eye</button>
+                    </div>
+                    <label class="sp-check"><input type="checkbox" data-opt="rays"> Light paths</label>
+                    <label class="sp-check"><input type="checkbox" data-opt="apparent"> Where we see it</label>
+                    <label class="sp-check"><input type="checkbox" data-opt="straight"> Unlensed line</label>
+                    <label class="sp-check"><input type="checkbox" data-opt="arrows"> Bending arrows</label>
+                    <label class="sp-check"><input type="checkbox" data-opt="labels"> Labels</label>
+                    <button type="button" class="kw-btn ls-play" id="ls3dPlay">Play photons</button>
+                </div>
+                <canvas id="ls3d" aria-label="3D view of light paths from the source through the lens to the observer"></canvas>
+                <div class="ls-3d-legend">
+                    <span><i style="background:#ffd166"></i>light path</span>
+                    <span><i class="is-dash" style="border-color:#a0d2ff"></i>direction we see it from</span>
+                    <span><i class="is-dash" style="border-color:#c8c8c8"></i>unlensed straight line</span>
+                    <span><i style="background:#f39f5a"></i>critical curve</span>
+                    <span><i style="background:#ff6b8a"></i>caustic</span>
+                    <span class="ls-muted" id="ls3dExag"></span>
+                </div>
+            </div>
+
+            <div class="kw-panel ls-guide" id="lsGuide">
+                <div class="sp-hd">Gravitational lensing, step by step</div>
+                <div class="ls-guide-grid">
+                    <div class="ls-guide-list" id="lsGuideList"></div>
+                    <div class="ls-guide-text">
+                        <div class="ls-guide-title" id="lsGuideTitle">Pick a step</div>
+                        <p id="lsGuideBody">Each step sets up the simulator and the 3D view to show one idea, from a straight
+                            line of sight to time delays. Everything stays live: drag the source and move the sliders.</p>
+                        <div class="ls-guide-nav">
+                            <button type="button" class="kw-btn" id="lsGuidePrev">← Previous</button>
+                            <button type="button" class="kw-btn kw-btn-primary" id="lsGuideNext">Next →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <div class="kw-panel ls-chart-panel">
                 <div class="sp-hd">Einstein radius vs lens redshift <span class="ls-muted">same mass, same z<sub>s</sub></span></div>
