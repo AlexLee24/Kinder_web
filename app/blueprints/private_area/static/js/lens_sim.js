@@ -41,7 +41,7 @@
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
                  env: 'auto', g2: 0, g2x: 1.5, g2y: 1.5, mag: 23, snMag: 23, obs: null, showObs: true,
-                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 19, knee: 25, noiseOn: false, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
+                 tel: 'ideal', band: 'r', D: 1, exp: 3, white: 16.5, knee: 23.5, noiseOn: false, fov: 'auto', seeing: 0, field: true, crit: true, caus: true};
     // Telescopes: aperture D (m), median seeing (″), ground or space sky. Resolution = seeing ⊕ diffraction (no detector pixels).
     // Zero point (AB mag giving 1 e⁻/s) ≈ 24.3 + 5 log D — a broad-band, ~50 % throughput approximation.
     const BANDS = {g: 0.48, r: 0.62, i: 0.77, z: 0.91, J: 1.25, H: 1.6, K: 2.2};                     // µm
@@ -62,11 +62,11 @@
             src: 'clumpy', re: 1.6, sq: 0.8, bx: 0.04, by: 0.06, light: 0.6}],
         ['8 o\'clock arc (SDSS J0022+1431)', {mag: 23.5, logm: logMOfSigma(380), zl: 0.38, zs: 2.73, q: 0.75, pa: 40, gamma: 0.05,
             src: 'clumpy', re: 1.2, sq: 0.6, bx: 0.25, by: 0.12, light: 0.8}],
-        ['Abell 370 giant arc (cluster)', {mag: 22.5, logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
+        ['Abell 370 giant arc (cluster)', {mag: 22.5, knee: 25, logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
             src: 'clumpy', re: 8, sq: 0.5, spa: 10, bx: 0, by: 0.25, light: 1, n: 1}],
-        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
+        ['MACS J0717 (most massive cluster lens)', {mag: 23.5, knee: 25, logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
             src: 'clumpy', re: 6, sq: 0.6, spa: 45, bx: 0, by: 0.22, light: 1}],
-        ['Einstein Cross (Q2237+0305)', {mag: 20.5, logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
+        ['Einstein Cross (Q2237+0305)', {mag: 20.5, white: 15, knee: 21.5, logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
             src: 'point', bx: 0.03, by: 0.02, light: 1}],
         ['Twin Quasar (Q0957+561)', {mag: 17.8, logm: logMOfSigma(450), zl: 0.36, zs: 1.41, q: 0.8, pa: 60, gamma: 0.2, gpa: 70,
             src: 'point', bx: 0.35, by: 0.15, light: 0.8}],
@@ -79,9 +79,9 @@
             gpa: 18.131, g2: 175.85, g2x: 0.967, g2y: 2.126, src: 'hostsn', re: 1.0, n: 1, sq: 0.8, spa: 0, bx: 0.1952, by: 0.34516,
             light: 1, mag: 25.5, snMag: 22.3, env: 'galaxy',
             obs: [[-1.213, 1.318, 'A'], [-1.813, -0.806, 'B'], [0.195, -1.595, 'C'], [2.705, 1.058, 'D'], [0.658, 2.542, 'E']]}],
-        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
+        ['SN Requiem / SN Encore (MACS J0138.0−2155)', {mag: 22.5, knee: 25, logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
             snMag: 25, src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 1}],
-        ['Lensed supernova (iPTF16geu-like)', {mag: 23.3, logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
+        ['Lensed supernova (iPTF16geu-like)', {mag: 23.3, white: 15.5, knee: 22, logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
             src: 'point', bx: 0.05, by: 0.04, light: 1}],
         ['Point-mass lens (idealised)', {mag: 24, model: 'pm', logm: 12, zl: 0.5, zs: 2, gamma: 0, src: 'galaxy', re: 0.8,
             bx: 0.2, by: 0, light: 0}],
@@ -199,7 +199,7 @@
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'white', 'knee', 'noiseOn'];
+        const keep = ['tel', 'band', 'D', 'exp', 'seeing', 'field', 'crit', 'caus', 'showObs', 'noiseOn'];   // display white / knee follow the preset
         S = {...DEF, ...p[1], fov: 'auto', ...Object.fromEntries(keep.map((k) => [k, S[k]]))};
         syncControls(); schedule();
     });
