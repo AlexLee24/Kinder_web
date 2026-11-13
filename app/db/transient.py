@@ -233,6 +233,28 @@ def _build_spectrum_label(source: str | None, mjd) -> str:
     return 'Spectrum'
 
 
+class SpectrumUploadError(Exception):
+    """A spectrum upload the caller must fix; ``status`` is the HTTP status to answer with."""
+
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.status = status
+
+
+def spectrum_epoch_is_given(spectrum_id=None, observation_date=None,
+                            original_filename=None, phase=None) -> bool:
+    """True when the upload says when it was observed. Otherwise
+    _resolve_spectrum_source_and_mjd falls back to *now*, which files the spectrum
+    at the wrong epoch without anyone noticing."""
+    _, parsed_mjd = _parse_spectrum_id(spectrum_id)
+    return bool(
+        (parsed_mjd is not None and parsed_mjd > 1.0)
+        or _parse_manual_observation_date(observation_date)
+        or _extract_spectrum_datetime(original_filename)
+        or _phase_from_stored_value(phase) is not None
+    )
+
+
 def _resolve_spectrum_source_and_mjd(
     telescope=None,
     spectrum_id=None,
@@ -639,7 +661,11 @@ class TNSObjectDB:
     def add_spectrum_data(object_name: str, wavelength_data, intensity_data,
                           phase=None, telescope=None, spectrum_id=None,
                           original_filename=None, observation_date=None):
-        """Store spectroscopy with source=telescope/instrument and MJD=observation epoch."""
+        """Store spectroscopy with source=telescope/instrument and MJD=observation epoch.
+
+        Raises SpectrumUploadError (404) when the object does not exist and (409) when this
+        object already has a spectrum from the same source at the same epoch: adding the
+        points would silently merge two spectra into one."""
         source_tag, mjd = _resolve_spectrum_source_and_mjd(
             telescope=telescope,
             spectrum_id=spectrum_id,
@@ -648,16 +674,22 @@ class TNSObjectDB:
             observation_date=observation_date,
         )
         spectrum_id = _build_spectrum_id(source_tag, mjd)
-        rows = [
-            (None, object_name, mjd, wl, inten, source_tag)
-            for wl, inten in zip(wavelength_data, intensity_data)
-        ]
         with get_db_connection() as conn:
             cur = conn.cursor()
             obj_id = _resolve_obj_id_with_prefix(cur, object_name)
             if obj_id is None:
-                return spectrum_id
-            entries = [(obj_id, object_name, mjd, wl, inten, source_tag) for _, name, mjd, wl, inten, src in rows]
+                raise SpectrumUploadError(f'Object {object_name} not found.', 404)
+            cur.execute(
+                'SELECT COUNT(*) FROM transient.spectroscopy '
+                'WHERE obj_id = %s AND source = %s AND ABS("MJD" - %s) < 1e-6',
+                (obj_id, source_tag, mjd)
+            )
+            if cur.fetchone()[0]:
+                raise SpectrumUploadError(
+                    f'{object_name} already has a spectrum "{_build_spectrum_label(source_tag, mjd)}". '
+                    'Delete it first, or change the telescope or observation date.', 409)
+            entries = [(obj_id, object_name, mjd, wl, inten, source_tag)
+                       for wl, inten in zip(wavelength_data, intensity_data)]
             extras.execute_batch(
                 cur,
                 "INSERT INTO transient.spectroscopy "
@@ -727,19 +759,25 @@ class TNSObjectDB:
             return rows
 
     @staticmethod
-    def delete_spectrum(spectrum_id: str) -> bool:
+    def delete_spectrum(spectrum_id: str, object_name: str) -> bool:
+        """Delete one spectrum of this object. Spectrum ids are only source+MJD, so without
+        the object the same id would also delete other objects' spectra."""
         with get_db_connection() as conn:
             cur = conn.cursor()
+            obj_id = _resolve_obj_id_with_prefix(cur, object_name)
+            if obj_id is None:
+                return False
             source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
             if observation_mjd is None:
                 cur.execute(
-                    "DELETE FROM transient.spectroscopy WHERE source = %s",
-                    (source_name,)
+                    "DELETE FROM transient.spectroscopy WHERE obj_id = %s AND source = %s",
+                    (obj_id, source_name)
                 )
             else:
                 cur.execute(
-                    'DELETE FROM transient.spectroscopy WHERE source = %s AND ABS("MJD" - %s) < 1e-6',
-                    (source_name, observation_mjd)
+                    'DELETE FROM transient.spectroscopy '
+                    'WHERE obj_id = %s AND source = %s AND ABS("MJD" - %s) < 1e-6',
+                    (obj_id, source_name, observation_mjd)
                 )
             deleted = cur.rowcount > 0
             conn.commit()

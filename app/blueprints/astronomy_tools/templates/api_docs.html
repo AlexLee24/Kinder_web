@@ -85,6 +85,22 @@
         .api-info-box h4 svg { color: var(--kw-accent); }
         .api-info-box p, .api-info-box li { margin: 0; font-size: 0.86rem; line-height: 1.7; color: var(--kw-text-secondary); }
         .api-info-box ul { margin: 0; padding-left: 18px; }
+        .api-guide { margin: 0 0 28px; padding: 22px 24px; border-radius: var(--kw-radius-xl); background: var(--kw-card-bg); border: 1px solid var(--kw-border); }
+        .api-guide h2 { margin: 0 0 6px; font-size: 1.2rem; color: var(--kw-text-white); }
+        .api-guide > p { margin: 0 0 16px; font-size: 0.88rem; line-height: 1.7; color: var(--kw-text-secondary); }
+        .api-steps { margin: 0 0 18px; padding-left: 20px; font-size: 0.86rem; line-height: 1.8; color: var(--kw-text-secondary); }
+        .api-steps code, .api-guide > p code { font-family: var(--api-mono); font-size: 0.8rem; }
+        .qb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 14px; margin-bottom: 12px; }
+        .qb-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem; font-weight: 600; color: var(--kw-text-secondary); }
+        .qb-grid input, .qb-grid select { min-width: 0; padding: 7px 9px; border-radius: var(--kw-radius-md); border: 1px solid var(--kw-hairline); background: rgba(0, 0, 0, 0.3); color: var(--kw-text-white); font-size: 0.85rem; }
+        .qb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+        .qb-status { font-size: 0.82rem; color: var(--kw-text-secondary); }
+        .qb-status.err { color: #f87171; }
+        .qb-table-wrap { margin-top: 12px; max-height: 320px; overflow: auto; border: 1px solid var(--kw-hairline); border-radius: var(--kw-radius-md); }
+        .qb-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        .qb-table th, .qb-table td { padding: 6px 10px; border-bottom: 1px solid var(--kw-hairline); text-align: left; white-space: nowrap; }
+        .qb-table th { position: sticky; top: 0; background: var(--kw-card-bg); color: var(--kw-text-secondary); font-weight: 600; }
+        .qb-table a { color: var(--kw-accent); }
 
         /* Body example grid */
         .body-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
@@ -112,7 +128,8 @@
 
     <div class="kw-read api-read">
         <nav class="kw-read-toc kw-panel api-toc" aria-label="Endpoints">
-            <ul><li><a class="api-toc-top" href="#api-overview"><span>Overview</span></a></li></ul>
+            <ul><li><a class="api-toc-top" href="#api-overview"><span>Overview</span></a></li>
+                <li><a class="api-toc-top" href="#object-query-guide"><span>Object query guide</span></a></li></ul>
             <h2><a href="#public-api" class="api-toc-sec">Public API</a></h2>
             <ul>
                 <li><a href="#get-api-distance"><span class="method-badge method-get">GET</span><span>/api/distance</span></a></li>
@@ -121,6 +138,8 @@
                 <li><a href="#get-api-finding-chart-image"><span class="method-badge method-get">GET</span><span>/api/finding_chart/image</span></a></li>
                 <li><a href="#get-api-visibility-image"><span class="method-badge method-get">GET</span><span>/api/visibility/image</span></a></li>
                 <li><a href="#get-api-objects-name"><span class="method-badge method-get">GET</span><span>/api/objects/{name}</span></a></li>
+                <li><a href="#get-api-query"><span class="method-badge method-get">GET</span><span>/api/query</span></a></li>
+                <li><a href="#get-api-query-objects"><span class="method-badge method-get">GET</span><span>/api/query/objects</span></a></li>
             </ul>
             <h2><a href="#authenticated-api" class="api-toc-sec">Authenticated API</a></h2>
             <ul>
@@ -140,7 +159,7 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Base URL
                 </h4>
-                <p>All responses are JSON. <code>success: true/false</code> is always present.</p>
+                <p>Responses are JSON (errors carry an <code>error</code> message), except images and the CSV of <code>/api/query/objects</code>.</p>
                 <br>
                 <p>Base: <code>https://kinder.astro.ncu.edu.tw</code></p>
             </div>
@@ -155,6 +174,92 @@
                 </ul>
             </div>
         </div>
+
+        <!-- ── Object query guide ──────────────────────────────────────────── -->
+        <section class="api-guide" id="object-query-guide">
+            <h2>Object query: find transients without logging in</h2>
+            <p>Search Kinder's objects the way the Transient page does (classification, redshift, discovery date, magnitudes, discoverer, position) and get a CSV or JSON table. Only object metadata is returned, never photometry or spectra. Without a key you get the public objects; add your <code>api_key</code> to include the restricted objects your account may open.</p>
+            <ol class="api-steps">
+                <li><strong>See what you can ask for:</strong> <code>GET /api/query</code> lists every parameter, the classifications with how many objects each has, the sort keys and the CSV columns.</li>
+                <li><strong>Download a table:</strong> <code>GET /api/query/objects?type=SLSN-I</code> returns every SLSN-I as a CSV file. Combine filters with <code>&amp;</code>, e.g. <code>&amp;z_max=0.2&amp;discovered_after=2025-01-01</code>.</li>
+                <li><strong>Several types:</strong> <code>type=SLSN-I,SLSN-II</code>; every SLSN class: <code>type=SLSN*</code>; unclassified: <code>type=AT</code>.</li>
+                <li><strong>Around a position:</strong> <code>ra=10:00:28.6&amp;dec=+02:12:21&amp;radius=60</code> (radius in arcsec) adds <code>separation_arcsec</code> and sorts nearest first.</li>
+                <li><strong>More than 1000 rows:</strong> raise <code>limit</code> (max 10000) or page with <code>offset</code>; the <code>X-Total-Count</code> header says how many match and <code>X-Next-Offset</code> where the next page starts (JSON: <code>total</code>, <code>next_offset</code>).</li>
+                <li><strong>Mistakes are reported:</strong> a misspelt parameter or type returns HTTP 400 with a suggestion instead of silently returning everything.</li>
+            </ol>
+
+            <div class="api-example-label">Try it</div>
+            <form class="qb-form" id="qbForm" autocomplete="off">
+                <div class="qb-grid">
+                    <label>Type
+                        <select id="qbType"><option value="">Any type</option></select>
+                    </label>
+                    <label>Name contains <input id="qbName" placeholder="2024abc, ZTF24"></label>
+                    <label>Discovered after <input id="qbAfter" type="date"></label>
+                    <label>Discovered before <input id="qbBefore" type="date"></label>
+                    <label>z min <input id="qbZmin" type="number" step="any" min="0"></label>
+                    <label>z max <input id="qbZmax" type="number" step="any" min="0"></label>
+                    <label>RA (deg or hh:mm:ss) <input id="qbRa"></label>
+                    <label>Dec (deg or ±dd:mm:ss) <input id="qbDec"></label>
+                    <label>Radius (arcsec) <input id="qbRadius" type="number" step="any" min="0" placeholder="60"></label>
+                    <label>Sort
+                        <select id="qbSort">
+                            <option value="">Discovery date</option>
+                            <option value="name">Name</option>
+                            <option value="redshift">Redshift</option>
+                            <option value="peak_mag">Peak mag</option>
+                            <option value="peak_abs_mag">Peak abs. mag</option>
+                            <option value="last_photometry">Last photometry</option>
+                        </select>
+                    </label>
+                    <label>Rows <input id="qbLimit" type="number" min="1" max="10000" placeholder="1000"></label>
+                </div>
+                <div class="api-code" style="position:relative"><span id="qbUrl">/api/query/objects</span><button type="button" class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                <div class="qb-actions">
+                    <button type="submit" class="kw-btn kw-btn-sm">Preview</button>
+                    <a class="kw-btn kw-btn-sm" id="qbCsv" href="/api/query/objects" download>Download CSV</a>
+                    <a class="kw-btn kw-btn-sm" id="qbJson" href="/api/query/objects?format=json" target="_blank" rel="noopener">Open JSON</a>
+                    <span class="qb-status" id="qbStatus"></span>
+                </div>
+                <div class="qb-table-wrap" id="qbTableWrap" hidden><table class="qb-table" id="qbTable"></table></div>
+            </form>
+
+            <div class="body-grid" style="margin-top:18px;">
+                <div>
+                    <div class="api-example-label">Python (pandas)</div>
+                    <div class="api-code" style="position:relative">import pandas as pd
+
+url = "https://kinder.astro.ncu.edu.tw/api/query/objects"
+df = pd.read_csv(url + "?type=SLSN-I&amp;z_max=0.5")
+print(len(df), df[["name", "redshift", "peak_abs_mag"]].head())<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                    <div class="api-example-label">Python (every page, JSON)</div>
+                    <div class="api-code" style="position:relative">import requests
+
+url = "https://kinder.astro.ncu.edu.tw/api/query/objects"
+params = {"type": "SN Ia", "format": "json", "limit": 10000}
+rows, offset = [], 0
+while offset is not None:
+    page = requests.get(url, params={**params, "offset": offset}).json()
+    rows += page["objects"]
+    offset = page["next_offset"]
+print(len(rows))<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                </div>
+                <div>
+                    <div class="api-example-label">curl</div>
+                    <div class="api-code" style="position:relative">curl -o slsn.csv "https://kinder.astro.ncu.edu.tw/api/query/objects?type=SLSN*"<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                    <div class="api-example-label">TOPCAT / astropy</div>
+                    <div class="api-code" style="position:relative">from astropy.table import Table
+
+t = Table.read("https://kinder.astro.ncu.edu.tw/api/query/objects"
+               "?type=TDE", format="ascii.csv")<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                    <div class="api-example-label">With your API key (adds restricted objects)</div>
+                    <div class="api-code" style="position:relative">/api/query/objects?type=SLSN-I&amp;api_key=YOUR_KEY<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                </div>
+            </div>
+        </section>
 
         <!-- ══════════════════════════════════════════════════════════════════ -->
         <!-- PUBLIC API                                                         -->
@@ -519,6 +624,103 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
         </div>
 
 
+        <div class="api-card" id="get-api-query">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/query</span>
+                <span class="api-card-desc">What the object query can search on</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">JSON listing every parameter of <code>/api/query/objects</code>, the classifications you can query with how many objects each has, the special types, statuses, sort keys, CSV columns, limits and ready-made example URLs. Counts follow your access: public objects without a key.</p>
+                <div class="body-grid" style="margin-top:16px;">
+                    <div>
+                        <div class="api-example-label">Example</div>
+                        <div class="api-code" style="position:relative">/api/query<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                    <div>
+                        <div class="api-example-label">Response (shortened)</div>
+                        <div class="api-code">{
+  "endpoint": "https://your-domain.com/api/query/objects",
+  "visible_to_you": {"objects": 182345, "classified": 21877, ...},
+  "parameters": {"type": "...", "z_min": "...", ...},
+  "types": [{"type": "SN Ia", "count": 14102},
+            {"type": "SLSN-I", "count": 412}, ...],
+  "special_types": {"AT": "...", "Classified": "..."},
+  "sort_keys": ["discovery_date", "name", ...],
+  "columns": {"name": "...", "ra_deg": "...", ...},
+  "examples": {...}
+}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="api-card" id="get-api-query-objects">
+            <div class="api-card-header" onclick="toggleCard(this)">
+                <span class="method-badge method-get">GET</span>
+                <span class="api-path">/api/query/objects</span>
+                <span class="api-card-desc">Find objects by type, redshift, date, magnitude or position (CSV / JSON)</span>
+                <svg class="api-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="api-card-body">
+                <p class="param-desc">The Transient page's filters without logging in. Returns object metadata only (no photometry or spectra), as CSV by default. Unknown parameters and types are refused with a suggestion, so a typo never returns everything. Rate limit: 10 requests per 10 s per IP.</p>
+
+                <div class="api-table-wrap"><table class="params-table">
+                    <thead><tr><th>Parameter</th><th></th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td class="param-name">type</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Classification, case-insensitive; several comma-separated (<code>SLSN-I,SLSN-II</code>); <code>SLSN*</code> for a prefix; <code>AT</code> = unclassified, <code>Classified</code> = all classified</td></tr>
+                        <tr><td class="param-name">name</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Part of the name or an internal name (<code>2024abc</code>, <code>ZTF24</code>)</td></tr>
+                        <tr><td class="param-name">discovered_after / discovered_before</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Discovery date range, <code>YYYY-MM-DD</code> (inclusive)</td></tr>
+                        <tr><td class="param-name">z_min / z_max</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Redshift range</td></tr>
+                        <tr><td class="param-name">mag_min / mag_max</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Discovery magnitude range</td></tr>
+                        <tr><td class="param-name">peak_mag_min / peak_mag_max</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Peak apparent magnitude range</td></tr>
+                        <tr><td class="param-name">peak_abs_mag_min / peak_abs_mag_max</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Peak absolute magnitude range</td></tr>
+                        <tr><td class="param-name">discoverer</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Part of the reporting / source group or reporters (<code>ZTF</code>, <code>GOTO</code>)</td></tr>
+                        <tr><td class="param-name">status</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>inbox</code>, <code>followup</code> or <code>snoozed</code></td></tr>
+                        <tr><td class="param-name">ra, dec, radius</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Cone search: centre in degrees or <code>hh:mm:ss</code> / <code>±dd:mm:ss</code>, radius in arcsec (default 60, max 36000). Adds <code>separation_arcsec</code> and sorts by distance</td></tr>
+                        <tr><td class="param-name">sort, order</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>discovery_date</code> (default), <code>name</code>, <code>redshift</code>, <code>discovery_mag</code>, <code>peak_mag</code>, <code>peak_abs_mag</code>, <code>last_photometry</code>, <code>distance</code>; <code>asc</code> / <code>desc</code></td></tr>
+                        <tr><td class="param-name">limit, offset</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Rows per request (default 1000, max 10000) and paging; the <code>X-Total-Count</code> / <code>X-Next-Offset</code> headers tell how many match and where the next page starts</td></tr>
+                        <tr><td class="param-name">format</td><td><span class="param-req opt">optional</span></td><td class="param-desc"><code>csv</code> (default) or <code>json</code></td></tr>
+                        <tr><td class="param-name">api_key</td><td><span class="param-req opt">optional</span></td><td class="param-desc">Also returns the restricted objects your account may open</td></tr>
+                    </tbody>
+                </table></div>
+
+                <div class="body-grid" style="margin-top:16px;">
+                    <div>
+                        <div class="api-example-label">Every SLSN-I (CSV)</div>
+                        <div class="api-code" style="position:relative">/api/query/objects?type=SLSN-I<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                        <div class="api-example-label">Nearby SN Ia found in 2025 (JSON)</div>
+                        <div class="api-code" style="position:relative">/api/query/objects?type=SN Ia&amp;z_max=0.02&amp;discovered_after=2025-01-01&amp;discovered_before=2025-12-31&amp;format=json<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+
+                        <div class="api-example-label">Python (pandas)</div>
+                        <div class="api-code" style="position:relative">import pandas as pd
+
+df = pd.read_csv("https://your-domain.com/api/query/objects"
+                 "?type=SLSN-I")
+print(len(df), df[["name", "redshift"]].head())<button class="copy-btn" onclick="copyCode(this)">copy</button></div>
+                    </div>
+                    <div>
+                        <div class="api-example-label">CSV columns</div>
+                        <div class="api-code">name,type,ra_deg,dec_deg,ra_hms,dec_dms,redshift,
+discovery_date,discovery_mjd,discovery_mag,
+discovery_filter,peak_mag,peak_abs_mag,
+last_photometry_date,internal_names,
+reporting_group,source_group,status,tags,url</div>
+
+                        <div class="api-example-label">Error (HTTP 400)</div>
+                        <div class="api-code">{
+  "error": "Unknown type 'SLSN-l'. Did you mean SLSN-I?
+            See /api/query for every type.",
+  "help": "/api/query"
+}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
         <!-- ══════════════════════════════════════════════════════════════════ -->
         <!-- AUTHENTICATED API                                                  -->
         <!-- ══════════════════════════════════════════════════════════════════ -->
@@ -805,5 +1007,84 @@ print(r.json())<button class="copy-btn" onclick="copyCode(this)">copy</button></
                 setTimeout(() => btn.textContent = 'copy', 1800);
             });
         }
+
+        // Object query guide: build /api/query/objects URLs and preview the first rows.
+        (function () {
+            const form = document.getElementById('qbForm');
+            if (!form) return;
+            const $ = id => document.getElementById(id);
+            const fields = { type: 'qbType', name: 'qbName', discovered_after: 'qbAfter',
+                discovered_before: 'qbBefore', z_min: 'qbZmin', z_max: 'qbZmax', ra: 'qbRa',
+                dec: 'qbDec', radius: 'qbRadius', sort: 'qbSort', limit: 'qbLimit' };
+            const status = $('qbStatus');
+
+            function params(extra) {
+                const p = new URLSearchParams();
+                Object.entries(fields).forEach(([key, id]) => {
+                    const v = ($(id).value || '').trim();
+                    if (v) p.set(key, v);
+                });
+                Object.entries(extra || {}).forEach(([k, v]) => p.set(k, v));
+                return p;
+            }
+            function url(extra) {
+                const q = params(extra).toString();
+                return '/api/query/objects' + (q ? '?' + q : '');
+            }
+            function refresh() {
+                $('qbUrl').textContent = location.origin + url();
+                $('qbCsv').href = url();
+                $('qbJson').href = url({ format: 'json' });
+            }
+            form.addEventListener('input', refresh);
+            form.addEventListener('change', refresh);
+
+            fetch('/api/query', { headers: { Accept: 'application/json' } })
+                .then(r => r.json())
+                .then(d => {
+                    const sel = $('qbType');
+                    [['AT', 'AT (unclassified)'], ['Classified', 'Classified (all)']].forEach(([v, label]) => sel.add(new Option(label, v)));
+                    (d.types || []).forEach(t => sel.add(new Option(`${t.type} (${t.count})`, t.type)));
+                    if (d.visible_to_you) status.textContent = `${d.visible_to_you.objects.toLocaleString()} objects visible to you.`;
+                })
+                .catch(() => { status.textContent = 'Could not load the type list.'; });
+
+            const cols = ['name', 'type', 'ra_hms', 'dec_dms', 'redshift', 'discovery_date', 'peak_abs_mag', 'separation_arcsec'];
+            form.addEventListener('submit', async e => {
+                e.preventDefault();
+                status.className = 'qb-status';
+                status.textContent = 'Searching…';
+                try {
+                    const r = await fetch(url({ format: 'json', limit: Math.min(+($('qbLimit').value || 50), 50) }));
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+                    status.textContent = `${d.total.toLocaleString()} match; showing ${d.returned}. Download the CSV for all of them.`;
+                    const show = cols.filter(c => d.objects.some(o => o[c] !== undefined));
+                    const table = $('qbTable');
+                    table.replaceChildren();
+                    const head = table.createTHead().insertRow();
+                    show.forEach(c => { const th = document.createElement('th'); th.textContent = c; head.appendChild(th); });
+                    const body = table.createTBody();
+                    d.objects.forEach(o => {
+                        const tr = body.insertRow();
+                        show.forEach(c => {
+                            const td = tr.insertCell();
+                            if (c === 'name') {
+                                const a = document.createElement('a');
+                                a.href = o.url; a.textContent = o.name; td.appendChild(a);
+                            } else {
+                                td.textContent = o[c] ?? '';
+                            }
+                        });
+                    });
+                    $('qbTableWrap').hidden = d.objects.length === 0;
+                } catch (err) {
+                    status.className = 'qb-status err';
+                    status.textContent = err.message;
+                    $('qbTableWrap').hidden = true;
+                }
+            });
+            refresh();
+        })();
     </script>
 {% endblock %}

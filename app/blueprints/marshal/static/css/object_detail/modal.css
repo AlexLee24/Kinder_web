@@ -278,6 +278,22 @@
     line-height: 1.5;
 }
 
+/* Upload warnings: stored anyway, but worth a look */
+.upload-error.upload-warning {
+    background: rgba(255, 193, 7, 0.08);
+    border-color: rgba(255, 193, 7, 0.35);
+}
+
+.upload-error.upload-warning .error-icon,
+.upload-error.upload-warning .error-text {
+    color: #ffc107;
+}
+
+.upload-error .error-text ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
 /* Column Mapping Section */
 #columnMappingSection {
     margin: 16px 0;
