@@ -1,7 +1,9 @@
 /* Lab › Special Run › Lens Simulator (special_run_lens_sim.html): strong lensing ray-traced in the browser.
    For every image-plane pixel θ the source is sampled at β = θ − α(θ). Lens: point mass, or SIE (Kormann et al.
    1994 normalisation, tiny core) with external shear. Source: Sérsic, clumpy (Sérsic + knots), a point (quasar / SN)
-   or a host galaxy with a supernova in it (Host + SN).
+   or a host galaxy with a supernova in it (Host + SN). Foreground: an isolated elliptical, a group or a cluster
+   (BCG + intracluster light + member galaxies that also deflect), chosen from σ or by hand; a lensed background
+   field at z_source, foreground stars, seeing and sky noise.
    Distances: flat ΛCDM (H0 = 70, Ωm = 0.3). Angles are in arcsec throughout. */
 (() => {
     const page = document.getElementById('lsPage');
@@ -38,7 +40,7 @@
     /* ------------------------------------------------------------ state */
     const DEF = {model: 'sie', logm: logMOfSigma(260), zl: 0.2, q: 0.8, pa: 30, gamma: 0.03, gpa: 60, light: 0.8,
                  src: 'galaxy', zs: 0.6, re: 1.5, n: 1, sq: 0.7, spa: 20, bx: 0.15, by: 0.1,
-                 fov: 'auto', seeing: 0, crit: true, caus: true};
+                 env: 'auto', fov: 'auto', seeing: 0, noise: 0, field: true, crit: true, caus: true};
     const PRESETS = [
         ['Galaxy–galaxy lens (SLACS-like)', {}],
         ['Cosmic Horseshoe (SDSS J1148+1930)', {logm: logMOfSigma(500), zl: 0.444, zs: 2.379, q: 0.85, pa: 100, gamma: 0.02,
@@ -46,9 +48,9 @@
         ['8 o\'clock arc (SDSS J0022+1431)', {logm: logMOfSigma(380), zl: 0.38, zs: 2.73, q: 0.75, pa: 40, gamma: 0.05,
             src: 'clumpy', re: 1.2, sq: 0.6, bx: 0.25, by: 0.12, light: 0.8}],
         ['Abell 370 giant arc (cluster)', {logm: logMOfSigma(1500), zl: 0.375, zs: 0.725, q: 0.65, pa: 100, gamma: 0.06, gpa: 10,
-            src: 'clumpy', re: 8, sq: 0.5, spa: 10, bx: 0, by: 0.25, light: 0.35, n: 1}],
+            src: 'clumpy', re: 8, sq: 0.5, spa: 10, bx: 0, by: 0.25, light: 1, n: 1}],
         ['MACS J0717 (most massive cluster lens)', {logm: logMOfSigma(1750), zl: 0.546, zs: 2.5, q: 0.6, pa: 135, gamma: 0.08,
-            src: 'clumpy', re: 6, sq: 0.6, spa: 45, bx: 0, by: 0.22, light: 0.3}],
+            src: 'clumpy', re: 6, sq: 0.6, spa: 45, bx: 0, by: 0.22, light: 1}],
         ['Einstein Cross (Q2237+0305)', {logm: logMOfSigma(215), zl: 0.0394, zs: 1.695, q: 0.75, pa: 70, gamma: 0.01,
             src: 'point', bx: 0.03, by: 0.02, light: 1}],
         ['Twin Quasar (Q0957+561)', {logm: logMOfSigma(450), zl: 0.36, zs: 1.41, q: 0.8, pa: 60, gamma: 0.2, gpa: 70,
@@ -56,7 +58,7 @@
         ['SN 2025wny (lensed SLSN, z = 2.01)', {logm: logMOfSigma(230), zl: 0.375, zs: 2.015, q: 0.75, pa: 120, gamma: 0.12,
             gpa: 30, src: 'hostsn', re: 1.0, n: 1, sq: 0.8, spa: 40, bx: 0.06, by: 0.05, light: 1}],
         ['SN Requiem / SN Encore (MACS J0138.0−2155)', {logm: logMOfSigma(850), zl: 0.338, zs: 1.95, q: 0.6, pa: 100, gamma: 0.05,
-            src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 0.4}],
+            src: 'hostsn', re: 5, n: 2.5, sq: 0.7, spa: 30, bx: 0, by: 0.17, light: 1}],
         ['Lensed supernova (iPTF16geu-like)', {logm: logMOfSigma(160), zl: 0.216, zs: 0.409, q: 0.8, pa: 50, gamma: 0.05,
             src: 'point', bx: 0.05, by: 0.04, light: 1}],
         ['Point-mass lens (idealised)', {model: 'pm', logm: 12, zl: 0.5, zs: 2, gamma: 0, src: 'galaxy', re: 0.8,
@@ -66,13 +68,14 @@
 
     /* ------------------------------------------------------------ controls */
     const sliders = {logm: 'lsLogM', zl: 'lsZl', q: 'lsQ', pa: 'lsPa', gamma: 'lsGamma', gpa: 'lsGpa', light: 'lsLight',
-                     zs: 'lsZs', re: 'lsRe', n: 'lsN', sq: 'lsSq', spa: 'lsSpa', bx: 'lsBx', by: 'lsBy', seeing: 'lsSeeing'};
+                     zs: 'lsZs', re: 'lsRe', n: 'lsN', sq: 'lsSq', spa: 'lsSpa', bx: 'lsBx', by: 'lsBy', seeing: 'lsSeeing',
+                     noise: 'lsNoise'};
     const fmt = {
         logm: (v) => `${(10 ** v).toExponential(1).replace('e+', '×10^')} M☉`.replace(/\^(\d+)/, (_, e) => sup(e)),
         zl: (v) => v.toFixed(3), zs: (v) => v.toFixed(3), q: (v) => v.toFixed(2), pa: (v) => `${v}°`, gpa: (v) => `${v}°`,
         gamma: (v) => v.toFixed(3), light: (v) => v.toFixed(2), re: (v) => `${v.toFixed(2)} kpc`, n: (v) => v.toFixed(1),
         sq: (v) => v.toFixed(2), spa: (v) => `${v}°`, bx: (v) => v.toFixed(3), by: (v) => v.toFixed(3),
-        seeing: (v) => (v ? `${v.toFixed(2)}″` : 'off'),
+        seeing: (v) => (v ? `${v.toFixed(2)}″` : 'off'), noise: (v) => (v ? v.toFixed(2) : 'off'),
     };
     function sup(e) { return String(e).replace(/\d/g, (d) => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]); }
 
@@ -87,6 +90,8 @@
         $('lsFov').value = String(S.fov);
         $('lsCrit').checked = S.crit;
         $('lsCaus').checked = S.caus;
+        $('lsField').checked = S.field;
+        $('lsEnv').value = S.env;
         page.dataset.model = S.model;
         page.dataset.src = S.src;
         document.querySelectorAll('[data-model]').forEach((b) => b.classList.toggle('is-on', b.dataset.model === S.model));
@@ -110,10 +115,12 @@
     $('lsFov').addEventListener('change', () => { S.fov = $('lsFov').value === 'auto' ? 'auto' : +$('lsFov').value; schedule(); });
     $('lsCrit').addEventListener('change', () => { S.crit = $('lsCrit').checked; schedule(); });
     $('lsCaus').addEventListener('change', () => { S.caus = $('lsCaus').checked; schedule(); });
+    $('lsField').addEventListener('change', () => { S.field = $('lsField').checked; schedule(); });
+    $('lsEnv').addEventListener('change', () => { S.env = $('lsEnv').value; $('lsPreset').value = ''; schedule(); });
     $('lsPreset').addEventListener('change', () => {
         const p = PRESETS[+$('lsPreset').value];
         if (!p) return;
-        S = {...DEF, ...p[1], fov: 'auto', seeing: S.seeing, crit: S.crit, caus: S.caus};
+        S = {...DEF, ...p[1], fov: 'auto', seeing: S.seeing, noise: S.noise, field: S.field, crit: S.crit, caus: S.caus};
         syncControls(); schedule();
     });
     $('lsReset').addEventListener('click', () => { S = {...DEF}; $('lsPreset').value = '0'; syncControls(); schedule(); });
@@ -189,29 +196,130 @@
         };
     }
 
+    /* ------------------------------------------------------------ foreground scene */
+    // What sits at the lens redshift depends on the lens class: an isolated elliptical, a group (central galaxy +
+    // a few members) or a cluster (BCG + intracluster light + a red sequence whose number grows as σ³). Members
+    // follow Σ ∝ 1/r, have Schechter-like luminosities, Faber–Jackson σ (L ∝ σ⁴) and add their own SIS deflection.
+    // Positions are in kpc (so the scene shrinks with distance) and seeded, so moving a slider does not reshuffle it.
+    const ENV_LABEL = {galaxy: 'Isolated galaxy', group: 'Group', cluster: 'Cluster', none: 'Compact object'};
+    const RED = [1.0, 0.78, 0.5], BLUE_MEMBER = [0.72, 0.84, 1.0];
+
+    function envOf(sig) {
+        if (S.model === 'pm') return 'none';
+        if (S.env !== 'auto') return S.env;
+        return sig < 350 ? 'galaxy' : sig < 750 ? 'group' : 'cluster';
+    }
+
+    function scene(d, sig, kpcL, fov, pix) {
+        const env = envOf(sig), r = rng(9001), objs = [], perturbers = [];
+        const lensFac = 4 * Math.PI / (C * C) * d.Dls / d.Ds * ARC;           // θ_E = lensFac · σ²
+        const arc = (kpc) => kpc / kpcL;
+        const add = (o) => { o.reA = Math.max(arc(o.re), 1.2 * pix); objs.push(o); };
+        if (env === 'none') return {env, objs, perturbers, n: 0};
+        // central galaxy
+        let Lc, rec;
+        if (env === 'galaxy') { Lc = Math.min(6, Math.max(0.2, (sig / 220) ** 4)); rec = Math.min(15, Math.max(1, 4 * Lc ** 0.6)); }
+        else if (env === 'group') { Lc = 3 + 3 * (sig - 350) / 400; rec = 8 * (Lc / 3) ** 0.6; }
+        else { Lc = 8 + 4 * sig / 1000; rec = 25 + 10 * sig / 1000; }
+        add({x: 0, y: 0, L: Lc, re: rec, n: 4, q: S.q, pa: S.pa, col: RED});
+        if (env === 'cluster') add({x: 0, y: 0, L: Lc * 2.2, re: 160, n: 1, q: Math.min(1, S.q + 0.1), pa: S.pa, col: [1.0, 0.82, 0.6], icl: true});
+        if (env === 'galaxy') return {env, objs, perturbers, n: 0};
+        // members
+        const nMem = env === 'group' ? Math.round(3 + 5 * Math.min(1, (sig - 350) / 400))
+                                    : Math.round(Math.min(80, Math.max(10, 25 * (sig / 1000) ** 3)));
+        const Rmax = env === 'group' ? 300 : 1500 * sig / 1000;
+        const ca = Math.cos(S.pa * Math.PI / 180), sa = Math.sin(S.pa * Math.PI / 180), qs = Math.sqrt(S.q);
+        let shown = 0;
+        for (let i = 0; i < nMem; i++) {
+            const rr = Math.max(25, Rmax * r()), th = 2 * Math.PI * r();
+            const u = rr * Math.cos(th) / qs, v = rr * Math.sin(th) * qs;          // follow the halo's shape
+            const xk = ca * u - sa * v, yk = sa * u + ca * v;
+            const L = Math.min(3, Math.max(0.08, 0.12 / (r() ** 1.3 + 0.04)));
+            const spiral = env === 'group' ? r() < 0.35 : (rr > 0.5 * Rmax && r() < 0.3);
+            const q = spiral ? 0.3 + 0.6 * r() : 0.6 + 0.4 * r(), pa = 180 * r();
+            const x = arc(xk), y = arc(yk);
+            const sigI = 220 * L ** 0.25 * (spiral ? 0.7 : 1);
+            if (Math.abs(x) < fov && Math.abs(y) < fov) perturbers.push([x, y, lensFac * sigI * sigI]);
+            if (Math.abs(x) < 0.7 * fov && Math.abs(y) < 0.7 * fov) {
+                shown++;
+                add({x, y, L, re: (spiral ? 5 : 4) * L ** 0.6, n: spiral ? 1 : 4, q, pa, col: spiral ? BLUE_MEMBER : RED});
+            }
+        }
+        return {env, objs, perturbers, n: shown};
+    }
+
+    // Background field at the source redshift (lensed, so clusters show weak-lensing arclets) and foreground stars.
+    function field(fov, pix) {
+        const r = rng(4242 + Math.round(fov * 10)), half = 0.6 * fov, gals = [], stars = [];
+        const nG = Math.min(700, Math.round(0.012 * (2 * half) ** 2));
+        const cols = [[0.55, 0.75, 1.0], [0.9, 0.92, 1.0], [1.0, 0.82, 0.62]];
+        for (let i = 0; i < nG; i++) {
+            const re = Math.max(0.6 * pix, 0.12 * Math.exp(1.1 * r()));
+            gals.push({x: (2 * r() - 1) * half, y: (2 * r() - 1) * half, re, q: 0.3 + 0.7 * r(), pa: Math.PI * r(),
+                       amp: 0.03 + 0.25 * r() ** 2, col: cols[Math.floor(3 * r())]});
+        }
+        const nS = Math.round(0.00015 * (2 * half) ** 2);
+        for (let i = 0; i < nS; i++) {
+            const t = r();
+            stars.push({x: (2 * r() - 1) * half, y: (2 * r() - 1) * half, amp: 0.3 + 12 * r() ** 4,
+                        col: [1.0, 0.9 + 0.1 * t, 0.75 + 0.25 * t]});
+        }
+        // grid hash in the source plane for fast lookups
+        const cell = Math.max(1.5, fov / 24), nc = Math.ceil(2 * half / cell) + 1, grid = new Map();
+        for (const g of gals) {
+            const ext = 5 * g.re;
+            const i0 = Math.floor((g.x - ext + half) / cell), i1 = Math.floor((g.x + ext + half) / cell);
+            const j0 = Math.floor((g.y - ext + half) / cell), j1 = Math.floor((g.y + ext + half) / cell);
+            for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+                const k = j * nc + i;
+                if (!grid.has(k)) grid.set(k, []);
+                grid.get(k).push(g);
+            }
+            g.c = Math.cos(g.pa); g.s = Math.sin(g.pa); g.ir = 1 / g.re;
+        }
+        const at = (x, y, out) => {   // adds the background light at source-plane (x, y) into out[0..2]
+            const k = Math.floor((y + half) / cell) * nc + Math.floor((x + half) / cell);
+            const list = grid.get(k);
+            if (!list) return;
+            for (const g of list) {
+                const dx = x - g.x, dy = y - g.y, xr = g.c * dx + g.s * dy, yr = -g.s * dx + g.c * dy;
+                const rr = Math.sqrt(g.q * xr * xr + yr * yr / g.q) * g.ir;
+                if (rr > 5) continue;
+                const v = g.amp * Math.exp(-1.678 * rr);
+                out[0] += v * g.col[0]; out[1] += v * g.col[1]; out[2] += v * g.col[2];
+            }
+        };
+        return {at, stars};
+    }
+
+    // Gaussian blur by three box passes per axis (cost independent of the seeing in pixels)
+    function boxPass(src, dst, N, r, horiz) {
+        const w = 2 * r + 1;
+        for (let a = 0; a < N; a++) {
+            let acc = 0;
+            const idx = (b) => (horiz ? a * N + Math.min(N - 1, Math.max(0, b)) : Math.min(N - 1, Math.max(0, b)) * N + a);
+            for (let b = -r; b <= r; b++) acc += src[idx(b)];
+            for (let b = 0; b < N; b++) {
+                dst[horiz ? a * N + b : b * N + a] = acc / w;
+                acc += src[idx(b + r + 1)] - src[idx(b - r)];
+            }
+        }
+    }
     function blur(a, N, sigPix) {
         if (sigPix < 0.3) return a;
-        const R = Math.ceil(3 * sigPix), ker = [];
-        let ks = 0;
-        for (let i = -R; i <= R; i++) { const w = Math.exp(-i * i / (2 * sigPix * sigPix)); ker.push(w); ks += w; }
-        for (let i = 0; i < ker.length; i++) ker[i] /= ks;
-        const t = new Float32Array(a.length), o = new Float32Array(a.length);
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-            let v = 0;
-            for (let k = -R; k <= R; k++) { const xx = Math.min(N - 1, Math.max(0, x + k)); v += a[y * N + xx] * ker[k + R]; }
-            t[y * N + x] = v;
-        }
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-            let v = 0;
-            for (let k = -R; k <= R; k++) { const yy = Math.min(N - 1, Math.max(0, y + k)); v += t[yy * N + x] * ker[k + R]; }
-            o[y * N + x] = v;
-        }
-        return o;
+        const r = Math.max(1, Math.round((Math.sqrt(12 * sigPix * sigPix / 3 + 1) - 1) / 2));
+        let x = Float32Array.from(a), y = new Float32Array(a.length);
+        for (const horiz of [true, false]) for (let i = 0; i < 3; i++) { boxPass(x, y, N, r, horiz); [x, y] = [y, x]; }
+        return x;
+    }
+
+    function gauss(r) {   // standard normal (Box–Muller) from a seeded uniform generator
+        return Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
     }
 
     /* ------------------------------------------------------------ render */
     const N = 340;
-    const SRC_RGB = [0.45, 0.72, 1.0], LENS_RGB = [1.0, 0.78, 0.5];
+    const SRC_RGB = [0.45, 0.72, 1.0];
     const off = document.createElement('canvas');
     off.width = off.height = N;
     const offCtx = off.getContext('2d');
@@ -223,42 +331,99 @@
         const d = dists(S.zl, S.zs);
         const M = 10 ** S.logm;
         const tE = thetaE(S.model, M, d);
+        const sig = S.model === 'sie' ? sigmaOf(M) : 0;
         const kpcL = d.Dl * 1000 / ARC, kpcS = d.Ds * 1000 / ARC;      // kpc per arcsec at the lens / source
         const reArc = S.re / kpcS;
         const fov = S.fov === 'auto' ? niceFov(Math.max(5 * tE, S.src === 'point' ? 0 : 6 * reArc, 0.5)) : S.fov;
         const pix = fov / N;
         const cx = S.bx * tE, cy = S.by * tE;
         const alpha = deflector(tE), src = sourceFn(cx, cy, reArc, pix);
-        const reL = Math.max(Math.min(0.6 * tE, 15 / kpcL), 2 * pix), bnL = 7.669;
-        const cL = Math.cos(S.pa * Math.PI / 180), sL = Math.sin(S.pa * Math.PI / 180), qL = S.model === 'pm' ? 1 : S.q;
+        const sc = scene(d, sig, kpcL, fov, pix);
+        const fld = S.field ? field(fov, pix) : null;
+        const P = sc.perturbers, nP = P.length;
+        // star-forming sources are blue; a bulge-like (n ≥ 2) host is a red, quiescent galaxy (e.g. SN Requiem's MRG-M0138)
+        const SC = (S.src === 'galaxy' || S.src === 'hostsn') && S.n >= 2 ? [1.0, 0.7, 0.48] : SRC_RGB;
 
-        const img = new Float32Array(N * N), lens = new Float32Array(N * N), plane = new Float32Array(N * N);
-        const AX = new Float32Array(N * N), AY = new Float32Array(N * N);
-        const a = [0, 0];
+        const NN = N * N;
+        const img = [new Float32Array(NN), new Float32Array(NN), new Float32Array(NN)];
+        const pln = [new Float32Array(NN), new Float32Array(NN), new Float32Array(NN)];
+        const AX = new Float32Array(NN), AY = new Float32Array(NN);
+        const a = [0, 0], bg = [0, 0, 0];
+        let sumImg = 0, sumSrc = 0, peak = 0;
         for (let j = 0; j < N; j++) {
             const y = fov / 2 - (j + 0.5) * pix;
             for (let i = 0; i < N; i++) {
                 const x = (i + 0.5) * pix - fov / 2, k = j * N + i;
                 alpha(x, y, a);
+                for (let m = 0; m < nP; m++) {     // member galaxies (SIS)
+                    const dx = x - P[m][0], dy = y - P[m][1], rr = Math.sqrt(dx * dx + dy * dy) + 0.02 * P[m][2] + 1e-6;
+                    a[0] += P[m][2] * dx / rr; a[1] += P[m][2] * dy / rr;
+                }
                 AX[k] = a[0]; AY[k] = a[1];
-                img[k] = src(x - a[0], y - a[1]);
-                plane[k] = src(x, y);
-                if (S.light > 0) {
-                    const xr = cL * x + sL * y, yr = -sL * x + cL * y;
-                    const r = Math.sqrt(qL * xr * xr + yr * yr / qL) / reL;
-                    lens[k] = S.light * 2.5 * Math.exp(-bnL * (Math.pow(r + 1e-3, 0.25) - 0.18));
+                const bx = x - a[0], by = y - a[1];
+                const v = src(bx, by), v0 = src(x, y);
+                sumImg += v; sumSrc += v0; if (v0 > peak) peak = v0;
+                for (let c = 0; c < 3; c++) { img[c][k] = v * SC[c]; pln[c][k] = v0 * SC[c]; }
+                if (fld) {
+                    bg[0] = bg[1] = bg[2] = 0; fld.at(bx, by, bg);
+                    img[0][k] += bg[0]; img[1][k] += bg[1]; img[2][k] += bg[2];
+                    bg[0] = bg[1] = bg[2] = 0; fld.at(x, y, bg);
+                    pln[0][k] += bg[0]; pln[1][k] += bg[1]; pln[2][k] += bg[2];
                 }
             }
         }
-        let sumImg = 0, sumSrc = 0, peak = 0;
-        for (let k = 0; k < N * N; k++) { sumImg += img[k]; sumSrc += plane[k]; if (plane[k] > peak) peak = plane[k]; }
         const mu = sumSrc > 0 ? sumImg / sumSrc : NaN;
-        const sig = S.seeing / 2.3548 / pix;
-        const bImg = blur(img, N, sig), bLens = blur(lens, N, sig), bPlane = blur(plane, N, sig);
+
+        // foreground light (not lensed): each object drawn in its own box
+        if (S.light > 0) {
+            for (const o of sc.objs) {
+                const bn = o.n === 4 ? 7.669 : 1.678, inv = 1 / o.n;
+                // I(r) = I_e exp(−b_n[(r/r_e)^(1/n) − 1]); I_e follows the Kormendy relation (bigger → fainter per arcsec²)
+                // a quasar / SN is far brighter per pixel than any galaxy: the display is scaled to the source peak
+                const Ie = (o.icl ? 0.012 : 0.08 * (o.re / 4) ** -1.2 * (o.n === 1 ? 0.5 : 1)) * S.light * (S.src === 'point' ? 0.05 : 1);
+                const c = Math.cos(o.pa * Math.PI / 180), s = Math.sin(o.pa * Math.PI / 180);
+                const ext = Math.min(fov, (o.icl ? 3 : 10) * o.reA);
+                const i0 = Math.max(0, Math.floor((o.x - ext + fov / 2) / pix)), i1 = Math.min(N - 1, Math.ceil((o.x + ext + fov / 2) / pix));
+                const j0 = Math.max(0, Math.floor((fov / 2 - o.y - ext) / pix)), j1 = Math.min(N - 1, Math.ceil((fov / 2 - o.y + ext) / pix));
+                for (let j = j0; j <= j1; j++) {
+                    const y = fov / 2 - (j + 0.5) * pix - o.y;
+                    for (let i = i0; i <= i1; i++) {
+                        const x = (i + 0.5) * pix - fov / 2 - o.x;
+                        const xr = c * x + s * y, yr = -s * x + c * y;
+                        const rr = Math.sqrt(o.q * xr * xr + yr * yr / o.q) / o.reA + 1e-3;
+                        const v = Ie * Math.exp(-bn * (Math.pow(rr, inv) - 1));
+                        const k = j * N + i;
+                        img[0][k] += v * o.col[0]; img[1][k] += v * o.col[1]; img[2][k] += v * o.col[2];
+                    }
+                }
+            }
+        }
+        if (fld) {   // foreground stars: unresolved, so drawn at ≥ the pixel / seeing scale
+            const sg = Math.max(0.6 * pix, 0.04);
+            for (const st of fld.stars) {
+                const ext = 4 * sg, kk = 1 / (2 * sg * sg);
+                const i0 = Math.max(0, Math.floor((st.x - ext + fov / 2) / pix)), i1 = Math.min(N - 1, Math.ceil((st.x + ext + fov / 2) / pix));
+                const j0 = Math.max(0, Math.floor((fov / 2 - st.y - ext) / pix)), j1 = Math.min(N - 1, Math.ceil((fov / 2 - st.y + ext) / pix));
+                for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+                    const x = (i + 0.5) * pix - fov / 2 - st.x, y = fov / 2 - (j + 0.5) * pix - st.y;
+                    const v = st.amp * Math.exp(-(x * x + y * y) * kk), k = j * N + i;
+                    img[0][k] += v * st.col[0]; img[1][k] += v * st.col[1]; img[2][k] += v * st.col[2];
+                }
+            }
+        }
+
+        // seeing, then sky noise (seeded, so the pattern holds still while you drag)
+        const sigPix = S.seeing / 2.3548 / pix;
+        const norm = peak > 0 ? 1 / peak : 1;
+        const out = [img, pln].map((rgb) => rgb.map((ch) => blur(ch, N, sigPix)));
+        if (S.noise > 0) {
+            const rn = rng(31337), sn = 0.12 * S.noise * S.noise / norm;
+            for (const rgb of out) for (const ch of rgb) for (let k = 0; k < NN; k++) ch[k] += sn * gauss(rn);
+        }
 
         // critical curves (det A changes sign between neighbours) and their caustics
         const crit = [], caus = [];
-        const det = new Float32Array(N * N);
+        const det = new Float32Array(NN);
         for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
             const k = j * N + i;
             const dxx = (AX[k + 1] - AX[k - 1]) / (2 * pix), dxy = (AX[k - N] - AX[k + N]) / (2 * pix);
@@ -273,12 +438,11 @@
             }
         }
 
-        const norm = peak > 0 ? 1 / peak : 1;
-        paint($('lsSrc'), bPlane, null, norm, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
-        paint($('lsImg'), bImg, bLens, norm, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'));
+        paint($('lsSrc'), out[1], norm, fov, S.caus ? caus : [], '#ff6b8a', [cx, cy]);
+        paint($('lsImg'), out[0], norm, fov, S.crit ? crit : [], css('--color-accent', '#F39F5A'));
         scaleBar('lsScaleS', fov); scaleBar('lsScaleI', fov);
         view = {fov, tE};
-        stats(d, M, tE, kpcL, reArc, mu, fov);
+        stats(d, M, tE, kpcL, reArc, mu, fov, sc);
         chart(M);
     }
 
@@ -287,14 +451,13 @@
         return steps.find((s) => s >= v) || 600;
     }
 
-    function paint(cv, A, L, norm, fov, pts, col, mark) {
+    function paint(cv, rgb, norm, fov, pts, col, mark) {
         const data = offCtx.createImageData(N, N), px = data.data, soft = 0.06, den = Math.asinh(1 / soft);
         for (let k = 0; k < N * N; k++) {
-            const s = Math.min(1, Math.asinh(A[k] * norm / soft) / den);
-            const l = L ? Math.min(1, Math.asinh(L[k] / soft) / den) : 0;
-            px[4 * k] = 255 * Math.min(1, s * SRC_RGB[0] + l * LENS_RGB[0]);
-            px[4 * k + 1] = 255 * Math.min(1, s * SRC_RGB[1] + l * LENS_RGB[1]);
-            px[4 * k + 2] = 255 * Math.min(1, s * SRC_RGB[2] + l * LENS_RGB[2]);
+            for (let c = 0; c < 3; c++) {
+                const v = Math.asinh(rgb[c][k] * norm / soft) / den;
+                px[4 * k + c] = 255 * Math.min(1, Math.max(0, v));
+            }
             px[4 * k + 3] = 255;
         }
         offCtx.putImageData(data, 0, 0);
@@ -334,11 +497,12 @@
         return v.toFixed(d);
     }
 
-    function stats(d, M, tE, kpcL, reArc, mu, fov) {
+    function stats(d, M, tE, kpcL, reArc, mu, fov, sc) {
         const sigCr = d.Ds / (4 * Math.PI * G_C2 * d.Dl * d.Dls) / 1e12;       // M☉ / pc²
         const RE = tE * kpcL;                                                   // kpc
         const ME = sigCr * 1e6 * Math.PI * RE * RE;                             // M☉ (Σcr in M☉/kpc² × area)
         const rows = [
+            ['Lens', sc.env === 'galaxy' || sc.env === 'none' ? ENV_LABEL[sc.env] : `${ENV_LABEL[sc.env]} · ${sc.n} members in view`, true],
             ['Einstein radius θ<sub>E</sub>', `${num(tE)}″`, true],
             ['Physical R<sub>E</sub>', `${num(RE)} kpc`, true],
             ['Magnification μ', `${num(mu, 1)}×`, true],
