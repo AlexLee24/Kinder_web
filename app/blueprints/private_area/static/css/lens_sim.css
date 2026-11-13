@@ -1,10 +1,18 @@
 /* Lab › Special Run › Lens Simulator (special_run_lens_sim.html). Side column uses the Spectrum tool's sp-* styles. */
 .ls-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+/* The controls scroll on their own so the images on the right stay in view */
+.ls-page .kw-tool > .kw-tool-side { max-height: calc(100vh - var(--kw-nav-h) - 28px); overflow-y: auto; overscroll-behavior: contain;
+                                    padding-right: 6px; scrollbar-width: thin; }
+@media (max-width: 960px) { .ls-page .kw-tool > .kw-tool-side { max-height: none; overflow: visible; padding-right: 0; } }
 .ls-page .sp-hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ls-seg { display: flex; }
-.ls-seg .kw-seg-item { flex: 1; justify-content: center; font-size: 0.78rem; }
+.ls-seg { flex-wrap: wrap; }
+.ls-seg .kw-seg-item { flex: 1 1 40%; justify-content: center; font-size: 0.78rem; }
 .ls-seg .kw-seg-item.is-on { background: var(--color-accent); color: #1b1208; font-weight: 600; opacity: 1; }
 #lsPage[data-model="pm"] .ls-sie, #lsPage[data-src="point"] .ls-ext { display: none; }
+#lsPage[data-tel="ideal"] .ls-obs, #lsPage:not([data-tel="custom"]) .ls-custom { display: none; }
+#lsPage[data-g2="0"] .ls-g2, #lsPage:not([data-src="hostsn"]) .ls-sn { display: none; }
+.ls-stat small { font-size: 0.7rem; color: var(--kw-text-muted); font-weight: 400; }
 
 .ls-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; background: #000;
              border-radius: var(--kw-radius-xl); overflow: hidden; }
@@ -31,3 +39,10 @@
 .ls-chart-panel canvas { display: block; width: 100%; height: auto; margin-top: 8px; }
 .ls-muted { font-size: 0.75rem; color: var(--kw-text-muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
 .ls-notes p { margin: 8px 0 0; font-size: 0.84rem; line-height: 1.55; color: var(--kw-text-secondary); }
+
+/* number boxes next to each slider */
+.ls-page .sp-val { display: inline-flex; align-items: center; gap: 4px; }
+.ls-num { width: 76px; padding: 2px 6px; border: 1px solid var(--kw-border); border-radius: 6px; background: rgba(0, 0, 0, .25);
+          color: var(--kw-text-white); font: 0.8rem var(--kw-font-mono, ui-monospace, monospace); text-align: right; }
+.ls-num:focus { outline: none; border-color: var(--color-accent); }
+.ls-unit { font-size: 0.72rem; color: var(--kw-text-muted); min-width: 14px; }
