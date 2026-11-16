@@ -809,6 +809,8 @@ def _ensure_extra_tables():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # DETECT's second review image: Euclid VIS cutout (NULL outside Euclid DR1 / Q1)
+        _run("ALTER TABLE transient.lsst_target_images ADD COLUMN IF NOT EXISTS euclid_data BYTEA")
         # transient.lsst_lc_state — last ALeRCE lastmjd seen per TNS object, so the hourly
         # LSST light-curve refresh only re-downloads objects with new points.
         _run("""

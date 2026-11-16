@@ -220,6 +220,7 @@ async function updatePageContent() {
 
     // Load all panels in parallel; detect starts immediately
     loadLocationImage();
+    loadSkyPanels();
     loadSpectrumPlot();
     loadComments();
     initializeAladinWhenReady();
@@ -508,28 +509,87 @@ function _detectModalOpen() {
     return !!(m && m.style.display && m.style.display !== 'none');
 }
 
-// The DETECT finder (LS DR10 + host ellipses) replaces the plain Legacy Survey cutout in the
-// "DESI Legacy Survey" panel once it exists; white figure margins are trimmed server-side.
-let _detectImageShownInPanel = false;
+// The DETECT finder (LS DR10 + host ellipses) goes in the DETECT image panel (row 2); white figure margins
+// are trimmed server-side. Called again after a run or a regenerate, so the newest image is shown.
+let _detectPanelVersion = 0;
 function showDetectImageInLocationPanel(imageId) {
-    if (!imageId || _detectImageShownInPanel) return;
-    const imageElement = document.getElementById('locationImageSrc');
-    const markerElement = document.getElementById('locationMarker');
-    const loadingElement = document.getElementById('imageLoading');
-    if (!imageElement) return;
-    const url = `/detect_image_by_id/${imageId}?trim=1`;
+    if (!imageId) return;
+    const box = document.getElementById('skyDetect');
+    if (!box) return;
+    const url = `/detect_image_by_id/${encodeURIComponent(imageId)}?trim=1&v=${++_detectPanelVersion}`;
     const probe = new Image();
-    probe.onload = function () {
-        _detectImageShownInPanel = true;
-        imageElement.src = url;
-        imageElement.style.display = 'block';
-        imageElement.title = 'DETECT finder (LS DR10, host model overlaid) — click to open in the Legacy Survey viewer';
-        if (markerElement) markerElement.style.display = 'none';   // the finder already marks the transient
-        if (loadingElement) loadingElement.style.display = 'none';
-        const header = document.querySelector('#locationImage')?.closest('.panel-card')?.querySelector('.panel-header h3');
-        if (header && !header.dataset.detect) { header.dataset.detect = '1'; header.textContent = 'DESI Legacy Survey · DETECT'; }
-    };
-    probe.src = url;   // on error (not logged in / no image) the LS cutout simply stays
+    probe.onload = () => _skyShow(box, url, () => window.open(`/detect_image_by_id/${encodeURIComponent(imageId)}`, '_blank', 'noopener'),
+                                  { contain: true, marker: false });
+    probe.onerror = () => { if (!box.classList.contains('od-sky-ready')) _skyEmpty(box); };
+    probe.src = url;
+}
+
+// ---------------------------------------------------------------------------
+// Image rows: LS DR11, Euclid VIS, HSC PDR3 via Tools › Sky Cutouts' /api/cutouts/image (60″, north up,
+// server-cached); a source without data there leaves its panel black with a short note.
+// ---------------------------------------------------------------------------
+const SKY_FOV = 60;
+
+function _skyShow(box, url, onClick, opts = {}) {
+    const img = box.querySelector('.od-sky-img');
+    const spin = box.querySelector('.od-sky-loading');
+    const marker = box.querySelector('.od-sky-marker');
+    box.classList.remove('od-sky-empty');
+    box.classList.add('od-sky-ready');
+    box.querySelector('.od-sky-note')?.remove();
+    img.src = url;
+    img.style.display = 'block';
+    img.style.objectFit = opts.contain ? 'contain' : 'cover';
+    img.style.cursor = onClick ? 'pointer' : '';
+    img.onclick = onClick || null;
+    if (spin) spin.style.display = 'none';
+    if (marker) marker.style.display = opts.marker === false ? 'none' : 'block';
+}
+
+function _skyEmpty(box, message) {
+    if (!box) return;
+    const spin = box.querySelector('.od-sky-loading');
+    if (spin) spin.style.display = 'none';
+    box.querySelector('.od-sky-img').style.display = 'none';
+    box.querySelector('.od-sky-marker').style.display = 'none';
+    box.classList.add('od-sky-empty');
+    let note = box.querySelector('.od-sky-note');
+    if (!note) { note = document.createElement('div'); note.className = 'od-sky-note'; box.appendChild(note); }
+    note.textContent = message || box.dataset.empty || '';
+}
+
+function _skyCutout(boxId, src, onClick) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const ra = parseFloat(objectData.ra), dec = parseFloat(objectData.declination);
+    const q = new URLSearchParams({ ra: ra.toFixed(6), dec: dec.toFixed(6), fov: SKY_FOV, src });
+    fetch(`/api/cutouts/image?${q}`)
+        .then(async r => {
+            if (r.ok && (r.headers.get('content-type') || '').startsWith('image/')) {
+                _skyShow(box, URL.createObjectURL(await r.blob()), onClick);
+                return;
+            }
+            let msg = null;
+            if (r.status !== 404) {   // 404 = no data there → the panel's own note
+                try { msg = (await r.json()).error; } catch (_) { msg = `Not available (HTTP ${r.status})`; }
+            }
+            _skyEmpty(box, msg);
+        })
+        .catch(() => _skyEmpty(box, 'Not available right now'));
+}
+
+function loadSkyPanels() {
+    if (!objectData || !objectData.ra || !objectData.declination) {
+        ['skyDr11', 'skyEuclid', 'skyHsc'].forEach(id => _skyEmpty(document.getElementById(id), 'No coordinates'));
+        return;
+    }
+    const ra = parseFloat(objectData.ra), dec = parseFloat(objectData.declination);
+    const viewer = layer => () => window.open(
+        `https://www.legacysurvey.org/viewer?ra=${ra}&dec=${dec}&zoom=16&mark=${ra},${dec}&layer=${layer}`, '_blank', 'noopener,noreferrer');
+    _skyCutout('skyDr11', 'dr11', viewer('ls-dr11'));
+    _skyCutout('skyEuclid', 'vis', () => window.open(
+        `/sky_cutouts?q=${encodeURIComponent(ra.toFixed(6) + ' ' + dec.toFixed(6))}&fov=${SKY_FOV}&p=vis,nisp,hsc,dr10`, '_blank', 'noopener'));
+    _skyCutout('skyHsc', 'hsc', viewer('hsc-dr3'));
 }
 
 function _renderDetectChartView() {
@@ -558,9 +618,11 @@ function loadDetectImages() {
                 _detectImageId = data.images[0].image_id;
                 showDetectImageInLocationPanel(_detectImageId);
                 if (_detectTabMode === 'chart') _renderDetectChartView();
+            } else {
+                _skyEmpty(document.getElementById('skyDetect'));
             }
         })
-        .catch(() => {});
+        .catch(() => _skyEmpty(document.getElementById('skyDetect')));
 }
 
 function generateDetectImages() {
@@ -587,6 +649,7 @@ function generateDetectImages() {
             if (btn) btn.disabled = false;
             if (data.success && Array.isArray(data.images) && data.images.length > 0) {
                 _detectImageId = data.images[0].image_id;
+                showDetectImageInLocationPanel(_detectImageId);
                 _renderDetectChartView();
             } else {
                 if (detectBody) detectBody.innerHTML = `<div style="color:#ff6b6b; padding:20px; text-align:center;">${escapeHtml(data.error || 'Generation failed')}</div>`;

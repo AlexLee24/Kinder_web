@@ -16,6 +16,7 @@ from function.paths import PROJECT_ROOT, DATA_ROOT
 CROSSMATCH_IMAGE_OUTPUT_DIR = DATA_ROOT / "crossmatch_images"
 CROSSMATCH_IMAGE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 CROSSMATCH_IMAGE_SOURCE = "DESI"
+EUCLID_IMAGE_SOURCE = "Euclid"     # the second review image (Kinder's app/services/detect/euclid_image.py)
 
 
 def _upload_tns_objects_directly(csv_path: Path | str) -> int:
@@ -778,11 +779,34 @@ def build_target_image_bytes(target_name: str, target_ra: float, target_dec: flo
     return bytes(image_bytes)
 
 
+def build_euclid_image_bytes(target_name: str, target_ra: float, target_dec: float,
+                             upload_rows: list[dict], analyzed: list[dict] | None = None) -> bytes | None:
+    """Euclid VIS cutout of the finder's field with the transient and the candidates marked; None outside
+    Euclid DR1 / Q1, when the ESA archive does not answer, or when DETECT runs outside Kinder."""
+    try:
+        from app.services.detect.euclid_image import build_png
+    except ImportError:
+        return None
+    candidates = _build_image_candidates(upload_rows)
+    host_row = next((r for r in upload_rows if r.get('is_host')), None)
+    fov = _estimate_fov_arcsec(target_ra, target_dec, candidates, analyzed)
+    try:
+        return build_png(target_name, target_ra, target_dec, fov, candidates,
+                         host_row.get('crossmatch_uid') if host_row else None)
+    except Exception as e:
+        print(f"[WARNING] {target_name}: Euclid image failed: {type(e).__name__} - {e}")
+        return None
+
+
 def _generate_and_upload_target_image(target_name: str, target_ra: float, target_dec: float,
                                       upload_rows: list[dict],
                                       has_desi: bool = True,
                                       analyzed: list[dict] | None = None,
                                       screen: dict | None = None) -> tuple[str | None, bool]:
+    euclid = build_euclid_image_bytes(target_name, target_ra, target_dec, upload_rows, analyzed)
+    if euclid:
+        DataUploader.save_target_image(target_name, euclid, source=EUCLID_IMAGE_SOURCE)
+        print(f"[INFO] {target_name}: Euclid VIS image saved")
     image_bytes = build_target_image_bytes(target_name, target_ra, target_dec, upload_rows,
                                            has_desi=has_desi, analyzed=analyzed, screen=screen)
     if image_bytes is None:

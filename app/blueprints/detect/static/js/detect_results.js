@@ -83,8 +83,7 @@ function _showCard(idx) {
     if (nextBtn) nextBtn.disabled = idx === _total - 1;
 
     if (newCard) {
-        const img = newCard.querySelector('img.lazy-img');
-        if (img) _loadCardImage(img);
+        newCard.querySelectorAll('img.lazy-img').forEach(_loadCardImage);   // LS finder + Euclid VIS
     }
     _autoFetchLC(idx);
 }

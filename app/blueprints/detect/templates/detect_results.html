@@ -353,6 +353,14 @@
                              class="card-finder-img lazy-img"
                              onclick="openImgModal(this)"
                              onerror="this.parentElement.innerHTML='<div class=\'card-img-missing\'>Image unavailable</div>'">
+                        <div class="card-section-label card-euclid-label">Euclid VIS</div>
+                        <div class="card-euclid-slot">
+                            <img {% if loop.first %}src{% else %}data-src{% endif %}="{{ t.euclid_url or url_for('detect.detect_euclid_image', target_name=t.target_name) }}"
+                                 alt="Euclid VIS {{ t.target_name }}"
+                                 class="card-finder-img lazy-img"
+                                 onclick="openImgModal(this)"
+                                 onerror="this.parentElement.innerHTML='<div class=\'card-img-missing card-euclid-none\'>No Euclid DR1 / Q1 imaging here</div>'">
+                        </div>
                     </div>
                     <div class="card-plot-col">
                         <div class="card-section-label">Photometry</div>

@@ -11,6 +11,9 @@ from app.services.special_run import euclid_slsn as es
 @pytest.fixture
 def down(monkeypatch, tmp_path):
     monkeypatch.setattr(ec, '_pos_dir', lambda ra, dec: tmp_path / f'{ra}_{dec}')
+    # no tile-centre list yet: every position has to ask the archive (with one, far positions never do)
+    monkeypatch.setattr(ec, 'TILES_FILE', tmp_path / 'no_tiles.json')
+    monkeypatch.setattr(ec, '_tiles', {'ra': None, 'dec': None, 'fetched': 0.0})
     monkeypatch.setattr(es, 'esa_reachable', lambda timeout=4.0: False)
     monkeypatch.setattr(es, '_euclid', lambda: pytest.fail('must not query ESA when it is down'))
 

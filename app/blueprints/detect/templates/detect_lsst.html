@@ -115,7 +115,7 @@
 {% block pipeline_upload %}
                                 <li><code>transient.lsst_detect_matches</code>: one row per candidate, <code>is_host</code>, the rule's numbers in <code>match_data</code>.</li>
                                 <li><code>transient.lsst_detect_screen</code>: the verdict — host_status, score, tags, M (peak and discovery), z, d_DLR, offset; the review day is the UTC date of the first LSST detection.</li>
-                                <li><code>transient.lsst_target_images</code>: the finder, redrawn only when the verdict changes.</li>
+                                <li><code>transient.lsst_target_images</code>: the finder and, inside Euclid DR1 / Q1, a Euclid VIS cutout (<code>euclid_data</code>); redrawn only when the verdict changes.</li>
                                 <li>The review status lives on <code>transient.lsst_alerts</code> and is never touched by the pipeline.</li>
 {% endblock %}
 

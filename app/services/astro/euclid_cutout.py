@@ -7,6 +7,7 @@ serial, cached Legacy Survey viewer fetch.
 
     resolve(text)                       'ra dec' (deg or sexagesimal), a Kinder object name, or a Sesame name
     coverage(ra, dec)                   {'covered', 'release', 'tile', 'bands'} — the first tile with real pixels
+    near_tile(ra, dec, wait)            False when no VIS tile centre is near (instant answer for most of the sky)
     pixels(ra, dec, fov, band)          (float32 array, target x, target y, binning) for the browser stretch
     survey_jpeg(ra, dec, fov, key)      Path of a survey colour JPEG (key in SURVEYS); 404 when the survey has no data there
     image_jpeg(ra, dec, fov, src)       Path of a JPEG for any source (SOURCES): Euclid is STF-stretched on the server
@@ -57,6 +58,15 @@ _locks_guard = threading.Lock()
 WEB_QUERY_TIMEOUT = 45      # s for the footprint query
 WEB_CUTOUT_TIMEOUT = 40     # s per cutout download
 WEB_BUDGET = 75             # s for a whole coverage check
+
+# Every DR1 / Q1 VIS tile centre, so a position far from all of them is answered "not covered" without asking ESA
+# (the Transient page and DETECT ask for every object; Euclid covers a few % of the sky).
+TILES_FILE = CACHE_DIR / 'vis_tile_centres.json'
+TILES_DAYS = 7
+TILE_NEAR_DEG = 0.5          # tiles are ~0.53° on a side: a covered position is within ~0.38° of its tile centre
+_tiles = {'ra': None, 'dec': None, 'fetched': 0.0}
+_tiles_lock = threading.Lock()
+_tiles_thread = None
 
 
 class EuclidError(Exception):
@@ -145,8 +155,87 @@ def _kinder_object(q: str) -> dict | None:
 
 # ---------------------------------------------------------------- Euclid
 
-def coverage(ra: float, dec: float) -> dict:
+def _load_tiles() -> bool:
+    """Read the tile-centre file into memory (once per change); True when a list is loaded."""
+    import numpy as np
+    try:
+        st = TILES_FILE.stat()
+    except OSError:
+        return _tiles['ra'] is not None
+    if _tiles['ra'] is not None and _tiles.get('mtime') == st.st_mtime:
+        return True
+    try:
+        data = json.loads(TILES_FILE.read_text())
+        arr = np.asarray(data['tiles'], dtype=float).reshape(-1, 2)
+    except (OSError, ValueError, KeyError):
+        return _tiles['ra'] is not None
+    _tiles.update(ra=np.radians(arr[:, 0]), dec=np.radians(arr[:, 1]),
+                  fetched=float(data.get('fetched') or st.st_mtime), mtime=st.st_mtime)
+    return True
+
+
+def refresh_tiles() -> int:
+    """Fetch every VIS tile centre from the ESA archive (async TAP job, ~1 min) and save it; returns the count."""
+    with _tiles_lock:
+        if _load_tiles() and time.time() - _tiles['fetched'] < TILES_DAYS * 86400:
+            return len(_tiles['ra'])
+        rows = es._tile_centres(es._euclid())
+        if not rows:
+            raise RuntimeError('the ESA archive listed no Euclid tiles')
+        TILES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = TILES_FILE.with_suffix('.tmp')
+        tmp.write_text(json.dumps({'fetched': time.time(), 'tiles': [[round(a, 5), round(d, 5)] for _, _, a, d in rows]}))
+        tmp.replace(TILES_FILE)
+        _load_tiles()
+        logger.info('[EUCLID] %d VIS tile centres saved', len(rows))
+        return len(rows)
+
+
+def _refresh_in_background():
+    global _tiles_thread
+    if _tiles_thread is not None and _tiles_thread.is_alive():
+        return
+
+    if not es.esa_reachable():
+        return
+
+    def run():
+        try:
+            refresh_tiles()
+        except Exception as e:
+            logger.warning('[EUCLID] tile list refresh failed: %s', e)
+    _tiles_thread = threading.Thread(target=run, name='euclid-tiles', daemon=True)
+    _tiles_thread.start()
+
+
+def near_tile(ra: float, dec: float, wait: bool = False):
+    """False when no Euclid VIS tile centre lies within TILE_NEAR_DEG (certainly not covered), True when one does,
+    None when the tile list is not known yet. A missing or week-old list is fetched: in the background, or here
+    when ``wait`` (pipelines)."""
+    import numpy as np
+    have = _load_tiles()
+    stale = not have or time.time() - _tiles['fetched'] > TILES_DAYS * 86400
+    if stale:
+        if wait:
+            try:
+                refresh_tiles()
+                have = True
+            except Exception as e:
+                logger.warning('[EUCLID] tile list refresh failed: %s', e)
+        else:
+            _refresh_in_background()
+    if not have:
+        return None
+    r, d = np.radians(ra), np.radians(dec)
+    hav = (np.sin((_tiles['dec'] - d) / 2) ** 2
+           + np.cos(d) * np.cos(_tiles['dec']) * np.sin((_tiles['ra'] - r) / 2) ** 2)
+    return bool(np.any(hav <= np.sin(np.radians(TILE_NEAR_DEG) / 2) ** 2))
+
+
+def coverage(ra: float, dec: float, wait_for_tiles: bool = False) -> dict:
     """First covering tile (DR1, then Q1) whose VIS cutout has real pixels at the position; cached per position."""
+    if near_tile(ra, dec, wait=wait_for_tiles) is False:
+        return {'covered': False, 'reason': 'outside Euclid DR1 / Q1'}
     d = _pos_dir(ra, dec)
     cache = d / 'coverage.json'
     if cache.exists():

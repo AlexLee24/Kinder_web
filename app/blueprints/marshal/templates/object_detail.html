@@ -2,7 +2,7 @@
 {#- Object detail (/object/<name>, reached from the Marshal; not on the navigation, so it keeps a page head).
     Page bar: back to the Marshal (left) · section tabs #odJump (centre, object_detail.js scroll-spies them) ·
     Finding Chart / Visibility / Pin (right). Content: head + Comments / DETECT mini panels, then the
-    Info · Images · Aladin row, Photometry, Spectroscopy and (admins) data-source permissions. -#}
+    Info strip, image rows (LS DR11 · DR10 · Aladin / Euclid VIS · HSC · DETECT), Photometry, Spectroscopy and (admins) data-source permissions. -#}
 {% block title %}{{ object_name }} - Object Detail - Kinder{% endblock %}
 {% block head %}
     <meta name="referrer" content="no-referrer">
@@ -142,20 +142,34 @@
                 </div>
                 {% endif %}
 
-        <!-- Middle Section: Details, DESI, Aladin -->
-        <div class="mid-panels-grid">
-            
-            <!-- Panel 1: Details & Tools -->
-            <div class="panel-card kw-panel" id="od-info">
-                <div class="panel-header kw-panel-head">
+        <!-- Info: one horizontal strip -->
+        <div class="panel-card kw-panel od-info-strip" id="od-info">
+                <div class="panel-header kw-panel-head od-info-head">
                     <h3>Metadata & Info</h3>
+                    <div class="od-info-actions">
+                    <div class="quick-links">
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openTNSPage()">TNS</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openNED()">NED</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openDESI()">DESI LS</a>
+                        <a href="#" class="link-btn" onclick="event.preventDefault(); openExtinction()">Extinction</a>
+                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
+                    </div>
+                    
                     {% if session.user and session.user.is_admin %}
-                    <button type="button" class="kw-btn kw-btn-sm" onclick="editObjects()">Edit</button>
+                    <div class="od-status-btns">
+                        <button type="button" class="kw-btn kw-btn-sm" style="flex:1; border-color:var(--kw-color-warning); color:var(--kw-color-warning);" onclick="changeStatus('followup')">DETECT Follow up</button>
+                        {# Finished button disabled — DB value preserved, UI hidden temporarily
+                        <button class="btn-modern" style="flex:1; border-color:#38b000; color:#38b000;" onclick="changeStatus('finished')">Finished</button>
+                        #}
+                        <button type="button" class="kw-btn kw-btn-sm" style="flex:1; border-color:#F06292; color:#F06292;" onclick="changeStatus('snoozed')">Snooze</button>
+                        <button type="button" class="kw-btn kw-btn-sm" onclick="editObjects()">Edit</button>
+                    </div>
                     {% endif %}
+                    </div>
                 </div>
                 <div class="panel-body">
-                    <ul class="detail-list">
-                        <li class="detail-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                    <ul class="detail-list detail-list-row">
+                        <li class="detail-item detail-item-wide">
                             <span class="detail-label">Internal Name</span>
                             <span class="detail-value" id="internalName" style="font-size: 0.85rem; line-height: 1.3;">{{ object_data.internal_names.split(',')|map('trim')|join(', ') if object_data.internal_names else 'N/A' }}</span>
                         </li>
@@ -180,7 +194,7 @@
                             <span class="detail-value" id="redshiftValue">{{ object_data.redshift or 'N/A' }}</span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label">Luminosity Distance (Mpc)</span>
+                            <span class="detail-label" title="Luminosity distance">Lum. Distance (Mpc)</span>
                             <span class="detail-value">
                                 {% if object_data.distance_mpc %}
                                     {{ "%.2f"|format(object_data.distance_mpc) }}
@@ -189,9 +203,9 @@
                                 {% endif %}
                             </span>
                         </li>
-                        <li class="detail-item" style="border:none;">
-                            {% if visibility.peak_abs_mag %}
-                            <span class="detail-label">Peak Abs Mag (ext and K corr)</span>
+                        {% if visibility.peak_abs_mag %}
+                        <li class="detail-item">
+                            <span class="detail-label" title="Peak absolute magnitude, extinction and K corrected">Peak Abs Mag (ext + K)</span>
                             <span class="detail-value">
                                 {% if object_data.brightest_abs_mag %}
                                     {{ "%.3f"|format(object_data.brightest_abs_mag) }} 
@@ -199,36 +213,32 @@
                                     --
                                 {% endif %}
                             </span>
-                            {% endif %}
                         </li>
+                        {% endif %}
                     </ul>
-                    
-                    <div class="quick-links">
-                        <a href="#" class="link-btn" onclick="event.preventDefault(); openTNSPage()">TNS</a>
-                        <a href="#" class="link-btn" onclick="event.preventDefault(); openNED()">NED</a>
-                        <a href="#" class="link-btn" onclick="event.preventDefault(); openDESI()">DESI LS</a>
-                        <a href="#" class="link-btn" onclick="event.preventDefault(); openExtinction()">Extinction</a>
-                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
-                    </div>
-                    
-                    {% if session.user and session.user.is_admin %}
-                    <div style="margin-top: 16px; display:flex; gap:8px;">
-                        <button type="button" class="kw-btn kw-btn-sm" style="flex:1; border-color:var(--kw-color-warning); color:var(--kw-color-warning);" onclick="changeStatus('followup')">DETECT Follow up</button>
-                        {# Finished button disabled — DB value preserved, UI hidden temporarily
-                        <button class="btn-modern" style="flex:1; border-color:#38b000; color:#38b000;" onclick="changeStatus('finished')">Finished</button>
-                        #}
-                        <button type="button" class="kw-btn kw-btn-sm" style="flex:1; border-color:#F06292; color:#F06292;" onclick="changeStatus('snoozed')">Snooze</button>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
 
-            <!-- Panel 2: DESI Image -->
-            <div class="panel-card kw-panel" id="od-images">
+        <!-- Images, row 1: Legacy Survey DR11 · DR10 · Aladin -->
+        <div class="mid-panels-grid od-img-grid" id="od-images">
+            <div class="panel-card kw-panel od-img-panel" id="od-dr11">
                 <div class="panel-header kw-panel-head">
-                    <h3>DESI Legacy Survey</h3>
+                    <h3>Legacy Survey DR11</h3>
                 </div>
-                <div class="panel-body" style="padding:10px;">
+                <div class="panel-body od-img-body">
+                    <div class="media-container od-sky" id="skyDr11" data-empty="No Legacy Survey DR11 imaging">
+                        <div class="image-loading od-sky-loading"><div class="loading-spinner-small"></div></div>
+                        <img class="od-sky-img" alt="Legacy Survey DR11" title="Click to open in the Legacy Survey viewer (DR11)" style="display:none;">
+                        <div class="location-marker od-sky-marker" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Legacy Survey DR10 (plain cutout; the DETECT finder has its own panel below) -->
+            <div class="panel-card kw-panel od-img-panel">
+                <div class="panel-header kw-panel-head">
+                    <h3>Legacy Survey DR10</h3>
+                </div>
+                <div class="panel-body od-img-body">
                     <div class="media-container" id="locationImage">
                         <div class="image-loading" id="imageLoading" style="position:absolute;">
                             <div class="loading-spinner-small"></div>
@@ -240,7 +250,7 @@
             </div>
 
             <!-- Panel 3: Aladin Star Map -->
-            <div class="panel-card kw-panel" id="star-map">
+            <div class="panel-card kw-panel od-img-panel" id="star-map">
                 <div class="panel-header kw-panel-head">
                     <h3>Aladin</h3>
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:nowrap;">
@@ -270,13 +280,53 @@
                     <button type="button" class="kw-btn kw-btn-sm" onclick="openNEDExplorer()">NED Explorer</button>
                     </div><!-- end flex wrapper -->
                 </div>
-                <div class="panel-body" style="padding:10px;">
+                <div class="panel-body od-img-body">
                     <div class="media-container">
                         <div id="aladin-lite-div" style="display:none;"></div>
                     </div>
                 </div>
             </div>
 
+        </div>
+
+        <!-- Images, row 2: Euclid VIS · HSC PDR3 · DETECT finder (black when there is none) -->
+        <div class="mid-panels-grid od-img-grid">
+            <div class="panel-card kw-panel od-img-panel" id="od-euclid">
+                <div class="panel-header kw-panel-head">
+                    <h3>Euclid VIS</h3>
+                </div>
+                <div class="panel-body od-img-body">
+                    <div class="media-container od-sky" id="skyEuclid" data-empty="No Euclid DR1 / Q1 imaging">
+                        <div class="image-loading od-sky-loading"><div class="loading-spinner-small"></div></div>
+                        <img class="od-sky-img" alt="Euclid VIS" title="Click to open in Tools › Sky Cutouts" style="display:none;">
+                        <div class="location-marker od-sky-marker" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-card kw-panel od-img-panel" id="od-hsc">
+                <div class="panel-header kw-panel-head">
+                    <h3>HSC PDR3</h3>
+                </div>
+                <div class="panel-body od-img-body">
+                    <div class="media-container od-sky" id="skyHsc" data-empty="No HSC PDR3 imaging">
+                        <div class="image-loading od-sky-loading"><div class="loading-spinner-small"></div></div>
+                        <img class="od-sky-img" alt="HSC PDR3" title="Click to open in the Legacy Survey viewer (HSC DR3)" style="display:none;">
+                        <div class="location-marker od-sky-marker" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-card kw-panel od-img-panel" id="od-detect-img">
+                <div class="panel-header kw-panel-head">
+                    <h3>DETECT</h3>
+                </div>
+                <div class="panel-body od-img-body">
+                    <div class="media-container od-sky" id="skyDetect" data-empty="No DETECT finder">
+                        <div class="image-loading od-sky-loading"><div class="loading-spinner-small"></div></div>
+                        <img class="od-sky-img" alt="DETECT" title="DETECT finder (LS DR10, host model) — click to enlarge" style="display:none;">
+                        <div class="location-marker od-sky-marker" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Bottom Section: Photometry, Spectrum, Comments -->

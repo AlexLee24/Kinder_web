@@ -433,8 +433,63 @@ select.btn-modern { min-height: 0; }
     height: 100%;
 }
 
+/* ── Info strip: the metadata as one short horizontal band ─────────────── */
+.panel-card.od-info-strip { min-height: 0; margin-bottom: 16px; }
+.od-info-strip .panel-body { overflow: visible; }
+.detail-list.detail-list-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px 28px;
+}
+.detail-list-row .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 3px;
+    border-bottom: none;
+    padding-bottom: 0;
+    min-width: 0;
+}
+.detail-list-row .detail-item { flex: 0 1 auto; }
+.detail-list-row .detail-item-wide { flex: 0 1 260px; }
+.detail-list-row .detail-label { font-size: 0.78rem; white-space: nowrap; }
+.detail-list-row .detail-value { font-size: 0.92rem; overflow-wrap: anywhere; }
+.od-info-head { flex-wrap: wrap; }
+.od-info-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px 16px;
+    margin-left: auto;
+}
+.od-info-actions .quick-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; }
+.od-info-actions .link-btn { min-height: 30px; font-size: 0.8rem; }
+.od-status-btns { display: flex; gap: 6px; }
+
+/* ── Image rows: LS DR11 · DR10 · Aladin / Euclid VIS · HSC · DETECT ───────── */
+.od-img-grid + .od-img-grid { margin-top: 16px; }
+.panel-card.od-img-panel { min-height: 0; }
+.od-img-panel .panel-body.od-img-body { padding: 10px 0 0; overflow: hidden; }
+.od-img-panel .media-container { height: 300px; flex: none; }
+.od-sky .od-sky-loading { position: absolute; }
+.od-sky .od-sky-img { width: 100%; height: 100%; object-fit: cover; }
+.od-sky.od-sky-empty { background: #000; }
+.od-sky .od-sky-note {
+    position: absolute;
+    left: 0; right: 0; bottom: 10px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.28);
+    pointer-events: none;
+    padding: 0 10px;
+}
+
 /* Bottom Section Grid — full width */
 .bottom-grid {
+    margin-top: 20px;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;

@@ -2440,13 +2440,14 @@ def save_target_image(target_name: str, image_data: bytes) -> bool:
             if obj_id is None:
                 return False
             cur.execute(
-                "SELECT image_id FROM transient.target_images WHERE obj_id = %s LIMIT 1",
+                "SELECT image_id FROM transient.target_images WHERE obj_id = %s AND source = 'DESI' LIMIT 1",
                 (obj_id,)
             )
-            if cur.fetchone():
+            row = cur.fetchone()
+            if row:
                 cur.execute(
-                    "UPDATE transient.target_images SET image_data = %s WHERE obj_id = %s",
-                    (image_data, obj_id)
+                    "UPDATE transient.target_images SET image_data = %s WHERE image_id = %s",
+                    (image_data, row[0])
                 )
             else:
                 cur.execute(
@@ -2469,13 +2470,32 @@ def get_target_image(target_name: str) -> bytes | None:
                 "SELECT ti.image_data "
                 "FROM transient.target_images ti "
                 "JOIN transient.objects o ON ti.obj_id = o.obj_id "
-                "WHERE o.name = %s LIMIT 1",
+                "WHERE o.name = %s AND ti.source <> 'Euclid' "
+                "ORDER BY (ti.source = 'DESI') DESC, ti.image_id DESC LIMIT 1",
                 (target_name,)
             )
             row = cur.fetchone()
             return row[0] if row else None
     except Exception as e:
         logger.error("get_target_image %s: %s", target_name, e)
+        return None
+
+
+def get_euclid_image(target_name: str) -> bytes | None:
+    """DETECT's Euclid VIS review image (source 'Euclid'), or None outside Euclid / not made yet."""
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT ti.image_data FROM transient.target_images ti "
+                "JOIN transient.objects o ON ti.obj_id = o.obj_id "
+                "WHERE o.name = %s AND ti.source = 'Euclid' ORDER BY ti.image_id DESC LIMIT 1",
+                (target_name,)
+            )
+            row = cur.fetchone()
+            return bytes(row[0]) if row else None
+    except Exception as e:
+        logger.error("get_euclid_image %s: %s", target_name, e)
         return None
 
 
