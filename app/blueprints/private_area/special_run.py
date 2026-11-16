@@ -69,6 +69,8 @@ def special_run_euclid_slsn_run():
     if not can_access_page(PAGE_KEY):
         return jsonify({'error': 'Forbidden'}), 403
     body = request.get_json(silent=True) or {}
+    if not euclid_slsn.esa_reachable():
+        return jsonify({'error': euclid_slsn.ESA_DOWN}), 503
     started = euclid_slsn.start(refresh=bool(body.get('refresh')))
     if not started:
         return jsonify({'error': 'A run is already in progress.'}), 409

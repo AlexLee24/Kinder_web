@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -39,6 +40,36 @@ BANDS = ('VIS', 'NIR_Y', 'NIR_J', 'NIR_H')
 WORKERS = 4
 QUERY_TIMEOUT = 90          # s per ESA TAP query (astroquery's http.client calls have no timeout of their own)
 CUTOUT_TIMEOUT = 180        # s per cutout download
+
+
+ESA_DOWN = 'The ESA Euclid archive is not responding right now; try again later.'
+_PROBE_TTL = 30             # s a reachability answer is reused
+_probe = {'at': 0.0, 'ok': True}
+
+
+def _esa_host():
+    try:
+        from astroquery.esa.euclid import conf
+        url = conf.ENVIRONMENTS['PDR']['url_server']
+    except Exception:
+        url = 'https://eas.esac.esa.int/'
+    return url.split('//', 1)[-1].strip('/').split('/')[0]
+
+
+def esa_reachable(timeout=4.0):
+    """Can we open a TCP connection to the Euclid archive at all? A few seconds instead of waiting out a TAP query
+    when ESAC is down (its hosts then refuse or drop connections). Cached for _PROBE_TTL s."""
+    now = time.monotonic()
+    if now - _probe['at'] < _PROBE_TTL:
+        return _probe['ok']
+    try:
+        socket.create_connection((_esa_host(), 443), timeout=timeout).close()
+        ok = True
+    except OSError as e:
+        logger.warning('[EUCLID] archive %s unreachable: %s', _esa_host(), e)
+        ok = False
+    _probe.update(at=now, ok=ok)
+    return ok
 
 
 def _timed(fn, timeout, *args, **kwargs):
@@ -323,7 +354,7 @@ def _fits_ok(path: Path) -> bool:
         return False
 
 
-def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3, radius_arcsec=None):
+def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3, radius_arcsec=None, timeout=None):
     from astropy.coordinates import SkyCoord
     import astropy.units as u
     src = out.with_suffix('.src')      # which mosaic the cached cutout came from (Q1 → DR1 re-downloads)
@@ -332,7 +363,7 @@ def _cutout(mosaic, ra, dec, out: Path, refresh=False, tries=3, radius_arcsec=No
     for attempt in range(tries):
         out.unlink(missing_ok=True)
         try:
-            _timed(_thread_client().get_cutout, CUTOUT_TIMEOUT,
+            _timed(_thread_client().get_cutout, timeout or CUTOUT_TIMEOUT,
                    file_path=mosaic['file'], instrument=mosaic['instrument'], id=mosaic['tile'],
                    coordinate=SkyCoord(ra, dec, unit='deg'), radius=(radius_arcsec or CUTOUT_ARCSEC) * u.arcsec,
                    output_file=str(out))
@@ -544,6 +575,8 @@ def run(refresh=False):
         targets = merged_targets()
         prog.log(f'{len(targets)} targets ({sum(t["in_db"] for t in targets)} in Kinder DB)')
 
+        if not esa_reachable():
+            raise RuntimeError(ESA_DOWN)
         E = _euclid()
         prog.log('Listing Euclid DR1 + Q1 MER tiles', step='Tiles')
         tiles = _timed(_tile_centres, 4 * QUERY_TIMEOUT, E)

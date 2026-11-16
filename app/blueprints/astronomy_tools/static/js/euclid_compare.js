@@ -53,11 +53,20 @@
     /* ------------------------------------------------------------ data */
     const cache = new Map();
     const qs = (o) => new URLSearchParams(o).toString();
+    /* JSON body, or a readable error when a proxy answered with its own HTML page (e.g. a time-out). */
+    async function readJson(r) {
+        const t = await r.text();
+        try { return JSON.parse(t); } catch (e) {
+            return {error: r.status >= 500 || !r.ok
+                ? `The server gave up waiting (HTTP ${r.status}); the ESA Euclid archive may be slow or down. Try again later.`
+                : `Unexpected reply (HTTP ${r.status}).`};
+        }
+    }
     function band(b) {
         const k = `${pos.ra},${pos.dec},${fov},${b}`;
         if (!cache.has(k)) {
             cache.set(k, fetch(`${page.dataset.apiPixels}?${qs({ra: pos.ra, dec: pos.dec, fov, band: b})}`).then(async (r) => {
-                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+                if (!r.ok) throw new Error((await readJson(r)).error || `HTTP ${r.status}`);
                 const h = (n) => r.headers.get(n);
                 return {w: +h('X-Width'), h: +h('X-Height'), tx: +h('X-Target-X'), ty: +h('X-Target-Y'),
                         data: new Float32Array(await r.arrayBuffer())};
@@ -157,7 +166,7 @@
         $('ecGrid').hidden = true;
         try {
             const r = await fetch(`${page.dataset.apiResolve}?${qs({q})}`);
-            const d = await r.json();
+            const d = await readJson(r);
             if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
             pos = d;
         } catch (e) {
@@ -171,7 +180,7 @@
         buildGrid();
         try {
             const r = await fetch(`${page.dataset.apiCoverage}?${qs({ra: pos.ra, dec: pos.dec})}`);
-            const d = await r.json();
+            const d = await readJson(r);
             cov = r.ok ? d : {covered: false, reason: d.error || `HTTP ${r.status}`};
         } catch (e) {
             cov = {covered: false, reason: e.message};
