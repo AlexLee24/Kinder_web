@@ -5,6 +5,7 @@ from app.db.transient import (
     update_cross_match_flag,
     tns_object_db,
     get_target_image,
+    get_euclid_image,
     get_detect_image_by_id,
     set_cross_match_host,
     set_object_redshift,
@@ -86,6 +87,21 @@ def detect_image(target_name):
         )
     else:
         return "Image not found", 404
+
+@detect_bp.route('/detect_euclid_image/<target_name>')
+def detect_euclid_image(target_name):
+    """DETECT's second review image: Euclid VIS cutout (404 outside Euclid DR1 / Q1)."""
+    if 'user' not in session:
+        return "Unauthorized", 401
+    if session['user'].get('role', 'guest') == 'guest' and not session['user'].get('is_admin'):
+        return "Unauthorized", 401
+    image_data = get_euclid_image(target_name)
+    if not image_data:
+        return "No Euclid image", 404
+    resp = send_file(io.BytesIO(image_data), mimetype='image/png', download_name=f'{target_name}_euclid.png')
+    resp.headers['Cache-Control'] = 'private, max-age=300'
+    return resp
+
 
 @detect_bp.route('/detect_image_by_id/<int:image_id>')
 def detect_image_by_id(image_id):

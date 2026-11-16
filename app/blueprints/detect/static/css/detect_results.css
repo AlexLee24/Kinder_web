@@ -731,6 +731,10 @@ body[data-page="detect.detect_results"] .sh-pagebar-l { flex-wrap: wrap; }
     padding-left: 2px;
 }
 
+.card-euclid-label { margin-top: 14px; }
+.card-euclid-slot { position: relative; }
+.card-img-missing.card-euclid-none { height: 64px; background: #000; border-style: solid; }
+
 .card-img-missing, .card-no-data {
     display: flex;
     align-items: center;

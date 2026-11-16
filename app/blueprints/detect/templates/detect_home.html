@@ -231,7 +231,7 @@
                             {% block pipeline_upload %}
                                 <li><code>transient.cross_matches</code>: one row per candidate, <code>is_host</code>, the rule's numbers in <code>match_data</code>.</li>
                                 <li><code>transient.detect_screen</code>: the verdict — host_status, score, tags, M (peak and discovery), z, d_DLR, offset.</li>
-                                <li><code>transient.target_images</code>: the finder; <code>objects.tag</code>: DETECT's tags (yours are left alone); <code>objects.brightest_mag / brightest_abs_mag</code>.</li>
+                                <li><code>transient.target_images</code>: the finder (source DESI) and, where Euclid DR1 / Q1 has pixels, a Euclid VIS cutout of the same field (source Euclid); <code>objects.tag</code>: DETECT's tags (yours are left alone); <code>objects.brightest_mag / brightest_abs_mag</code>.</li>
                                 <li>Object <em>status</em> is never touched by the pipeline.</li>
                             {% endblock %}
                             </ul>

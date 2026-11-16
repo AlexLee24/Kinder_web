@@ -4,7 +4,7 @@ ALeRCE instead of TNS. Results live in LSST tables, never in transient.objects:
 
 * ``transient.lsst_detect_matches``  DESI / Lens candidates, match_data as cross_matches
 * ``transient.lsst_detect_screen``   score, host status, tags, M (one row per oid)
-* ``transient.lsst_target_images``   the LS DR10 host-model image
+* ``transient.lsst_target_images``   the LS DR10 host-model image (+ ``euclid_data``: Euclid VIS cutout, if any)
 * ``transient.lsst_alerts.review_status``  the reviewer's Inbox / Follow-up / Snoozed / Finish
 
 An alert is screened once when it arrives and again whenever its LSST light curve gains a
@@ -153,7 +153,7 @@ def _image_key(rows: list[dict], screen: dict) -> str:
 
 
 def _save(alert: dict, name: str, rows: list[dict], screen: dict, image: bytes | None, image_key: str,
-          screened_lastmjd) -> None:
+          screened_lastmjd, euclid: bytes | None = None) -> None:
     from function.database import CatalogueService
     from function.module.screening import _plain  # numpy scalars -> Python (psycopg2 / JSON)
     rows, screen = _plain(rows), _plain(screen)
@@ -203,9 +203,11 @@ def _save(alert: dict, name: str, rows: list[dict], screen: dict, image: bytes |
               image_key if image is not None else None))
         if image is not None:
             cur.execute("""
-                INSERT INTO transient.lsst_target_images (oid, image_data, created_at) VALUES (%s, %s, now())
-                ON CONFLICT (oid) DO UPDATE SET image_data = EXCLUDED.image_data, created_at = now()
-            """, (alert["oid"], psycopg2.Binary(image)))
+                INSERT INTO transient.lsst_target_images (oid, image_data, euclid_data, created_at)
+                VALUES (%s, %s, %s, now())
+                ON CONFLICT (oid) DO UPDATE SET image_data = EXCLUDED.image_data, created_at = now(),
+                    euclid_data = COALESCE(EXCLUDED.euclid_data, transient.lsst_target_images.euclid_data)
+            """, (alert["oid"], psycopg2.Binary(image), psycopg2.Binary(euclid) if euclid else None))
         conn.commit()
 
 
@@ -217,6 +219,7 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
         _apply_user_host_decision,
         _desi_stars_near,
         _prepare_target_upload_rows,
+        build_euclid_image_bytes,
         build_target_image_bytes,
     )
     from function.module.DESI_cross_match import desi_cross_match
@@ -259,12 +262,13 @@ def screen_alerts(oids=None, progress=None, max_objects: int = MAX_PER_RUN) -> d
                                    host_row=host, upload_rows=rows, star_hits=stars.get(name, []),
                                    inside_galaxies=inside)
             key = _image_key(rows, screen)
-            image = None
+            image = euclid = None
             if rows and (key != a.get("image_key") or not a.get("has_image")):
                 has_desi = any(r.get("catalog_name", "").upper() == "DESI" for r in rows)
                 image = build_target_image_bytes(name, ra, dec, rows, has_desi=has_desi,
                                                  analyzed=analyzed, screen=screen)
-            _save(a, name, rows, screen, image, key, a.get("mags_lastmjd") or a.get("lastmjd"))
+                euclid = build_euclid_image_bytes(name, ra, dec, rows, analyzed)
+            _save(a, name, rows, screen, image, key, a.get("mags_lastmjd") or a.get("lastmjd"), euclid)
             screened += 1
             images += image is not None
         except Exception as e:
@@ -465,6 +469,26 @@ def get_image(oid: int) -> bytes | None:
         cur.execute("SELECT image_data FROM transient.lsst_target_images WHERE oid = %s", (int(oid),))
         row = cur.fetchone()
     return bytes(row[0]) if row else None
+
+
+def get_euclid_image(oid: int) -> bytes | None:
+    """The Euclid VIS review image, or None outside Euclid / not made yet."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT euclid_data FROM transient.lsst_target_images WHERE oid = %s", (int(oid),))
+        row = cur.fetchone()
+    return bytes(row[0]) if row and row[0] is not None else None
+
+
+def save_euclid_image(oid: int, image: bytes) -> bool:
+    """Backfill: attach a Euclid image to an alert that already has its LS finder."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE transient.lsst_target_images SET euclid_data = %s WHERE oid = %s",
+                    (psycopg2.Binary(image), int(oid)))
+        n = cur.rowcount
+        conn.commit()
+    return n > 0
 
 
 def lightcurve_rows(oid: int) -> tuple[list[dict], dict]:

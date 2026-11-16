@@ -47,7 +47,8 @@ def test_route_count_is_stable(app):
     # 409 with Tools › Sky Cutouts (/sky_cutouts, /api/cutouts/{sources,image,resolve,coverage,pixels,survey}).
     # 412 with Admin › Permissions (/admin/permissions page, its action save and the account check).
     # 414 with Special Run › Lens Simulator (/special_run/lens_sim) and per-page levels (/api/admin/private_area/page_level).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 414
+    # 416 with DETECT's Euclid VIS image (/detect_euclid_image/<name>, /detect/lsst/review/euclid/<oid>).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 416
 
 
 def test_duplicate_rules_keep_precedence(app):

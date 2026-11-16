@@ -71,6 +71,7 @@ def _decorate(payload: dict, page_data: dict) -> dict:
         d = details.get(t['target_name'])
         t['obj_href'] = lsst_detect.object_href(d, oid)
         t['image_url'] = url_for('detect.lsst_review_image', oid=oid)
+        t['euclid_url'] = url_for('detect.lsst_review_euclid', oid=oid)
         t['links'] = _links(oid, (d or {}).get('ra'), (d or {}).get('declination'), d) if d else []
     for n in payload['none_list'] + payload['old_list']:
         oid = lsst_detect.oid_from_name(n['target_name'])
@@ -152,6 +153,18 @@ def lsst_review_image(oid):
     data = lsst_detect.get_image(oid)
     if not data:
         return 'No image', 404
+    resp = send_file(io.BytesIO(data), mimetype='image/png')
+    resp.headers['Cache-Control'] = 'private, max-age=300'
+    return resp
+
+
+@detect_bp.route('/detect/lsst/review/euclid/<int:oid>')
+def lsst_review_euclid(oid):
+    if 'user' not in session:
+        return 'Unauthorized', 401
+    data = lsst_detect.get_euclid_image(oid)
+    if not data:
+        return 'No Euclid image', 404
     resp = send_file(io.BytesIO(data), mimetype='image/png')
     resp.headers['Cache-Control'] = 'private, max-age=300'
     return resp

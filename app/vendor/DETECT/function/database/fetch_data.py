@@ -61,7 +61,8 @@ class DataFetcher:
                 cur.execute(
                     "SELECT ti.image_data FROM transient.target_images ti "
                     "JOIN transient.objects o ON ti.obj_id = o.obj_id "
-                    "WHERE o.name = %s LIMIT 1",
+                    "WHERE o.name = %s AND ti.source <> 'Euclid' "
+                    "ORDER BY (ti.source = 'DESI') DESC, ti.image_id DESC LIMIT 1",
                     (target_name,),
                 )
                 row = cur.fetchone()
