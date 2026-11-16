@@ -18,6 +18,7 @@ import logging
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 from app.config import config  # noqa: F401  -- loads kinder.env
 
@@ -196,23 +197,24 @@ def device_label(user_agent, endpoint=''):
     return plat, browser
 
 
-def push_ep_alert(name, ra, dec, log=None):
+def push_ep_alert(name, ra, dec, plan=None, log=None):
     """Einstein Probe alert (app/services/bots/gcn.py) → every GREAT Lab member's bell and devices that take 'alerts'.
+    ``plan`` is robot.plan_night(): a target too low at Lulin is pushed too, marked for information only.
     Never raises: the Slack post and the robot must not wait on it."""
     try:
-        try:
-            from app.services.bots.robot import MIN_ALT, visibility_tonight
-            vis = visibility_tonight(name, ra, dec)
-            if vis.get('observable'):
-                when = f"observable tonight from Lulin (max alt {vis['max_alt']:.0f}°)"
-            elif vis.get('max_alt') is not None:
-                when = f"stays below {MIN_ALT:.0f}° tonight (max {vis['max_alt']:.0f}°)"
-            else:
-                when = 'not observable for the rest of tonight'
-        except Exception:
-            when = ''
-        body = f'RA {ra}  Dec {dec}' + (f' · {when}' if when else '') + ' · SLT script in Slack'
-        n = send_to_users(member_ids(), f'Einstein Probe alert {name}', body, '/bots', category='alerts')
+        title = f'Einstein Probe alert {name}'
+        if plan and plan.get('kind') == 'low':
+            title = f'EP alert {name} (too low at Lulin)'
+            body = f"{name} peaks at {plan['max_alt']:.0f}° tonight. For your information only, not observed."
+        elif plan and plan.get('kind') == 'later':
+            start = plan['start'] + timedelta(hours=8)
+            body = (f"RA {ra}  Dec {dec} · observable from {start:%H:%M} (UTC+8), max alt {plan['max_alt']:.0f}°"
+                    ' · SLT script in Slack')
+        elif plan:
+            body = f"RA {ra}  Dec {dec} · observable now, max alt {plan['max_alt']:.0f}° · SLT script in Slack"
+        else:
+            body = f'RA {ra}  Dec {dec} · SLT script in Slack'
+        n = send_to_users(member_ids(), title, body, '/bots', category='alerts')
         if log:
             log.info('EP alert %s pushed to %d device(s)', name, n)
         return n

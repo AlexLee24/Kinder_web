@@ -2,8 +2,10 @@
 
     gcn.circulars                          → Slack SLACK_CHANNEL_ID_GCN
     gcn.notices.einstein_probe.wxt.alert   → name EPt<yymmdd><a,b,…>, SLT script, Lulin visibility plot;
-                                             Slack: Lulin night (10–22 UTC) SLACK_CHANNEL_ID_CONTROL_ROOM,
-                                             otherwise SLACK_CHANNEL_ID_ToO with "We can trigger … tonight";
+                                             judged like alert-run (robot.plan_night): observable now or later
+                                             tonight → SLACK_CHANNEL_ID_CONTROL_ROOM with the script alert-run
+                                             carries (#COUNT cut to the window); too low → SLACK_CHANNEL_ID_ToO
+                                             (hand script only if it gets above 20°); bilingual text;
                                              both also to SLACK_CHANNEL_ID_EP_COPY when set; email to EP_EMAIL_TO;
                                              first of all published for the Lulin robot (robot.py), then pushed
                                              to GREAT Lab members' devices that take 'alerts' (Web Push)
@@ -241,24 +243,132 @@ def slt_script(name, ra, dec):
             '#WAITFOR 1\n')
 
 
-def ep_message(name, ra, dec, lulin_night):
-    """Slack text (lab_bot EP.py wording). Outside the Lulin night it opens with "We can trigger … tonight"."""
-    msg = ("If weather permits, please include the following object in tonight's observing list using SLT as First Priority\n"
-           '可以的話請 *立即！馬上！立刻！* 馬上觀測，謝謝！！\n'
-           'Object visibility plot有時候不會正常傳送出去，請見諒\n'
-           f'```\n{slt_script(name, ra, dec)}```\n'
-           'Note: This is an auto message. If observed, or have any urgent inquiries, please Call Janet or Amar at Slack(phone number).'
-           'Note: 這是自動訊息. 如果觀測了或是有任何緊急訊息, 請打給 Janet 或 Amar 在 Slack(或手機號碼).'
-           'Note: LOT可能也會要觀測，詳細請等待人員確認，先使用SLT觀測，謝謝！')
-    if not lulin_night:
-        msg = f'We can trigger the observation of {name} tonight.\n' + '=' * 35 + '\n' + msg
-    return msg
+_NOTE = ('Note: This is an auto message. If observed, or for anything urgent, please call Janet or Amar on Slack '
+         '(or by phone). LOT may also observe it; please wait for confirmation and use SLT first.\n'
+         '註：這是自動訊息。觀測了或有任何緊急狀況，請在 Slack（或用手機）打給 Janet 或 Amar。'
+         'LOT 可能也會觀測，詳細請等待人員確認，先用 SLT 觀測，謝謝！')
+_RUN_API = '/api/v1/robot/alert-run'
 
 
-def _ep_plot(name, ra, dec):
-    """The same Lulin visibility plot as a Daily / Direct Trigger (tonight, Moon distance in the legend)."""
+def _tw(dt):
+    """HH:MM at Lulin (UTC+8)."""
+    from datetime import timedelta
+    return (dt + timedelta(hours=8)).strftime('%H:%M')
+
+
+def _hours(seconds):
+    return f'≈ {seconds / 60:.0f} min' if seconds < 5400 else f'≈ {seconds / 3600:.1f} h'
+
+
+def _hours_zh(seconds):
+    return f'約 {seconds / 60:.0f} 分鐘' if seconds < 5400 else f'約 {seconds / 3600:.1f} 小時'
+
+
+def _interval(script):
+    from .robot import _INTERVAL_RE
+    m = _INTERVAL_RE.findall(script or '')
+    return int(float(m[0])) if m else 300
+
+
+def _plan_lines(plan, upto=False):
+    """The 'Plan:' line in English and Chinese for 'now' / 'later'."""
+    from .robot import FRAME_OVERHEAD_S, RUN_END_ALT
+    iv, n = _interval(plan['script']), plan['count']
+    secs = n * (iv + FRAME_OVERHEAD_S)
+    until = _tw(plan['until'])
+    if upto:
+        en_end = f"{_tw(plan['start'])} – {until} (UTC+8). Fewer frames if it starts later."
+        zh_end = f"{_tw(plan['start'])} – {until}（台灣時間）；越晚開始張數越少。"
+    elif plan['until_reason'] == 'alt':
+        en_end = f'until {until} (UTC+8), when it sinks below {RUN_END_ALT:g}°.'
+        zh_end = f'拍到 {until}（台灣時間），之後仰角低於 {RUN_END_ALT:g}°。'
+    else:
+        en_end = f'until {until} (UTC+8), 30 min after astronomical dawn.'
+        zh_end = f'拍到 {until}（台灣時間），天文曙光後 30 分鐘。'
+    up_en, up_zh = ('up to ', '最多 ') if upto else ('', '')
+    return (f'Plan: SLT rp, {up_en}*{iv} s × {n}* ({_hours(secs)}), {en_end}\n'
+            f'計畫：SLT rp，{up_zh}*{iv} 秒 × {n} 張*（{_hours_zh(secs)}），{zh_end}')
+
+
+def ep_message(name, ra, dec, plan):
+    """Bilingual Slack text for an Einstein Probe alert, from robot.plan_night(): 'now' and 'later' go to the control
+    room with the script alert-run will carry; 'low' goes to the ToO channel, with a hand script only when the
+    target at least gets above RUN_END_ALT."""
+    from .robot import RUN_END_ALT, RUN_MIN_ALT
+    moon = plan.get('moon_sep')
+    if plan['kind'] == 'now':
+        return (f':rotating_light: *{name}* — Einstein Probe alert: observable from Lulin *now*\n'
+                f'EP 警報：鹿林*現在*就能拍\n'
+                f"Altitude {plan['alt_now']:.0f}° now, Moon {moon:.0f}° away.\n"
+                f"目前仰角 {plan['alt_now']:.0f}°，月距 {moon:.0f}°。\n"
+                + _plan_lines(plan) + '\n'
+                'If weather permits, please observe it now with SLT as First Priority.\n'
+                '可以的話請 *立即！馬上！立刻！* 用 SLT 優先觀測，謝謝！！\n'
+                f'This script is already on the robot\'s alert-run API ({_RUN_API}).\n'
+                '這份 script 已經在機器人的 alert-run API 上。\n'
+                f"```\n{plan['script']}```\n" + _NOTE)
+    if plan['kind'] == 'later':
+        t0 = _tw(plan['start'])
+        return (f'*{name}* — Einstein Probe alert: we can trigger it tonight\n'
+                f'EP 警報：今晚可以拍\n'
+                f'Not yet: it is dark and above {RUN_MIN_ALT:g}° from {t0} (UTC+8). Moon {moon:.0f}° away.\n'
+                f'現在還不行：{t0}（台灣時間）起天黑且仰角超過 {RUN_MIN_ALT:g}° 才能拍。月距 {moon:.0f}°。\n'
+                + _plan_lines(plan, upto=True) + '\n'
+                'If weather permits, please include it in tonight\'s observing list using SLT as First Priority.\n'
+                '可以的話請把它排進今晚的觀測清單，用 SLT 優先觀測，謝謝！！\n'
+                f'From {t0} the robot\'s alert-run API ({_RUN_API}) will carry this script, '
+                'with the count set by the time left.\n'
+                f'{t0} 起機器人的 alert-run API 會更新成這份 script，張數依剩餘時間計算。\n'
+                f"```\n{plan['script']}```\n" + _NOTE)
+    peak = plan['max_alt']
+    if peak >= RUN_MIN_ALT:            # high enough, but not one frame of dark time left
+        why_en, why_zh = 'too little dark time is left tonight', '今晚剩下的天黑時間不夠拍'
+    else:
+        why_en, why_zh = (f'too low at Lulin tonight', '今晚在鹿林仰角太低')
+    lines = [f'*{name}* — Einstein Probe alert: {why_en}, we will not observe it',
+             f'EP 警報：{why_zh}，不拍']
+    if peak < RUN_MIN_ALT:
+        if plan.get('never_high'):
+            d = f"{plan['dec_deg']:+.0f}".replace('-', '−')
+            ctx_en = f'Dec {d}°: it never gets above {RUN_MIN_ALT:g}° from Lulin'
+            ctx_zh = f'Dec {d}°，在鹿林永遠到不了 {RUN_MIN_ALT:g}°'
+        else:
+            ctx_en, ctx_zh = 'it is high only in daytime this time of year', '這個季節只在白天升高'
+        if peak >= RUN_END_ALT:
+            lines += [f'It peaks at only {peak:.0f}° in the dark ({ctx_en}).',
+                      f'今晚天黑時最高只到 {peak:.0f}°（{ctx_zh}）。']
+        elif peak < 0:
+            lines += [f'It stays below the horizon in the dark ({ctx_en}).',
+                      f'今晚天黑時都在地平線以下（{ctx_zh}）。']
+        else:
+            lines += [f'It peaks at only {peak:.0f}° in the dark, too low to observe ({ctx_en}).',
+                      f'今晚天黑時最高只有 {peak:.0f}°，無法觀測（{ctx_zh}）。']
+    if plan.get('script') and peak >= RUN_END_ALT:
+        secs = (plan['until'] - plan['start']).total_seconds()
+        lines += [f'The alert-run API will not take it. To try it by hand, this SLT script fits the {_hours(secs)[2:]} '
+                  f'it spends above {RUN_END_ALT:g}°:',
+                  f'alert-run API 不會拍它。想手動試拍的話，下面的 SLT script 已依它在 {RUN_END_ALT:g}° 以上的 '
+                  f'{_hours_zh(secs)[2:]}調整：',
+                  f"```\n{plan['script']}```"]
+    else:
+        lines += ['The alert-run API will not take it.', 'alert-run API 不會拍它。']
+    lines += [f'RA {ra}, Dec {dec}, Moon {moon:.0f}° away.', f'月距 {moon:.0f}°。']
+    return '\n'.join(lines)
+
+
+def ep_message_fallback(name, ra, dec, script):
+    """When the night plan cannot be computed: the full script to the control room, visibility left to people."""
+    return (f':rotating_light: *{name}* — Einstein Probe alert (visibility not computed, please check the plot)\n'
+            f'EP 警報（無法計算可觀測時間，請看 visibility plot）\n'
+            'If weather permits, please include it in tonight\'s observing list using SLT as First Priority.\n'
+            '可以的話請 *立即！馬上！立刻！* 用 SLT 優先觀測，謝謝！！\n'
+            f'RA {ra}, Dec {dec}\n```\n{script}```\n' + _NOTE)
+
+
+def _ep_plot(name, ra, dec, day=None):
+    """The same Lulin visibility plot as a Daily / Direct Trigger (the plan's night, Moon distance in the legend)."""
     from app.services.planning.trigger_send import render_trigger_plot
-    return render_trigger_plot([{'name': name, 'ra': ra, 'dec': dec}], savepath=str(PLOT_PATH), label=name)
+    return render_trigger_plot([{'name': name, 'ra': ra, 'dec': dec}], savepath=str(PLOT_PATH), label=name, day=day)
 
 
 def handle_ep(raw, client, sent):
@@ -277,21 +387,35 @@ def handle_ep(raw, client, sent):
     yymmdd = datetime.fromisoformat(trigger_time.replace('Z', '+00:00')).strftime('%y%m%d')
 
     now = datetime.now(timezone.utc)
-    lulin_night = 10 <= now.hour < 22              # Lulin (UTC+8) 18:00–06:00
     name = _next_ep_name(yymmdd)
     _add_target(name)
-    from . import robot  # first: the Lulin robot polls for it (GET /api/v1/robot/alert)
-    robot_id = robot.publish(uid or f'ep_{name}', 'einstein_probe', name, ra, dec, slt_script(name, ra, dec),
+    script = slt_script(name, ra, dec)
+    from . import robot  # first: the Lulin robot polls for it (GET /api/v1/robot/alert, /alert-run)
+    robot_id = robot.publish(uid or f'ep_{name}', 'einstein_probe', name, ra, dec, script,
                              trigger_time=trigger_time, log=log)
+    try:
+        plan = robot.plan_night(ra, dec, script, now)
+        if plan['kind'] == 'now':
+            plan['alt_now'] = robot.run_window(ra, dec, now)['alt_now']
+    except Exception as e:  # never hold the alert back over the maths: post it as observable now, full script
+        log.warning('EP plan for %s not computed: %s', name, e)
+        plan = None
     from app.services.notifications import webpush  # next: GREAT Lab phones (in the background, never raises)
-    webpush.push_ep_alert(name, ra, dec, log=log)
-    text = ep_message(name, ra, dec, lulin_night)
+    webpush.push_ep_alert(name, ra, dec, plan=plan, log=log)
+    if plan is None:
+        text = ep_message_fallback(name, ra, dec, script)
+        kind = 'now'
+    else:
+        text = ep_message(name, ra, dec, plan)
+        kind = plan['kind']
 
-    plot = _ep_plot(name, ra, dec)
+    from app.services.planning.trigger_send import _TAIPEI, _trigger_day_key
+    night = (plan or {}).get('start') or now        # the plot shows the plan's night (after dawn: the coming one)
+    plot = _ep_plot(name, ra, dec, day=_trigger_day_key(night.astimezone(_TAIPEI)))
     if not plot:
         log.warning('EP visibility plot failed for %s (see the web log)', name)
 
-    main = _env('SLACK_CHANNEL_ID_CONTROL_ROOM') if lulin_night else _env('SLACK_CHANNEL_ID_ToO')
+    main = _env('SLACK_CHANNEL_ID_ToO') if kind == 'low' else _env('SLACK_CHANNEL_ID_CONTROL_ROOM')
     _send_slack(client, main, text, plot)
     copy = _env('SLACK_CHANNEL_ID_EP_COPY')
     if copy and copy != main:
@@ -301,9 +425,10 @@ def handle_ep(raw, client, sent):
     if uid:
         sent.add(uid)
     _append_entry(EP_JSON, {'received_at': now.isoformat(timespec='seconds'), 'object_name': name, 'ra': ra, 'dec': dec,
-                            'trigger_time': trigger_time, 'script': slt_script(name, ra, dec)})
+                            'trigger_time': trigger_time, 'script': script, 'plan': kind,
+                            'max_alt': (plan or {}).get('max_alt')})
     status.event(BOT, f'Einstein Probe alert {name} at RA {ra}, Dec {dec}'
-                      f' → {"control room (night)" if lulin_night else "ToO (day)"}'
+                      f' → {kind}: {"ToO (too low)" if kind == "low" else "control room"}'
                       + (f', robot alert #{robot_id}' if robot_id else ''))
 
 
