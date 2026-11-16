@@ -209,7 +209,7 @@
 
 ### `score`
 
-`detect_screen.score`（int，pipeline 計算：Galactic −10、AGN −10、Classified −6、Star? −3；host +3(+2)、Luminous +3、SLSN? +1、TDE? +2、Too-bright +3、Lens +2、glSN? +3(+2)、Kilonova? +3，見首頁 Pipeline 第 5 步）。頁面 chip：`>=7` hi、`>=3` mid、`>=0` lo、`<0` neg。佇列與 tracker 皆以 score 降冪。
+`detect_screen.score`（int，pipeline 計算：Galactic −10、AGN −10、Classified −6、Star? −3；host +3(+2)、Luminous +3、SLSN? +1、TDE? +2、Too-bright +3、Lens +2、in_Euclid +2、glSN? +3(+2)、Kilonova? +3，見首頁 Pipeline 第 5 步）。頁面 chip：`>=7` hi、`>=3` mid、`>=0` lo、`<0` neg。佇列與 tracker 皆以 score 降冪。
 
 ### `flag`
 

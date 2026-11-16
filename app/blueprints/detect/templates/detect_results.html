@@ -53,7 +53,7 @@
 
     {% macro tag_chip(tag) -%}
         {% set cls = 'tag-hot' if tag in ('Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?')
-                else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z')
+                else 'tag-cool' if tag in ('Nuclear', 'TDE?', 'Lens', 'Passive-host', 'Host-z', 'in_Euclid')
                 else 'tag-veto' if tag in ('Galactic', 'AGN', 'Classified', 'Star?')
                 else 'tag-warn' %}
         {% set tip = {
@@ -68,6 +68,7 @@
             'z-warn': 'the host redshift has a redrock warning (small Δχ² / little coverage): may be wrong',
             'Unphysical-M': 'M ≤ −23: no transient is this bright, the spectroscopic host is probably a background galaxy on the line of sight',
             'Host-z?': 'nearest galaxy is just outside the host limit',
+            'in_Euclid': 'Euclid DR1 / Q1 has imaging here (see the Euclid VIS image)',
         }.get(tag, '') %}
         <span class="tag-chip {{ cls }}" title="{{ tip }}">{{ tag }}</span>
     {%- endmacro %}

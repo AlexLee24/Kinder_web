@@ -52,3 +52,21 @@ def test_ls_finder_readers_skip_euclid_rows():
     from app.db import transient
     assert "source <> 'Euclid'" in inspect.getsource(transient.get_target_image)
     assert "source = 'DESI'" in inspect.getsource(transient.save_target_image)
+
+
+def test_in_euclid_tag_adds_score(monkeypatch):
+    from function.module import screening
+    kw = dict(name='T', ra=52.9, dec=-28.1, obj_meta={}, host_row=None, upload_rows=[], star_hits=[])
+    base = screening.screen_target(**kw)
+    monkeypatch.setattr(screening, '_in_euclid', lambda ra, dec: True)
+    hit = screening.screen_target(**kw)
+    assert 'in_Euclid' in hit['tags'] and 'in_Euclid' not in base['tags']
+    assert hit['score'] == base['score'] + screening.IN_EUCLID_SCORE and hit['flags']['in_euclid'] is True
+    assert 'in_Euclid' in screening.DETECT_TAG_VOCAB
+
+
+def test_in_euclid_lookup(tiles, monkeypatch):
+    from function.module import screening
+    monkeypatch.setattr(ec, 'coverage', lambda ra, dec, **k: {'covered': True})
+    assert screening._in_euclid_real(10.0, 10.0) is False      # far from every tile: no archive call
+    assert screening._in_euclid_real(52.9, -28.1) is True

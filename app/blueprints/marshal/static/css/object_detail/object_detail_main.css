@@ -10,7 +10,7 @@
 .object-detail-container { color: var(--kw-text-primary); }
 
 /* sections the tab bar jumps to land below the fixed top bar */
-.object-detail-container :is(#commentsMiniPanel, #detectMiniPanel, #od-info, #od-images, #od-phot, #od-spec, #od-perm) {
+.object-detail-container :is(#commentsMiniPanel, #od-detect-img, #od-info, #od-images, #od-phot, #od-spec, #od-perm) {
     scroll-margin-top: calc(var(--kw-nav-h) + 12px);
 }
 
@@ -38,6 +38,18 @@ body.shell .sh-pagebar .od-jump .kw-tab.is-active { color: var(--color-accent-te
     gap: 7px;
     flex-wrap: wrap;
 }
+
+/* Name + badges (left) and Comments (right) share one row */
+.od-head-row {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    gap: 16px 28px;
+    align-items: start;
+    margin-bottom: 16px;
+}
+.od-head-row .top-title-group { min-width: 220px; }
+.od-head-row .top-inline-panels { display: block; }
+.od-img-panel .kw-panel-head .top-mini-btn { margin-left: auto; }
 
 /* Comments + DETECT mini panels under the head */
 .top-inline-panels {
@@ -473,7 +485,10 @@ select.btn-modern { min-height: 0; }
 .od-img-grid + .od-img-grid { margin-top: 16px; }
 .panel-card.od-img-panel { min-height: 0; }
 .od-img-panel .panel-body.od-img-body { padding: 10px 0 0; overflow: hidden; }
-.od-img-panel .media-container { height: 300px; flex: none; }
+/* square: the sky cutouts are square and so is the trimmed DETECT finder */
+.od-img-panel .media-container { height: auto; aspect-ratio: 1 / 1; flex: none; }
+.detail-list-row .od-coord { user-select: text; -webkit-user-select: text; cursor: text; font-variant-numeric: tabular-nums; }
+.detail-list-row .od-coord-deg { font-size: 0.82rem; color: var(--kw-text-secondary); }
 .od-sky .od-sky-loading { position: absolute; }
 .od-sky .od-sky-img { width: 100%; height: 100%; object-fit: cover; }
 .od-sky.od-sky-empty { background: #000; }

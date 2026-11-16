@@ -113,3 +113,14 @@ def admin_client(app):
 def client_factory(app):
     """``client_factory('member')`` -> test client logged in as that persona."""
     return lambda persona: _client_as(app, persona)
+
+
+@pytest.fixture(autouse=True)
+def _no_euclid_lookups(monkeypatch):
+    """DETECT's in_Euclid tag asks the ESA archive; tests never do (test_euclid_image.py checks it on its own)."""
+    try:
+        from function.module import screening
+    except ImportError:
+        return
+    monkeypatch.setattr(screening, '_in_euclid_real', screening._in_euclid, raising=False)
+    monkeypatch.setattr(screening, '_in_euclid', lambda ra, dec: None)
