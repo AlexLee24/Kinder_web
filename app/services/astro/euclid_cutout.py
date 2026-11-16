@@ -53,6 +53,12 @@ _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
 
+# Web requests must answer before the reverse proxy gives up (~100 s) and returns its own HTML error page.
+WEB_QUERY_TIMEOUT = 45      # s for the footprint query
+WEB_CUTOUT_TIMEOUT = 40     # s per cutout download
+WEB_BUDGET = 75             # s for a whole coverage check
+
+
 class EuclidError(Exception):
     def __init__(self, msg, status=400):
         super().__init__(msg)
@@ -154,16 +160,23 @@ def coverage(ra: float, dec: float) -> dict:
         if not d.exists():
             _prune()
         d.mkdir(parents=True, exist_ok=True)
+        if not es.esa_reachable():
+            raise EuclidError(es.ESA_DOWN, 503)
+        t0 = time.monotonic()
         E = es._euclid()
         try:
-            cands = es._timed(es._mosaics_at, es.QUERY_TIMEOUT, E, ra, dec)
+            cands = es._timed(es._mosaics_at, WEB_QUERY_TIMEOUT, E, ra, dec)
         except Exception as e:
-            raise EuclidError(f'Euclid archive did not answer ({e}).', 502)
+            raise EuclidError(f'The ESA Euclid archive did not answer in time ({e}); try again later.', 504)
         out = {'covered': False, 'reason': 'outside Euclid DR1 / Q1'}
         for c in cands:
+            left = WEB_BUDGET - (time.monotonic() - t0)
+            if left < 5:   # answer before the proxy gives up; nothing cached, so a retry continues
+                raise EuclidError('The ESA Euclid archive is slow right now; try again in a minute.', 504)
             band = 'VIS' if 'VIS' in c else next(iter(c))
             try:
-                probe = es._cutout(c[band], ra, dec, d / f'probe_{band}.fits', radius_arcsec=3)
+                probe = es._cutout(c[band], ra, dec, d / f'probe_{band}.fits', radius_arcsec=3, tries=1,
+                                   timeout=min(left, WEB_CUTOUT_TIMEOUT))
             except Exception as e:
                 logger.warning('[EUCLID] probe %s: %s', c[band]['tile'], e)
                 continue
@@ -193,8 +206,10 @@ def pixels(ra: float, dec: float, fov: int, band: str):
     d = _pos_dir(ra, dec)
     out = d / f'{band}_{fov}.fits'
     with _lock(str(out)):
+        if not (es._fits_ok(out) and out.with_suffix('.src').exists()) and not es.esa_reachable():
+            raise EuclidError(es.ESA_DOWN, 503)
         try:
-            es._cutout(cov['mosaics'][band], ra, dec, out, radius_arcsec=fov / 2)
+            es._cutout(cov['mosaics'][band], ra, dec, out, radius_arcsec=fov / 2, tries=2, timeout=WEB_CUTOUT_TIMEOUT)
         except Exception as e:
             raise EuclidError(f'Euclid cutout failed ({e}).', 502)
     with fits.open(out) as h:
