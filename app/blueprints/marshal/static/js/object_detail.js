@@ -785,51 +785,34 @@ function updateElementText(id, text) {
     }
 }
 
-// Coordinate display mode: 'hms' or 'deg'
-let _coordMode = 'hms';
+// RA / Dec are shown in both units at once (sexagesimal over degrees), as plain selectable text
 let _raHMSStr = '', _decDMSStr = '';
 
-// Convert coordinates to HMS/DMS format
+function _degStrings() {
+    const ra = parseFloat(objectData.ra), dec = parseFloat(objectData.declination);
+    return [ra.toFixed(6), (dec >= 0 ? '+' : '') + dec.toFixed(6)];
+}
+
 function convertCoordinates() {
     if (!objectData || !objectData.ra || !objectData.declination) {
         return;
     }
     try {
-        const ra = parseFloat(objectData.ra);
-        const dec = parseFloat(objectData.declination);
-        _raHMSStr = convertRAToHMS(ra);
-        _decDMSStr = convertDecToDMS(dec);
+        _raHMSStr = convertRAToHMS(parseFloat(objectData.ra));
+        _decDMSStr = convertDecToDMS(parseFloat(objectData.declination));
         _renderCoords();
-        console.log('Coordinates converted:', _raHMSStr, _decDMSStr);
     } catch (error) {
         console.error('Error converting coordinates:', error);
     }
 }
 
 function _renderCoords() {
-    const raEl  = document.getElementById('raCoord');
-    const decEl = document.getElementById('decCoord');
-    const raLbl = document.getElementById('raLabel');
-    const decLbl = document.getElementById('decLabel');
-    if (!raEl || !decEl) return;
-    if (_coordMode === 'hms') {
-        raEl.textContent  = _raHMSStr;
-        decEl.textContent = _decDMSStr;
-        if (raLbl)  raLbl.textContent  = 'RA (HMS)';
-        if (decLbl) decLbl.textContent = 'Dec (DMS)';
-    } else {
-        const ra  = parseFloat(objectData.ra).toFixed(6);
-        const dec = parseFloat(objectData.declination).toFixed(6);
-        raEl.textContent  = ra + '°';
-        decEl.textContent = (parseFloat(dec) >= 0 ? '+' : '') + dec + '°';
-        if (raLbl)  raLbl.textContent  = 'RA (deg)';
-        if (decLbl) decLbl.textContent = 'Dec (deg)';
-    }
-}
-
-function toggleCoordMode() {
-    _coordMode = (_coordMode === 'hms') ? 'deg' : 'hms';
-    _renderCoords();
+    const [raDeg, decDeg] = _degStrings();
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('raCoord', _raHMSStr);
+    set('decCoord', _decDMSStr);
+    set('raCoordDeg', raDeg + '°');
+    set('decCoordDeg', decDeg + '°');
 }
 
 // Convert RA decimal degrees to HMS
@@ -857,22 +840,16 @@ function convertDecToDMS(dec) {
     return `${sign}${d.toString().padStart(2, '0')}° ${m.toString().padStart(2, '0')}' ${s.padStart(4, '0')}"`;
 }
 
-// Copy coordinates to clipboard — respects current display mode
+// Copy coordinates to clipboard: sexagesimal and degrees, one line each
 function copyCoordinates() {
     if (!objectData || !objectData.ra || !objectData.declination) {
         showNotification('No coordinates available to copy', 'warning');
         return;
     }
-    let coordText;
-    if (_coordMode === 'hms') {
-        coordText = `${_raHMSStr}  ${_decDMSStr}`;
-    } else {
-        const ra  = parseFloat(objectData.ra).toFixed(6);
-        const dec = parseFloat(objectData.declination).toFixed(6);
-        coordText = `${ra} ${dec}`;
-    }
+    const [raDeg, decDeg] = _degStrings();
+    const coordText = `${_raHMSStr}  ${_decDMSStr}\n${raDeg} ${decDeg}`;
     navigator.clipboard.writeText(coordText).then(() => {
-        showNotification(`Copied (${_coordMode === 'hms' ? 'HMS' : 'Degrees'})`, 'success');
+        showNotification('Copied RA Dec (sexagesimal and degrees)', 'success');
     }).catch(error => {
         console.error('Error copying coordinates:', error);
         showNotification('Failed to copy coordinates', 'error');

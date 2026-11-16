@@ -21,7 +21,7 @@
     <!-- Section tabs (object_detail.js → initSectionJump: scroll-spy + smooth jump) -->
     <nav class="od-jump kw-tabbar" id="odJump" aria-label="Page sections">
         {% if visibility.comments %}<a class="kw-tab" href="#commentsMiniPanel">Comments</a>{% endif %}
-        {% if visibility.detect %}<a class="kw-tab" href="#detectMiniPanel">DETECT</a>{% endif %}
+        <a class="kw-tab" href="#od-detect-img">DETECT</a>
         <a class="kw-tab" href="#od-info">Info</a>
         <a class="kw-tab" href="#od-images">Images</a>
         <a class="kw-tab" href="#od-phot">Photometry</a>
@@ -65,6 +65,7 @@
          style="display:none;"></div>
 
     <div class="kw-page object-detail-container">
+        <div class="od-head-row">
         <header class="kw-page-head top-nav-bar">
                 <!-- Title + badges -->
                 <div class="top-title-group">
@@ -89,8 +90,8 @@
                 </div>
         </header>
 
-                <!-- Comments + DETECT mini panels — inline between name and pin -->
-                {% if visibility.comments or visibility.detect %}
+                <!-- Comments, on the name's row (DETECT lives in the image row: its finder opens the DETECT popup) -->
+                {% if visibility.comments %}
                 <div class="top-inline-panels">
                     {% if visibility.comments %}
                     <div class="top-mini-panel kw-panel" id="commentsMiniPanel">
@@ -118,29 +119,22 @@
                     </div>
                     {% endif %}
 
-                    {% if visibility.detect %}
-                    <div class="top-mini-panel kw-panel" id="detectMiniPanel">
-                        <div class="top-mini-header">
-                            <span class="top-mini-title">DETECT</span>
-                            <div class="top-mini-actions">
-                                <button type="button" class="top-mini-btn kw-icon-btn" onclick="openDetectModal()" title="Open full view">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="top-mini-slot" id="detectMiniSlot">
-                            <div id="detectBody"
-                                 style="display:flex; flex-direction:column; gap:6px; color:#888;
-                                        overflow-y:auto; max-height:110px; padding:6px 2px; font-size:0.82rem;">
-                                <div style="display:flex; justify-content:center; align-items:center; height:60px;">
-                                    <div class="loading-spinner-small" style="margin-right:8px;"></div> Running...
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
                 {% endif %}
+        </div>
+
+        {% if visibility.detect %}
+        <!-- DETECT data (rendered by object_detail.js) waits here, hidden, until the DETECT popup takes it -->
+        <div id="detectMiniSlot" hidden>
+            <div id="detectBody"
+                 style="display:flex; flex-direction:column; gap:6px; color:#888;
+                        overflow-y:auto; max-height:110px; padding:6px 2px; font-size:0.82rem;">
+                <div style="display:flex; justify-content:center; align-items:center; height:60px;">
+                    <div class="loading-spinner-small" style="margin-right:8px;"></div> Running...
+                </div>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Info: one horizontal strip -->
         <div class="panel-card kw-panel od-info-strip" id="od-info">
@@ -152,7 +146,7 @@
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openNED()">NED</a>
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openDESI()">DESI LS</a>
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openExtinction()">Extinction</a>
-                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy coordinates in current format">Copy Coords</a>
+                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy RA Dec (sexagesimal and degrees)">Copy Coords</a>
                     </div>
                     
                     {% if session.user and session.user.is_admin %}
@@ -174,12 +168,14 @@
                             <span class="detail-value" id="internalName" style="font-size: 0.85rem; line-height: 1.3;">{{ object_data.internal_names.split(',')|map('trim')|join(', ') if object_data.internal_names else 'N/A' }}</span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label" id="raLabel">RA (HMS)</span>
-                            <span class="detail-value" id="raCoord" style="cursor:pointer;" onclick="toggleCoordMode()" title="Click to toggle degrees"></span>
+                            <span class="detail-label">RA</span>
+                            <span class="detail-value od-coord" id="raCoord"></span>
+                            <span class="od-coord od-coord-deg" id="raCoordDeg"></span>
                         </li>
                         <li class="detail-item">
-                            <span class="detail-label" id="decLabel">Dec (DMS)</span>
-                            <span class="detail-value" id="decCoord" style="cursor:pointer;" onclick="toggleCoordMode()" title="Click to toggle HMS"></span>
+                            <span class="detail-label">Dec</span>
+                            <span class="detail-value od-coord" id="decCoord"></span>
+                            <span class="od-coord od-coord-deg" id="decCoordDeg"></span>
                         </li>
                         <li class="detail-item">
                             <span class="detail-label">Discovery Date</span>
@@ -318,11 +314,16 @@
             <div class="panel-card kw-panel od-img-panel" id="od-detect-img">
                 <div class="panel-header kw-panel-head">
                     <h3>DETECT</h3>
+                    {% if visibility.detect %}
+                    <button type="button" class="kw-icon-btn top-mini-btn" onclick="openDetectModal()" title="DETECT results">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="panel-body od-img-body">
-                    <div class="media-container od-sky" id="skyDetect" data-empty="No DETECT finder">
+                    <div class="media-container od-sky" id="skyDetect" data-empty="No DETECT finder"{% if visibility.detect %} onclick="openDetectModal()" style="cursor:pointer;" title="Click for the DETECT results"{% endif %}>
                         <div class="image-loading od-sky-loading"><div class="loading-spinner-small"></div></div>
-                        <img class="od-sky-img" alt="DETECT" title="DETECT finder (LS DR10, host model) — click to enlarge" style="display:none;">
+                        <img class="od-sky-img" alt="DETECT" title="Click for the DETECT results" style="display:none;">
                         <div class="location-marker od-sky-marker" style="display:none;"></div>
                     </div>
                 </div>

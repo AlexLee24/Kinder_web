@@ -54,7 +54,27 @@ DETECT_TAG_VOCAB = [
     "Host-confirmed", "Host-review", "Host-none", "Host-z?", "Ambiguous",
     "Host-z", "Nuclear", "Luminous", "SLSN?", "TDE?", "glSN?", "Too-bright", "Kilonova?",
     "Lens", "Passive-host", "Galactic", "AGN", "Star?", "Classified", "z-conflict", "z-warn", "Unphysical-M",
+    "in_Euclid",
 ]
+IN_EUCLID_SCORE = 2               # Euclid VIS / NISP imaging at the position: host morphology, lensing, faint features
+
+
+def _in_euclid(ra, dec):
+    """True where Euclid DR1 / Q1 has pixels at (ra, dec), False where it has none, None when unknown (the ESA
+    archive did not answer, or DETECT runs outside Kinder). Positions far from every Euclid tile are answered from
+    Kinder's cached tile list; the rest from its per-position coverage cache, so a target asks ESA once."""
+    try:
+        from app.services.astro import euclid_cutout as ec
+    except ImportError:
+        return None
+    try:
+        near = ec.near_tile(float(ra), float(dec), wait=True)
+        if near is False:
+            return False
+        return bool(ec.coverage(float(ra), float(dec)).get("covered"))
+    except Exception as e:
+        print(f"[WARNING] Euclid coverage unknown at {ra}, {dec}: {type(e).__name__} - {e}")
+        return None
 
 # Host association outcome, one of three, written to detect_screen.host_status
 # and as a tag — this is what the marshal shows next to each object.
@@ -417,6 +437,11 @@ def screen_target(*, name, ra, dec, obj_meta, host_row, upload_rows, star_hits,
     if lens_rows:
         score += 2
         tags.append("Lens")
+
+    flags["in_euclid"] = _in_euclid(ra, dec)
+    if flags["in_euclid"]:
+        score += IN_EUCLID_SCORE
+        tags.append("in_Euclid")
 
     glsn = too_bright and (bool(lens_rows) or flags["passive_host"])
     flags["glsn_candidate"] = glsn
