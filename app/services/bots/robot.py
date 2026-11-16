@@ -186,6 +186,70 @@ def run_feed(now=None):
     return body
 
 
+def plan_night(ra, dec, script, now=None):
+    """What the coming (or current) astronomical night at Lulin offers this target, judged the way alert-run will
+    judge it, for the Slack post and push of a new alert. ``kind``:
+      'now'   - dark and at least RUN_MIN_ALT up right now: alert-run carries it already;
+      'later' - it gets there later tonight (alert-run starts carrying it at ``start``);
+      'low'   - it never reaches RUN_MIN_ALT in the dark tonight.
+    The night is the one ending at the next astronomical dawn, so an alert after dawn (before 08:00) looks at the
+    coming evening. Returns {'kind', 'max_alt', 'moon_sep', 'start', 'until', 'until_reason', 'script', 'count',
+    'never_high'}: for 'now'/'later' the script is cut to start → until; for 'low' to the time it spends above
+    RUN_END_ALT in the dark (script None when it never gets that high). ``never_high``: the declination keeps it
+    below RUN_MIN_ALT from Lulin on any night."""
+    import ephem
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(second=0, microsecond=0)
+    o = ephem.Observer()
+    o.lon, o.lat, o.elevation = LULIN[1], LULIN[2], LULIN[3]
+    o.pressure = 0
+    o.horizon = str(DARK_SUN_ALT)
+    o.date = ephem.Date(now.replace(tzinfo=None))
+    dawn = o.next_rising(ephem.Sun(), use_center=True).datetime().replace(tzinfo=timezone.utc)
+    o.date = ephem.Date(dawn.replace(tzinfo=None))
+    dusk = o.previous_setting(ephem.Sun(), use_center=True).datetime().replace(tzinfo=timezone.utc)
+    begin = max(now, dusk.replace(second=0, microsecond=0) + timedelta(minutes=1))
+    body = ephem.FixedBody()
+    body._ra, body._dec, body._epoch = _angle(ra, True), _angle(dec, False), ephem.J2000
+    step = timedelta(minutes=1)
+
+    def alt(t):
+        o.date = ephem.Date(t.replace(tzinfo=None))
+        body.compute(o)
+        return math.degrees(body.alt)
+
+    times, t = [], begin
+    while t <= dawn + DAWN_GRACE:
+        times.append((t, alt(t)))
+        t += step
+    dark = [(t, a) for t, a in times if t <= dawn] or times[:1]
+    peak_t, max_alt = max(dark, key=lambda x: x[1])
+    o.date = ephem.Date(peak_t.replace(tzinfo=None))
+    body.compute(o)
+    moon_sep = round(math.degrees(ephem.separation(body, ephem.Moon(o))), 1)
+    lat = math.degrees(float(ephem.degrees(LULIN[2])))
+    dec_deg = math.degrees(float(_angle(dec, False)))
+    out = {'max_alt': round(max_alt, 1), 'moon_sep': moon_sep, 'start': None, 'until': None, 'until_reason': None,
+           'script': None, 'count': 0, 'dec_deg': dec_deg, 'never_high': 90 - abs(lat - dec_deg) < RUN_MIN_ALT}
+    first = next((t for t, a in dark if a >= RUN_MIN_ALT), None)
+    if first is not None:
+        until, reason = dawn + DAWN_GRACE, 'dawn'
+        for t, a in times:
+            if t > first and a < RUN_END_ALT:
+                until, reason = t - step, 'alt'
+                break
+        s, n = fit_script(script, (until - first).total_seconds())
+        if s is not None:
+            out.update(kind='now' if first <= now else 'later', start=first, until=until, until_reason=reason,
+                       script=s, count=n)
+            return out
+    out['kind'] = 'low'
+    above = [t for t, a in dark if a >= RUN_END_ALT]
+    if above:
+        s, n = fit_script(script, (above[-1] - above[0]).total_seconds())
+        out.update(start=above[0], until=above[-1], script=s, count=n)
+    return out
+
+
 def note_client(ip, alert_id, agent):
     """Remember who polls and which alert id it got (shown on Triggers › Alerts under GCN & Einstein Probe)."""
     at = status.now_iso()

@@ -37,12 +37,12 @@ def _trigger_day_key(now=None):
     return now.strftime('%Y-%m-%d')
 
 
-def render_trigger_plot(targets, savepath=None, label='trigger'):
+def render_trigger_plot(targets, savepath=None, label='trigger', day=None):
     """The Lulin visibility plot sent with a trigger (Daily / Direct Trigger, Einstein Probe alerts): tonight's
     night (the trigger day, see _trigger_day_key) from Lulin, one track per target, Moon distance in the legend.
 
     ``targets``: dicts with 'name', 'ra', 'dec'. Saves to ``savepath`` or, without one, to a private temp file the
-    caller deletes. Returns the path, or None when nothing is plottable or rendering fails (send the text alone)."""
+    caller deletes. ``day`` (YYYY-MM-DD, the evening's date) overrides tonight. Returns the path, or None when nothing is plottable or rendering fails (send the text alone)."""
     import tempfile
 
     from app.services.planning import obsplan as obs
@@ -69,7 +69,7 @@ def render_trigger_plot(targets, savepath=None, label='trigger'):
             tf.close()
             path = tf.name
         lulin = obs.create_ephem_observer('Lulin Observatory', '120:52:21.5', '23:28:10.0', 2800)
-        obs.render_visibility_plot(target_list, lulin, _trigger_day_key(), 'Asia/Taipei', path, n_steps=500)
+        obs.render_visibility_plot(target_list, lulin, day or _trigger_day_key(), 'Asia/Taipei', path, n_steps=500)
         size = os.path.getsize(path) if os.path.isfile(path) else -1
         if size <= 0:
             raise RuntimeError('the plot file is missing or empty')
