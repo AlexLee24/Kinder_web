@@ -44,7 +44,6 @@ MAX_DEFAULT_ANSWERS = 5         # AutoPhOT asking (unknown telescope / filter): 
 
 
 # A subtraction is used only if AutoPhOT's own checks pass (columns of LightCurve_Output.csv)
-TEMPLATE_PREFERENCE = ('panstarrs', 'legacy_dr11', 'legacy', 'sdss')   # coverage.check()['templates'] names
 TS_MAX_FSCALE_DISC_PCT = 20.0   # kernel flux scale vs the stars' photometric scale (flux_scale_discrep_pct)
 TS_MAX_ARTIFACTS = 10           # dipole / residual regions masked in the difference (subtraction_artifact_regions)
 NO_TS_SUFFIX = '_noTS'          # the workspace of the fallback run
@@ -270,17 +269,10 @@ def workspace_name(night, target, telescope, suffix=''):
 
 
 def choose_template(ra, dec):
-    """The survey to download TS templates from, or None when none covers the target."""
-    try:
-        from app.services.pipeline import coverage
-        tpl = coverage.check(ra, dec)['templates']
-        for t in TEMPLATE_PREFERENCE:
-            if (tpl.get(t) or {}).get('ok'):
-                return t
-        return None
-    except Exception as e:
-        logger.info('auto_phot: template coverage check failed (%s); using the footprint rule', e)
-    return 'panstarrs' if dec > -30 else None
+    """'auto': the runner picks a survey per band (scripts/pipeline/autophot_templates.py: Pan-STARRS, else the Legacy
+    Survey where Pan-STARRS has too little data around the target, SDSS, SkyMapper; u from SDSS or SkyMapper). A band
+    no survey covers is measured without subtraction and replaced by the no-TS run like any other failed band."""
+    return 'auto'
 
 
 def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None):
