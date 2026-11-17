@@ -553,3 +553,11 @@ fieldset.pl-readonly { margin: 0; padding: 0; border: 0; min-inline-size: 0; dis
 .pl-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 0.85rem; word-break: break-all; }
 .pl-preview img { display: block; width: 100%; height: auto; border-radius: 8px; background: #000; }
 .pl-preview p { margin: 8px 0 0; font-size: 0.78rem; }
+
+/* Coverage of the chosen calibration catalog / template survey at the target */
+.pl-cov { margin: 6px 0 0; font-size: 0.8rem; color: var(--kw-text-2, #a9abb3); }
+.pl-cov.is-ok::before { content: "✓ "; color: #4CD964; }
+.pl-cov.is-bad { color: #FF9F0A; }
+.pl-cov.is-bad::before { content: "✗ "; }
+.pl-cov.is-unsure::before { content: "? "; }
+.pl-cov .pl-link { font-size: inherit; }

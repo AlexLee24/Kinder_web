@@ -41,8 +41,9 @@ RUNNER = REPO / 'scripts' / 'pipeline' / 'autophot_web_run.py'
 TELESCOPE_YML = Path(__file__).resolve().parent / 'telescope.yml'
 TELESCOPE_HISTORY_KEEP = 30
 
-TS_DOWNLOAD = ['panstarrs', 'legacy', 'sdss']          # surveys AutoPhOT can download templates from
-TS_DOWNLOAD_LABELS = {'panstarrs': 'Pan-STARRS', 'legacy': 'Legacy Survey', 'sdss': 'SDSS'}
+TS_DOWNLOAD = ['panstarrs', 'legacy_dr11', 'legacy', 'sdss']   # surveys AutoPhOT can download templates from
+TS_DOWNLOAD_LABELS = {'panstarrs': 'Pan-STARRS', 'legacy_dr11': 'Legacy Survey DR11', 'legacy': 'Legacy Survey DR10',
+                      'sdss': 'SDSS'}                     # legacy_dr11 = AutoPhOT's legacy with legacy_layer ls-dr11
 TS_ALIGN = ['spalipy', 'swarp', 'reproject', 'astroalign', 'tweakwcs', 'chi2_shift']
 TS_FORCECONV = ['REF', 'SCI', 'AUTO']
 DEFAULT_CATALOG = 'sdss'          # AutoPhOT has no default catalog (null fails)
@@ -1282,6 +1283,7 @@ def listing(tid, rel='', run=None):
 FORM_KEYS = {'fits_dir', 'target_name', 'target_ra', 'target_dec', 'nCPU', 'wdir',
              'catalog.use_catalog', 'template_subtraction.do_subtraction', 'template_subtraction.method',
              'template_subtraction.download_templates', 'template_subtraction.templates_size',
+             'template_subtraction.legacy_layer',
              'template_subtraction.alignment_method', 'template_subtraction.forceconv'}
 COMMON_KEYS = [
     'restart', 'select_filter', 'selected_filters', 'global_verbose_level', 'plot_format', 'preprocessing.trim_image',

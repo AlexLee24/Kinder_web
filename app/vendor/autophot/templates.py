@@ -23,6 +23,7 @@ Created on Thu Oct 27 11:27:05 2022
 # =============================================================================
 # Standard Library Imports
 # =============================================================================
+import math
 import gc
 import glob
 import json
@@ -5611,8 +5612,8 @@ def download_sdss_template(
 # Download Legacy Survey Template
 # =============================================================================
 
-# Legacy Survey bands (gri only); order matches multi-extension FITS from legacystamps
-LEGACY_FILTERS = ("g", "r", "i")
+# Legacy Survey bands; DR10/DR11 south have griz (north: grz, i comes back empty)
+LEGACY_FILTERS = ("g", "r", "i", "z")
 LEGACY_BAND_INDEX = {b: i for i, b in enumerate(LEGACY_FILTERS)}
 
 # Retries for flaky Legacy Survey downloads (IncompleteRead / connection drops)
@@ -5621,7 +5622,8 @@ LEGACY_DOWNLOAD_RETRY_DELAY = 10  # seconds
 
 # Legacy Survey cutout URL; 0.262 arcsec/pixel (nanomaggy), size in pixels
 LEGACY_CUTOUT_PIXSCALE = 0.262
-LEGACY_CUTOUT_LAYER = "ls-dr10"
+LEGACY_CUTOUT_LAYER = "ls-dr10"      # default; template_subtraction.legacy_layer picks ls-dr10 / ls-dr11
+LEGACY_LAYERS = ("ls-dr10", "ls-dr11")
 LEGACY_CUTOUT_BASE = "https://www.legacysurvey.org/viewer/fits-cutout/"
 # Use subimage API (no server-side resampling). Subimage returns 19+ extensions and empty primary;
 # we expect either 3D primary or 3x2D extensions, so standard cutout is used.
@@ -5629,13 +5631,13 @@ LEGACY_USE_SUBIMAGE = False
 LEGACY_DOWNLOAD_CHUNK_SIZE = 2**20  # 1 MB for progress bar updates
 
 
-def _legacy_cutout_url(ra: float, dec: float, size_arcmin: float, bands: str) -> str:
+def _legacy_cutout_url(ra: float, dec: float, size_arcmin: float, bands: str, layer: str = LEGACY_CUTOUT_LAYER) -> str:
     """Build the Legacy Survey viewer FITS cutout URL."""
     size_pix = int(round(float(size_arcmin) * 60.0 / LEGACY_CUTOUT_PIXSCALE))
     params = {
         "ra": ra,
         "dec": dec,
-        "layer": LEGACY_CUTOUT_LAYER,
+        "layer": layer,
         "pixscale": LEGACY_CUTOUT_PIXSCALE,
         "bands": bands,
         "size": size_pix,
@@ -5652,12 +5654,13 @@ def _download_legacy_cutout(
     size_arcmin: float,
     bands: str,
     dest_path: Path,
+    layer: str = LEGACY_CUTOUT_LAYER,
 ) -> bool:
     """
     Download a Legacy Survey FITS cutout via HTTP with optional progress bar.
     Returns True if the file was written successfully, False otherwise.
     """
-    url = _legacy_cutout_url(ra, dec, size_arcmin, bands)
+    url = _legacy_cutout_url(ra, dec, size_arcmin, bands, layer)
     try:
         logger.info("Downloading Legacy Survey cutout to %s ...", dest_path.name)
         resp = requests.get(url, stream=True, timeout=120)
@@ -5696,12 +5699,39 @@ def _download_legacy_cutout(
         return False
 
 
+def _legacy_template_header(header, ra, dec, size_arcmin, band, layer):
+    """Calibrated-coadd conventions for a Legacy Survey cutout (pixels in nanomaggies, AB ZP 22.5) and, when the
+    Tractor bricks can be read, the local 5-sigma PSF depth (median PSFDEPTH_<band> of the sources in the cutout)."""
+    header["MAGZP"] = (22.5, "AB zeropoint for nanomaggy pixels")
+    header["ZP"] = (22.5, "AB zeropoint for nanomaggy pixels")
+    header["GAIN"] = (1.0, "Effective coadd convention; not detector gain")
+    header["EXPTIME"] = (1.0, "Effective coadd convention; not exposure time")
+    header["RDNOISE"] = (0.0, "Effective coadd convention; use invvar for noise")
+    header["BUNIT"] = ("nanomaggy", "Legacy Survey calibrated flux unit")
+    header["SURVEY"] = (str(layer).upper(), "Legacy Survey data release of this cutout")
+    try:
+        import legacy_tractor
+
+        half = min(float(size_arcmin), 15.0) / 120.0       # cutout half-width in deg (depth is local anyway)
+        got = legacy_tractor.psfdepth(ra, dec, half, band, release=str(layer).replace("ls-", ""))
+    except Exception as e:
+        logger.info("Legacy template %s: no Tractor depth (%s)", band, e)
+        got = None
+    if got:
+        depth, n = got
+        lim = 22.5 - 2.5 * math.log10(5.0 / math.sqrt(depth))
+        header["PSFDEPTH"] = (depth, f"Median {band} PSF ivar [nanomaggy^-2]")
+        header["PSFLIM"] = (lim, f"Derived 5-sigma {band} PSF limit [AB mag]")
+        header["NDEPTH"] = (int(n), "Sources used for median PSF depth")
+
+
 def download_legacy_template(
     ra: float,
     dec: float,
     size: float,
     template_folder: str,
     band: str = "r",
+    layer: str = LEGACY_CUTOUT_LAYER,
 ) -> Optional[str]:
     """
     Download a Legacy Survey image cutout for use as a template.
@@ -5726,15 +5756,15 @@ def download_legacy_template(
     str or None
         Path to the downloaded FITS file for the requested band, or None on failure.
     """
-    if not _HAS_LEGACYSTAMPS:
-        logger.warning(
-            "Legacy Survey template download requested but 'legacystamps' is not installed; skipping."
-        )
-        return None
+    # The cutout comes straight from the viewer over HTTP; legacystamps is not needed.
+    layer = str(layer or LEGACY_CUTOUT_LAYER).strip().lower()
+    if layer not in LEGACY_LAYERS:
+        logger.warning("Unknown Legacy Survey layer %r; using %s", layer, LEGACY_CUTOUT_LAYER)
+        layer = LEGACY_CUTOUT_LAYER
 
     band = str(band).strip().lower()
     if band not in LEGACY_FILTERS:
-        logger.info("Band '%s' not available in Legacy Survey [gri]; skipping.", band)
+        logger.info("Band '%s' not available in Legacy Survey [griz]; skipping.", band)
         return None
 
     # Subfolder names must match find_templates (g_template, etc.).
@@ -5748,7 +5778,7 @@ def download_legacy_template(
         return str(out_path)
 
     # Combined multi-band file (same naming as Legacy Survey cutout layer)
-    combined_name = f"legacystamps_{ra:.6f}_{dec:.6f}_{LEGACY_CUTOUT_LAYER}.fits"
+    combined_name = f"legacystamps_{ra:.6f}_{dec:.6f}_{layer}_{float(size):g}.fits"
     combined_path = template_base / combined_name
 
     # Track whether template_base existed before this call so we can clean up
@@ -5757,7 +5787,8 @@ def download_legacy_template(
 
     if not combined_path.exists():
         logger.info(
-            "Downloading Legacy Survey template (gri) for (%.4f, %.4f), size=%.2f arcmin",
+            "Downloading Legacy Survey %s template (griz) for (%.4f, %.4f), size=%.2f arcmin",
+            layer.upper(),
             ra,
             dec,
             size,
@@ -5771,8 +5802,9 @@ def download_legacy_template(
                     ra=ra,
                     dec=dec,
                     size_arcmin=size,
-                    bands="gri",
+                    bands="".join(LEGACY_FILTERS),
                     dest_path=combined_path,
+                    layer=layer,
                 )
                 if ok and combined_path.exists():
                     break
@@ -5830,7 +5862,8 @@ def download_legacy_template(
                 # Legacy viewer cutouts commonly store the bands as extensions 1..3,
                 # with an empty primary HDU. Do NOT include HDU[0] here.
                 data = np.stack(
-                    [np.asarray(hdul[i].data, dtype=float) for i in range(1, 4)],
+                    [np.asarray(hdul[i].data, dtype=float) for i in range(1, len(hdul))
+                     if hdul[i].data is not None and hdul[i].data.ndim == 2],
                     axis=0,
                 )
             else:
@@ -5868,7 +5901,7 @@ def download_legacy_template(
     if not header_bands:
         # Fall back to BAND0/BAND1/... keywords.
         band_tokens = []
-        for k in ("BAND0", "BAND1", "BAND2"):
+        for k in ("BAND0", "BAND1", "BAND2", "BAND3"):
             v = header.get(k)
             if isinstance(v, str) and v.strip():
                 band_tokens.append(v.strip().lower())
@@ -5897,13 +5930,18 @@ def download_legacy_template(
         band_path = sub_folder / f"legacy_{b}_band_template.fits"
 
         band_data = np.asarray(data[idx], dtype=float)
+        if not np.any(np.isfinite(band_data) & (band_data != 0)):
+            logger.info("Legacy Survey %s has no %s-band data here; no %s template.", layer.upper(), b, b)
+            continue
         band_header = header.copy()
         band_header["FILTER"] = b
         band_header["TELESCOP"] = "LEGACY"
         band_header["INSTRUME"] = "SURVEY"
         band_header["NAXIS"] = 2
-        if "NAXIS3" in band_header:
-            del band_header["NAXIS3"]
+        for k in ("NAXIS3", "BANDS", "BAND0", "BAND1", "BAND2", "BAND3"):
+            if k in band_header:
+                del band_header[k]
+        _legacy_template_header(band_header, ra, dec, size, b, layer)
 
         try:
             safe_fits_write(str(band_path), band_data, band_header)

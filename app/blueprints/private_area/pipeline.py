@@ -512,6 +512,18 @@ def pipeline_api_resolve():
     return jsonify({'success': True, **ap.resolve(request.args.get('name', ''))})
 
 
+@private_area_bp.route('/api/pipeline/coverage')
+@_api
+def pipeline_api_coverage():
+    """Which calibration catalogs and template surveys cover ?ra=&dec= (degrees or sexagesimal); ?refresh=1 asks again."""
+    from app.services.pipeline import coverage
+    ra, dec = coverage.parse(request.args.get('ra', ''), request.args.get('dec', ''))
+    refresh = request.args.get('refresh') == '1'
+    if refresh and not rate_limit.allow(f'pipeline-coverage:{_actor()}', 20, 300):
+        return jsonify({'success': False, 'error': 'Too many checks; wait a few minutes.'}), 429
+    return jsonify({'success': True, **coverage.check(ra, dec, refresh=refresh)})
+
+
 @private_area_bp.route('/api/pipeline/autophot/classify', methods=['POST'])
 @_api
 def pipeline_api_classify():

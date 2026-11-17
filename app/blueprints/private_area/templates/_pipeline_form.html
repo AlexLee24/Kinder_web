@@ -70,7 +70,8 @@
             <div class="kw-field"><label for="plTsSize{{ tid }}">Size (arcmin)</label>
                 <input type="number" id="plTsSize{{ tid }}" name="ts_size" min="1" max="60" step="1" value="{{ cfg.ts_size or 10 }}"></div>
         </div>
-        <p class="pl-hint">AutoPhOT downloads a template per filter when it runs. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky. Pan-STARRS cuts each template from one sky cell, so near a cell edge it comes out smaller than the size asked for. Changing the survey or the size downloads the templates again.</p>
+        <p class="pl-cov" data-cov="ts_download" aria-live="polite" hidden></p>
+        <p class="pl-hint">AutoPhOT downloads a template per filter when it runs. Pan-STARRS covers Dec &gt; −30°, SDSS its footprint, Legacy Survey most of the extragalactic sky (DR11 adds more DECam area and the z band; cutouts carry MAGZP 22.5 and the local PSF depth). Pan-STARRS cuts each template from one sky cell, so near a cell edge it comes out smaller than the size asked for. Changing the survey or the size downloads the templates again.</p>
     </div>
 
     <div data-show-ts="own" class="pl-ts-own">
@@ -115,6 +116,7 @@
         <input type="number" id="plNcpu{{ tid }}" name="ncpu" min="1" value="{{ cfg.ncpu or 1 }}">
     </div>
 </div>
+<p class="pl-cov" data-cov="catalog" aria-live="polite" hidden></p>
 <label class="pl-toggle"><input type="checkbox" name="stack"{% if cfg.stack %} checked{% endif %}>
     <span><b>Stack each night</b><small>Combine the frames of each filter and night, then measure the stacks</small></span></label>
 <fieldset class="pl-optsec" data-show-if="stack"{% if not cfg.stack %} hidden{% endif %}>

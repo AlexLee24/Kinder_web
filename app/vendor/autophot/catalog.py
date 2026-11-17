@@ -2344,11 +2344,40 @@ class Catalog:
             )
             logger.debug(query)
 
-            from astroquery.utils.tap import TapPlus
+            table = None
+            tap_timeout = float((self.input_yaml.get("catalog") or {}).get("legacy_tap_timeout", 90) or 90)
+            try:
+                import concurrent.futures as _cf
 
-            tap = TapPlus(url=tap_service_url)
-            result = tap.launch_job(query)
-            table = result.get_results().to_pandas()
+                from astroquery.utils.tap import TapPlus
+
+                def _tap():
+                    return TapPlus(url=tap_service_url).launch_job(query).get_results().to_pandas()
+
+                _pool = _cf.ThreadPoolExecutor(max_workers=1)
+                try:
+                    table = _pool.submit(_tap).result(timeout=tap_timeout)
+                finally:
+                    _pool.shutdown(wait=False, cancel_futures=True)
+            except Exception as _tap_exc:
+                logger.warning(
+                    "Legacy Survey: NOIRLab Data Lab TAP failed (%s); reading the public "
+                    "DR10 Tractor brick files instead.",
+                    str(_tap_exc).strip().splitlines()[0][:200] if str(_tap_exc).strip() else type(_tap_exc).__name__,
+                )
+                table = None
+            if table is None or len(table) == 0:
+                import legacy_tractor
+
+                table = legacy_tractor.sources(ra, dec, radius, release="dr10")
+                if table is None or len(table) == 0:
+                    logger.warning(
+                        "Legacy Survey: no DR10 Tractor sources within %.2f deg of (%.4f, %.4f) - "
+                        "the field is outside the Legacy Survey footprint.",
+                        radius, ra, dec,
+                    )
+                    return None
+                logger.info("Legacy Survey: %d Tractor sources from the brick files.", len(table))
 
             # Point sources only; non-PSF types are extended/galaxies.
             if "type" in table.columns:

@@ -231,7 +231,11 @@ def main():
     if cfg_in.get('sub_method'):
         ts['method'] = cfg_in['sub_method']
     if ts['do_subtraction']:                         # 網頁 TS 區的設定
-        ts['download_templates'] = cfg_in.get('ts_download') or False
+        dl = cfg_in.get('ts_download') or False
+        if dl in ('legacy', 'legacy_dr11'):                # 網頁的 Legacy DR10 / DR11 → AutoPhOT 的 legacy + legacy_layer
+            ts['legacy_layer'] = 'ls-dr11' if dl == 'legacy_dr11' else 'ls-dr10'
+            dl = 'legacy'
+        ts['download_templates'] = dl
         ts['templates_size'] = float(cfg_in.get('ts_size') or 10)
         ts['alignment_method'] = cfg_in.get('ts_align') or 'spalipy'
         ts['forceconv'] = cfg_in.get('ts_forceconv') or 'REF'
