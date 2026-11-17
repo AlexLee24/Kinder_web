@@ -298,6 +298,10 @@ def main():
     config['catalog']['use_catalog'] = cfg_in.get('catalog') or 'sdss'     # AutoPhOT 沒有預設星表，null 會直接報錯；網頁預設 SDSS
     if config['catalog']['use_catalog'] == 'pan_starrs':
         config['catalog']['use_catalog'] = 'panstarrs'    # catalog.yml 的鍵是 panstarrs（查詢時 AutoPhOT 自己再轉成 pan_starrs）
+    # Gaia archive：匿名下載 XP 光譜一次最多 50 顆星，AutoPhOT 預設一批 200，多於 50 顆就 HTTP 500、退回沒有 u 的星表
+    cat_cfg = config.setdefault('catalog', {})
+    if int(cat_cfg.get('gaia_xp_batch_size') or 0) <= 0 or int(cat_cfg.get('gaia_xp_batch_size')) > 45:
+        cat_cfg['gaia_xp_batch_size'] = 45
     per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
     if per_band:                                      # 主星表沒有的波段（Pan-STARRS 沒有 u）→ AutoPhOT 的逐波段對照
         config['catalog']['use_catalog'] = {'default': config['catalog']['use_catalog'],
@@ -318,7 +322,10 @@ def main():
         dl = cfg_in.get('ts_download') or False
         if dl == 'auto':                                   # 每個波段挑最好的巡天（autophot_templates.pick）
             import templates as ap_templates
-            kt.install(ap_templates)
+            kt.install(ap_templates, force=cfg_in.get('ts_force'))
+            if cfg_in.get('ts_force'):
+                print('[web] templates tried first: ' + ', '.join(f'{b} {s}' for b, s in sorted(cfg_in['ts_force'].items())),
+                      flush=True)
             print('[web] templates: best survey per band (Pan-STARRS → Legacy Survey → SDSS → SkyMapper; u: SDSS → SkyMapper)',
                   flush=True)
             dl = 'panstarrs'                               # AutoPhOT 的下載迴圈呼叫的就是換掉的那個函式
