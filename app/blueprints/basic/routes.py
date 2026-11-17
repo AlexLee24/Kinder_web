@@ -407,3 +407,10 @@ def gallery_image(filename):
     if not _is_image_filename(filename) or not os.path.exists(os.path.join(GALLERY_DIR, filename)):
         abort(404)
     return send_from_directory(GALLERY_DIR, filename)
+
+
+@basic_bp.route('/api/aladin/config')
+def aladin_config():
+    """Which HiPS server the Aladin sky views prefer (Admin › Site); read by static/js/hips_fallback.js."""
+    from app.services import aladin_source
+    return jsonify(aladin_source.config())

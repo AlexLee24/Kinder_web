@@ -44,7 +44,9 @@ function initializeAladin(target = '20 51 05.74 +30 37 32.3', fov = 10) {
 
         // Aladin must initialize on a visible, properly-sized element so its
         // internal canvas pixel-per-degree ratio is correct from the start.
-        // CDS survey, or its ESA mirror when CDS is unreachable (js/hips_fallback.js)
+        // The survey from the admin's preferred server (CDS / ESA / IRSA), or a backup that has it (js/hips_fallback.js);
+        // each survey button gets a green / yellow / red dot for where it would come from.
+        KinderHips.markButtons(document.querySelectorAll('.survey-btn[data-survey]'));
         Promise.all([A.init, KinderHips.resolve(currentSurvey)]).then(([, survey]) => {
             KinderHips.showStatus(document.getElementById('aladin-lite-div').parentElement);
             aladin = A.aladin('#aladin-lite-div', {

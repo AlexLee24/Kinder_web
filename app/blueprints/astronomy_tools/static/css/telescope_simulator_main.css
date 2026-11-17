@@ -133,6 +133,7 @@
 }
 .survey-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--kw-text-white); }
 .survey-btn.active { background: var(--color-accent); border-color: transparent; color: var(--color-accent-text); font-weight: 600; }
+.survey-btn.kh-offline { opacity: .45; text-decoration: line-through; }
 
 /* ── Instrument ── */
 .control-panel-embedded { padding-top: 12px; }
