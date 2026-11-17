@@ -81,11 +81,16 @@
 .dta-viewseg .kw-seg-item { flex: none; }
 .dta-viewseg .kw-seg-item[aria-pressed="true"] { background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: 600; }
 /* Workspace: the target table (moved in by dt_auto.js) | the picked target, half and half */
-.dtw { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 12px; }
+/* One scroll, the page's. Both columns are sticky; dt_auto.js moves the taller-than-the-window one with the page
+   until its far end shows, then holds it there, so neither side ever needs a scroll of its own. */
+.dtw { --dtw-top: calc(var(--kw-nav-h, 64px) + 12px);
+       display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 12px; }
 .dtw[hidden] { display: none; }
-.dtw-list { min-width: 0; max-height: min(1100px, 88vh); overflow: auto; position: sticky; top: 76px;
-            border: 1px solid var(--dta-line); border-radius: 14px; }
+.dtw-list, .dtw-detail { position: sticky; top: var(--dtw-top); }
+.dtw-list { min-width: 0; overflow: clip; border: 1px solid var(--dta-line); border-radius: 14px; }
 .dtw-list .pa-target-table { margin: 0; }
+/* the Table view's horizontal scroller would also catch the sticky header here; the half-width table fits */
+.dtw-list > :is(#content-SLT, #content-LOT) { overflow: visible; }
 /* the columns the detail already shows: RA / Dec, total exposure, the two notes */
 .dtw-list .pa-target-table :is(th, td):is(:nth-child(2), :nth-child(5), :nth-child(7), :nth-child(8)) { display: none; }
 .dt-page .dtw-list .pa-target-table th.pa-col-target   { width: 32%; }
@@ -100,7 +105,7 @@
 /* half width: Edit / Copy / Trigger stack instead of running out of the cell */
 .dtw-list tr:not(.pa-row-off) .pa-action-row-btns { flex-direction: column; align-items: stretch; }
 .dtw-list tr:not(.pa-row-off) .pa-action-row-btns .pa-btn-action { justify-content: flex-start; }
-.dtw-list .pa-target-table thead th { position: sticky; top: 0; z-index: 1; background: #161618; }
+.dtw-list .pa-target-table thead th { position: sticky; top: calc(var(--kw-nav-h, 64px) - 12px); z-index: 1; background: #161618; }
 .dtw-list tr.dtw-row { cursor: pointer; }
 .dtw-list tr.dtw-row:hover td { background: rgba(255, 255, 255, 0.03); }
 .dtw-list tr.dtw-sel td { background: rgba(255, 255, 255, 0.08); }
@@ -164,7 +169,7 @@
 
 @media (max-width: 960px) {
     .dtw { grid-template-columns: 1fr; }
-    .dtw-list { position: static; max-height: 60vh; }
+    .dtw-list, .dtw-detail { position: static; }
     .dtw-two { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
