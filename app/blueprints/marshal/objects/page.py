@@ -6,6 +6,7 @@ from flask import render_template, redirect, url_for, session, flash
 from app.db.transient import search_tns_objects, TNSObjectDB, update_object_abs_mag
 from app.db import get_tns_db_connection, run_in_background, OBJECT_COMPAT_COLS
 from app.db.auth import check_object_access
+from app.services.astro import filter_colors
 from . import objects_bp
 
 
@@ -235,7 +236,8 @@ def object_detail_generic(object_name):
                              current_path='/object',
                              object_data=matching_obj,
                              object_name=object_name,
-                             visibility=visibility)
+                             visibility=visibility,
+                             filter_colors=filter_colors.all_colors())
         
     except Exception:
         import traceback
@@ -352,7 +354,8 @@ def object_detail_tns_format(year, letters):
                              current_path='/object',
                              object_data=matching_obj,
                              object_name=object_name,
-                             visibility=visibility)
+                             visibility=visibility,
+                             filter_colors=filter_colors.all_colors())
         
     except Exception:
         import traceback
