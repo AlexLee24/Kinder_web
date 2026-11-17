@@ -16,6 +16,7 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -202,9 +203,24 @@ def _run_and_wait(tid, progress=None, stop=None):
             ap.start(tid, AUTO_USER)
             break
         except ap.PipelineError as e:
-            if 'Auto photometry is already running' not in str(e) or time.time() > end:
+            if 'Auto photometry is already running' not in str(e) or time.time() > end:   # all slots taken meanwhile
                 raise
             time.sleep(30)
+    return _wait(tid, progress, stop)
+
+
+def _still_running(tid):
+    """A run of this workspace that outlived the process that started it (Kinder restarted during a deploy)."""
+    from app.services.pipeline import autophot as ap
+    try:
+        return (ap.runs_root() / tid / 'target.json').is_file() and ap.job_status(tid).get('status') == 'running'
+    except Exception:
+        return False
+
+
+def _wait(tid, progress=None, stop=None):
+    """Wait for the workspace's AutoPhOT run to end (answering its questions with the default); the final job state."""
+    from app.services.pipeline import autophot as ap
     t0, answers = time.time(), 0
     while True:
         time.sleep(POLL_S)
@@ -283,6 +299,31 @@ def _frame_pngs(tid, ra, dec, phot):
     return made
 
 
+def details(row):
+    """Why a row failed / what its run is doing, for the Trigger page: {'reason', 'images': [{'name', 'status',
+    'hint', 'errors'}], 'problems': [...], 'log': last lines of the AutoPhOT log, 'progress'}."""
+    from app.services.pipeline import autophot as ap
+    out = {'reason': row.get('reason') or '', 'images': [], 'problems': [], 'log': '', 'progress': None}
+    tid = row.get('workspace')
+    if not tid or not (ap.runs_root() / tid / 'target.json').is_file():
+        return out
+    try:
+        j = ap.job(tid)
+        out['log'] = '\n'.join((j.get('log') or '').splitlines()[-80:])
+        out['progress'] = j.get('progress')
+        out['job'] = {k: j.get(k) for k in ('status', 'start', 'end', 'code')}
+    except Exception:
+        logger.exception('auto_phot: job of %s', tid)
+    try:
+        st = ap.image_status(tid) or {}
+        out['images'] = [{k: f.get(k) for k in ('name', 'status', 'hint', 'errors', 'filter')} for f in st.get('failed') or []][:30]
+        out['n_in'], out['n_ok'] = st.get('n_in'), st.get('n_ok')
+        out['problems'] = ap.run_problems(tid)
+    except Exception:
+        logger.exception('auto_phot: image status of %s', tid)
+    return out
+
+
 def frame_png_path(tid, band):
     from app.services.pipeline import autophot as ap
     try:
@@ -322,11 +363,18 @@ def run_target(night, target, telescope, frames, stop=None):
     try:
         catalog = choose_catalog(ra, dec)
         phot = []
+        progress = lambda p: db.upsert(night, target, telescope, n_done=p['done'])   # noqa: E731
         for stack in (True, False):
-            tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack)
-            ap.add_files(tid, [str(f) for f in frames], origin='auto')
-            db.upsert(night, target, telescope, status='running', workspace=tid)
-            job = _run_and_wait(tid, progress=lambda p: db.upsert(night, target, telescope, n_done=p['done']), stop=stop)
+            tid = workspace_name(night, target, telescope)
+            if _still_running(tid):             # started before a restart: wait for it instead of starting another
+                logger.info('auto_phot: %s is still running from before; waiting for it', tid)
+                db.upsert(night, target, telescope, status='running', workspace=tid)
+                job = _wait(tid, progress, stop)
+            else:
+                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack)
+                ap.add_files(tid, [str(f) for f in frames], origin='auto')
+                db.upsert(night, target, telescope, status='running', workspace=tid)
+                job = _run_and_wait(tid, progress=progress, stop=stop)
             phot = _points(tid) if job.get('status') == 'done' else []
             if phot or job.get('reason'):
                 break
@@ -370,14 +418,27 @@ def run_night(night, only=None, force=False, stop=None, root=None):
         if not (only or skipped_name(target)):
             db.upsert(night, target, telescope, status='queued', reason=None, n_done=0, n_frames=len(frames),
                       filters=sorted({_band(f) for f in frames} - {''}))
-    done = failed = skipped = 0
-    for (target, telescope), frames in todo:
+    # several targets at once (ap.MAX_RUNNING_AUTO, AUTO_PHOT_PARALLEL): each has its own workspace and AutoPhOT process
+    from app.services.pipeline import autophot as ap
+
+    def one(item):
+        (target, telescope), frames = item
         if stop and stop():
-            break
-        row = run_target(night, target, telescope, frames, stop=stop)
-        done += row['status'] == 'done'
-        failed += row['status'] == 'failed'
-        skipped += row['status'] == 'skipped'
+            return None
+        try:
+            return run_target(night, target, telescope, frames, stop=stop)
+        except Exception:
+            logger.exception('auto_phot: %s %s %s', night, target, telescope)
+            return {'status': 'failed'}
+
+    done = failed = skipped = 0
+    with ThreadPoolExecutor(max_workers=max(1, min(ap.MAX_RUNNING_AUTO, len(todo) or 1)), thread_name_prefix='auto-phot') as pool:
+        for row in pool.map(one, todo):
+            if not row:
+                continue
+            done += row['status'] == 'done'
+            failed += row['status'] == 'failed'
+            skipped += row['status'] == 'skipped'
     return (f'{night}: {len(groups)} target(s) with frames, {done} measured, {failed} failed, {skipped} skipped (EP), '
             f'{len(groups) - len(todo)} already done')
 

@@ -308,46 +308,6 @@ select.btn-modern { min-height: 0; }
     flex-shrink: 0;
 }
 
-/* Telescope quick-toggle buttons above photometry plot */
-.phot-tel-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    border-radius: 5px;
-    border: 1px solid rgba(255,255,255,0.18);
-    background: rgba(255,255,255,0.04);
-    color: rgba(255,255,255,0.35);
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-    user-select: none;
-    white-space: nowrap;
-}
-.phot-tel-btn::before {
-    content: '';
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: currentColor;
-    opacity: 0.5;
-    transition: opacity 0.12s;
-}
-.phot-tel-btn.active {
-    color: rgba(255,255,255,0.82);
-    border-color: rgba(255,255,255,0.3);
-    background: rgba(255,255,255,0.08);
-}
-.phot-tel-btn.active::before {
-    opacity: 1;
-}
-.phot-tel-btn:hover {
-    border-color: rgba(255,255,255,0.4);
-    background: rgba(255,255,255,0.12);
-    color: #fff;
-}
-
 /* Tooltip for toggle labels — rendered via JS into body to bypass overflow:hidden */
 #kinder-tooltip {
     position: fixed;
@@ -997,85 +957,6 @@ select.btn-modern { min-height: 0; }
     color: white;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(207, 102, 121, 0.2);
-}
-
-/* ── Photometry filter-legend toggle buttons (below chart) ──────────────── */
-.phot-filter-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 9px 3px 6px;
-    font-size: 0.78rem;
-    cursor: pointer;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.03);
-    color: rgba(255,255,255,0.25);
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
-    user-select: none;
-    white-space: nowrap;
-    line-height: 1.5;
-}
-.phot-filter-btn.active {
-    color: rgba(255,255,255,0.7);
-    border-color: rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.05);
-}
-.phot-filter-btn.tel-off {
-    opacity: 0.35;
-    cursor: default;
-}
-.phot-filter-btn:not(.tel-off):hover {
-    border-color: rgba(255,255,255,0.3);
-    background: rgba(255,255,255,0.09);
-    color: rgba(255,255,255,0.85);
-}
-.phot-filter-dot {
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--fc, #888);
-    flex-shrink: 0;
-    opacity: 0.3;
-    transition: opacity 0.12s;
-}
-.phot-filter-btn.active .phot-filter-dot { opacity: 1; }
-.phot-filter-up {
-    display: inline-block;
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 7px solid var(--fc, #888);
-    flex-shrink: 0;
-    opacity: 0.3;
-    transition: opacity 0.12s;
-}
-.phot-filter-btn.active .phot-filter-up { opacity: 1; }
-
-/* Telescope group header label in filter legend */
-.phot-legend-tel {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: rgba(255,255,255,0.28);
-    letter-spacing: 0.4px;
-    padding: 0 2px;
-    white-space: nowrap;
-    align-self: center;
-}
-
-/* Thin divider between telescope groups */
-.phot-legend-sep {
-    display: inline-block;
-    width: 1px;
-    height: 14px;
-    background: rgba(255,255,255,0.1);
-    margin: 0 4px;
-    align-self: center;
-    flex-shrink: 0;
 }
 
 /* Touch-action fix: allow Plotly and Aladin to handle touch events natively */

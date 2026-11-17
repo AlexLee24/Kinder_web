@@ -383,6 +383,23 @@ def daily_trigger_auto_phot_frame(row_id, band):
     return resp
 
 
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/details')
+def daily_trigger_auto_phot_details(row_id):
+    """Why a target failed, or how its run is going: the reason, failed images, AutoPhOT's errors, the log tail."""
+    g = _dt_guard()
+    if g:
+        return g
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    if not r:
+        return jsonify({'success': False, 'error': 'No such row.'}), 404
+    d = auto_phot.details(r)
+    d['pipeline'] = f"/pipeline/autophot/{r['workspace']}?tab=run" if r.get('workspace') and session['user'].get('is_admin') else ''
+    return jsonify({'success': True, 'status': r['status'], 'target': r['target'], 'telescope': r['telescope'],
+                    'night': r['night'], 'n_frames': r['n_frames'], 'n_done': r['n_done'], **d})
+
+
 @private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/retry', methods=['POST'])
 def daily_trigger_auto_phot_retry(row_id):
     g = _dt_guard()
@@ -438,18 +455,16 @@ def daily_trigger_auto_phot_measure():
 
 @private_area_bp.route('/api/daily_trigger/target_lc')
 def daily_trigger_target_lc():
-    """?name= : the Kinder object's photometry (mjd, mag, err, filter, telescope) for the target panel's light curve."""
+    """?name= : the Kinder object a target is (its stored name, for /api/object/<name>/photometry/plot) and its
+    discovery date (the phase axis), so the target panel draws the Transient page's light curve."""
     g = _dt_guard()
     if g:
         return g
-    from app.db.transient import TNSObjectDB
+    from app.db.transient import TNSObjectDB, search_tns_objects
     name = (request.args.get('name') or '').strip()[:80]
-    found = TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', '')) if name else None
+    found = (TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', ''))) if name else None
     if not found:
-        return jsonify({'success': True, 'object': None, 'points': []})
-    pts = [{'mjd': float(p['mjd']), 'mag': float(p['magnitude']) if p.get('magnitude') is not None else None,
-            'err': float(p['magnitude_error']) if p.get('magnitude_error') is not None else None,
-            'filter': p.get('filter') or '', 'telescope': p.get('telescope') or ''}
-           for p in TNSObjectDB.get_photometry(found) if p.get('mjd') is not None]
-    return jsonify({'success': True, 'object': found, 'points': pts})
+        return jsonify({'success': True, 'object': None, 'discoverydate': None})
+    rows = search_tns_objects(search_term=found, limit=1) or []
+    return jsonify({'success': True, 'object': found, 'discoverydate': (rows[0].get('discoverydate') if rows else None)})
 

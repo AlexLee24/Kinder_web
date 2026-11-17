@@ -38,8 +38,6 @@
     const col = f => FCOL[band(f)] || '#9a9aa5';
     const fchip = f => el('span', { class: 'dta-f', style: `--fc:${col(f)}`, text: f });
     const objUrl = name => '/object/' + encodeURIComponent(String(name).replace(/^(AT|SN|TDE|FRB)\s?/i, ''));
-    const mjdNow = () => Date.now() / 864e5 + 40587;
-    const nightMjd = iso => Date.parse(iso + 'T12:00:00Z') / 864e5 + 40587;
     const dets = r => (r.phot || []).filter(p => p.det && p.mag != null);
     const rowState = r => r.status === 'done' ? (dets(r).length ? 'done' : 'lim') : r.status;
     const priOf = name => { const t = (tgts()).find(x => x.name === name); return t ? t.priority : ''; };
@@ -49,6 +47,55 @@
         const txt = s === 'running' && r.n_frames && !short ? `Measuring · ${r.n_done || 0} of ${r.n_frames} frames` : (short ? SHORT : STATE)[s] || s;
         return el('span', { class: 'dta-state is-' + s }, s === 'running' ? el('span', { class: 'dta-spin', 'aria-hidden': 'true' }) : null, txt);
     }
+    // Failed or running: the state opens the details (why it failed, how the run is going, the log)
+    function stateBtn(r, short) {
+        const s = rowState(r);
+        if (!r.id || (s !== 'failed' && s !== 'running')) return stateEl(r, short);
+        return el('button', { type: 'button', class: 'dta-why', title: s === 'failed' ? 'Why it failed' : 'Log of the run',
+                              'aria-haspopup': 'dialog', onclick: () => openDetails(r) },
+            stateEl(r, short), el('span', { class: 'dta-why-more', text: s === 'failed' ? 'Why?' : 'Log' }));
+    }
+    let dlgTimer = null;
+    async function openDetails(r) {
+        const dlg = $('dtAutoDlg');
+        clearTimeout(dlgTimer);
+        const fill = async first => {
+            let d;
+            try {
+                const res = await fetch(`${API}/${r.id}/details`, { credentials: 'same-origin' });
+                d = await res.json();
+                if (!d.success) throw new Error(d.error || 'Could not load');
+            } catch (e) { d = { error: e.message }; }
+            if (!first && !dlg.open) return;
+            const st = d.status === 'done' && !(r.phot || []).some(p => p.det) ? 'lim' : (d.status || r.status);
+            const pre = el('pre', { class: 'dta-log', tabindex: '0', 'aria-label': 'Last lines of the AutoPhOT log', text: d.log || 'No log yet.' });
+            dlg.replaceChildren(...[
+                el('div', { class: 'dta-dlg-head' },
+                    el('div', {}, el('h2', { id: 'dtAutoDlgTitle', text: `${r.target} · ${r.telescope}` }),
+                        el('div', { class: 'dta-sub' }, r.night, ' · ', stateEl({ ...r, status: d.status || r.status, n_done: d.n_done ?? r.n_done, n_frames: d.n_frames ?? r.n_frames, phot: st === 'lim' ? [] : r.phot }))),
+                    el('form', { method: 'dialog' }, el('button', { class: 'dta-iconbtn', value: 'close', 'aria-label': 'Close', html: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' }))),
+                d.error ? el('p', { class: 'dta-warn', text: d.error }) : null,
+                d.reason ? el('div', { class: 'dta-reason' }, el('b', { text: d.status === 'failed' ? 'Reason' : 'Note' }), el('p', { text: d.reason })) : null,
+                d.n_in != null ? el('p', { class: 'dta-muted dtw-small', text: `${d.n_ok ?? 0} of ${d.n_in} images measured` + (d.progress ? ` · ${d.progress.done} of ${d.progress.total} done in this run` : '') }) : null,
+                d.images && d.images.length ? el('section', {}, el('h3', { text: 'Images not measured' }),
+                    el('ul', { class: 'dta-list' }, d.images.map(f => el('li', {}, el('span', { class: 'mono', text: f.name }),
+                        f.filter ? el('span', { class: 'dta-muted', text: ' · ' + f.filter }) : null,
+                        el('div', { class: 'dta-muted dtw-small', text: f.hint || (f.errors || []).slice(-1)[0] || ({ FAIL: 'AutoPhOT failed on this image (see the log)', SKIPPED: 'Skipped before photometry' }[f.status] || f.status) })))) ) : null,
+                d.problems && d.problems.length ? el('section', {}, el('h3', { text: 'Errors AutoPhOT reported' }),
+                    el('ul', { class: 'dta-list' }, d.problems.map(p => el('li', { class: 'dtw-small' }, p.text, p.n > 1 ? el('span', { class: 'dta-muted', text: ` (×${p.n})` }) : null)))) : null,
+                el('section', {}, el('h3', { text: 'Log' }), pre),
+                el('div', { class: 'dta-dlg-foot' },
+                    d.pipeline ? el('a', { class: 'kw-btn kw-btn-sm', href: d.pipeline, text: 'Open the Pipeline run' }) : null,
+                    d.status === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: 'Retry', onclick: e => { retry(r, e.currentTarget); dlg.close(); } }) : null,
+                    el('form', { method: 'dialog' }, el('button', { class: 'kw-btn kw-btn-sm', value: 'close', autofocus: true, text: 'Close' })))].filter(Boolean));
+            pre.scrollTop = pre.scrollHeight;
+            if (d.status === 'running' || d.status === 'queued') dlgTimer = setTimeout(() => fill(false), 10000);
+        };
+        dlg.replaceChildren(el('p', { class: 'dta-muted', text: 'Loading…' }));
+        if (!dlg.open) dlg.showModal();
+        await fill(true);
+    }
+
     function magEl(p) {
         return p.det && p.mag != null
             ? el('span', { class: 'dta-mag' }, el('span', { class: 'mono', text: p.mag.toFixed(2) }), el('span', { class: 'mono dta-err', text: ' ±' + (p.err != null ? p.err.toFixed(2) : '—') }))
@@ -184,7 +231,7 @@
                 ? el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p))))
                 : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
-            el('td', { 'data-l': 'Status' }, stateEl(r),
+            el('td', { 'data-l': 'Status' }, stateBtn(r),
                 veto ? el('div', { class: 'dta-note', text: veto.veto }) : null,
                 s === 'done' && !r.obj_name ? el('div', { class: 'dta-note', text: 'Not a Kinder object' }) : null),
             el('td', { class: 'dta-right dta-nowrap' },
@@ -193,10 +240,13 @@
                 s !== 'failed' && s !== 'waiting' ? links(r) : null));
     }
 
-    // ── Workspace view ───────────────────────────────────────────────────────
+    // ── Workspace view: the target table on the left, the picked target on the right ──
     function currentTel() { return document.getElementById('tab-LOT')?.classList.contains('active') ? 'LOT' : 'SLT'; }
     function latestFor(t) { return (latest[t.name] || []).find(r => r.telescope === t.telescope) || (latest[t.name] || [])[0] || null; }
     function scheduleWs() { clearTimeout(wsTimer); wsTimer = setTimeout(renderWs, 30); }
+    const rowId = tr => { const b = tr && tr.querySelector('.pa-sel-box[data-tid]'); return b ? Number(b.dataset.tid) : null; };
+    const rowOf = id => document.querySelector(`.pa-sel-box[data-tid="${id}"]`)?.closest('tr') || null;
+    let tableHome = null;                                       // where the tables sit in the Table view
 
     function setView(v) {
         view = v;
@@ -204,41 +254,48 @@
         const sec = document.querySelector('.pa-obs-section');
         sec.classList.toggle('is-ws', v === 'ws');
         $('dtWs').hidden = v !== 'ws';
+        if (!tableHome && $('content-SLT')) { tableHome = document.createComment('target tables'); $('content-SLT').before(tableHome); }
+        ['content-SLT', 'content-LOT'].forEach(id => {            // the same table (and its handlers) in both views
+            const n = $(id);
+            if (n && tableHome) { if (v === 'ws') $('dtWsList').append(n); else tableHome.before(n); }
+        });
         document.querySelectorAll('[data-dtview]').forEach(b => {
             const on = b.dataset.dtview === v;
             b.setAttribute('aria-pressed', String(on));
             b.classList.toggle('is-on', on);
         });
         if (v === 'ws') renderWs();
+        else document.querySelectorAll('tr.dtw-sel').forEach(tr => tr.classList.remove('dtw-sel'));
     }
 
     function renderWs() {
         if (view !== 'ws') return;
         const tel = currentTel();
         const all = (tgts()).filter(t => t.telescope === tel);
-        const rank = t => PRI.indexOf(t.priority) < 0 ? 9 : PRI.indexOf(t.priority);
-        const on = all.filter(t => t.is_active !== false).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-        const off = all.filter(t => t.is_active === false).sort((a, b) => a.name.localeCompare(b.name));
-        if (!all.some(t => t.id === selected)) selected = (on[0] || off[0] || {}).id ?? null;
-        const list = $('dtWsList');
-        const item = t => {
-            const r = latestFor(t), b = r ? bestPerFilter(r).find(p => p.det && p.mag != null) : null;
-            const f = r && r.frames && r.frames.length ? (r.frames.includes('r') ? 'r' : r.frames[0]) : null;
-            return el('button', { type: 'button', class: 'dtw-item' + (t.is_active === false ? ' is-off' : ''),
-                                  'aria-current': t.id === selected ? 'true' : 'false', 'data-id': t.id,
-                                  onclick: () => { selected = t.id; renderWs(); } },
-                f ? thumb(r, f) : el('span', { class: 'dta-thumb is-empty', 'aria-hidden': 'true' }),
-                el('span', { class: 'dtw-item-main' }, el('span', { class: 'dtw-item-name', text: t.name }),
-                    el('span', { class: 'dtw-item-sub' }, el('span', { class: 'dta-pri is-' + String(t.priority || '').toLowerCase(), text: t.priority || '—' }),
-                        r && r.night !== (data && data.last_night) ? el('span', { class: 'mono', text: ' · ' + r.night.slice(5) }) : null)),
-                el('span', { class: 'dtw-item-r' }, b ? el('span', { class: 'mono', text: `${band(b.filter)} ${b.mag.toFixed(2)}` }) : null,
-                    r ? stateEl(r, true) : el('span', { class: 'dta-muted dtw-small', text: t.last_observed ? 'Not measured' : 'Never observed' })));
-        };
-        list.replaceChildren(
-            el('div', { class: 'dtw-group', text: `Tonight · ${on.length}` }), ...on.map(item),
-            off.length ? el('div', { class: 'dtw-group', text: `Off · ${off.length}` }) : null, ...off.map(item));
-        if (!all.length) list.append(el('p', { class: 'dta-empty', text: `No ${tel} targets yet` }));
+        const rows = [...document.querySelectorAll(`#${tel.toLowerCase()}-list > tr`)].filter(tr => rowId(tr) != null);
+        if (!all.some(t => t.id === selected)) selected = rows.length ? rowId(rows[0]) : null;
+        rows.forEach(tr => {
+            const id = rowId(tr), t = all.find(x => x.id === id);
+            tr.classList.add('dtw-row');
+            tr.classList.toggle('dtw-sel', id === selected);
+            tr.tabIndex = id === selected ? 0 : -1;
+            tr.setAttribute('aria-current', id === selected ? 'true' : 'false');
+            tr.querySelector('.dtw-auto')?.remove();
+            const r = t ? latestFor(t) : null, box = tr.querySelector('.pa-td-name-content');
+            if (!r || !box) return;
+            const b = bestPerFilter(r).find(p => p.det && p.mag != null);
+            box.append(el('div', { class: 'dtw-auto' }, stateEl(r, true),
+                b ? el('span', { class: 'mono', text: `${band(b.filter)} ${b.mag.toFixed(2)}` }) : null,
+                r.night !== (data && data.last_night) ? el('span', { class: 'mono dta-muted', text: r.night.slice(5) }) : null));
+        });
         renderDetail(all.find(t => t.id === selected));
+    }
+
+    function select(id, focus) {
+        if (id == null) return;
+        selected = id;
+        renderWs();
+        if (focus) rowOf(id)?.focus({ preventScroll: false });
     }
 
     function plan(t) {
@@ -256,14 +313,14 @@
 
     function renderDetail(t) {
         const box = $('dtWsDetail');
-        if (!t) { box.replaceChildren(el('p', { class: 'dta-empty', text: 'Pick a target' })); return; }
-        const other = t.telescope === 'SLT' ? 'LOT' : 'SLT';
+        if (!t) { box.dataset.lc = ''; box.replaceChildren(el('p', { class: 'dta-empty', text: 'Pick a target' })); return; }
         const r = latestFor(t);
         const coord = typeof formatTargetCoordValue === 'function' ? formatTargetCoordValue(t.ra, t.dec) : { ra: t.ra, dec: t.dec };
         const a = astro[t.id];
-        const sw = el('label', { class: 'pa-action-switch', title: t.is_active !== false ? 'On tonight: in the target list Lulin gets' : 'Off: not sent tonight' },
-            el('input', { type: 'checkbox', checked: t.is_active !== false ? true : null, 'aria-label': 'On tonight',
-                          onchange: e => toggleTargetActive(t.id, e.currentTarget.checked) }), el('span', { class: 'pa-action-slider' }));
+        // keep the drawn light curve while the same target (and the same automatic row) stays picked
+        const lcKey = `${t.id}|${r ? r.id + ':' + r.updated_at : ''}`;
+        const keep = box.dataset.lc === lcKey ? $('dtWsLc') : null;
+        box.dataset.lc = lcKey;
         box.replaceChildren(
             el('div', { class: 'dtw-head' },
                 el('div', {},
@@ -272,17 +329,14 @@
                         el('span', { class: 'dta-pri is-' + String(t.priority || '').toLowerCase(), text: t.priority || '' })),
                     a ? el('div', { class: 'dtw-astro' }, el('span', { text: `Moon ${a.moon_separation != null ? a.moon_separation + '°' : '—'}` }),
                         el('span', { text: `Transit ${a.transit_time_local ? a.transit_time_local.slice(11, 16) : '—'}` }),
-                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null),
-                el('div', { class: 'dtw-actions' },
-                    el('span', { class: 'dtw-switch' }, sw, el('span', { text: t.is_active !== false ? 'On tonight' : 'Off' })),
-                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Edit', onclick: () => editTarget(t.id) }),
-                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Copy to ' + other, onclick: e => copyTargetToTelescope(e, t.id, other) }),
-                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Delete', onclick: () => deleteTarget(t.id) }),
-                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: 'Trigger', onclick: () => openSingleTriggerModal(t.id) }))),
-            el('div', { class: 'dtw-lc', id: 'dtWsLc' }, el('div', { class: 'dta-muted dtw-small', text: 'Loading the light curve…' })),
+                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null)),
+            keep || el('div', { class: 'dtw-lc', id: 'dtWsLc' },
+                el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
+                el('div', { id: 'dtWsLcPlot', class: 'dtw-lc-plot' }, el('div', { class: 'dta-muted dtw-small', text: 'Loading the light curve…' })),
+                el('div', { id: 'photLegend', style: 'display:none; flex-wrap:wrap; gap:4px 6px; padding:8px 0 6px; max-height:108px; overflow-y:auto; border-top:1px solid rgba(255,255,255,0.06); margin-top:8px;' })),
             el('div', { class: 'dtw-two' },
                 el('section', { 'aria-label': 'Latest automatic photometry' },
-                    el('div', { class: 'dtw-sh' }, el('h4', { text: r ? (r.night === (data && data.last_night) ? 'Last night' : 'Night of ' + r.night) : 'Automatic photometry' }), r ? stateEl(r) : null),
+                    el('div', { class: 'dtw-sh' }, el('h4', { text: r ? (r.night === (data && data.last_night) ? 'Last night' : 'Night of ' + r.night) : 'Automatic photometry' }), r ? stateBtn(r) : null),
                     r ? lastNightTable(r) : el('p', { class: 'dta-muted dtw-small', text: 'No frames of this target have been measured yet' })),
                 el('section', { 'aria-label': 'Frames' },
                     el('div', { class: 'dtw-sh' }, el('h4', { text: 'Frames' }), r ? el('span', { class: 'dta-muted dtw-small', text: '60″ around the target' }) : null),
@@ -291,7 +345,7 @@
                 el('section', { 'aria-label': 'Plan' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Plan' })), plan(t)),
                 el('section', { 'aria-label': 'Visibility tonight' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Tonight from Lulin' })),
                     el('div', { class: 'dtw-vis', html: a && a.altitudes && typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(a.altitudes, a._times) : '<span class="dta-muted dtw-small">—</span>' }))));
-        drawLc(t, r);
+        if (!keep) drawLc(t);
     }
 
     function lastNightTable(r) {
@@ -306,53 +360,36 @@
                 r.pipeline ? [' · ', el('a', { href: r.pipeline, text: 'Pipeline run' })] : null));
     }
 
-    async function drawLc(t, r) {
-        const box = () => $('dtWsLc');
-        let pts = lcCache[t.name];
-        if (!pts) {
-            try {
-                const res = await fetch('/api/daily_trigger/target_lc?name=' + encodeURIComponent(t.name), { credentials: 'same-origin' });
-                const d = await res.json();
-                pts = lcCache[t.name] = d.success ? d.points : [];
-            } catch (e) { pts = []; }
-        }
-        if (!box() || selected !== t.id) return;
-        const now = mjdNow(), x0 = now - 60, recent = pts.filter(p => p.mjd >= x0 && p.mag != null);
-        if (!recent.length) { box().replaceChildren(el('p', { class: 'dta-muted dtw-small', text: pts.length ? 'No photometry in the last 60 days' : 'No photometry on the Transient page yet' })); return; }
-        const W = 760, H = 220, pl = 40, pb = 24, pr = 10, pt = 10;
-        const mags = recent.map(p => p.mag), lo = Math.min(...mags) - 0.3, hi = Math.max(...mags) + 0.3;
-        const X = m => pl + (m - x0) / (now - x0) * (W - pl - pr), Y = m => pt + (m - lo) / (hi - lo) * (H - pt - pb);
-        const ns = 'http://www.w3.org/2000/svg', s = document.createElementNS(ns, 'svg');
-        s.setAttribute('viewBox', `0 0 ${W} ${H}`); s.setAttribute('class', 'dtw-svg'); s.setAttribute('role', 'img');
-        s.setAttribute('aria-label', `${t.name} light curve, last 60 days; automatic points ringed, limits as open triangles`);
-        const add = (tag, a, txt) => { const n = document.createElementNS(ns, tag); for (const k in a) n.setAttribute(k, a[k]); if (txt != null) n.textContent = txt; s.append(n); return n; };
-        const step = hi - lo > 3 ? 1 : 0.5;
-        for (let m = Math.ceil(lo / step) * step; m <= hi; m += step) {
-            add('line', { x1: pl, x2: W - pr, y1: Y(m), y2: Y(m), class: 'g' });
-            add('text', { x: pl - 6, y: Y(m) + 3, 'text-anchor': 'end', class: 'l' }, m.toFixed(1));
-        }
-        for (const d of [-60, -45, -30, -15, 0]) add('text', { x: X(now + d), y: H - 6, 'text-anchor': 'middle', class: 'l' }, d ? d + ' d' : 'today');
-        if (r) add('line', { x1: X(nightMjd(r.night)), x2: X(nightMjd(r.night)), y1: pt, y2: H - pb, class: 'n' });
-        const byF = {};
-        recent.forEach(p => (byF[band(p.filter)] = byF[band(p.filter)] || []).push(p));
-        const legend = [];
-        for (const f of Object.keys(byF).sort((a, b) => 'ugrizyocw'.indexOf(a) - 'ugrizyocw'.indexOf(b))) {
-            const c = col(f), detp = byF[f].filter(p => p.err != null).sort((a, b) => a.mjd - b.mjd);
-            if (detp.length > 1) add('polyline', { points: detp.map(p => `${X(p.mjd)},${Y(p.mag)}`).join(' '), fill: 'none', stroke: c, 'stroke-opacity': 0.35, 'stroke-width': 1 });
-            for (const p of byF[f]) {
-                const x = X(p.mjd), y = Y(p.mag), auto = /\(AUTO/.test(p.telescope);
-                if (p.err == null) add('path', { d: `M${x - 4},${y - 3} L${x + 4},${y - 3} L${x},${y + 4} Z`, fill: 'none', stroke: c, 'stroke-width': 1.3 });
-                else {
-                    if (p.err > 0) add('line', { x1: x, x2: x, y1: Y(p.mag - p.err), y2: Y(p.mag + p.err), stroke: c, 'stroke-opacity': 0.6 });
-                    if (auto) add('circle', { cx: x, cy: y, r: 6, fill: 'none', stroke: '#fff', 'stroke-width': 1.2 });
-                    add('circle', { cx: x, cy: y, r: auto ? 3.4 : 2.6, fill: c });
-                }
-                add('title', {}, `${p.filter} ${p.err == null ? '>' : ''}${p.mag.toFixed(2)}${p.err != null ? ' ±' + p.err.toFixed(2) : ''} · ${p.telescope} · MJD ${p.mjd.toFixed(2)}`);
-            }
-            legend.push(el('span', {}, el('i', { class: 'dta-dot', style: `background:${c}` }), f));
-        }
-        legend.push(el('span', {}, el('i', { class: 'dta-dot is-ring' }), 'AUTO'), el('span', {}, el('i', { class: 'dta-tri' }), 'limit'));
-        box().replaceChildren(el('div', { class: 'dtw-legend' }, legend), s);
+    // The Transient page's light curve (lc_plot.js: the same Plotly figure, telescope toggles, filter legend, phase axis)
+    const LC_TTL = 120e3;
+    const whenPlotly = () => new Promise((res, rej) => {
+        if (window.Plotly) return res();
+        const t0 = Date.now(), t = setInterval(() => {
+            if (window.Plotly) { clearInterval(t); res(); } else if (Date.now() - t0 > 20e3) { clearInterval(t); rej(new Error('Plotly did not load')); }
+        }, 100);
+    });
+    async function lcData(t) {
+        const c = lcCache[t.name];
+        if (c && Date.now() - c.at < LC_TTL) return c;
+        const j = async u => { const res = await fetch(u, { credentials: 'same-origin' }); return res.json(); };
+        const o = await j('/api/daily_trigger/target_lc?name=' + encodeURIComponent(t.name));
+        const d = { at: Date.now(), object: o.success ? o.object : null, disc: o.discoverydate || null, plot: null };
+        if (d.object) d.plot = await j(`/api/object/${encodeURIComponent(d.object)}/photometry/plot?extinction=false&k_corr=false`);
+        return (lcCache[t.name] = d);
+    }
+    async function drawLc(t) {
+        const say = text => { const b = $('dtWsLcPlot'); if (b && selected === t.id) b.replaceChildren(el('p', { class: 'dta-muted dtw-small', text })); };
+        let d;
+        try { d = await lcData(t); } catch (e) { say('Could not load the light curve'); return; }
+        if (!d.object) { say('Not a Kinder object: no light curve'); return; }
+        if (!d.plot || !d.plot.success || !d.plot.plot_json) { say((d.plot && (d.plot.message || d.plot.error)) || 'No photometry on the Transient page yet'); return; }
+        try { await whenPlotly(); } catch (e) { say('Could not load the plotting library'); return; }
+        const box = $('dtWsLcPlot');
+        if (!box || selected !== t.id) return;
+        const disc = _mjdFromDateString(d.disc);
+        lcPhaseRefDefault = disc != null ? { mjd: disc, custom: false } : null;
+        try { lcDraw(box, d.plot, fig => lcAddPhaseAxis(fig, lcPhaseRefDefault, 'Phase (days since discovery)'), 420); }
+        catch (e) { console.error('dt_auto: light curve', e); say('Could not draw the light curve'); }
     }
 
     function focusTarget(name, tel) {
@@ -361,9 +398,10 @@
         if (currentTel() !== t.telescope && typeof switchTab === 'function') switchTab(t.telescope);
         selected = t.id;
         setView('ws');
-        document.querySelector('.pa-obs-section').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-        const btn = document.querySelector(`.dtw-item[data-id="${t.id}"]`);
-        if (btn) btn.focus({ preventScroll: true });
+        const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        document.querySelector('.pa-obs-section').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+        const tr = rowOf(t.id);
+        if (tr) { tr.focus({ preventScroll: true }); tr.scrollIntoView({ block: 'nearest' }); }
     }
 
     // ── hooks into daily_trigger.js ──────────────────────────────────────────
@@ -386,18 +424,41 @@
         return out;
     };
 
-    // keyboard: up / down moves through the target list
-    document.addEventListener('keydown', e => {
-        if (!e.target.classList || !e.target.classList.contains('dtw-item') || !['ArrowDown', 'ArrowUp'].includes(e.key)) return;
-        const items = [...document.querySelectorAll('.dtw-item')], i = items.indexOf(e.target);
-        const next = items[i + (e.key === 'ArrowDown' ? 1 : -1)];
-        if (next) { e.preventDefault(); next.focus(); next.click(); document.querySelector(`.dtw-item[data-id="${next.dataset.id}"]`)?.focus(); }
-    });
+    // the table rows pick the target: a click (not on the row's own controls), Enter, or up / down
+    const ROW_CONTROLS = 'input, button, a, label, select, textarea, .pa-td-coord, .pa-td-note, .pa-td-note-gl, .pa-copy-menu, .pa-mini-plot';
+    function wireRows() {
+        const list = $('dtWsList');
+        list.addEventListener('click', e => {
+            if (view !== 'ws' || e.target.closest(ROW_CONTROLS)) return;
+            const tr = e.target.closest('tbody > tr');
+            if (tr && rowId(tr) != null && rowId(tr) !== selected) select(rowId(tr));
+        });
+        list.addEventListener('keydown', e => {
+            const tr = e.target.closest && e.target.closest('tbody > tr.dtw-row');
+            if (view !== 'ws' || !tr || e.target !== tr) return;
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(rowId(tr), true); return; }
+            if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+            let next = tr;
+            do { next = e.key === 'ArrowDown' ? next.nextElementSibling : next.previousElementSibling; } while (next && rowId(next) == null);
+            if (next) { e.preventDefault(); select(rowId(next), true); }
+        });
+    }
 
     function init() {
+        const dlg = $('dtAutoDlg');
+        if (dlg) {
+            dlg.addEventListener('close', () => clearTimeout(dlgTimer));
+            if (!('closedBy' in HTMLDialogElement.prototype)) {          // light dismiss where closedby is missing
+                const outside = e => { const b = dlg.getBoundingClientRect(); return e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom; };
+                let down = false;
+                dlg.addEventListener('pointerdown', e => { down = outside(e); });
+                dlg.addEventListener('pointerup', e => { if (down && outside(e)) dlg.close(); });
+            }
+        }
         let v = 'ws';
         try { v = localStorage.getItem('dt-target-view') || 'ws'; } catch (e) { /* private mode */ }
         document.querySelectorAll('[data-dtview]').forEach(b => b.addEventListener('click', () => setView(b.dataset.dtview)));
+        wireRows();
         setView(v === 'table' ? 'table' : 'ws');
         setTimeout(() => { if (!data) load(night); }, 1500);    // normally loadTargets (above) asks first
     }

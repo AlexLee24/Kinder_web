@@ -7,6 +7,7 @@
 {% block head %}
     <meta name="referrer" content="no-referrer">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/object_detail_main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lc_plot.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/object_detail/responsive.css') }}">
 {% endblock %}
 {% block body_class %}od-body{% endblock %}
@@ -1020,6 +1021,7 @@ MJD         magnitude  error   filter  telescope
     {# Self-hosted pinned Aladin Lite v3. The viewers run in srcdoc iframes that load the same URL, so this warms the cache. #}
     <script type="text/javascript" src="{{ url_for('static', filename='vendor/aladin-3.8.2.global.js') }}" async></script>
     <script type="application/json" id="filterColorsData">{{ filter_colors | default({}) | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/lc_plot.js') }}"></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>
     <script>
     (function () {

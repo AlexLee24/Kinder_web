@@ -53,7 +53,8 @@ FITS_EXT = ('.fits', '.fit', '.fts', '.fits.fz', '.fits.gz')
 IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp')
 TEXT_EXT = ('.log', '.txt', '.yml', '.yaml', '.json', '.dat', '.cat', '.reg', '.param', '.conv', '.sex', '.md', '.ecsv', '.tex')
 MAX_RUNNING = 2                   # AutoPhOT runs at once on this server (people's runs)
-MAX_RUNNING_AUTO = 1              # plus the Auto photometry bot's own run (app/services/auto_phot.py), counted apart
+# plus the Auto photometry bot's runs (app/services/auto_phot.py), counted apart: that many targets measured at once
+MAX_RUNNING_AUTO = max(1, int(os.environ.get('AUTO_PHOT_PARALLEL') or 4))
 MAX_SCAN = 500
 MAX_UPLOAD_BYTES = 4 * 1024 ** 3  # one FITS
 UPLOAD_CHUNK = 8 * 1024 * 1024    # the page sends files in pieces of this size (under the request size limit)
@@ -1103,7 +1104,7 @@ def start(tid, user=''):
         _busy(tid)
         auto = bool(_read_json(d / 'target.json').get('auto'))
         if _running_count(auto) >= (MAX_RUNNING_AUTO if auto else MAX_RUNNING):
-            raise PipelineError('Auto photometry is already running a target.' if auto else
+            raise PipelineError(f'Auto photometry is already running {MAX_RUNNING_AUTO} targets.' if auto else
                                 f'{MAX_RUNNING} AutoPhOT runs are already going on this server; try again when one finishes.')
         if not _fits_in(images_dir(tid), False):
             raise PipelineError('Upload at least one FITS image first.')
