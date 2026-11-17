@@ -1,3 +1,10 @@
+/** Canonical filter → hex color, injected by the page from app/resources/filter_colors.json */
+const _FILTER_COLORS = (() => {
+    try { return JSON.parse(document.getElementById('filterColorsData').textContent) || {}; }
+    catch (e) { return {}; }
+})();
+function _filterColor(f) { return _FILTER_COLORS[f] || '#888888'; }
+
 // Global variables
 const ICONS = {
     success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
@@ -1636,7 +1643,7 @@ let _knModelTraceCount = 0;     // number of KN traces added (2 per filter: fill
 let _knDistMod        = 0;      // distance modulus (set when plot loads)
 
 /** KN model filter → hex color (use the same filter color map) */
-const _KN_FILTER_COLORS = { g: '#00a86b', r: '#ff0000', i: '#8b0000' };
+const _KN_FILTER_COLORS = { g: _filterColor('g'), r: _filterColor('r'), i: _filterColor('i') };
 
 function toggleKnModel() {
     _knModelActive = !_knModelActive;
@@ -1898,23 +1905,7 @@ function _buildFilterLegend(traces) {
 const _COLOR_INDEX_PAIRS = [['g','r'],['B','V'],['g','i'],['r','i'],['r','z'],['g','z'],['u','g'],['u','r'],['c','o']];
 const _MAG_DELTA_DEFAULT  = 'r';
 
-/** Canonical filter → hex color (mirrors app/data/filter_colors.json) */
-const _FILTER_COLORS = {
-    uvw2:'#311432', uvm2:'#4b0082', uvw1:'#8a2be2',
-    u:'#800080', U:'#800080',
-    B:'#0000ff', b:'#0000ff',
-    g:'#00a86b',
-    V:'#9acd32', v:'#9acd32',
-    c:'#00ffff', C:'#00ffff',
-    w:'#eeb861', W:'#eeb861',
-    o:'#ffa500',
-    r:'#ff0000', R:'#ff0000',
-    i:'#8b0000', I:'#8b0000',
-    z:'#4a0000', Z:'#4a0000',
-    y:'#cc6600', Y:'#cc6600',
-    J:'#a0522d', H:'#8b4513', K:'#5c4033', Ks:'#5c4033', L:'#362511',
-};
-function _filterColor(f) { return _FILTER_COLORS[f] || '#888888'; }
+
 
 function _subplotCommonLayout(yLabel) {
     return {
