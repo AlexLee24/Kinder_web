@@ -209,3 +209,84 @@ def zoom_png(path, coord, arcsec=60, px=240):
     fig.savefig(buf, format='png', dpi=100, facecolor='black')
     plt.close(fig)
     return buf.getvalue()
+
+
+def field_grid(path, max_px=480):
+    """The north-up grid a frame's whole field is drawn on: {'ra', 'dec' (centre, deg), 'w', 'h' (arcsec),
+    'nx', 'ny' (px), 'scale' (arcsec/px)}, or None without a WCS. Every filter of a night is drawn on the first
+    one's grid, and the survey image is cut to it, so they all show the same piece of sky."""
+    import numpy as np
+    data, wcs, _ = _load(path)
+    if wcs is None:
+        return None
+    h, w = data.shape
+    cx, cy = (w - 1) / 2, (h - 1) / 2
+    c = wcs.pixel_to_world(cx, cy)
+    ra0, dec0 = float(c.ra.deg), float(c.dec.deg)
+    xs, ys = np.array([0, w - 1, 0, w - 1, cx]), np.array([0, 0, h - 1, h - 1, cy])
+    corners = wcs.pixel_to_world(xs, ys)
+    dx = ((corners.ra.deg - ra0 + 180) % 360 - 180) * np.cos(np.radians(dec0)) * 3600
+    dy = (corners.dec.deg - dec0) * 3600
+    width, height = 2 * float(np.max(np.abs(dx))), 2 * float(np.max(np.abs(dy)))
+    scale = max(width, height) / max_px
+    return {'ra': ra0, 'dec': dec0, 'w': round(width, 1), 'h': round(height, 1),
+            'nx': int(round(width / scale)), 'ny': int(round(height / scale)), 'scale': scale}
+
+
+def _out_wcs(grid):
+    from astropy.wcs import WCS
+    o = WCS(naxis=2)
+    o.wcs.ctype = ['RA---TAN', 'DEC--TAN']
+    o.wcs.crval = [grid['ra'], grid['dec']]
+    o.wcs.crpix = [(grid['nx'] + 1) / 2, (grid['ny'] + 1) / 2]
+    o.wcs.cdelt = [-grid['scale'] / 3600, grid['scale'] / 3600]       # east left, north up
+    return o
+
+
+def target_px(grid, coord):
+    """(x, y) of the target on the grid's image, y counted from the top; None off the grid."""
+    import numpy as np
+    x, y = (float(v) for v in _out_wcs(grid).world_to_pixel(coord))
+    if not (np.isfinite(x) and np.isfinite(y)):
+        return None
+    return x, grid['ny'] - 1 - y
+
+
+def field_png(path, coord, grid):
+    """The frame's whole field resampled north up onto ``grid`` (field_grid), the target ringed; PNG bytes or None."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    try:
+        data, wcs, _ = _load(path)
+    except Exception:
+        logger.exception('preview: could not read %s', path)
+        return None
+    if wcs is None:
+        return None
+    step = max(1, int(grid['scale'] / (_pixscale(wcs) or grid['scale'])))      # bin first: no aliasing noise
+    h, w = data.shape
+    if step > 1:
+        small = data[:h - h % step, :w - w % step]
+        with np.errstate(all='ignore'):
+            small = np.nanmean(small.reshape(small.shape[0] // step, step, small.shape[1] // step, step), axis=(1, 3))
+    else:
+        small = data
+    jj, ii = np.mgrid[0:grid['ny'], 0:grid['nx']]
+    world = _out_wcs(grid).pixel_to_world(ii.ravel(), jj.ravel())
+    fx, fy = wcs.world_to_pixel(world)
+    fx, fy = (np.asarray(fx) + 0.5) / step - 0.5, (np.asarray(fy) + 0.5) / step - 0.5
+    ix, iy = np.rint(fx).astype(int), np.rint(fy).astype(int)
+    ok = (ix >= 0) & (iy >= 0) & (ix < small.shape[1]) & (iy < small.shape[0])
+    out = np.full(ix.shape, np.nan)
+    out[ok] = small[iy[ok], ix[ok]]
+    out = out.reshape(grid['ny'], grid['nx'])
+    img = (_scaled(out) * 255).astype(np.uint8)
+    img[~np.isfinite(out)] = 0
+    im = Image.fromarray(img[::-1], 'L').convert('RGB')
+    t = target_px(grid, coord) if coord is not None else None
+    if t:
+        r = max(6, round(max(grid['nx'], grid['ny']) * 0.025))
+        ImageDraw.Draw(im).ellipse([t[0] - r, t[1] - r, t[0] + r, t[1] + r], outline=(0, 229, 255), width=2)
+    buf = io.BytesIO()
+    im.save(buf, format='PNG', optimize=True)
+    return buf.getvalue()

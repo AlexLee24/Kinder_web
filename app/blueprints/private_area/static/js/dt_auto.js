@@ -337,20 +337,54 @@
                 el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
                 el('div', { id: 'dtWsLcPlot', class: 'dtw-lc-plot' }, el('div', { class: 'dta-muted dtw-small', text: 'Loading the light curve…' })),
                 el('div', { id: 'photLegend', style: 'display:none; flex-wrap:wrap; gap:4px 6px; padding:8px 0 6px; max-height:108px; overflow-y:auto; border-top:1px solid rgba(255,255,255,0.06); margin-top:8px;' })),
-            el('div', { class: 'dtw-two' },
-                el('section', { 'aria-label': 'Latest automatic photometry' },
-                    el('div', { class: 'dtw-sh' }, el('h4', { text: r ? (r.night === (data && data.last_night) ? 'Last night' : 'Night of ' + r.night) : 'Automatic photometry' }), r ? stateBtn(r) : null),
-                    r ? lastNightTable(r) : el('p', { class: 'dta-muted dtw-small', text: 'No frames of this target have been measured yet' })),
-                el('section', { 'aria-label': 'Frames and a survey image' },
-                    el('div', { class: 'dtw-sh' }, el('h4', { text: 'Frames' }), el('span', { class: 'dta-muted dtw-small', text: '60″ around the target' })),
-                    el('div', { class: 'dtw-frames' },
-                        (r && r.frames || []).map(f => el('figure', {}, thumb(r, f, 'is-lg'), el('figcaption', { class: 'mono', text: f }))),
-                        skyFig(t)))),
+            el('section', { 'aria-label': 'Latest automatic photometry' },
+                el('div', { class: 'dtw-sh' }, el('h4', { text: r ? (r.night === (data && data.last_night) ? 'Last night' : 'Night of ' + r.night) : 'Automatic photometry' }), r ? stateBtn(r) : null),
+                r ? lastNightTable(r) : el('p', { class: 'dta-muted dtw-small', text: 'No frames of this target have been measured yet' })),
+            fieldSection(t, r),
             el('div', { class: 'dtw-two' },
                 el('section', { 'aria-label': 'Plan' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Plan' })), plan(t)),
                 el('section', { 'aria-label': 'Visibility tonight' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Tonight from Lulin' })),
                     el('div', { class: 'dtw-vis', html: a && a.altitudes && typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(a.altitudes, a._times) : '<span class="dta-muted dtw-small">—</span>' }))));
         if (!keep) drawLc(t);
+    }
+
+    // The frames' whole field (the telescope's field of view, north up) per filter, then a survey image of the same sky
+    const fieldCache = {};                       // row id → {field} once the server has drawn it
+    const arcmin = v => (v / 60).toFixed(v < 600 ? 1 : 0) + '′';
+    function fieldSection(t, r) {
+        const head = el('div', { class: 'dtw-sh' }, el('h4', { text: 'Field' }));
+        const body = el('div', { class: 'dtw-field', id: 'dtWsField' });
+        const sec = el('section', { 'aria-label': 'Field of view and a survey image' }, head, body);
+        const fill = f => {
+            if (!f) {                                // nothing measured (yet): the survey around the target
+                head.append(el('span', { class: 'dta-muted dtw-small', text: 'Survey, 60″ around the target' }));
+                body.classList.add('is-small');
+                body.replaceChildren(skyFig(t) || el('p', { class: 'dta-muted dtw-small', text: '—' }));
+                return;
+            }
+            head.append(el('span', { class: 'dta-muted dtw-small', text: `${r.telescope} field · ${arcmin(f.w)} × ${arcmin(f.h)} · north up` }));
+            const ratio = `${f.w} / ${f.h}`;
+            const fig = (src, cap, alt, capCls) => el('figure', {},
+                el('a', { href: src, target: '_blank', rel: 'noopener', title: 'Open full size' },
+                    el('img', { src, alt, loading: 'lazy', style: `aspect-ratio:${ratio}` })),
+                el('figcaption', { class: capCls || 'mono', text: cap }));
+            const base = `${API}/${r.id}`;
+            const figs = f.filters.map(b => fig(`${base}/field/${encodeURIComponent(b)}.png`, b, `${t.name} ${b}-band frame, ${r.night}, the whole ${r.telescope} field`));
+            const sv = f.survey || {};
+            figs.push(sv.key ? fig(`${base}/survey.jpg`, sv.label, `${sv.label} image of the same field`, 'dtw-sky-cap')
+                             : el('figure', {}, el('span', { class: 'dtw-field-empty', style: `aspect-ratio:${ratio}` }),
+                                  el('figcaption', { class: 'dta-muted', text: 'No survey image' })));
+            body.replaceChildren(...figs);
+        };
+        if (!r || r.status !== 'done') { fill(null); return sec; }
+        if (fieldCache[r.id]) { fill(fieldCache[r.id].field); return sec; }
+        body.replaceChildren(el('p', { class: 'dta-muted dtw-small', text: 'Drawing the field…' }));
+        fetch(`${API}/${r.id}/field`, { credentials: 'same-origin' }).then(res => res.json()).then(d => {
+            if (!d.success) throw new Error(d.error || 'failed');
+            fieldCache[r.id] = { field: d.field };
+            if (body.isConnected) fill(d.field);
+        }).catch(() => { if (body.isConnected) fill(null); });
+        return sec;
     }
 
     // A survey image of the same 60″, from the first survey that has the position: Euclid, DESI Legacy, Pan-STARRS1, others

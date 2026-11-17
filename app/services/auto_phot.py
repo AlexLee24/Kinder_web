@@ -15,6 +15,7 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 """
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -272,8 +273,14 @@ def _points(tid):
     return out
 
 
+def _safe(band):
+    return re.sub(r"[^A-Za-z0-9]", "_", band)
+
+
 def _frame_pngs(tid, ra, dec, phot):
-    """auto_frames/<filter>.png: a 60″ zoom of the best image of each filter."""
+    """auto_frames/<filter>.png, a 60″ zoom of the best image of each filter (the Last night thumbnails), and
+    <filter>_field.png, that image's whole field north up on one grid for all filters (field.json), the Workspace's."""
+    import json
     from astropy.coordinates import SkyCoord
     from app.services.pipeline import autophot as ap
     from app.services.pipeline import previews
@@ -285,18 +292,170 @@ def _frame_pngs(tid, ra, dec, phot):
         cur = best.get(p['filter'])
         if cur is None or (p.get('snr') or 0) > (cur.get('snr') or 0):
             best[p['filter']] = p
-    made = []
+    made, grid = [], None
+    gfile = d / 'field.json'
+    if gfile.is_file():
+        try:
+            grid = json.loads(gfile.read_text())
+        except ValueError:
+            grid = None
     for f, p in best.items():
         try:
             _, original, _ = previews._sources(tid, p['image'], None)
-            png = previews.zoom_png(original, coord) if original else None
         except Exception:
-            logger.exception('auto_phot: frame zoom %s %s', tid, f)
-            png = None
-        if png:
-            (d / f'{re.sub(r"[^A-Za-z0-9]", "_", f)}.png').write_bytes(png)
-            made.append(f)
+            logger.exception('auto_phot: frame of %s %s', tid, f)
+            original = None
+        if not original:
+            continue
+        try:
+            png = previews.zoom_png(original, coord)
+            if png:
+                (d / f'{_safe(f)}.png').write_bytes(png)
+                made.append(f)
+            if grid is None:
+                grid = previews.field_grid(original)
+                if grid:
+                    gfile.write_text(json.dumps(grid))
+            fpng = previews.field_png(original, coord, grid) if grid else None
+            if fpng:
+                (d / f'{_safe(f)}_field.png').write_bytes(fpng)
+        except Exception:
+            logger.exception('auto_phot: frame pngs %s %s', tid, f)
     return made
+
+
+def ensure_field_pngs(row):
+    """Rows measured before the whole-field images existed: draw them now while the FITS are still kept (once)."""
+    from app.services.pipeline import autophot as ap
+    tid = row.get('workspace')
+    if not tid or row.get('status') != 'done' or row.get('ra') is None:
+        return
+    try:
+        d = ap.tdir(tid, must=False) / 'auto_frames'
+    except ap.PipelineError:
+        return
+    mark = d / '.field_tried'
+    if (d / 'field.json').is_file() or mark.exists() or not d.is_dir():
+        return
+    mark.touch()
+    _frame_pngs(tid, row['ra'], row['dec'], row.get('phot') or [])
+
+
+def field_grid(tid):
+    import json
+    from app.services.pipeline import autophot as ap
+    try:
+        return json.loads((ap.tdir(tid, must=False) / 'auto_frames' / 'field.json').read_text())
+    except (OSError, ValueError, ap.PipelineError):
+        return None
+
+
+# A survey image of the frames' field: the first of these with data at the target. 'ls' layers come from the
+# Legacy Survey viewer (any size, north up), 'hips' from CDS hips2fits.
+FIELD_SURVEYS = [('euclid', 'Euclid Q1', 'hips', 'CDS/P/Euclid/Q1/color'),
+                 ('dr11', 'Legacy DR11', 'ls', 'ls-dr11'), ('dr10', 'Legacy DR10', 'ls', 'ls-dr10'),
+                 ('ps1', 'Pan-STARRS1', 'ls', 'ps1'), ('hsc', 'HSC PDR3', 'ls', 'hsc-dr3'), ('sdss', 'SDSS', 'ls', 'sdss'),
+                 ('dss', 'DSS2', 'hips', 'CDS/P/DSS2/color')]
+LS_CUTOUT = 'https://www.legacysurvey.org/viewer/jpeg-cutout'
+_locks, _locks_guard = {}, threading.Lock()
+
+
+def _lock(key):
+    with _locks_guard:
+        return _locks.setdefault(key, threading.Lock())
+HIPS2FITS = 'https://alasky.cds.unistra.fr/hips-image-services/hips2fits'
+
+
+def _survey_fetch(kind, layer, grid):
+    import requests
+    if kind == 'ls':
+        r = requests.get(LS_CUTOUT, params={'ra': f"{grid['ra']:.6f}", 'dec': f"{grid['dec']:.6f}", 'layer': layer,
+                                            'width': grid['nx'], 'height': grid['ny'], 'pixscale': f"{grid['scale']:.4f}"},
+                         timeout=40)
+    else:
+        r = requests.get(HIPS2FITS, params={'hips': layer, 'ra': f"{grid['ra']:.6f}", 'dec': f"{grid['dec']:.6f}",
+                                            'width': grid['nx'], 'height': grid['ny'], 'projection': 'TAN',
+                                            'fov': max(grid['w'], grid['h']) / 3600, 'format': 'jpg'}, timeout=30)
+    if r.status_code != 200 or not r.headers.get('content-type', '').startswith('image/'):
+        return None
+    return r.content
+
+
+def _has_sky_at(jpg, xy, box=6):
+    """False when the image is flat around the target (outside the survey: the services answer with black)."""
+    import io
+    from PIL import Image
+    try:
+        with Image.open(io.BytesIO(jpg)) as im:
+            x, y = int(round(xy[0])), int(round(xy[1]))
+            cut = im.convert('L').crop((max(0, x - box), max(0, y - box), x + box + 1, y + box + 1))
+            lo, hi = cut.getextrema()
+            return hi - lo > 4 or hi > 12
+    except Exception:
+        return False
+
+
+def _ring(jpg, xy, grid):
+    """The survey image with the target ringed like on the frames."""
+    import io
+    from PIL import Image, ImageDraw
+    try:
+        with Image.open(io.BytesIO(jpg)) as im:
+            im = im.convert('RGB')
+            r = max(6, round(max(grid['nx'], grid['ny']) * 0.025))
+            ImageDraw.Draw(im).ellipse([xy[0] - r, xy[1] - r, xy[0] + r, xy[1] + r], outline=(0, 229, 255), width=2)
+            buf = io.BytesIO()
+            im.save(buf, format='JPEG', quality=90)
+            return buf.getvalue()
+    except Exception:
+        return jpg
+
+
+def field_survey(row):
+    """{'key', 'label'} of the survey image of this row's field (auto_frames/survey.jpg), fetched the first time;
+    {'key': None} when no survey has the target (or the frames have no field yet)."""
+    import json
+    from astropy.coordinates import SkyCoord
+    from app.services.pipeline import autophot as ap
+    from app.services.pipeline import previews
+    tid = row.get('workspace')
+    grid = field_grid(tid) if tid else None
+    if not grid or row.get('ra') is None:
+        return {'key': None}
+    d = ap.tdir(tid, must=False) / 'auto_frames'
+    meta = d / 'survey.json'
+    with _lock(str(meta)):
+        if meta.is_file():
+            try:
+                return json.loads(meta.read_text())
+            except ValueError:
+                pass
+        xy = previews.target_px(grid, SkyCoord(row['ra'], row['dec'], unit='deg'))
+        out, unsure = {'key': None}, False
+        for key, label_, kind, layer in FIELD_SURVEYS:
+            try:
+                jpg = _survey_fetch(kind, layer, grid)
+            except Exception as e:
+                logger.info('auto_phot: %s survey %s: %s', tid, key, e)
+                jpg, unsure = None, True
+            if jpg and xy and _has_sky_at(jpg, xy):
+                (d / 'survey.jpg').write_bytes(_ring(jpg, xy, grid))
+                out = {'key': key, 'label': label_}
+                break
+            if jpg is None:
+                unsure = True
+        if out['key'] or not unsure:            # a service that did not answer may have it next time
+            meta.write_text(json.dumps(out))
+        return out
+
+
+def survey_path(tid):
+    from app.services.pipeline import autophot as ap
+    try:
+        p = ap.tdir(tid, must=False) / 'auto_frames' / 'survey.jpg'
+    except ap.PipelineError:
+        return None
+    return p if p.is_file() else None
 
 
 def details(row):
@@ -324,10 +483,10 @@ def details(row):
     return out
 
 
-def frame_png_path(tid, band):
+def frame_png_path(tid, band, field=False):
     from app.services.pipeline import autophot as ap
     try:
-        p = ap.tdir(tid, must=False) / 'auto_frames' / f'{re.sub(r"[^A-Za-z0-9]", "_", band)}.png'
+        p = ap.tdir(tid, must=False) / 'auto_frames' / f'{_safe(band)}{"_field" if field else ""}.png'
     except ap.PipelineError:
         return None
     return p if p.is_file() else None
