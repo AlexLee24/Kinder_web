@@ -1469,6 +1469,9 @@ def photometry(tid, run=None):
             'fwhm': _f(r.get('image_fwhm')), 'airmass': _f(r.get('airmass')),
             'exptime': _f(r.get('exposure_time')), 'telescope': (r.get('telescope') or '').strip(),
             'ts': _truthy(r.get('preformsubtractioned')),     # measured on the difference image (False when subtraction fell back to the frame)
+            # how good the subtraction was (AutoPhOT's own checks; NaN / empty when it did not subtract)
+            'align_q': (r.get('alignment_quality') or '').strip().lower(),
+            'fscale_disc': _f(r.get('flux_scale_discrep_pct')), 'artifacts': _f(r.get('subtraction_artifact_regions')),
         })
     rows.sort(key=lambda x: (x['mjd'] is None, x['mjd'] or 0))
     from astropy.time import Time  # AutoPhOT's date column holds MJD; UTC from MJD

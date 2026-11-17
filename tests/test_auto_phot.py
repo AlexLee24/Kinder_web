@@ -39,6 +39,7 @@ def fake(monkeypatch):
     db = FakeDB()
     monkeypatch.setattr(dbmod, 'upsert', db.upsert)
     monkeypatch.setattr(dbmod, 'for_night', db.for_night)
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: None)     # no network; tests that want TS set one
     return db
 
 
@@ -54,7 +55,8 @@ def test_scan_takes_the_night_and_groups_by_target_and_telescope(tmp_path):
 
 
 def test_labels_and_names():
-    assert svc.label('SLT') == 'SLT(AUTO, w/o TS)'
+    assert svc.label('SLT') == 'SLT(AUTO, w/o TS)' and svc.label('LOT', ts=True) == 'LOT(AUTO)'
+    assert svc.workspace_name(NIGHT, 'AT2026ajog', 'SLT', svc.NO_TS_SUFFIX) == 'AUTO_AT2026ajog_SLT_20261116_noTS'
     assert svc.skipped_name('EP261007a') and svc.skipped_name('EPt261111a') and not svc.skipped_name('AT2026ajog')
     assert svc.workspace_name(NIGHT, "Tabby's Star", 'SLT') == 'AUTO_Tabby_s_Star_SLT_20261116'
     assert svc.last_night(datetime(2026, 11, 17, 13, 30, tzinfo=svc.TZ8)) == NIGHT
@@ -86,7 +88,7 @@ def test_a_night_runs_once_and_a_retry_replaces_the_points(tmp_path, fake, monke
     monkeypatch.setattr(svc, '_points', lambda tid: [{'filter': 'r', 'mjd': 61360.7, 'mag': 19.57, 'err': 0.09, 'lim': 21.1,
                                                      'snr': 12.3, 'det': True, 'veto': '', 'image': 'x'}])
 
-    def fake_import(tid, obj, tel, old_ids):
+    def fake_import(phot, obj, tel, old_ids):
         calls['deleted'].append(list(old_ids))
         calls['inserted'] += 1
         return [100 + calls['inserted']]
@@ -171,7 +173,8 @@ def test_points_from_the_photometry_table(monkeypatch):
         'rows': [{'filter': 'r', 'mjd': 61360.7, 'psf': 19.57, 'psf_err': 0.09, 'det': True, 'limits': [21.1, 20.8], 'snr': 12.3, 'veto': '', 'name': 'a'},
                  {'filter': 'g', 'mjd': 61360.7, 'psf': 21.3, 'psf_err': 0.4, 'det': False, 'limits': [20.9, 20.5], 'snr': 1.2, 'veto': 'S/N 1.2 < 3.0', 'name': 'b'}]})
     pts = svc._points('t')
-    assert pts[0] == {'filter': 'r', 'mjd': 61360.7, 'mag': 19.57, 'err': 0.09, 'lim': 21.1, 'snr': 12.3, 'det': True, 'veto': '', 'image': 'a'}
+    assert pts[0] == {'filter': 'r', 'mjd': 61360.7, 'mag': 19.57, 'err': 0.09, 'lim': 21.1, 'snr': 12.3, 'det': True, 'veto': '',
+                      'image': 'a', 'ts': False, 'ts_note': 'not subtracted'}
     assert pts[1]['mag'] is None and pts[1]['lim'] == 20.9 and pts[1]['veto'].startswith('S/N')
 
 
@@ -217,13 +220,14 @@ def test_a_run_left_from_a_restart_is_waited_for_not_started_again(tmp_path, fak
     _frame(tmp_path, 'AT2026afqt', '2026-11-16')
     monkeypatch.setattr(svc, 'position', lambda t, f: ('2026afqt', 10.0, 5.0))
     monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'panstarrs')
     monkeypatch.setattr(svc, '_still_running', lambda tid: True)
     monkeypatch.setattr(svc, 'ensure_workspace', lambda *a, **k: pytest.fail('must not touch a running workspace'))
     monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: pytest.fail('must not start another run'))
     waited = []
     monkeypatch.setattr(svc, '_wait', lambda tid, progress=None, stop=None: waited.append(tid) or {'status': 'done'})
     monkeypatch.setattr(svc, '_points', lambda tid: [{'filter': 'r', 'mjd': 1, 'mag': 19.0, 'err': .05, 'lim': 21, 'snr': 20,
-                                                     'det': True, 'veto': '', 'image': 'x'}])
+                                                     'det': True, 'veto': '', 'image': 'x', 'ts': True}])
     monkeypatch.setattr(svc, '_import', lambda *a: [7])
     monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
     svc.run_night(NIGHT, root=tmp_path)
@@ -294,3 +298,76 @@ def test_a_band_the_main_catalog_lacks_gets_its_own_catalog(monkeypatch):
     assert svc.band_catalogs(10, 20, 'sdss', ['u', 'g']) == {}
     monkeypatch.setattr(coverage, 'check', lambda ra, dec: {'catalogs': {'pan_starrs': {'ok': True}, 'sdss': {'ok': False}}})
     assert svc.band_catalogs(10, 20, 'pan_starrs', ['u', 'i']) == {'u': 'gaia'}
+
+
+def _pt(image, band='r', ts=True, mag=19.5, note=''):
+    return {'filter': band, 'mjd': 61360.7, 'mag': mag, 'err': 0.05, 'lim': 21.0, 'snr': 20.0, 'det': True,
+            'veto': '', 'image': image, 'ts': ts, 'ts_note': note}
+
+
+@pytest.mark.parametrize('row, ok', [
+    ({'ts': True, 'align_q': 'pass', 'fscale_disc': 0.3, 'artifacts': 0}, True),
+    ({'ts': True, 'align_q': 'warn', 'fscale_disc': None, 'artifacts': None}, True),
+    ({'ts': False}, False),
+    ({'ts': True, 'align_q': 'fail'}, False),
+    ({'ts': True, 'fscale_disc': 35.0}, False),
+    ({'ts': True, 'artifacts': 25}, False),
+])
+def test_ts_check(row, ok):
+    assert svc.ts_check(row)[0] is ok
+
+
+def test_merge_takes_the_no_ts_point_only_where_the_subtraction_failed():
+    phot = [_pt('stack_g', 'g'), _pt('stack_r', 'r', ts=False, note='kernel flux scale off by 40%'), _pt('stack_u', 'u', ts=False)]
+    fallback = [_pt('stack_g', 'g', ts=False, mag=18.0), _pt('stack_r', 'r', ts=False, mag=18.1)]
+    out = {p['image']: p for p in svc.merge_fallback(phot, fallback)}
+    assert out['stack_g']['mag'] == 19.5 and out['stack_g']['ts']                 # good TS kept
+    assert out['stack_r']['mag'] == 18.1 and not out['stack_r']['ts'] and '40%' in out['stack_r']['ts_note']
+    assert out['stack_u']['mag'] == 19.5 and not out['stack_u']['ts']             # nothing to replace it with
+
+
+def test_import_labels_each_point():
+    pts = svc.import_points([_pt('a'), _pt('b', ts=False), {**_pt('c'), 'det': False, 'mag': None, 'err': None}], 'SLT')
+    assert [p['telescope'] for p in pts] == ['SLT(AUTO)', 'SLT(AUTO, w/o TS)', 'SLT(AUTO)']
+    assert pts[2]['magnitude'] == 21.0 and pts[2]['magnitude_error'] is None     # a limit
+
+
+def _ts_setup(monkeypatch, tmp_path, ts_phot, nots_phot):
+    _frame(tmp_path, 'AT2026ajog', '2026-11-16')
+    runs = []
+    monkeypatch.setattr(svc, 'position', lambda t, f: (None, 6.54, -0.32))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'panstarrs')
+    monkeypatch.setattr(svc, 'ensure_workspace',
+                        lambda *a, stack=True, template=None, **k: runs.append((stack, template)) or
+                        ('AUTO_X' if template else 'AUTO_X_noTS'))
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
+    monkeypatch.setattr(svc, '_points', lambda tid: ts_phot if tid == 'AUTO_X' else nots_phot)
+    return runs
+
+
+def test_a_good_subtraction_is_used_alone(tmp_path, fake, monkeypatch):
+    runs = _ts_setup(monkeypatch, tmp_path, [_pt('stack_r')], [])
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]
+    assert runs == [(True, 'panstarrs')] and r['status'] == 'done' and r['phot'][0]['ts'] and r['workspace'] == 'AUTO_X'
+
+
+def test_a_bad_subtraction_falls_back_to_no_ts_for_that_image(tmp_path, fake, monkeypatch):
+    runs = _ts_setup(monkeypatch, tmp_path, [_pt('stack_r', ts=False, note='template alignment failed'), _pt('stack_g', 'g')],
+                     [_pt('stack_r', ts=False, mag=18.4), _pt('stack_g', 'g', ts=False, mag=18.9)])
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]
+    assert runs == [(True, 'panstarrs'), (True, None)]
+    got = {p['image']: (p['mag'], p['ts']) for p in r['phot']}
+    assert got == {'stack_r': (18.4, False), 'stack_g': (19.5, True)} and r['workspace'] == 'AUTO_X'
+
+
+def test_a_ts_run_with_nothing_is_replaced_by_the_no_ts_run(tmp_path, fake, monkeypatch):
+    runs = _ts_setup(monkeypatch, tmp_path, [], [_pt('stack_r', ts=False, mag=18.4)])
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]
+    assert runs == [(True, 'panstarrs'), (True, None)] and r['status'] == 'done' and r['workspace'] == 'AUTO_X_noTS'

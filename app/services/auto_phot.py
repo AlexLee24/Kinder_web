@@ -5,12 +5,17 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 1. Find last night's calibrated frames:  <Calibrated_Science>/<target>/Calibrated_<target>_D<yyyy-mm-dd>T…_<SLT|LOT>_….fits
    grouped by (target folder, telescope). Targets whose name starts with "EP" are left to the EP pipeline (skipped).
 2. For each group, a Pipeline workspace AUTO_<target>_<TEL>_<yyyymmdd> (owner ``auto-photometry``; not in anyone's
-   workspace list, admins can open it) gets copies of the frames and runs AutoPhOT: no template subtraction, frames
+   workspace list, admins can open it) gets copies of the frames and runs AutoPhOT with template subtraction (TS)
+   against a downloaded survey template (Pan-STARRS where it covers the target, else Legacy, else SDSS), frames
    of each filter stacked per night (if the stack gives nothing, the single frames instead), PSF photometry,
    calibration catalog from the coverage check (Pan-STARRS where it covers the target); a band that catalog does
    not have (u in Pan-STARRS) is calibrated against one that does: SDSS where it covers the target, else Gaia XP.
+   Each image's subtraction is checked (ts_ok): AutoPhOT subtracted it, its alignment did not fail, the flux scale
+   of the kernel agrees with the stars', and few artifacts were masked. Images that fail, or a TS run that fails
+   outright, are measured again without TS in AUTO_<…>_noTS and those points are used instead.
 3. The points (detections, and 3σ limits for non-detections) go into the Kinder object's photometry with the
-   telescope ``SLT(AUTO, w/o TS)`` / ``LOT(AUTO, w/o TS)``. A re-run of the same night replaces them.
+   telescope ``SLT(AUTO)`` / ``LOT(AUTO)``, or ``SLT(AUTO, w/o TS)`` / ``LOT(AUTO, w/o TS)`` for the points measured
+   without TS. A re-run of the same night replaces them.
 4. obs.auto_phot keeps the state and the numbers for the page; a 60″ zoom per filter is saved as PNG in the
    workspace (auto_frames/<filter>.png), so the page keeps showing it after the FITS are cleaned up.
 """
@@ -37,8 +42,30 @@ POLL_S = 15
 MAX_DEFAULT_ANSWERS = 5         # AutoPhOT asking (unknown telescope / filter): accept its default this often
 
 
-def label(telescope):
-    return f'{telescope}(AUTO, w/o TS)'
+# A subtraction is used only if AutoPhOT's own checks pass (columns of LightCurve_Output.csv)
+TEMPLATE_PREFERENCE = ('panstarrs', 'legacy_dr11', 'legacy', 'sdss')   # coverage.check()['templates'] names
+TS_MAX_FSCALE_DISC_PCT = 20.0   # kernel flux scale vs the stars' photometric scale (flux_scale_discrep_pct)
+TS_MAX_ARTIFACTS = 10           # dipole / residual regions masked in the difference (subtraction_artifact_regions)
+NO_TS_SUFFIX = '_noTS'          # the workspace of the fallback run
+
+
+def label(telescope, ts=False):
+    return f'{telescope}(AUTO)' if ts else f'{telescope}(AUTO, w/o TS)'
+
+
+def ts_check(row):
+    """(ok, why) for one image's photometry row (ap.photometry rows): is its template subtraction usable?"""
+    if not row.get('ts'):
+        return False, 'not subtracted'
+    if row.get('align_q') == 'fail':
+        return False, 'template alignment failed'
+    disc = row.get('fscale_disc')
+    if disc is not None and disc > TS_MAX_FSCALE_DISC_PCT:
+        return False, f'kernel flux scale off by {disc:.0f}%'
+    art = row.get('artifacts')
+    if art is not None and art > TS_MAX_ARTIFACTS:
+        return False, f'{art:.0f} subtraction artifacts'
+    return True, ''
 
 
 def skipped_name(target):
@@ -225,18 +252,35 @@ def band_catalogs(ra, dec, main, bands):
     return out
 
 
-def workspace_name(night, target, telescope):
+def workspace_name(night, target, telescope, suffix=''):
     from app.services.pipeline import autophot as ap
-    return ap.clean_name(f'AUTO_{target}_{telescope}_{night.strftime("%Y%m%d")}')
+    return ap.clean_name(f'AUTO_{target}_{telescope}_{night.strftime("%Y%m%d")}{suffix}')
 
 
-def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None):
+def choose_template(ra, dec):
+    """The survey to download TS templates from, or None when none covers the target."""
+    try:
+        from app.services.pipeline import coverage
+        tpl = coverage.check(ra, dec)['templates']
+        for t in TEMPLATE_PREFERENCE:
+            if (tpl.get(t) or {}).get('ok'):
+                return t
+        return None
+    except Exception as e:
+        logger.info('auto_phot: template coverage check failed (%s); using the footprint rule', e)
+    return 'panstarrs' if dec > -30 else None
+
+
+def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None):
+    """The workspace of one run: with template subtraction from `template`, or without (template=None, the _noTS one
+    when it is the fallback of a TS run)."""
     from app.services.pipeline import autophot as ap
-    tid = workspace_name(night, target, telescope)
+    tid = workspace_name(night, target, telescope, '' if template else NO_TS_SUFFIX)
     if not (ap.runs_root() / tid / 'target.json').is_file():
         ap.create_workspace({'name': tid}, user=AUTO_USER, user_name=AUTO_NAME)
+    ts = {'subtraction': True, 'sub_method': 'sfft', 'ts_download': template} if template else {'subtraction': False}
     ap.save_target(tid, {'target': target, 'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'catalog': catalog, 'ncpu': 1,
-                         'subtraction': False, 'stack': stack, 'stack_with_singles': False}, user=AUTO_USER)
+                         'stack': stack, 'stack_with_singles': False, **ts}, user=AUTO_USER)
     cfg = ap._read_json(ap.tdir(tid) / 'target.json')
     cfg['auto'] = {'night': night.isoformat(), 'target': target, 'telescope': telescope}
     cfg['catalog_bands'] = dict(bands or {})      # per band, where the main catalog has none (the runner maps them)
@@ -373,9 +417,23 @@ def _points(tid):
     out = []
     for r in ph.get('rows') or []:
         lim = r['limits'][li3] if r['limits'] else None
+        ok, why = ts_check(r)
         out.append({'filter': r['filter'], 'mjd': r['mjd'], 'mag': r['psf'] if r['det'] else None,
                     'err': r['psf_err'] if r['det'] else None, 'lim': lim, 'snr': r['snr'], 'det': bool(r['det']),
-                    'veto': r.get('veto') or '', 'image': r['name']})
+                    'veto': r.get('veto') or '', 'image': r['name'], 'ts': ok, 'ts_note': why})
+    return out
+
+
+def merge_fallback(phot, fallback):
+    """The TS points with each image whose subtraction failed its check replaced by the no-TS point of that image
+    (when the no-TS run measured it); a failed TS point with no replacement is kept and stays marked ts=False."""
+    by_image = {p['image']: p for p in fallback}
+    out = []
+    for p in phot:
+        if p.get('ts') or p['image'] not in by_image:
+            out.append(p)
+        else:
+            out.append({**by_image[p['image']], 'ts': False, 'ts_note': p.get('ts_note') or 'not subtracted'})
     return out
 
 
@@ -598,14 +656,31 @@ def frame_png_path(tid, band, field=False):
     return p if p.is_file() else None
 
 
-def _import(tid, obj_name, telescope, old_ids):
+def import_points(phot, telescope):
+    """obs points for the Kinder object: detections with their error, non-detections as their 3σ limit
+    (what ap.export_rows gives for PSF at 3σ), each labelled TS or w/o TS."""
+    pts = []
+    for p in phot:
+        if p.get('mjd') is None:
+            continue
+        if p.get('det') and p.get('mag') is not None:
+            mag, err = round(p['mag'], 3), (round(p['err'], 3) if p.get('err') is not None else None)
+        elif p.get('lim') is not None:
+            mag, err = round(p['lim'], 3), None
+        else:
+            continue
+        pts.append({'mjd': round(p['mjd'], 5), 'magnitude': mag, 'magnitude_error': err,
+                    'filter': re.sub(r'\s+', '_', p.get('filter') or '') or 'unknown',
+                    'telescope': label(telescope, bool(p.get('ts')))})
+    return pts
+
+
+def _import(phot, obj_name, telescope, old_ids):
     """Replace this night's AUTO points of the object: delete the previous run's rows, insert the new ones."""
     from app.db.transient import TNSObjectDB
-    from app.services.pipeline import autophot as ap
     if old_ids:
         TNSObjectDB.delete_photometry_points(obj_name, old_ids)
-    pts = [{'mjd': p['mjd'], 'magnitude': p['magnitude'], 'magnitude_error': p['magnitude_error'],
-            'filter': p['filter'], 'telescope': label(telescope)} for p in ap.export_rows(tid, 'PSF', 3.0)]
+    pts = import_points(phot, telescope)
     return TNSObjectDB.add_photometry_batch_ids(obj_name, pts) if pts else []
 
 
@@ -642,20 +717,40 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
         repeat = is_repeat(target, telescope)
         if repeat:
             logger.info('auto_phot: %s %s is a repeat target: measuring the single frames', target, telescope)
-        for stack in ((False,) if repeat else (True,) if stack_only else (True, False)):
-            if stop():
-                raise Stopped()
-            tid = workspace_name(night, target, telescope)
+        template = choose_template(ra, dec)
+        if not template:
+            logger.info('auto_phot: %s %s: no template survey covers it; measuring without TS', target, telescope)
+
+        def measure(stack, tpl):
+            tid = workspace_name(night, target, telescope, '' if tpl else NO_TS_SUFFIX)
             if _still_running(tid):             # started before a restart: wait for it instead of starting another
                 logger.info('auto_phot: %s is still running from before; waiting for it', tid)
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _wait(tid, progress, stop)
             else:
-                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands)
+                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands, template=tpl)
                 ap.add_files(tid, [str(f) for f in frames], origin='auto')
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _run_and_wait(tid, progress=progress, stop=stop)
-            phot = _points(tid) if job.get('status') == 'done' else []
+            return tid, job, (_points(tid) if job.get('status') == 'done' else [])
+
+        for stack in ((False,) if repeat else (True,) if stack_only else (True, False)):
+            if stop():
+                raise Stopped()
+            tid, job, phot = measure(stack, template)
+            # a subtraction that failed its check (or a TS run that gave nothing): measure without TS and use that
+            bad = [p for p in phot if not p.get('ts')]
+            if template and (bad or not phot):
+                if stop():
+                    raise Stopped()
+                logger.info('auto_phot: %s %s %s: %s; measuring without TS', night, target, telescope,
+                            'the TS run gave no photometry' if not phot else
+                            '; '.join(sorted({f"{p['filter']} {p.get('ts_note')}" for p in bad})))
+                tid2, job2, phot2 = measure(stack, None)
+                if phot:
+                    phot = merge_fallback(phot, phot2)
+                else:
+                    tid, job, phot = tid2, job2, phot2
             if phot or job.get('reason'):
                 break
             if stack:
@@ -663,9 +758,10 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
         if not phot:
             return db.upsert(night, target, telescope, status='failed', reason=_fail_reason(tid, job),
                              finished_at=datetime.now(timezone.utc))
+        db.upsert(night, target, telescope, workspace=tid)        # the page opens the run the points came from
         ids = []
         if obj_name:
-            ids = _import(tid, obj_name, telescope, (prev or {}).get('phot_ids') or [])
+            ids = _import(phot, obj_name, telescope, (prev or {}).get('phot_ids') or [])
         _frame_pngs(tid, ra, dec, phot)
         return db.upsert(night, target, telescope, status='done', phot=phot, phot_ids=ids, n_done=len(frames),
                          reason=None if obj_name else 'Not a Kinder object: measured, not added to a Transient page',
