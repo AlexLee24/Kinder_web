@@ -361,13 +361,13 @@
 
     function plan(t) {
         const fs = (t.filters || []).filter(f => f && f.filter);
-        const total = fs.reduce((a, f) => a + (parseInt(f.exp) || 0) * (parseInt(f.count) || 0), 0);
+        const total = typeof targetTotalExp === 'function' ? targetTotalExp(t) : fs.reduce((a, f) => a + (parseInt(f.exp) || 0) * (parseInt(f.count) || 0), 0);
         return el('dl', { class: 'dtw-dl' },
             el('dt', { text: 'Filters' }), el('dd', {}, fs.length ? el('span', { class: 'dtw-filters' }, fs.map(f => el('span', { class: 'dtw-fx' }, fchip(f.filter), el('span', { class: 'mono dta-muted', text: `${f.exp}s × ${f.count}` })))) : '—'),
             el('dt', { text: 'Total exposure' }), el('dd', { class: 'mono', text: total ? total + ' s' : '—' }),
             el('dt', { text: 'Last observed' }), el('dd', { class: 'mono', text: t.last_observed ? String(t.last_observed).slice(0, 10) : 'Never' }),
             t.mag ? el('dt', { text: 'Mag' }) : null, t.mag ? el('dd', { class: 'mono', text: t.mag }) : null,
-            t.repeat_count > 0 ? el('dt', { text: 'Repeat' }) : null, t.repeat_count > 0 ? el('dd', { text: String(t.repeat_count) }) : null,
+            t.repeat_count > 0 ? el('dt', { text: 'Repeat' }) : null, t.repeat_count > 0 ? el('dd', { text: `× ${t.repeat_count} (the sequence runs ${t.repeat_count} times; measured frame by frame)` }) : null,
         );
     }
 

@@ -716,18 +716,8 @@ function applySort(targets, column, dir) {
             valA = a.last_observed || '';
             valB = b.last_observed || '';
         } else if (column === 'total_exp') {
-            valA = 0;
-            if (a.filters) {
-                a.filters.forEach(f => {
-                    if (f.exp && f.count) valA += parseInt(f.exp) * parseInt(f.count);
-                });
-            }
-            valB = 0;
-            if (b.filters) {
-                b.filters.forEach(f => {
-                    if (f.exp && f.count) valB += parseInt(f.exp) * parseInt(f.count);
-                });
-            }
+            valA = targetTotalExp(a);
+            valB = targetTotalExp(b);
         }
         
         if (valA < valB) return dir === 'asc' ? -1 : 1;
@@ -866,7 +856,9 @@ async function loadAstroInfoForTargets() {
     }
 }
 
+const astroInfoCache = {};      // id -> [td, timesLocal]: a re-render (sort, edit) fills the rows again at once
 function fillAstroInfo(targetId, td, timesLocal) {
+    astroInfoCache[targetId] = [td, timesLocal];
     var astroRow = document.getElementById('astro-row-' + targetId);
     var miniPlot = document.getElementById('mini-vp-' + targetId);
     if (!astroRow && !miniPlot) return;
@@ -1025,6 +1017,13 @@ function renderObjectNameLink(name, label) {
 // ===================== Selection / bulk delete / last observed =====================
 const selectedTargetIds = new Set();
 
+// ACP's #REPEAT n runs the whole filter sequence n times: the total is the sequence × n (n = 0: once)
+function targetTotalExp(t) {
+    let one = 0;
+    (t.filters || []).forEach(function (f) { if (f && f.exp && f.count) one += parseInt(f.exp) * parseInt(f.count); });
+    return one * Math.max(1, parseInt(t.repeat_count) || 0);
+}
+
 function toggleNoteOpen(td) { td.classList.toggle('pa-note-open'); }
 
 // One Note column: the note for Lulin (in the script) over the note for the lab (GREATLab, web only)
@@ -1175,10 +1174,15 @@ function renderTable(telescope, targets) {
             magDisplay = '<span class="pa-mag-display">[Mag: ' + escapeHtml(t.mag) + ']</span>';
         }
 
-        let repeatInfo = '';
-        if (t.repeat_count > 0) {
-            repeatInfo = '<br>(repeat: ' + escapeHtml(t.repeat_count) + ')';
+        // repeat sits with the filters (the sequence runs that many times); the total counts every run
+        const rep = parseInt(t.repeat_count) || 0;
+        const repeatInfo = '';
+        if (rep > 0 && filterExpHTML !== '-') {
+            filterExpHTML += '<div class="pa-repeat" title="#REPEAT ' + rep + ': the whole sequence runs ' + rep + ' times">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>' +
+                ' Repeat × ' + rep + '</div>';
         }
+        totalExp = targetTotalExp(t);
 
         let activeToggle = '<label class="pa-action-switch" title="Toggle API visibility">' +
             '<input type="checkbox" onchange="toggleTargetActive(' + t.id + ', this.checked)" ' + (t.is_active !== false ? 'checked' : '') + '>' +
@@ -1249,6 +1253,7 @@ function renderTable(telescope, targets) {
             '</td>';
         tableBody.appendChild(tr);
     });
+    targets.forEach(function (t) { const c = astroInfoCache[t.id]; if (c) fillAstroInfo(t.id, c[0], c[1]); });
     updateBulkDeleteUi();
 }
 
