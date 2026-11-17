@@ -1411,6 +1411,23 @@ def _truthy(v):
     return str(v).strip().lower() in ('true', '1', '1.0', 'yes')
 
 
+def _veto(r, thr=3.0):
+    """Why AutoPhOT called this image a non-detection ('' for a detection). Runs from before the reason was
+    written (detection_veto) get what the CSV still shows: low S/N, or a centroid offset."""
+    if _truthy(r.get('is_detection')):
+        return ''
+    v = (r.get('detection_veto') or '').strip()
+    if v and v.lower() != 'nan':
+        return v
+    snr = _f(r.get('snr'))
+    sep = _f(r.get('separation'))
+    if snr is not None and snr < thr:
+        return f'S/N {snr:.1f} below the detection limit'
+    if sep is not None and sep > 2.0:
+        return f'fitted centroid {sep:.2f}\" from the target (over the 2\" limit then in use)'
+    return 'vetoed by AutoPhOT (reason not recorded in this run)' if snr is not None else ''
+
+
 def photometry(tid, run=None):
     """{'rows', 'limits': [(column, snr)], 'bands', 'colors', 'magsys', 'files'}; None without results."""
     import csv as _csv
@@ -1423,6 +1440,10 @@ def photometry(tid, run=None):
     cols = list(data[0].keys()) if data else []
     limits = sorted(((c, float(m.group(1).replace('p', '.'))) for c in cols
                      for m in [re.fullmatch(r'limiting_mag_(\d+(?:p\d+)?)s2n', c)] if m), key=lambda x: x[1])
+    try:
+        det_limit = float((run_paths(tid, run)['cfg'].get('overrides') or {}).get('photometry.detection_limit', 3.0))
+    except (TypeError, ValueError, NotFound):
+        det_limit = 3.0
     rows = []
     for r in data:
         name = r.get('filename', '')
@@ -1431,7 +1452,7 @@ def photometry(tid, run=None):
             'date': (r.get('date') or '').replace('T', ' ')[:19], 'mjd': _f(r.get('mjd')), 'filter': r.get('filter', ''),
             'psf': _f(r.get('mag_psf')), 'psf_err': _f(r.get('mag_psf_err')),
             'ap': _f(r.get('mag_ap')), 'ap_err': _f(r.get('mag_ap_err')),
-            'snr': _f(r.get('snr')), 'det': _truthy(r.get('is_detection')),
+            'snr': _f(r.get('snr')), 'det': _truthy(r.get('is_detection')), 'veto': _veto(r, det_limit),
             'limits': [_f(r.get(c)) for c, _ in limits],
             'zp': _f(r.get('zp_psf')), 'zp_err': _f(r.get('zp_psf_err')), 'zp_ok': _truthy(r.get('zp_psf_reliable')),
             'zp_flags': [x.strip() for x in re.split(r';|\|', r.get('zp_psf_flags') or '') if x.strip() and x.strip().lower() != 'nan'],

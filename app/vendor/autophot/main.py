@@ -1040,6 +1040,7 @@ def _decide_detection(
     detection_limit: float,
     do_aperture_only: bool,
     is_inverted: bool,
+    fwhm_arcsec: float = np.nan,
 ) -> bool:
     """Apply the detection criteria to one epoch's photometry output.
 
@@ -1070,7 +1071,15 @@ def _decide_detection(
       detection_ap_fallback_ratio: float (default 1.5) -- AP SNR / threshold
       detection_mf_snr_min: float (default 5.0) -- matched-filter SNR floor
       detection_mf_prob_min: float (default 0.9) -- prob_detect floor
+      detection_max_offset_arcsec: float (default 2.0) -- centroid offset floor
+      detection_max_offset_fwhm: float (default 1.0) -- offset limit in image
+          FWHM; the effective limit is the larger of the two
+
+    Sets output["detection_veto"] to a short reason when the result is a
+    non-detection ("" for detections), so the reason survives into the
+    photometry table instead of living only in the debug log.
     """
+    vetoes = []
     best_snr = float(output.get("snr", np.nan))
     det_thresh = float(detection_limit)
     _max_chi2 = float(det_cfg.get("detection_max_chi2", 10.0))
@@ -1095,7 +1104,8 @@ def _decide_detection(
         _primary_flux = _flux_psf_val if not do_aperture_only else _flux_ap_val
         if np.isfinite(_primary_flux) and _primary_flux < 0:
             is_det = False
-            logging.info(
+            vetoes.append("primary flux negative (%.4g)" % _primary_flux)
+            logging.warning(
                 "Detection rejected: primary flux negative (%.4f) -- "
                 "likely oversubtraction or noise dip, not a real "
                 "detection.",
@@ -1107,7 +1117,8 @@ def _decide_detection(
         _chi2 = float(output.get("reduced_chi2", np.nan))
         if np.isfinite(_chi2) and _chi2 > _max_chi2:
             is_det = False
-            logging.info(
+            vetoes.append("reduced chi2 %.1f > %.1f" % (_chi2, _max_chi2))
+            logging.warning(
                 "Detection rejected: reduced_chi2=%.1f > %.1f -- "
                 "PSF fit quality too poor for reliable detection.",
                 _chi2,
@@ -1127,7 +1138,8 @@ def _decide_detection(
             # Both must be positive for a normal detection
             if _flux_psf_val < 0 and _flux_ap_val > 0:
                 is_det = False
-                logging.info(
+                vetoes.append("PSF flux negative but AP positive")
+                logging.warning(
                     "Detection rejected: PSF flux negative (%.4f) but "
                     "AP flux positive (%.4f) -- inconsistent, likely "
                     "subtraction artifact.",
@@ -1136,7 +1148,8 @@ def _decide_detection(
                 )
             elif _flux_psf_val > 0 and _flux_ap_val < 0:
                 is_det = False
-                logging.info(
+                vetoes.append("PSF flux positive but AP negative")
+                logging.warning(
                     "Detection rejected: PSF flux positive (%.4f) but "
                     "AP flux negative (%.4f) -- inconsistent, likely "
                     "subtraction artifact.",
@@ -1151,6 +1164,7 @@ def _decide_detection(
             # Re-check positive flux for the fallback
             _flux_ap_val = float(output.get("flux_ap", np.nan))
             if np.isfinite(_flux_ap_val) and _flux_ap_val > 0:
+                vetoes.clear()
                 is_det = True
                 logging.info(
                     "Detection fallback: PSF SNR=%.2f < %.1f but AP "
@@ -1176,6 +1190,7 @@ def _decide_detection(
     # apply to rescued detections.
     if not is_det and not is_inverted and not do_aperture_only:
         if _matched_filter_rescue(output, det_cfg):
+            vetoes.clear()
             is_det = True
             logging.info(
                 "Detection rescue: photometric SNR=%.2f missed the "
@@ -1209,7 +1224,8 @@ def _decide_detection(
             and _emp_p > _emp_max_pf
         ):
             is_det = False
-            logging.info(
+            vetoes.append("empirical FAP %.3f > %.3f" % (_emp_p, _emp_max_pf))
+            logging.warning(
                 "Detection rejected: empirical FAP=%.3f > %.3f "
                 "(blank-position prob_detect exceeds target's at "
                 ">=%.0f%% of %d sites; SNR=%.2f) -- noise/"
@@ -1233,13 +1249,20 @@ def _decide_detection(
         _max_sep_as = float(
             det_cfg.get("detection_max_offset_arcsec", 2.0) or 0.0
         )
+        # A fixed arcsec limit is far tighter than the seeing disc on
+        # coarse-pixel / poor-seeing frames (and a WCS good to ~1" eats
+        # half of it), so allow up to detection_max_offset_fwhm x FWHM.
+        _off_fwhm = float(det_cfg.get("detection_max_offset_fwhm", 1.0) or 0.0)
+        if _max_sep_as > 0 and _off_fwhm > 0 and np.isfinite(fwhm_arcsec):
+            _max_sep_as = max(_max_sep_as, _off_fwhm * float(fwhm_arcsec))
         if (
             _max_sep_as > 0
             and np.isfinite(_sep_as)
             and _sep_as > _max_sep_as
         ):
             is_det = False
-            logging.info(
+            vetoes.append("fitted centroid %.2f\" from target (max %.2f\")" % (_sep_as, _max_sep_as))
+            logging.warning(
                 "Detection rejected: fitted centroid is %.2f\" from "
                 "the target (max %.2f\") -- fit locked onto an "
                 "offset source/artifact, not the target.",
@@ -1247,6 +1270,14 @@ def _decide_detection(
                 _max_sep_as,
             )
 
+    if is_det:
+        output["detection_veto"] = ""
+    elif vetoes:
+        output["detection_veto"] = "; ".join(vetoes)
+    elif not np.isfinite(best_snr):
+        output["detection_veto"] = "S/N not measured"
+    else:
+        output["detection_veto"] = "S/N %.1f < %.1f" % (best_snr, det_thresh)
     return is_det
 
 
@@ -15421,12 +15452,19 @@ def run_photometry():
                 )
             _det_cfg = input_yaml.get("photometry", {}) or {}
             _is_inverted = bool(output.get("_inverted_fit", False))
+            try:
+                _fwhm_as = float(input_yaml.get("fwhm", np.nan)) * float(
+                    input_yaml.get("pixel_scale", np.nan)
+                )
+            except (TypeError, ValueError):
+                _fwhm_as = np.nan
             is_det = _decide_detection(
                 output,
                 _det_cfg,
                 detection_limit,
                 do_aperture_ONLY,
                 _is_inverted,
+                _fwhm_as,
             )
             best_snr = float(output.get("snr", np.nan))
             det_thresh = float(detection_limit)
@@ -15461,9 +15499,12 @@ def run_photometry():
             )
 
             output["is_detection"] = is_det
+            if not is_det and output.get("detection_veto"):
+                log_status("Detection veto: %s", output["detection_veto"])
         except Exception as _det_exc:
             logging.debug("Detection flag computation failed: %s", _det_exc)
             output["is_detection"] = False
+            output["detection_veto"] = "detection check failed"
 
         try:
             # Add inverted fit parameters if inverted fit was used
@@ -16007,6 +16048,7 @@ def run_photometry():
             "beta",
             "is_detection",
             "limit_consistent",
+            "detection_veto",
             "prob_detect",
             "mf_snr",
             "delta_chi2",

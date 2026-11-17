@@ -543,3 +543,13 @@ fieldset.pl-readonly { margin: 0; padding: 0; border: 0; min-inline-size: 0; dis
 .pl-problems { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 0.8rem; color: #FF8A80; overflow-wrap: anywhere; }
 .pl-problems .kw-chip { margin-left: 6px; }
 .pl-ts-miss { margin-bottom: 14px; }
+
+/* Results: image preview popover (whole frame + target zoom + difference zoom) */
+.pl-row-acts { white-space: nowrap; }
+.pl-row-acts .kw-btn + .kw-btn { margin-left: 4px; }
+.pl-preview { width: min(1240px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; background: #0d0e12; color: #e8e8ea; }
+.pl-preview::backdrop { background: rgba(0,0,0,0.6); }
+.pl-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 0.85rem; word-break: break-all; }
+.pl-preview img { display: block; width: 100%; height: auto; border-radius: 8px; background: #000; }
+.pl-preview p { margin: 8px 0 0; font-size: 0.78rem; }

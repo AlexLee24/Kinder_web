@@ -425,6 +425,41 @@ def pipeline_file(tid, rel):
     return resp
 
 
+def _preview_response(tid, name, run):
+    from app.services.pipeline import previews
+    try:
+        png = previews.preview_png(tid, name, run)
+    except ap.NotFound as e:
+        return Response(str(e), status=404, mimetype='text/plain')
+    except ap.PipelineError:
+        abort(404)
+    except Exception:
+        current_app.logger.exception('pipeline preview %s %s', tid, name)
+        return Response('Could not draw this image.', status=500, mimetype='text/plain')
+    resp = Response(png, mimetype='image/png')
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    resp.headers['Cache-Control'] = 'private, max-age=600'
+    return resp
+
+
+@private_area_bp.route('/pipeline/autophot/<tid>/preview/<path:name>')
+def pipeline_preview(tid, name):
+    """PNG of the image behind one photometry row: whole frame, target zoom, difference zoom (?run=)."""
+    guard = _page_guard()
+    if guard:
+        return guard
+    _visible(tid)
+    return _preview_response(tid, name, request.args.get('run') or None)
+
+
+@private_area_bp.route('/pipeline/results/<token>/preview/<path:name>')
+def pipeline_results_public_preview(token, name):
+    tid, share = _shared_results(token)
+    if not _unlocked(share):
+        abort(403)
+    return _preview_response(tid, name, share.get('run') or None)
+
+
 @private_area_bp.route('/pipeline/autophot/<tid>/export.txt')
 def pipeline_export(tid):
     """Light curve for import: ?method=PSF|AP &limit=3 &header=1|0 &run= ; ?download=1 as an attachment."""
