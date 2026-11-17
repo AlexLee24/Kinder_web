@@ -132,6 +132,20 @@ def api_observation_target_toggle(target_id):
     else:
         return jsonify({'error': 'Database error'}), 500
 
+@private_area_bp.route('/api/targets/<int:target_id>/keep', methods=['PUT'])
+@login_required
+def api_observation_target_keep(target_id):
+    """Keep a switched-off target: it is not deleted automatically after obs.OFF_DAYS."""
+    if not (session['user'].get('is_great_lab_member', False) or session['user'].get('is_admin', False)):
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or 'keep' not in data:
+        return jsonify({'error': 'keep field required'}), 400
+    from app.db.obs import set_observation_target_keep
+    if set_observation_target_keep(target_id, bool(data['keep'])):
+        return jsonify({'success': True})
+    return jsonify({'error': 'Database error'}), 500
+
 @private_area_bp.route('/api/targets/<int:target_id>', methods=['PUT'])
 @login_required
 def api_observation_target_update(target_id):

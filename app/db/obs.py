@@ -6,6 +6,7 @@ Return dicts use backward-compatible key names matching the legacy kinder_web DB
 import logging
 import math
 from datetime import date as _date
+from datetime import timedelta
 
 from psycopg2 import extras
 
@@ -113,6 +114,29 @@ def _parse_dec_deg(value) -> float:
     return dec
 
 
+# Targets switched off are deleted OFF_DAYS after they were switched off, unless kept (obs.targets.keep).
+OFF_DAYS = 3
+_cleanup_ready = False
+
+
+def _ensure_cleanup_columns() -> None:
+    """off_since (when the target was switched off, NULL while on) and keep (never auto-delete). Idempotent; a
+    target that is off without an off_since (switched off before this column, or by another path) starts its
+    OFF_DAYS from now."""
+    global _cleanup_ready
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            if not _cleanup_ready:
+                cur.execute("ALTER TABLE obs.targets ADD COLUMN IF NOT EXISTS off_since TIMESTAMPTZ")
+                cur.execute("ALTER TABLE obs.targets ADD COLUMN IF NOT EXISTS keep BOOLEAN NOT NULL DEFAULT FALSE")
+            cur.execute("UPDATE obs.targets SET off_since = now() WHERE active = FALSE AND off_since IS NULL")
+            conn.commit()
+        _cleanup_ready = True
+    except Exception as e:
+        logger.error("_ensure_cleanup_columns: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Observation Targets
 # ---------------------------------------------------------------------------
@@ -121,7 +145,7 @@ _TARGET_SELECT = (
     "SELECT t.target_id, t.active, t.name, t.mag, t.ra, t.dec, "
     "t.telescope, t.program, t.priority, t.plan_filter, t.plan_count, "
     "t.plan_time, t.repeat, t.plan, t.note, t.create_by, "
-    "t.auto_exposure, "
+    "t.auto_exposure, t.off_since, t.keep, "
     "(SELECT MAX(l.date) FROM obs.logs l WHERE l.target_id = t.target_id AND l.observed) AS last_observed, "
     "u.email AS created_by_email "
     "FROM obs.targets t "
@@ -146,6 +170,11 @@ def _target_to_dict(row) -> dict:
     d['repeat_count'] = d.get('repeat', 0)
     d['note_gl'] = d.get('note')
     d['auto_exposure'] = bool(d.get('auto_exposure') or False)
+    d['keep'] = bool(d.get('keep') or False)
+    off = d.pop('off_since', None)
+    d['off_since'] = off.isoformat() if hasattr(off, 'isoformat') else None
+    # when an off target goes (None: on, or kept)
+    d['delete_at'] = (off + timedelta(days=OFF_DAYS)).isoformat() if off is not None and not d['keep'] and d['is_active'] is False else None
     # Return ra/dec as strings to preserve precision and ensure consistent typing
     if d.get('ra') is not None:
         d['ra'] = str(d['ra'])
@@ -156,6 +185,7 @@ def _target_to_dict(row) -> dict:
 
 def get_observation_targets(active_only: bool = True) -> list[dict]:
     _ensure_auto_exposure_column()
+    _ensure_cleanup_columns()
     with get_db_connection() as conn:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         if active_only:
@@ -311,9 +341,12 @@ def update_observation_target_status(target_id: int, active: bool) -> bool:
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
+            # off: the OFF_DAYS count starts now (kept if it was already off); on: no count
             cur.execute(
-                "UPDATE obs.targets SET active = %s WHERE target_id = %s",
-                (active, target_id)
+                "UPDATE obs.targets SET active = %s, "
+                "off_since = CASE WHEN %s THEN NULL ELSE COALESCE(off_since, now()) END "
+                "WHERE target_id = %s",
+                (active, active, target_id)
             )
             updated = cur.rowcount > 0
             conn.commit()
@@ -321,6 +354,36 @@ def update_observation_target_status(target_id: int, active: bool) -> bool:
     except Exception as e:
         logger.error("update_observation_target_status %d: %s", target_id, e)
         return False
+
+
+def set_observation_target_keep(target_id: int, keep: bool) -> bool:
+    """keep = never delete this target automatically."""
+    _ensure_cleanup_columns()
+    try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE obs.targets SET keep = %s WHERE target_id = %s", (bool(keep), target_id))
+            updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+    except Exception as e:
+        logger.error("set_observation_target_keep %d: %s", target_id, e)
+        return False
+
+
+def prune_off_targets(days: int = OFF_DAYS) -> list[dict]:
+    """Delete the targets switched off more than `days` ago and not kept; returns what went."""
+    _ensure_cleanup_columns()
+    with get_db_connection() as conn:
+        cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+        cur.execute(
+            "DELETE FROM obs.targets WHERE active = FALSE AND NOT keep "
+            "AND off_since IS NOT NULL AND off_since < now() - make_interval(days => %s) "
+            "RETURNING target_id, name, telescope, off_since",
+            (int(days),))
+        gone = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+    return gone
 
 
 def delete_observation_target(target_id: int) -> bool:
