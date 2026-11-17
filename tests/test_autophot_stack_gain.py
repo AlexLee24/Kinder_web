@@ -75,6 +75,7 @@ def test_a_mean_stack_carries_n_times_the_per_frame_gain(st, tmp_path, cards, ga
     h = fits.getheader(tmp_path / 'stack.fits')
     assert h['GAIN'] == pytest.approx(gain)
     assert h['NCOMBINE'] == 7 and h['EXPTIME'] == 150.0
+    assert h['STACKGV'] == st.STACK_GAIN_VERSION
 
 
 def test_runner_gives_every_single_frame_a_readable_gain(runner, tmp_path):
@@ -95,3 +96,38 @@ def test_runner_gives_every_single_frame_a_readable_gain(runner, tmp_path):
     assert fits.getheader(lot)['GAIN'] == 0.92                 # already right
     assert fits.getheader(stk)['GAIN'] == '0.95 [electrons/ADU]'  # stacks keep their own
     assert runner.normalize_gain({'fits_dir': str(top), 'wdir': ''}) == []   # once only
+
+
+def test_a_stack_made_before_the_gain_fix_is_rebuilt(runner, tmp_path, monkeypatch):
+    """Same members, settings and mtimes, but the stack predates the gain fix (no STACKGV): rebuild it."""
+    import sys
+    import types
+    top = tmp_path / 'images'
+    top.mkdir()
+    (tmp_path / 'wdir').mkdir()
+    names = [os.path.basename(frame(top / f's{i}.fits', i, GAIN='0.95 [electrons/ADU]', BUNIT='adu')) for i in range(3)]
+    stale = frame(top / 'stack_rpAstrodon2018_20261116.fits', 9, GAIN='0.95 [electrons/ADU]', STACKCMB='mean 3sigma')
+    mtime = max(os.path.getmtime(top / n) for n in names)
+    opts = {'align': 'auto', 'combine': 'mean', 'sigma': 3.0}
+    cfg = {'fits_dir': str(top), 'wdir': str(tmp_path / 'wdir'), 'top_only': True,
+           'stacks': {'stack_rpAstrodon2018_20261116.fits': {'members': names, **opts, 'mtime': mtime}}}
+    (tmp_path / 'target.json').write_text(json.dumps(cfg))
+
+    calls = []
+
+    def fake_stack(o):
+        calls.append(o['out'])
+        with fits.open(o['out'], mode='update') as hdul:
+            hdul[0].header['GAIN'] = 2.85
+            hdul[0].header['STACKGV'] = 2
+        return {'align': 'wcs', 'rms': 1.0, 'rms_single': 1.7}
+
+    monkeypatch.setitem(sys.modules, 'autophot_stack',
+                        types.SimpleNamespace(stack=fake_stack, StackError=RuntimeError, STACK_GAIN_VERSION=2))
+    runner.make_stacks(cfg, str(tmp_path))
+    assert calls == [stale]                                   # made before the fix: made again
+
+    cfg['stacks'] = json.loads((tmp_path / 'target.json').read_text())['stacks']
+    calls.clear()
+    runner.make_stacks(cfg, str(tmp_path))
+    assert calls == []                                        # current: up to date
