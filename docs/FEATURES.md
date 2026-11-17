@@ -169,6 +169,7 @@ Kinder（Logo → /）
 | 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email + Web Push 給 GREAT Lab 成員（分類 `alerts`）（`app/services/bots/gcn.py`） |
 | interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
 | cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
+| cron | `bot_auto_phot` | 05:30（UTC+8 13:30） | 昨晚（往前 3 晚補跑）Calibrated_Science 的校正影像自動跑 AutoPhOT（不做模板相減，每晚每濾鏡疊圖；名字 EP 開頭的跳過），結果顯示在 Daily Trigger「Last night」，並以 `SLT(AUTO, w/o TS)` / `LOT(AUTO, w/o TS)` 加進 Transient 頁；重跑同一晚會取代舊點（`obs.auto_phot`）；另外每次 deploy / 重啟後 3 分鐘自動補跑前一晚還沒做完的目標（job `auto_phot_startup`） |
 | cron | `lab_trigger_duty_check` | 週五 02:00（台灣 10:00） | 下下週有沒人值班的晚上 → Slack `SLACK_CHANNEL_ID_TRIGGER_DUTY`（預設 C06BT4DALM6）提醒大家去 Lab › Calendar 認領 |
 | interval | `lab_calendar_reminders` | 每 1 分 | Lab Calendar 組內事件開始前提醒 GREAT Lab 成員（通知鈴 + 推播分類 `calendar`）；預設 30 分鐘前，事件可改時間或 No reminder，全天事件從當天 09:00 算；每次發生只送一次（`obs.lab_event_reminders`），晚超過 15 分鐘就略過 |
 | interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推；當晚 LOT 關閉時標題加「· SLT only」並說只送 SLT） |

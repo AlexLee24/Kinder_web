@@ -431,11 +431,11 @@
             return;
         }
         const stop = btn.dataset.act === 'stop';
-        if (stop && !confirm('Stop the reduction pipeline? The running step is killed and the rest are skipped.')) return;
+        if (stop && !confirm(id === 'reduction' ? 'Stop the reduction pipeline? The running step is killed and the rest are skipped.' : 'Stop after the current target?')) return;
         busy[id] = true;
         btn.disabled = true;
         btn.textContent = stop ? 'Stopping…' : 'Starting…';
-        post(stop ? '/admin/bots/reduction/stop' : '/admin/bots/' + id + '/run' + (btn.dataset.kind ? '?kind=' + btn.dataset.kind : '')).then((r) => {
+        post(stop ? '/admin/bots/' + id + '/stop' : '/admin/bots/' + id + '/run' + (btn.dataset.kind ? '?kind=' + btn.dataset.kind : '')).then((r) => {
             if (!r.ok) alert(r.d.error || 'Failed');
             if (sel !== id) select(id, 'log'); else { logOffset = null; renderView(true); }
         }).catch((e) => alert(e.message)).finally(() => { busy[id] = false; setTimeout(refresh, 800); });

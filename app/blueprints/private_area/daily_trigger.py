@@ -272,3 +272,139 @@ def _log_triggered_targets(telescope, targets, sent_by):
     logger.info('log_triggered_targets: done telescope=%s succeeded=%s skipped=%s warnings=%s',
                 telescope, succeeded, skipped, warnings)
     return warnings
+
+
+
+# ── Auto photometry of last night's frames (app/services/auto_phot.py) ──
+
+def _dt_guard():
+    if 'user' not in session:
+        return jsonify({'success': False, 'error': 'Please log in.'}), 401
+    if not can_access_page('daily_trigger'):
+        return jsonify({'success': False, 'error': 'Access denied.'}), 403
+    return None
+
+
+def _auto_row_view(r, history):
+    """One obs.auto_phot row for the page: + frames (filters with a zoom PNG), the previous epoch per filter."""
+    from app.services import auto_phot
+    frames = []
+    if r.get('workspace'):
+        try:
+            frames = [f for f in sorted({p['filter'] for p in r['phot']}) if auto_phot.frame_png_path(r['workspace'], f)]
+        except Exception:
+            frames = []
+    prev = {}
+    night_mjd = None
+    if r['phot']:
+        night_mjd = min(p['mjd'] for p in r['phot'] if p.get('mjd')) - 0.3
+    for pt in history:
+        if pt.get('magnitude') is None or pt.get('magnitude_error') is None or pt.get('mjd') is None:
+            continue
+        if night_mjd is not None and float(pt['mjd']) >= night_mjd:
+            continue
+        prev[str(pt.get('filter') or '')] = {'mag': float(pt['magnitude']), 'mjd': float(pt['mjd']),
+                                             'telescope': pt.get('telescope') or ''}
+    out = {k: r.get(k) for k in ('id', 'night', 'target', 'telescope', 'obj_name', 'status', 'reason', 'n_frames',
+                                 'n_done', 'filters', 'ra', 'dec', 'phot', 'started_at', 'finished_at')}
+    out.update(frames=frames, prev=prev, label=auto_phot.label(r['telescope']),
+               pipeline=f"/pipeline/autophot/{r['workspace']}?tab=results" if r.get('workspace') and session['user'].get('is_admin') else '')
+    return out
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot')
+def daily_trigger_auto_phot():
+    """Last night's (or ?night=YYYY-MM-DD) automatic photometry; ?latest=name1,name2 adds each target's newest row."""
+    g = _dt_guard()
+    if g:
+        return g
+    from datetime import date as _date
+    from app.db import auto_phot as db
+    from app.db.transient import TNSObjectDB
+    from app.services import auto_phot
+    try:
+        night = _date.fromisoformat(request.args.get('night')) if request.args.get('night') else auto_phot.last_night()
+    except ValueError:
+        return jsonify({'success': False, 'error': 'night must be YYYY-MM-DD'}), 400
+    hist_cache = {}
+
+    def hist(name):
+        if not name:
+            return []
+        if name not in hist_cache:
+            try:
+                hist_cache[name] = TNSObjectDB.get_photometry(name)
+            except Exception:
+                hist_cache[name] = []
+        return hist_cache[name]
+    try:
+        rows = [_auto_row_view(r, hist(r.get('obj_name'))) for r in db.for_night(night)]
+        latest = {}
+        names = [n for n in (request.args.get('latest') or '').split(',') if n.strip()][:400]
+        if names:
+            for name, rs in db.latest_by_target(names).items():
+                latest[name] = [_auto_row_view(r, hist(r.get('obj_name'))) for r in rs]
+        return jsonify({'success': True, 'night': night.isoformat(), 'rows': rows, 'latest': latest,
+                        'nights': db.nights(30), 'last_night': auto_phot.last_night().isoformat()})
+    except Exception as e:
+        logger.exception('daily_trigger_auto_phot')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/frame/<band>.png')
+def daily_trigger_auto_phot_frame(row_id, band):
+    g = _dt_guard()
+    if g:
+        return g
+    from flask import abort, send_file
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    p = auto_phot.frame_png_path(r['workspace'], band) if r and r.get('workspace') else None
+    if not p:
+        abort(404)
+    resp = send_file(p, mimetype='image/png', max_age=3600)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/retry', methods=['POST'])
+def daily_trigger_auto_phot_retry(row_id):
+    g = _dt_guard()
+    if g:
+        return g
+    from datetime import date as _date
+    from app.core import rate_limit
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    if not rate_limit.allow(f"auto-phot-retry:{session['user'].get('email')}", 10, 600):
+        return jsonify({'success': False, 'error': 'Too many retries; wait a few minutes.'}), 429
+    r = db.get(row_id)
+    if not r:
+        return jsonify({'success': False, 'error': 'No such row.'}), 404
+    if r['status'] in ('queued', 'running'):
+        return jsonify({'success': False, 'error': 'Already measuring.'}), 409
+    if r['status'] == 'skipped':
+        return jsonify({'success': False, 'error': 'EP targets are left to the EP pipeline.'}), 400
+    auto_phot.queue_retry(_date.fromisoformat(r['night']), r['target'], r['telescope'])
+    logger.info('auto_phot: %s asked to measure %s %s %s again', session['user'].get('email'), r['night'], r['target'], r['telescope'])
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/daily_trigger/target_lc')
+def daily_trigger_target_lc():
+    """?name= : the Kinder object's photometry (mjd, mag, err, filter, telescope) for the target panel's light curve."""
+    g = _dt_guard()
+    if g:
+        return g
+    from app.db.transient import TNSObjectDB
+    name = (request.args.get('name') or '').strip()[:80]
+    found = TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', '')) if name else None
+    if not found:
+        return jsonify({'success': True, 'object': None, 'points': []})
+    pts = [{'mjd': float(p['mjd']), 'mag': float(p['magnitude']) if p.get('magnitude') is not None else None,
+            'err': float(p['magnitude_error']) if p.get('magnitude_error') is not None else None,
+            'filter': p.get('filter') or '', 'telescope': p.get('telescope') or ''}
+           for p in TNSObjectDB.get_photometry(found) if p.get('mjd') is not None]
+    return jsonify({'success': True, 'object': found, 'points': pts})
+

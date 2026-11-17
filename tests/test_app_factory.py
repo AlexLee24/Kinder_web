@@ -50,7 +50,8 @@ def test_route_count_is_stable(app):
     # 416 with DETECT's Euclid VIS image (/detect_euclid_image/<name>, /detect/lsst/review/euclid/<oid>).
     # 418 with the Pipeline image previews (/pipeline/autophot/<tid>/preview/…, /pipeline/results/<token>/preview/…).
     # 419 with the Pipeline coverage check (/api/pipeline/coverage).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 419
+    # 424 with Auto photometry (/api/daily_trigger/auto_phot, …/frame, …/retry, /api/daily_trigger/target_lc, /admin/bots/auto_phot/stop).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 424
 
 
 def test_duplicate_rules_keep_precedence(app):

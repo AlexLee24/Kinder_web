@@ -37,6 +37,8 @@ these jobs in UTC too):
     bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
     bot_reduction                  REDUCTION_HOUR_UTC (unset: by hand only)  reduction pipeline
     bot_nas_backup                 every NAS_ARCHIVE_INTERVAL_MIN (60)  old reduction data -> lab NAS (only with NAS_* set)
+    bot_auto_phot                  05:30      last night's calibrated frames -> AutoPhOT -> Daily Trigger / Transient pages
+    auto_phot_startup              3 min after the background jobs start (deploy / restart): last night, what is not done yet
 
 Daemon threads: ``auto_tns_download`` (hourly/daily TNS sync, real UTC clock),
 ``tns_gap_filler`` (hourly kinder_id gap fill), ``nist-spec-lines`` (one-shot),
@@ -164,6 +166,7 @@ def _add_bot_jobs(scheduler):
 
     from app.services import bots
     from app.services.bots import astronote, nas_backup, obs_log, reduction
+    from app.services.bots import auto_phot as auto_phot_bot
     from app.services.bots import status as bot_status
 
     off = bots.disabled()
@@ -176,6 +179,13 @@ def _add_bot_jobs(scheduler):
         scheduler.add_job(obs_log.run, 'cron', hour=4, minute=0, id='bot_obs_log')     # 12:00 UTC+8
     if 'reduction' not in off and reduction.hour_utc() is not None:
         scheduler.add_job(reduction.run, 'cron', hour=reduction.hour_utc(), minute=0, id='bot_reduction')
+    if 'auto_phot' not in off:
+        scheduler.add_job(auto_phot_bot.run, 'cron', hour=5, minute=30, id='bot_auto_phot')   # 13:30 UTC+8
+        # and once a few minutes after every start (a deploy, a restart): last night's targets that are not done yet.
+        # Already measured ones are skipped, so restarting again costs nothing. Not bot_*: no "next run" on the page.
+        from datetime import datetime, timedelta, timezone
+        scheduler.add_job(auto_phot_bot.run, 'date', run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+                          kwargs={'nights': 1}, id='auto_phot_startup', misfire_grace_time=3600)
     if 'nas_backup' not in off and nas_backup.configured():
         scheduler.add_job(nas_backup.run, 'interval', minutes=nas_backup.interval_min(), id='bot_nas_backup')
 

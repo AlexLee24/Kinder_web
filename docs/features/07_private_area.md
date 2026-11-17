@@ -10,7 +10,7 @@
 
 | 子區塊 | 頁面 | 功能 |
 |---|---|---|
-| Daily Trigger | `/daily_trigger` | 管理 SLT / LOT 觀測目標清單（`obs.targets`）、Pre-Trigger 檢查清單、產生 ACP trigger 腳本、附可見度圖送到 Slack Control Room、記錄「今日已送出」狀態、維護月曆式觀測日誌（`obs.logs`） |
+| Daily Trigger | `/daily_trigger` | 最上方「Last night」：昨晚校正影像的自動測光（`/api/daily_trigger/auto_phot`，bot `auto_phot`，可切換夜晚、失敗可 Retry）；Observation Targets 預設是「Workspace」（左邊目標清單、右邊選中目標的光變曲線〔AUTO 點加白圈〕、昨晚測光、60″ 縮圖、計畫、可見度與 Edit / Copy / Delete / Trigger / 開關），可切回原本的 Table；管理 SLT / LOT 觀測目標清單（`obs.targets`）、Pre-Trigger 檢查清單、產生 ACP trigger 腳本、附可見度圖送到 Slack Control Room、記錄「今日已送出」狀態、維護月曆式觀測日誌（`obs.logs`） |
 | ePessto++ Support Team | `/epessto_support` | 以「房間（room）」為單位的協作工作區：上傳 ePessto++ pipeline 的 `.asci` 光譜檔、依檔名解析成目標、記錄每個目標的分類/紅移/主星系/階段/圖片/完成狀態，並匯出 PDF 報告；資料存在 JSON 檔與磁碟目錄，不進資料庫 |
 | Documents | `/documents`、`/documents/<filename>` | Markdown 文件庫（`tutorials/*.md`）：檢視、admin 線上編輯、貼圖上傳、置頂與排序、`{{hide=KEY}}` 環境變數代換 |
 | Lab Info | `/greatlab_info` | 可編輯的連結卡片版面（`app/data/greatlab_links.json`） |

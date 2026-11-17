@@ -57,7 +57,7 @@ def bot_log(bot_id):
 @admin_bp.route('/admin/bots/<bot_id>/run', methods=['POST'])
 @admin_required
 def bot_run(bot_id):
-    from app.services.bots import BY_ID, astronote, nas_backup, obs_log, reduction
+    from app.services.bots import BY_ID, astronote, auto_phot, nas_backup, obs_log, reduction
     bot = BY_ID.get(bot_id)
     if not bot or not bot.can_run:
         return jsonify({'error': 'This bot cannot be run by hand'}), 400
@@ -69,7 +69,7 @@ def bot_run(bot_id):
     if bot_id == 'reduction':
         res = reduction.start_now()
         return jsonify(res), (409 if res.get('error') else 200)
-    fn = {'astronote': astronote.run, 'obs_log': obs_log.run, 'nas_backup': nas_backup.run}[bot_id]
+    fn = {'astronote': astronote.run, 'obs_log': obs_log.run, 'nas_backup': nas_backup.run, 'auto_phot': auto_phot.run}[bot_id]
     threading.Thread(target=fn, name=f'manual-bot-{bot_id}', daemon=True).start()
     return jsonify({'ok': True, 'message': 'Started.'})
 
@@ -80,6 +80,15 @@ def bot_reduction_stop():
     from app.services.bots import reduction
     audit('bot_stop', 'reduction')
     res = reduction.stop()
+    return jsonify(res), (409 if res.get('error') else 200)
+
+
+@admin_bp.route('/admin/bots/auto_phot/stop', methods=['POST'])
+@admin_required
+def bot_auto_phot_stop():
+    from app.services.bots import auto_phot
+    audit('bot_stop', 'auto_phot')
+    res = auto_phot.stop()
     return jsonify(res), (409 if res.get('error') else 200)
 
 
