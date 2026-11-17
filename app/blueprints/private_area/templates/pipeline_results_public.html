@@ -81,7 +81,7 @@
                 <thead><tr>
                     <th>Date (UTC)</th><th>MJD</th><th>Filter</th><th>Telescope</th><th>PSF mag</th><th>Aperture mag</th><th>S/N</th><th>Detected</th><th>Subtracted</th>
                     {% for c, snr in phot.limits %}<th>Limit {{ '%g'|format(snr) }}<span class="pl-nocase">σ</span></th>{% endfor %}
-                    <th>Zeropoint</th><th>FWHM (px)</th><th>Airmass</th><th>Exp (s)</th>
+                    <th>Zeropoint</th><th>FWHM (px)</th><th>Airmass</th><th>Exp (s)</th><th></th>
                 </tr></thead>
                 <tbody>
                 {% for r in phot.rows %}
@@ -89,11 +89,12 @@
                     <td>{{ r.date }}</td><td>{{ num(r.mjd, d=5) }}</td><td><b>{{ r.filter }}</b></td><td>{{ r.telescope or '—' }}</td>
                     <td class="pl-mag">{{ num(r.psf, r.psf_err) }}</td><td class="pl-mag">{{ num(r.ap, r.ap_err) }}</td>
                     <td>{{ num(r.snr, d=1) }}</td>
-                    <td>{% if r.det %}<span class="kw-chip kw-chip-green">Yes</span>{% else %}<span class="kw-chip">No</span>{% endif %}</td>
+                    <td>{% if r.det %}<span class="kw-chip kw-chip-green">Yes</span>{% else %}<span class="kw-chip">No</span>{% if r.veto %}<span class="pl-zp is-warn" tabindex="0" role="note" aria-label="Why not a detection: {{ r.veto }}">?<span class="pl-zp-tip"><b>Why not a detection</b><span>{{ r.veto }}</span></span></span>{% endif %}{% endif %}</td>
                     <td>{% if r.ts %}<span class="kw-chip kw-chip-blue">TS</span>{% else %}<span class="pl-faint">w/o TS</span>{% endif %}</td>
                     {% for v in r.limits %}<td>{{ num(v, d=2) }}</td>{% endfor %}
                     <td>{{ num(r.zp, r.zp_err) }}</td>
                     <td>{{ num(r.fwhm, d=2) }}</td><td>{{ num(r.airmass, d=2) }}</td><td>{{ num(r.exptime, d=0) }}</td>
+                    <td class="pl-row-acts">{% if r.name %}<button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" popovertarget="plPrev{{ loop.index }}">Image</button><div id="plPrev{{ loop.index }}" popover class="pl-preview"><div class="pl-preview-head"><b>{{ r.name }}</b><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" popovertarget="plPrev{{ loop.index }}" popovertargetaction="hide">Close</button></div><img loading="lazy" alt="Whole frame, target zoom and difference zoom for {{ r.name }}" src="{{ url_for('private_area.pipeline_results_public_preview', token=token, name=r.name) }}" onerror="this.replaceWith(Object.assign(document.createElement('p'),{className:'pl-faint',textContent:'The FITS of this image are no longer kept, or it could not be drawn.'}))"><p class="pl-faint">Cyan circle: target position. Zooms are 90″ across, north up for frames with a standard WCS.</p></div>{% endif %}</td>
                 </tr>
                 {% endfor %}
                 </tbody>
