@@ -20,6 +20,7 @@ these jobs in UTC too):
     daily_detect_followups         04:00      DETECT re-screens every Follow-up object
     daily_target_mag_update        05:00      refresh obs.targets magnitudes
     daily_retire_stale_followups   05:30      Follow-up/Snoozed -> Finish
+    prune_off_targets              hourly     Daily Trigger targets switched off > 3 days (not kept) -> deleted
     daily_host_redshift_sync       06:00      host redshift -> transient.objects
     db_monitor                     every 10m  pool / pg_stat_activity check + email alert
     db_recycle                     every 30m  close idle pooled connections
@@ -255,6 +256,7 @@ def _run_background_jobs(app):
         update_target_mags,
     )
     from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
+    from app.services.jobs.target_cleanup import prune_off_targets as _prune_off_targets
     from app.services.tns.auto_tns_download import start_auto_tns_downloader
     from app.services.tns.tns_gap_filler import start_gap_filler
 
@@ -267,6 +269,7 @@ def _run_background_jobs(app):
         # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,                      id='hourly_missing_phot')
         _scheduler.add_job(_tracked('daily_target_mag_update', update_target_mags),           'cron', hour=5, minute=0,  id='daily_target_mag_update')
         _scheduler.add_job(_tracked('daily_retire_stale_followups', retire_stale_followups),  'cron', hour=5, minute=30, id='daily_retire_stale_followups')
+        _scheduler.add_job(_tracked('prune_off_targets', _prune_off_targets),                 'interval', hours=1,      id='prune_off_targets')
         _scheduler.add_job(_tracked('daily_host_redshift_sync', sync_host_redshifts),         'cron', hour=6, minute=0,  id='daily_host_redshift_sync')
         _scheduler.add_job(_tracked('db_monitor', _db_check_and_alert),                       'interval', minutes=10,   id='db_monitor')
         _scheduler.add_job(_tracked('db_recycle', _db_recycle),                               'interval', minutes=30,   id='db_recycle')

@@ -1199,6 +1199,7 @@ function renderTable(telescope, targets) {
                     (isOff ? '<span class="pa-off-chip" title="Switched off: not in the API target list">Off</span>' : '') + '</div>' +
                 '<div class="pa-name-mag">' + (magDisplay || '<span class="pa-mag-display">[Mag: —]</span>') + '</div>' +
                 '<div class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</div>' +
+                (isOff ? autoDeleteHtml(t) : '') +
             '</div>' +
             '</td>' +
             '<td class="pa-td-pos">' +
@@ -1368,6 +1369,35 @@ async function deleteTarget(id) {
         console.error(e);
         alert('Error deleting target');
     }
+}
+
+// A switched-off target is deleted 3 days after it was switched off, unless kept
+function autoDeleteHtml(t) {
+    if (t.keep) {
+        return '<div class="pa-autodel is-kept"><button type="button" class="pa-keep" aria-pressed="true" onclick="toggleTargetKeep(' + t.id + ', false)" ' +
+               'title="Kept: never deleted automatically. Click to let it be deleted 3 days after it was switched off">Kept</button></div>';
+    }
+    if (!t.delete_at) return '';
+    var ms = Date.parse(t.delete_at) - Date.now(), h = Math.max(0, Math.round(ms / 3600000));
+    var when = h >= 24 ? Math.floor(h / 24) + ' d ' + (h % 24) + ' h' : (h > 0 ? h + ' h' : 'within the hour');
+    return '<div class="pa-autodel"><span>Deleted in ' + when + '</span>' +
+           '<button type="button" class="pa-keep" aria-pressed="false" onclick="toggleTargetKeep(' + t.id + ', true)" title="Keep this target: never delete it automatically">Keep</button></div>';
+}
+
+async function toggleTargetKeep(id, keep) {
+    try {
+        const response = await _apiFetch('/api/targets/' + id + '/keep', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: _apiStringify({ keep: keep })
+        });
+        const data = await response.json();
+        if (!data.success) alert('Could not update: ' + (data.error || 'unknown error'));
+    } catch (e) {
+        console.error(e);
+        alert('Could not update');
+    }
+    loadTargets();
 }
 
 async function toggleTargetActive(id, isActive) {
