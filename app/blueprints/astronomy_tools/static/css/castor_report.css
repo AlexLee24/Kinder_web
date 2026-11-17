@@ -1,0 +1,47 @@
+/* CASTOR check (/castor/snr_check, castor_report.html) */
+.cr-page { padding-bottom: 48px; }
+
+.cr-lock { max-width: 380px; margin: 12vh auto 0; display: flex; flex-direction: column; gap: 12px; }
+.cr-lock h1 { margin: 0; font-size: 1.4rem; font-weight: 700; }
+.cr-lock p { margin: 0; }
+.cr-field { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; color: var(--kw-text-secondary); }
+.cr-field input {
+    height: var(--kw-control-h); padding: 0 12px; border-radius: var(--kw-radius-md);
+    border: 1px solid var(--kw-border-med); background: var(--kw-surface); color: var(--kw-text-primary);
+    font: inherit; font-size: 0.95rem;
+}
+.cr-field input:focus { outline: none; box-shadow: var(--kw-focus-ring); }
+.cr-error { color: var(--kw-color-danger); font-size: 0.85rem; }
+
+.cr-scroll { overflow-x: auto; margin: 0 -20px; padding: 0 20px; }
+.cr-table { font-size: 0.82rem; white-space: nowrap; }
+.cr-table th, .cr-table td { padding: 7px 8px; }
+.cr-table thead th { letter-spacing: 0.04em; }
+.cr-table .cr-num { text-align: right; font-variant-numeric: tabular-nums; }
+.cr-table thead th.cr-num { text-align: right; }
+.cr-table a { color: var(--kw-link); }
+.cr-frame { font-family: var(--kw-font-mono); font-size: 0.78rem; }
+.cr-table tr.is-kinder td { background: rgba(255, 255, 255, 0.035); }
+.cr-ts { display: inline-block; padding: 1px 8px; border-radius: var(--kw-radius-pill); font-size: 0.72rem; background: rgba(255, 255, 255, 0.06); color: var(--kw-text-secondary); }
+.cr-ts.is-ts { background: rgba(10, 132, 255, 0.15); color: #74B9FF; }
+
+.cr-ratio { font-weight: 600; }
+.cr-ratio.is-low, .cr-key.is-low { color: #FF6B61; }
+.cr-ratio.is-ok, .cr-key.is-ok { color: #4CD964; }
+.cr-ratio.is-high, .cr-key.is-high { color: #74B9FF; }
+.cr-key { margin-right: 8px; font-weight: 600; }
+
+.cr-notes ul { margin: 0; padding-left: 20px; line-height: 1.65; color: var(--kw-text-primary); font-size: 0.9rem; }
+.cr-notes li + li { margin-top: 4px; }
+.cr-legend dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 0.86rem; }
+.cr-legend dt { font-weight: 600; color: var(--kw-text-primary); }
+.cr-legend dd { margin: 0; color: var(--kw-text-secondary); }
+
+@media (max-width: 640px) {
+    .cr-page .kw-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .cr-page .kw-kpi { padding: 12px; }
+    .cr-page .kw-kpi b { font-size: 1.4rem; }
+    .cr-page .kw-kpi small { white-space: normal; }
+    .cr-legend dl { grid-template-columns: 1fr; }
+    .cr-legend dd { margin-bottom: 6px; }
+}

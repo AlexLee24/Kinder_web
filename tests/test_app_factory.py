@@ -56,7 +56,8 @@ def test_route_count_is_stable(app):
     # 430 with /api/targets/<id>/keep (off targets are deleted after 3 days unless kept); 429 with the frames' whole field (/api/daily_trigger/auto_phot/<id>/field, …/field/<band>.png, …/survey.jpg).
     # 433 with Admin › Site (/admin/site, /admin/site/aladin) and /api/aladin/config.
     # 434 with Stop for one auto photometry row (/api/daily_trigger/auto_phot/<id>/stop).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 434
+    # 436 with the unlisted CASTOR check (/castor/snr_check and its /lock).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 436
 
 
 def test_duplicate_rules_keep_precedence(app):

@@ -1,0 +1,133 @@
+{% extends '_base.html' %}
+{#- CASTOR check (/castor/snr_check, castor_report.py): unlisted, password only. The report itself (rows, notes) is
+    app/data/castor_report/snr_check.json on the server, outside git. -#}
+{% block title %}CASTOR check - Kinder{% endblock %}
+{% block head %}
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/castor_report.css') }}">
+{% endblock %}
+
+{% macro ratio_cell(v) -%}
+{%- if v is none or v == '' -%}<td class="cr-num">—</td>
+{%- else -%}{%- set x = v|float -%}
+<td class="cr-num cr-ratio {{ 'is-low' if x < 0.7 else ('is-high' if x > 1.3 else 'is-ok') }}">{{ '%.2f'|format(x) }}</td>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro range(t) -%}
+{%- if t -%}<b>{{ '%.2f'|format(t[0]) }}</b> <span class="kw-muted">({{ '%.2f'|format(t[1]) }}–{{ '%.2f'|format(t[2]) }})</span>
+{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<div class="kw-page cr-page">
+{% if locked %}
+    <form class="kw-panel cr-lock" method="post" action="{{ url_for('astronomy_tools.castor_snr_check') }}" autocomplete="off">
+        <div class="kw-eyebrow">CASTOR</div>
+        <h1>Measured vs predicted S/N</h1>
+        <p class="kw-muted">This page needs a password.</p>
+        <label class="cr-field">Password
+            <input class="kw-input" type="password" name="password" required autofocus autocomplete="current-password">
+        </label>
+        {% if error %}<p class="cr-error" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit" class="kw-btn kw-btn-primary">Open</button>
+    </form>
+{% else %}
+    <header class="kw-page-head">
+        <div>
+            <span class="kw-eyebrow">CASTOR · Lulin LOT / SLT</span>
+            <h1>{{ report.title or 'Measured vs predicted S/N' }}</h1>
+            {% if report.intro %}<p>{{ report.intro }}</p>{% endif %}
+        </div>
+        <div class="kw-page-actions">
+            {% if report.generated %}<span class="kw-chip">Updated {{ report.generated }}</span>{% endif %}
+            <form method="post" action="{{ url_for('astronomy_tools.castor_snr_check_lock') }}">
+                <button type="submit" class="kw-btn kw-btn-ghost kw-btn-sm">Lock</button>
+            </form>
+        </div>
+    </header>
+
+    <div class="kw-kpis">
+        <div class="kw-kpi"><span class="kw-kpi-label">Points</span><b>{{ n_rows }}</b><small>frames and stacks</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Targets</span><b>{{ n_targets }}</b><small>{{ groups|map(attribute='tel')|unique|join(' · ') }}</small></div>
+        <div class="kw-kpi"><span class="kw-kpi-label">Groups</span><b>{{ groups|length }}</b><small>telescope · camera · band</small></div>
+    </div>
+
+    <section class="kw-panel">
+        <div class="kw-panel-head"><h2>Summary</h2><span class="kw-muted">median (range) of measured ÷ CASTOR</span></div>
+        <div class="cr-scroll">
+        <table class="kw-table cr-table">
+            <thead><tr><th>Telescope</th><th>Camera</th><th>Band</th><th class="cr-num">Points</th>
+                <th>S/N measured ÷ CASTOR</th><th>Without χ² inflation ÷ CASTOR</th></tr></thead>
+            <tbody>
+            {% for g in groups %}
+                <tr><td>{{ g.tel }}</td><td>{{ g.camera }}</td><td><a href="#g-{{ loop.index }}">{{ g.band }}</a></td>
+                    <td class="cr-num">{{ g.n }}</td><td>{{ range(g.ratio) }}</td><td>{{ range(g.ratio_noise) }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </section>
+
+    {% for sec in report.notes or [] %}
+    <section class="kw-panel cr-notes">
+        <div class="kw-panel-head"><h2>{{ sec.title }}</h2></div>
+        <ul>{% for item in sec['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+    </section>
+    {% endfor %}
+
+    <section class="kw-panel cr-legend">
+        <div class="kw-panel-head"><h2>Columns</h2></div>
+        <dl>
+            <dt>S/N meas</dt><dd>AutoPhOT's PSF S/N as reported (Kinder's value).</dd>
+            <dt>χ²ν</dt><dd>reduced χ² of the PSF fit; AutoPhOT multiplies the flux error by √χ²ν (at most 10×).</dd>
+            <dt>S/N w/o χ²</dt><dd>S/N meas × √χ²ν: the photon and read noise alone, what CASTOR models.</dd>
+            <dt>S/N CASTOR</dt><dd>CASTOR for that frame: telescope, camera, band, position, mid-exposure time (Moon, airmass), measured FWHM, exposure, number of frames stacked; the measured magnitude as the target.</dd>
+            <dt>ΔS/N, ratio</dt><dd>measured − CASTOR and measured ÷ CASTOR. <span class="cr-key is-low">&lt; 0.7</span> <span class="cr-key is-ok">0.7–1.3</span> <span class="cr-key is-high">&gt; 1.3</span></dd>
+            <dt>★</dt><dd>the point shown on Kinder for that night.</dd>
+        </dl>
+    </section>
+
+    {% for g in groups %}
+    <section class="kw-panel" id="g-{{ loop.index }}">
+        <div class="kw-panel-head">
+            <h2>{{ g.tel }} · {{ g.camera }} · {{ g.band }}</h2>
+            <span class="kw-muted">{{ g.n }} point{{ '' if g.n == 1 else 's' }} · median ratio {{ '%.2f'|format(g.ratio[0]) if g.ratio else '—' }} · w/o χ² {{ '%.2f'|format(g.ratio_noise[0]) if g.ratio_noise else '—' }}</span>
+        </div>
+        <div class="cr-scroll">
+        <table class="kw-table cr-table">
+            <thead><tr>
+                <th>Target</th><th>Frame</th><th>Exp</th><th>TS</th><th class="cr-num">mag ± err</th>
+                <th class="cr-num">S/N meas</th><th class="cr-num">S/N CASTOR</th><th class="cr-num">Ratio</th>
+                <th class="cr-num">χ²ν</th><th class="cr-num">S/N w/o χ²</th><th class="cr-num">Ratio w/o χ²</th>
+                <th class="cr-num">ΔS/N</th><th class="cr-num">X</th><th class="cr-num">FWHM″</th>
+            </tr></thead>
+            <tbody>
+            {% for r in g.rows %}
+                {%- set sm = r.snr_meas|float -%}{%- set sc = r.snr_castor|float -%}
+                {%- set is_stack = (r.image or '').startswith('stack') -%}
+                <tr{% if r.kinder %} class="is-kinder"{% endif %}>
+                    <td>{{ r.target }}</td>
+                    <td class="cr-frame">{% if is_stack %}{{ (r.date or '')[:10] }} stack ×{{ (r.image or '').split('x')[-1] }}{% else %}D{{ r.image }}{% endif %}{% if r.kinder %} <span title="shown on Kinder">★</span>{% endif %}</td>
+                    <td>{{ (r.exp or '')|replace('1x', '') if not is_stack else (r.exp or '')|replace('x', '×') }}</td>
+                    <td><span class="cr-ts{% if r.ts == 'TS' %} is-ts{% endif %}">{{ r.ts }}</span></td>
+                    <td class="cr-num">{{ '%.2f'|format(r.mag|float) }} ± {{ '%.3f'|format(r.err|float) }}</td>
+                    <td class="cr-num">{{ '%.1f'|format(sm) }}</td>
+                    <td class="cr-num">{{ '%.1f'|format(sc) }}</td>
+                    {{ ratio_cell(r.ratio) }}
+                    <td class="cr-num">{{ r.chi2 if r.chi2 not in (none, '') else '—' }}</td>
+                    <td class="cr-num">{{ '%.1f'|format(r.snr_noise|float) }}</td>
+                    {{ ratio_cell(r.ratio_noise) }}
+                    <td class="cr-num">{{ '%+.1f'|format(sm - sc) }}</td>
+                    <td class="cr-num">{{ r.X }}</td>
+                    <td class="cr-num">{{ r.fwhm }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </section>
+    {% endfor %}
+{% endif %}
+</div>
+{% endblock %}
