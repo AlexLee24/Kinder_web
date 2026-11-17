@@ -307,8 +307,7 @@
             el('dt', { text: 'Last observed' }), el('dd', { class: 'mono', text: t.last_observed ? String(t.last_observed).slice(0, 10) : 'Never' }),
             t.mag ? el('dt', { text: 'Mag' }) : null, t.mag ? el('dd', { class: 'mono', text: t.mag }) : null,
             t.repeat_count > 0 ? el('dt', { text: 'Repeat' }) : null, t.repeat_count > 0 ? el('dd', { text: String(t.repeat_count) }) : null,
-            el('dt', { text: 'Note' }), el('dd', { text: t.plan || '—' }),
-            el('dt', { text: 'Note for GREATLab' }), el('dd', { text: t.note_gl || '—' }));
+        );
     }
 
     function renderDetail(t) {
@@ -329,7 +328,11 @@
                         el('span', { class: 'dta-pri is-' + String(t.priority || '').toLowerCase(), text: t.priority || '' })),
                     a ? el('div', { class: 'dtw-astro' }, el('span', { text: `Moon ${a.moon_separation != null ? a.moon_separation + '°' : '—'}` }),
                         el('span', { text: `Transit ${a.transit_time_local ? a.transit_time_local.slice(11, 16) : '—'}` }),
-                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null)),
+                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null),
+                // the notes next to the name, where they are read first
+                (t.plan || t.note_gl) ? el('dl', { class: 'dtw-notes' },
+                    t.plan ? el('div', {}, el('dt', { text: 'Note' }), el('dd', { text: t.plan })) : null,
+                    t.note_gl ? el('div', {}, el('dt', { text: 'Note for GREATLab' }), el('dd', { text: t.note_gl })) : null) : null),
             keep || el('div', { class: 'dtw-lc', id: 'dtWsLc' },
                 el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
                 el('div', { id: 'dtWsLcPlot', class: 'dtw-lc-plot' }, el('div', { class: 'dta-muted dtw-small', text: 'Loading the light curve…' })),
