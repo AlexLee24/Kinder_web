@@ -19,7 +19,7 @@
            line, actions as icons in a row). The switch stays at full strength so it reads as "turn back on". */
         .dt-page .pa-target-table tr.pa-row-off { background: rgba(255, 255, 255, 0.015); }
         .dt-page .pa-target-table tr.pa-row-off td { padding-top: 6px; padding-bottom: 6px; color: var(--kw-text-muted); vertical-align: middle; }
-        .dt-page tr.pa-row-off :is(.pa-name-mag, .pa-astro-row, .pa-mini-plot) { display: none; }
+        .dt-page tr.pa-row-off :is(.pa-name-mag, .pa-astro-row) { display: none; }   /* tonight's visibility stays */
         .dt-page tr.pa-row-off .pa-td-name a, .dt-page tr.pa-row-off .pa-td-name span:not(.pa-off-chip) { color: var(--kw-text-secondary); }
         .dt-page .pa-off-chip {
             display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px;
@@ -33,35 +33,65 @@
         .dt-page tr.pa-row-off .pa-filter-stack > :not(:first-child):not(.pa-filter-more) { display: none !important; }
         .dt-page tr.pa-row-off .pa-filter-more { display: block; }
         /* off rows: notes wrap to two lines instead of one clipped line; a click opens the whole note */
-        .dt-page tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { min-width: 140px; cursor: pointer; }
+        .dt-page tr.pa-row-off .pa-td-note { min-width: 140px; cursor: pointer; }
         .dt-page tr.pa-row-off .pa-note-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.8rem; line-height: 1.35; }
         .dt-page tr.pa-row-off .pa-note-open .pa-note-text { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; }
         .dt-page .pa-sel-box { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--kw-accent); cursor: pointer; }
         .dt-page .pa-sel-all { display: inline-flex; }
         .dt-page .pa-bulk-delete { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); }
-        /* Column widths for the nine columns (private_area.css only sizes the old eight, which left
-           Last Observed at 0 px under table-layout: fixed). Sum = 100%. */
-        .dt-page .pa-target-table th.pa-col-target    { width: 15%; }
-        .dt-page .pa-target-table th.pa-col-ra-dec    { width: 10%; }
-        .dt-page .pa-target-table th.pa-col-priority  { width: 7%; }
-        .dt-page .pa-target-table th.pa-col-filter    { width: 11%; }
-        .dt-page .pa-target-table th.pa-col-total-exp { width: 7%; }
-        .dt-page .pa-target-table th.pa-col-last-obs  { width: 9%; }
-        .dt-page .pa-target-table th.col-note         { width: 14%; }
-        .dt-page .pa-target-table th.pa-col-actions   { width: 13%; }
+        /* Six columns, three lines per target (name · mag · priority | position · tonight · last observed | sky |
+           total · filters | notes | switch · buttons). Sum = 100%. */
+        .dt-page .pa-target-table th.pa-col-target  { width: 18%; }
+        .dt-page .pa-target-table th.pa-col-pos     { width: 20%; }
+        .dt-page .pa-target-table th.pa-col-sky     { width: 10%; }
+        .dt-page .pa-target-table th.pa-col-exp     { width: 13%; }
+        .dt-page .pa-target-table th.col-note       { width: 25%; }
+        .dt-page .pa-target-table th.pa-col-actions { width: 14%; }
+        .dt-page .pa-target-table td, .dt-page .pa-target-table tr.pa-row-off td { vertical-align: top; }
+        /* on rows: Edit · Copy · Trigger stacked under the switch */
+        .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-row-btns { flex-direction: column; align-items: stretch; gap: 2px; }
+        .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-row-btns .pa-btn-action { justify-content: flex-start; }
+        /* Note: for Lulin over for Lab, each with a small label */
+        .dt-page .pa-td-note { overflow-wrap: anywhere; white-space: pre-line; }
+        .dt-page .pa-note-item + .pa-note-item { margin-top: 10px; }
+        .dt-page .pa-note-lab { display: block; margin-bottom: 2px; font-size: 0.7rem; line-height: 1.3; color: var(--kw-text-muted); white-space: nowrap; }
+        .dt-page tr.pa-row-off .pa-note-item + .pa-note-item { margin-top: 6px; }
+        .dt-page .pa-sort { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none;
+                            font: inherit; font-size: 0.68rem; color: var(--kw-text-muted); cursor: pointer; letter-spacing: inherit; text-transform: inherit; }
+        .dt-page .pa-sort:hover, .dt-page .pa-sort[aria-pressed="true"] { color: var(--kw-text-secondary); }
+        .dt-page .pa-sort:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; border-radius: 4px; }
+        .dt-page .pa-name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+        .dt-page .pa-td-name-content { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+        .dt-page .pa-td-name .pa-td-priority { font-weight: 600; font-size: 0.95rem; }
+        .dt-page .pa-td-pos > * + * { margin-top: 6px; }
+        .dt-page .pa-td-pos .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.4; }
+        .dt-page .pa-lo-lab { display: block; font-size: 0.68rem; color: var(--kw-text-muted); margin-bottom: 1px; }
+        .dt-page .pa-td-exp .pa-td-total-exp { font-size: 1rem; color: var(--kw-text-primary, #f5f5f7); margin-bottom: 8px; }
         .dt-page .pa-target-table th { vertical-align: bottom; white-space: normal; }
         .dt-page .pa-td-last-obs { font-size: 0.82rem; color: var(--kw-text-secondary); line-height: 1.35; }
         .dt-page .pa-last-obs-val { display: inline-block; font-family: var(--kw-font-mono, monospace); }
         @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: right; } }
         .dt-page .pa-td-last-obs small { display: block; margin-top: 2px; color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); font-size: 0.72rem; }
         .dt-page .pa-td-last-obs .pa-never { color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); }
-        .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; justify-content: center; gap: 6px; }
+        .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px; }
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action { font-size: 0; gap: 0; }   /* icon only; the title says what it does */
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action svg { width: 13px; height: 13px; }
         @media (max-width: 768px) {
             /* phone cards: an off target keeps Target, RA / Dec and Actions only */
-            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+8) { display: none; }
-            .dt-page .pa-target-table tr.pa-row-off :is(.pa-td-note, .pa-td-note-gl) { max-width: none; }
+            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+5) { display: none; }
+            .dt-page .pa-target-table tr.pa-row-off .pa-td-note { max-width: none; }
+            .dt-page .pa-target-table td:nth-of-type(2)::before { content: "Position"; }
+            .dt-page .pa-target-table td:nth-of-type(3)::before { content: "Sky"; }
+            .dt-page .pa-target-table td:nth-of-type(4)::before { content: "Exposure"; }
+            .dt-page .pa-target-table td:nth-of-type(5)::before { content: "Note"; }
+            .dt-page .pa-target-table td:nth-of-type(6)::before { content: "Actions"; }
+            .dt-page .pa-target-table td:nth-of-type(n+7)::before { content: none; }
+            /* phone cards: each part's label above its content (the cells hold several lines now) */
+            .dt-page .pa-target-table tbody td:not(.pa-empty-row) { display: block; text-align: left; }
+            .dt-page .pa-target-table tbody td:not(.pa-empty-row)::before { display: block; margin: 0 0 6px; font-size: 0.72rem; }
+            .dt-page .pa-target-table tbody td > * { max-width: none; text-align: left; }
+            .dt-page .pa-target-table tbody td.pa-td-sky:empty { display: none; }
+            .dt-page .pa-mini-plot { max-width: 300px; }
         }
 
         /* Center log section content */
@@ -196,11 +226,12 @@
             white-space: nowrap;
             font-family: monospace;
         }
-        .pa-mini-plot {
-            margin-top: 4px;
-            line-height: 0;
-            opacity: 0.9;
-        }
+        .pa-mini-plot { margin-top: 8px; width: 100%; max-width: 240px; }
+        .dt-page tr.pa-row-off .pa-td-name-content > div:first-child { flex-wrap: wrap; row-gap: 4px; }
+        .pa-vis-svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--kw-font-mono, monospace); }
+        .pa-vis-cap { display: block; margin-top: 4px; font-size: 0.74rem; line-height: 1.3; color: var(--kw-text-secondary); white-space: nowrap; }
+        .pa-vis-cap b { font-weight: 500; color: #8fd0ff; font-family: var(--kw-font-mono, monospace); }
+        .pa-vis-cap.is-no { color: rgba(255, 150, 140, 0.85); }
     
         /* ── Phones (2026-10): the mobile rules in private_area.css never applied here — the
            action bar has an inline display:flex and the rules above reset .pa-log-controls —
@@ -366,6 +397,18 @@
                     <p class="dta-foot" id="dtAutoFoot"></p>
                 </section>
                 <dialog class="dta-dlg" id="dtAutoDlg" aria-labelledby="dtAutoDlgTitle" closedby="any"></dialog>
+                <!-- one target opened from its row (dt_auto.js): light curve, last night, field, plan, tonight -->
+                <dialog class="dtp-dlg" id="dtTargetDlg" aria-labelledby="dtTargetDlgTitle" closedby="any">
+                    <div class="dtp-bar">
+                        <div class="dtp-nav">
+                            <button type="button" class="dta-iconbtn" id="dtTargetPrev" aria-label="Previous target"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                            <button type="button" class="dta-iconbtn" id="dtTargetNext" aria-label="Next target"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+                            <span class="dtp-pos mono" id="dtTargetPos"></span>
+                        </div>
+                        <form method="dialog"><button class="dta-iconbtn" value="close" aria-label="Close" autofocus><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button></form>
+                    </div>
+                    <div class="dtw-detail" id="dtWsDetail"></div>
+                </dialog>
 
                 <!-- Trigger Checklist & Script Section -->
                 <section class="kw-panel pa-trigger-section" aria-label="Pre-trigger checklist and trigger script">
@@ -554,10 +597,6 @@
                         </div>
                         <h2 id="dtObsTitle">Observation Targets</h2>
                         <div class="pa-obs-actions">
-                            <div class="kw-seg dta-viewseg" role="group" aria-label="Show targets as">
-                                <button type="button" class="kw-seg-item" data-dtview="ws" aria-pressed="true">Workspace</button>
-                                <button type="button" class="kw-seg-item" data-dtview="table" aria-pressed="false">Table</button>
-                            </div>
                             <button id="bulkDeleteBtn" onclick="bulkDeleteTargets()" class="kw-btn kw-btn-sm pa-bulk-delete" style="display: none;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                 <span id="bulkDeleteLabel">Delete selected</span>
@@ -581,30 +620,25 @@
                         </div>
                     </div>
 
-                    <!-- Workspace view: target list + the selected target (dt_auto.js); the tables below are the Table view -->
-                    <div class="dtw" id="dtWs" hidden>
-                        <div class="dtw-list" id="dtWsList"></div>
-                        <div class="dtw-detail" id="dtWsDetail" aria-live="polite"></div>
-                    </div>
 
                     <!-- SLT Container -->
                     <div id="content-SLT">
                         <table class="pa-target-table">
                             <thead id="slt-head">
                                 <tr>
-                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all SLT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('SLT', this.checked)"></label> Target</th>
-                                    <th class="pa-col-ra-dec">RA / DEC</th>
-                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></th>
-                                    <th class="pa-col-filter">Filter / Exposure</th>
-                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('SLT', 'total_exp')">Total Exp. <span>↕</span></th>
-                                    <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('SLT', 'last_observed')">Last Observed <span>↕</span></th>
+                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all SLT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('SLT', this.checked)"></label> Target
+                                        <button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></button></th>
+                                    <th class="pa-col-pos">RA / Dec · tonight
+                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('SLT', 'last_observed')">Last observed <span>↕</span></button></th>
+                                    <th class="pa-col-sky">Sky</th>
+                                    <th class="pa-col-exp">Exposure
+                                        <button type="button" class="pa-sort" data-sort="total_exp" onclick="sortTargets('SLT', 'total_exp')">Total <span>↕</span></button></th>
                                     <th class="col-note">Note</th>
-                                    <th class="col-note">Note for GREATLab</th>
                                     <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="slt-list">
-                                <tr><td colspan="9" class="pa-empty-row">No SLT targets added yet.</td></tr>
+                                <tr><td colspan="6" class="pa-empty-row">No SLT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -614,19 +648,19 @@
                         <table class="pa-target-table">
                             <thead id="lot-head">
                                 <tr>
-                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all LOT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('LOT', this.checked)"></label> Target</th>
-                                    <th class="pa-col-ra-dec">RA / DEC</th>
-                                    <th class="pa-col-priority pa-sortable" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></th>
-                                    <th class="pa-col-filter">Filter / Exposure</th>
-                                    <th class="pa-col-total-exp pa-sortable" onclick="sortTargets('LOT', 'total_exp')">Total Exp. <span>↕</span></th>
-                                    <th class="pa-col-last-obs pa-sortable" onclick="sortTargets('LOT', 'last_observed')">Last Observed <span>↕</span></th>
+                                    <th class="pa-col-target"><label class="pa-sel-all" title="Select all LOT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('LOT', this.checked)"></label> Target
+                                        <button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></button></th>
+                                    <th class="pa-col-pos">RA / Dec · tonight
+                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('LOT', 'last_observed')">Last observed <span>↕</span></button></th>
+                                    <th class="pa-col-sky">Sky</th>
+                                    <th class="pa-col-exp">Exposure
+                                        <button type="button" class="pa-sort" data-sort="total_exp" onclick="sortTargets('LOT', 'total_exp')">Total <span>↕</span></button></th>
                                     <th class="col-note">Note</th>
-                                    <th class="col-note">Note for GREATLab</th>
                                     <th class="pa-col-actions">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="lot-list">
-                                <tr><td colspan="9" class="pa-empty-row">No LOT targets added yet.</td></tr>
+                                <tr><td colspan="6" class="pa-empty-row">No LOT targets added yet.</td></tr>
                             </tbody>
                         </table>
                     </div>

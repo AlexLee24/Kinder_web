@@ -754,13 +754,11 @@ function sortTargets(telescope, column) {
     
     // Update sort icon
     const tableId = telescope.toLowerCase() + '-head';
-    const ths = document.querySelectorAll('#' + tableId + ' th.pa-sortable span');
-    ths.forEach(span => span.textContent = '↕');
-    
-    const thSpan = document.querySelector('#' + tableId + ' th[onclick*="' + column + '"] span');
-    if (thSpan) {
-        thSpan.textContent = dir === 'asc' ? '↑' : '↓';
-    }
+    document.querySelectorAll('#' + tableId + ' [data-sort]').forEach(function (b) {
+        const on = b.dataset.sort === column;
+        b.querySelector('span').textContent = on ? (dir === 'asc' ? '↑' : '↓') : '↕';
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
 }
 
 async function updateTargetMags() {
@@ -854,6 +852,7 @@ async function loadAstroInfoForTargets() {
         });
         const data = await resp.json();
         if (!data.success) return;
+        dtNightInfo = { twilight: data.twilight_local || null };     // dark-time shading on the visibility plots
 
         // Fill ALL targets that share the same name (handles SLT + LOT duplicates)
         data.targets.forEach(function(td) {
@@ -902,59 +901,90 @@ function moonSepColor(sep) {
     return '#69db7c';
 }
 
+// Tonight's altitude for one target, readable at a glance:
+//   the dark part of the night (astronomical twilight to twilight) is the lighter band, dusk / dawn a fainter one;
+//   the time above 30° is filled; 30° and 60° are labelled; ticks every 3 h; "now" as a thin line;
+//   under it, in words, when the target is above 30° in the dark.
+let dtNightInfo = null;
 function drawMiniVisibilitySVG(altitudes, timesLocal) {
-    var W = 124, PLOT_H = 30, AXIS_H = 11, H = PLOT_H + AXIS_H;
-    var N = altitudes.length;
-    if (!N) return '';
+    var N = altitudes ? altitudes.length : 0;
+    if (!N || !timesLocal || timesLocal.length !== N) return '';
+    var W = 200, L = 24, R = 4, T = 6, PH = 56, AX = 15, H = T + PH + AX;
+    var PW = W - L - R;
+    var t0 = Date.parse(timesLocal[0]), t1 = Date.parse(timesLocal[N - 1]);
+    if (!(t1 > t0)) return '';
+    function xT(ms) { return L + (ms - t0) / (t1 - t0) * PW; }
+    function xI(i) { return L + i / (N - 1) * PW; }
+    function yA(a) { return T + PH - Math.max(0, Math.min(a, 90)) / 90 * PH; }
+    function clampX(x) { return Math.max(L, Math.min(L + PW, x)); }
+    function f(n) { return n.toFixed(1); }
+    var out = [];
 
-    // Y coordinate for a given altitude, within the plot area only (axis strip excluded).
-    function yFor(a) { return PLOT_H - Math.max(0, Math.min(a, 90)) / 90 * PLOT_H; }
+    // night bands
+    var tw = dtNightInfo && dtNightInfo.twilight;
+    var dark = null;
+    if (tw && tw.sunset && tw.astronomical) {
+        var ss = clampX(xT(Date.parse(tw.sunset[0]))), sr = clampX(xT(Date.parse(tw.sunset[1])));
+        var a0 = Date.parse(tw.astronomical[0]), a1 = Date.parse(tw.astronomical[1]);
+        var ad0 = clampX(xT(a0)), ad1 = clampX(xT(a1));
+        out.push('<rect x="' + f(ss) + '" y="' + T + '" width="' + f(Math.max(0, sr - ss)) + '" height="' + PH + '" fill="rgba(140,160,255,0.05)"/>');
+        out.push('<rect x="' + f(ad0) + '" y="' + T + '" width="' + f(Math.max(0, ad1 - ad0)) + '" height="' + PH + '" fill="rgba(140,160,255,0.09)"/>');
+        dark = [a0, a1];
+    }
+    // altitude grid
+    [30, 60].forEach(function (a) {
+        var y = yA(a);
+        out.push('<line x1="' + L + '" y1="' + f(y) + '" x2="' + (L + PW) + '" y2="' + f(y) + '" stroke="' + (a === 30 ? 'rgba(255,140,120,0.55)' : 'rgba(255,255,255,0.10)') + '" stroke-width="0.8"' + (a === 30 ? ' stroke-dasharray="3 2"' : '') + '/>');
+        out.push('<text x="' + (L - 3) + '" y="' + f(y + 3.5) + '" text-anchor="end" font-size="10" fill="' + (a === 30 ? 'rgba(255,160,140,0.9)' : 'rgba(255,255,255,0.45)') + '">' + a + '°</text>');
+    });
+    out.push('<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>');
 
-    // Build above/below-30° tracks as independent path subpaths, one per
-    // contiguous run. A single <polyline> per color (the old approach) joins
-    // ALL points of that color with straight lines regardless of gaps — so a
-    // brief dip below 30° (and back above) drew a spurious chord straight
-    // across the dip. Starting a new "M" subpath at each color change avoids
-    // that, while still sharing the exact crossing point so the two colors
-    // visually meet at the 30° line instead of leaving a gap.
-    var aboveD = '', belowD = '';
-    var prevAbove = null;
+    // the time above 30°: filled; the track: blue above 30°, faint red below
+    var y30 = yA(30), fillD = '', aboveD = '', belowD = '', prev = null;
     for (var i = 0; i < N; i++) {
-        var x = (i / (N - 1)) * W;
-        var y = yFor(altitudes[i]);
-        var isAbove = altitudes[i] >= 30;
-        var newRun = isAbove !== prevAbove;
-        var point = x.toFixed(2) + ',' + y.toFixed(2) + ' ';
-
-        if (isAbove) {
-            aboveD += (newRun ? 'M' : 'L') + point;
-            if (newRun && prevAbove !== null) belowD += 'L' + point;
-        } else {
-            belowD += (newRun ? 'M' : 'L') + point;
-            if (newRun && prevAbove !== null) aboveD += 'L' + point;
+        var x = xI(i), y = yA(altitudes[i]), up = altitudes[i] >= 30, pt = f(x) + ',' + f(y) + ' ';
+        if (up !== prev && prev !== null) {                     // meet exactly at 30°
+            var a0v = altitudes[i - 1], k = (30 - a0v) / (altitudes[i] - a0v), xc = f(xI(i - 1) + k * (x - xI(i - 1))) + ',' + f(y30) + ' ';
+            if (up) { belowD += 'L' + xc; aboveD += 'M' + xc; fillD += 'M' + xc; }
+            else { aboveD += 'L' + xc; fillD += 'L' + xc + 'Z '; belowD += 'M' + xc; }
+        } else if (prev === null) {
+            if (up) { aboveD += 'M' + pt; fillD += 'M' + f(x) + ',' + f(y30) + ' '; } else belowD += 'M' + pt;
         }
-        prevAbove = isAbove;
+        if (up) { aboveD += 'L' + pt; fillD += 'L' + pt; } else belowD += 'L' + pt;
+        prev = up;
+    }
+    if (prev) fillD += 'L' + f(xI(N - 1)) + ',' + f(y30) + ' Z';
+    if (fillD) out.push('<path d="' + fillD + '" fill="rgba(77,184,255,0.22)"/>');
+    if (belowD) out.push('<path d="' + belowD + '" fill="none" stroke="rgba(255,120,110,0.55)" stroke-width="1.4" stroke-linejoin="round"/>');
+    if (aboveD) out.push('<path d="' + aboveD + '" fill="none" stroke="#4db8ff" stroke-width="1.8" stroke-linejoin="round"/>');
+
+    // time ticks every 3 hours (local), and now
+    var d = new Date(t0); d.setMinutes(0, 0, 0);
+    while (d.getTime() < t0 || d.getHours() % 3) d.setHours(d.getHours() + 1);
+    for (; d.getTime() <= t1; d.setHours(d.getHours() + 3)) {
+        var xt = xT(d.getTime());
+        if (xt < L + 6 || xt > L + PW - 6) continue;
+        out.push('<line x1="' + f(xt) + '" y1="' + (T + PH) + '" x2="' + f(xt) + '" y2="' + (T + PH + 3) + '" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>');
+        out.push('<text x="' + f(xt) + '" y="' + (H - 1) + '" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.55)">' + String(d.getHours()).padStart(2, '0') + '</text>');
+    }
+    var now = Date.now() + (new Date().getTimezoneOffset() + 480) * 60000;   // Lulin local time (UTC+8), like timesLocal
+    if (now > t0 && now < t1) {
+        var xn = xT(now);
+        out.push('<line x1="' + f(xn) + '" y1="' + T + '" x2="' + f(xn) + '" y2="' + (T + PH) + '" stroke="#ffd166" stroke-width="1"/>');
     }
 
-    var h30 = yFor(30);
-    var h0 = yFor(0);
+    // in words: above 30° while it is dark
+    var from = null, to = null;
+    for (var j = 0; j < N; j++) {
+        var tj = Date.parse(timesLocal[j]);
+        var ok = altitudes[j] >= 30 && (!dark || (tj >= dark[0] && tj <= dark[1]));
+        if (ok) { if (from === null) from = tj; to = tj; }
+    }
+    function hm(ms) { var q = new Date(ms); return String(q.getHours()).padStart(2, '0') + ':' + String(q.getMinutes()).padStart(2, '0'); }
+    var cap = from === null ? '<span class="pa-vis-cap is-no">Not above 30° in the dark</span>'
+        : '<span class="pa-vis-cap"><b>' + hm(from) + '–' + hm(to) + '</b> above 30° · ' + (Math.round((to - from) / 360000) / 10) + ' h</span>';
 
-    var startLabel = (timesLocal && timesLocal[0]) ? timesLocal[0].slice(11, 16) : '';
-    var endLabel = (timesLocal && timesLocal[timesLocal.length - 1]) ? timesLocal[timesLocal.length - 1].slice(11, 16) : '';
-
-    return '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block; overflow:visible;">' +
-        // Horizon (0°) and 30° threshold guide lines
-        '<line x1="0" y1="' + h0 + '" x2="' + W + '" y2="' + h0 + '" stroke="rgba(255,255,255,0.08)" stroke-width="0.8"/>' +
-        '<line x1="0" y1="' + h30 + '" x2="' + W + '" y2="' + h30 + '" stroke="rgba(255,100,100,0.35)" stroke-width="0.8" stroke-dasharray="2,2"/>' +
-        '<text x="' + (W - 2) + '" y="' + (h30 - 2) + '" text-anchor="end" font-size="6.5" fill="rgba(255,140,140,0.75)">30°</text>' +
-        // Altitude track, colored red below 30° / blue above
-        (belowD ? '<path d="' + belowD + '" fill="none" stroke="rgba(255,100,100,0.5)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
-        (aboveD ? '<path d="' + aboveD + '" fill="none" stroke="rgba(77,184,255,0.85)" stroke-width="1.5" stroke-linejoin="round"/>' : '') +
-        // Time axis: separator + start/end local time labels
-        '<line x1="0" y1="' + PLOT_H + '" x2="' + W + '" y2="' + PLOT_H + '" stroke="rgba(255,255,255,0.1)" stroke-width="0.6"/>' +
-        (startLabel ? '<text x="0" y="' + (H - 1.5) + '" text-anchor="start" font-size="6.5" fill="rgba(255,255,255,0.4)">' + startLabel + '</text>' : '') +
-        (endLabel ? '<text x="' + W + '" y="' + (H - 1.5) + '" text-anchor="end" font-size="6.5" fill="rgba(255,255,255,0.4)">' + endLabel + '</text>' : '') +
-        '</svg>';
+    return '<svg class="pa-vis-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Altitude tonight from Lulin">' + out.join('') + '</svg>' + cap;
 }
 
 function getObjectRouteName(name) {
@@ -993,6 +1023,18 @@ function renderObjectNameLink(name, label) {
 const selectedTargetIds = new Set();
 
 function toggleNoteOpen(td) { td.classList.toggle('pa-note-open'); }
+
+// One Note column: the note for Lulin (in the script) over the note for the lab (GREATLab, web only)
+function notesCellHtml(t) {
+    function item(label, text) {
+        return '<div class="pa-note-item"><span class="pa-note-lab">' + label + '</span>' +
+               '<span class="pa-note-text">' + escapeHtml(text) + '</span></div>';
+    }
+    var body = (t.plan ? item('for Lulin', t.plan) : '') + (t.note_gl ? item('for Lab', t.note_gl) : '');
+    var title = [t.plan ? 'for Lulin: ' + t.plan : '', t.note_gl ? 'for Lab: ' + t.note_gl : ''].filter(Boolean).join('\n');
+    return '<td class="pa-td-note" title="' + escapeHtml(title) + '" onclick="toggleNoteOpen(this)">' +
+           (body || '<span class="pa-note-text">-</span>') + '</td>';
+}
 
 function formatLastObserved(dateStr) {
     if (!dateStr) return '<span class="pa-never">Never</span>';
@@ -1068,7 +1110,7 @@ function renderTable(telescope, targets) {
 
     if (targets.length === 0) {
         const emptyRow = document.createElement('tr');
-        emptyRow.innerHTML = '<td colspan="9" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
+        emptyRow.innerHTML = '<td colspan="6" class="pa-empty-row">No ' + telescope + ' targets added yet.</td>';
         tableBody.appendChild(emptyRow);
         return;
     }
@@ -1147,27 +1189,31 @@ function renderTable(telescope, targets) {
         const targetNameHtml = renderObjectNameLink(t.name, t.name);
         const coordDisplay = formatTargetCoordValue(t.ra, t.dec);
 
-        tr.innerHTML = '<td class="pa-td-name" style="vertical-align: middle;">' +
-            '<div class="pa-td-name-content" style="display:flex; flex-direction:column; align-items:flex-start; justify-content:center;">' +
-                '<div style="display:flex; align-items:center; gap:8px;">' +
+        // three lines per target:  name · coordinates · total time · note · switch
+        //                           mag · tonight · (cutout) · filters · note
+        //                           priority · last observed · buttons
+        tr.innerHTML = '<td class="pa-td-name">' +
+            '<div class="pa-td-name-content">' +
+                '<div class="pa-name-line">' +
                     '<input type="checkbox" class="pa-sel-box" data-tid="' + t.id + '" title="Select for bulk delete" onchange="toggleTargetSelected(' + t.id + ', this.checked)"' + (selectedTargetIds.has(t.id) ? ' checked' : '') + '>' + targetNameHtml + ' ' + programBadge +
                     (isOff ? '<span class="pa-off-chip" title="Switched off: not in the API target list">Off</span>' : '') + '</div>' +
-                '<div class="pa-name-mag" style="margin-top: 4px;">' + magDisplay + '</div>' +
+                '<div class="pa-name-mag">' + (magDisplay || '<span class="pa-mag-display">[Mag: —]</span>') + '</div>' +
+                '<div class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</div>' +
+            '</div>' +
+            '</td>' +
+            '<td class="pa-td-pos">' +
+                '<div class="pa-td-coord" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + escapeHtml(coordDisplay.ra) + ' <br> ' + escapeHtml(coordDisplay.dec) + '</div>' +
                 '<div class="pa-astro-row" id="astro-row-' + t.id + '">' +
                     '<span class="pa-astro-item pa-astro-moon" title="Moon separation">☽ <span>—</span></span>' +
                     '<span class="pa-astro-item pa-astro-transit" title="Transit time (local)">⟳ <span>—</span></span>' +
                     '<span class="pa-astro-item pa-astro-peak" title="Peak altitude">↑ <span>—</span></span>' +
                 '</div>' +
                 '<div class="pa-mini-plot" id="mini-vp-' + t.id + '"></div>' +
-            '</div>' +
+                '<div class="pa-td-last-obs"><span class="pa-lo-lab">Last observed</span>' + formatLastObserved(t.last_observed) + '</div>' +
             '</td>' +
-            '<td class="pa-td-coord" style="cursor:pointer;" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + escapeHtml(coordDisplay.ra) + ' <br> ' + escapeHtml(coordDisplay.dec) + '</td>' +
-            '<td class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</td>' +
-            '<td class="pa-td-filter-exp">' + filterExpHTML + '</td>' +
-            '<td class="pa-td-total-exp">' + totalExp + ' s</td>' +
-            '<td class="pa-td-last-obs">' + formatLastObserved(t.last_observed) + '</td>' +
-            '<td class="pa-td-note" title="' + escapeHtml(t.plan || '') + '" onclick="toggleNoteOpen(this)"><span class="pa-note-text">' + escapeHtml(t.plan || '-') + '</span></td>' +
-            '<td class="pa-td-note-gl" title="' + escapeHtml(t.note_gl || '') + '" onclick="toggleNoteOpen(this)"><span class="pa-note-text">' + escapeHtml(t.note_gl || '-') + '</span></td>' +
+            '<td class="pa-td-sky"></td>' +
+            '<td class="pa-td-exp"><div class="pa-td-total-exp">' + totalExp + ' s</div><div class="pa-td-filter-exp">' + filterExpHTML + '</div></td>' +
+            notesCellHtml(t) +
             '<td class="pa-td-actions">' +
                 '<div class="pa-action-cell">' +
                     '<div class="pa-action-row-top">' +
