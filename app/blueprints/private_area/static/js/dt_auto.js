@@ -107,9 +107,11 @@
             : el('span', { class: 'mono dta-lim', text: 'no limit' });
     }
     // Template subtraction of this point: TS, or w/o TS (why, when the subtraction failed its check)
-    function tsEl(p) {
+    const TPL = { panstarrs: 'Pan-STARRS', legacy: 'Legacy Survey', sdss: 'SDSS', skymapper: 'SkyMapper' };
+    function tsEl(p, long) {
+        const src = TPL[p.template] || p.template || '';
         return p.ts
-            ? el('span', { class: 'dta-ts is-ts', text: 'TS', title: 'Template-subtracted' })
+            ? el('span', { class: 'dta-ts is-ts', text: long && src ? 'TS · ' + src : 'TS', title: 'Template-subtracted' + (src ? ' with ' + src + ' templates' : '') })
             : el('span', { class: 'dta-ts', text: 'w/o TS', title: p.ts_note ? 'Without template subtraction: ' + p.ts_note : 'Without template subtraction' });
     }
     function bestPerFilter(r) {
@@ -495,7 +497,7 @@
             el('table', { class: 'dta-mini' },
                 el('thead', {}, el('tr', {}, ['Filter', 'Magnitude', 'TS', 'S/N', 'MJD'].map(h => el('th', { scope: 'col', text: h })))),
                 el('tbody', {}, best.map(p => el('tr', {}, el('th', { scope: 'row' }, fchip(p.filter)), el('td', {}, magEl(p), p.veto && !p.det ? el('div', { class: 'dta-note', text: p.veto }) : null),
-                    el('td', {}, tsEl(p)), el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }))))),
+                    el('td', {}, tsEl(p, true)), el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }))))),
             el('p', { class: 'dtw-small dta-muted' }, r.obj_name ? ['On the Transient page as ', el('span', { class: 'mono', text: r.label }), ' · ', deltaEl(r)] : 'Not a Kinder object: not added to a Transient page',
                 r.pipeline ? [' · ', el('a', { href: r.pipeline, text: 'Pipeline run' })] : null));
     }

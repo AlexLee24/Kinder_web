@@ -391,3 +391,40 @@ def test_auto_ncpu_shares_the_cores_between_auto_runs(monkeypatch, cores, parall
     else:
         monkeypatch.setenv('AUTO_PHOT_NCPU', env)
     assert auto_phot.auto_ncpu() == expected
+
+
+def test_better_ts_keeps_each_bands_better_subtraction():
+    prim = [_pt('stack_r'), _pt('stack_g', 'g'), _pt('stack_z', 'z', ts=False, note='template alignment failed')]
+    prim[0]['snr'] = 12.3
+    alt = [{**_pt('stack_r'), 'snr': 2.4, 'det': False}, {**_pt('stack_g', 'g'), 'snr': 120.0},
+           {**_pt('stack_z', 'z'), 'snr': 13.5}]
+    out = {p['image']: p for p in svc.better_ts(prim, alt, use={'r', 'g', 'z'})}
+    assert out['stack_r']['snr'] == 12.3                       # the primary detection beats the alt's limit
+    assert out['stack_g']['snr'] == 120.0                      # higher S/N
+    assert out['stack_z']['ts'] and out['stack_z']['snr'] == 13.5   # a passed subtraction beats a failed one
+    assert svc.better_ts(prim, alt, use=set()) == prim          # no other survey: nothing to compare
+
+
+def test_auto_templates_are_tried_with_the_other_survey(tmp_path, fake, monkeypatch):
+    _frame(tmp_path, 'SN2026gzf', '2026-11-16', tel='LOT')
+    runs = []
+    monkeypatch.setattr(svc, 'position', lambda t, f: (None, 149.93, 0.42))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'auto')
+    monkeypatch.setattr(svc, 'ensure_workspace',
+                        lambda *a, stack=True, template=None, force=None, **k: runs.append((template, force)) or
+                        ('AUTO_X_altTS' if force else 'AUTO_X' if template else 'AUTO_X_noTS'))
+    monkeypatch.setattr(svc, 'workspace_name', lambda n, t, tel, suffix='': 'AUTO_X' + suffix)
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
+    monkeypatch.setattr(svc, '_still_running', lambda tid: False)
+    choices = {'AUTO_X': {'r': 'legacy'}, 'AUTO_X_altTS': {'r': 'panstarrs'}}
+    monkeypatch.setattr(svc, 'template_choices', lambda tid: choices[tid])
+    pts = {'AUTO_X': [{**_pt('stack_r'), 'snr': 2.4, 'det': False}], 'AUTO_X_altTS': [{**_pt('stack_r'), 'snr': 12.3}]}
+    monkeypatch.setattr(svc, '_points', lambda tid: pts[tid])
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'SN2026gzf', 'LOT')]
+    assert runs == [('auto', None), ('auto', {'r': 'panstarrs'})]          # no no-TS run: both subtractions passed
+    assert r['status'] == 'done' and r['phot'][0]['snr'] == 12.3 and r['phot'][0]['template'] == 'panstarrs'

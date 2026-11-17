@@ -47,6 +47,9 @@ MAX_DEFAULT_ANSWERS = 5         # AutoPhOT asking (unknown telescope / filter): 
 TS_MAX_FSCALE_DISC_PCT = 20.0   # kernel flux scale vs the stars' photometric scale (flux_scale_discrep_pct)
 TS_MAX_ARTIFACTS = 10           # dipole / residual regions masked in the difference (subtraction_artifact_regions)
 NO_TS_SUFFIX = '_noTS'          # the workspace of the fallback run
+ALT_SUFFIX = '_altTS'           # the same night subtracted with the other survey's templates
+ALT_SURVEY = {'panstarrs': 'legacy', 'legacy': 'panstarrs', 'sdss': 'skymapper', 'skymapper': 'sdss'}
+TEMPLATE_MARKER = 'kinder_template.json'   # written by scripts/pipeline/autophot_templates.py per band
 
 
 def auto_ncpu():
@@ -275,11 +278,11 @@ def choose_template(ra, dec):
     return 'auto'
 
 
-def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None):
+def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None, force=None):
     """The workspace of one run: with template subtraction from `template`, or without (template=None, the _noTS one
-    when it is the fallback of a TS run)."""
+    when it is the fallback of a TS run). force {band: survey}: the _altTS run, those bands tried with that survey."""
     from app.services.pipeline import autophot as ap
-    tid = workspace_name(night, target, telescope, '' if template else NO_TS_SUFFIX)
+    tid = workspace_name(night, target, telescope, ALT_SUFFIX if force else '' if template else NO_TS_SUFFIX)
     if not (ap.runs_root() / tid / 'target.json').is_file():
         ap.create_workspace({'name': tid}, user=AUTO_USER, user_name=AUTO_NAME)
     ts = {'subtraction': True, 'sub_method': 'sfft', 'ts_download': template} if template else {'subtraction': False}
@@ -288,8 +291,40 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, ban
     cfg = ap._read_json(ap.tdir(tid) / 'target.json')
     cfg['auto'] = {'night': night.isoformat(), 'target': target, 'telescope': telescope}
     cfg['catalog_bands'] = dict(bands or {})      # per band, where the main catalog has none (the runner maps them)
+    cfg['ts_force'] = dict(force or {})
     ap._write_json(ap.tdir(tid) / 'target.json', cfg)
     return tid
+
+
+def template_choices(tid):
+    """{band: survey} the runner picked in a workspace (its kinder_template.json per band folder)."""
+    import json
+    from app.services.pipeline import autophot as ap
+    out = {}
+    root = ap.images_dir(tid) / 'templates'
+    if root.is_dir():
+        for mk in root.glob(f'*_template/{TEMPLATE_MARKER}'):
+            try:
+                out[mk.parent.name[:-len('_template')]] = json.loads(mk.read_text())['survey']
+            except (OSError, ValueError, KeyError):
+                pass
+    return out
+
+
+def better_ts(primary, alt, use):
+    """Per image, the better of two template-subtracted runs: a point that passed the subtraction check over one that
+    did not, then a detection over a limit, then the higher S/N (AutoPhOT folds the kernel's flux-scale error into it,
+    so a template that leaves the host behind scores low). `use`: the bands where the alt run had another survey."""
+    alt_by = {p['image']: p for p in alt if p.get('filter') in use}
+    out = []
+    for p in primary:
+        q = alt_by.get(p['image'])
+        if q is not None:
+            key = lambda x: (bool(x.get('ts')), bool(x.get('det')), x.get('snr') or 0)   # noqa: E731
+            if key(q) > key(p):
+                p = q
+        out.append(p)
+    return out
 
 
 # ── run one workspace ────────────────────────────────────────────────────────
@@ -725,14 +760,15 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
         if not template:
             logger.info('auto_phot: %s %s: no template survey covers it; measuring without TS', target, telescope)
 
-        def measure(stack, tpl):
-            tid = workspace_name(night, target, telescope, '' if tpl else NO_TS_SUFFIX)
+        def measure(stack, tpl, force=None):
+            tid = workspace_name(night, target, telescope, ALT_SUFFIX if force else '' if tpl else NO_TS_SUFFIX)
             if _still_running(tid):             # started before a restart: wait for it instead of starting another
                 logger.info('auto_phot: %s is still running from before; waiting for it', tid)
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _wait(tid, progress, stop)
             else:
-                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands, template=tpl)
+                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands, template=tpl,
+                                       force=force)
                 ap.add_files(tid, [str(f) for f in frames], origin='auto')
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _run_and_wait(tid, progress=progress, stop=stop)
@@ -742,6 +778,26 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
             if stop():
                 raise Stopped()
             tid, job, phot = measure(stack, template)
+            # the other survey's templates where there is one (Pan-STARRS ↔ Legacy Survey, SDSS ↔ SkyMapper): keep
+            # each band's better subtraction (SN2026gzf: Legacy left its host's core behind; AT2026afqt: Pan-STARRS
+            # had 5′ of data and failed in r and z)
+            first = template_choices(tid) if template == 'auto' and phot else {}
+            force = {b: ALT_SURVEY[s] for b, s in first.items() if s in ALT_SURVEY}
+            if force:
+                if stop():
+                    raise Stopped()
+                _, _, alt = measure(stack, template, force=force)
+                altws = workspace_name(night, target, telescope, ALT_SUFFIX)
+                other = template_choices(altws)
+                use = {b for b in force if other.get(b) and other[b] != first.get(b)}
+                for p in phot:
+                    p['template'] = first.get(p.get('filter'))
+                for p in alt:
+                    p['template'] = other.get(p.get('filter'))
+                if use:
+                    phot = better_ts(phot, alt, use)
+                    logger.info('auto_phot: %s %s %s: templates %s', night, target, telescope,
+                                ', '.join(f"{p['filter']} {p.get('template')}" for p in phot))
             # a subtraction that failed its check (or a TS run that gave nothing): measure without TS and use that
             bad = [p for p in phot if not p.get('ts')]
             if template and (bad or not phot):

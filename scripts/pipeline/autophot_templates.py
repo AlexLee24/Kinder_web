@@ -31,6 +31,7 @@ SURVEYS = {
 }
 OTHER_BANDS = ('panstarrs',)            # y, w …
 GOOD_FRACTION = 0.8                     # 目標周圍有資料的方框 ≥ 要的大小 × 0.8 就算夠
+MIN_FORCE_SIDE = 3.0                    # 指定的巡天（force）至少要有這麼大（arcmin）才用
 MARKER = 'kinder_template.json'
 LEGACY_LAYERS = ('ls-dr10', 'ls-dr11')
 LEGACY_PIXSCALE = 0.262
@@ -230,8 +231,9 @@ def _marker(folder):
         return None
 
 
-def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None):
+def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None, force=None):
     """每個波段依 SURVEYS 的順序下載，第一個在目標周圍有 ≥ GOOD_FRACTION × size 資料的就用，都不夠就用最大的。
+    force（巡天名）：先試它，有 ≥ MIN_FORCE_SIDE 就用（自動測光拿另一個巡天再做一次，比較哪個減得好）。
     回傳 <band>_template/<巡天>_<band>_band_template.fits，或 None（沒有任何巡天有這個波段）。"""
     fetch = fetch or FETCH
     autophot_fns = autophot_fns or {}
@@ -239,11 +241,13 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None):
     size = float(size)
     folder = _folder(template_folder, band)
     mk = _marker(folder)
-    if mk and mk.get('size') == size and (folder / mk.get('file', '')).is_file():
+    if mk and mk.get('size') == size and mk.get('force') == force and (folder / mk.get('file', '')).is_file():
         log(f'template {band}: {LABELS.get(mk["survey"], mk["survey"])} as before ({mk["side"]:.1f}′ around the target)')
         return str(folder / mk['file'])
 
-    order = SURVEYS.get(band.lower(), OTHER_BANDS)
+    order = tuple(SURVEYS.get(band.lower(), OTHER_BANDS))
+    if force in FETCH:
+        order = (force,) + tuple(x for x in order if x != force)
     best = None                                       # (side, survey, path, tmpdir)
     tmps = []
     try:
@@ -267,13 +271,14 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None):
             log(f'template {band}: {LABELS.get(survey, survey)} has {side:.1f}′ of data around the target')
             if best is None or side > best[0]:
                 best = (side, survey, Path(path))
-            if side >= GOOD_FRACTION * size:
+            if side >= GOOD_FRACTION * size or (survey == force and side >= MIN_FORCE_SIDE):
+                best = (side, survey, Path(path))
                 break
         if best is None:
             log(f'template {band}: no survey has this band here; measured without template subtraction')
             return None
         side, survey, path = best
-        if side < GOOD_FRACTION * size:
+        if side < GOOD_FRACTION * size and not (survey == force and side >= MIN_FORCE_SIDE):
             log(f'template {band}: none reaches {GOOD_FRACTION * size:.1f}′; using {LABELS.get(survey, survey)} ({side:.1f}′)')
         for old in (folder, Path(template_folder) / f'{band}p_template'):   # 換巡天：舊模板和 AutoPhOT 的衍生檔都清掉
             if old.is_dir():
@@ -282,7 +287,7 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None):
         name = f'{survey}_{band}_band_template.fits'
         shutil.copyfile(path, folder / name)
         (folder / MARKER).write_text(json.dumps({'survey': survey, 'size': size, 'side': round(side, 2), 'file': name,
-                                                 'tried': list(order[:order.index(survey) + 1])}))
+                                                 'force': force, 'tried': list(order[:order.index(survey) + 1])}))
         log(f'template {band}: using {LABELS.get(survey, survey)}')
         return str(folder / name)
     finally:
@@ -290,13 +295,15 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None):
             shutil.rmtree(t, ignore_errors=True)
 
 
-def install(templates_module):
-    """AutoPhOT 的下載迴圈（download_templates: panstarrs）每個波段呼叫 download_panstarrs_template：換成 pick()。"""
+def install(templates_module, force=None):
+    """AutoPhOT 的下載迴圈（download_templates: panstarrs）每個波段呼叫 download_panstarrs_template：換成 pick()。
+    force：{波段: 巡天}，那些波段先試指定的巡天。"""
     originals = {'panstarrs': templates_module.download_panstarrs_template,
                  'sdss': templates_module.download_sdss_template}
+    force = dict(force or {})
 
     def download(ra, dec, size, template_folder, band='r'):
-        return pick(ra, dec, size, template_folder, band, autophot_fns=originals)
+        return pick(ra, dec, size, template_folder, band, autophot_fns=originals, force=force.get(str(band).strip()))
 
     templates_module.download_panstarrs_template = download
     return download

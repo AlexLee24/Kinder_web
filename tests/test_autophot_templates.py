@@ -152,3 +152,20 @@ def test_gaia_cache_without_xp_photometry_is_removed(kt, tmp_path):
     assert kt.purge_stale_gaia(tmp_path) == ['stale.csv']
     assert sorted(os.listdir(d)) == ['good.csv']
     assert kt.purge_stale_gaia(tmp_path / 'nowhere') == []
+
+
+def test_a_forced_survey_is_tried_first_and_kept_apart(kt, tmp_path):
+    calls = []
+    fetch = {'panstarrs': fake(calls, 'panstarrs', rows=456), 'legacy': fake(calls, 'legacy'),
+             'sdss': fake(calls, 'sdss'), 'skymapper': fake(calls, 'skymapper')}
+    # the alt run: Pan-STARRS has only 5.2′ but it is the survey asked for and ≥ MIN_FORCE_SIDE
+    p = kt.pick(RA, DEC, 10, tmp_path, 'r', fetch=fetch, force='panstarrs')
+    assert p.endswith('panstarrs_r_band_template.fits') and calls == [('panstarrs', 'r')]
+    # a later unforced pick is not served from the forced marker
+    assert kt.pick(RA, DEC, 10, tmp_path, 'r', fetch=fetch).endswith('legacy_r_band_template.fits')
+    # too little of the forced survey: the usual order decides
+    calls.clear()
+    tiny = {**fetch, 'skymapper': fake(calls, 'skymapper', rows=360)}
+    got = kt.pick(RA, DEC, 10, tmp_path / 'b', 'g', fetch=tiny, force='skymapper')   # SkyMapper 2.0′ < 3′
+    assert got.endswith('legacy_g_band_template.fits')            # then Pan-STARRS 5.2′, Legacy 10′
+    assert [c[0] for c in calls] == ['skymapper', 'panstarrs', 'legacy']
