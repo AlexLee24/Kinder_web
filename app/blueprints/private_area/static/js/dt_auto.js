@@ -307,8 +307,7 @@
             el('dt', { text: 'Last observed' }), el('dd', { class: 'mono', text: t.last_observed ? String(t.last_observed).slice(0, 10) : 'Never' }),
             t.mag ? el('dt', { text: 'Mag' }) : null, t.mag ? el('dd', { class: 'mono', text: t.mag }) : null,
             t.repeat_count > 0 ? el('dt', { text: 'Repeat' }) : null, t.repeat_count > 0 ? el('dd', { text: String(t.repeat_count) }) : null,
-            el('dt', { text: 'Note' }), el('dd', { text: t.plan || '—' }),
-            el('dt', { text: 'Note for GREATLab' }), el('dd', { text: t.note_gl || '—' }));
+        );
     }
 
     function renderDetail(t) {
@@ -329,7 +328,11 @@
                         el('span', { class: 'dta-pri is-' + String(t.priority || '').toLowerCase(), text: t.priority || '' })),
                     a ? el('div', { class: 'dtw-astro' }, el('span', { text: `Moon ${a.moon_separation != null ? a.moon_separation + '°' : '—'}` }),
                         el('span', { text: `Transit ${a.transit_time_local ? a.transit_time_local.slice(11, 16) : '—'}` }),
-                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null)),
+                        el('span', { text: `Peak ${a.altitudes && a.altitudes.length ? Math.round(Math.max(...a.altitudes)) + '°' : '—'}` })) : null),
+                // the notes next to the name, where they are read first
+                (t.plan || t.note_gl) ? el('dl', { class: 'dtw-notes' },
+                    t.plan ? el('div', {}, el('dt', { text: 'Note' }), el('dd', { text: t.plan })) : null,
+                    t.note_gl ? el('div', {}, el('dt', { text: 'Note for GREATLab' }), el('dd', { text: t.note_gl })) : null) : null),
             keep || el('div', { class: 'dtw-lc', id: 'dtWsLc' },
                 el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
                 el('div', { id: 'dtWsLcPlot', class: 'dtw-lc-plot' }, el('div', { class: 'dta-muted dtw-small', text: 'Loading the light curve…' })),
@@ -338,14 +341,45 @@
                 el('section', { 'aria-label': 'Latest automatic photometry' },
                     el('div', { class: 'dtw-sh' }, el('h4', { text: r ? (r.night === (data && data.last_night) ? 'Last night' : 'Night of ' + r.night) : 'Automatic photometry' }), r ? stateBtn(r) : null),
                     r ? lastNightTable(r) : el('p', { class: 'dta-muted dtw-small', text: 'No frames of this target have been measured yet' })),
-                el('section', { 'aria-label': 'Frames' },
-                    el('div', { class: 'dtw-sh' }, el('h4', { text: 'Frames' }), r ? el('span', { class: 'dta-muted dtw-small', text: '60″ around the target' }) : null),
-                    r && r.frames && r.frames.length ? el('div', { class: 'dtw-frames' }, r.frames.map(f => el('figure', {}, thumb(r, f, 'is-lg'), el('figcaption', { class: 'mono', text: f })))) : el('p', { class: 'dta-muted dtw-small', text: '—' }))),
+                el('section', { 'aria-label': 'Frames and a survey image' },
+                    el('div', { class: 'dtw-sh' }, el('h4', { text: 'Frames' }), el('span', { class: 'dta-muted dtw-small', text: '60″ around the target' })),
+                    el('div', { class: 'dtw-frames' },
+                        (r && r.frames || []).map(f => el('figure', {}, thumb(r, f, 'is-lg'), el('figcaption', { class: 'mono', text: f }))),
+                        skyFig(t)))),
             el('div', { class: 'dtw-two' },
                 el('section', { 'aria-label': 'Plan' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Plan' })), plan(t)),
                 el('section', { 'aria-label': 'Visibility tonight' }, el('div', { class: 'dtw-sh' }, el('h4', { text: 'Tonight from Lulin' })),
                     el('div', { class: 'dtw-vis', html: a && a.altitudes && typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(a.altitudes, a._times) : '<span class="dta-muted dtw-small">—</span>' }))));
         if (!keep) drawLc(t);
+    }
+
+    // A survey image of the same 60″, from the first survey that has the position: Euclid, DESI Legacy, Pan-STARRS1, others
+    const SKY = [['vis', 'Euclid VIS'], ['dr11', 'Legacy DR11'], ['dr10', 'Legacy DR10'], ['ps1', 'Pan-STARRS1'],
+                 ['hsc', 'HSC PDR3'], ['sdss', 'SDSS']];
+    const skyFound = {};                         // position → first SKY index still worth asking (SKY.length: none has it)
+    function skyFig(t) {
+        const ra = typeof parseRAToDeg === 'function' ? parseRAToDeg(t.ra) : parseFloat(t.ra);
+        const dec = typeof parseDecToDeg === 'function' ? parseDecToDeg(t.dec) : parseFloat(t.dec);
+        if (!Number.isFinite(ra) || !Number.isFinite(dec)) return null;
+        const key = `${ra.toFixed(5)},${dec.toFixed(5)}`;
+        let i = skyFound[key] ?? 0;
+        const cap = el('figcaption', { class: 'dta-muted', text: 'Survey…' });
+        const img = el('img', { class: 'dta-thumb is-lg dtw-sky-img', width: 128, height: 128, alt: '' });
+        const fig = el('figure', { class: 'dtw-sky' },
+            el('a', { href: '/sky_cutouts?q=' + encodeURIComponent(`${ra.toFixed(6)} ${dec.toFixed(6)}`) + '&fov=60', title: 'Open in Sky Cutouts' }, img), cap);
+        const none = () => fig.replaceChildren(el('span', { class: 'dta-thumb is-lg is-empty', 'aria-hidden': 'true' }),
+                                               el('figcaption', { class: 'dta-muted', text: 'No survey image' }));
+        const tryNext = () => {
+            if (i >= SKY.length) { skyFound[key] = SKY.length; none(); return; }
+            const [src, label] = SKY[i];
+            img.alt = `${label} image, 60 arcsec around ${t.name}`;
+            img.dataset.label = label;
+            img.src = `/api/cutouts/image?ra=${ra.toFixed(6)}&dec=${dec.toFixed(6)}&fov=60&src=${src}`;
+        };
+        img.addEventListener('load', () => { skyFound[key] = i; cap.textContent = img.dataset.label; cap.className = 'dtw-sky-cap'; });
+        img.addEventListener('error', () => { i += 1; skyFound[key] = Math.max(skyFound[key] ?? 0, i); tryNext(); });   // a re-render starts past it
+        if (i >= SKY.length) none(); else tryNext();
+        return fig;
     }
 
     function lastNightTable(r) {
