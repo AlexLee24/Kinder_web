@@ -69,6 +69,34 @@ def scan(night, root=None):
     return out
 
 
+_frames_cache = {}
+FRAMES_TTL = 300
+
+
+def night_frames(night):
+    """{(target, telescope): {'n', 'filters': {band: count}}} for the page, from the calibrated folder (5 min cache);
+    {} when the folder is not on this server."""
+    key = night.isoformat()
+    hit = _frames_cache.get(key)
+    if hit and time.time() - hit[0] < FRAMES_TTL:
+        return hit[1]
+    try:
+        groups = scan(night)
+    except Exception as e:
+        logger.info('auto_phot: cannot list the frames of %s (%s)', key, e)
+        groups = {}
+    out = {}
+    for k, frames in groups.items():
+        counts = {}
+        for f in frames:
+            b = _band(f) or '?'
+            counts[b] = counts.get(b, 0) + 1
+        out[k] = {'n': len(frames), 'filters': counts}
+    _frames_cache.clear() if len(_frames_cache) > 20 else None
+    _frames_cache[key] = (time.time(), out)
+    return out
+
+
 # ── 2. position, catalog, workspace ─────────────────────────────────────────
 
 def _object(target):
@@ -158,17 +186,25 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True):
 def _wait_for_slot(stop=None):
     from app.services.pipeline import autophot as ap
     end = time.time() + WAIT_SLOT_S
-    while ap._running_count() >= ap.MAX_RUNNING:
+    while ap._running_count(auto=True) >= ap.MAX_RUNNING_AUTO:     # its own slot: people's runs are not counted
         if time.time() > end or (stop and stop()):
-            raise RuntimeError('No free AutoPhOT slot (other runs are going on this server).')
+            raise RuntimeError('Another auto photometry run did not finish.')
         time.sleep(30)
 
 
 def _run_and_wait(tid, progress=None, stop=None):
     """Start AutoPhOT and wait for it; returns the final job state."""
     from app.services.pipeline import autophot as ap
-    _wait_for_slot(stop)
-    ap.start(tid, AUTO_USER)
+    end = time.time() + WAIT_SLOT_S
+    while True:                       # a Retry from the page and the daily run may reach the slot together
+        _wait_for_slot(stop)
+        try:
+            ap.start(tid, AUTO_USER)
+            break
+        except ap.PipelineError as e:
+            if 'Auto photometry is already running' not in str(e) or time.time() > end:
+                raise
+            time.sleep(30)
     t0, answers = time.time(), 0
     while True:
         time.sleep(POLL_S)
@@ -330,6 +366,10 @@ def run_night(night, only=None, force=False, stop=None, root=None):
         if r and not force and (r['status'] == 'done' or r['status'] == 'skipped') and r['n_frames'] == len(frames):
             continue
         todo.append((key, frames))
+    for (target, telescope), frames in todo:                 # the page lists the whole night at once
+        if not (only or skipped_name(target)):
+            db.upsert(night, target, telescope, status='queued', reason=None, n_done=0, n_frames=len(frames),
+                      filters=sorted({_band(f) for f in frames} - {''}))
     done = failed = skipped = 0
     for (target, telescope), frames in todo:
         if stop and stop():
@@ -342,8 +382,41 @@ def run_night(night, only=None, force=False, stop=None, root=None):
             f'{len(groups) - len(todo)} already done')
 
 
+def for_frames(target, keys):
+    """What auto photometry did with these frames, for the Pipeline's calibrated picker: keys are (night iso,
+    telescope) of the ticked frames of folder ``target``. [{'night', 'telescope', 'status', 'n_frames', 'n_done',
+    'mags': [[filter, mag or None, lim]], 'url'}]; nights it never touched and will not (older than the daily
+    run's 3 nights) are left out."""
+    from app.db import auto_phot as db
+    keys = sorted({(str(n), str(t).upper()) for n, t in keys if n and t})
+    if not keys:
+        return []
+    out, oldest = [], last_night() - timedelta(days=2)
+    rows = {}
+    for n in {k[0] for k in keys}:
+        try:
+            for r in db.for_night(date.fromisoformat(n)):
+                rows[(r['night'], r['telescope'], r['target'])] = r
+        except Exception:
+            logger.exception('auto_phot: status for %s', n)
+    for n, tel in keys:
+        r = rows.get((n, tel, target))
+        url = '/daily_trigger#dtAuto'
+        if r:
+            mags = [[p['filter'], p['mag'], p['lim']] for p in r['phot']]
+            out.append({'night': n, 'telescope': tel, 'status': r['status'], 'n_frames': r['n_frames'], 'n_done': r['n_done'],
+                        'reason': r.get('reason') or '', 'mags': mags, 'url': url})
+        elif skipped_name(target):
+            continue
+        elif date.fromisoformat(n) >= oldest:
+            out.append({'night': n, 'telescope': tel, 'status': 'waiting', 'n_frames': 0, 'n_done': 0, 'reason': '',
+                        'mags': [], 'url': url})
+    return out
+
+
 def queue_retry(night, target, telescope):
-    """Mark one row queued and measure it in a background thread (the Trigger page's Retry)."""
+    """Mark one row queued and measure it in a background thread (the Trigger page's Retry / Measure now)."""
+    _frames_cache.pop(night.isoformat(), None)
     import threading
     from app.db import auto_phot as db
     db.upsert(night, target, telescope, status='queued', reason=None)

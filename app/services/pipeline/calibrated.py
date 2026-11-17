@@ -101,12 +101,22 @@ def folder(rel):
         except Exception as e:
             info['error'] = f'{type(e).__name__}: {e}'
         files.append(info)
+    # which night / telescope each frame is, and what the daily auto photometry did with them (shown when picked)
+    from app.services import auto_phot
+    for f in files:
+        m = auto_phot.FRAME_RE.search(f['name'])
+        if m:
+            f['night'], f['telescope'] = m.group(1), m.group(2).upper()
+    try:
+        auto = auto_phot.for_frames(d.name, [(f.get('night'), f.get('telescope')) for f in files])
+    except Exception:
+        auto = []
     tags = {}
     for f in files:
         if f.get('tag'):
             tags[f['tag']] = tags.get(f['tag'], 0) + 1
     return {'path': str(d.relative_to(base)), 'files': files, 'more': max(0, len(names) - MAX_SCAN),
-            'tags': [{'tag': t, 'n': n} for t, n in sorted(tags.items())], 'scanned': time.time()}
+            'tags': [{'tag': t, 'n': n} for t, n in sorted(tags.items())], 'scanned': time.time(), 'auto': auto}
 
 
 def file_path(rel):

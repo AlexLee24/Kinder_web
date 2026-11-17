@@ -52,7 +52,8 @@ SUB_METHODS = ['sfft', 'hotpants', 'zogy']
 FITS_EXT = ('.fits', '.fit', '.fts', '.fits.fz', '.fits.gz')
 IMAGE_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp')
 TEXT_EXT = ('.log', '.txt', '.yml', '.yaml', '.json', '.dat', '.cat', '.reg', '.param', '.conv', '.sex', '.md', '.ecsv', '.tex')
-MAX_RUNNING = 2                   # AutoPhOT runs at once on this server
+MAX_RUNNING = 2                   # AutoPhOT runs at once on this server (people's runs)
+MAX_RUNNING_AUTO = 1              # plus the Auto photometry bot's own run (app/services/auto_phot.py), counted apart
 MAX_SCAN = 500
 MAX_UPLOAD_BYTES = 4 * 1024 ** 3  # one FITS
 UPLOAD_CHUNK = 8 * 1024 * 1024    # the page sends files in pieces of this size (under the request size limit)
@@ -1027,7 +1028,9 @@ def _busy(tid):
         raise PipelineError('AutoPhOT is running in this workspace.')
 
 
-def _running_count():
+def _running_count(auto=False):
+    """AutoPhOT runs going on this server: people's runs (auto=False), or the Auto photometry runs (auto=True).
+    The two are counted apart, so the daily auto photometry never takes a slot from someone's run."""
     r = runs_root()
     if not r.is_dir():
         return 0
@@ -1035,7 +1038,8 @@ def _running_count():
     for d in r.iterdir():
         if d.is_dir() and not d.name.startswith('.') and TID_RE.fullmatch(d.name):
             j = _read_json(d / 'job.json')
-            n += j.get('status') == 'running' and _alive(j.get('pid'))
+            if j.get('status') == 'running' and _alive(j.get('pid')):
+                n += bool(_read_json(d / 'target.json').get('auto')) == auto
     return n
 
 
@@ -1097,8 +1101,10 @@ def start(tid, user=''):
         raise NotConfigured(f'Runner script missing: {RUNNER}')
     with _start_lock():
         _busy(tid)
-        if _running_count() >= MAX_RUNNING:
-            raise PipelineError(f'{MAX_RUNNING} AutoPhOT runs are already going on this server; try again when one finishes.')
+        auto = bool(_read_json(d / 'target.json').get('auto'))
+        if _running_count(auto) >= (MAX_RUNNING_AUTO if auto else MAX_RUNNING):
+            raise PipelineError('Auto photometry is already running a target.' if auto else
+                                f'{MAX_RUNNING} AutoPhOT runs are already going on this server; try again when one finishes.')
         if not _fits_in(images_dir(tid), False):
             raise PipelineError('Upload at least one FITS image first.')
         cfg = _read_json(d / 'target.json')

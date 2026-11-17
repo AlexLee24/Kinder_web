@@ -139,3 +139,36 @@ def test_points_from_the_photometry_table(monkeypatch):
 def test_trigger_page_api_needs_a_login(client):
     assert client.get('/api/daily_trigger/auto_phot').status_code == 401
     assert client.post('/api/daily_trigger/auto_phot/1/retry').status_code == 401
+
+
+def test_picker_status_for_ticked_frames(fake, monkeypatch):
+    fake.upsert(NIGHT, 'AT2026ajog', 'SLT', status='running', n_frames=6, n_done=2, phot=[])
+    monkeypatch.setattr(svc, 'last_night', lambda now=None: NIGHT)
+    got = svc.for_frames('AT2026ajog', [('2026-11-16', 'SLT'), ('2026-11-15', 'SLT'), ('2026-10-01', 'SLT'), (None, None)])
+    assert [(g['night'], g['status']) for g in got] == [('2026-11-15', 'waiting'), ('2026-11-16', 'running')]
+    assert got[1]['n_done'] == 2
+    assert svc.for_frames('EP261007a', [('2026-11-16', 'SLT')]) == []
+
+
+def test_the_night_is_listed_before_it_is_measured(tmp_path, fake, monkeypatch):
+    _frame(tmp_path, 'AT2026ajog', '2026-11-16')
+    _frame(tmp_path, 'SN2026gzf', '2026-11-16', tel='LOT')
+    seen = []
+
+    def run_target(night, target, telescope, frames, stop=None):
+        seen.append({k[1]: r['status'] for k, r in fake.rows.items()})
+        return fake.upsert(night, target, telescope, status='done')
+    monkeypatch.setattr(svc, 'run_target', run_target)
+    svc.run_night(NIGHT, root=tmp_path)
+    assert seen[0] == {'AT2026ajog': 'queued', 'SN2026gzf': 'queued'}       # both listed before the first one runs
+
+
+def test_auto_runs_have_their_own_slot(tmp_path, monkeypatch):
+    import os
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'runs_root', lambda: tmp_path)
+    for name, auto in (('mine', False), ('theirs', False), ('AUTO_x_SLT_20261116', True)):
+        (tmp_path / name).mkdir()
+        ap._write_json(tmp_path / name / 'target.json', {'auto': {'night': '2026-11-16'}} if auto else {})
+        ap._write_json(tmp_path / name / 'job.json', {'status': 'running', 'pid': os.getpid()})
+    assert ap._running_count() == 2 and ap._running_count(auto=True) == 1
