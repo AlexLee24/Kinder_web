@@ -371,3 +371,23 @@ def test_a_ts_run_with_nothing_is_replaced_by_the_no_ts_run(tmp_path, fake, monk
     svc.run_night(NIGHT, root=tmp_path)
     r = fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]
     assert runs == [(True, 'panstarrs'), (True, None)] and r['status'] == 'done' and r['workspace'] == 'AUTO_X_noTS'
+
+
+@pytest.mark.parametrize('cores, parallel, env, expected', [
+    (24, 4, None, 5),        # prod: a night's five bands measured together
+    (8, 4, None, 1),
+    (2, 4, None, 1),
+    (None, 4, None, 1),
+    (24, 4, '12', 12),       # AUTO_PHOT_NCPU overrides
+    (24, 4, 'x', 5),
+])
+def test_auto_ncpu_shares_the_cores_between_auto_runs(monkeypatch, cores, parallel, env, expected):
+    from app.services import auto_phot
+    from app.services.pipeline import autophot as ap
+    monkeypatch.setattr(auto_phot.os, 'cpu_count', lambda: cores)
+    monkeypatch.setattr(ap, 'MAX_RUNNING_AUTO', parallel)
+    if env is None:
+        monkeypatch.delenv('AUTO_PHOT_NCPU', raising=False)
+    else:
+        monkeypatch.setenv('AUTO_PHOT_NCPU', env)
+    assert auto_phot.auto_ncpu() == expected

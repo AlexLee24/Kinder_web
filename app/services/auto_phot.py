@@ -20,6 +20,7 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
    workspace (auto_frames/<filter>.png), so the page keeps showing it after the FITS are cleaned up.
 """
 import logging
+import os
 import re
 import threading
 import time
@@ -47,6 +48,17 @@ TEMPLATE_PREFERENCE = ('panstarrs', 'legacy_dr11', 'legacy', 'sdss')   # coverag
 TS_MAX_FSCALE_DISC_PCT = 20.0   # kernel flux scale vs the stars' photometric scale (flux_scale_discrep_pct)
 TS_MAX_ARTIFACTS = 10           # dipole / residual regions masked in the difference (subtraction_artifact_regions)
 NO_TS_SUFFIX = '_noTS'          # the workspace of the fallback run
+
+
+def auto_ncpu():
+    """AutoPhOT's nCPU for one auto run: its images (one stack per band) are measured this many at a time. The
+    server's cores, less a few for the site and people's runs, shared by the auto runs that go at once
+    (24 cores, 4 runs: 5, so a night's five bands go together). AUTO_PHOT_NCPU overrides it."""
+    from app.services.pipeline import autophot as ap
+    env = os.environ.get('AUTO_PHOT_NCPU')
+    if env and env.strip().isdigit() and int(env) > 0:
+        return int(env)
+    return max(1, ((os.cpu_count() or 1) - 4) // max(1, ap.MAX_RUNNING_AUTO))
 
 
 def label(telescope, ts=False):
@@ -279,7 +291,7 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, ban
     if not (ap.runs_root() / tid / 'target.json').is_file():
         ap.create_workspace({'name': tid}, user=AUTO_USER, user_name=AUTO_NAME)
     ts = {'subtraction': True, 'sub_method': 'sfft', 'ts_download': template} if template else {'subtraction': False}
-    ap.save_target(tid, {'target': target, 'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'catalog': catalog, 'ncpu': 1,
+    ap.save_target(tid, {'target': target, 'ra': f'{ra:.6f}', 'dec': f'{dec:.6f}', 'catalog': catalog, 'ncpu': auto_ncpu(),
                          'stack': stack, 'stack_with_singles': False, **ts}, user=AUTO_USER)
     cfg = ap._read_json(ap.tdir(tid) / 'target.json')
     cfg['auto'] = {'night': night.isoformat(), 'target': target, 'telescope': telescope}
