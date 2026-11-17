@@ -53,7 +53,8 @@ def test_route_count_is_stable(app):
     # 424 with Auto photometry (/api/daily_trigger/auto_phot, …/frame, …/retry, /api/daily_trigger/target_lc, /admin/bots/auto_phot/stop).
     # 425 with Measure now for a target the daily run has not reached (/api/daily_trigger/auto_phot/measure).
     # 426 with the auto photometry details (/api/daily_trigger/auto_phot/<id>/details).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 426
+    # 429 with the frames' whole field (/api/daily_trigger/auto_phot/<id>/field, …/field/<band>.png, …/survey.jpg).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 429
 
 
 def test_duplicate_rules_keep_precedence(app):

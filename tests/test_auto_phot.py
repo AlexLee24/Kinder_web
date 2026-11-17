@@ -213,3 +213,35 @@ def test_a_night_measures_several_targets_at_once(tmp_path, fake, monkeypatch):
     msg = svc.run_night(NIGHT, root=tmp_path)
     assert peak[0] == 3                                      # as many as the slots, not more
     assert '5 measured, 1 failed' in msg
+
+
+def test_whole_field_is_drawn_north_up_whatever_the_frame_rotation(tmp_path):
+    import io
+
+    import numpy as np
+    from astropy.coordinates import SkyCoord
+    from astropy.io import fits
+    from astropy.wcs import WCS
+    from PIL import Image
+
+    from app.services.pipeline import previews
+    w = WCS(naxis=2)                                  # 0.8″/px, rotated 30° and mirrored
+    w.wcs.ctype, w.wcs.crval, w.wcs.crpix = ['RA---TAN', 'DEC--TAN'], [150.0, 20.0], [200.5, 150.5]
+    a, s = np.radians(30), 0.8 / 3600
+    w.wcs.cd = [[s * np.cos(a), -s * np.sin(a)], [s * np.sin(a), s * np.cos(a)]]
+    data = np.random.default_rng(1).normal(100, 3, (300, 400))
+    star = SkyCoord(150.0, 20.0 + 60 / 3600, unit='deg')           # 60″ north of the centre
+    x, y = (int(round(float(v))) for v in w.world_to_pixel(star))
+    data[y - 2:y + 3, x - 2:x + 3] += 5000
+    path = tmp_path / 'f.fits'
+    fits.PrimaryHDU(data, header=w.to_header()).writeto(path)
+
+    grid = previews.field_grid(path, max_px=200)
+    assert grid['w'] > 320 and grid['h'] > 240                     # the rotated frame's north-up bounding box
+    tx, ty = previews.target_px(grid, star)
+    assert abs(tx - (grid['nx'] - 1) / 2) < 1.5 and ty < (grid['ny'] - 1) / 2 - 60 / grid['scale'] + 2   # north is up
+    im = np.asarray(Image.open(io.BytesIO(previews.field_png(path, None, grid))).convert('L'))
+    near = im[int(ty) - 2:int(ty) + 3, int(tx) - 2:int(tx) + 3]
+    assert (near == 255).sum() >= 3                                 # the star lands where the ring goes
+    my = int(grid['ny'] - 1 - ty)                                   # and not where a south-up image would put it
+    assert (im[my - 2:my + 3, int(tx) - 2:int(tx) + 3] == 255).sum() <= 1

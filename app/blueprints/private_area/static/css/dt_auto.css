@@ -134,6 +134,16 @@
 .dtw-sh h4 { margin: 0; font-size: 0.95rem; font-weight: 600; }
 .dtw-frames { display: flex; flex-wrap: wrap; gap: 10px; }
 .dtw-frames figure { margin: 0; }
+.dtw-field { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+.dtw-field.is-small { display: flex; }
+.dtw-field figure { margin: 0; min-width: 0; }
+.dtw-field figure > a { display: block; border-radius: 8px; }
+.dtw-field figure > a:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+.dtw-field img, .dtw-field-empty { display: block; width: 100%; height: auto; border-radius: 8px; background: #000;
+                                   border: 1px solid var(--dta-line); object-fit: cover; }
+.dtw-field-empty { background: none; border-style: dashed; border-color: var(--dta-line-2); }
+.dtw-field figcaption { margin-top: 6px; font-size: 0.74rem; color: var(--kw-text-muted); }
+.dtw-field .dtw-sky-cap { color: var(--kw-text-secondary); }
 .dtw-sky:not(:first-child) { padding-left: 10px; border-left: 1px solid var(--dta-line); }
 .dtw-sky a { display: block; position: relative; }
 /* the target, ringed like on the frames */

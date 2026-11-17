@@ -383,6 +383,65 @@ def daily_trigger_auto_phot_frame(row_id, band):
     return resp
 
 
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/field')
+def daily_trigger_auto_phot_field(row_id):
+    """The whole field of the row's frames for the Workspace: {'w', 'h' (arcsec), 'filters' with a field PNG,
+    'survey': {'key', 'label'}}; the first call may draw the PNGs (older rows) and fetch the survey image."""
+    g = _dt_guard()
+    if g:
+        return g
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    if not r or not r.get('workspace'):
+        return jsonify({'success': False, 'error': 'No such run.'}), 404
+    try:
+        auto_phot.ensure_field_pngs(r)
+        grid = auto_phot.field_grid(r['workspace'])
+        if not grid:
+            return jsonify({'success': True, 'field': None})
+        filters = [f for f in sorted({p['filter'] for p in r['phot']}) if auto_phot.frame_png_path(r['workspace'], f, field=True)]
+        survey = auto_phot.field_survey(r)
+    except Exception:
+        logger.exception('auto_phot: field of row %s', row_id)
+        return jsonify({'success': False, 'error': 'Could not draw the field.'}), 500
+    return jsonify({'success': True, 'field': {'w': grid['w'], 'h': grid['h'], 'filters': filters, 'survey': survey}})
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/field/<band>.png')
+def daily_trigger_auto_phot_field_png(row_id, band):
+    g = _dt_guard()
+    if g:
+        return g
+    from flask import abort, send_file
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    p = auto_phot.frame_png_path(r['workspace'], band, field=True) if r and r.get('workspace') else None
+    if not p:
+        abort(404)
+    resp = send_file(p, mimetype='image/png', max_age=3600)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/survey.jpg')
+def daily_trigger_auto_phot_survey(row_id):
+    g = _dt_guard()
+    if g:
+        return g
+    from flask import abort, send_file
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    p = auto_phot.survey_path(r['workspace']) if r and r.get('workspace') else None
+    if not p:
+        abort(404)
+    resp = send_file(p, mimetype='image/jpeg', max_age=86400)
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    return resp
+
+
 @private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/details')
 def daily_trigger_auto_phot_details(row_id):
     """Why a target failed, or how its run is going: the reason, failed images, AutoPhOT's errors, the log tail."""
