@@ -89,6 +89,11 @@ def in_electrons(h):
     return str(h.get('BUNIT', '')).strip().lower() in ('electron', 'electrons', 'e-')
 
 
+# 疊圖 GAIN 的寫法版本。1：沒寫這張卡（2026-11-17 以前留下參考影像的 GAIN；#113 用 GAINCOR 判斷，SLT/LOT 都寫成 N × 1）；
+# 2：N × 單張 gain，單張 gain 依 BUNIT 判斷（#114）。工作區裡比這舊的疊圖執行前會重疊。
+STACK_GAIN_VERSION = 2
+
+
 def frame_gain(h, key):
     """一張影像的 gain [電子/單位] 和它的來源。已經是電子 → 1；不然讀 header；都沒有 → (None, …)。"""
     if in_electrons(h):
@@ -248,6 +253,7 @@ def stack(spec):
     exp_key = keys['exptime'] if isinstance(keys['exptime'], str) else 'EXPTIME'
     hdr[exp_key] = (round(float(np.mean(exps)), 3), f'mean exposure per frame ({combine} stack, ADU per frame)')
     hdr['NCOMBINE'] = (n, 'number of frames stacked')
+    hdr['STACKGV'] = (STACK_GAIN_VERSION, 'gain convention: N x per-frame gain judged by BUNIT')
     hdr['LIVETIME'] = (round(float(np.sum(exps)), 3), 'total exposure time of the stacked frames [s]')
     starts = [w[0] for w in windows if w[0] is not None]
     ends = [w[1] for w in windows if w[1] is not None]

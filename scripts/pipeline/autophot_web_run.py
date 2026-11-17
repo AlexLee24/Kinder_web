@@ -87,7 +87,8 @@ def make_stacks(cfg_in, tdir):
         mtime = max(os.path.getmtime(os.path.join(top, m)) for m in members)
         prev = old.get(name) or {}
         if (os.path.isfile(os.path.join(top, name)) and sorted(prev.get('members', [])) == sorted(members)
-                and all(prev.get(k) == v for k, v in opts.items()) and prev.get('mtime') == mtime):
+                and all(prev.get(k) == v for k, v in opts.items()) and prev.get('mtime') == mtime
+                and stack_is_current(os.path.join(top, name))):
             print(f'[web] stacking: {name} is up to date ({len(members)} frames)', flush=True)
             new[name] = prev
             continue
@@ -112,6 +113,20 @@ def make_stacks(cfg_in, tdir):
     with open(os.path.join(tdir, 'target.json'), 'w') as f:
         f.write(json.dumps(cfg_now, ensure_ascii=False, indent=1))
     return new
+
+
+def stack_is_current(path):
+    """疊圖的 gain 是現在的寫法（STACKGV，見 autophot_stack.STACK_GAIN_VERSION）才沿用。舊的疊圖：2026-11-17 以前
+    留下參考影像的 GAIN（SLT 是 '0.95 [electrons/ADU]'，AutoPhOT 讀不到就當 1；LOT 是單張的 0.92），#113 的寫成
+    N × 1，S/N 都低估 √N 倍上下，要重疊。"""
+    from astropy.io import fits
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from autophot_stack import STACK_GAIN_VERSION
+    try:
+        v = fits.getheader(path).get('STACKGV')
+    except Exception:
+        return False
+    return isinstance(v, int) and not isinstance(v, bool) and v >= STACK_GAIN_VERSION
 
 
 def normalize_gain(cfg_in):
