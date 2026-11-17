@@ -16,6 +16,7 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -202,7 +203,7 @@ def _run_and_wait(tid, progress=None, stop=None):
             ap.start(tid, AUTO_USER)
             break
         except ap.PipelineError as e:
-            if 'Auto photometry is already running' not in str(e) or time.time() > end:
+            if 'Auto photometry is already running' not in str(e) or time.time() > end:   # all slots taken meanwhile
                 raise
             time.sleep(30)
     return _wait(tid, progress, stop)
@@ -417,14 +418,27 @@ def run_night(night, only=None, force=False, stop=None, root=None):
         if not (only or skipped_name(target)):
             db.upsert(night, target, telescope, status='queued', reason=None, n_done=0, n_frames=len(frames),
                       filters=sorted({_band(f) for f in frames} - {''}))
-    done = failed = skipped = 0
-    for (target, telescope), frames in todo:
+    # several targets at once (ap.MAX_RUNNING_AUTO, AUTO_PHOT_PARALLEL): each has its own workspace and AutoPhOT process
+    from app.services.pipeline import autophot as ap
+
+    def one(item):
+        (target, telescope), frames = item
         if stop and stop():
-            break
-        row = run_target(night, target, telescope, frames, stop=stop)
-        done += row['status'] == 'done'
-        failed += row['status'] == 'failed'
-        skipped += row['status'] == 'skipped'
+            return None
+        try:
+            return run_target(night, target, telescope, frames, stop=stop)
+        except Exception:
+            logger.exception('auto_phot: %s %s %s', night, target, telescope)
+            return {'status': 'failed'}
+
+    done = failed = skipped = 0
+    with ThreadPoolExecutor(max_workers=max(1, min(ap.MAX_RUNNING_AUTO, len(todo) or 1)), thread_name_prefix='auto-phot') as pool:
+        for row in pool.map(one, todo):
+            if not row:
+                continue
+            done += row['status'] == 'done'
+            failed += row['status'] == 'failed'
+            skipped += row['status'] == 'skipped'
     return (f'{night}: {len(groups)} target(s) with frames, {done} measured, {failed} failed, {skipped} skipped (EP), '
             f'{len(groups) - len(todo)} already done')
 

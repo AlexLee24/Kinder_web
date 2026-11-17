@@ -62,4 +62,4 @@ def stop():
     if e.get('state') != 'running':
         return {'error': 'Not running.'}
     status.update(BOT, stop_requested=True)
-    return {'ok': True, 'message': 'Stopping after the current target…'}
+    return {'ok': True, 'message': 'Stopping: the targets being measured stop, the rest are not started…'}

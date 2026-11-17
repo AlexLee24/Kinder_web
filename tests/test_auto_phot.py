@@ -189,3 +189,27 @@ def test_a_run_left_from_a_restart_is_waited_for_not_started_again(tmp_path, fak
     monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
     svc.run_night(NIGHT, root=tmp_path)
     assert waited == ['AUTO_AT2026afqt_SLT_20261116'] and fake.rows[(NIGHT, 'AT2026afqt', 'SLT')]['status'] == 'done'
+
+
+def test_a_night_measures_several_targets_at_once(tmp_path, fake, monkeypatch):
+    import threading
+    import time
+    from app.services.pipeline import autophot as ap
+    for i in range(6):
+        _frame(tmp_path, f'AT2026aa{chr(97 + i)}', '2026-11-16')
+    monkeypatch.setattr(ap, 'MAX_RUNNING_AUTO', 3)
+    lock, now, peak = threading.Lock(), [0], [0]
+
+    def run_target(night, target, telescope, frames, stop=None):
+        with lock:
+            now[0] += 1
+            peak[0] = max(peak[0], now[0])
+        time.sleep(0.15)
+        with lock:
+            now[0] -= 1
+        return fake.upsert(night, target, telescope, status='failed' if target.endswith('f') else 'done')
+
+    monkeypatch.setattr(svc, 'run_target', run_target)
+    msg = svc.run_night(NIGHT, root=tmp_path)
+    assert peak[0] == 3                                      # as many as the slots, not more
+    assert '5 measured, 1 failed' in msg

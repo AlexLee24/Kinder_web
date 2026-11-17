@@ -431,7 +431,7 @@
             return;
         }
         const stop = btn.dataset.act === 'stop';
-        if (stop && !confirm(id === 'reduction' ? 'Stop the reduction pipeline? The running step is killed and the rest are skipped.' : 'Stop after the current target?')) return;
+        if (stop && !confirm(id === 'reduction' ? 'Stop the reduction pipeline? The running step is killed and the rest are skipped.' : 'Stop auto photometry? The targets being measured stop and the rest are not started.')) return;
         busy[id] = true;
         btn.disabled = true;
         btn.textContent = stop ? 'Stopping…' : 'Starting…';
