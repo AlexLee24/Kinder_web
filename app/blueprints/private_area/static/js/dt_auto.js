@@ -98,9 +98,19 @@
     }
 
     function magEl(p) {
-        return p.det && p.mag != null
-            ? el('span', { class: 'dta-mag' }, el('span', { class: 'mono', text: p.mag.toFixed(2) }), el('span', { class: 'mono dta-err', text: ' ±' + (p.err != null ? p.err.toFixed(2) : '—') }))
-            : el('span', { class: 'mono dta-lim', text: p.lim != null ? '>' + p.lim.toFixed(1) : 'no limit' });
+        if (p.det && p.mag != null)
+            return el('span', { class: 'dta-mag' }, el('span', { class: 'mono', text: p.mag.toFixed(2) }), el('span', { class: 'mono dta-err', text: ' ±' + (p.err != null ? p.err.toFixed(2) : '—') }));
+        if (p.lim != null) return el('span', { class: 'mono dta-lim', text: '>' + p.lim.toFixed(1) });
+        // measured, but no zero point: no reference catalogue in this band (e.g. u outside SDSS)
+        return p.snr != null
+            ? el('span', { class: 'mono dta-lim', text: 'uncalibrated', title: `Measured (S/N ${p.snr.toFixed(0)}) but no zero point: no reference stars in this band` })
+            : el('span', { class: 'mono dta-lim', text: 'no limit' });
+    }
+    // Template subtraction of this point: TS, or w/o TS (why, when the subtraction failed its check)
+    function tsEl(p) {
+        return p.ts
+            ? el('span', { class: 'dta-ts is-ts', text: 'TS', title: 'Template-subtracted' })
+            : el('span', { class: 'dta-ts', text: 'w/o TS', title: p.ts_note ? 'Without template subtraction: ' + p.ts_note : 'Without template subtraction' });
     }
     function bestPerFilter(r) {
         const by = {};
@@ -237,7 +247,7 @@
                 el('div', { class: 'dta-sub' }, r.telescope, pri ? el('span', { class: 'dta-pri is-' + pri.toLowerCase(), text: ' · ' + pri }) : null)),
             el('td', { 'data-l': 'Frame' }, r.frames && r.frames.length ? thumb(r, r.frames.includes('r') ? 'r' : r.frames[0]) : el('span', { class: 'dta-muted', text: '—' })),
             el('td', { 'data-l': 'Magnitudes' }, best.length
-                ? el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p))))
+                ? el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p), tsEl(p))))
                 : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
             el('td', { 'data-l': 'Status' }, stateBtn(r),
@@ -483,9 +493,9 @@
         if (!best.length) return el('p', { class: 'dtw-small ' + (r.status === 'failed' ? 'dta-warn' : 'dta-muted'), text: r.reason || (r.status === 'skipped' ? 'EP targets are left to the EP pipeline' : `${r.n_frames} frames, measuring`) });
         return el('div', {},
             el('table', { class: 'dta-mini' },
-                el('thead', {}, el('tr', {}, ['Filter', 'Magnitude', 'S/N', 'MJD'].map(h => el('th', { scope: 'col', text: h })))),
+                el('thead', {}, el('tr', {}, ['Filter', 'Magnitude', 'TS', 'S/N', 'MJD'].map(h => el('th', { scope: 'col', text: h })))),
                 el('tbody', {}, best.map(p => el('tr', {}, el('th', { scope: 'row' }, fchip(p.filter)), el('td', {}, magEl(p), p.veto && !p.det ? el('div', { class: 'dta-note', text: p.veto }) : null),
-                    el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }))))),
+                    el('td', {}, tsEl(p)), el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }))))),
             el('p', { class: 'dtw-small dta-muted' }, r.obj_name ? ['On the Transient page as ', el('span', { class: 'mono', text: r.label }), ' · ', deltaEl(r)] : 'Not a Kinder object: not added to a Transient page',
                 r.pipeline ? [' · ', el('a', { href: r.pipeline, text: 'Pipeline run' })] : null));
     }

@@ -50,8 +50,9 @@ BOTS = (
         'Moves what the reduction pipeline no longer needs to the lab NAS: raw nights older than last month, masters '
         'older than 30 days, calibrated targets without a new frame for 60 days.', can_run=True),
     Bot('auto_phot', 'Auto photometry', 'scheduled', 'Daily 13:30 UTC+8 · last 3 nights · and after each restart (last night)',
-        "Measures last night's calibrated Lulin frames with AutoPhOT (no template subtraction; EP targets skipped), "
-        'shows them on the Daily Trigger page and adds them to each Transient page as SLT(AUTO, w/o TS).',
+        "Measures last night's calibrated Lulin frames with AutoPhOT, stacked per band and template-subtracted "
+        '(a band whose subtraction fails its check is measured without; EP targets skipped), shows them on the Daily '
+        'Trigger page and adds them to each Transient page as SLT(AUTO) or SLT(AUTO, w/o TS).',
         can_run=True, can_stop=True, links=(('Daily Trigger', '/daily_trigger'),)),
 )
 BY_ID = {b.id: b for b in BOTS}
