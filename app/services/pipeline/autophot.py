@@ -1556,6 +1556,34 @@ def _import_args(body):
     return method, limit, run, with_limits
 
 
+def _live_phot_ids(ids):
+    """The ones of these transient.photometry ids that are still in the database (points can be deleted on the
+    Transient page, which leaves the import record here)."""
+    ids = [int(i) for i in ids or [] if str(i).lstrip('-').isdigit()]
+    if not ids:
+        return set()
+    from app.db import get_db_connection
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT phot_id FROM transient.photometry WHERE phot_id = ANY(%s)', (ids,))
+        return {r[0] for r in cur.fetchall()}
+
+
+def _with_left(recs):
+    """Each import record + n_left: how many of the points it added are still on the object."""
+    out = []
+    for r in recs:
+        r = dict(r)
+        if not r.get('undone'):
+            try:
+                r['n_left'] = len(_live_phot_ids(r.get('phot_ids')))
+            except Exception:
+                logger.exception('pipeline: could not check import %s', r.get('id'))
+                r['n_left'] = r.get('n_inserted', 0)
+        out.append(r)
+    return out
+
+
 def import_preview(tid, body):
     """What an import would do: the object as Kinder knows it, the points, how many look like duplicates."""
     from app.db.transient import TNSObjectDB
@@ -1570,10 +1598,12 @@ def import_preview(tid, body):
     existing = TNSObjectDB.get_photometry(found)
     have = {(round(float(e['mjd']), 4), str(e.get('filter') or ''), str(e.get('telescope') or '')) for e in existing if e.get('mjd') is not None}
     dup = sum(1 for pt in points if (round(pt['mjd'], 4), pt['filter'], pt['telescope']) in have)
-    done = [i for i in _read_json(tdir(tid) / 'target.json').get('imports') or []
-            if i.get('object') == found and not i.get('undone') and i.get('run') == run and i.get('method') == method]
+    done = [i for i in _with_left(_read_json(tdir(tid) / 'target.json').get('imports') or [])
+            if i.get('object') == found and not i.get('undone') and i.get('run') == run and i.get('method') == method
+            and i.get('n_left')]                     # an import whose points were all deleted on the object no longer counts
+    already = {k: v for k, v in done[-1].items() if k != 'phot_ids'} if done else None
     return {'object': found, 'points': points, 'n_existing': len(existing), 'n_duplicates': dup,
-            'already': done[-1] if done else None, 'method': method, 'limit': limit, 'run': run}
+            'already': already, 'method': method, 'limit': limit, 'run': run}
 
 
 def import_points(tid, body, user=''):
@@ -1611,7 +1641,7 @@ def undo_import(tid, import_id, user=''):
 
 
 def imports(tid):
-    return [{k: v for k, v in i.items() if k != 'phot_ids'} for i in _read_json(tdir(tid) / 'target.json').get('imports') or []]
+    return [{k: v for k, v in i.items() if k != 'phot_ids'} for i in _with_left(_read_json(tdir(tid) / 'target.json').get('imports') or [])]
 
 
 # AutoPhOT zeropoint flags → plain sentences; unknown ones are shown as they are

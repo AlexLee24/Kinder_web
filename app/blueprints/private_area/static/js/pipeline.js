@@ -1491,7 +1491,8 @@
                         + pv.object + ', which has ' + plural(pv.n_existing, 'point') + (pv.n_duplicates ? '; about ' + pv.n_duplicates + ' of these are already there and will be skipped.' : '.');
                     const al = imp.querySelector('[data-already]');
                     al.hidden = !pv.already;
-                    if (pv.already) al.textContent = 'This light curve was already imported into ' + pv.object + ' on ' + new Date(pv.already.time * 1000).toLocaleString() + ' (' + pv.already.n_inserted + ' points). Importing again only adds points that are not there yet.';
+                    if (pv.already) al.textContent = 'This light curve was already imported into ' + pv.object + ' on ' + new Date(pv.already.time * 1000).toLocaleString() + ' ('
+                        + (pv.already.n_left != null && pv.already.n_left < pv.already.n_inserted ? pv.already.n_left + ' of its ' + pv.already.n_inserted + ' points are still there' : pv.already.n_inserted + ' points') + '). Importing again only adds points that are not there yet.';
                     imp.querySelector('[data-rows]').replaceChildren(...pv.points.map(p => el('tr', { class: p.upper ? 'is-skip' : null },
                         el('td', { text: p.mjd.toFixed(5) }), el('td', { text: (p.upper ? '>' : '') + p.magnitude.toFixed(3) }),
                         el('td', { text: p.magnitude_error == null ? '—' : p.magnitude_error.toFixed(3) }), el('td', { text: p.filter }), el('td', { text: p.telescope }))));
