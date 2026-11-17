@@ -26,7 +26,7 @@
             font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
             color: var(--kw-text-muted); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10);
         }
-        .dt-page tr.pa-row-off .pa-td-coord { font-size: 0.78rem; line-height: 1.35; }
+        .dt-page tr.pa-row-off .pa-td-coord { font-size: 0.7rem; line-height: 1.35; }
         .dt-page tr.pa-row-off .pa-td-priority { color: var(--kw-text-muted) !important; }
         .dt-page tr.pa-row-off .pa-td-filter-exp { opacity: 0.6; }
         .dt-page .pa-filter-more { display: none; font-size: 0.72rem; color: var(--kw-text-muted); }
@@ -43,11 +43,11 @@
         .dt-page .pa-sel-box { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--kw-accent); cursor: pointer; }
         .dt-page .pa-sel-all { display: inline-flex; }
         .dt-page .pa-bulk-delete { color: #ff6b6b; border-color: rgba(255, 107, 107, 0.4); }
-        /* Six columns, three lines per target (name · mag · priority | position · tonight · last observed | sky |
-           total · filters | notes | switch · buttons). Sum = 100%. */
+        /* Six columns (name · mag · priority · last observed | tonight | RA Dec over the cutout | total · filters | notes |
+           switch · buttons). Sum = 100%. */
         .dt-page .pa-target-table th.pa-col-target  { width: 18%; }
-        .dt-page .pa-target-table th.pa-col-pos     { width: 20%; }
-        .dt-page .pa-target-table th.pa-col-sky     { width: 10%; }
+        .dt-page .pa-target-table th.pa-col-pos     { width: 16%; }
+        .dt-page .pa-target-table th.pa-col-sky     { width: 14%; }
         .dt-page .pa-target-table th.pa-col-exp     { width: 13%; }
         .dt-page .pa-target-table th.col-note       { width: 25%; }
         .dt-page .pa-target-table th.pa-col-actions { width: 14%; }
@@ -62,17 +62,19 @@
         .dt-page tr.pa-row-off .pa-note-item + .pa-note-item { margin-top: 6px; }
         .dt-page .pa-sort { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none;
                             font: inherit; font-size: 0.68rem; color: var(--kw-text-muted); cursor: pointer; letter-spacing: inherit; text-transform: inherit; }
+        .dt-page .pa-sorts { display: flex; flex-wrap: wrap; gap: 0 12px; }
         .dt-page .pa-sort:hover, .dt-page .pa-sort[aria-pressed="true"] { color: var(--kw-text-secondary); }
         .dt-page .pa-sort:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; border-radius: 4px; }
         .dt-page .pa-name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
         .dt-page .pa-td-name-content { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
         .dt-page .pa-td-name .pa-td-priority { font-weight: 600; font-size: 0.95rem; }
         .dt-page .pa-td-pos > * + * { margin-top: 6px; }
-        .dt-page .pa-td-pos .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.4; }
+        .dt-page .pa-td-sky .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.35; font-size: 0.7rem; margin-bottom: 8px; }
+        .dt-page .pa-td-sky .pa-td-coord span { white-space: nowrap; }
+        .dt-page .pa-td-name .pa-td-last-obs { margin-top: 2px; }
         /* Off rows: short. Name · priority · when it goes, coordinates on one line with a small tonight plot and the
            last observation, the notes one line each; no exposure, no cutout. Keep switch beside On / Off. */
         .dt-page .pa-target-table tr.pa-row-off td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
-        .dt-page tr.pa-row-off .pa-td-sky > * { display: none; }
         .dt-page tr.pa-row-off .pa-td-exp .pa-td-total-exp { font-size: 0.82rem; color: var(--kw-text-secondary); margin-bottom: 4px; }
         .dt-page tr.pa-row-off .pa-td-name-content { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
         .dt-page tr.pa-row-off .pa-name-line { width: 100%; gap: 6px; }
@@ -81,9 +83,8 @@
         .dt-page tr.pa-row-off .pa-td-name .pa-td-priority { font-size: 0.8rem; font-weight: 500; }
         .dt-page tr.pa-row-off .pa-td-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
         .dt-page tr.pa-row-off .pa-td-pos > * { margin: 0; }
-        .dt-page tr.pa-row-off .pa-td-pos .pa-td-coord { width: 100%; white-space: nowrap; }
-        .dt-page tr.pa-row-off .pa-td-pos .pa-td-coord br { display: none; }
-        .dt-page tr.pa-row-off .pa-mini-plot { display: flex; align-items: center; gap: 8px; width: auto; }
+        .dt-page tr.pa-row-off .pa-td-sky .pa-td-coord { margin: 0; }
+        .dt-page tr.pa-row-off .pa-mini-plot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; width: auto; min-width: 0; }
         .dt-page tr.pa-row-off .pa-mini-plot .pa-vis-cap { margin: 0; }
         .dt-page tr.pa-row-off .pa-td-last-obs { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
         .dt-page tr.pa-row-off .pa-td-last-obs :is(.pa-lo-lab, small) { display: none; }
@@ -115,10 +116,10 @@
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action svg { width: 13px; height: 13px; }
         @media (max-width: 768px) {
             /* phone cards: an off target keeps Target, RA / Dec and Actions only */
-            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+3):nth-of-type(-n+5) { display: none; }
+            .dt-page .pa-target-table tr.pa-row-off td:nth-of-type(n+4):nth-of-type(-n+5) { display: none; }
             .dt-page .pa-target-table tr.pa-row-off .pa-td-note { max-width: none; }
-            .dt-page .pa-target-table td:nth-of-type(2)::before { content: "Position"; }
-            .dt-page .pa-target-table td:nth-of-type(3)::before { content: "Sky"; }
+            .dt-page .pa-target-table td:nth-of-type(2)::before { content: "Tonight"; }
+            .dt-page .pa-target-table td:nth-of-type(3)::before { content: "RA / Dec"; }
             .dt-page .pa-target-table td:nth-of-type(4)::before { content: "Exposure"; }
             .dt-page .pa-target-table td:nth-of-type(5)::before { content: "Note"; }
             .dt-page .pa-target-table td:nth-of-type(6)::before { content: "Actions"; }
@@ -127,7 +128,6 @@
             .dt-page .pa-target-table tbody td:not(.pa-empty-row) { display: block; text-align: left; }
             .dt-page .pa-target-table tbody td:not(.pa-empty-row)::before { display: block; margin: 0 0 6px; font-size: 0.72rem; }
             .dt-page .pa-target-table tbody td > * { max-width: none; text-align: left; }
-            .dt-page .pa-target-table tbody td.pa-td-sky:empty { display: none; }
             .dt-page .pa-mini-plot { max-width: 300px; }
         }
 
@@ -664,10 +664,10 @@
                             <thead id="slt-head">
                                 <tr>
                                     <th class="pa-col-target"><label class="pa-sel-all" title="Select all SLT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('SLT', this.checked)"></label> Target
-                                        <button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></button></th>
-                                    <th class="pa-col-pos">RA / Dec · tonight
-                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('SLT', 'last_observed')">Last observed <span>↕</span></button></th>
-                                    <th class="pa-col-sky">Sky</th>
+                                        <span class="pa-sorts"><button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('SLT', 'priority')">Priority <span>↕</span></button>
+                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('SLT', 'last_observed')">Last observed <span>↕</span></button></span></th>
+                                    <th class="pa-col-pos">Tonight</th>
+                                    <th class="pa-col-sky">RA / Dec · sky</th>
                                     <th class="pa-col-exp">Exposure
                                         <button type="button" class="pa-sort" data-sort="total_exp" onclick="sortTargets('SLT', 'total_exp')">Total <span>↕</span></button></th>
                                     <th class="col-note">Note</th>
@@ -686,10 +686,10 @@
                             <thead id="lot-head">
                                 <tr>
                                     <th class="pa-col-target"><label class="pa-sel-all" title="Select all LOT targets"><input type="checkbox" class="pa-sel-box" onchange="toggleSelectAllTargets('LOT', this.checked)"></label> Target
-                                        <button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></button></th>
-                                    <th class="pa-col-pos">RA / Dec · tonight
-                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('LOT', 'last_observed')">Last observed <span>↕</span></button></th>
-                                    <th class="pa-col-sky">Sky</th>
+                                        <span class="pa-sorts"><button type="button" class="pa-sort" data-sort="priority" onclick="sortTargets('LOT', 'priority')">Priority <span>↕</span></button>
+                                        <button type="button" class="pa-sort" data-sort="last_observed" onclick="sortTargets('LOT', 'last_observed')">Last observed <span>↕</span></button></span></th>
+                                    <th class="pa-col-pos">Tonight</th>
+                                    <th class="pa-col-sky">RA / Dec · sky</th>
                                     <th class="pa-col-exp">Exposure
                                         <button type="button" class="pa-sort" data-sort="total_exp" onclick="sortTargets('LOT', 'total_exp')">Total <span>↕</span></button></th>
                                     <th class="col-note">Note</th>

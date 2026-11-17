@@ -1195,9 +1195,8 @@ function renderTable(telescope, targets) {
             '</button>';
         const coordDisplay = formatTargetCoordValue(t.ra, t.dec);
 
-        // three lines per target:  name · coordinates · total time · note · switch
-        //                           mag · tonight · (cutout) · filters · note
-        //                           priority · last observed · buttons
+        // per target:  name · mag · priority · last observed | tonight | RA Dec over the cutout |
+        //              total · filters | notes | switch · buttons
         tr.innerHTML = '<td class="pa-td-name">' +
             '<div class="pa-td-name-content">' +
                 '<div class="pa-name-line">' +
@@ -1205,20 +1204,21 @@ function renderTable(telescope, targets) {
                     (isOff ? '<span class="pa-off-chip" title="Switched off: not in the API target list">Off</span>' : '') + '</div>' +
                 '<div class="pa-name-mag">' + (magDisplay || '<span class="pa-mag-display">[Mag: —]</span>') + '</div>' +
                 '<div class="pa-td-priority" style="color:' + priorityColor + ';">' + escapeHtml(t.priority) + repeatInfo + '</div>' +
+                '<div class="pa-td-last-obs"><span class="pa-lo-lab">Last observed</span>' + formatLastObserved(t.last_observed) + '</div>' +
                 (isOff ? autoDeleteHtml(t) : '') +
             '</div>' +
             '</td>' +
             '<td class="pa-td-pos">' +
-                '<div class="pa-td-coord" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format">' + escapeHtml(coordDisplay.ra) + ' <br> ' + escapeHtml(coordDisplay.dec) + '</div>' +
                 '<div class="pa-astro-row" id="astro-row-' + t.id + '">' +
                     '<span class="pa-astro-item pa-astro-moon" title="Moon separation">☽ <span>—</span></span>' +
                     '<span class="pa-astro-item pa-astro-transit" title="Transit time (local)">⟳ <span>—</span></span>' +
                     '<span class="pa-astro-item pa-astro-peak" title="Peak altitude">↑ <span>—</span></span>' +
                 '</div>' +
                 '<div class="pa-mini-plot" id="mini-vp-' + t.id + '"></div>' +
-                '<div class="pa-td-last-obs"><span class="pa-lo-lab">Last observed</span>' + formatLastObserved(t.last_observed) + '</div>' +
             '</td>' +
-            '<td class="pa-td-sky"></td>' +
+            '<td class="pa-td-sky">' +
+                '<div class="pa-td-coord" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format"><span>' + escapeHtml(coordDisplay.ra) + '</span> <span>' + escapeHtml(coordDisplay.dec) + '</span></div>' +
+            '</td>' +
             '<td class="pa-td-exp"><div class="pa-td-total-exp">' + totalExp + ' s</div><div class="pa-td-filter-exp">' + filterExpHTML + '</div></td>' +
             notesCellHtml(t) +
             '<td class="pa-td-actions">' +
