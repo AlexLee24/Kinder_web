@@ -147,3 +147,28 @@
 @keyframes dta-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .dta-spin { animation-duration: 2.4s; } }
 .dta-table tr.is-running > * { background: rgba(100, 210, 255, 0.03); }
+
+/* Failed / running: the state opens the details dialog */
+.dta-why { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; margin: -4px -8px;
+           border-radius: 8px; cursor: pointer; transition: background-color .15s var(--kw-ease); }
+.dta-why:hover { background: rgba(255, 255, 255, 0.06); }
+.dta-why:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+.dta-why-more { font-size: 0.74rem; color: var(--kw-link); text-decoration: underline; text-underline-offset: 2px; }
+dialog.dta-dlg { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; padding: 20px;
+                 border: 1px solid var(--dta-line-2); border-radius: 16px; background: #100f1a; color: var(--kw-text-primary); }
+dialog.dta-dlg:modal { overscroll-behavior: contain; }
+dialog.dta-dlg::backdrop { background: rgba(0, 0, 0, 0.6); overflow: hidden; overscroll-behavior: contain; }
+dialog.dta-dlg[open] { display: flex; flex-direction: column; gap: 14px; }
+.dta-dlg-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.dta-dlg h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+.dta-dlg h3 { margin: 0 0 6px; font-size: 0.86rem; font-weight: 600; }
+.dta-reason { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 159, 10, 0.3); background: rgba(255, 159, 10, 0.06); }
+.dta-reason b { font-size: 0.76rem; font-weight: 600; color: var(--dta-warn); }
+.dta-reason p { margin: 4px 0 0; font-size: 0.86rem; overflow-wrap: anywhere; }
+.dta-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; }
+.dta-list li { overflow-wrap: anywhere; }
+.dta-log { margin: 0; max-height: 300px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: #07060f; border: 1px solid var(--dta-line);
+           font: 0.74rem/1.5 var(--kw-font-mono); color: var(--kw-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dta-log:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+.dta-dlg-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.dta-dlg-foot form { display: contents; }

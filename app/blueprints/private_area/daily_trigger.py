@@ -383,6 +383,23 @@ def daily_trigger_auto_phot_frame(row_id, band):
     return resp
 
 
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/details')
+def daily_trigger_auto_phot_details(row_id):
+    """Why a target failed, or how its run is going: the reason, failed images, AutoPhOT's errors, the log tail."""
+    g = _dt_guard()
+    if g:
+        return g
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    if not r:
+        return jsonify({'success': False, 'error': 'No such row.'}), 404
+    d = auto_phot.details(r)
+    d['pipeline'] = f"/pipeline/autophot/{r['workspace']}?tab=run" if r.get('workspace') and session['user'].get('is_admin') else ''
+    return jsonify({'success': True, 'status': r['status'], 'target': r['target'], 'telescope': r['telescope'],
+                    'night': r['night'], 'n_frames': r['n_frames'], 'n_done': r['n_done'], **d})
+
+
 @private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/retry', methods=['POST'])
 def daily_trigger_auto_phot_retry(row_id):
     g = _dt_guard()

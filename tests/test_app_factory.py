@@ -52,7 +52,8 @@ def test_route_count_is_stable(app):
     # 419 with the Pipeline coverage check (/api/pipeline/coverage).
     # 424 with Auto photometry (/api/daily_trigger/auto_phot, …/frame, …/retry, /api/daily_trigger/target_lc, /admin/bots/auto_phot/stop).
     # 425 with Measure now for a target the daily run has not reached (/api/daily_trigger/auto_phot/measure).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 425
+    # 426 with the auto photometry details (/api/daily_trigger/auto_phot/<id>/details).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 426
 
 
 def test_duplicate_rules_keep_precedence(app):

@@ -172,3 +172,20 @@ def test_auto_runs_have_their_own_slot(tmp_path, monkeypatch):
         ap._write_json(tmp_path / name / 'target.json', {'auto': {'night': '2026-11-16'}} if auto else {})
         ap._write_json(tmp_path / name / 'job.json', {'status': 'running', 'pid': os.getpid()})
     assert ap._running_count() == 2 and ap._running_count(auto=True) == 1
+
+
+def test_a_run_left_from_a_restart_is_waited_for_not_started_again(tmp_path, fake, monkeypatch):
+    _frame(tmp_path, 'AT2026afqt', '2026-11-16')
+    monkeypatch.setattr(svc, 'position', lambda t, f: ('2026afqt', 10.0, 5.0))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, '_still_running', lambda tid: True)
+    monkeypatch.setattr(svc, 'ensure_workspace', lambda *a, **k: pytest.fail('must not touch a running workspace'))
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: pytest.fail('must not start another run'))
+    waited = []
+    monkeypatch.setattr(svc, '_wait', lambda tid, progress=None, stop=None: waited.append(tid) or {'status': 'done'})
+    monkeypatch.setattr(svc, '_points', lambda tid: [{'filter': 'r', 'mjd': 1, 'mag': 19.0, 'err': .05, 'lim': 21, 'snr': 20,
+                                                     'det': True, 'veto': '', 'image': 'x'}])
+    monkeypatch.setattr(svc, '_import', lambda *a: [7])
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+    svc.run_night(NIGHT, root=tmp_path)
+    assert waited == ['AUTO_AT2026afqt_SLT_20261116'] and fake.rows[(NIGHT, 'AT2026afqt', 'SLT')]['status'] == 'done'
