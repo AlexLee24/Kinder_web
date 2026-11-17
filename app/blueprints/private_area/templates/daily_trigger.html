@@ -6,6 +6,7 @@
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/lab_calendar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dt_auto.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     <meta name="x-user-display-name" content="{{ user_display_name }}">
     <meta name="x-user-email" content="{{ user_email }}">
@@ -341,6 +342,29 @@
     <div class="kw-page dt-page">
         {% include '_lot_closed.html' %}
 
+                <!-- Last night: automatic photometry of the night's frames (dt_auto.js) -->
+                <section class="kw-panel dta" id="dtAuto" aria-labelledby="dtAutoTitle">
+                    <div class="dta-head">
+                        <div class="dta-title">
+                            <h2 id="dtAutoTitle">Last night</h2>
+                            <div class="dta-nightnav" role="group" aria-label="Night">
+                                <button type="button" class="dta-iconbtn" id="dtAutoPrev" aria-label="Previous night"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                                <span class="dta-night mono" id="dtAutoNight">—</span>
+                                <button type="button" class="dta-iconbtn" id="dtAutoNext" aria-label="Next night"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+                            </div>
+                        </div>
+                        <p class="dta-meta" id="dtAutoMeta">AutoPhOT on the calibrated frames, no template subtraction · points go to each Transient page as <span class="mono">SLT(AUTO, w/o TS)</span></p>
+                    </div>
+                    <div class="dta-sum" id="dtAutoSum" aria-live="polite"></div>
+                    <div class="dta-tw" tabindex="0" role="region" aria-labelledby="dtAutoTitle">
+                        <table class="dta-table" id="dtAutoTable">
+                            <thead><tr><th scope="col">Target</th><th scope="col">Frame</th><th scope="col">Magnitudes</th><th scope="col">Since last epoch</th><th scope="col">Status</th><th scope="col"><span class="dta-vh">Links</span></th></tr></thead>
+                            <tbody><tr><td colspan="6" class="dta-empty">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
+                    <p class="dta-foot" id="dtAutoFoot"></p>
+                </section>
+
                 <!-- Trigger Checklist & Script Section -->
                 <section class="kw-panel pa-trigger-section" aria-label="Pre-trigger checklist and trigger script">
 
@@ -528,6 +552,10 @@
                         </div>
                         <h2 id="dtObsTitle">Observation Targets</h2>
                         <div class="pa-obs-actions">
+                            <div class="kw-seg dta-viewseg" role="group" aria-label="Show targets as">
+                                <button type="button" class="kw-seg-item" data-dtview="ws" aria-pressed="true">Workspace</button>
+                                <button type="button" class="kw-seg-item" data-dtview="table" aria-pressed="false">Table</button>
+                            </div>
                             <button id="bulkDeleteBtn" onclick="bulkDeleteTargets()" class="kw-btn kw-btn-sm pa-bulk-delete" style="display: none;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                 <span id="bulkDeleteLabel">Delete selected</span>
@@ -549,6 +577,12 @@
                                 Add LOT
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Workspace view: target list + the selected target (dt_auto.js); the tables below are the Table view -->
+                    <div class="dtw" id="dtWs" hidden>
+                        <nav class="dtw-list" id="dtWsList" aria-label="Targets"></nav>
+                        <div class="dtw-detail" id="dtWsDetail" aria-live="polite"></div>
                     </div>
 
                     <!-- SLT Container -->
@@ -1015,6 +1049,7 @@
     <!-- Plotly loaded async to avoid blocking initial render -->
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
     <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dt_auto.js') }}"></script>
     <script>
         (function() {
             var btn = document.getElementById("scrollToTopBtn");

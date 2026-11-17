@@ -966,7 +966,7 @@ def targets(user=None, is_admin=False):
         except Exception:
             logger.exception('pipeline: could not read workspace %s', d.name)
             continue
-        if i['role']:
+        if i['role'] and not (i.get('cfg') or {}).get('auto'):    # Auto photometry workspaces: from the Daily Trigger page
             out.append(i)
     return out
 

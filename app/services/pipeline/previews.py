@@ -98,7 +98,7 @@ def _pixscale(wcs):
         return None
 
 
-def _zoom_panel(ax, data, wcs, coord, title):
+def _zoom_panel(ax, data, wcs, coord, title, arcsec=ZOOM_ARCSEC):
     import numpy as np
     from matplotlib.patches import Circle
     ax.set_facecolor('black')
@@ -109,7 +109,7 @@ def _zoom_panel(ax, data, wcs, coord, title):
         return
     x, y = (float(v) for v in wcs.world_to_pixel(coord))
     scale = _pixscale(wcs) or 1.0
-    half = int(round(ZOOM_ARCSEC / 2 / scale))
+    half = int(round(arcsec / 2 / scale))
     h, w = data.shape
     if not (np.isfinite(x) and np.isfinite(y)) or not (-half < x < w + half and -half < y < h + half):
         ax.text(0.5, 0.5, 'Target outside this image', color='#aaa', ha='center', va='center', transform=ax.transAxes)
@@ -188,3 +188,24 @@ def preview_png(tid, name, run=None):
         except OSError:
             pass
     return png
+
+
+def zoom_png(path, coord, arcsec=60, px=240):
+    """A square PNG of just the target zoom of one FITS (for the Trigger page's frame thumbnails), or None."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    try:
+        data, wcs, _ = _load(path)
+    except Exception:
+        logger.exception('preview: could not read %s', path)
+        return None
+    if wcs is None or coord is None:
+        return None
+    fig = plt.figure(figsize=(px / 100, px / 100), dpi=100, facecolor='black')
+    ax = fig.add_axes([0, 0, 1, 1])
+    _zoom_panel(ax, data, wcs, coord, '', arcsec)
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=100, facecolor='black')
+    plt.close(fig)
+    return buf.getvalue()
