@@ -54,7 +54,8 @@ def test_route_count_is_stable(app):
     # 425 with Measure now for a target the daily run has not reached (/api/daily_trigger/auto_phot/measure).
     # 426 with the auto photometry details (/api/daily_trigger/auto_phot/<id>/details).
     # 430 with /api/targets/<id>/keep (off targets are deleted after 3 days unless kept); 429 with the frames' whole field (/api/daily_trigger/auto_phot/<id>/field, …/field/<band>.png, …/survey.jpg).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 430
+    # 433 with Admin › Site (/admin/site, /admin/site/aladin) and /api/aladin/config.
+    assert sum(1 for _ in app.url_map.iter_rules()) == 433
 
 
 def test_duplicate_rules_keep_precedence(app):
