@@ -45,3 +45,11 @@ def test_box_survives_autophots_input_yaml(runner, tmp_path):
     assert type(side) is float
     text = yaml.dump({'preprocessing': {'trim_image': float(round(side * 0.9, 2))}})
     assert yaml.safe_load(text)['preprocessing']['trim_image'] == pytest.approx(2.7, abs=0.01)
+
+
+def test_urllib_gets_certifi_when_no_bundle_is_set(runner, monkeypatch):
+    certifi = pytest.importorskip('certifi')
+    monkeypatch.delenv('SSL_CERT_FILE', raising=False)
+    assert runner.ca_bundle() == certifi.where() == os.environ['SSL_CERT_FILE']
+    monkeypatch.setenv('SSL_CERT_FILE', '/etc/ssl/mine.pem')
+    assert runner.ca_bundle() == '/etc/ssl/mine.pem'           # a bundle someone chose stays
