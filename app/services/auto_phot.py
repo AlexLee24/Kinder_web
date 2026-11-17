@@ -7,7 +7,8 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 2. For each group, a Pipeline workspace AUTO_<target>_<TEL>_<yyyymmdd> (owner ``auto-photometry``; not in anyone's
    workspace list, admins can open it) gets copies of the frames and runs AutoPhOT: no template subtraction, frames
    of each filter stacked per night (if the stack gives nothing, the single frames instead), PSF photometry,
-   calibration catalog from the coverage check (Pan-STARRS where it covers the target).
+   calibration catalog from the coverage check (Pan-STARRS where it covers the target); a band that catalog does
+   not have (u in Pan-STARRS) is calibrated against one that does: SDSS where it covers the target, else Gaia XP.
 3. The points (detections, and 3σ limits for non-detections) go into the Kinder object's photometry with the
    telescope ``SLT(AUTO, w/o TS)`` / ``LOT(AUTO, w/o TS)``. A re-run of the same night replaces them.
 4. obs.auto_phot keeps the state and the numbers for the page; a 60″ zoom per filter is saved as PNG in the
@@ -28,6 +29,8 @@ AUTO_NAME = 'Auto photometry'
 TZ8 = timezone(timedelta(hours=8))
 FRAME_RE = re.compile(r'_D(\d{4}-\d{2}-\d{2})T\d{6}_.*?_(SLT|LOT)[_\-]', re.I)
 CATALOG_PREFERENCE = ('pan_starrs', 'sdss', 'skymapper', 'legacy', 'gaia')
+BAND_CATALOGS = ('sdss', 'pan_starrs', 'legacy', 'gaia')     # for a band the main catalog lacks (u: SDSS, else Gaia XP)
+ALL_SKY = {'gaia'}
 WAIT_SLOT_S = 3 * 3600          # wait at most this long for a free AutoPhOT slot
 RUN_TIMEOUT_S = 3 * 3600        # one target's run
 POLL_S = 15
@@ -165,12 +168,55 @@ def choose_catalog(ra, dec):
     return 'pan_starrs' if dec > -30 else 'skymapper'
 
 
+_cat_bands = None
+
+
+def catalog_bands():
+    """{catalog: set of bands} from AutoPhOT's databases/catalog.yml (its key panstarrs is our pan_starrs)."""
+    global _cat_bands
+    if _cat_bands is None:
+        import yaml
+        path = Path(__file__).resolve().parents[1] / 'vendor' / 'autophot' / 'databases' / 'catalog.yml'
+        try:
+            raw = yaml.safe_load(path.read_text()) or {}
+        except (OSError, yaml.YAMLError) as e:
+            logger.warning('auto_phot: cannot read %s (%s)', path, e)
+            raw = {}
+        out = {}
+        for name, cols in raw.items():
+            if isinstance(cols, dict):
+                out['pan_starrs' if name == 'panstarrs' else name] = {k for k in cols if f'{k}_err' in cols}
+        _cat_bands = out
+    return _cat_bands
+
+
+def band_catalogs(ra, dec, main, bands):
+    """{band: catalog} for the bands the main catalog has no magnitudes in, e.g. {'u': 'sdss'} next to Pan-STARRS."""
+    have = catalog_bands()
+    missing = sorted(b for b in bands if b and b not in have.get(main, set()))
+    if not missing:
+        return {}
+    try:
+        from app.services.pipeline import coverage
+        cats = coverage.check(ra, dec)['catalogs']
+    except Exception as e:
+        logger.info('auto_phot: coverage check failed (%s); all-sky catalogs only for %s', e, missing)
+        cats = {}
+    out = {}
+    for b in missing:
+        for c in BAND_CATALOGS:
+            if c != main and b in have.get(c, set()) and (c in ALL_SKY or (cats.get(c) or {}).get('ok')):
+                out[b] = c
+                break
+    return out
+
+
 def workspace_name(night, target, telescope):
     from app.services.pipeline import autophot as ap
     return ap.clean_name(f'AUTO_{target}_{telescope}_{night.strftime("%Y%m%d")}')
 
 
-def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True):
+def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None):
     from app.services.pipeline import autophot as ap
     tid = workspace_name(night, target, telescope)
     if not (ap.runs_root() / tid / 'target.json').is_file():
@@ -179,6 +225,7 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True):
                          'subtraction': False, 'stack': stack, 'stack_with_singles': False}, user=AUTO_USER)
     cfg = ap._read_json(ap.tdir(tid) / 'target.json')
     cfg['auto'] = {'night': night.isoformat(), 'target': target, 'telescope': telescope}
+    cfg['catalog_bands'] = dict(bands or {})      # per band, where the main catalog has none (the runner maps them)
     ap._write_json(ap.tdir(tid) / 'target.json', cfg)
     return tid
 
@@ -521,6 +568,10 @@ def run_target(night, target, telescope, frames, stop=None):
                     n_done=0, started_at=now, finished_at=None, **base)
     try:
         catalog = choose_catalog(ra, dec)
+        bands = band_catalogs(ra, dec, catalog, filters)
+        if bands:
+            logger.info('auto_phot: %s %s: %s, and %s', target, telescope, catalog,
+                        ', '.join(f'{b} from {c}' for b, c in bands.items()))
         phot = []
         progress = lambda p: db.upsert(night, target, telescope, n_done=p['done'])   # noqa: E731
         for stack in (True, False):
@@ -530,7 +581,7 @@ def run_target(night, target, telescope, frames, stop=None):
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _wait(tid, progress, stop)
             else:
-                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack)
+                tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands)
                 ap.add_files(tid, [str(f) for f in frames], origin='auto')
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _run_and_wait(tid, progress=progress, stop=stop)

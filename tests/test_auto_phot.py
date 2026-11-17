@@ -245,3 +245,13 @@ def test_whole_field_is_drawn_north_up_whatever_the_frame_rotation(tmp_path):
     assert (near == 255).sum() >= 3                                 # the star lands where the ring goes
     my = int(grid['ny'] - 1 - ty)                                   # and not where a south-up image would put it
     assert (im[my - 2:my + 3, int(tx) - 2:int(tx) + 3] == 255).sum() <= 1
+
+
+def test_a_band_the_main_catalog_lacks_gets_its_own_catalog(monkeypatch):
+    """Pan-STARRS has no u: u frames are calibrated against SDSS where it covers the target, else Gaia XP."""
+    from app.services.pipeline import coverage
+    monkeypatch.setattr(coverage, 'check', lambda ra, dec: {'catalogs': {'pan_starrs': {'ok': True}, 'sdss': {'ok': True}}})
+    assert svc.band_catalogs(10, 20, 'pan_starrs', ['u', 'g', 'r']) == {'u': 'sdss'}
+    assert svc.band_catalogs(10, 20, 'sdss', ['u', 'g']) == {}
+    monkeypatch.setattr(coverage, 'check', lambda ra, dec: {'catalogs': {'pan_starrs': {'ok': True}, 'sdss': {'ok': False}}})
+    assert svc.band_catalogs(10, 20, 'pan_starrs', ['u', 'i']) == {'u': 'gaia'}
