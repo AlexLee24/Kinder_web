@@ -455,18 +455,16 @@ def daily_trigger_auto_phot_measure():
 
 @private_area_bp.route('/api/daily_trigger/target_lc')
 def daily_trigger_target_lc():
-    """?name= : the Kinder object's photometry (mjd, mag, err, filter, telescope) for the target panel's light curve."""
+    """?name= : the Kinder object a target is (its stored name, for /api/object/<name>/photometry/plot) and its
+    discovery date (the phase axis), so the target panel draws the Transient page's light curve."""
     g = _dt_guard()
     if g:
         return g
-    from app.db.transient import TNSObjectDB
+    from app.db.transient import TNSObjectDB, search_tns_objects
     name = (request.args.get('name') or '').strip()[:80]
-    found = TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', '')) if name else None
+    found = (TNSObjectDB.resolve_object_name(name) or TNSObjectDB.resolve_object_name(name.replace(' ', ''))) if name else None
     if not found:
-        return jsonify({'success': True, 'object': None, 'points': []})
-    pts = [{'mjd': float(p['mjd']), 'mag': float(p['magnitude']) if p.get('magnitude') is not None else None,
-            'err': float(p['magnitude_error']) if p.get('magnitude_error') is not None else None,
-            'filter': p.get('filter') or '', 'telescope': p.get('telescope') or ''}
-           for p in TNSObjectDB.get_photometry(found) if p.get('mjd') is not None]
-    return jsonify({'success': True, 'object': found, 'points': pts})
+        return jsonify({'success': True, 'object': None, 'discoverydate': None})
+    rows = search_tns_objects(search_term=found, limit=1) or []
+    return jsonify({'success': True, 'object': found, 'discoverydate': (rows[0].get('discoverydate') if rows else None)})
 

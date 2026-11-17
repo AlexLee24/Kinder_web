@@ -6,6 +6,7 @@
 {% block head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/private_area.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/lab_calendar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lc_plot.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dt_auto.css') }}">
     <meta name="description" content="GREAT Lab Daily Trigger">
     <meta name="x-user-display-name" content="{{ user_display_name }}">
@@ -582,7 +583,7 @@
 
                     <!-- Workspace view: target list + the selected target (dt_auto.js); the tables below are the Table view -->
                     <div class="dtw" id="dtWs" hidden>
-                        <nav class="dtw-list" id="dtWsList" aria-label="Targets"></nav>
+                        <div class="dtw-list" id="dtWsList"></div>
                         <div class="dtw-detail" id="dtWsDetail" aria-live="polite"></div>
                     </div>
 
@@ -1050,6 +1051,7 @@
     <!-- Plotly loaded async to avoid blocking initial render -->
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
     <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/lc_plot.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dt_auto.js') }}"></script>
     <script>
         (function() {
