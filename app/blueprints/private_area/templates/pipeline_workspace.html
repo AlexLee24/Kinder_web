@@ -293,9 +293,10 @@
                 {% if imports %}
                 <ul class="pl-imports">
                     {% for i in imports|reverse %}
-                    <li class="{{ 'is-undone' if i.undone }}">
+                    <li class="{{ 'is-undone' if i.undone or i.n_left == 0 }}">
                         <span><span data-ts="{{ i.time }}"></span> · <a href="/object/{{ i.object }}">{{ i.object }}</a> · {{ i.n_inserted }} of {{ i.n_points }} points added ({{ i.method }}{% if i.run %}, earlier run {{ i.run }}{% endif %}){% if i.by %} · {{ i.by }}{% endif %}</span>
                         {% if i.undone %}<span class="kw-chip">Undone, {{ i.n_deleted }} removed</span>
+                        {% elif i.n_left == 0 %}<span class="kw-chip" title="The points were deleted on the Transient page">Points deleted on the object</span>
                         {% elif can_import %}<button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-import-undo="{{ i.id }}" title="Remove the points this import added">Undo</button>{% endif %}
                     </li>
                     {% endfor %}
