@@ -1,9 +1,9 @@
-"""scripts/pipeline/autophot_stack.py and the runner's electron_gain: the gain AutoPhOT is handed.
+"""scripts/pipeline/autophot_stack.py and the runner's normalize_gain: the gain AutoPhOT is handed.
 
-Lulin's Calibrated_Science frames are already in electrons (ccdproc's gain_correct leaves GAINCOR) but keep the
-camera's GAIN (LOT 0.92) or none usable (SLT). A mean of N such frames has an effective gain of N; before this the
-stack kept 0.92 x N for LOT and the reference frame's GAIN, 1, for SLT, so AutoPhOT's noise for an SLT stack was
-N times too large in variance."""
+Lulin's pipeline multiplies by the gain to remove cosmic rays and divides back to ADU (BUNIT adu); ccdproc's
+GAINCOR record stays in the header either way, so it says nothing about the units. An older pipeline version kept
+electrons (BUNIT electron) beside the camera's GAIN. SLT writes GAIN as '0.95 [electrons/ADU]', which AutoPhOT
+cannot read and replaces by 1. A mean of N frames has N times the per-frame gain."""
 import importlib.util
 import json
 import os
@@ -49,11 +49,11 @@ def frame(path, i, **cards):
 
 
 @pytest.mark.parametrize('cards, expected', [
-    ({'GAINCOR': 'ccd=<CCDData>, gain=0.92 electron / adu', 'GAIN': 0.92, 'BUNIT': 'adu'}, 1.0),
-    ({'GAINCOR': 'ccd=<CCDData>, gain=0.95 electron / adu'}, 1.0),
+    ({'GAINCOR': 'ccd=<CCDData>, gain=0.92 electron / adu', 'GAIN': '0.92', 'BUNIT': 'adu'}, 0.92),   # LOT now
+    ({'GAINCOR': 'ccd=<CCDData>, gain=0.95 electron / adu', 'GAIN': '0.95 [electrons/ADU]', 'BUNIT': 'adu'}, 0.95),
+    ({'GAINCOR': 'ccd=<CCDData>, gain=0.92 electron / adu', 'GAIN': '0.92', 'BUNIT': 'electron'}, 1.0),  # older
     ({'GAIN': 0.92}, 0.92),
-    ({'GAIN': '0.95 [electrons/ADU]'}, 0.95),
-    ({'BUNIT': 'electron', 'GAIN': 2.0}, 1.0),
+    ({'GAIN': ''}, None),
     ({}, None),
 ])
 def test_frame_gain(st, cards, expected):
@@ -63,10 +63,10 @@ def test_frame_gain(st, cards, expected):
 
 
 @pytest.mark.parametrize('cards, gain', [
-    ({'GAINCOR': 'ccd=<CCDData>, gain=0.95 electron / adu', 'GAIN': 1.0}, 7.0),   # SLT as it arrives
-    ({'GAINCOR': 'ccd=<CCDData>, gain=0.92 electron / adu', 'GAIN': 0.92}, 7.0),  # LOT
-    ({'GAIN': 0.92}, 6.44),                                                       # raw ADU frames
-    ({}, 7.0),                                                                    # nothing usable: 1 per frame
+    ({'GAINCOR': 'x', 'GAIN': '0.95 [electrons/ADU]', 'BUNIT': 'adu'}, 6.65),    # SLT as it arrives
+    ({'GAINCOR': 'x', 'GAIN': '0.92', 'BUNIT': 'adu'}, 6.44),                    # LOT
+    ({'GAINCOR': 'x', 'GAIN': '0.92', 'BUNIT': 'electron'}, 7.0),                # older electrons
+    ({}, 7.0),                                                                   # nothing usable: 1 per frame
 ])
 def test_a_mean_stack_carries_n_times_the_per_frame_gain(st, tmp_path, cards, gain):
     pytest.importorskip('reproject')
@@ -77,20 +77,21 @@ def test_a_mean_stack_carries_n_times_the_per_frame_gain(st, tmp_path, cards, ga
     assert h['NCOMBINE'] == 7 and h['EXPTIME'] == 150.0
 
 
-def test_runner_sets_electron_frames_to_gain_one(runner, tmp_path):
+def test_runner_gives_every_single_frame_a_readable_gain(runner, tmp_path):
     top = tmp_path / 'images'
     top.mkdir()
-    lot = frame(top / 'lot.fits', 0, GAINCOR='ccd=<CCDData>, gain=0.92 electron / adu', GAIN=0.92, TELESCOP='LOT')
-    raw = frame(top / 'raw.fits', 1, GAIN=0.92)
-    stk = frame(top / 'stack.fits', 2, GAINCOR='x', GAIN=5.52, STACKCMB='mean 3sigma')
-    before = fits.getdata(lot).copy()
+    old = frame(top / 'old.fits', 0, GAINCOR='x', GAIN='0.92', BUNIT='electron', TELESCOP='LOT')
+    slt = frame(top / 'slt.fits', 1, GAINCOR='x', GAIN='0.95 [electrons/ADU]', BUNIT='adu')
+    lot = frame(top / 'lot.fits', 2, GAINCOR='x', GAIN=0.92, BUNIT='adu', TELESCOP='LOT')
+    stk = frame(top / 'stack.fits', 3, GAIN='0.95 [electrons/ADU]', STACKCMB='mean 3sigma')
+    before = fits.getdata(slt).copy()
 
-    changed = runner.electron_gain({'fits_dir': str(top), 'wdir': str(tmp_path / 'nowdir')})
+    changed = runner.normalize_gain({'fits_dir': str(top), 'wdir': str(tmp_path / 'nowdir')})
 
-    assert changed == ['lot.fits']
-    h = fits.getheader(lot)
-    assert h['GAIN'] == 1.0 and h['GAINORIG'] == '0.92'
-    assert np.array_equal(fits.getdata(lot), before)          # header only
-    assert fits.getheader(raw)['GAIN'] == 0.92                 # not electrons: left alone
-    assert fits.getheader(stk)['GAIN'] == 5.52                 # stacks keep their own
-    assert runner.electron_gain({'fits_dir': str(top), 'wdir': ''}) == []   # once only
+    assert changed == ['old.fits', 'slt.fits']
+    assert fits.getheader(old)['GAIN'] == 1.0 and fits.getheader(old)['GAINORIG'] == '0.92'
+    assert fits.getheader(slt)['GAIN'] == 0.95 and fits.getheader(slt)['GAINORIG'] == '0.95 [electrons/ADU]'
+    assert np.array_equal(fits.getdata(slt), before)          # header only
+    assert fits.getheader(lot)['GAIN'] == 0.92                 # already right
+    assert fits.getheader(stk)['GAIN'] == '0.95 [electrons/ADU]'  # stacks keep their own
+    assert runner.normalize_gain({'fits_dir': str(top), 'wdir': ''}) == []   # once only

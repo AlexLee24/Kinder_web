@@ -7,8 +7,9 @@ spec：{'files': [...], 'out': '...fits', 'align': 'auto'|'wcs'|'stars', 'combin
 
 單位：輸出保持輸入的單位（平均，不是總和），所以：
   EXPTIME = 單張曝光時間（各張的平均），GAIN = N × 單張 gain（N 張平均後的等效增益），
-  單張 gain：header 有 GAINCOR（ccdproc 的 gain_correct，鹿林的 Calibrated_Science 都有）就代表數值已經是電子，
-  單張 gain = 1，不管 GAIN 鍵還寫著多少；不然讀 GAIN（'0.95 [electrons/ADU]' 這種帶單位的也讀得到）；
+  單張 gain：BUNIT 寫 electron 就代表數值已經是電子，單張 gain = 1，不管 GAIN 鍵還寫著多少（鹿林舊版 pipeline 的輸出）；
+  不然讀 GAIN（'0.95 [electrons/ADU]' 這種帶單位的也讀得到）。GAINCOR 不算數：現在的 pipeline 乘 gain 去宇宙線後
+  又除回 ADU（BUNIT adu），GAINCOR 只是 ccdproc 留下的紀錄；
   都沒有就當 1（AutoPhOT 對單張也是這樣退回），疊圖照樣寫 N × 1 —— 不寫的話參考影像的 GAIN 會原封不動留下。
   讀出雜訊 = √N × 單張讀出雜訊（電子數）；這兩個寫在 telescope.yml 指定的 header 鍵（AutoPhOT 從那裡讀）。
   DATE-OBS / MJD-OBS = 第一張開始到最後一張結束的中點；NCOMBINE、LIVETIME（總曝光）、每張的檔名寫進 header。
@@ -83,17 +84,15 @@ def header_number(h, key):
 
 
 def in_electrons(h):
-    """數值已經是電子：ccdproc 的 gain_correct 留下 GAINCOR（鹿林 Calibrated_Science 的 BUNIT 仍寫 adu，不能看它），
-    或 BUNIT 寫明 electron。"""
-    if 'GAINCOR' in h:
-        return True
+    """數值已經是電子：BUNIT 寫明 electron。GAINCOR 不能當證據 —— 鹿林 pipeline 乘 gain 去宇宙線後除回 ADU，
+    GAINCOR 還在、BUNIT 是 adu（2026-11 Calibrated_Science：LOT 627 張 adu、293 張 electron，SLT 2038 / 26）。"""
     return str(h.get('BUNIT', '')).strip().lower() in ('electron', 'electrons', 'e-')
 
 
 def frame_gain(h, key):
     """一張影像的 gain [電子/單位] 和它的來源。已經是電子 → 1；不然讀 header；都沒有 → (None, …)。"""
     if in_electrons(h):
-        return 1.0, 'pixels already in electrons (GAINCOR)'
+        return 1.0, 'pixels already in electrons (BUNIT)'
     g = header_number(h, key)
     return (g, f'header {key}') if g and g > 0 else (None, f'no usable {key}')
 
