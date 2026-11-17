@@ -1159,7 +1159,7 @@ function renderTable(telescope, targets) {
                 
                 let badge = '<span style="background: ' + bgStyle + '; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; color: #fff; min-width: 25px; text-align: center; display: inline-block; font-family: monospace; border: 1px solid rgba(0,0,0,0.1); text-shadow: 0 1px 1px rgba(0,0,0,0.3);">' + escapeHtml(f.filter) + '</span>';
                 
-                filterExpHTML += '<div style="display: flex; align-items: center; white-space: nowrap; font-size: 0.85rem;"><span style="display: inline-block; width: 35px; text-align: center;">' + badge + '</span> <span style="margin-left: 8px; color: #aaa; font-family: monospace;">' + escapeHtml(f.exp) + 's &times; ' + escapeHtml(f.count) + '</span></div>';
+                filterExpHTML += '<div title="' + escapeHtml(f.filter + ': ' + f.exp + ' s × ' + f.count) + '" style="display: flex; align-items: center; white-space: nowrap; font-size: 0.85rem;"><span style="display: inline-block; width: 35px; text-align: center;">' + badge + '</span> <span style="margin-left: 8px; color: #aaa; font-family: monospace;">' + escapeHtml(f.exp) + 's &times; ' + escapeHtml(f.count) + '</span></div>';
             });
             // shown only on switched-off rows, which list just the first filter
             if (t.filters.length > 1) filterExpHTML += '<div class="pa-filter-more">+' + (t.filters.length - 1) + ' more</div>';

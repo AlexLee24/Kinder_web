@@ -30,8 +30,12 @@
         .dt-page tr.pa-row-off .pa-td-priority { color: var(--kw-text-muted) !important; }
         .dt-page tr.pa-row-off .pa-td-filter-exp { opacity: 0.6; }
         .dt-page .pa-filter-more { display: none; font-size: 0.72rem; color: var(--kw-text-muted); }
-        .dt-page tr.pa-row-off .pa-filter-stack > :not(:first-child):not(.pa-filter-more) { display: none !important; }
-        .dt-page tr.pa-row-off .pa-filter-more { display: block; }
+        /* off rows: the filters compressed to one row of chips (exposure × count in each chip's title) */
+        .dt-page tr.pa-row-off .pa-filter-stack { flex-direction: row !important; flex-wrap: wrap; gap: 3px !important; }
+        .dt-page tr.pa-row-off .pa-filter-stack > div > span:first-child { width: auto !important; }
+        .dt-page tr.pa-row-off .pa-filter-stack > div > span:first-child > span { padding: 1px 3px !important; min-width: 0 !important; font-size: 0.66rem !important; }
+        .dt-page tr.pa-row-off .pa-filter-stack > div > span:nth-child(2) { display: none; }
+        .dt-page tr.pa-row-off .pa-filter-more { display: none; }
         /* off rows: notes wrap to two lines instead of one clipped line; a click opens the whole note */
         .dt-page tr.pa-row-off .pa-td-note { min-width: 140px; cursor: pointer; }
         .dt-page tr.pa-row-off .pa-note-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.8rem; line-height: 1.35; }
@@ -68,9 +72,12 @@
         /* Off rows: short. Name · priority · when it goes, coordinates on one line with a small tonight plot and the
            last observation, the notes one line each; no exposure, no cutout. Keep switch beside On / Off. */
         .dt-page .pa-target-table tr.pa-row-off td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
-        .dt-page tr.pa-row-off :is(.pa-td-exp, .pa-td-sky) > * { display: none; }
+        .dt-page tr.pa-row-off .pa-td-sky > * { display: none; }
+        .dt-page tr.pa-row-off .pa-td-exp .pa-td-total-exp { font-size: 0.82rem; color: var(--kw-text-secondary); margin-bottom: 4px; }
         .dt-page tr.pa-row-off .pa-td-name-content { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
-        .dt-page tr.pa-row-off .pa-name-line { width: 100%; }
+        .dt-page tr.pa-row-off .pa-name-line { width: 100%; gap: 6px; }
+        .dt-page tr.pa-row-off .pa-off-chip { padding: 0 5px; }
+        .dt-page tr.pa-row-off .pa-name-line .pa-sel-box { margin-right: 2px; }
         .dt-page tr.pa-row-off .pa-td-name .pa-td-priority { font-size: 0.8rem; font-weight: 500; }
         .dt-page tr.pa-row-off .pa-td-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
         .dt-page tr.pa-row-off .pa-td-pos > * { margin: 0; }
