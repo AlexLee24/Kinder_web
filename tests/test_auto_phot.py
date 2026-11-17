@@ -139,6 +139,21 @@ def test_a_rerun_from_the_page_measures_the_stacks_only(tmp_path, fake, monkeypa
     assert stacks == [True] and fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]['status'] == 'failed'
 
 
+def test_a_repeat_target_is_measured_frame_by_frame(tmp_path, fake, monkeypatch):
+    _frame(tmp_path, 'AT2026aifu', '2026-11-16')
+    stacks = []
+    monkeypatch.setattr(svc, 'position', lambda t, f: (None, 6.54, -0.32))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'is_repeat', lambda t, tel: True)
+    monkeypatch.setattr(svc, 'ensure_workspace', lambda *a, stack=True, **k: stacks.append(stack) or 'AUTO_X')
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
+    monkeypatch.setattr(svc, '_points', lambda tid: [])
+    svc.run_night(NIGHT, only=('AT2026aifu', 'SLT'), force=True, root=tmp_path, stack_only=True)   # even from the page
+    assert stacks == [False]
+
+
 def test_a_stopped_target_is_not_measured(tmp_path, fake, monkeypatch):
     _frame(tmp_path, 'AT2026ajog', '2026-11-16')
     monkeypatch.setattr(svc, 'position', lambda t, f: (None, 6.54, -0.32))

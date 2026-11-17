@@ -131,6 +131,20 @@ def _from_targets(target):
     return None, None
 
 
+def is_repeat(target, telescope):
+    """The observation target has #REPEAT > 0: its frames are taken at different times through the night, so they
+    are measured frame by frame (a light curve within the night), never stacked."""
+    try:
+        from app.db.obs import get_observation_targets
+        for t in get_observation_targets(active_only=False):
+            if (str(t.get('name') or '').replace(' ', '') == target.replace(' ', '')
+                    and str(t.get('telescope') or '').upper() == telescope.upper()):
+                return int(t.get('repeat_count') or 0) > 0
+    except Exception as e:
+        logger.info('auto_phot: repeat lookup for %s %s failed: %s', target, telescope, e)
+    return False
+
+
 def _from_header(path):
     from astropy import units as u
     from astropy.coordinates import SkyCoord
@@ -623,8 +637,12 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
         progress = lambda p: db.upsert(night, target, telescope, n_done=p['done'])   # noqa: E731
         outer = stop
         stop = lambda: bool(outer and outer()) or stop_requested(night, target, telescope)   # noqa: E731
-        # the page's Rerun / Retry / Measure now: the stacks only; the daily run falls back to the single frames
-        for stack in ((True,) if stack_only else (True, False)):
+        # a repeat target: the single frames only (they are spread over the night); otherwise the page's Rerun /
+        # Retry / Measure now measure the stacks only, and the daily run falls back to the single frames
+        repeat = is_repeat(target, telescope)
+        if repeat:
+            logger.info('auto_phot: %s %s is a repeat target: measuring the single frames', target, telescope)
+        for stack in ((False,) if repeat else (True,) if stack_only else (True, False)):
             if stop():
                 raise Stopped()
             tid = workspace_name(night, target, telescope)
@@ -640,7 +658,8 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
             phot = _points(tid) if job.get('status') == 'done' else []
             if phot or job.get('reason'):
                 break
-            logger.info('auto_phot: %s %s %s: the stacks gave no photometry; measuring the single frames', night, target, telescope)
+            if stack:
+                logger.info('auto_phot: %s %s %s: the stacks gave no photometry; measuring the single frames', night, target, telescope)
         if not phot:
             return db.upsert(night, target, telescope, status='failed', reason=_fail_reason(tid, job),
                              finished_at=datetime.now(timezone.utc))
