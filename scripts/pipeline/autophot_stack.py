@@ -5,12 +5,16 @@
 spec：{'files': [...], 'out': '...fits', 'align': 'auto'|'wcs'|'stars', 'combine': 'mean'|'median', 'sigma': 3.0,
        'telescope_yml': '.../telescope.yml'}
 
-單位：輸出保持原始 ADU（平均，不是總和），所以：
+單位：輸出保持輸入的單位（平均，不是總和），所以：
   EXPTIME = 單張曝光時間（各張的平均），GAIN = N × 單張 gain（N 張平均後的等效增益），
+  單張 gain：header 有 GAINCOR（ccdproc 的 gain_correct，鹿林的 Calibrated_Science 都有）就代表數值已經是電子，
+  單張 gain = 1，不管 GAIN 鍵還寫著多少；不然讀 GAIN（'0.95 [electrons/ADU]' 這種帶單位的也讀得到）；
+  都沒有就當 1（AutoPhOT 對單張也是這樣退回），疊圖照樣寫 N × 1 —— 不寫的話參考影像的 GAIN 會原封不動留下。
   讀出雜訊 = √N × 單張讀出雜訊（電子數）；這兩個寫在 telescope.yml 指定的 header 鍵（AutoPhOT 從那裡讀）。
   DATE-OBS / MJD-OBS = 第一張開始到最後一張結束的中點；NCOMBINE、LIVETIME（總曝光）、每張的檔名寫進 header。
 """
 import json
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -72,7 +76,26 @@ def header_number(h, key):
         v = float(h.get(key))
         return v if np.isfinite(v) else None
     except (TypeError, ValueError):
-        return None
+        # 帶單位的字串，例如 SLT Andor 的 GAIN = '0.95 [electrons/ADU]'
+        m = re.match(r'\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)', str(h.get(key) or ''))
+        v = float(m.group(1)) if m else None
+        return v if v is not None and np.isfinite(v) else None
+
+
+def in_electrons(h):
+    """數值已經是電子：ccdproc 的 gain_correct 留下 GAINCOR（鹿林 Calibrated_Science 的 BUNIT 仍寫 adu，不能看它），
+    或 BUNIT 寫明 electron。"""
+    if 'GAINCOR' in h:
+        return True
+    return str(h.get('BUNIT', '')).strip().lower() in ('electron', 'electrons', 'e-')
+
+
+def frame_gain(h, key):
+    """一張影像的 gain [電子/單位] 和它的來源。已經是電子 → 1；不然讀 header；都沒有 → (None, …)。"""
+    if in_electrons(h):
+        return 1.0, 'pixels already in electrons (GAINCOR)'
+    g = header_number(h, key)
+    return (g, f'header {key}') if g and g > 0 else (None, f'no usable {key}')
 
 
 def obs_window(h, keys, exptime):
@@ -188,7 +211,7 @@ def stack(spec):
     else:
         # 雜訊模型的 clipping（IRAF / DOLPHOT crreject 的作法）：每個像素的期望雜訊 = 那張的天空 rms 加上星光的 Poisson 雜訊，
         # 偏離中位數超過 nsig 倍就丟掉；只有幾張影像時，不能用這幾個值自己的離散程度估 σ（太不穩，會誤殺正常像素）
-        g = header_number(heads[ref], keys['gain']) or 1.0
+        g = frame_gain(heads[ref], keys['gain'])[0] or 1.0
         rms = np.array(sky_rms)[:, None, None]
         keep = np.isfinite(cube)
         for _ in range(3):
@@ -209,15 +232,18 @@ def stack(spec):
     hdr = ref_h.copy()
     for k in ('BZERO', 'BSCALE', 'BLANK', 'CHECKSUM', 'DATASUM'):
         hdr.remove(k, ignore_missing=True, remove_all=True)
-    gain1 = header_number(ref_h, keys['gain'])
+    gain1, gain_src = frame_gain(ref_h, keys['gain'])
     rn1 = header_number(ref_h, keys['readnoise'])
     gain_key = keys['gain'] if isinstance(keys['gain'], str) else 'GAIN'
     rn_key = keys['readnoise'] if isinstance(keys['readnoise'], str) else 'RDNOISE'
     eff = n if combine == 'mean' else n * 2 / np.pi                    # 中位數的雜訊比平均大 √(π/2)
-    if gain1:
-        hdr[gain_key] = (round(gain1 * eff, 4), f'effective gain of the {combine} of {n} frames (single {gain1:g})')
+    if not gain1:
+        log(f'  WARNING: no gain in the header ({gain_key}); taking 1 e-/unit per frame as AutoPhOT does for a single frame')
+        gain1 = 1.0
     else:
-        log(f'  WARNING: no gain in the header ({gain_key}); AutoPhOT will fall back to 1 e-/ADU')
+        log(f'  gain {gain1:g} e-/unit per frame ({gain_src})')
+    # 平均 N 張：每單位代表的電子數不變，但雜訊少 √N，等效增益是 N 倍；不寫的話 AutoPhOT 會用參考影像原本的 GAIN
+    hdr[gain_key] = (round(gain1 * eff, 4), f'effective gain of the {combine} of {n} frames (single {gain1:g})')
     if rn1:
         hdr[rn_key] = (round(rn1 * np.sqrt(eff), 3), f'effective read noise of the {combine} of {n} frames (single {rn1:g})')
     exp_key = keys['exptime'] if isinstance(keys['exptime'], str) else 'EXPTIME'
