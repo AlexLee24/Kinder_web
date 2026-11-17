@@ -4948,7 +4948,7 @@ function initializeAladin() {
         const targetName = getFullObjectName(objectData) || objectName;
         // Self-hosted pinned Aladin Lite v3 (no jQuery needed); CSP blocks the CDS CDN.
         const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
-        const hipsSrc = escapeHtml(window.location.origin + '/static/js/hips_fallback.js');
+        const hipsSrc = escapeHtml((window.KinderHips && KinderHips.src) || (window.location.origin + '/static/js/hips_fallback.js'));
 
         const html = `
 <!DOCTYPE html>
@@ -4973,7 +4973,7 @@ function initializeAladin() {
         const PARENT_ORIGIN = ${jsStringLiteral(window.location.origin)};
         let aladinInstance;
         window.onload = function() {
-            // CDS survey, or its ESA mirror when CDS is unreachable (js/hips_fallback.js)
+            // The survey from the preferred server (Admin › Site) or a backup that has it (js/hips_fallback.js)
             Promise.all([A.init, KinderHips.resolve(${jsStringLiteral(currentSurvey)})]).then(([, survey]) => {
                 KinderHips.showStatus(document.body);
                 aladinInstance = A.aladin('#aladin-lite', {
@@ -6175,7 +6175,7 @@ function _buildNEDAladinIframe(container, loading, ra, dec, sources, radiusArcse
     const targetName = ((objectData && (objectData.name || objectData.iauname)) || objectName || '');
     const fov = Math.max((radiusArcsec * 2.4) / 3600, 0.01).toFixed(6);
     const aladinSrc = escapeHtml(window.location.origin + '/static/vendor/aladin-3.8.2.global.js');
-    const hipsSrc = escapeHtml(window.location.origin + '/static/js/hips_fallback.js');
+    const hipsSrc = escapeHtml((window.KinderHips && KinderHips.src) || (window.location.origin + '/static/js/hips_fallback.js'));
 
     const html = `<!DOCTYPE html>
 <html><head>

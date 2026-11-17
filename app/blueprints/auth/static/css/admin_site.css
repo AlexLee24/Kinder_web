@@ -1,0 +1,42 @@
+/* Admin › Site (admin_site.html / admin_site.js): sky viewer server cards + the survey × server table. */
+.st-lead { margin: 0 0 16px; max-width: 760px; color: var(--kw-text-secondary); font-size: 0.88rem; line-height: 1.55; }
+.st-servers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+@media (max-width: 860px) { .st-servers { grid-template-columns: minmax(0, 1fr); } }
+.st-server { position: relative; display: block; cursor: pointer; }
+.st-server input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.st-server-body { display: flex; flex-direction: column; gap: 4px; height: 100%; padding: 14px 16px; border-radius: var(--kw-radius-lg, 14px); border: 1px solid var(--kw-border); background: rgba(255, 255, 255, 0.02); transition: var(--kw-transition); }
+.st-server:hover .st-server-body { background: rgba(255, 255, 255, 0.05); }
+.st-server input:focus-visible + .st-server-body { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+.st-server input:checked + .st-server-body { border-color: var(--kw-accent); background: var(--kw-accent-dim); }
+.st-server-top { display: flex; align-items: center; gap: 8px; }
+.st-server-top b { font-size: 1rem; }
+.st-server-name { font-size: 0.8rem; color: var(--kw-text-secondary); }
+.st-server-state { font-size: 0.8rem; }
+.st-server-count { font-size: 0.76rem; color: var(--kw-text-tertiary, var(--kw-text-secondary)); }
+.st-tag { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
+.st-tag-pref { display: none; background: var(--kw-accent); color: var(--color-accent-text, #111); }
+.st-tag-backup { background: rgba(255, 255, 255, 0.08); color: var(--kw-text-secondary); }
+.st-server input:checked + .st-server-body .st-tag-pref { display: inline-block; }
+.st-server input:checked + .st-server-body .st-tag-backup { display: none; }
+
+.st-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; background: rgba(245, 245, 247, 0.35); }
+.st-dot[data-state="up"] { background: #30D158; box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.15); }
+.st-dot[data-state="down"] { background: #FF453A; box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.15); }
+.st-dot[data-state="sub"], .st-dot[data-state="backup"] { background: #FFD60A; }
+.st-dot[data-state="none"] { background: transparent; border: 1px dashed rgba(245, 245, 247, 0.3); }
+.st-dot[data-state="wait"] { animation: st-pulse 1.2s ease-in-out infinite; }
+@keyframes st-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .st-dot[data-state="wait"] { animation: none; } }
+
+.st-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
+.st-saved { margin-right: auto; font-size: 0.8rem; }
+.st-h3 { margin: 22px 0 6px; font-size: 0.95rem; }
+.st-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: 0.76rem; }
+.st-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.st-legend-sep { margin-left: 8px; font-weight: 600; }
+.st-table td, .st-table th { white-space: nowrap; }
+.st-table .st-c { text-align: center; width: 90px; }
+.st-table td.st-c .st-dot { vertical-align: middle; }
+.st-table th.st-c.is-pref { color: var(--kw-accent); }
+.st-id { display: block; font-size: 0.72rem; color: var(--kw-text-secondary); font-family: var(--kw-font-mono); }
+.st-now { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; }

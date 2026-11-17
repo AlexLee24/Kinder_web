@@ -1,0 +1,73 @@
+{% extends '_base.html' %}
+{#- Admin › Site (admin/site.py): settings for what the website shows. Sky viewer: the server every Aladin view loads
+    survey tiles from (CDS / ESA / IRSA — the other two are automatic backups), each server's state and every survey
+    on each server, checked live in this browser (admin_site.js + js/hips_fallback.js). -#}
+{% block title %}Site - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_site.css') }}">{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page st-page" id="stPage">
+    <header class="kw-page-head">
+        <div><h1>Site</h1><p>Settings for what the website shows to everyone.</p></div>
+    </header>
+
+    <section class="kw-panel st-sky" aria-labelledby="stSkyT">
+        <div class="kw-panel-head">
+            <h2 id="stSkyT">Sky viewer (Aladin)</h2>
+            <span class="kw-panel-meta">Transient page · NED view · ePESSTO++ · Telescope Simulator</span>
+        </div>
+        <p class="st-lead">Every Aladin sky view loads its survey images from one HiPS server. Pick the preferred one; when it is down or doesn't carry a survey, the next server that has it is used automatically. Each view shows the three servers and the one in use.</p>
+
+        <form id="stServerForm" class="st-servers" novalidate>
+            {% for key, label, name in servers %}
+            <label class="st-server" data-server="{{ key }}">
+                <input type="radio" name="server" value="{{ key }}"{% if key == preferred %} checked{% endif %}>
+                <span class="st-server-body">
+                    <span class="st-server-top">
+                        <i class="st-dot" data-state="wait" aria-hidden="true"></i>
+                        <b>{{ label }}</b>
+                        <span class="st-tag st-tag-pref">Preferred</span>
+                        <span class="st-tag st-tag-backup">Backup {{ loop.index }}</span>
+                    </span>
+                    <span class="st-server-name">{{ name }}</span>
+                    <span class="st-server-state" data-role="state">Checking…</span>
+                    <span class="st-server-count" data-role="count"></span>
+                </span>
+            </label>
+            {% endfor %}
+        </form>
+        <div class="st-actions">
+            <span class="kw-muted st-saved" id="stSaved">Pages pick up a change within a minute.</span>
+            <button type="button" class="kw-btn" id="stRecheck">Check again</button>
+            <button type="button" class="kw-btn kw-btn-primary" id="stSave" disabled>Save</button>
+        </div>
+
+        <h3 class="st-h3">Surveys on each server</h3>
+        <p class="kw-muted st-legend">
+            <span><i class="st-dot" data-state="up"></i>available</span>
+            <span><i class="st-dot" data-state="sub"></i>similar survey only</span>
+            <span><i class="st-dot" data-state="down"></i>not answering</span>
+            <span><i class="st-dot" data-state="none"></i>not hosted there</span>
+            <span class="st-legend-sep">Shown on the site:</span>
+            <span><i class="st-dot" data-state="up"></i>from the preferred server</span>
+            <span><i class="st-dot" data-state="backup"></i>from a backup</span>
+            <span><i class="st-dot" data-state="down"></i>not available</span>
+        </p>
+        <div class="kw-table-wrap">
+            <table class="kw-table st-table" id="stTable">
+                <thead><tr><th>Survey</th>{% for key, label, name in servers %}<th class="st-c" data-server="{{ key }}">{{ label }}</th>{% endfor %}<th>On the site now</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/hips_fallback.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_site.js') }}"></script>
+{% endblock %}

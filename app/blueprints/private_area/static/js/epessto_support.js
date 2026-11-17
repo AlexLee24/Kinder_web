@@ -1915,7 +1915,7 @@ function _epBuildNEDAladinIframe(container, loading, ra, dec, sources, radiusArc
   #al{width:100%;height:100%;}
 </style>
 <script src="${vendorBase}aladin-3.8.2.global.js"><\/script>
-<script src="${window.location.origin}/static/js/hips_fallback.js"><\/script>
+<script src="${(window.KinderHips && KinderHips.src) || (window.location.origin + '/static/js/hips_fallback.js')}"><\/script>
 </head><body>
 <div id="al"></div>
 <script>

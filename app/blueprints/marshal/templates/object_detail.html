@@ -1020,6 +1020,14 @@ MJD         magnitude  error   filter  telescope
     <script type="text/javascript" src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha384-vtXRMe3mGCbOeY7l30aIg8H9p3GdeSe4IFlP6G8JMa7o7lXvnz3GFKzPxzJdPfGK" crossorigin="anonymous"></script>
     {# Self-hosted pinned Aladin Lite v3. The viewers run in srcdoc iframes that load the same URL, so this warms the cache. #}
     <script type="text/javascript" src="{{ url_for('static', filename='vendor/aladin-3.8.2.global.js') }}" async></script>
+    {# Sky survey servers (CDS / ESA / IRSA, preferred one set in Admin › Site): the srcdoc viewers load this same file;
+       here it marks which surveys in the two survey menus can be shown right now. #}
+    <script src="{{ url_for('static', filename='js/hips_fallback.js') }}"></script>
+    <script>
+    window.addEventListener('load', function () {
+        setTimeout(function () { ['surveySelect', 'nedSurveySelect'].forEach(function (id) { KinderHips.markSelect(document.getElementById(id)); }); }, 600);
+    });
+    </script>
     <script type="application/json" id="filterColorsData">{{ filter_colors | default({}) | tojson }}</script>
     <script src="{{ url_for('static', filename='js/lc_plot.js') }}"></script>
     <script src="{{ url_for('static', filename='js/object_detail.js') }}"></script>

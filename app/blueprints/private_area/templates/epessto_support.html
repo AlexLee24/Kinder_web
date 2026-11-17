@@ -252,5 +252,13 @@
 {% block scripts %}
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+    {# Sky survey servers (CDS / ESA / IRSA, preferred one set in Admin › Site): the NED sky view loads this same file;
+       here it marks which surveys in its menu can be shown right now. #}
+    <script src="{{ url_for('static', filename='js/hips_fallback.js') }}"></script>
     <script src="{{ url_for('static', filename='js/epessto_support.js') }}"></script>
+    <script>
+    window.addEventListener('load', function () {
+        setTimeout(function () { KinderHips.markSelect(document.getElementById('epNedSurveySelect')); }, 600);
+    });
+    </script>
 {% endblock %}
