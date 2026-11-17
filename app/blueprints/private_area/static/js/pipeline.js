@@ -580,8 +580,27 @@
             const boxes = [], chips = [];
             const foot = el('span', { class: 'pl-faint' });
             const go = el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: label });
+            // Daily auto photometry of the same frames: running, queued or done (frames of the nights that are ticked)
+            const autoBox = el('div', { class: 'pl-auto-note', role: 'status', 'aria-live': 'polite', hidden: true });
+            const AUTO_TXT = { running: 'is measuring them now', queued: 'has them queued', waiting: 'will measure them in its next run',
+                               done: 'already has results', failed: 'tried and failed', skipped: 'skips EP targets' };
+            const syncAuto = on => {
+                const nights = new Set(on.map(b => (b.f.night || '') + ' ' + (b.f.telescope || '')));
+                const hits = (d.auto || []).filter(a => nights.has(a.night + ' ' + a.telescope) && a.status !== 'skipped');
+                autoBox.hidden = !hits.length;
+                autoBox.replaceChildren(...hits.map(a => el('p', {},
+                    a.status === 'running' ? el('span', { class: 'pl-auto-spin', 'aria-hidden': 'true' }) : null,
+                    el('b', { text: `Auto photometry ${AUTO_TXT[a.status] || a.status}` }),
+                    ` for the ${a.telescope} frames of ${a.night}`,
+                    a.status === 'running' && a.n_frames ? ` (${a.n_done} of ${a.n_frames})` : '',
+                    a.status === 'done' && a.mags.length ? ': ' + a.mags.map(m => m[1] != null ? `${m[0]} ${m[1].toFixed(2)}` : `${m[0]} >${(m[2] || 0).toFixed(1)}`).join(', ') : '',
+                    a.status === 'failed' && a.reason ? ` (${a.reason})` : '',
+                    '. You can still measure them here with your own settings. ',
+                    el('a', { href: a.url, text: 'Daily Trigger' }))));
+            };
             const sync = () => {
                 const on = boxes.filter(b => b.box.checked);
+                syncAuto(on);
                 foot.textContent = on.length + ' of ' + boxes.length + ' selected · ' + sizeText(on.reduce((a, b) => a + b.f.size, 0));
                 go.disabled = !on.length;
                 all.checked = on.length === boxes.length; all.indeterminate = on.length > 0 && on.length < boxes.length;
@@ -630,6 +649,7 @@
                     el('button', { type: 'button', class: 'pl-link', text: '← All folders', onclick: () => showFolders(q) }),
                     el('b', { class: 'pl-mono', text: d.path + '/' })),
                 tagBar,
+                autoBox,
                 el('div', { class: 'kw-table-wrap pl-pick-files' }, el('table', { class: 'kw-table pl-table pl-hdr' },
                     el('thead', {}, el('tr', {}, el('th', {}, all), ['File', 'Filter', 'Tag', 'Date (UTC)', 'Exp (s)', 'OBJECT'].map(t => el('th', { text: t })))),
                     el('tbody', {}, rows))),

@@ -561,3 +561,15 @@ fieldset.pl-readonly { margin: 0; padding: 0; border: 0; min-inline-size: 0; dis
 .pl-cov.is-bad::before { content: "✗ "; }
 .pl-cov.is-unsure::before { content: "? "; }
 .pl-cov .pl-link { font-size: inherit; }
+
+/* Calibrated picker: what the daily auto photometry did with the ticked frames */
+.pl-auto-note { margin: 8px 0; padding: 10px 12px; border: 1px solid rgba(100, 210, 255, 0.25); border-radius: 10px;
+                background: rgba(100, 210, 255, 0.05); font-size: 0.82rem; color: var(--kw-text-secondary); }
+.pl-auto-note p { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; }
+.pl-auto-note p + p { margin-top: 6px; }
+.pl-auto-note b { color: var(--kw-text-primary); font-weight: 600; }
+.pl-auto-note a { color: var(--kw-link); }
+.pl-auto-spin { width: 12px; height: 12px; margin-right: 4px; border-radius: 50%; border: 2px solid rgba(100, 210, 255, 0.25);
+                border-top-color: #64D2FF; animation: pl-auto-spin 0.8s linear infinite; }
+@keyframes pl-auto-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pl-auto-spin { animation-duration: 2.4s; } }

@@ -9,8 +9,9 @@
     const FCOL = { u: '#c05cff', g: '#2fc46e', r: '#ff3b3b', i: '#ff70a6', z: '#e8a0a0', y: '#e8853a', o: '#ffa500', c: '#22e5ff',
                    w: '#eeb861', b: '#5b8cff', v: '#b6e34a' };
     const STATE = { done: 'Detected', lim: 'Not detected · limits', failed: 'Failed', running: 'Measuring', queued: 'Queued',
-                    skipped: 'EP · not measured' };
-    const SHORT = { done: 'Detected', lim: 'Limits only', failed: 'Failed', running: 'Measuring', queued: 'Queued', skipped: 'EP' };
+                    waiting: 'Not measured yet', skipped: 'EP · not measured' };
+    const SHORT = { done: 'Detected', lim: 'Limits only', failed: 'Failed', running: 'Measuring', queued: 'Queued',
+                    waiting: 'Not measured', skipped: 'EP' };
     const PRI = ['Urgent', 'High', 'Normal', 'Filler'];
     const $ = id => document.getElementById(id);
     // daily_trigger.js keeps the targets in a top-level `let`: shared between classic scripts, but not on window
@@ -45,8 +46,8 @@
 
     function stateEl(r, short) {
         const s = rowState(r);
-        const txt = s === 'running' && r.n_frames ? `Measuring · ${r.n_done || 0} of ${r.n_frames} frames` : (short ? SHORT : STATE)[s] || s;
-        return el('span', { class: 'dta-state is-' + s, text: txt });
+        const txt = s === 'running' && r.n_frames && !short ? `Measuring · ${r.n_done || 0} of ${r.n_frames} frames` : (short ? SHORT : STATE)[s] || s;
+        return el('span', { class: 'dta-state is-' + s }, s === 'running' ? el('span', { class: 'dta-spin', 'aria-hidden': 'true' }) : null, txt);
     }
     function magEl(p) {
         return p.det && p.mag != null
@@ -82,6 +83,25 @@
         if (r.pipeline) out.push(el('a', { href: r.pipeline, text: 'Pipeline run' }));
         return out.flatMap((a, i) => i ? [el('span', { class: 'dta-muted', text: ' · ' }), a] : [a]);
     }
+    // frames of the night per filter (what will be / is being measured)
+    function framesEl(r) {
+        const fc = r.frame_counts || {};
+        const ks = Object.keys(fc).sort((a, b) => 'ugrizyocw'.indexOf(a) - 'ugrizyocw'.indexOf(b));
+        if (!ks.length) return el('span', { class: 'dta-muted', text: r.n_frames ? `${r.n_frames} frames` : '—' });
+        return el('div', { class: 'dta-mags' }, ks.map(f => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(f)}` }),
+            el('span', { class: 'dta-muted', text: f + ' ' }), el('span', { class: 'mono dta-muted', text: `${fc[f]} frame${fc[f] > 1 ? 's' : ''}` }))));
+    }
+    async function measure(r, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Queued';
+        try {
+            const res = await fetch(API + '/measure', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ night: r.night, target: r.target, telescope: r.telescope }) });
+            const d = await res.json();
+            if (!d.success) throw new Error(d.error || 'Failed');
+            load(night);
+        } catch (e) { btn.disabled = false; btn.textContent = 'Measure now'; alert(e.message); }
+    }
     async function retry(r, btn) {
         btn.disabled = true;
         btn.textContent = 'Queued';
@@ -107,7 +127,8 @@
             data = d; night = d.night; latest = d.latest || {};
             renderNight();
             scheduleWs();
-            if (d.rows.some(r => r.status === 'queued' || r.status === 'running')) refreshTimer = setTimeout(() => load(night), 30000);
+            if (d.rows.some(r => r.status === 'queued' || r.status === 'running')) refreshTimer = setTimeout(() => load(night), 15000);
+            else if (d.rows.some(r => r.status === 'waiting')) refreshTimer = setTimeout(() => load(night), 60000);
         } catch (e) {
             const tb = $('dtAutoTable').tBodies[0];
             tb.replaceChildren(el('tr', {}, el('td', { colspan: 6, class: 'dta-empty', text: 'Could not load last night: ' + e.message })));
@@ -130,14 +151,14 @@
         const n = s => measured.filter(r => rowState(r) === s).length;
         const frames = measured.reduce((a, r) => a + (r.n_frames || 0), 0);
         const sum = [[frames, 'frames'], [measured.length, 'targets'], [n('done'), 'detected'], [n('lim'), 'limits only'],
-                     [n('failed'), 'failed'], [n('running') + n('queued'), 'still measuring']];
+                     [n('failed'), 'failed'], [n('running') + n('queued'), 'measuring'], [n('waiting'), 'not measured yet']];
         $('dtAutoSum').replaceChildren(...(rows.length ? sum.filter(([v], k) => k < 3 || v).map(([v, l]) => el('div', {}, el('b', { class: 'mono', text: String(v) }), el('span', { text: l }))) : []));
 
-        const order = { done: 0, lim: 1, running: 2, queued: 2, failed: 3 };
+        const order = { running: 0, done: 1, lim: 2, queued: 3, waiting: 4, failed: 5 };
         const tb = $('dtAutoTable').tBodies[0];
         if (!measured.length) {
             tb.replaceChildren(el('tr', {}, el('td', { colspan: 6, class: 'dta-empty',
-                text: rows.length ? 'Only EP targets were observed; they are left to the EP pipeline' : 'No calibrated frames measured for this night yet. The bot runs daily at 13:30 (UTC+8)' })));
+                text: rows.length ? 'Only EP targets were observed; they are left to the EP pipeline' : 'No calibrated frames from this night' })));
         } else {
             tb.replaceChildren(...measured.sort((a, b) => (order[rowState(a)] - order[rowState(b)]) ||
                 (PRI.indexOf(priOf(a.target)) - PRI.indexOf(priOf(b.target))) || a.target.localeCompare(b.target)).map(rowEl));
@@ -154,20 +175,22 @@
         const s = rowState(r), best = bestPerFilter(r);
         const veto = (r.phot || []).find(p => !p.det && p.veto);
         const pri = priOf(r.target);
-        return el('tr', {},
+        return el('tr', { 'aria-busy': s === 'running' ? 'true' : null, class: s === 'running' ? 'is-running' : null },
             el('th', { scope: 'row' },
                 el('button', { type: 'button', class: 'dta-name', text: r.target, title: 'Show in the target workspace', onclick: () => focusTarget(r.target, r.telescope) }),
                 el('div', { class: 'dta-sub' }, r.telescope, pri ? el('span', { class: 'dta-pri is-' + pri.toLowerCase(), text: ' · ' + pri }) : null)),
             el('td', { 'data-l': 'Frame' }, r.frames && r.frames.length ? thumb(r, r.frames.includes('r') ? 'r' : r.frames[0]) : el('span', { class: 'dta-muted', text: '—' })),
             el('td', { 'data-l': 'Magnitudes' }, best.length
                 ? el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p))))
-                : el('span', { class: 'dta-muted', text: s === 'failed' ? (r.reason || 'No measurement') : s === 'running' || s === 'queued' ? `${r.n_frames} frames · results in a few minutes` : '—' })),
+                : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
             el('td', { 'data-l': 'Status' }, stateEl(r),
                 veto ? el('div', { class: 'dta-note', text: veto.veto }) : null,
                 s === 'done' && !r.obj_name ? el('div', { class: 'dta-note', text: 'Not a Kinder object' }) : null),
-            el('td', { class: 'dta-right dta-nowrap' }, s === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Retry', onclick: e => retry(r, e.currentTarget) }) : null,
-                s !== 'failed' ? links(r) : null));
+            el('td', { class: 'dta-right dta-nowrap' },
+                s === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Retry', onclick: e => retry(r, e.currentTarget) }) : null,
+                s === 'waiting' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Measure now', onclick: e => measure(r, e.currentTarget) }) : null,
+                s !== 'failed' && s !== 'waiting' ? links(r) : null));
     }
 
     // ── Workspace view ───────────────────────────────────────────────────────

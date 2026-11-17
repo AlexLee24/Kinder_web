@@ -339,6 +339,21 @@ def daily_trigger_auto_phot():
         return hist_cache[name]
     try:
         rows = [_auto_row_view(r, hist(r.get('obj_name'))) for r in db.for_night(night)]
+        # every target that has frames from that night is listed, measured or not yet
+        frames = auto_phot.night_frames(night)
+        have = {(r['target'], r['telescope']) for r in rows}
+        for r in rows:
+            fr = frames.get((r['target'], r['telescope']))
+            r['frame_counts'] = fr['filters'] if fr else {}
+        for (target, tel), fr in sorted(frames.items()):
+            if (target, tel) in have:
+                continue
+            skip = auto_phot.skipped_name(target)
+            rows.append({'id': None, 'night': night.isoformat(), 'target': target, 'telescope': tel, 'obj_name': None,
+                         'status': 'skipped' if skip else 'waiting',
+                         'reason': 'EP targets are left to the EP pipeline' if skip else None,
+                         'n_frames': fr['n'], 'n_done': 0, 'filters': sorted(fr['filters']), 'frame_counts': fr['filters'],
+                         'phot': [], 'frames': [], 'prev': {}, 'label': auto_phot.label(tel), 'pipeline': ''})
         latest = {}
         names = [n for n in (request.args.get('latest') or '').split(',') if n.strip()][:400]
         if names:
@@ -388,6 +403,36 @@ def daily_trigger_auto_phot_retry(row_id):
         return jsonify({'success': False, 'error': 'EP targets are left to the EP pipeline.'}), 400
     auto_phot.queue_retry(_date.fromisoformat(r['night']), r['target'], r['telescope'])
     logger.info('auto_phot: %s asked to measure %s %s %s again', session['user'].get('email'), r['night'], r['target'], r['telescope'])
+    return jsonify({'success': True})
+
+
+@private_area_bp.route('/api/daily_trigger/auto_phot/measure', methods=['POST'])
+def daily_trigger_auto_phot_measure():
+    """Measure one target of a night now (a row the daily run has not reached): {night, target, telescope}."""
+    g = _dt_guard()
+    if g:
+        return g
+    from datetime import date as _date
+    from app.core import rate_limit
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    body = request.get_json(silent=True) or {}
+    try:
+        night = _date.fromisoformat(str(body.get('night') or ''))
+    except ValueError:
+        return jsonify({'success': False, 'error': 'night must be YYYY-MM-DD'}), 400
+    target, tel = str(body.get('target') or ''), str(body.get('telescope') or '').upper()
+    if (target, tel) not in auto_phot.night_frames(night):
+        return jsonify({'success': False, 'error': 'No frames of that target on that night.'}), 404
+    if auto_phot.skipped_name(target):
+        return jsonify({'success': False, 'error': 'EP targets are left to the EP pipeline.'}), 400
+    cur = next((r for r in db.for_night(night) if r['target'] == target and r['telescope'] == tel), None)
+    if cur and cur['status'] in ('queued', 'running'):
+        return jsonify({'success': False, 'error': 'Already measuring.'}), 409
+    if not rate_limit.allow(f"auto-phot-retry:{session['user'].get('email')}", 10, 600):
+        return jsonify({'success': False, 'error': 'Too many requests; wait a few minutes.'}), 429
+    auto_phot.queue_retry(night, target, tel)
+    logger.info('auto_phot: %s asked to measure %s %s %s now', session['user'].get('email'), night, target, tel)
     return jsonify({'success': True})
 
 
