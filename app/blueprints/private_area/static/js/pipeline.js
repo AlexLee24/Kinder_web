@@ -464,7 +464,81 @@
             } catch (err) { say(msg, err.message, 'error'); }
             btn.disabled = false;
         });
+        wireCoverage(form);
         return { msg, sync };
+    }
+
+    // ── Coverage: which calibration catalogs / template surveys have data at RA, Dec ──
+    const COV_PREFER = { catalog: ['pan_starrs', 'sdss', 'legacy', 'skymapper', 'refcat', 'gaia'],
+                         ts_download: ['panstarrs', 'legacy_dr11', 'legacy', 'sdss'] };
+    function wireCoverage(form) {
+        const f = form.elements;
+        const parts = [['catalog', 'catalogs'], ['ts_download', 'templates']]
+            .map(([name, key]) => ({ name, key, sel: f[name], box: form.querySelector('[data-cov="' + name + '"]') }))
+            .filter(p => p.sel && p.box);
+        if (!parts.length || !f.ra || !f.dec) return;
+        parts.forEach(p => [...p.sel.options].forEach(o => { o.dataset.label = o.dataset.label || o.textContent; }));
+        let last = null, cov = null, timer = null, seq = 0;
+
+        const mark = (o, it) => {
+            o.textContent = o.dataset.label + (!it ? '' : it.ok === true ? '  ✓' : it.ok === false ? '  ✗ not covered' : '  ?');
+        };
+        const render = () => {
+            parts.forEach(p => {
+                if (!cov) { [...p.sel.options].forEach(o => mark(o, null)); p.box.hidden = true; return; }
+                const items = cov[p.key] || {};
+                [...p.sel.options].forEach(o => mark(o, items[o.value]));
+                const cur = items[p.sel.value];
+                const label = o => (p.sel.querySelector('option[value="' + o + '"]') || {}).dataset?.label || o;
+                const kids = [];
+                if (!cur) { p.box.hidden = true; return; }
+                if (cur.ok === false) {
+                    const alt = COV_PREFER[p.name].filter(v => items[v] && items[v].ok === true).slice(0, 3);
+                    kids.push(el('b', { text: label(p.sel.value) + ' does not cover this position' }), ' (' + cur.note + ').');
+                    if (alt.length) kids.push(' Use ', ...alt.flatMap((v, i) => [i ? ' · ' : '', el('button', {
+                        type: 'button', class: 'pl-link', text: label(v),
+                        onclick: () => { p.sel.value = v; p.sel.dispatchEvent(new Event('change', { bubbles: true })); render(); },
+                    })]));
+                } else if (cur.ok === null) {
+                    kids.push(label(p.sel.value) + ': ' + cur.note + '; it may still work.');
+                } else {
+                    kids.push(label(p.sel.value) + ': ' + cur.note + '.');
+                }
+                p.box.className = 'pl-cov' + (cur.ok === false ? ' is-bad' : cur.ok === null ? ' is-unsure' : ' is-ok');
+                p.box.replaceChildren(...kids);
+                p.box.hidden = false;
+            });
+        };
+        const check = async () => {
+            const ra = f.ra.value.trim(), dec = f.dec.value.trim();
+            const key = ra + ' ' + dec;
+            if (!ra || !dec) { last = null; cov = null; render(); return; }
+            if (key === last) return;
+            last = key;
+            const mine = ++seq;
+            parts.forEach(p => { p.box.className = 'pl-cov'; p.box.textContent = 'Checking which surveys cover this position…'; p.box.hidden = false; });
+            try {
+                const r = await api('/api/pipeline/coverage?ra=' + encodeURIComponent(ra) + '&dec=' + encodeURIComponent(dec));
+                if (mine !== seq) return;
+                cov = r;
+            } catch (err) {
+                if (mine !== seq) return;
+                cov = null;
+                last = null;
+                parts.forEach(p => { p.box.className = 'pl-cov is-unsure'; p.box.textContent = 'Could not check coverage: ' + err.message; p.box.hidden = false; });
+                return;
+            }
+            render();
+        };
+        const soon = () => { clearTimeout(timer); timer = setTimeout(check, 700); };
+        f.ra.addEventListener('input', soon);
+        f.dec.addEventListener('input', soon);
+        form.addEventListener('change', e => {
+            if (e.target === f.ra || e.target === f.dec) soon();
+            else if (parts.some(p => p.sel === e.target)) render();
+            else if (f.ra.value.trim() && f.dec.value.trim() && f.ra.value.trim() + ' ' + f.dec.value.trim() !== last) soon();
+        });
+        check();
     }
 
     async function kinderObjects(q) {

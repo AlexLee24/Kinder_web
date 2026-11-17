@@ -2199,6 +2199,9 @@ class AutomatedPhotometry:
                                 size=size_default,
                                 template_folder=template_folder,
                                 band=f,
+                                layer=(default_input.get("template_subtraction") or {}).get(
+                                    "legacy_layer", "ls-dr10"
+                                ),
                             )
                     elif download_kind == "2mass":
                         _log(log_step("Download templates: 2MASS"))

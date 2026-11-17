@@ -461,6 +461,7 @@ default_input:
 
   catalog:
     use_catalog: null # str|dict|null --- Catalog backend for calibration (e.g. `"refcat"`), per-filter mapping (e.g. `{"ugriz":"sdss","UBVRI":"apass","default":"gaia"}`), or `"auto"` to pick the best catalog per band automatically.
+    legacy_tap_timeout: 90 # float --- Seconds to wait for NOIRLab Data Lab TAP when use_catalog is "legacy"; on a timeout or error the public DR10 Tractor brick files are read instead (cached in ~/.cache/autophot/legacy_tractor or $LEGACY_TRACTOR_CACHE).
       # `"auto"` scans every image footprint, downloads each feasible catalog once, and keeps
       # the backend with the most usable calibrators (on-detector, finite magnitude inside the
       # zeropoint bright/faint window) per band. A per-band coverage CSV is written under
@@ -813,6 +814,7 @@ default_input:
     sfft_sparse_field_threshold: 10 # int --- When the number of vetted matching sources is below this threshold, the templates.py-computed kernel half-width is passed directly to SFFT instead of letting run_sfft.py auto-size. The templates.py formula uses FWHM_conv as the primary term with an adaptive floor and source-count cap, producing a smaller, better-constrained kernel for sparse fields. run_sfft.py's auto-size uses FWHM_broad as the primary term, which can produce an under-constrained kernel when few sources are available. Set to 0 to always auto-size.
     sfft_const_phot_retry_pct: 10.0 # float --- Flux scaling discrepancy percentage threshold for retrying SFFT with ConstPhotRatio=True in sparse fields. When the convolution-based flux scaling differs from the photometric estimate by more than this percentage and the field is too sparse for the standard kernel_order+1 retry (fewer than ~20 sources), retry with a spatially-constant flux-scaling model to remove under-constrained polynomial degrees of freedom. NOTE: ConstPhotRatio does NOT pin the kernel sum to the SExtractor photometric ratio -- the retry is adopted only if it does not increase the median absolute residual at matched-source positions. Also note FSCAL_PHOT is biased by PSF/aperture differences between the images, so moderate discrepancies are a kernel-quality flag, not proof of wrong normalisation. Set to 0 to disable.
     download_templates: False # bool|str --- If set, download templates into `fits_dir/templates/` before subtraction. Use one of: "panstarrs", "legacy", "sdss" (or False to disable).
+    legacy_layer: ls-dr10 # str --- Legacy Survey release for download_templates: "legacy": ls-dr10 or ls-dr11 (DR11 adds more DECam area). Cutouts are in nanomaggies; the template header gets MAGZP=22.5, GAIN=1, EXPTIME=1 and the local PSFDEPTH/PSFLIM from the Tractor bricks.
     templates_size: 10 # float --- Template cutout size (arcmin) around target when building/using templates.
 
     hotpants_exe_loc: hotpants # str --- HOTPANTS executable name/path (defaults to `hotpants` on PATH).
