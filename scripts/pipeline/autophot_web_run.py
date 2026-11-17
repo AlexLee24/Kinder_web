@@ -226,6 +226,10 @@ def main():
     config['catalog']['use_catalog'] = cfg_in.get('catalog') or 'sdss'     # AutoPhOT 沒有預設星表，null 會直接報錯；網頁預設 SDSS
     if config['catalog']['use_catalog'] == 'pan_starrs':
         config['catalog']['use_catalog'] = 'panstarrs'    # catalog.yml 的鍵是 panstarrs（查詢時 AutoPhOT 自己再轉成 pan_starrs）
+    per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
+    if per_band:                                      # 主星表沒有的波段（Pan-STARRS 沒有 u）→ AutoPhOT 的逐波段對照
+        config['catalog']['use_catalog'] = {'default': config['catalog']['use_catalog'],
+                                            **{b: 'panstarrs' if c == 'pan_starrs' else c for b, c in per_band.items()}}
     ts = config['template_subtraction']
     ts['do_subtraction'] = bool(cfg_in.get('subtraction'))
     if cfg_in.get('sub_method'):
