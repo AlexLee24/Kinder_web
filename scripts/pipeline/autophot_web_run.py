@@ -245,8 +245,23 @@ def template_box(files, ra, dec):
     return min(sides) if sides else None
 
 
+def ca_bundle():
+    """urllib（astroquery、AutoPhOT 的部分查詢）要用的 CA 憑證：python.org 的 macOS Python 沒跑過 Install Certificates 時
+    找不到系統憑證，Gaia、VizieR、MAST 全部 CERTIFICATE_VERIFY_FAILED（正式機 2026-11-16 AT2026afqt 就這樣失敗）。
+    requests 用自己的 certifi 所以沒事；這裡讓 urllib 也用 certifi。已經設了 SSL_CERT_FILE 就不動。"""
+    if os.environ.get('SSL_CERT_FILE'):
+        return os.environ['SSL_CERT_FILE']
+    try:
+        import certifi
+    except ImportError:
+        return None
+    os.environ['SSL_CERT_FILE'] = certifi.where()          # 子行程（AutoPhOT 每張影像一個）也繼承
+    return os.environ['SSL_CERT_FILE']
+
+
 def main():
     tdir = Path(sys.argv[1]).resolve()
+    ca_bundle()
     ap_dir = os.environ.get('AUTOPHOT_DIR') or os.getcwd()     # AutoPhOT 的模組（autophot、prepare、lightcurve）在這裡
     if ap_dir not in sys.path:
         sys.path.insert(1, ap_dir)

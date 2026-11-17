@@ -307,7 +307,7 @@ def _auto_row_view(r, history):
                                              'telescope': pt.get('telescope') or ''}
     out = {k: r.get(k) for k in ('id', 'night', 'target', 'telescope', 'obj_name', 'status', 'reason', 'n_frames',
                                  'n_done', 'filters', 'ra', 'dec', 'phot', 'started_at', 'finished_at')}
-    out.update(frames=frames, prev=prev, label=auto_phot.label(r['telescope']),
+    out.update(frames=frames, prev=prev, label=auto_phot.label(r['telescope'], any(p.get('ts') for p in r.get('phot') or [])),
                pipeline=f"/pipeline/autophot/{r['workspace']}?tab=results" if r.get('workspace') and session['user'].get('is_admin') else '')
     return out
 
