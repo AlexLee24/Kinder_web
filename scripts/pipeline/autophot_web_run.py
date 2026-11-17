@@ -114,6 +114,44 @@ def make_stacks(cfg_in, tdir):
     return new
 
 
+def electron_gain(cfg_in):
+    """單張影像已經是電子（header 有 GAINCOR，鹿林 Calibrated_Science 都是）卻還寫著相機的 GAIN（LOT 0.92）時，
+    AutoPhOT 會再乘一次 gain：流量少 8%、雜訊也算錯。這種影像把 telescope.yml 指定的 gain 鍵改成 1，原值留在 GAINORIG。
+    只動工作區自己的複本（加進來的影像都是複製的），疊好的圖（STACKCMB）不動，它的 GAIN 是 N × 單張 gain。"""
+    from astropy.io import fits
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from autophot_stack import frame_gain, header_number, telescope_keys
+
+    top = cfg_in['fits_dir']
+    yml = os.path.join(cfg_in.get('wdir') or '', 'telescope.yml')
+    changed = []
+    for name in sorted(os.listdir(top)):
+        path = os.path.join(top, name)
+        if not (os.path.isfile(path) and name.lower().endswith(('.fits', '.fit', '.fts'))):
+            continue
+        try:
+            with fits.open(path, mode='update', memmap=False) as hdul:
+                # 看 header 找影像那一層，不讀資料：update 模式下讀過資料（例如有 BZERO）關檔時可能整個重寫
+                hdu = next((x for x in hdul if x.header.get('NAXIS') == 2), None)
+                if hdu is None:
+                    continue
+                h = hdu.header
+                if 'STACKCMB' in h or 'GAINCOR' not in h:
+                    continue
+                key = telescope_keys(yml, h)['gain']
+                if not isinstance(key, str) or header_number(h, key) == 1.0:
+                    continue
+                g, _ = frame_gain(h, key)
+                h['GAINORIG'] = (str(h.get(key)), f'{key} before Kinder set it to 1 (pixels already in electrons)')
+                h[key] = (g, 'e-/unit: pixels already in electrons (GAINCOR)')
+                changed.append(name)
+        except Exception as e:                      # 一張壞掉的影像不擋整個執行；AutoPhOT 自己會再報
+            print(f'[web] gain: could not check {name}: {e}', flush=True)
+    if changed:
+        print(f'[web] gain: {len(changed)} frame(s) already in electrons (GAINCOR); gain set to 1', flush=True)
+    return changed
+
+
 def ensure_astrometry(cfg_in, tdir):
     """執行前每張要量的影像都先做一次 astrometry（astrometry_solve.py，跟 Reduction 同一套 solve-field 做法），WCS 寫回影像本身。
     做過的影像 header 有 KWASTROM（solved / failed），已經是 Astrometry.net 解過的（例如 Reduction、伺服器上校正好的）也跳過，
@@ -262,6 +300,7 @@ def main():
     ensure_astrometry(cfg_in, str(tdir))           # 疊圖之前：對齊也用得到 WCS
     if use_stack:
         cfg_in['stacks'] = make_stacks(cfg_in, str(tdir))
+    electron_gain(cfg_in)                          # 疊圖之後：疊好的圖已經寫了自己的 GAIN
     import prepare
     _clean = prepare.Prepare.clean
     top = os.path.realpath(config['fits_dir'])
