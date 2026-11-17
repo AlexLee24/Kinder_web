@@ -41,8 +41,8 @@ RUNNER = REPO / 'scripts' / 'pipeline' / 'autophot_web_run.py'
 TELESCOPE_YML = Path(__file__).resolve().parent / 'telescope.yml'
 TELESCOPE_HISTORY_KEEP = 30
 
-TS_DOWNLOAD = ['panstarrs', 'legacy_dr11', 'legacy', 'sdss']   # surveys AutoPhOT can download templates from
-TS_DOWNLOAD_LABELS = {'panstarrs': 'Pan-STARRS', 'legacy_dr11': 'Legacy Survey DR11', 'legacy': 'Legacy Survey DR10',
+TS_DOWNLOAD = ['auto', 'panstarrs', 'legacy_dr11', 'legacy', 'sdss']   # surveys AutoPhOT can download templates from
+TS_DOWNLOAD_LABELS = {'auto': 'Best per band', 'panstarrs': 'Pan-STARRS', 'legacy_dr11': 'Legacy Survey DR11', 'legacy': 'Legacy Survey DR10',
                       'sdss': 'SDSS'}                     # legacy_dr11 = AutoPhOT's legacy with legacy_layer ls-dr11
 TS_ALIGN = ['spalipy', 'swarp', 'reproject', 'astroalign', 'tweakwcs', 'chi2_shift']
 TS_FORCECONV = ['REF', 'SCI', 'AUTO']
@@ -455,7 +455,7 @@ def save_target(tid, body, user=''):
     return tid
 
 
-DOWNLOADED_TEMPLATE_RE = re.compile(r'^(panstarrs|sdss|legacy|2MASS)_[A-Za-z0-9]+_band_template.*\.fits(\.unused)?$')
+DOWNLOADED_TEMPLATE_RE = re.compile(r'^(panstarrs|sdss|legacy|skymapper|2MASS)_[A-Za-z0-9]+_band_template.*\.fits(\.unused)?$')
 
 
 def _drop_downloaded_templates(tid):

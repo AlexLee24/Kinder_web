@@ -306,8 +306,22 @@ def main():
     ts['do_subtraction'] = bool(cfg_in.get('subtraction'))
     if cfg_in.get('sub_method'):
         ts['method'] = cfg_in['sub_method']
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import autophot_templates as kt
+    for step in (lambda: kt.ensure_telescope_bands(os.path.join(cfg_in['wdir'], 'telescope.yml')),  # LEGACY 沒有 z…
+                 lambda: kt.purge_stale_gaia(cfg_in['wdir'])):          # Gaia XP 失敗時存下的、沒有 u 的星表快取
+        try:
+            step()
+        except Exception as e:                    # 準備工作失敗不擋執行，AutoPhOT 照原本的做
+            print(f'[web] template/catalogue preparation skipped: {e}', flush=True)
     if ts['do_subtraction']:                         # 網頁 TS 區的設定
         dl = cfg_in.get('ts_download') or False
+        if dl == 'auto':                                   # 每個波段挑最好的巡天（autophot_templates.pick）
+            import templates as ap_templates
+            kt.install(ap_templates)
+            print('[web] templates: best survey per band (Pan-STARRS → Legacy Survey → SDSS → SkyMapper; u: SDSS → SkyMapper)',
+                  flush=True)
+            dl = 'panstarrs'                               # AutoPhOT 的下載迴圈呼叫的就是換掉的那個函式
         if dl in ('legacy', 'legacy_dr11'):                # 網頁的 Legacy DR10 / DR11 → AutoPhOT 的 legacy + legacy_layer
             ts['legacy_layer'] = 'ls-dr11' if dl == 'legacy_dr11' else 'ls-dr10'
             dl = 'legacy'
