@@ -114,13 +114,14 @@ def make_stacks(cfg_in, tdir):
     return new
 
 
-def electron_gain(cfg_in):
-    """單張影像已經是電子（header 有 GAINCOR，鹿林 Calibrated_Science 都是）卻還寫著相機的 GAIN（LOT 0.92）時，
-    AutoPhOT 會再乘一次 gain：流量少 8%、雜訊也算錯。這種影像把 telescope.yml 指定的 gain 鍵改成 1，原值留在 GAINORIG。
-    只動工作區自己的複本（加進來的影像都是複製的），疊好的圖（STACKCMB）不動，它的 GAIN 是 N × 單張 gain。"""
+def normalize_gain(cfg_in):
+    """把每張單張影像的 gain 寫成 AutoPhOT 讀得懂、而且對的數字（只動工作區自己的複本，加進來的影像都是複製的）：
+      - BUNIT electron（鹿林舊版 pipeline 的輸出）卻還寫著相機的 GAIN：改成 1，不然 AutoPhOT 會再乘一次；
+      - GAIN 是 '0.95 [electrons/ADU]' 這種帶單位的字串（SLT）：AutoPhOT 讀不到就退回 1，改成數字 0.95。
+    原值留在 GAINORIG。疊好的圖（STACKCMB）不動，它的 GAIN 是 N × 單張 gain。"""
     from astropy.io import fits
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from autophot_stack import frame_gain, header_number, telescope_keys
+    from autophot_stack import frame_gain, telescope_keys
 
     top = cfg_in['fits_dir']
     yml = os.path.join(cfg_in.get('wdir') or '', 'telescope.yml')
@@ -136,19 +137,22 @@ def electron_gain(cfg_in):
                 if hdu is None:
                     continue
                 h = hdu.header
-                if 'STACKCMB' in h or 'GAINCOR' not in h:
+                if 'STACKCMB' in h:
                     continue
                 key = telescope_keys(yml, h)['gain']
-                if not isinstance(key, str) or header_number(h, key) == 1.0:
+                if not isinstance(key, str):
                     continue
-                g, _ = frame_gain(h, key)
-                h['GAINORIG'] = (str(h.get(key)), f'{key} before Kinder set it to 1 (pixels already in electrons)')
-                h[key] = (g, 'e-/unit: pixels already in electrons (GAINCOR)')
+                g, why = frame_gain(h, key)
+                now = h.get(key)
+                if g is None or (isinstance(now, (int, float)) and not isinstance(now, bool) and float(now) == g):
+                    continue
+                h['GAINORIG'] = (str(now), f'{key} before Kinder rewrote it')
+                h[key] = (g, f'e-/unit ({why})')
                 changed.append(name)
         except Exception as e:                      # 一張壞掉的影像不擋整個執行；AutoPhOT 自己會再報
             print(f'[web] gain: could not check {name}: {e}', flush=True)
     if changed:
-        print(f'[web] gain: {len(changed)} frame(s) already in electrons (GAINCOR); gain set to 1', flush=True)
+        print(f'[web] gain: {len(changed)} frame(s) given a numeric gain AutoPhOT can read', flush=True)
     return changed
 
 
@@ -300,7 +304,7 @@ def main():
     ensure_astrometry(cfg_in, str(tdir))           # 疊圖之前：對齊也用得到 WCS
     if use_stack:
         cfg_in['stacks'] = make_stacks(cfg_in, str(tdir))
-    electron_gain(cfg_in)                          # 疊圖之後：疊好的圖已經寫了自己的 GAIN
+    normalize_gain(cfg_in)                         # 疊圖之後：疊好的圖已經寫了自己的 GAIN
     import prepare
     _clean = prepare.Prepare.clean
     top = os.path.realpath(config['fits_dir'])
