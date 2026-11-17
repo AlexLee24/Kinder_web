@@ -87,6 +87,7 @@
                 el('div', { class: 'dta-dlg-foot' },
                     d.pipeline ? el('a', { class: 'kw-btn kw-btn-sm', href: d.pipeline, text: 'Open the Pipeline run' }) : null,
                     d.status === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm kw-btn-primary', text: 'Retry', onclick: e => { retry(r, e.currentTarget); dlg.close(); } }) : null,
+                    d.status === 'running' || d.status === 'queued' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm dta-stop', text: 'Stop', onclick: e => { stopRun(r, e.currentTarget).then(() => dlg.close()); } }) : null,
                     el('form', { method: 'dialog' }, el('button', { class: 'kw-btn kw-btn-sm', value: 'close', autofocus: true, text: 'Close' })))].filter(Boolean));
             pre.scrollTop = pre.scrollHeight;
             if (d.status === 'running' || d.status === 'queued') dlgTimer = setTimeout(() => fill(false), 10000);
@@ -145,6 +146,17 @@
             if (!d.success) throw new Error(d.error || 'Failed');
             load(night);
         } catch (e) { btn.disabled = false; btn.textContent = 'Measure now'; alert(e.message); }
+    }
+    async function stopRun(r, btn) {
+        if (!confirm(`Stop measuring ${r.target} (${r.telescope})? Retry measures it again.`)) return;
+        btn.disabled = true;
+        btn.textContent = 'Stopping…';
+        try {
+            const res = await fetch(`${API}/${r.id}/stop`, { method: 'POST', credentials: 'same-origin' });
+            const d = await res.json();
+            if (!d.success) throw new Error(d.error || 'Failed');
+            load(night);
+        } catch (e) { btn.disabled = false; btn.textContent = 'Stop'; alert(e.message); }
     }
     async function retry(r, btn, label = 'Retry') {
         btn.disabled = true;
@@ -234,6 +246,8 @@
             el('td', { class: 'dta-right dta-nowrap' },
                 s === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Retry', onclick: e => retry(r, e.currentTarget) }) : null,
                 s === 'waiting' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Measure now', onclick: e => measure(r, e.currentTarget) }) : null,
+                (s === 'running' || s === 'queued') && r.id ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm dta-stop', text: 'Stop',
+                    title: 'Stop this measurement (Retry measures it again)', onclick: e => stopRun(r, e.currentTarget) }) : null,
                 s === 'done' || s === 'lim' ? el('span', { class: 'dta-acts' }, links(r),
                     el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Rerun', title: 'Measure this night again (replaces its points)',
                                    onclick: e => retry(r, e.currentTarget, 'Rerun') })) : null));

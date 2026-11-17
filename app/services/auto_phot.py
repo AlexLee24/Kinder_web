@@ -232,6 +232,49 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, ban
 
 # ── run one workspace ────────────────────────────────────────────────────────
 
+STOP_FILE = '.stop_requested'          # in the workspace: Stop on the Trigger page (any worker can write it)
+
+
+class Stopped(Exception):
+    pass
+
+
+def _stop_path(night, target, telescope):
+    from app.services.pipeline import autophot as ap
+    return ap.runs_root() / workspace_name(night, target, telescope) / STOP_FILE
+
+
+def stop_requested(night, target, telescope):
+    try:
+        return _stop_path(night, target, telescope).is_file()
+    except Exception:
+        return False
+
+
+def clear_stop(night, target, telescope):
+    try:
+        _stop_path(night, target, telescope).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def request_stop(night, target, telescope):
+    """Stop one (night, target, telescope): a queued one does not start, a running AutoPhOT process is killed.
+    The row ends as failed / "Stopped", so Retry measures it again."""
+    from app.db import auto_phot as db
+    from app.services.pipeline import autophot as ap
+    p = _stop_path(night, target, telescope)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(datetime.now(timezone.utc).isoformat())
+    tid = workspace_name(night, target, telescope)
+    if _still_running(tid):
+        try:
+            ap.stop(tid)
+        except ap.PipelineError:
+            pass
+    db.upsert(night, target, telescope, status='failed', reason='Stopped', finished_at=datetime.now(timezone.utc))
+
+
 def _wait_for_slot(stop=None):
     from app.services.pipeline import autophot as ap
     end = time.time() + WAIT_SLOT_S
@@ -247,6 +290,8 @@ def _run_and_wait(tid, progress=None, stop=None):
     end = time.time() + WAIT_SLOT_S
     while True:                       # a Retry from the page and the daily run may reach the slot together
         _wait_for_slot(stop)
+        if stop and stop():
+            raise Stopped()
         try:
             ap.start(tid, AUTO_USER)
             break
@@ -550,7 +595,7 @@ def _import(tid, obj_name, telescope, old_ids):
     return TNSObjectDB.add_photometry_batch_ids(obj_name, pts) if pts else []
 
 
-def run_target(night, target, telescope, frames, stop=None):
+def run_target(night, target, telescope, frames, stop=None, stack_only=False):
     """Measure one (night, target, telescope); returns its obs.auto_phot row."""
     from app.db import auto_phot as db
     from app.services.pipeline import autophot as ap
@@ -563,6 +608,8 @@ def run_target(night, target, telescope, frames, stop=None):
     if ra is None:
         return db.upsert(night, target, telescope, status='failed', obj_name=obj_name,
                          reason='No position: not a Kinder object, not an observation target, no RA/Dec in the header', **base)
+    if stop_requested(night, target, telescope):           # stopped while it waited in the queue
+        return db.upsert(night, target, telescope, status='failed', reason='Stopped', finished_at=datetime.now(timezone.utc))
     now = datetime.now(timezone.utc)
     row = db.upsert(night, target, telescope, status='queued', obj_name=obj_name, ra=ra, dec=dec, reason=None,
                     n_done=0, started_at=now, finished_at=None, **base)
@@ -574,7 +621,12 @@ def run_target(night, target, telescope, frames, stop=None):
                         ', '.join(f'{b} from {c}' for b, c in bands.items()))
         phot = []
         progress = lambda p: db.upsert(night, target, telescope, n_done=p['done'])   # noqa: E731
-        for stack in (True, False):
+        outer = stop
+        stop = lambda: bool(outer and outer()) or stop_requested(night, target, telescope)   # noqa: E731
+        # the page's Rerun / Retry / Measure now: the stacks only; the daily run falls back to the single frames
+        for stack in ((True,) if stack_only else (True, False)):
+            if stop():
+                raise Stopped()
             tid = workspace_name(night, target, telescope)
             if _still_running(tid):             # started before a restart: wait for it instead of starting another
                 logger.info('auto_phot: %s is still running from before; waiting for it', tid)
@@ -599,8 +651,13 @@ def run_target(night, target, telescope, frames, stop=None):
         return db.upsert(night, target, telescope, status='done', phot=phot, phot_ids=ids, n_done=len(frames),
                          reason=None if obj_name else 'Not a Kinder object: measured, not added to a Transient page',
                          finished_at=datetime.now(timezone.utc))
+    except Stopped:
+        logger.info('auto_phot: %s %s %s stopped', night, target, telescope)
+        return db.upsert(night, target, telescope, status='failed', reason='Stopped', finished_at=datetime.now(timezone.utc))
     except Exception as e:
         logger.exception('auto_phot: %s %s %s', night, target, telescope)
+        if stop_requested(night, target, telescope):
+            return db.upsert(night, target, telescope, status='failed', reason='Stopped', finished_at=datetime.now(timezone.utc))
         return db.upsert(night, target, telescope, status='failed', reason=f'{type(e).__name__}: {e}'[:300],
                          finished_at=datetime.now(timezone.utc))
 
@@ -610,7 +667,7 @@ def _band(path):
     return (m.group(1) if m else '').lower()
 
 
-def run_night(night, only=None, force=False, stop=None, root=None):
+def run_night(night, only=None, force=False, stop=None, root=None, stack_only=False):
     """Measure every (target, telescope) of a night that is not done yet; only=(target, telescope) for one.
     Returns a one-line summary."""
     from app.db import auto_phot as db
@@ -626,6 +683,7 @@ def run_night(night, only=None, force=False, stop=None, root=None):
         todo.append((key, frames))
     for (target, telescope), frames in todo:                 # the page lists the whole night at once
         if not (only or skipped_name(target)):
+            clear_stop(night, target, telescope)                # a new run: an old Stop does not count
             db.upsert(night, target, telescope, status='queued', reason=None, n_done=0, n_frames=len(frames),
                       filters=sorted({_band(f) for f in frames} - {''}))
     # several targets at once (ap.MAX_RUNNING_AUTO, AUTO_PHOT_PARALLEL): each has its own workspace and AutoPhOT process
@@ -636,7 +694,7 @@ def run_night(night, only=None, force=False, stop=None, root=None):
         if stop and stop():
             return None
         try:
-            return run_target(night, target, telescope, frames, stop=stop)
+            return run_target(night, target, telescope, frames, stop=stop, **({'stack_only': True} if stack_only else {}))
         except Exception:
             logger.exception('auto_phot: %s %s %s', night, target, telescope)
             return {'status': 'failed'}
@@ -686,15 +744,17 @@ def for_frames(target, keys):
 
 
 def queue_retry(night, target, telescope):
-    """Mark one row queued and measure it in a background thread (the Trigger page's Retry / Measure now)."""
+    """Mark one row queued and measure it in a background thread (the Trigger page's Rerun / Retry / Measure now):
+    the stacked frames only, no fall-back to the single frames."""
     _frames_cache.pop(night.isoformat(), None)
     import threading
     from app.db import auto_phot as db
+    clear_stop(night, target, telescope)
     db.upsert(night, target, telescope, status='queued', reason=None)
 
     def go():
         try:
-            run_night(night, only=(target, telescope), force=True)
+            run_night(night, only=(target, telescope), force=True, stack_only=True)
         except Exception:
             logger.exception('auto_phot: retry %s %s %s', night, target, telescope)
     threading.Thread(target=go, daemon=True, name=f'auto-phot-{target}').start()

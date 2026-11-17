@@ -207,3 +207,5 @@ dialog.dta-dlg[open] { display: flex; flex-direction: column; gap: 14px; }
 .dta-dlg-foot form { display: contents; }
 
 .dta-acts { display: inline-flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.dta-stop { color: #ff8a80; border-color: rgba(255, 120, 110, 0.4); }
+.dta-stop:hover:not(:disabled) { background: rgba(255, 120, 110, 0.12); color: #ffb3ab; }

@@ -482,6 +482,25 @@ def daily_trigger_auto_phot_retry(row_id):
     return jsonify({'success': True})
 
 
+@private_area_bp.route('/api/daily_trigger/auto_phot/<int:row_id>/stop', methods=['POST'])
+def daily_trigger_auto_phot_stop(row_id):
+    """Stop one queued or running measurement; the row ends as failed / Stopped (Retry measures it again)."""
+    g = _dt_guard()
+    if g:
+        return g
+    from datetime import date as _date
+    from app.db import auto_phot as db
+    from app.services import auto_phot
+    r = db.get(row_id)
+    if not r:
+        return jsonify({'success': False, 'error': 'No such row.'}), 404
+    if r['status'] not in ('queued', 'running'):
+        return jsonify({'success': False, 'error': 'Not measuring.'}), 409
+    auto_phot.request_stop(_date.fromisoformat(r['night']), r['target'], r['telescope'])
+    logger.info('auto_phot: %s stopped %s %s %s', session['user'].get('email'), r['night'], r['target'], r['telescope'])
+    return jsonify({'success': True})
+
+
 @private_area_bp.route('/api/daily_trigger/auto_phot/measure', methods=['POST'])
 def daily_trigger_auto_phot_measure():
     """Measure one target of a night now (a row the daily run has not reached): {night, target, telescope}."""
