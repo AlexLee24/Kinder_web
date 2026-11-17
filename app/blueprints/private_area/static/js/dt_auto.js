@@ -295,6 +295,7 @@
         if (id == null) return;
         selected = id;
         renderWs();
+        followHead($('dtWsDetail'), rowOf(id));
         if (focus) rowOf(id)?.focus({ preventScroll: false });
     }
 
@@ -512,6 +513,53 @@
         });
     }
 
+    // Workspace columns ride the page scroll. Each column is position: sticky; one taller than the window gets a
+    // top that slides between "head at the top" and "foot at the bottom" as the page scrolls, so it moves with the
+    // page until its far end shows and then holds — both sides answer the same scroll, no inner scrollbars.
+    const follow = { cols: [], lastY: 0, raf: 0 };
+    function followBase(c) { c.el.style.top = ''; c.base = parseFloat(getComputedStyle(c.el).top) || 0; }
+    function followApply(dy) {
+        const vh = window.innerHeight;
+        follow.cols.forEach(c => {
+            if (getComputedStyle(c.el).position !== 'sticky') { c.el.style.top = ''; c.top = null; return; }
+            const min = vh - c.el.offsetHeight - 16;                   // foot 16px above the window's bottom
+            if (min >= c.base) { c.el.style.top = ''; c.top = c.base; return; }   // fits: plain sticky
+            c.top = Math.min(c.base, Math.max(min, (c.top == null ? c.base : c.top) - dy));
+            c.el.style.top = c.top + 'px';
+        });
+    }
+    function followTick() {
+        follow.raf = 0;
+        const y = window.scrollY, dy = y - follow.lastY;
+        follow.lastY = y;
+        followApply(dy);
+    }
+    function followHead(el, row) {                                     // show this column from its head (a new pick)
+        const c = follow.cols.find(x => x.el === el);
+        if (!c) return;
+        c.top = c.base; followApply(0);
+        // near the end of the list the grid's bottom holds the column up: scroll back just enough to show its head,
+        // never so far that the picked row leaves the window
+        const over = c.base - el.getBoundingClientRect().top;
+        if (over <= 1 || getComputedStyle(el).position !== 'sticky') return;
+        const room = row ? window.innerHeight - 16 - row.getBoundingClientRect().bottom : over;
+        const up = Math.min(over, Math.max(0, room));
+        if (up > 0) window.scrollBy({ top: -up, behavior: 'instant' });
+    }
+    function wireFollow() {
+        follow.cols = ['dtWsList', 'dtWsDetail'].map($).filter(Boolean).map(el => ({ el, base: 0, top: null }));
+        if (!follow.cols.length) return;
+        follow.lastY = window.scrollY;
+        const reset = () => { follow.cols.forEach(followBase); followApply(0); };
+        reset();
+        window.addEventListener('scroll', () => { if (!follow.raf) follow.raf = requestAnimationFrame(followTick); }, { passive: true });
+        window.addEventListener('resize', reset);
+        if ('ResizeObserver' in window) {                              // the light curve / frames load later and grow it
+            const ro = new ResizeObserver(() => followApply(0));
+            follow.cols.forEach(c => ro.observe(c.el));
+        }
+    }
+
     function init() {
         const dlg = $('dtAutoDlg');
         if (dlg) {
@@ -527,6 +575,7 @@
         try { v = localStorage.getItem('dt-target-view') || 'ws'; } catch (e) { /* private mode */ }
         document.querySelectorAll('[data-dtview]').forEach(b => b.addEventListener('click', () => setView(b.dataset.dtview)));
         wireRows();
+        wireFollow();
         setView(v === 'table' ? 'table' : 'ws');
         setTimeout(() => { if (!data) load(night); }, 1500);    // normally loadTargets (above) asks first
     }
