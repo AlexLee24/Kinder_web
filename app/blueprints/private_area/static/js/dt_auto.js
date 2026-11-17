@@ -125,10 +125,7 @@
                            alt: `${r.target} ${f}-band frame, ${r.night}, 60 arcsec around the target` });
     }
     function links(r) {
-        const out = [];
-        if (r.obj_name) out.push(el('a', { href: objUrl(r.obj_name), text: 'Transient page' }));
-        if (r.pipeline) out.push(el('a', { href: r.pipeline, text: 'Pipeline run' }));
-        return out.flatMap((a, i) => i ? [el('span', { class: 'dta-muted', text: ' · ' }), a] : [a]);
+        return r.pipeline ? [el('a', { href: r.pipeline, text: 'Pipeline run' })] : [];
     }
     // frames of the night per filter (what will be / is being measured)
     function framesEl(r) {
@@ -149,7 +146,7 @@
             load(night);
         } catch (e) { btn.disabled = false; btn.textContent = 'Measure now'; alert(e.message); }
     }
-    async function retry(r, btn) {
+    async function retry(r, btn, label = 'Retry') {
         btn.disabled = true;
         btn.textContent = 'Queued';
         try {
@@ -157,7 +154,7 @@
             const d = await res.json();
             if (!d.success) throw new Error(d.error || 'Failed');
             load(night);
-        } catch (e) { btn.disabled = false; btn.textContent = 'Retry'; alert(e.message); }
+        } catch (e) { btn.disabled = false; btn.textContent = label; alert(e.message); }
     }
 
     // ── Last night ───────────────────────────────────────────────────────────
@@ -237,7 +234,9 @@
             el('td', { class: 'dta-right dta-nowrap' },
                 s === 'failed' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Retry', onclick: e => retry(r, e.currentTarget) }) : null,
                 s === 'waiting' ? el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Measure now', onclick: e => measure(r, e.currentTarget) }) : null,
-                s !== 'failed' && s !== 'waiting' ? links(r) : null));
+                s === 'done' || s === 'lim' ? el('span', { class: 'dta-acts' }, links(r),
+                    el('button', { type: 'button', class: 'kw-btn kw-btn-sm', text: 'Rerun', title: 'Measure this night again (replaces its points)',
+                                   onclick: e => retry(r, e.currentTarget, 'Rerun') })) : null));
     }
 
     // ── Observation Targets: a survey cutout and a popout button per row; the row opens the target ──
