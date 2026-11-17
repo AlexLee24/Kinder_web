@@ -65,14 +65,36 @@
         .dt-page .pa-td-name .pa-td-priority { font-weight: 600; font-size: 0.95rem; }
         .dt-page .pa-td-pos > * + * { margin-top: 6px; }
         .dt-page .pa-td-pos .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.4; }
-        /* off rows: when it will be deleted, and Keep */
-        .dt-page .pa-autodel { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 0.74rem; color: #ffb38a; }
-        .dt-page .pa-autodel.is-kept { color: var(--kw-text-muted); }
-        .dt-page .pa-keep { height: 22px; padding: 0 9px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.04);
-                            color: var(--kw-text-secondary); font: inherit; font-size: 0.72rem; cursor: pointer; }
-        .dt-page .pa-keep:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-        .dt-page .pa-keep[aria-pressed="true"] { border-color: rgba(120, 220, 160, 0.45); color: #8fe3b0; background: rgba(120, 220, 160, 0.08); }
-        .dt-page .pa-keep:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+        /* Off rows: short. Name · priority · when it goes, coordinates on one line with a small tonight plot and the
+           last observation, the notes one line each; no exposure, no cutout. Keep switch beside On / Off. */
+        .dt-page .pa-target-table tr.pa-row-off td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
+        .dt-page tr.pa-row-off :is(.pa-td-exp, .pa-td-sky) > * { display: none; }
+        .dt-page tr.pa-row-off .pa-td-name-content { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+        .dt-page tr.pa-row-off .pa-name-line { width: 100%; }
+        .dt-page tr.pa-row-off .pa-td-name .pa-td-priority { font-size: 0.8rem; font-weight: 500; }
+        .dt-page tr.pa-row-off .pa-td-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+        .dt-page tr.pa-row-off .pa-td-pos > * { margin: 0; }
+        .dt-page tr.pa-row-off .pa-td-pos .pa-td-coord { width: 100%; white-space: nowrap; }
+        .dt-page tr.pa-row-off .pa-td-pos .pa-td-coord br { display: none; }
+        .dt-page tr.pa-row-off .pa-mini-plot { display: flex; align-items: center; gap: 8px; width: auto; }
+        .dt-page tr.pa-row-off .pa-mini-plot .pa-vis-cap { margin: 0; }
+        .dt-page tr.pa-row-off .pa-td-last-obs { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+        .dt-page tr.pa-row-off .pa-td-last-obs :is(.pa-lo-lab, small) { display: none; }
+        .dt-page tr.pa-row-off .pa-note-item { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+        .dt-page tr.pa-row-off .pa-note-item + .pa-note-item { margin-top: 2px; }
+        .dt-page tr.pa-row-off .pa-note-lab { display: inline; margin: 0; flex: none; }
+        .dt-page tr.pa-row-off .pa-note-text { -webkit-line-clamp: 1; }
+        .dt-page tr.pa-row-off .pa-td-note { white-space: normal; }
+        .pa-vis-svg.is-small { width: 96px; height: 26px; flex: none; }
+        .dt-page .pa-autodel { font-size: 0.74rem; color: #ffb38a; }
+        .dt-page .pa-autodel.is-kept { color: #8fe3b0; }
+        .dt-page .pa-keep-wrap { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.72rem; color: var(--kw-text-muted); }
+        .dt-page .pa-on-wrap { cursor: default; }
+        .dt-page tr.pa-row-off .pa-action-cell { flex-direction: column; align-items: flex-start; }
+        .dt-page .pa-keep-wrap:has(input:checked) { color: #8fe3b0; }
+        .dt-page .pa-keep-switch input:checked + .pa-action-slider { background: rgba(80, 200, 130, 0.85); }
+        .dt-page .pa-keep-switch input:focus-visible + .pa-action-slider { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
+        .dt-page tr.pa-row-off .pa-action-row-top { gap: 10px; }
         .dt-page .pa-lo-lab { display: block; font-size: 0.68rem; color: var(--kw-text-muted); margin-bottom: 1px; }
         .dt-page .pa-td-exp .pa-td-total-exp { font-size: 1rem; color: var(--kw-text-primary, #f5f5f7); margin-bottom: 8px; }
         .dt-page .pa-target-table th { vertical-align: bottom; white-space: normal; }

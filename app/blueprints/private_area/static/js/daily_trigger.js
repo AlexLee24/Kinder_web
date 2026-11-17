@@ -890,7 +890,8 @@ function fillAstroInfo(targetId, td, timesLocal) {
     }
 
     if (miniPlot && td.altitudes && td.altitudes.length) {
-        miniPlot.innerHTML = drawMiniVisibilitySVG(td.altitudes, timesLocal, td.transit_time_local);
+        // a switched-off row gets the short version (no axes, one line)
+        miniPlot.innerHTML = drawMiniVisibilitySVG(td.altitudes, timesLocal, !!miniPlot.closest('tr.pa-row-off'));
     }
 }
 
@@ -906,10 +907,10 @@ function moonSepColor(sep) {
 //   the time above 30° is filled; 30° and 60° are labelled; ticks every 3 h; "now" as a thin line;
 //   under it, in words, when the target is above 30° in the dark.
 let dtNightInfo = null;
-function drawMiniVisibilitySVG(altitudes, timesLocal) {
+function drawMiniVisibilitySVG(altitudes, timesLocal, small) {
     var N = altitudes ? altitudes.length : 0;
     if (!N || !timesLocal || timesLocal.length !== N) return '';
-    var W = 200, L = 24, R = 4, T = 6, PH = 56, AX = 15, H = T + PH + AX;
+    var W = small ? 96 : 200, L = small ? 0 : 24, R = small ? 0 : 4, T = small ? 2 : 6, PH = small ? 22 : 56, AX = small ? 2 : 15, H = T + PH + AX;
     var PW = W - L - R;
     var t0 = Date.parse(timesLocal[0]), t1 = Date.parse(timesLocal[N - 1]);
     if (!(t1 > t0)) return '';
@@ -932,10 +933,10 @@ function drawMiniVisibilitySVG(altitudes, timesLocal) {
         dark = [a0, a1];
     }
     // altitude grid
-    [30, 60].forEach(function (a) {
+    (small ? [30] : [30, 60]).forEach(function (a) {
         var y = yA(a);
         out.push('<line x1="' + L + '" y1="' + f(y) + '" x2="' + (L + PW) + '" y2="' + f(y) + '" stroke="' + (a === 30 ? 'rgba(255,140,120,0.55)' : 'rgba(255,255,255,0.10)') + '" stroke-width="0.8"' + (a === 30 ? ' stroke-dasharray="3 2"' : '') + '/>');
-        out.push('<text x="' + (L - 3) + '" y="' + f(y + 3.5) + '" text-anchor="end" font-size="10" fill="' + (a === 30 ? 'rgba(255,160,140,0.9)' : 'rgba(255,255,255,0.45)') + '">' + a + '°</text>');
+        if (!small) out.push('<text x="' + (L - 3) + '" y="' + f(y + 3.5) + '" text-anchor="end" font-size="10" fill="' + (a === 30 ? 'rgba(255,160,140,0.9)' : 'rgba(255,255,255,0.45)') + '">' + a + '°</text>');
     });
     out.push('<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="rgba(255,255,255,0.18)" stroke-width="0.8"/>');
 
@@ -961,7 +962,7 @@ function drawMiniVisibilitySVG(altitudes, timesLocal) {
     // time ticks every 3 hours (local), and now
     var d = new Date(t0); d.setMinutes(0, 0, 0);
     while (d.getTime() < t0 || d.getHours() % 3) d.setHours(d.getHours() + 1);
-    for (; d.getTime() <= t1; d.setHours(d.getHours() + 3)) {
+    for (; !small && d.getTime() <= t1; d.setHours(d.getHours() + 3)) {
         var xt = xT(d.getTime());
         if (xt < L + 6 || xt > L + PW - 6) continue;
         out.push('<line x1="' + f(xt) + '" y1="' + (T + PH) + '" x2="' + f(xt) + '" y2="' + (T + PH + 3) + '" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>');
@@ -981,6 +982,8 @@ function drawMiniVisibilitySVG(altitudes, timesLocal) {
         if (ok) { if (from === null) from = tj; to = tj; }
     }
     function hm(ms) { var q = new Date(ms); return String(q.getHours()).padStart(2, '0') + ':' + String(q.getMinutes()).padStart(2, '0'); }
+    if (small) return '<svg class="pa-vis-svg is-small" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" aria-label="Altitude tonight from Lulin">' + out.join('') + '</svg>' +
+        (from === null ? '<span class="pa-vis-cap is-no">not above 30°</span>' : '<span class="pa-vis-cap"><b>' + hm(from) + '–' + hm(to) + '</b></span>');
     var cap = from === null ? '<span class="pa-vis-cap is-no">Not above 30° in the dark</span>'
         : '<span class="pa-vis-cap"><b>' + hm(from) + '–' + hm(to) + '</b> above 30° · ' + (Math.round((to - from) / 360000) / 10) + ' h</span>';
 
@@ -1187,6 +1190,9 @@ function renderTable(telescope, targets) {
         if (isOff) tr.className = 'pa-row-off';
 
         const targetNameHtml = renderObjectNameLink(t.name, t.name);
+        const trashBtn = '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-icon-remove" title="Remove target">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
+            '</button>';
         const coordDisplay = formatTargetCoordValue(t.ra, t.dec);
 
         // three lines per target:  name · coordinates · total time · note · switch
@@ -1218,10 +1224,8 @@ function renderTable(telescope, targets) {
             '<td class="pa-td-actions">' +
                 '<div class="pa-action-cell">' +
                     '<div class="pa-action-row-top">' +
-                        activeToggle +
-                        '<button onclick="deleteTarget(' + t.id + ')" class="pa-btn-icon-remove" title="Remove target">' +
-                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>' +
-                        '</button>' +
+                        // off: the two switches, labelled (On · Keep); the trash goes down with the other icons
+                        (isOff ? '<span class="pa-keep-wrap pa-on-wrap">' + activeToggle + '<span class="pa-keep-lab">On</span></span>' + keepToggleHtml(t) : activeToggle + trashBtn) +
                     '</div>' +
                     '<div class="pa-action-row-btns">' +
                         '<button onclick="editTarget(' + t.id + ')" class="pa-btn-action" title="Edit target">' +
@@ -1239,6 +1243,7 @@ function renderTable(telescope, targets) {
                             '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>' +
                             ' Trigger' +
                         '</button>' +
+                        (isOff ? trashBtn : '') +
                     '</div>' +
                 '</div>' +
             '</td>';
@@ -1371,17 +1376,18 @@ async function deleteTarget(id) {
     }
 }
 
-// A switched-off target is deleted 3 days after it was switched off, unless kept
+// A switched-off target is deleted 3 days after it was switched off, unless kept (the Keep switch beside On / Off)
 function autoDeleteHtml(t) {
-    if (t.keep) {
-        return '<div class="pa-autodel is-kept"><button type="button" class="pa-keep" aria-pressed="true" onclick="toggleTargetKeep(' + t.id + ', false)" ' +
-               'title="Kept: never deleted automatically. Click to let it be deleted 3 days after it was switched off">Kept</button></div>';
-    }
+    if (t.keep) return '<div class="pa-autodel is-kept">Kept</div>';
     if (!t.delete_at) return '';
     var ms = Date.parse(t.delete_at) - Date.now(), h = Math.max(0, Math.round(ms / 3600000));
     var when = h >= 24 ? Math.floor(h / 24) + ' d ' + (h % 24) + ' h' : (h > 0 ? h + ' h' : 'within the hour');
-    return '<div class="pa-autodel"><span>Deleted in ' + when + '</span>' +
-           '<button type="button" class="pa-keep" aria-pressed="false" onclick="toggleTargetKeep(' + t.id + ', true)" title="Keep this target: never delete it automatically">Keep</button></div>';
+    return '<div class="pa-autodel">Deleted in ' + when + '</div>';
+}
+function keepToggleHtml(t) {
+    return '<label class="pa-keep-wrap" title="Keep: never delete this target automatically (otherwise it goes 3 days after it was switched off)">' +
+           '<span class="pa-action-switch pa-keep-switch"><input type="checkbox" onchange="toggleTargetKeep(' + t.id + ', this.checked)"' + (t.keep ? ' checked' : '') + '>' +
+           '<span class="pa-action-slider"></span></span><span class="pa-keep-lab">Keep</span></label>';
 }
 
 async function toggleTargetKeep(id, keep) {
