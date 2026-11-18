@@ -267,16 +267,18 @@
             if (!fams.has(f)) fams.set(f, []);
             fams.get(f).push(s);
         }
-        // one option per family without a rule ('LOT (LOT_(w/o_TS), LOT(AUTO))'); when the family already has its rule,
-        // the members it does not cover (TNS reports) are offered by their own names
+        // one option per family without a rule, listing only the members that rule would cover ('LOT (LOT_(w/o_TS),
+        // LOT(AUTO))'); members it would not cover (TNS reports) are offered by their own names, and a family name that
+        // is no source of its own and would cover nothing ('GaiaAlerts' when only 'GaiaAlerts (TNS)' exists) is not offered
         const have = new Set(sources.map((p) => p.source_name));
         const opts = [];
         for (const [f, members] of fams) {
             const open = members.filter((m) => !ruleFor(m));
             if (!open.length) continue;
             if (have.has(f)) { open.forEach((m) => opts.push([m, m])); continue; }
-            const others = members.filter((m) => m !== f);
-            opts.push([f, others.length ? `${f} (${others.join(', ')})` : f]);
+            const grouped = open.filter((m) => m !== f && covers(f, m));
+            if (open.includes(f) || grouped.length) opts.push([f, grouped.length ? `${f} (${grouped.join(', ')})` : f]);
+            open.filter((m) => m !== f && !covers(f, m)).forEach((m) => opts.push([m, m]));
         }
         $('apmSourceAdd').innerHTML = '<option value="">Add a source…</option>' +
             opts.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join('');
