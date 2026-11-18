@@ -456,3 +456,28 @@ def test_a_redrawn_status_line_is_not_a_question():
     assert _looks_like_prompt('Telescope name not found, enter it: ') is True
     assert _looks_like_prompt('Choose one\n> \n') is True
     assert _looks_like_prompt('[1/5] [OK] a.fits\n') is False
+
+
+def test_a_second_try_with_the_same_survey_counts(tmp_path, fake, monkeypatch):
+    """u has only SkyMapper here: the alt run is a second try that aligned where the first did not."""
+    _frame(tmp_path, 'AT2026aifu', '2026-11-16', tel='SLT', band='up')
+    monkeypatch.setattr(svc, 'position', lambda t, f: (None, 90.08, -16.16))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'auto')
+    monkeypatch.setattr(svc, 'ensure_workspace',
+                        lambda *a, stack=True, template=None, force=None, **k:
+                        'AUTO_X_altTS' if force else 'AUTO_X' if template else 'AUTO_X_noTS')
+    monkeypatch.setattr(svc, 'workspace_name', lambda n, t, tel, suffix='': 'AUTO_X' + suffix)
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
+    monkeypatch.setattr(svc, '_still_running', lambda tid: False)
+    monkeypatch.setattr(svc, 'template_choices', lambda tid: {'u': 'skymapper'})
+    pts = {'AUTO_X': [{**_pt('stack_u', 'u'), 'snr': 2.4, 'ts': False, 'ts_note': 'AutoPhOT could not align'}],
+           'AUTO_X_altTS': [{**_pt('stack_u', 'u'), 'snr': 12.5}],
+           'AUTO_X_noTS': [{**_pt('stack_u', 'u'), 'snr': 6.5, 'ts': False}]}
+    monkeypatch.setattr(svc, '_points', lambda tid: pts[tid])
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'AT2026aifu', 'SLT')]
+    assert r['phot'][0]['ts'] is True and r['phot'][0]['snr'] == 12.5 and r['phot'][0]['template'] == 'skymapper'
