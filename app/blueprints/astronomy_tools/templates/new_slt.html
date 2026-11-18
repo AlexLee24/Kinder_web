@@ -1,0 +1,128 @@
+{% extends '_base.html' %}
+{#- New SLT (/new_slt, new_slt.py): unlisted, password only. FOV simulator + compare/budget table + the equipment
+    sheet (cameras, telescopes, mounts), all from app/data/new_slt/ on the server, outside git. js/new_slt.js. -#}
+{% block title %}New SLT - Kinder{% endblock %}
+{% block head %}
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="{{ url_for('astronomy_tools.static', filename='css/new_slt.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="kw-page ns-page">
+{% if locked %}
+    <form class="kw-panel ns-lock" method="post" action="{{ url_for('astronomy_tools.new_slt') }}" autocomplete="off">
+        <div class="kw-eyebrow">New SLT</div>
+        <h1>Planning the next SLT</h1>
+        <p class="kw-muted">This page needs a password.</p>
+        <label class="ns-lock-field">Password
+            <input type="password" name="password" required autofocus autocomplete="current-password">
+        </label>
+        {% if error %}<p class="ns-error" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit" class="kw-btn kw-btn-primary">Open</button>
+    </form>
+{% else %}
+    <header class="kw-page-head">
+        <div>
+            <span class="kw-eyebrow">New SLT · planning</span>
+            <h1>New SLT</h1>
+            <p>Compare telescope and camera setups on the sky, price them, and keep the equipment sheet up to date.</p>
+        </div>
+        <div class="kw-page-actions">
+            <span class="ns-sync" id="nsSync" data-state="idle">Loading…</span>
+            <form method="post" action="{{ url_for('astronomy_tools.new_slt_lock') }}">
+                <button type="submit" class="kw-btn kw-btn-ghost kw-btn-sm">Lock</button>
+            </form>
+        </div>
+    </header>
+
+    {# ── 1. FOV simulator ─────────────────────────────────────────────────────────────────────────────────────── #}
+    <div class="kw-tool ns-sim">
+        <aside class="kw-tool-side">
+            <section class="kw-panel ns-side">
+                <div class="kw-panel-head">
+                    <h2>Setups</h2>
+                    <div class="ns-head-btns">
+                        <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsShowAll" title="Show every setup">All</button>
+                        <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsShowNone" title="Hide every setup">None</button>
+                        <button type="button" class="kw-btn kw-btn-sm" id="nsAddCfg">+ Setup</button>
+                    </div>
+                </div>
+                <p class="ns-hint">Tick to draw on the sky (several at once to compare). Click a name to edit it.</p>
+                <ul class="ns-cfgs" id="nsCfgs"></ul>
+                <div class="ns-cfg-editor" id="nsCfgEditor" hidden></div>
+            </section>
+
+            <section class="kw-panel ns-side">
+                <div class="kw-panel-head"><h2>Sky</h2></div>
+                <div class="ns-target">
+                    <input type="text" id="nsTarget" class="ns-input" placeholder="M31, NGC 2264, or 10.68 41.27" spellcheck="false" autocomplete="off">
+                    <button type="button" class="kw-btn kw-btn-sm" id="nsGo">Go</button>
+                </div>
+                <label class="ns-row-field">Survey
+                    <select id="nsSurvey" class="ns-input">
+                        <option value="CDS/P/DSS2/color">DSS2 colour</option>
+                        <option value="CDS/P/PanSTARRS/DR1/color-z-zg-g">Pan-STARRS DR1</option>
+                        <option value="CDS/P/DESI-Legacy-Surveys/DR10/color">DESI Legacy DR10</option>
+                        <option value="CDS/P/SDSS9/color">SDSS9</option>
+                        <option value="CDS/P/2MASS/color">2MASS</option>
+                        <option value="CDS/P/Mellinger/color">Mellinger</option>
+                    </select>
+                </label>
+                <div class="ns-checks">
+                    <label><input type="checkbox" id="nsCircle" checked> Telescope image circle</label>
+                    <label><input type="checkbox" id="nsLabels" checked> Legend on the map</label>
+                </div>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsFit">Zoom to fit</button>
+            </section>
+        </aside>
+
+        <section class="kw-panel ns-map-panel" aria-label="Sky view">
+            <div class="ns-map" id="nsMapWrap">
+                <div class="ns-map-loading" id="nsMapLoading">Loading sky view…</div>
+                <div id="ns-aladin"></div>
+                <div class="ns-legend" id="nsLegend"></div>
+            </div>
+        </section>
+    </div>
+
+    {# ── 2. Compare + budget ──────────────────────────────────────────────────────────────────────────────────── #}
+    <section class="kw-panel">
+        <div class="kw-panel-head">
+            <h2>Compare</h2>
+            <span class="kw-muted">numbers read from the sheet below; prices use the 廠商報價 column when it has a number, else 價格</span>
+        </div>
+        <div class="ns-scroll"><table class="kw-table ns-compare" id="nsCompare"></table></div>
+        <div class="ns-fx" id="nsFx"></div>
+    </section>
+
+    {# ── 3. Equipment sheet ───────────────────────────────────────────────────────────────────────────────────── #}
+    <section class="kw-panel ns-sheet-panel">
+        <div class="ns-sheet-bar">
+            <div class="ns-tabs" id="nsTabs" role="tablist"></div>
+            <div class="ns-sheet-tools">
+                <input type="search" id="nsFilter" class="ns-input ns-filter" placeholder="Filter rows" autocomplete="off">
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsUndo" title="Undo (⌘Z)">Undo</button>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsRedo" title="Redo (⇧⌘Z)">Redo</button>
+                <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="nsCsv">CSV</button>
+            </div>
+        </div>
+        <div class="ns-grid-wrap" id="nsGridWrap"><table class="ns-grid" id="nsGrid"></table></div>
+        <div class="ns-sheet-foot">
+            <button type="button" class="kw-btn kw-btn-sm" id="nsAddRow">+ Row</button>
+            <span class="ns-hint">Double-click or type to edit · Enter / Tab to move · ⌘C / ⌘V work with Google Sheets and Excel · column ▾ for sort, insert, rename, delete · row number for row actions · drag a header edge to resize</span>
+        </div>
+    </section>
+{% endif %}
+</div>
+{% endblock %}
+
+{% block after_main %}{% if not locked %}<div class="ns-menu" id="nsMenu" hidden></div><div class="ns-toast" id="nsToast" hidden></div>{% endif %}{% endblock %}
+
+{% block scripts %}
+{% if not locked %}
+<script>window.NEW_SLT = {sheet: {{ url_for('astronomy_tools.new_slt_sheet')|tojson }}, ops: {{ url_for('astronomy_tools.new_slt_ops')|tojson }}};</script>
+<script src="{{ url_for('static', filename='vendor/aladin-3.8.2.global.js') }}" integrity="sha384-lbVORN/EQ6vNTLO94bhRj+19F/xii0a4w11QiGrGeU3av2cPRLGoNy4mYXb8fi+M"></script>
+<script src="{{ url_for('static', filename='js/hips_fallback.js') }}"></script>
+<script src="{{ url_for('astronomy_tools.static', filename='js/new_slt.js') }}"></script>
+{% endif %}
+{% endblock %}

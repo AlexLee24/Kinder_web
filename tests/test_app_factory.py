@@ -57,7 +57,8 @@ def test_route_count_is_stable(app):
     # 433 with Admin › Site (/admin/site, /admin/site/aladin) and /api/aladin/config.
     # 434 with Stop for one auto photometry row (/api/daily_trigger/auto_phot/<id>/stop).
     # 436 with the unlisted CASTOR check (/castor/snr_check and its /lock).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 436
+    # 440 with the unlisted New SLT page (/new_slt, its /lock, /new_slt/sheet and /new_slt/sheet/ops).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 440
 
 
 def test_duplicate_rules_keep_precedence(app):
