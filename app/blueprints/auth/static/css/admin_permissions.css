@@ -61,3 +61,8 @@
     .apm-levels .kw-seg-item { flex: 1 1 45%; }
     .apm-page .kw-input.kw-input-sm { width: 140px; }
 }
+
+/* Source visibility: the built-in system defaults under the rules (read-only) */
+.apm-sources tr.apm-builtin td { background: rgba(255, 255, 255, 0.02); }
+.apm-builtin-name { font-size: 0.84rem; color: var(--text); font-style: italic; }
+.apm-builtin-vis { font-size: 0.84rem; padding-left: 2px; }

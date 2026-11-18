@@ -293,7 +293,28 @@
                 <td><div class="perm-groups">${v === 'groups' ? groups + (opts ? `<select class="kw-select kw-select-sm" data-add-src-group aria-label="Add a group"><option value="">+ group</option>${opts}</select>` : '') : '<span class="cell-muted">—</span>'}</div></td>
                 <td class="td-right"><button type="button" class="kw-icon-btn is-danger" data-rm-src title="Remove rule" aria-label="Remove rule">&times;</button></td>
             </tr>`;
-        }).join('');
+        }).join('') + builtinRows();
+    }
+    // The system defaults for sources no rule decides (app/db/auth.py _system_default_for_source), shown under the rules:
+    // names with TNS or alerce are public, every other source is for signed-in users. Read-only; a rule changes one.
+    function builtinRows() {
+        const free = allSources.filter((s) => !ruleFor(s));
+        const rows = [
+            ['Name contains TNS', 'public', free.filter((s) => /tns/i.test(s))],
+            ['Name contains alerce', 'public', free.filter((s) => !/tns/i.test(s) && /alerce/i.test(s))],
+            ['Any other source', 'logged_in', free.filter((s) => !/tns|alerce/i.test(s))],
+        ];
+        const list = (xs) => {
+            if (!xs.length) return '<div class="source-covers">no source at the moment</div>';
+            const shown = xs.slice(0, 8).map(esc).join(', ');
+            return `<div class="source-covers">${xs.length} source${xs.length === 1 ? '' : 's'}: ${shown}${xs.length > 8 ? `, +${xs.length - 8} more` : ''}</div>`;
+        };
+        return rows.map(([label, v, xs]) => `<tr class="apm-builtin">
+                <td><span class="apm-builtin-name">${label}</span>${list(xs)}</td>
+                <td><span class="apm-builtin-vis perm-vis-${v}">${VIS.find(([k]) => k === v)[1]}</span></td>
+                <td><span class="cell-muted">—</span></td>
+                <td class="td-right"><span class="kw-chip" title="System default: add a rule for a source to change it">Built-in</span></td>
+            </tr>`).join('');
     }
     function coveredEl(rule) {
         const also = allSources.filter((s) => s !== rule && ruleFor(s) === rule);
@@ -307,7 +328,7 @@
     });
     $('apmSourcesBody').addEventListener('change', (ev) => {
         const tr = ev.target.closest('tr');
-        if (!tr) return;
+        if (!tr || tr.dataset.i == null) return;          // built-in rows have no controls
         const p = sources[+tr.dataset.i];
         if (ev.target.matches('[data-vis]')) {
             const v = ev.target.value;
@@ -325,7 +346,7 @@
     });
     $('apmSourcesBody').addEventListener('click', (ev) => {
         const tr = ev.target.closest('tr');
-        if (!tr) return;
+        if (!tr || tr.dataset.i == null) return;
         const p = sources[+tr.dataset.i];
         const rg = ev.target.closest('[data-rm-src-group]');
         if (rg) {
