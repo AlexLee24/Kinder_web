@@ -172,6 +172,7 @@
 .pperm-add .kw-select { flex: 1; min-width: 0; }
 .kw-table-inset { border-radius: var(--kw-radius-lg); border: 1px solid var(--border); overflow-x: auto; }
 .source-name { font-family: var(--kw-font-mono); font-size: 0.84rem; color: var(--gold); }
+.source-covers { margin-top: 3px; font-family: var(--kw-font-mono); font-size: 0.74rem; color: var(--muted); }
 .perm-groups { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .perm-vis-public    { color: #55d473; }
 .perm-vis-logged_in { color: var(--kw-color-info); }

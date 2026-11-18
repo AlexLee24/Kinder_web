@@ -1219,6 +1219,30 @@ def set_default_source_permissions_batch(permissions: list[dict]) -> bool:
         return False
 
 
+def rule_covers(rule: str, source: str) -> bool:
+    """A default source rule covers every source whose name holds it as a whole word: 'LOT' covers 'LOT',
+    'LOT_(w/o_TS)', 'LOT(AUTO)' and 'LOT(AUTO, w/o TS)' (one permission for every way a telescope's points are
+    labelled), not 'SLOT'. A source reported to TNS ('ATLAS(TNS)') is public data: only a rule named exactly like
+    it decides it, so the private 'ATLAS' rule does not hide it. The same test runs in admin_permissions.js and
+    object_detail.js."""
+    if not rule or not source:
+        return False
+    if rule == source:
+        return True
+    if 'tns' in source.lower():
+        return False
+    return re.search(rf'(?<![A-Za-z0-9]){re.escape(rule)}(?![A-Za-z0-9])', source) is not None
+
+
+def matching_rule(source: str, rules) -> str | None:
+    """The default rule that decides `source`: one named exactly like it, else the longest that covers it."""
+    rules = list(rules)
+    if source in rules:
+        return source
+    hits = [r for r in rules if rule_covers(r, source)]
+    return max(hits, key=len) if hits else None
+
+
 def _system_default_for_source(source_name: str) -> str:
     """System-wide fallback permission when no default_permissions row exists.
     Sources whose name contains 'TNS' (case-insensitive) are public;
@@ -1266,14 +1290,15 @@ def filter_by_source_permissions(object_name: str, data_type: str,
             )
             overrides = {r['source_name']: r for r in cur.fetchall()}
 
-            # System-wide defaults (groups stored as INT[] of group IDs)
-            cur.execute(
-                "SELECT source, permissions_set, groups "
-                "FROM transient.default_permissions "
-                "WHERE source = ANY(%s)",
-                (source_names,)
-            )
-            defaults = {r['source']: r for r in cur.fetchall()}
+            # System-wide defaults (groups stored as INT[] of group IDs). A rule covers its whole name family
+            # (rule_covers), so every rule is read; the table holds one row per rule, a handful.
+            cur.execute("SELECT source, permissions_set, groups FROM transient.default_permissions")
+            rules = {r['source']: r for r in cur.fetchall()}
+            defaults = {}
+            for src in set(source_names):
+                rule = matching_rule(src, rules)
+                if rule is not None:
+                    defaults[src] = rules[rule]
 
             # Build id->name map for defaults comparison
             cur.execute("SELECT name, group_id FROM auth.groups")

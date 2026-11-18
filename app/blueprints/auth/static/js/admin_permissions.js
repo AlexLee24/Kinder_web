@@ -248,22 +248,48 @@
             $('apmSourcesStatus').textContent = 'Could not load: ' + e.message;
         }
     }
+    // A rule covers every source whose name holds it as a whole word ('LOT' → LOT_(w/o_TS), LOT(AUTO), …);
+    // the one named exactly like a source, else the longest, decides it. Same test as app/db/auth.py rule_covers.
+    const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const covers = (rule, src) => !!rule && !!src &&
+        (rule === src || (!/tns/i.test(src) && new RegExp(`(?<![A-Za-z0-9])${reEsc(rule)}(?![A-Za-z0-9])`).test(src)));   // TNS reports: exact rules only
+    const ruleFor = (src) => {
+        const names = sources.map((p) => p.source_name);
+        if (names.includes(src)) return src;
+        return names.filter((r) => covers(r, src)).sort((a, b) => b.length - a.length)[0] || null;
+    };
+    // the family a source name belongs to: what comes before its first bracket ('LOT_(w/o_TS)' → 'LOT')
+    const familyOf = (src) => src.replace(/[\s_]*\(.*$/, '').trim() || src;
     function renderSources() {
-        const have = new Set(sources.map((p) => p.source_name));
-        $('apmSourceAdd').innerHTML = '<option value="">Add a source…</option>' +
-            allSources.filter((s) => !have.has(s)).map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+        const fams = new Map();
+        for (const s of allSources) {
+            const f = familyOf(s);
+            if (!fams.has(f)) fams.set(f, []);
+            fams.get(f).push(s);
+        }
+        // a family whose every source already has a rule is left out
+        const open = [...fams].filter(([, members]) => members.some((m) => !ruleFor(m)));
+        $('apmSourceAdd').innerHTML = '<option value="">Add a source…</option>' + open.map(([f, members]) => {
+            const others = members.filter((m) => m !== f);
+            const label = others.length ? `${f} (${others.join(', ')})` : f;
+            return `<option value="${esc(f)}">${esc(label)}</option>`;
+        }).join('');
         $('apmSourcesEmpty').hidden = sources.length > 0;
         $('apmSourcesBody').innerHTML = sources.map((p, i) => {
             const v = visOf(p);
             const groups = (p.allowed_groups || []).map((g) => chip(g, `data-rm-src-group="${esc(g)}"`)).join('');
             const opts = GROUPS.filter((g) => !(p.allowed_groups || []).includes(g)).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
             return `<tr data-i="${i}">
-                <td><span class="source-name">${esc(p.source_name)}</span></td>
+                <td><span class="source-name">${esc(p.source_name)}</span>${coveredEl(p.source_name)}</td>
                 <td><select class="kw-select kw-select-sm perm-vis perm-vis-${v}" data-vis aria-label="Visibility">${VIS.map(([k, l]) => `<option value="${k}"${k === v ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
                 <td><div class="perm-groups">${v === 'groups' ? groups + (opts ? `<select class="kw-select kw-select-sm" data-add-src-group aria-label="Add a group"><option value="">+ group</option>${opts}</select>` : '') : '<span class="cell-muted">—</span>'}</div></td>
                 <td class="td-right"><button type="button" class="kw-icon-btn is-danger" data-rm-src title="Remove rule" aria-label="Remove rule">&times;</button></td>
             </tr>`;
         }).join('');
+    }
+    function coveredEl(rule) {
+        const also = allSources.filter((s) => s !== rule && ruleFor(s) === rule);
+        return also.length ? `<div class="source-covers">also ${also.map(esc).join(', ')}</div>` : '';
     }
     $('apmSourceAdd').addEventListener('change', (ev) => {
         if (!ev.target.value) return;

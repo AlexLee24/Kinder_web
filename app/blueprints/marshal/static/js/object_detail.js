@@ -5579,6 +5579,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// The default rule that decides a source: one named exactly like it, else the longest whose name it holds as a
+// whole word ('LOT' covers LOT_(w/o_TS), LOT(AUTO), …). Same test as app/db/auth.py rule_covers / matching_rule.
+function _permDefaultRule(src) {
+    if (_permDefaults[src]) return src;
+    if (/tns/i.test(src)) return null;                 // TNS reports: exact rules only (public data)
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return Object.keys(_permDefaults)
+        .filter((r) => new RegExp(`(?<![A-Za-z0-9])${esc(r)}(?![A-Za-z0-9])`).test(src))
+        .sort((a, b) => b.length - a.length)[0] || null;
+}
+
 async function loadPermissionsPanel() {
     try {
         const [srcRes, permRes, grpRes] = await Promise.all([
@@ -5612,7 +5623,7 @@ async function loadPermissionsPanel() {
         for (const type of ['phot', 'spec']) {
             for (const src of _permSources[type]) {
                 if (_permData[type][src]) continue; // already has per-object override
-                const d = _permDefaults[src];
+                const d = _permDefaults[_permDefaultRule(src)];
                 if (d) {
                     const isPublic = d.permission === 'public';
                     // 'groups' permission: allowed_groups is already a list of group names
