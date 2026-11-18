@@ -202,3 +202,13 @@ def test_the_grid_header_has_a_cd_matrix(kt):
     back = WCS(h)
     assert back.wcs.has_cd()
     assert back.all_world2pix(RA, DEC, 0) == pytest.approx(w.all_world2pix(RA, DEC, 0))
+
+
+def test_sdss_cache_without_u_is_removed(kt, tmp_path):
+    d = tmp_path / 'catalog_queries' / 'sdss' / 'transient'
+    d.mkdir(parents=True)
+    (d / 'qso.csv').write_text('DR16Q,SDSS,RAJ2000,DEJ2000,Plate,MJD\n1,2,3,4,5,6\n')     # VII/289/dr16q, no u
+    (d / 'stars.csv').write_text('objID,RA_ICRS,DE_ICRS,umag,e_umag,gmag\n1,2,3,4,5,6\n')
+    assert kt.purge_stale_sdss(tmp_path) == ['qso.csv']
+    assert sorted(os.listdir(d)) == ['stars.csv']
+    assert kt.purge_stale_sdss(tmp_path / 'nowhere') == []

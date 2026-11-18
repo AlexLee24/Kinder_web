@@ -419,7 +419,8 @@ def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import autophot_templates as kt
     for step in (lambda: kt.ensure_telescope_bands(os.path.join(cfg_in['wdir'], 'telescope.yml')),  # LEGACY 沒有 z…
-                 lambda: kt.purge_stale_gaia(cfg_in['wdir'])):          # Gaia XP 失敗時存下的、沒有 u 的星表快取
+                 lambda: kt.purge_stale_gaia(cfg_in['wdir']),
+                 lambda: kt.purge_stale_sdss(cfg_in['wdir'])):          # Gaia XP 失敗時存下的、沒有 u 的星表快取
         try:
             step()
         except Exception as e:                    # 準備工作失敗不擋執行，AutoPhOT 照原本的做

@@ -1850,6 +1850,18 @@ def _select_sdss_vizier_table(
     best_key = None
     best_df = pd.DataFrame()
     best_name = "?"
+    # Kinder patch (2026-11-18): the 'sdss' alias also returns the DR16 quasar catalogues (VII/289/dr16q,
+    # VII/289/superset). A handful of quasars spread over the field won on coverage decile (AT 2026ajby:
+    # superset, 27 rows, decile 9, over DR16's 1083 stars at decile 8) and the u image had no calibrators.
+    # Only the photometric releases are considered when any came back.
+    _photometric = [
+        t for t in catalog_search
+        if _SDSS_RELEASE_RANK.get(
+            "/".join(str(getattr(t, "meta", {}).get("name", "")).split("/")[:2]).lower(), 0
+        ) > 0
+    ]
+    if _photometric:
+        catalog_search = _photometric
     for table in catalog_search:
         name = str(getattr(table, "meta", {}).get("name", "?"))
         try:

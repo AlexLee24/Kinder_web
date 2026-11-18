@@ -393,6 +393,28 @@ def ensure_telescope_bands(yml_path):
     return changed
 
 
+def purge_stale_sdss(wdir):
+    """SDSS catalogues AutoPhOT cached without u photometry: the DR16 quasar table it picked before the Kinder patch
+    to catalog._select_sdss_vizier_table (AT 2026ajby 2026-11-17). Removed so the next run queries again."""
+    import csv
+    root = Path(wdir) / 'catalog_queries' / 'sdss'
+    gone = []
+    if not root.is_dir():
+        return gone
+    for f in root.rglob('*.csv'):
+        try:
+            with open(f, newline='') as fh:
+                head = next(csv.reader(fh), [])
+        except (OSError, StopIteration):
+            continue
+        if head and 'umag' not in head and 'u' not in head:
+            f.unlink()
+            gone.append(f.name)
+    if gone:
+        log(f'removed {len(gone)} cached SDSS catalogue(s) without u photometry')
+    return gone
+
+
 def purge_stale_gaia(wdir, column='SdssStd_mag_u'):
     """AutoPhOT 存下來、卻沒有 Gaia XP 合成測光（column）的 Gaia 星表快取：刪掉，下次重查。回傳刪掉的檔名。"""
     root = Path(wdir) / 'catalog_queries' / 'gaia'
