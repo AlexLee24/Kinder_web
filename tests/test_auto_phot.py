@@ -428,3 +428,31 @@ def test_auto_templates_are_tried_with_the_other_survey(tmp_path, fake, monkeypa
     r = fake.rows[(NIGHT, 'SN2026gzf', 'LOT')]
     assert runs == [('auto', None), ('auto', {'r': 'panstarrs'})]          # no no-TS run: both subtractions passed
     assert r['status'] == 'done' and r['phot'][0]['snr'] == 12.3 and r['phot'][0]['template'] == 'panstarrs'
+
+
+def test_why_a_band_was_not_subtracted(tmp_path, monkeypatch):
+    import json
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'tdir', lambda tid, must=True: tmp_path / tid)
+    ws = tmp_path / 'ws'
+    for band, survey, side in (('u', 'skymapper', 1.3), ('r', 'panstarrs', 8.2)):
+        d = ws / 'images' / 'templates' / f'{band}_template'
+        d.mkdir(parents=True)
+        (d / svc.TEMPLATE_MARKER).write_text(json.dumps({'survey': survey, 'side': side}))
+    (ws / 'web_run.log').write_text('[web] template subtraction: measuring a 1.16′ box around the target, ...\n')
+    assert svc.no_ts_reason('ws', 'u') == 'the SkyMapper template has only 1.3′ of data around the target'
+    assert svc.no_ts_reason('ws', 'r') == 'too few stars in the 1.16′ box around the target to align the Pan-STARRS template'
+    assert svc.no_ts_reason('ws', 'z') == 'no survey template in this band'
+    (ws / 'web_run.log').write_text('[web] template subtraction: measuring a 7.2′ box around the target\n')
+    assert svc.no_ts_reason('ws', 'r') == 'AutoPhOT could not align the Pan-STARRS template'
+    assert svc.no_ts_reason('noTS', 'r') is None                 # a run without templates says nothing
+
+
+def test_a_redrawn_status_line_is_not_a_question():
+    """AT2026aifu 2026-11-17: GaiaXPy's lines end in a carriage return; Kinder answered them and stopped the run."""
+    from app.services.pipeline.autophot import _looks_like_prompt
+    assert _looks_like_prompt('Saving file...Done! Output saved to path: ./output_synthetic_photometry.csv\r') is False
+    assert _looks_like_prompt('Running query...\r') is False
+    assert _looks_like_prompt('Telescope name not found, enter it: ') is True
+    assert _looks_like_prompt('Choose one\n> \n') is True
+    assert _looks_like_prompt('[1/5] [OK] a.fits\n') is False

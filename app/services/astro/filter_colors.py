@@ -1,19 +1,18 @@
 """
 Filter color utilities.
-Single source of truth: app/data/filter_colors.json (hex, no alpha).
+Single source of truth: app/resources/filter_colors.json (hex, no alpha), tracked in git so a deploy updates every
+page. There is no per-server copy: an old app/data/filter_colors.json (the dark 2026-04 colours) is not read.
 """
 import json
 import os
 
-from app.paths import DATA_DIR, RESOURCES_DIR
+from app.paths import RESOURCES_DIR
 
-_DATA_FILE = os.path.join(DATA_DIR, 'filter_colors.json')            # editable copy (git-ignored)
-_FALLBACK_FILE = os.path.join(RESOURCES_DIR, 'filter_colors.json')   # tracked copy for fresh checkouts
+COLORS_FILE = os.path.join(RESOURCES_DIR, 'filter_colors.json')
 _DEFAULT_HEX = '#808080'
 
 def _load():
-    path = _DATA_FILE if os.path.exists(_DATA_FILE) else _FALLBACK_FILE
-    with open(path, 'r') as f:
+    with open(COLORS_FILE, 'r') as f:
         data = json.load(f)
     # Remove comment key if present
     return {k: v for k, v in data.items() if not k.startswith('_')}

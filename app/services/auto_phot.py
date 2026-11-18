@@ -82,6 +82,42 @@ def ts_check(row):
     return True, ''
 
 
+TS_MIN_BOX = 3.0                # arcmin: a smaller box around the target holds too few stars to align a template
+TEMPLATE_LABEL = {'panstarrs': 'Pan-STARRS', 'legacy': 'Legacy Survey', 'sdss': 'SDSS', 'skymapper': 'SkyMapper'}
+BOX_RE = re.compile(r'measuring a ([0-9.]+)′ box around the target')
+
+
+def no_ts_reason(tid, band):
+    """Why AutoPhOT did not subtract this band in a workspace, from what the runner left there (the band's template
+    marker, the box it measured); None when the workspace says nothing."""
+    import json
+    from app.services.pipeline import autophot as ap
+    try:
+        d = ap.tdir(tid, must=False)
+        if not (d / 'images' / 'templates').is_dir():      # not a template-subtracted run
+            return None
+        try:
+            mk = json.loads((d / 'images' / 'templates' / f'{band}_template' / TEMPLATE_MARKER).read_text())
+        except (OSError, ValueError):
+            mk = None
+        try:
+            m = BOX_RE.findall((d / 'web_run.log').read_text(errors='replace'))
+            box = float(m[-1]) if m else None
+        except OSError:
+            box = None
+    except Exception:
+        return None
+    if not mk:
+        return 'no survey template in this band'
+    label = TEMPLATE_LABEL.get(mk.get('survey'), mk.get('survey') or 'survey')
+    side = mk.get('side')
+    if side is not None and side < TS_MIN_BOX:
+        return f'the {label} template has only {side:.1f}′ of data around the target'
+    if box is not None and box < TS_MIN_BOX:
+        return f'too few stars in the {box:g}′ box around the target to align the {label} template'
+    return f'AutoPhOT could not align the {label} template'
+
+
 def skipped_name(target):
     return str(target).strip().upper().startswith('EP')
 
@@ -457,6 +493,8 @@ def _points(tid):
     for r in ph.get('rows') or []:
         lim = r['limits'][li3] if r['limits'] else None
         ok, why = ts_check(r)
+        if not ok and why == 'not subtracted':
+            why = no_ts_reason(tid, r['filter']) or why
         out.append({'filter': r['filter'], 'mjd': r['mjd'], 'mag': r['psf'] if r['det'] else None,
                     'err': r['psf_err'] if r['det'] else None, 'lim': lim, 'snr': r['snr'], 'det': bool(r['det']),
                     'veto': r.get('veto') or '', 'image': r['name'], 'ts': ok, 'ts_note': why})
@@ -810,6 +848,8 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
                 if phot:
                     phot = merge_fallback(phot, phot2)
                 else:
+                    for p in phot2:
+                        p['ts_note'] = no_ts_reason(tid, p.get('filter')) or 'the template-subtracted run measured nothing'
                     tid, job, phot = tid2, job2, phot2
             if phot or job.get('reason'):
                 break

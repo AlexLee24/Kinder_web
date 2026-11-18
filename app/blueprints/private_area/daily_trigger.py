@@ -7,6 +7,7 @@ from flask import flash, jsonify, redirect, render_template, request, session, u
 
 from app.config import config
 from app.db.auth import get_groups
+from app.services.astro import filter_colors
 
 logger = logging.getLogger(__name__)
 from . import private_area_bp
@@ -39,7 +40,7 @@ def daily_trigger():
                             user_display_name=user_display_name, user_email=user_email,
                             app_debug=config.DEBUG, duty=duty, lot_closed=lot_closed_tonight(),
                             on_duty=any(d['email'].lower() == user_email.lower() for d in duty),
-                            duty_lock=duty_lock(duty))
+                            duty_lock=duty_lock(duty), filter_colors=filter_colors.all_colors())
 
 
 def tonight_duty():

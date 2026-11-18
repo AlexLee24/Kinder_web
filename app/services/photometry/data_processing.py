@@ -20,7 +20,7 @@ class DataVisualization:
     
     @staticmethod
     def get_filter_color(filter_name, alpha=1):
-        """Get color for a filter. Loads from app/data/filter_colors.json; alpha applied dynamically."""
+        """Get color for a filter. From app/resources/filter_colors.json; alpha applied dynamically."""
         try:
             from app.services.astro import filter_colors as _fc
         except ImportError:

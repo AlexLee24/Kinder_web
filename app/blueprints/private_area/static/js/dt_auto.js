@@ -6,8 +6,8 @@
     'use strict';
 
     const API = '/api/daily_trigger/auto_phot';
-    const FCOL = { u: '#c05cff', g: '#2fc46e', r: '#ff3b3b', i: '#ff70a6', z: '#e8a0a0', y: '#e8853a', o: '#ffa500', c: '#22e5ff',
-                   w: '#eeb861', b: '#5b8cff', v: '#b6e34a' };
+    // the site's one filter colour map (app/resources/filter_colors.json), injected by daily_trigger.html
+    const FCOL = (() => { try { return JSON.parse(document.getElementById('filterColorsData').textContent) || {}; } catch (e) { return {}; } })();
     const STATE = { done: 'Detected', lim: 'Not detected · limits', failed: 'Failed', running: 'Measuring', queued: 'Queued',
                     waiting: 'Not measured yet', skipped: 'EP · not measured' };
     const SHORT = { done: 'Detected', lim: 'Limits only', failed: 'Failed', running: 'Measuring', queued: 'Queued',
@@ -35,7 +35,7 @@
         return n;
     }
     const band = f => { const s = String(f || '').trim(); return (s.length > 1 && /p$/i.test(s) ? s.slice(0, -1) : s).toLowerCase(); };
-    const col = f => FCOL[band(f)] || '#9a9aa5';
+    const col = f => FCOL[f] || FCOL[band(f)] || '#9a9aa5';
     const fchip = f => el('span', { class: 'dta-f', style: `--fc:${col(f)}`, text: f });
     const objUrl = name => '/object/' + encodeURIComponent(String(name).replace(/^(AT|SN|TDE|FRB)\s?/i, ''));
     const dets = r => (r.phot || []).filter(p => p.det && p.mag != null);
@@ -113,6 +113,16 @@
         return p.ts
             ? el('span', { class: 'dta-ts is-ts', text: long && src ? 'TS · ' + src : 'TS', title: 'Template-subtracted' + (src ? ' with ' + src + ' templates' : '') })
             : el('span', { class: 'dta-ts', text: 'w/o TS', title: p.ts_note ? 'Without template subtraction: ' + p.ts_note : 'Without template subtraction' });
+    }
+    // Why the bands shown without template subtraction were not subtracted, one line per reason: "w/o TS · g r: why"
+    function noTsNotes(best) {
+        const by = new Map();
+        for (const p of best) {
+            if (p.ts) continue;
+            const why = p.ts_note || 'not subtracted';
+            by.set(why, [...(by.get(why) || []), band(p.filter)]);
+        }
+        return [...by].map(([why, bands]) => el('div', { class: 'dta-note dta-tsnote', text: `w/o TS · ${bands.join(' ')}: ${why}` }));
     }
     function bestPerFilter(r) {
         const by = {};
@@ -249,7 +259,8 @@
                 el('div', { class: 'dta-sub' }, r.telescope, pri ? el('span', { class: 'dta-pri is-' + pri.toLowerCase(), text: ' · ' + pri }) : null)),
             el('td', { 'data-l': 'Frame' }, r.frames && r.frames.length ? thumb(r, r.frames.includes('r') ? 'r' : r.frames[0]) : el('span', { class: 'dta-muted', text: '—' })),
             el('td', { 'data-l': 'Magnitudes' }, best.length
-                ? el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p), tsEl(p))))
+                ? el('div', {}, el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p), tsEl(p)))),
+                    ...noTsNotes(best))
                 : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
             el('td', { 'data-l': 'Status' }, stateBtn(r),

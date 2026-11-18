@@ -2,7 +2,7 @@
 //  LC Plotter — Interactive light curve plotter
 // ═══════════════════════════════════════════════════════════════════
 
-// Load filter color map from server-injected JSON (see app/data/filter_colors.json)
+// Load filter color map from server-injected JSON (app/resources/filter_colors.json)
 const FILTER_COLORS = JSON.parse(document.getElementById('filterColorsData').textContent);
 
 // Per-user filter color overrides stored in localStorage
