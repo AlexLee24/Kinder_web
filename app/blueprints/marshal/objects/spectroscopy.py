@@ -16,6 +16,7 @@ from app.db.transient import (
 )
 from app.services.spectrum_upload import check_spectrum_points, check_observation_mjd
 from app.db import get_tns_db_connection
+from app.db.auth import filter_by_source_permissions
 from app.services.photometry.data_processing import DataVisualization
 import logging
 from app.core.auth import admin_required, login_required
@@ -24,6 +25,18 @@ from app.core.permissions import action_required
 logger = logging.getLogger(__name__)
 from . import objects_bp
 from .helpers import non_guest_required, session_can_access_object, resolve_object_name
+
+
+def _visible_spectra(object_name, records):
+    """The spectra (records with a 'telescope', or source names) the session user may see: the object's own
+    Data Source Permissions, else the default rules, exactly as photometry."""
+    user = session.get('user') or {}
+    return filter_by_source_permissions(object_name, 'spec', records, user_email=user.get('email'),
+                                        user_groups=user.get('groups', []), is_admin=user.get('is_admin', False))
+
+
+def _source_visible(object_name, source_name):
+    return bool(_visible_spectra(object_name, [source_name or 'Unknown']))
 
 
 @objects_bp.route('/api/object/<int:year><alpha:letters>/spectroscopy')
@@ -35,7 +48,7 @@ def get_object_spectroscopy(year, letters):
         return jsonify({'success': False, 'error': 'Access denied'}), 403
     
     try:
-        spectra_list = TNSObjectDB.get_spectrum_list(object_name)
+        spectra_list = _visible_spectra(object_name, TNSObjectDB.get_spectrum_list(object_name))
         return jsonify({
             'success': True,
             'spectra': spectra_list,
@@ -54,7 +67,7 @@ def get_object_spectroscopy_generic(object_name):
         return jsonify({'success': False, 'error': 'Access denied'}), 403
 
     try:
-        spectra_list = TNSObjectDB.get_spectrum_list(object_name)
+        spectra_list = _visible_spectra(object_name, TNSObjectDB.get_spectrum_list(object_name))
         return jsonify({
             'success': True,
             'spectra': spectra_list,
@@ -74,6 +87,8 @@ def get_spectrum_data(year, letters, spectrum_id):
     
     try:
         source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
+        if not _source_visible(object_name, source_name):
+            return jsonify({'success': False, 'error': 'Access denied'}), 403
         conn = get_tns_db_connection()
         try:
             cursor = conn.cursor()
@@ -238,6 +253,8 @@ def download_spectrum_file(spectrum_id):
             return jsonify({'error': 'Access denied'}), 403
 
         source_name, observation_mjd = _parse_spectrum_id(spectrum_id)
+        if not _source_visible(object_name, source_name):
+            return jsonify({'error': 'Access denied'}), 403
         conn = get_tns_db_connection()
         try:
             cursor = conn.cursor()
@@ -349,7 +366,7 @@ def get_object_spectrum_plot(year, letters):
         results = search_tns_objects(search_term=object_name, limit=1)
         if results:
             redshift = results[0].get('redshift')
-        spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
+        spectrum_data = _visible_spectra(object_name, TNSObjectDB.get_spectroscopy(object_name))
         
         if not spectrum_data:
             return jsonify({
@@ -401,7 +418,7 @@ def get_object_spectrum_plot_generic(object_name):
             }), 404
         
         redshift = results[0].get('redshift')
-        spectrum_data = TNSObjectDB.get_spectroscopy(object_name)
+        spectrum_data = _visible_spectra(object_name, TNSObjectDB.get_spectroscopy(object_name))
         
         if not spectrum_data:
             return jsonify({

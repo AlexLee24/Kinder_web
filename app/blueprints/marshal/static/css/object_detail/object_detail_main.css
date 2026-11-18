@@ -1197,9 +1197,15 @@ select.btn-modern { min-height: 0; }
     border-color: rgba(255,255,255,0.1);
 }
 
-.perm-card-locked {
-    opacity: 0.5;
-    pointer-events: none;
+.perm-card-custom {
+    border-left: 2px solid var(--kw-accent);
+}
+
+.perm-custom-tag {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: 0.7rem;
+    color: var(--kw-accent);
 }
 
 .perm-card-check-wrap {
@@ -1262,6 +1268,12 @@ select.btn-modern { min-height: 0; }
 }
 
 /* Active states per type */
+.perm-pill-default.active {
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,255,255,0.3);
+    color: var(--text, #e8e8e8);
+}
+
 .perm-pill-public.active {
     background: rgba(56,201,106,0.18);
     border-color: rgba(56,201,106,0.45);
@@ -1340,12 +1352,6 @@ select.btn-modern { min-height: 0; }
 .perm-add-group-select:focus {
     border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
     border-style: solid;
-}
-
-.perm-locked-label {
-    font-size: 0.8rem;
-    color: rgba(255,255,255,0.4);
-    font-style: italic;
 }
 
 .perm-empty,
