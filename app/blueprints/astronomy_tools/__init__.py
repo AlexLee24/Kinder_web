@@ -14,6 +14,7 @@ from . import (  # noqa: E402,F401
     finding_chart_render,
     helpers,
     lc_plotter,
+    new_slt,
     planner,
     public_api,
     query_api,
