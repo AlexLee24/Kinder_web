@@ -33,7 +33,7 @@ OTHER_BANDS = ('panstarrs',)            # y, w …
 GOOD_FRACTION = 0.8                     # 目標周圍有資料的方框 ≥ 要的大小 × 0.8 就算夠
 MIN_FORCE_SIDE = 3.0                    # 指定的巡天（force）至少要有這麼大（arcmin）才用
 MARKER = 'kinder_template.json'
-MARKER_VERSION = 2                      # 2: SkyMapper on a target-centred grid (#122); older choices are fetched again
+MARKER_VERSION = 3                      # 2: SkyMapper on a target-centred grid (#122); 3: with a CD matrix
 LEGACY_LAYERS = ('ls-dr10', 'ls-dr11')
 LEGACY_PIXSCALE = 0.262
 LEGACY_MAX_PIX = 3000                   # viewer 的 fits-cutout 上限
@@ -172,6 +172,20 @@ def target_grid(ra, dec, size, scale):
     return w
 
 
+def cd_header(w):
+    """w.to_header() with a CD matrix instead of PC + CDELT: AutoPhOT's relative WCS correction reads wcs.cd and
+    without it fails ('No cd is present'), after which sparse u frames were rejected (AT2026agvs 2026-11-17)."""
+    import numpy as np
+    h = w.to_header()
+    cd = np.asarray(w.wcs.get_pc()) * np.asarray(w.wcs.cdelt)[:, None]
+    for k in ('PC1_1', 'PC1_2', 'PC2_1', 'PC2_2', 'CDELT1', 'CDELT2'):
+        h.remove(k, ignore_missing=True)
+    for i in (1, 2):
+        for j in (1, 2):
+            h[f'CD{i}_{j}'] = float(cd[i - 1, j - 1])
+    return h
+
+
 def fetch_skymapper(ra, dec, size, dest, band, max_images=SKYMAPPER_MAX_IMAGES):
     """SkyMapper DR4 的切圖（南天，有 u）：最多 max_images 張曝光重投影到以目標為中心的格點，依各自的 ZPAPPROX 換成同一個
     零點，再以曝光時間加權平均（天光雜訊為主時權重 ∝ 曝光時間）。單張 100 s 的 u 只到 ~19 等，疊起來深一些。"""
@@ -216,7 +230,7 @@ def fetch_skymapper(ra, dec, size, dest, band, max_images=SKYMAPPER_MAX_IMAGES):
         for k in [k for k in list(ref_head) if k[:2] in ('CD', 'PC', 'PV') or k[:4] in ('CRPI', 'CRVA', 'CDEL', 'CTYP',
                                                                                        'CUNI', 'NAXI', 'A_', 'B_', 'AP_', 'BP_')]:
             del ref_head[k]
-        ref_head.update(out_wcs.to_header())
+        ref_head.update(cd_header(out_wcs))
         planes, weights = [], []
         for data, head, t in frames:
             arr, _ = reproject_interp((data, WCS(head)), out_wcs, shape_out=(n, n))
