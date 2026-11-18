@@ -350,7 +350,7 @@ def template_choices(tid):
 def better_ts(primary, alt, use):
     """Per image, the better of two template-subtracted runs: a point that passed the subtraction check over one that
     did not, then a detection over a limit, then the higher S/N (AutoPhOT folds the kernel's flux-scale error into it,
-    so a template that leaves the host behind scores low). `use`: the bands where the alt run had another survey."""
+    so a template that leaves the host behind scores low). `use`: the bands the alt run measured."""
     alt_by = {p['image']: p for p in alt if p.get('filter') in use}
     out = []
     for p in primary:
@@ -827,7 +827,10 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
                 _, _, alt = measure(stack, template, force=force)
                 altws = workspace_name(night, target, telescope, ALT_SUFFIX)
                 other = template_choices(altws)
-                use = {b for b in force if other.get(b) and other[b] != first.get(b)}
+                # every band the alt run measured: with the other survey, or with the same one (u from SkyMapper
+                # alone) as a second try — AutoPhOT's alignment is not deterministic on sparse frames (AT2026aifu u,
+                # 2026-11-17: no alignment in the first run, TS and S/N 12.5 in the second)
+                use = {b for b in force if other.get(b)}
                 for p in phot:
                     p['template'] = first.get(p.get('filter'))
                 for p in alt:
