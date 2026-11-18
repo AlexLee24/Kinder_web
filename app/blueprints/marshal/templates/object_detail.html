@@ -525,10 +525,11 @@
             </div>
             <div class="panel-body">
                 <div class="perm-hint">
-                    🌐 <strong>Public</strong> — visible to everyone including non-logged visitors &nbsp;·&nbsp;
-                    🔓 <strong>Members</strong> — any authenticated user (default) &nbsp;·&nbsp;
-                    👥 <strong>Groups</strong> — restricted to selected groups &nbsp;·&nbsp;
-                    🚫 <strong>Blocked</strong> — hidden from everyone except admins
+                    <strong>Default</strong> follows Admin › Permissions (the source's rule, else TNS / ALeRCE for everyone and
+                    the rest for signed-in users) and keeps following it when a rule changes. Pick another level to give this
+                    object its own setting: <strong>Everyone</strong> (visitors included), <strong>Signed-in users</strong>
+                    (not guests), <strong>Groups</strong>, or <strong>Nobody</strong> (admins only). Applies to the plots,
+                    tables and downloads of this object; spectra here are for signed-in users at most.
                 </div>
                 <div id="permTableContainer"><div class="perm-loading">Loading sources…</div></div>
             </div>

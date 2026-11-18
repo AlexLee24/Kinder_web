@@ -102,6 +102,11 @@ def set_source_permissions_batch_api(object_name):
         perms_by_type = {}
         for p in data['permissions']:
             dt = p.get('data_type', 'phot')
+            if dt not in ('phot', 'spec') or not isinstance(p.get('source_name'), str) or not p['source_name']:
+                return jsonify({'error': 'Each permission needs data_type phot/spec and a source_name'}), 400
+            if p.get('inherit'):
+                perms_by_type.setdefault(dt, []).append({'source_name': p['source_name'], 'inherit': True})
+                continue
             # Convert allowed_groups names → INT[] IDs
             # None means public/login (no group restriction)
             # [] means blocked (empty list kept as [])
@@ -112,11 +117,13 @@ def set_source_permissions_batch_api(object_name):
             else:
                 ag_ids_final = [name_to_id[n] for n in ag_names_raw if n in name_to_id]
             perms_by_type.setdefault(dt, []).append({
-                **p,
+                'source_name': p['source_name'],
+                'is_public': bool(p.get('is_public')),
                 'allowed_groups': ag_ids_final
             })
         for dt, perms in perms_by_type.items():
-            set_source_permissions_batch(object_name, dt, perms)
+            if not set_source_permissions_batch(object_name, dt, perms):
+                return jsonify({'error': 'Failed to save permissions'}), 500
         return jsonify({'success': True})
     except Exception as e:
         logger.error("permissions API error: %s", e)

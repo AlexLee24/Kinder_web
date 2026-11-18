@@ -1169,11 +1169,18 @@ def get_default_source_permissions(source_name: str | None = None) -> list[dict]
 
 def set_source_permissions_batch(object_name: str, data_type: str,
                                   permissions: list[dict]) -> bool:
-    """Each item in permissions: {source_name, is_public, allowed_groups[]}"""
+    """Each item in permissions: {source_name, is_public, allowed_groups[]}, or {source_name, inherit: True} to drop
+    the object's own setting so the source follows the default rule again (Admin › Permissions, else built-in)."""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
             for p in permissions:
+                if p.get('inherit'):
+                    cur.execute(
+                        "DELETE FROM transient.object_source_permissions "
+                        "WHERE object_name = %s AND data_type = %s AND source_name = %s",
+                        (object_name, data_type, p['source_name']))
+                    continue
                 cur.execute(
                     "INSERT INTO transient.object_source_permissions "
                     "(object_name, data_type, source_name, is_public, allowed_groups) "

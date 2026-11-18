@@ -5594,6 +5594,40 @@ function _permDefaultRule(src) {
         .sort((a, b) => b.length - a.length)[0] || null;
 }
 
+// What a source gets without a setting of this object's own, and why (shown on its Default pill).
+function _permDefaultFor(src) {
+    const rule = _permDefaultRule(src);
+    const d = rule ? _permDefaults[rule] : null;
+    if (!d) {
+        return _permPublicData(src)
+            ? { is_public: true, allowed_groups: null, why: 'Built-in default: TNS and ALeRCE data are public' }
+            : { is_public: false, allowed_groups: null, why: 'Built-in default: sources without a rule are for signed-in users' };
+    }
+    const why = `Admin › Permissions rule "${rule}"`;
+    if (d.permission === 'public') return { is_public: true, allowed_groups: null, why };
+    if (d.permission === 'login') return { is_public: false, allowed_groups: null, why };
+    return { is_public: false, allowed_groups: [...(d.allowed_groups || [])], why };
+}
+
+// The same four levels as Admin › Permissions › Source visibility.
+const _PERM_OPTS = [
+    { val: 'public',  label: 'Everyone',        cls: 'perm-pill-public',  title: 'Visible to everyone, visitors included' },
+    { val: 'all',     label: 'Signed-in users', cls: 'perm-pill-all',     title: 'Visible to signed-in user accounts (not guests)' },
+    { val: 'groups',  label: 'Groups',          cls: 'perm-pill-groups',  title: 'Only the groups you pick (none picked = nobody)' },
+    { val: 'blocked', label: 'Nobody',          cls: 'perm-pill-blocked', title: 'Hidden from everyone except admins' },
+];
+
+function _permVisOf(p) {
+    if (p.is_public) return 'public';
+    if (p.allowed_groups == null) return 'all';
+    return p.allowed_groups.length ? 'groups' : 'blocked';
+}
+
+function _permVisLabel(p) {
+    const v = _permVisOf(p);
+    return v === 'groups' ? p.allowed_groups.join(', ') : _PERM_OPTS.find((o) => o.val === v).label;
+}
+
 async function loadPermissionsPanel() {
     try {
         const [srcRes, permRes, grpRes] = await Promise.all([
@@ -5604,40 +5638,29 @@ async function loadPermissionsPanel() {
         const srcData = await srcRes.json();
         const permDataResp = await permRes.json();
         const grpData = await grpRes.json();
+        if (!srcRes.ok || !permRes.ok) throw new Error(srcData.error || permDataResp.error || 'load failed');
 
         _permSources.phot = srcData.phot_sources || [];
         _permSources.spec = srcData.spec_sources || [];
         _permAllGroups = (grpData.groups || []).map(g => typeof g === 'object' ? (g.name || g.id) : g);
 
-        _permData = { phot: {}, spec: {} };
-        // Build defaults map
         _permDefaults = {};
-        for (const d of (permDataResp.defaults || [])) {
-            _permDefaults[d.source] = d;
-        }
-        // Per-object overrides (highest priority)
-        for (const p of (permDataResp.permissions || [])) {
-            _permData[p.data_type][p.source_name] = {
-                allowed_groups: p.allowed_groups,
-                is_public: !!p.is_public
-            };
-        }
-        // Pre-populate from defaults for sources not yet overridden,
-        // so renderPermTable shows correct state on first load.
+        for (const d of (permDataResp.defaults || [])) _permDefaults[d.source] = d;
+
+        // custom: this object has its own setting for the source; otherwise it follows the default (_permDefaultFor),
+        // which keeps tracking Admin › Permissions when a rule changes.
+        _permData = { phot: {}, spec: {} };
         for (const type of ['phot', 'spec']) {
-            for (const src of _permSources[type]) {
-                if (_permData[type][src]) continue; // already has per-object override
-                const d = _permDefaults[_permDefaultRule(src)];
-                if (d) {
-                    const isPublic = d.permission === 'public';
-                    // 'groups' permission: allowed_groups is already a list of group names
-                    const ag = (d.permission === 'groups') ? (d.allowed_groups || []) : null;
-                    _permData[type][src] = { allowed_groups: ag, is_public: isPublic };
-                } else {
-                    _permData[type][src] = { allowed_groups: null, is_public: _permPublicData(src) };
-                }
-            }
+            for (const src of _permSources[type]) _permData[type][src] = { custom: false };
         }
+        for (const p of (permDataResp.permissions || [])) {
+            if (!_permData[p.data_type] || !_permData[p.data_type][p.source_name]) continue;   // no such data any more
+            const ag = p.allowed_groups == null ? null : [...p.allowed_groups];
+            const own = { custom: true, is_public: !!p.is_public, allowed_groups: p.is_public ? null : ag };
+            own.mode = _permVisOf(own);
+            _permData[p.data_type][p.source_name] = own;
+        }
+        _permDirty = false;
         renderPermTable();
     } catch(e) {
         console.error('Error loading permissions:', e);
@@ -5653,87 +5676,74 @@ function switchPermTab(tab) {
     renderPermTable();
 }
 
-const _PERM_OPTS = [
-    { val: 'public',  label: 'Public',  icon: '🌐', cls: 'perm-pill-public'  },
-    { val: 'all',     label: 'Members', icon: '🔓', cls: 'perm-pill-all'     },
-    { val: 'groups',  label: 'Groups',  icon: '👥', cls: 'perm-pill-groups'  },
-    { val: 'blocked', label: 'Blocked', icon: '🚫', cls: 'perm-pill-blocked' },
-];
-
-function _permGetVis(perm, isTNS) {
-    if (isTNS || perm.is_public) return 'public';
-    if (perm.allowed_groups === null) return 'all';
-    if (Array.isArray(perm.allowed_groups) && perm.allowed_groups.length === 0) return 'blocked';
-    return 'groups';
-}
-
 function _permChipsHtml(type, src, groups) {
     return (groups || []).map(g =>
         `<span class="perm-chip">${escapeHtml(g)}<span class="perm-chip-remove" data-type="${escapeHtml(type)}" data-src="${escapeHtml(src)}" data-group="${escapeHtml(g)}" onclick="removePermGroup(this.dataset.type, this.dataset.src, this.dataset.group)">&times;</span></span>`
     ).join('');
 }
 
-function _permGroupSelectHtml(type, src) {
+function _permGroupSelectHtml(type, src, groups) {
+    const left = _permAllGroups.filter((g) => !(groups || []).includes(g));
     return `<select class="perm-add-group-select" data-type="${escapeHtml(type)}" data-src="${escapeHtml(src)}" onchange="addPermGroup(this.dataset.type, this.dataset.src, this)">
         <option value="">+ group</option>
-        ${_permAllGroups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
+        ${left.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('')}
     </select>`;
+}
+
+function _permCardHtml(type, src, checked = false) {
+    const perm = _permData[type][src] || { custom: false };
+    const def = _permDefaultFor(src);
+    const active = perm.custom ? perm.mode : 'default';
+    const opts = [{ val: 'default', label: `Default · ${_permVisLabel(def)}`, cls: 'perm-pill-default', title: def.why },
+                  ..._PERM_OPTS];
+    const pills = opts.map(o =>
+        `<button type="button" class="perm-pill ${o.cls}${active === o.val ? ' active' : ''}"
+            data-type="${escapeHtml(type)}" data-src="${escapeHtml(src)}" data-val="${o.val}"
+            onclick="onPermVisChange(this.dataset.type, this.dataset.src, this.dataset.val)"
+            title="${escapeHtml(o.title)}">${escapeHtml(o.label)}</button>`
+    ).join('');
+    const groups = active === 'groups' ? `
+        <div class="perm-card-groups">
+            <div class="perm-chips-row">${_permChipsHtml(type, src, perm.allowed_groups)}</div>
+            ${_permGroupSelectHtml(type, src, perm.allowed_groups)}
+        </div>` : '';
+    return `<div class="perm-card${perm.custom ? ' perm-card-custom' : ''}" data-src="${escapeHtml(src)}" data-type="${escapeHtml(type)}">
+        <div class="perm-card-check-wrap">
+            <input type="checkbox" class="perm-row-check" onchange="_permRowCheckChanged()"${checked ? ' checked' : ''}>
+        </div>
+        <div class="perm-card-source">
+            <span class="perm-source-name" title="${escapeHtml(src)}">${escapeHtml(src)}</span>
+            ${perm.custom ? '<span class="perm-custom-tag" title="This object has its own setting for this source">This object</span>' : ''}
+        </div>
+        <div class="perm-card-pills"><div class="perm-pill-group">${pills}</div></div>
+        ${groups}
+    </div>`;
+}
+
+function _permCardEl(type, src) {
+    return document.querySelector(`.perm-card[data-type="${CSS.escape(type)}"][data-src="${CSS.escape(src)}"]`);
+}
+
+function _permRerenderCard(type, src) {
+    const card = _permCardEl(type, src);
+    if (!card) return;
+    const checked = !!card.querySelector('.perm-row-check:checked');
+    card.outerHTML = _permCardHtml(type, src, checked);
 }
 
 function renderPermTable() {
     const container = document.getElementById('permTableContainer');
     if (!container) return;
-    const sources = _permSources[_permCurrentTab];
+    const type = _permCurrentTab;
+    const sources = _permSources[type];
 
     if (!sources || sources.length === 0) {
         container.innerHTML = '<div class="perm-empty">No data sources found. Upload data first, then click "Refresh Sources".</div>';
         return;
     }
 
-    const cards = sources.map(src => {
-        const isTNS = src.toUpperCase().includes('TNS');
-        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: _permPublicData(src) };
-        const vis = _permGetVis(perm, isTNS);
-
-        if (isTNS) {
-            return `<div class="perm-card perm-card-locked">
-                <div class="perm-card-check-wrap"><input type="checkbox" class="perm-row-check" disabled></div>
-                <div class="perm-card-source"><span class="perm-source-name">${escapeHtml(src)}</span></div>
-                <div class="perm-card-pills">
-                    <span class="perm-locked-label">🌐 Always public (TNS)</span>
-                </div>
-            </div>`;
-        }
-
-        const pills = _PERM_OPTS.map(o =>
-            `<button class="perm-pill ${o.cls}${vis === o.val ? ' active' : ''}"
-                data-type="${escapeHtml(_permCurrentTab)}" data-src="${escapeHtml(src)}" data-val="${escapeHtml(o.val)}"
-                onclick="onPermVisChange(this.dataset.type, this.dataset.src, this.dataset.val)"
-                title="${o.val === 'public' ? 'Visible to everyone including non-logged visitors' :
-                         o.val === 'all'    ? 'Visible to signed-in user accounts (not guests)' :
-                         o.val === 'groups' ? 'Restricted to selected groups only' :
-                                             'Hidden from everyone except admins'}"
-            >${o.icon} ${o.label}</button>`
-        ).join('');
-
-        const groupsDisplay = vis === 'groups' ? 'flex' : 'none';
-        return `<div class="perm-card" data-src="${escapeHtml(src)}" data-type="${_permCurrentTab}">
-            <div class="perm-card-check-wrap">
-                <input type="checkbox" class="perm-row-check" onchange="_permRowCheckChanged()">
-            </div>
-            <div class="perm-card-source">
-                <span class="perm-source-name">${escapeHtml(src)}</span>
-            </div>
-            <div class="perm-card-pills">
-                <div class="perm-pill-group">${pills}</div>
-            </div>
-            <div class="perm-card-groups" id="perm-groups-${_permCurrentTab}-${escapeHtml(src)}" style="display:${groupsDisplay}">
-                <div class="perm-chips-row" id="perm-chips-${_permCurrentTab}-${escapeHtml(src)}">${_permChipsHtml(_permCurrentTab, src, perm.allowed_groups)}</div>
-                ${_permGroupSelectHtml(_permCurrentTab, src)}
-            </div>
-        </div>`;
-    }).join('');
-
+    const cards = sources.map((src) => _permCardHtml(type, src)).join('');
+    const applyOpts = [{ val: 'default', label: 'Default', cls: 'perm-pill-default' }, ..._PERM_OPTS];
     container.innerHTML = `
         <div class="perm-toolbar" id="permToolbar">
             <div class="perm-toolbar-idle" id="permToolbarIdle">
@@ -5751,43 +5761,35 @@ function renderPermTable() {
                 </label>
                 <span class="perm-batch-divider"></span>
                 <span class="perm-batch-apply-label">Apply:</span>
-                ${_PERM_OPTS.map(o =>
-                    `<button class="perm-batch-btn perm-pill ${o.cls}" onclick="batchApplyPerm('${o.val}')" title="${
-                        o.val==='public'?'Set selected to Public':o.val==='all'?'Set selected to Members only':o.val==='groups'?'Set selected to Groups only':'Block selected'
-                    }">${o.icon} ${o.label}</button>`
+                ${applyOpts.map(o =>
+                    `<button type="button" class="perm-batch-btn perm-pill ${o.cls}" onclick="batchApplyPerm('${o.val}')">${escapeHtml(o.label)}</button>`
                 ).join('')}
-                <button class="perm-batch-clear-btn" onclick="_permSelectAll(false)" title="Clear selection">✕</button>
+                <button type="button" class="perm-batch-clear-btn" onclick="_permSelectAll(false)" title="Clear selection">✕</button>
             </div>
         </div>
         <div class="perm-card-list">${cards}</div>`;
 }
 
+function _permSetVis(type, source, value) {
+    const prev = _permData[type][source] || { custom: false };
+    if (value === 'default') {
+        _permData[type][source] = { custom: false };
+        return;
+    }
+    const p = { custom: true, mode: value, is_public: false, allowed_groups: null };
+    if (value === 'public') p.is_public = true;
+    else if (value === 'blocked') p.allowed_groups = [];
+    else if (value === 'groups') {
+        // Start from the groups already shown: this object's own, else the default rule's.
+        const base = prev.custom ? prev : _permDefaultFor(source);
+        p.allowed_groups = Array.isArray(base.allowed_groups) ? [...base.allowed_groups] : [];
+    }
+    _permData[type][source] = p;
+}
+
 function onPermVisChange(type, source, value) {
-    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: null, is_public: false };
-    if (value === 'public') {
-        _permData[type][source].is_public = true;
-        _permData[type][source].allowed_groups = null;
-    } else if (value === 'all') {
-        _permData[type][source].is_public = false;
-        _permData[type][source].allowed_groups = null;
-    } else if (value === 'blocked') {
-        _permData[type][source].is_public = false;
-        _permData[type][source].allowed_groups = [];
-    } else { // groups
-        _permData[type][source].is_public = false;
-        if (!Array.isArray(_permData[type][source].allowed_groups) || _permData[type][source].allowed_groups === null) {
-            _permData[type][source].allowed_groups = [];
-        }
-    }
-    // Update pill active states
-    const card = document.querySelector(`.perm-card[data-src="${CSS.escape(source)}"][data-type="${type}"]`);
-    if (card) {
-        card.querySelectorAll('.perm-pill').forEach((btn, i) => {
-            btn.classList.toggle('active', _PERM_OPTS[i].val === value);
-        });
-    }
-    const cell = document.getElementById(`perm-groups-${type}-${source}`);
-    if (cell) cell.style.display = value === 'groups' ? 'flex' : 'none';
+    _permSetVis(type, source, value);
+    _permRerenderCard(type, source);
     _permMarkDirty();
 }
 
@@ -5816,45 +5818,47 @@ function _permSelectAll(checked) {
 }
 
 function batchApplyPerm(value) {
-    document.querySelectorAll('.perm-card[data-src]').forEach(card => {
-        const cb = card.querySelector('.perm-row-check');
-        if (!cb || !cb.checked) return;
-        onPermVisChange(card.dataset.type, card.dataset.src, value);
-    });
-    _permSelectAll(false);
+    const picked = [...document.querySelectorAll('.perm-card[data-src]')]
+        .filter((card) => card.querySelector('.perm-row-check:checked'))
+        .map((card) => [card.dataset.type, card.dataset.src]);
+    if (!picked.length) return;
+    picked.forEach(([type, src]) => _permSetVis(type, src, value));
+    renderPermTable();
+    _permMarkDirty();
 }
 
 function addPermGroup(type, source, select) {
     const grp = select.value;
     if (!grp) return;
     select.value = '';
-    if (!_permData[type][source]) _permData[type][source] = { allowed_groups: [], is_public: false };
-    const groups = _permData[type][source].allowed_groups || [];
-    if (!groups.includes(grp)) {
-        groups.push(grp);
-        _permData[type][source].allowed_groups = groups;
-        const chips = document.getElementById(`perm-chips-${type}-${source}`);
-        if (chips) chips.innerHTML = _permChipsHtml(type, source, groups);
+    const p = _permData[type][source];
+    if (!p || !p.custom || p.mode !== 'groups') return;
+    if (!p.allowed_groups.includes(grp)) {
+        p.allowed_groups.push(grp);
+        _permRerenderCard(type, source);
         _permMarkDirty();
     }
 }
 
 function removePermGroup(type, source, grp) {
-    if (!_permData[type]?.[source]?.allowed_groups) return;
-    _permData[type][source].allowed_groups = _permData[type][source].allowed_groups.filter(g => g !== grp);
-    const chips = document.getElementById(`perm-chips-${type}-${source}`);
-    if (chips) chips.innerHTML = _permChipsHtml(type, source, _permData[type][source].allowed_groups);
+    const p = _permData[type]?.[source];
+    if (!p || !p.custom || !Array.isArray(p.allowed_groups)) return;
+    p.allowed_groups = p.allowed_groups.filter(g => g !== grp);
+    _permRerenderCard(type, source);
     _permMarkDirty();
 }
 
 async function savePermissions(isAuto = false) {
     clearTimeout(_permSaveTimer);
     _permSetStatus('saving');
+    // Only this object's own settings are stored; a source on Default is sent as inherit, which drops any setting
+    // it had, so it follows Admin › Permissions (and later changes to it) again.
     const batch = [];
     for (const type of ['phot', 'spec']) {
         for (const [source, perm] of Object.entries(_permData[type])) {
-            batch.push({ data_type: type, source_name: source,
-                allowed_groups: perm.allowed_groups, is_public: perm.is_public });
+            batch.push(perm.custom
+                ? { data_type: type, source_name: source, is_public: perm.is_public, allowed_groups: perm.allowed_groups }
+                : { data_type: type, source_name: source, inherit: true });
         }
     }
     try {
@@ -5864,7 +5868,7 @@ async function savePermissions(isAuto = false) {
             body: JSON.stringify({ permissions: batch })
         });
         const data = await res.json();
-        if (data.success) {
+        if (res.ok && data.success) {
             _permDirty = false;
             _permSetStatus('saved');
             if (!isAuto) showNotification('Permissions saved', 'success');
@@ -5879,8 +5883,9 @@ async function savePermissions(isAuto = false) {
 }
 
 async function refreshPermSources() {
+    if (_permDirty) await savePermissions(true);
     const c = document.getElementById('permTableContainer');
-    if (c) c.innerHTML = '<div class="perm-loading">Refreshing\u2026</div>';
+    if (c) c.innerHTML = '<div class="perm-loading">Refreshing…</div>';
     await loadPermissionsPanel();
     showNotification('Sources refreshed', 'success');
 }
