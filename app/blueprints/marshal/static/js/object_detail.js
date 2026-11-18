@@ -5579,11 +5579,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Public data: TNS reports and ALeRCE alerts are public unless a rule or override says otherwise; every other
+// source is for signed-in user accounts (not guests). Same test as app/db/auth.py is_public_data_source.
+function _permPublicData(src) { return /tns|alerce/i.test(src); }
+
 // The default rule that decides a source: one named exactly like it, else the longest whose name it holds as a
 // whole word ('LOT' covers LOT_(w/o_TS), LOT(AUTO), …). Same test as app/db/auth.py rule_covers / matching_rule.
 function _permDefaultRule(src) {
     if (_permDefaults[src]) return src;
-    if (/tns/i.test(src)) return null;                 // TNS reports: exact rules only (public data)
+    if (_permPublicData(src)) return null;             // TNS reports, ALeRCE alerts: exact rules only (public data)
     const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return Object.keys(_permDefaults)
         .filter((r) => new RegExp(`(?<![A-Za-z0-9])${esc(r)}(?![A-Za-z0-9])`).test(src))
@@ -5630,8 +5634,7 @@ async function loadPermissionsPanel() {
                     const ag = (d.permission === 'groups') ? (d.allowed_groups || []) : null;
                     _permData[type][src] = { allowed_groups: ag, is_public: isPublic };
                 } else {
-                    const isTNS = src.toUpperCase().includes('TNS');
-                    _permData[type][src] = { allowed_groups: null, is_public: isTNS };
+                    _permData[type][src] = { allowed_groups: null, is_public: _permPublicData(src) };
                 }
             }
         }
@@ -5689,7 +5692,7 @@ function renderPermTable() {
 
     const cards = sources.map(src => {
         const isTNS = src.toUpperCase().includes('TNS');
-        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: isTNS };
+        const perm = _permData[_permCurrentTab][src] || { allowed_groups: null, is_public: _permPublicData(src) };
         const vis = _permGetVis(perm, isTNS);
 
         if (isTNS) {
@@ -5707,7 +5710,7 @@ function renderPermTable() {
                 data-type="${escapeHtml(_permCurrentTab)}" data-src="${escapeHtml(src)}" data-val="${escapeHtml(o.val)}"
                 onclick="onPermVisChange(this.dataset.type, this.dataset.src, this.dataset.val)"
                 title="${o.val === 'public' ? 'Visible to everyone including non-logged visitors' :
-                         o.val === 'all'    ? 'Visible to all logged-in members' :
+                         o.val === 'all'    ? 'Visible to signed-in user accounts (not guests)' :
                          o.val === 'groups' ? 'Restricted to selected groups only' :
                                              'Hidden from everyone except admins'}"
             >${o.icon} ${o.label}</button>`

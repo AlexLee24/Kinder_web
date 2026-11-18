@@ -1222,14 +1222,14 @@ def set_default_source_permissions_batch(permissions: list[dict]) -> bool:
 def rule_covers(rule: str, source: str) -> bool:
     """A default source rule covers every source whose name holds it as a whole word: 'LOT' covers 'LOT',
     'LOT_(w/o_TS)', 'LOT(AUTO)' and 'LOT(AUTO, w/o TS)' (one permission for every way a telescope's points are
-    labelled), not 'SLOT'. A source reported to TNS ('ATLAS(TNS)') is public data: only a rule named exactly like
-    it decides it, so the private 'ATLAS' rule does not hide it. The same test runs in admin_permissions.js and
-    object_detail.js."""
+    labelled), not 'SLOT'. Public data (TNS reports, ALeRCE alerts: is_public_data_source) follows only a rule named
+    exactly like it, so the private 'ATLAS' rule does not hide 'ATLAS (TNS)' nor a 'ZTF' rule 'ZTF(alerce)'. The
+    same test runs in admin_permissions.js and object_detail.js."""
     if not rule or not source:
         return False
     if rule == source:
         return True
-    if 'tns' in source.lower():
+    if is_public_data_source(source):
         return False
     return re.search(rf'(?<![A-Za-z0-9]){re.escape(rule)}(?![A-Za-z0-9])', source) is not None
 
@@ -1243,24 +1243,31 @@ def matching_rule(source: str, rules) -> str | None:
     return max(hits, key=len) if hits else None
 
 
+def is_public_data_source(source_name: str) -> bool:
+    """TNS reports and ALeRCE alert photometry are public data: 'ZTF (TNS)', 'ZTF(alerce)', 'LSST(alerce)'."""
+    name = (source_name or '').lower()
+    return 'tns' in name or 'alerce' in name
+
+
 def _system_default_for_source(source_name: str) -> str:
-    """System-wide fallback permission when no default_permissions row exists.
-    Sources whose name contains 'TNS' (case-insensitive) are public;
-    everything else requires login."""
-    if 'tns' in source_name.lower():
-        return 'public'
-    return 'login'
+    """System-wide fallback permission when no default_permissions row exists: public data (TNS, ALeRCE) is
+    public; everything else is 'login', i.e. signed-in user accounts (guests excluded)."""
+    return 'public' if is_public_data_source(source_name) else 'login'
 
 
 def filter_by_source_permissions(object_name: str, data_type: str,
                                   source_list: list,
                                   user_email: str | None = None,
                                   user_groups: list | None = None,
-                                  is_admin: bool = False):
+                                  is_admin: bool = False,
+                                  user_roles: int | None = None):
     """Return subset of sources/records the user is allowed to see.
     user_groups: list of group NAME strings from session.
     object_source_permissions.allowed_groups: INT[] (group IDs) in DB.
-    NULL = login-mode override, [] = blocked, [ids] = specific groups."""
+    NULL = login-mode override, [] = blocked, [ids] = specific groups.
+    'login' (a rule, a NULL override, the system default) means a signed-in user account: auth.users.roles >= 1,
+    so guests (roles 0) see only public sources, like check_object_access. user_roles is read from auth.users
+    when not given."""
     if not source_list:
         return []
     if is_admin:
@@ -1304,6 +1311,12 @@ def filter_by_source_permissions(object_name: str, data_type: str,
             cur.execute("SELECT name, group_id FROM auth.groups")
             id_to_name = {r['group_id']: r['name'] for r in cur.fetchall()}
 
+            if user_email is not None and user_roles is None:
+                cur.execute("SELECT roles FROM auth.users WHERE lower(email) = lower(%s)", (user_email,))
+                row = cur.fetchone()
+                user_roles = (row['roles'] or 0) if row else 0
+        signed_in_user = user_email is not None and (user_roles or 0) >= 1   # 'login': user accounts, not guests
+
         allowed_sources = set()
         for src in source_names:
             if src in overrides:
@@ -1315,7 +1328,8 @@ def filter_by_source_permissions(object_name: str, data_type: str,
                 else:
                     ag = r.get('allowed_groups')  # None = login mode, [] = blocked, [ids...] = specific groups
                     if ag is None:
-                        allowed_sources.add(src)  # login mode override: any logged-in user
+                        if signed_in_user:
+                            allowed_sources.add(src)  # login mode override: signed-in user accounts
                     elif len(ag) == 0:
                         pass  # blocked — empty array means nobody except admin
                     else:
@@ -1329,7 +1343,7 @@ def filter_by_source_permissions(object_name: str, data_type: str,
                 if perm == 'public':
                     allowed_sources.add(src)
                 elif perm == 'login':
-                    if user_email is not None:
+                    if signed_in_user:
                         allowed_sources.add(src)
                 else:  # 'groups'
                     if user_email is not None:
@@ -1340,11 +1354,9 @@ def filter_by_source_permissions(object_name: str, data_type: str,
                         if user_group_set & default_group_names:
                             allowed_sources.add(src)
             else:
-                # System default: TNS sources are public, everything else needs login
+                # System default: TNS / ALeRCE are public, everything else is for signed-in user accounts
                 perm = _system_default_for_source(src)
-                if perm == 'public':
-                    allowed_sources.add(src)
-                elif user_email is not None:
+                if perm == 'public' or signed_in_user:
                     allowed_sources.add(src)
 
         if is_record_list:
