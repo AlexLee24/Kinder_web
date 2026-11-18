@@ -157,8 +157,22 @@ def skymapper_images(ra, dec, band, size):
     return rows
 
 
+SKYMAPPER_SCALE = 0.497                 # arcsec/px of SkyMapper's images
+
+
+def target_grid(ra, dec, size, scale):
+    """A north-up TAN grid of size arcmin, scale arcsec/px, centred on the target."""
+    from astropy.wcs import WCS
+    n = int(round(size * 60 / scale))
+    w = WCS(naxis=2)
+    w.wcs.crpix, w.wcs.cdelt = [n / 2 + 0.5, n / 2 + 0.5], [-scale / 3600, scale / 3600]
+    w.wcs.crval, w.wcs.ctype = [ra, dec], ['RA---TAN', 'DEC--TAN']
+    w.pixel_shape = (n, n)
+    return w
+
+
 def fetch_skymapper(ra, dec, size, dest, band, max_images=SKYMAPPER_MAX_IMAGES):
-    """SkyMapper DR4 的切圖（南天，有 u）：最多 max_images 張曝光重投影到最長那張的格點，依各自的 ZPAPPROX 換成同一個
+    """SkyMapper DR4 的切圖（南天，有 u）：最多 max_images 張曝光重投影到以目標為中心的格點，依各自的 ZPAPPROX 換成同一個
     零點，再以曝光時間加權平均（天光雜訊為主時權重 ∝ 曝光時間）。單張 100 s 的 u 只到 ~19 等，疊起來深一些。"""
     import io
 
@@ -187,17 +201,27 @@ def fetch_skymapper(ra, dec, size, dest, band, max_images=SKYMAPPER_MAX_IMAGES):
     ref_data, ref_head, ref_t = frames[0]
     zp_ref = ref_head.get('ZPAPPROX')
     planes, weights = [ref_data], [ref_t]
-    if len(frames) > 1:
-        try:
-            from reproject import reproject_interp
-            ref_wcs = WCS(ref_head)
-            for data, head, t in frames[1:]:
-                arr, _ = reproject_interp((data, WCS(head)), ref_wcs, shape_out=ref_data.shape)
-                zp = head.get('ZPAPPROX')
-                planes.append(arr * (10 ** (0.4 * (zp_ref - zp)) if zp and zp_ref else 1.0))
-                weights.append(t)
-        except ImportError:
-            log(f'template {band}: reproject not installed; using one SkyMapper exposure')
+    try:
+        from reproject import reproject_interp
+    except ImportError:
+        reproject_interp = None
+        log(f'template {band}: reproject not installed; using one SkyMapper exposure')
+    if reproject_interp is not None:
+        # 每張切圖只有那張 CCD 上的部分：目標靠 CCD 邊時第一張可能只有 1′（AT 2026ajby u 2026-11-17）。
+        # 全部投影到以目標為中心、size 見方的格點，各張互補成整個方框。
+        ref_head = ref_head.copy()
+        out_wcs = target_grid(ra, dec, size, SKYMAPPER_SCALE)
+        n = out_wcs.pixel_shape[0]
+        for k in [k for k in list(ref_head) if k[:2] in ('CD', 'PC', 'PV') or k[:4] in ('CRPI', 'CRVA', 'CDEL', 'CTYP',
+                                                                                       'CUNI', 'NAXI', 'A_', 'B_', 'AP_', 'BP_')]:
+            del ref_head[k]
+        ref_head.update(out_wcs.to_header())
+        planes, weights = [], []
+        for data, head, t in frames:
+            arr, _ = reproject_interp((data, WCS(head)), out_wcs, shape_out=(n, n))
+            zp = head.get('ZPAPPROX')
+            planes.append(arr * (10 ** (0.4 * (zp_ref - zp)) if zp and zp_ref else 1.0))
+            weights.append(t)
     cube = np.stack(planes)
     w = np.asarray(weights)[:, None, None] * np.isfinite(cube)
     with np.errstate(invalid='ignore', divide='ignore'):

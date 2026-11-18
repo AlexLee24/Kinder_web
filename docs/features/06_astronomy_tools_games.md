@@ -133,7 +133,7 @@
 - **endpoint**：`astronomy_tools.lc_plotter`
 - **權限**：公開（登入者的 email 會注入頁面，用於 localStorage 鍵名）
 - **模板**：`app/routes/astronomy_tools/templates/lc_plotter.html`
-- **模板變數**：`current_path='/lc_plotter'`、`filter_colors`（`modules.filter_colors.all_colors()`，來自 `app/data/filter_colors.json` 的 `{filter: '#hex'}`，以 `<script type="application/json" id="filterColorsData">` 注入）、`user_email`（`session['user']['email']` 或 `''`，注入 `#lcpUserEmail`）
+- **模板變數**：`current_path='/lc_plotter'`、`filter_colors`（`modules.filter_colors.all_colors()`，來自 `app/resources/filter_colors.json`（git 內、全站唯一）的 `{filter: '#hex'}`，以 `<script type="application/json" id="filterColorsData">` 注入）、`user_email`（`session['user']['email']` 或 `''`，注入 `#lcpUserEmail`）
 - **CSS/JS**：`css/lc_plotter.css`、`js/lc_plotter.js`（1503 行）、CDN Plotly 2.35.2
 - **頁面區塊與互動**：
 
@@ -401,7 +401,7 @@
 | `coordinate_converter.py` | `convert_ra_hms_to_decimal`、`convert_ra_decimal_to_hms`（`% 360`）、`convert_dec_dms_to_decimal`、`convert_dec_decimal_to_dms`（範圍檢查，`ValueError`） | 座標換算；也被 `observation_script`、`api_public_object` 用 |
 | `request_validation.py` | `get_int_arg(name, default, min_val=-999999, max_val=999999)`、`get_float_arg(...)`、`ParamOutOfRangeError(ValueError)` | 公開 API query 參數驗證 |
 | `ext_M_calculator.py` | `get_extinction(ra, dec, filter_name)`（re-export 自 `app/modules/DETECT/function/module/calculator.py`；SFD98 E(B-V) × SF11 比值；塵埃圖存 `DETECT_DATA_DIR`） | LC Plotter 銀河消光 |
-| `filter_colors.py` | `all_colors()`（讀 `app/data/filter_colors.json`，import 時載入一次） | LC Plotter 濾鏡顏色 |
+| `filter_colors.py` | `all_colors()`（讀 `app/resources/filter_colors.json`，import 時載入一次） | LC Plotter 濾鏡顏色 |
 | `obsplan.py`（Phil Cigan obsplanning 改寫） | `create_ephem_observer(namestring, longitude, latitude, elevation, decimal_format='deg', timezone=None)`、`create_ephem_target(namestring, RA, DEC, decimal_format='deg')`、`dt_naive_to_dt_aware(datetime_naive, local_timezone)`、`plot_night_observing_tracks(target_list, observer, obsstart, obsend, ..., toptime='local', timezone='auto', n_steps=1000, simpletracks=False, ..., savepath='', showplot=False)`、`compute_moonphase(obstime, return_fmt='percent')`、`calculate_twilight_times(obsframe, startdate, verbose=False)`、`calculate_moon_times(observer, startdate, outtype='dt')`、`calculate_transit_time_single(target, observer, approximate_time, mode='nearest', return_fmt='str')`、`moonsep_single(target, observer, obstime)`、`get_timezone_name(offset)`（-12..12 → tz 名稱，否則 `None`） | 可見度計算與靜態軌跡圖 |
 | `observation_script.py` | `get_followup_targets_json()`、`process_observation_request(data)` → `generate_single_script(name, ra, dec, mag, priority, is_lot='False', Repeat=0, auto_exp=True, filter_input, exp_time, count, info)`；`exposure_time(mag)` 星等→曝光表；`check_filter` / `check_filter_LOT` 濾鏡全名 | ACP 腳本 |
 | `trigger_script.py` | `generate_full_script(targets, telescope)` → `generate_script(name, ra, dec, mag, priority, priority_message, is_lot, Repeat, auto_exp, filter_input, exp_time, count)`；`TARGET_SEPARATOR` | Daily Trigger 腳本 |
@@ -434,7 +434,7 @@
 | `<專案根>/data/1a2b_leaderboard.json` | 讀/寫（games） | 見已知問題（路徑疑似錯誤，且未被 gitignore） |
 | `app/modules/CASTOR/src/castorGUI/data/presets.json` | 讀 | ETC presets |
 | `app/routes/astronomy_tools/templates/castor_etc_body.html` | 讀（每次 GET `/exposure_time_calculator` 以 `open()` 讀） | 注入模板 |
-| `app/data/filter_colors.json` | 讀（import 時） | LC Plotter |
+| `app/resources/filter_colors.json` | 讀（import 時） | LC Plotter、Transient 光變曲線、Daily Trigger |
 | `DETECT_DATA_DIR`（預設 `app/modules/DETECT/data`） | 讀/首次下載 | SFD 塵埃圖 |
 | 系統暫存目錄 `*.jpg` | 寫後刪 | `/api/visibility/image` |
 

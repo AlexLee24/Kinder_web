@@ -1127,6 +1127,7 @@
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" integrity="sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7" crossorigin="anonymous" charset="utf-8" async></script>
     <script src="{{ url_for('static', filename='js/daily_trigger.js') }}"></script>
     <script src="{{ url_for('static', filename='js/lc_plot.js') }}"></script>
+    <script type="application/json" id="filterColorsData">{{ filter_colors | default({}) | tojson }}</script>
     <script src="{{ url_for('static', filename='js/dt_auto.js') }}"></script>
     <script>
         (function() {

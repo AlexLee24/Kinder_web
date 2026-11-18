@@ -1076,9 +1076,13 @@ def _progress(log):
 
 
 def _looks_like_prompt(log):
-    """The last line has no newline, or ends with AutoPhOT's '>' prompt → it waits for input."""
+    """The last line has no newline, or ends with AutoPhOT's '>' prompt → it waits for input. A line ending in a
+    carriage return is a status line being redrawn, not a question (GaiaXPy's 'Running query...' and 'Done! Output
+    saved to path: ...' between its XP batches; AT2026aifu 2026-11-17 was stopped as 'kept asking for input')."""
     tail = log[-400:]
-    if not tail or tail.endswith('\n'):
+    if not tail or tail.endswith('\r'):
+        return False
+    if tail.endswith('\n'):
         return tail.rstrip().endswith('>')
     return True
 

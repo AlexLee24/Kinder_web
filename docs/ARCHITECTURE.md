@@ -56,7 +56,7 @@ kinder_web_blueprint/
     │   ├── private_area/      daily_trigger / epessto / documents / lab_info / targets / observation_logs / page_perms / debug
     │   ├── web_api/           objects / tns / detect / observation_v1 / keys / legacy_api（api blueprint）
     │   └── games/             1A2B
-    ├── resources/         放在 git 內的小資料檔：kn_lc_mag.txt、filter_colors.json（後備）
+    ├── resources/         放在 git 內的小資料檔：kn_lc_mag.txt、filter_colors.json（全站唯一的濾鏡色表）
     ├── vendor/            CASTOR/（git clone，忽略）、DETECT/（rsync 副本，追蹤）— 見 vendor/README.md
     ├── data/              執行期資料（忽略）：TNS 工作檔、phot_cache、shared_plots、backups、狀態 JSON、譜線快取
     └── log/               每日 log、.background_jobs.lock、.job_status.json（忽略）

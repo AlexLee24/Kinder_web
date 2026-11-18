@@ -53,3 +53,28 @@ def test_urllib_gets_certifi_when_no_bundle_is_set(runner, monkeypatch):
     assert runner.ca_bundle() == certifi.where() == os.environ['SSL_CERT_FILE']
     monkeypatch.setenv('SSL_CERT_FILE', '/etc/ssl/mine.pem')
     assert runner.ca_bundle() == '/etc/ssl/mine.pem'           # a bundle someone chose stays
+
+
+def test_a_tiny_template_does_not_shrink_the_others(runner, tmp_path, capsys):
+    """AT 2026ajby 2026-11-17: SkyMapper u had 1.3′, so g/r/i/z were cut to 1.16′ (88 px) and none could be aligned."""
+    full = template(tmp_path / 'r.fits')
+    tiny = template(tmp_path / 'u.fits', 960)                    # data ends 1′ beside the target: a 2′ box
+    assert runner.template_box([full, tiny], RA, DEC) == pytest.approx(10, abs=0.01)
+    assert 'u.fits: only 2.0′ around the target' in capsys.readouterr().out
+    assert runner.template_box([tiny], RA, DEC) == pytest.approx(2.0, abs=0.01)       # all tiny: the smallest
+
+
+def test_gaiaxpy_does_not_save_its_table(runner, monkeypatch):
+    """GaiaXPy's 'Done! Output saved to path' ends in a carriage return, which Kinder took for a question."""
+    import sys
+    import types
+    seen = []
+    fake = types.ModuleType('gaiaxpy')
+    fake.generate = lambda *a, **kw: seen.append(kw) or 'table'
+    monkeypatch.setitem(sys.modules, 'gaiaxpy', fake)
+    runner.quiet_gaiaxpy()
+    runner.quiet_gaiaxpy()                                       # once only
+    assert fake.generate(['1'], photometric_system='x') == 'table'
+    assert seen == [{'photometric_system': 'x', 'save_file': False}]
+    fake.generate(['1'], save_file=True)
+    assert seen[-1]['save_file'] is True

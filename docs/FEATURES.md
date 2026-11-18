@@ -189,7 +189,7 @@ Kinder（Logo → /）
 | `app/data/tns_api_download_work/tns_public_objects_WORK.csv` | `auto_tns_download`、`Manual_tns_download_snoozed`、admin 手動下載 | `addin_database` |
 | `app/data/phot_cache/<YYYY>/<name>_photometry.txt` | `download_phot`（上傳 DB 後即刪；殘留 = 失敗遺留） | `download_phot.upload_photometry_to_db` |
 | `app/data/shared_plots/<24hex>.json` | `POST /lc_plotter/share` | `GET /lc_plotter/shared/<id>`（60 天，讀取時才檢查過期；無清理排程） |
-| `app/data/filter_colors.json` | 手動維護 | `modules/filter_colors.py`（濾鏡顏色） |
+| `app/resources/filter_colors.json` | git 內，隨 deploy 更新 | `app/services/astro/filter_colors.py`（全站濾鏡顏色，唯一來源） |
 | `app/data/trigger_send_status.json` | `trigger_send.mark_sent` | `trigger_send.get_send_status`（Daily Trigger 今晚是否已送） |
 | `app/data/backups/Kinder_backup_YYYYMMDD.sql` | `backup.run_daily_backup` | 人工 |
 | `app/data/gcn.json`、`ep.json`、`ep_observing_track.jpg`、`target_objects.txt`、`bots/*_sent_ids.json` | lab bots（`app/services/bots`） | Admin › Bots |

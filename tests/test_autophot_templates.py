@@ -169,3 +169,11 @@ def test_a_forced_survey_is_tried_first_and_kept_apart(kt, tmp_path):
     got = kt.pick(RA, DEC, 10, tmp_path / 'b', 'g', fetch=tiny, force='skymapper')   # SkyMapper 2.0′ < 3′
     assert got.endswith('legacy_g_band_template.fits')            # then Pan-STARRS 5.2′, Legacy 10′
     assert [c[0] for c in calls] == ['skymapper', 'panstarrs', 'legacy']
+
+
+def test_target_grid_is_centred(kt):
+    w = kt.target_grid(RA, DEC, 8.0, kt.SKYMAPPER_SCALE)
+    n = w.pixel_shape[0]
+    assert n == round(8 * 60 / kt.SKYMAPPER_SCALE)
+    x, y = w.all_world2pix(RA, DEC, 0)
+    assert x == pytest.approx((n - 1) / 2) and y == pytest.approx((n - 1) / 2)

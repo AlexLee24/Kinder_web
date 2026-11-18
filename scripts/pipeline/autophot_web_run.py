@@ -115,6 +115,24 @@ def make_stacks(cfg_in, tdir):
     return new
 
 
+def quiet_gaiaxpy():
+    """GaiaXPy writes ./output_synthetic_photometry.csv after every XP batch and says so on a line ending in '\\r';
+    AutoPhOT uses the returned table only, so keep the file (and the line) out of the workspace."""
+    try:
+        import gaiaxpy
+    except Exception:
+        return
+    gen = gaiaxpy.generate
+    if getattr(gen, 'kinder_quiet', False):
+        return
+
+    def generate(*a, **kw):
+        kw.setdefault('save_file', False)
+        return gen(*a, **kw)
+    generate.kinder_quiet = True
+    gaiaxpy.generate = generate
+
+
 def stack_is_current(path):
     """疊圖的 gain 是現在的寫法（STACKGV，見 autophot_stack.STACK_GAIN_VERSION）才沿用。舊的疊圖：2026-11-17 以前
     留下參考影像的 GAIN（SLT 是 '0.95 [electrons/ADU]'，AutoPhOT 讀不到就當 1；LOT 是單張的 0.92），#113 的寫成
@@ -228,8 +246,13 @@ def ensure_astrometry(cfg_in, tdir):
     print(f'[web] astrometry: {ok} of {len(todo)} solved', flush=True)
 
 
+MIN_TS_BOX = 3.0      # arcmin：比這小的方框星太少，對齊必定失敗（AT 2026ajby 2026-11-17：1.16′ = 88 px，g/r/i/z 全沒減）
+
+
 def template_box(files, ra, dec):
     """模板在目標周圍真正有資料的方框邊長（arcmin），所有模板取最小；量不到回 None。
+    只有一小塊資料的模板（< MIN_TS_BOX，例如目標落在 SkyMapper 每張 CCD 邊上的 u）不拿來縮框：那個波段反正對不齊、
+    退回 w/o TS，其他波段照它們自己的模板裁。所有模板都這麼小時才用最小的。
 
     Pan-STARRS 的模板是從單一 skycell 切出來的：目標靠近 skycell 邊緣時，超出的部分是空白，
     AutoPhOT 會把空白邊裁掉，結果模板只蓋到科學影像的一小塊（例如 6′×5′ 對 13′×13′），
@@ -254,10 +277,17 @@ def template_box(files, ra, dec):
             scale = float(np.mean(proj_plane_pixel_scales(wcs))) * 3600          # arcsec/px
             side = max(0.0, float(2 * half * scale / 60))     # plain float: numpy scalars break AutoPhOT's input.yaml
             print(f'[web] template {os.path.basename(f)}: {side:.1f}′ of data around the target', flush=True)
-            sides.append(side)
+            sides.append((side, os.path.basename(f)))
         except Exception as e:                            # 量不到就不裁，照 AutoPhOT 原本的做法
             print(f'[web] could not measure template {os.path.basename(f)}: {e}', flush=True)
-    return min(sides) if sides else None
+    if not sides:
+        return None
+    big = [x for x in sides if x[0] >= MIN_TS_BOX]
+    for side, name in sides:
+        if big and side < MIN_TS_BOX:
+            print(f'[web] template {name}: only {side:.1f}′ around the target, too small to align; that band is '
+                  f'measured without template subtraction and does not shrink the box of the others', flush=True)
+    return min(x[0] for x in (big or sides))
 
 
 def ca_bundle():
@@ -302,6 +332,7 @@ def main():
     cat_cfg = config.setdefault('catalog', {})
     if int(cat_cfg.get('gaia_xp_batch_size') or 0) <= 0 or int(cat_cfg.get('gaia_xp_batch_size')) > 45:
         cat_cfg['gaia_xp_batch_size'] = 45
+    quiet_gaiaxpy()
     per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
     if per_band:                                      # 主星表沒有的波段（Pan-STARRS 沒有 u）→ AutoPhOT 的逐波段對照
         config['catalog']['use_catalog'] = {'default': config['catalog']['use_catalog'],
