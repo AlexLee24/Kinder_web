@@ -66,13 +66,13 @@
             </div>
         </div>
         <p class="kw-panel-desc">Default visibility of each telescope / source's photometry and spectra. <strong>Without a rule, a source is visible only to signed-in users</strong> (user and admin accounts, not guests); TNS reports and ALeRCE points (any source whose name contains TNS or alerce) are public.</p>
-        <p class="kw-panel-desc">A rule covers every source whose name contains it: <em>LOT</em> also covers LOT_(w/o_TS), LOT(AUTO) and LOT(AUTO, w/o TS). A rule for the exact name wins over it; TNS and ALeRCE sources follow only a rule for their exact name. An object page can override it.</p>
+        <p class="kw-panel-desc">A rule covers every source whose name contains it: <em>LOT</em> also covers LOT_(w/o_TS), LOT(AUTO) and LOT(AUTO, w/o TS). A rule for the exact name wins over it; TNS and ALeRCE sources follow only a rule for their exact name. The built-in rows at the bottom show where the sources without a rule go. An object page can override it.</p>
         <div class="kw-table-inset">
             <table class="kw-table data-table apm-sources">
                 <thead><tr><th>Source</th><th>Visible to</th><th>Groups</th><th></th></tr></thead>
                 <tbody id="apmSourcesBody"></tbody>
             </table>
-            <p id="apmSourcesEmpty" class="kw-empty" hidden>No default rules yet. Pick a source above to add one.</p>
+            <p id="apmSourcesEmpty" class="kw-empty" hidden>No rules of your own yet. Pick a source above to add one.</p>
         </div>
         <span id="apmSourcesStatus" class="settings-status"></span>
     </section>
