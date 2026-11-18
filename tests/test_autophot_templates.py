@@ -177,3 +177,17 @@ def test_target_grid_is_centred(kt):
     assert n == round(8 * 60 / kt.SKYMAPPER_SCALE)
     x, y = w.all_world2pix(RA, DEC, 0)
     assert x == pytest.approx((n - 1) / 2) and y == pytest.approx((n - 1) / 2)
+
+
+def test_a_choice_from_an_older_version_is_fetched_again(kt, tmp_path):
+    """AT 2026ajby u: the 1.3′ SkyMapper template from before the target-centred grid was reused on the rerun."""
+    calls = []
+    fetch = {s: fake(calls, s) for s in kt.FETCH}
+    kt.pick(RA, DEC, 10, tmp_path, 'u', fetch=fetch)
+    mk = tmp_path / 'u_template' / kt.MARKER
+    old = json.loads(mk.read_text())
+    assert old['version'] == kt.MARKER_VERSION
+    del old['version']
+    mk.write_text(json.dumps(old))
+    kt.pick(RA, DEC, 10, tmp_path, 'u', fetch=fetch)
+    assert len(calls) == 2

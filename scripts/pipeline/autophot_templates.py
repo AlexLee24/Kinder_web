@@ -33,6 +33,7 @@ OTHER_BANDS = ('panstarrs',)            # y, w …
 GOOD_FRACTION = 0.8                     # 目標周圍有資料的方框 ≥ 要的大小 × 0.8 就算夠
 MIN_FORCE_SIDE = 3.0                    # 指定的巡天（force）至少要有這麼大（arcmin）才用
 MARKER = 'kinder_template.json'
+MARKER_VERSION = 2                      # 2: SkyMapper on a target-centred grid (#122); older choices are fetched again
 LEGACY_LAYERS = ('ls-dr10', 'ls-dr11')
 LEGACY_PIXSCALE = 0.262
 LEGACY_MAX_PIX = 3000                   # viewer 的 fits-cutout 上限
@@ -265,7 +266,8 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None, fo
     size = float(size)
     folder = _folder(template_folder, band)
     mk = _marker(folder)
-    if mk and mk.get('size') == size and mk.get('force') == force and (folder / mk.get('file', '')).is_file():
+    if (mk and mk.get('version', 1) >= MARKER_VERSION and mk.get('size') == size and mk.get('force') == force
+            and (folder / mk.get('file', '')).is_file()):
         log(f'template {band}: {LABELS.get(mk["survey"], mk["survey"])} as before ({mk["side"]:.1f}′ around the target)')
         return str(folder / mk['file'])
 
@@ -310,7 +312,7 @@ def pick(ra, dec, size, template_folder, band, fetch=None, autophot_fns=None, fo
         folder.mkdir(parents=True, exist_ok=True)
         name = f'{survey}_{band}_band_template.fits'
         shutil.copyfile(path, folder / name)
-        (folder / MARKER).write_text(json.dumps({'survey': survey, 'size': size, 'side': round(side, 2), 'file': name,
+        (folder / MARKER).write_text(json.dumps({'version': MARKER_VERSION, 'survey': survey, 'size': size, 'side': round(side, 2), 'file': name,
                                                  'force': force, 'tried': list(order[:order.index(survey) + 1])}))
         log(f'template {band}: using {LABELS.get(survey, survey)}')
         return str(folder / name)
