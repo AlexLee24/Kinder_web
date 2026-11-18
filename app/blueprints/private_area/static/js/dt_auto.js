@@ -576,6 +576,13 @@
     const ROW_CONTROLS = 'input, button, a, label, select, textarea, .pa-td-coord, .pa-row-off .pa-td-note, .pa-copy-menu, .pa-mini-plot, .pa-td-actions';
     function wireRows() {
         document.querySelector('.pa-obs-section')?.addEventListener('click', e => {
+            // the target's name opens it here too (its Transient page is the link in the popout's title);
+            // ⌘/Ctrl/Shift-click still follows the link, e.g. into a new tab
+            const name = e.target.closest('.pa-name-line a');
+            if (name && !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button)) {
+                const tr = name.closest('tbody > tr.dtp-row');
+                if (tr && rowId(tr) != null) { e.preventDefault(); openTarget(rowId(tr)); return; }
+            }
             if (e.target.closest(ROW_CONTROLS) || String(window.getSelection() || '')) return;   // selecting text is not a click
             const tr = e.target.closest('tbody > tr.dtp-row');
             if (tr && rowId(tr) != null) openTarget(rowId(tr));
