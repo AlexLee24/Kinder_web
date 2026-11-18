@@ -115,6 +115,43 @@ def make_stacks(cfg_in, tdir):
     return new
 
 
+VIZIER_SERVERS = ('vizier.cds.unistra.fr', 'vizier.cfa.harvard.edu')   # ones astroquery's conf accepts
+
+
+def vizier_ok(host, timeout=20):
+    import requests
+    try:
+        r = requests.get(f'https://{host}/viz-bin/votable', timeout=timeout,
+                         params={'-source': 'I/239/hip_main', '-c': '0 +0', '-c.rd': '1', '-out.max': '1'})
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def vizier_mirror(wdir, ok=vizier_ok):
+    """The first VizieR server that answers. CDS answered every query with 404 on 2026-11-18 (AT 2026ajby's u
+    catalogue, SDSS from VizieR: the image was aborted). AutoPhOT measures each image in a subprocess, so the choice
+    goes into an astroquery.cfg that ASTROPY_CONFIG_DIR points the subprocesses at; None when CDS works."""
+    if ok(VIZIER_SERVERS[0]):
+        return None
+    for host in VIZIER_SERVERS[1:]:
+        if ok(host):
+            d = os.path.join(wdir, '.astropy_config')
+            os.makedirs(d, exist_ok=True)
+            with open(os.path.join(d, 'astroquery.cfg'), 'w') as fh:
+                fh.write(f'[vizier]\nserver = {host}\n')
+            os.environ['ASTROPY_CONFIG_DIR'] = d
+            try:
+                from astroquery.vizier import conf
+                conf.server = host
+            except Exception:
+                pass
+            print(f'[web] VizieR: {VIZIER_SERVERS[0]} does not answer; using {host}', flush=True)
+            return host
+    print('[web] VizieR: no server answers; catalogues from VizieR will fail', flush=True)
+    return None
+
+
 def quiet_gaiaxpy():
     """GaiaXPy writes ./output_synthetic_photometry.csv after every XP batch and says so on a line ending in '\\r';
     AutoPhOT uses the returned table only, so keep the file (and the line) out of the workspace."""
@@ -333,6 +370,10 @@ def main():
     if int(cat_cfg.get('gaia_xp_batch_size') or 0) <= 0 or int(cat_cfg.get('gaia_xp_batch_size')) > 45:
         cat_cfg['gaia_xp_batch_size'] = 45
     quiet_gaiaxpy()
+    try:
+        vizier_mirror(cfg_in['wdir'])
+    except Exception as e:
+        print(f'[web] VizieR check skipped: {e}', flush=True)
     per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
     if per_band:                                      # 主星表沒有的波段（Pan-STARRS 沒有 u）→ AutoPhOT 的逐波段對照
         config['catalog']['use_catalog'] = {'default': config['catalog']['use_catalog'],

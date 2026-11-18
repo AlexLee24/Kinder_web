@@ -78,3 +78,17 @@ def test_gaiaxpy_does_not_save_its_table(runner, monkeypatch):
     assert seen == [{'photometric_system': 'x', 'save_file': False}]
     fake.generate(['1'], save_file=True)
     assert seen[-1]['save_file'] is True
+
+
+def test_vizier_falls_back_to_a_mirror(runner, tmp_path, monkeypatch):
+    """CDS answered every query with 404 on 2026-11-18; the subprocesses read the mirror from ASTROPY_CONFIG_DIR."""
+    monkeypatch.delenv('ASTROPY_CONFIG_DIR', raising=False)
+    assert runner.vizier_mirror(str(tmp_path), ok=lambda h: True) is None
+    assert 'ASTROPY_CONFIG_DIR' not in os.environ
+    host = runner.vizier_mirror(str(tmp_path), ok=lambda h: h != 'vizier.cds.unistra.fr')
+    assert host == 'vizier.cfa.harvard.edu'
+    cfg = tmp_path / '.astropy_config' / 'astroquery.cfg'
+    assert 'server = vizier.cfa.harvard.edu' in cfg.read_text()
+    assert os.environ['ASTROPY_CONFIG_DIR'] == str(cfg.parent)
+    monkeypatch.delenv('ASTROPY_CONFIG_DIR', raising=False)
+    assert runner.vizier_mirror(str(tmp_path / 'b'), ok=lambda h: False) is None

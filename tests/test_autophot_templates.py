@@ -191,3 +191,14 @@ def test_a_choice_from_an_older_version_is_fetched_again(kt, tmp_path):
     mk.write_text(json.dumps(old))
     kt.pick(RA, DEC, 10, tmp_path, 'u', fetch=fetch)
     assert len(calls) == 2
+
+
+def test_the_grid_header_has_a_cd_matrix(kt):
+    """AutoPhOT's relative WCS correction reads wcs.cd ('No cd is present' otherwise)."""
+    w = kt.target_grid(RA, DEC, 8.0, kt.SKYMAPPER_SCALE)
+    h = kt.cd_header(w)
+    assert 'PC1_1' not in h and 'CDELT1' not in h
+    assert h['CD1_1'] == pytest.approx(-kt.SKYMAPPER_SCALE / 3600) and h['CD2_2'] == pytest.approx(kt.SKYMAPPER_SCALE / 3600)
+    back = WCS(h)
+    assert back.wcs.has_cd()
+    assert back.all_world2pix(RA, DEC, 0) == pytest.approx(w.all_world2pix(RA, DEC, 0))
