@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 SOURCE_GROUPS = [('Euclid', [(k, lab) for k, (lab, _) in ec.EUCLID_SOURCES.items()]),
                  ('Other surveys', list(ec.SURVEY_LABELS.items()))]
 PANEL_SOURCES = [k for _, group in SOURCE_GROUPS for k, _ in group]
-DEFAULT_PANELS = ['vis', 'nisp', 'hsc', 'dr10']
+DEFAULT_PANELS = ['vis', 'hsc', 'dr10', 'ps1']
 
 
 def _pos():
