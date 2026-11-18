@@ -65,7 +65,7 @@
                 <button class="kw-btn kw-btn-primary kw-btn-sm" id="apmSourcesSave" disabled>Save all</button>
             </div>
         </div>
-        <p class="kw-panel-desc">Default visibility of each telescope / source's photometry and spectra. An object page can override it.</p>
+        <p class="kw-panel-desc">Default visibility of each telescope / source's photometry and spectra. A rule covers every source whose name contains it: <em>LOT</em> also covers LOT_(w/o_TS), LOT(AUTO) and LOT(AUTO, w/o TS). A rule for the exact name wins over it; sources reported to TNS follow only a rule for their exact name. An object page can override it.</p>
         <div class="kw-table-inset">
             <table class="kw-table data-table apm-sources">
                 <thead><tr><th>Source</th><th>Visible to</th><th>Groups</th><th></th></tr></thead>
