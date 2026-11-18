@@ -225,7 +225,7 @@ def test_autophots_telescope_yml_writes_are_whole_and_locked(kt, tmp_path):
     with mod.open(str(p), 'w') as f:
         yaml.dump({'SLT': {'location': {'lat': None}}}, f)
         assert p.read_text() == 'OLD: {}\n'                             # nothing half-written meanwhile
-    assert yaml.safe_load(p.read_text()) == {'SLT': {'location': {'lat': None}}}
+    assert yaml.safe_load(p.read_text()) == {'OLD': {}, 'SLT': {'location': {'lat': None}}}   # merged, nothing dropped
     assert (tmp_path / '.telescope.lock').exists()
     assert not [x for x in os.listdir(tmp_path) if x.endswith('.tmp')]
     other = tmp_path / 'other.txt'
@@ -242,3 +242,20 @@ def test_telescope_bands_are_written_whole(kt, tmp_path):
     assert kt.ensure_telescope_bands(p) is True
     assert yaml.safe_load(p.read_text())['SkyMapper']['INSTRUME']['SG_32_Det']['u'] == 'u'
     assert not [x for x in os.listdir(tmp_path) if x.endswith('.tmp')]
+
+
+def test_a_stale_whole_document_does_not_drop_entries(kt, tmp_path):
+    """AutoPhOT writes back the document it read earlier; another run's entry added meanwhile must survive."""
+    import types
+    p = tmp_path / 'telescope.yml'
+    p.write_text(yaml.safe_dump({'SLT': {'INSTRUME': {'a': {'r': 'r', 'pixel_scale': 0.4}}}, 'North Zeiss-600': {'x': 1}}))
+    os.chmod(p, 0o644)
+    mod = types.ModuleType('prepare')
+    kt.atomic_telescope_writes(mod)
+    stale = {'SLT': {'INSTRUME': {'a': {'r': 'r', 'pixel_scale': 0.76, 'up': 'u'}}}}     # read before Zeiss was added
+    with mod.open(str(p), 'w') as f:
+        yaml.dump(stale, f)
+    doc = yaml.safe_load(p.read_text())
+    assert doc['North Zeiss-600'] == {'x': 1}
+    assert doc['SLT']['INSTRUME']['a'] == {'r': 'r', 'pixel_scale': 0.76, 'up': 'u'}
+    assert oct(p.stat().st_mode & 0o777) == oct(0o644)

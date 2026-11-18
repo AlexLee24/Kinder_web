@@ -384,10 +384,15 @@ class TelescopeYml:
         return self
 
     def write_text(self, text):
+        try:
+            mode = self.path.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o644
         fd, tmp = tempfile.mkstemp(prefix='.telescope.yml.', suffix='.tmp', dir=str(self.path.parent))
         try:
             with os.fdopen(fd, 'w') as fh:
                 fh.write(text)
+            os.chmod(tmp, mode)                              # mkstemp makes 0600; keep the file's own mode
             os.replace(tmp, self.path)
         except BaseException:
             if os.path.exists(tmp):
@@ -401,9 +406,19 @@ class TelescopeYml:
         return False
 
 
+def merge_yml(base, new):
+    """new over base, recursively; what only base has stays."""
+    out = dict(base)
+    for k, v in new.items():
+        out[k] = merge_yml(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
 class _AtomicFile(io.StringIO):
-    """What open(<telescope.yml>, 'w') gives AutoPhOT's prepare module: collects the text and writes it with
-    TelescopeYml on close."""
+    """What open(<telescope.yml>, 'w') gives AutoPhOT's prepare module: collects the text and, on close, under the
+    lock, merges it into the file as it is then. AutoPhOT writes back the whole document it read earlier; between its
+    read and its write another run may have added an entry, which a plain write erased (North Zeiss-600, 2026-11-18).
+    AutoPhOT only adds or updates entries, so nothing the file has is dropped."""
 
     def __init__(self, path):
         super().__init__()
@@ -411,8 +426,17 @@ class _AtomicFile(io.StringIO):
 
     def close(self):
         if not self.closed:
+            import yaml
             text = self.getvalue()
             with TelescopeYml(self._path) as t:
+                try:
+                    new = yaml.safe_load(text)
+                    cur = yaml.safe_load(Path(self._path).read_text()) if Path(self._path).is_file() else {}
+                    if isinstance(new, dict) and isinstance(cur, dict):
+                        text = yaml.safe_dump(merge_yml(cur, new), default_flow_style=False, sort_keys=False,
+                                              allow_unicode=True)
+                except Exception:
+                    pass                                     # unreadable either way: write what AutoPhOT gave
                 t.write_text(text)
         super().close()
 
