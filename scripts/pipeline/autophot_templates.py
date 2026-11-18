@@ -17,7 +17,9 @@ AutoPhOT 一次只能從一個巡天下載模板，而且只看下載成不成�
   purge_stale_gaia        Gaia XP 合成測光失敗時（2026-11-18 Gaia archive 回 HTTP 500）AutoPhOT 退回只有 G/BP/RP 的星表，
                           還把它存成快取，之後每次都讀這份沒有 u 的快取，u 永遠校正不了：沒有 SdssStd_mag_u 的快取刪掉重查。
 """
+import io
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -366,12 +368,84 @@ TEMPLATE_TELESCOPES = {
 LOCATION = {'alt': None, 'lat': None, 'lon': None, 'name': None}
 
 
+class TelescopeYml:
+    """Hold the shared <wdir>/.telescope.lock (the one Kinder's sync_telescope_yml takes) while telescope.yml is read
+    and rewritten, and write it whole: a temporary file in the same folder, then os.replace. Three runs writing it at
+    once left 'lat: n' + 'll' in it on 2026-11-18 and every run after failed to read it."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self._fh = None
+
+    def __enter__(self):
+        import fcntl
+        self._fh = open(self.path.parent / '.telescope.lock', 'a')
+        fcntl.flock(self._fh, fcntl.LOCK_EX)
+        return self
+
+    def write_text(self, text):
+        fd, tmp = tempfile.mkstemp(prefix='.telescope.yml.', suffix='.tmp', dir=str(self.path.parent))
+        try:
+            with os.fdopen(fd, 'w') as fh:
+                fh.write(text)
+            os.replace(tmp, self.path)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+
+    def __exit__(self, *exc):
+        import fcntl
+        fcntl.flock(self._fh, fcntl.LOCK_UN)
+        self._fh.close()
+        return False
+
+
+class _AtomicFile(io.StringIO):
+    """What open(<telescope.yml>, 'w') gives AutoPhOT's prepare module: collects the text and writes it with
+    TelescopeYml on close."""
+
+    def __init__(self, path):
+        super().__init__()
+        self._path = path
+
+    def close(self):
+        if not self.closed:
+            text = self.getvalue()
+            with TelescopeYml(self._path) as t:
+                t.write_text(text)
+        super().close()
+
+
+def atomic_telescope_writes(module):
+    """Give `module` (AutoPhOT's prepare) an open() that writes telescope.yml whole and under the shared lock;
+    everything else goes to the real open. Returns True when installed."""
+    import builtins
+    if getattr(getattr(module, 'open', None), 'kinder_atomic', False):
+        return False
+    real = builtins.open
+
+    def _open(file, mode='r', *args, **kwargs):
+        if (isinstance(file, (str, os.PathLike)) and os.path.basename(os.fspath(file)) == 'telescope.yml'
+                and 'w' in mode and 'b' not in mode):
+            return _AtomicFile(os.fspath(file))
+        return real(file, mode, *args, **kwargs)
+    _open.kinder_atomic = True
+    module.open = _open
+    return True
+
+
 def ensure_telescope_bands(yml_path):
     """telescope.yml 裡模板巡天的條目：沒有就加，缺的波段對照補上。改了回傳 True。"""
-    import yaml
     p = Path(yml_path)
     if not p.parent.is_dir():
         return False
+    with TelescopeYml(p) as yml:
+        return _ensure_telescope_bands(p, yml)
+
+
+def _ensure_telescope_bands(p, yml):
+    import yaml
     doc = (yaml.safe_load(p.read_text()) if p.is_file() else None) or {}
     changed = False
     for tel, (inst, entry, bands) in TEMPLATE_TELESCOPES.items():
@@ -389,7 +463,7 @@ def ensure_telescope_bands(yml_path):
             t['location'] = dict(LOCATION)
             changed = True
     if changed:
-        p.write_text(yaml.safe_dump(doc, default_flow_style=False, sort_keys=True))
+        yml.write_text(yaml.safe_dump(doc, default_flow_style=False, sort_keys=True))
     return changed
 
 

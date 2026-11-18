@@ -464,6 +464,12 @@ def main():
         cfg_in['stacks'] = make_stacks(cfg_in, str(tdir))
     normalize_gain(cfg_in)                         # 疊圖之後：疊好的圖已經寫了自己的 GAIN
     import prepare
+    try:                                  # AutoPhOT rewrites the shared telescope.yml in place; make that whole + locked
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import autophot_templates as _kt
+        _kt.atomic_telescope_writes(prepare)
+    except Exception as e:
+        print(f'[web] telescope.yml write guard skipped: {e}', flush=True)
     _clean = prepare.Prepare.clean
     top = os.path.realpath(config['fits_dir'])
     stack_info = cfg_in.get('stacks') or {}

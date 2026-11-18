@@ -212,3 +212,33 @@ def test_sdss_cache_without_u_is_removed(kt, tmp_path):
     assert kt.purge_stale_sdss(tmp_path) == ['qso.csv']
     assert sorted(os.listdir(d)) == ['stars.csv']
     assert kt.purge_stale_sdss(tmp_path / 'nowhere') == []
+
+
+def test_autophots_telescope_yml_writes_are_whole_and_locked(kt, tmp_path):
+    """Three runs rewriting the shared telescope.yml at once left 'lat: n' + 'll' in it (2026-11-18)."""
+    import types
+    p = tmp_path / 'telescope.yml'
+    p.write_text('OLD: {}\n')
+    mod = types.ModuleType('prepare')
+    assert kt.atomic_telescope_writes(mod) is True
+    assert kt.atomic_telescope_writes(mod) is False                     # once
+    with mod.open(str(p), 'w') as f:
+        yaml.dump({'SLT': {'location': {'lat': None}}}, f)
+        assert p.read_text() == 'OLD: {}\n'                             # nothing half-written meanwhile
+    assert yaml.safe_load(p.read_text()) == {'SLT': {'location': {'lat': None}}}
+    assert (tmp_path / '.telescope.lock').exists()
+    assert not [x for x in os.listdir(tmp_path) if x.endswith('.tmp')]
+    other = tmp_path / 'other.txt'
+    with mod.open(str(other), 'w') as f:                                 # anything else: the real open
+        f.write('x')
+    assert other.read_text() == 'x'
+    with mod.open(str(p)) as f:
+        assert 'SLT' in f.read()
+
+
+def test_telescope_bands_are_written_whole(kt, tmp_path):
+    p = tmp_path / 'telescope.yml'
+    p.write_text(yaml.safe_dump({'LOT': {'INSTRUME': {'x': {'r': 'r'}}}}))
+    assert kt.ensure_telescope_bands(p) is True
+    assert yaml.safe_load(p.read_text())['SkyMapper']['INSTRUME']['SG_32_Det']['u'] == 'u'
+    assert not [x for x in os.listdir(tmp_path) if x.endswith('.tmp')]
