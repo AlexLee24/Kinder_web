@@ -152,6 +152,39 @@ def vizier_mirror(wdir, ok=vizier_ok):
     return None
 
 
+def purge_vizier_errors(cache_dir=None):
+    """Delete VizieR error pages from astroquery's cache. Vizier asks with cache=True, so an error answer is replayed
+    for a week: CDS's 404 page, and CfA's 'The database is not currently reachable' VOTable (2026-11-18 16:51) that
+    AutoPhOT read as an empty SDSS catalogue for AT 2026ajby's u image. Answers that hold a table, or say there is
+    nothing there, stay. Returns the names removed."""
+    import pickle
+    if cache_dir is None:
+        from astroquery.vizier import Vizier
+        cache_dir = Vizier.cache_location
+    if not cache_dir or not os.path.isdir(cache_dir):
+        return []
+    gone = []
+    for name in os.listdir(cache_dir):
+        path = os.path.join(cache_dir, name)
+        try:
+            with open(path, 'rb') as fh:
+                body = getattr(pickle.load(fh), 'content', b'') or b''
+        except Exception:
+            continue
+        head = body[:4000].lstrip().lower()
+        if b'<table' in body.lower():
+            continue
+        if head.startswith(b'<!doctype html') or head.startswith(b'<html') or b'value="error"' in body.lower():
+            try:
+                os.remove(path)
+                gone.append(name)
+            except OSError:
+                pass
+    if gone:
+        print(f'[web] VizieR: removed {len(gone)} cached error answer(s)', flush=True)
+    return gone
+
+
 def quiet_gaiaxpy():
     """GaiaXPy writes ./output_synthetic_photometry.csv after every XP batch and says so on a line ending in '\\r';
     AutoPhOT uses the returned table only, so keep the file (and the line) out of the workspace."""
@@ -372,6 +405,7 @@ def main():
     quiet_gaiaxpy()
     try:
         vizier_mirror(cfg_in['wdir'])
+        purge_vizier_errors()
     except Exception as e:
         print(f'[web] VizieR check skipped: {e}', flush=True)
     per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
