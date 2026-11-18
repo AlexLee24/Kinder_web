@@ -267,13 +267,19 @@
             if (!fams.has(f)) fams.set(f, []);
             fams.get(f).push(s);
         }
-        // a family whose every source already has a rule is left out
-        const open = [...fams].filter(([, members]) => members.some((m) => !ruleFor(m)));
-        $('apmSourceAdd').innerHTML = '<option value="">Add a source…</option>' + open.map(([f, members]) => {
+        // one option per family without a rule ('LOT (LOT_(w/o_TS), LOT(AUTO))'); when the family already has its rule,
+        // the members it does not cover (TNS reports) are offered by their own names
+        const have = new Set(sources.map((p) => p.source_name));
+        const opts = [];
+        for (const [f, members] of fams) {
+            const open = members.filter((m) => !ruleFor(m));
+            if (!open.length) continue;
+            if (have.has(f)) { open.forEach((m) => opts.push([m, m])); continue; }
             const others = members.filter((m) => m !== f);
-            const label = others.length ? `${f} (${others.join(', ')})` : f;
-            return `<option value="${esc(f)}">${esc(label)}</option>`;
-        }).join('');
+            opts.push([f, others.length ? `${f} (${others.join(', ')})` : f]);
+        }
+        $('apmSourceAdd').innerHTML = '<option value="">Add a source…</option>' +
+            opts.map(([v, label]) => `<option value="${esc(v)}">${esc(label)}</option>`).join('');
         $('apmSourcesEmpty').hidden = sources.length > 0;
         $('apmSourcesBody').innerHTML = sources.map((p, i) => {
             const v = visOf(p);
@@ -292,7 +298,7 @@
         return also.length ? `<div class="source-covers">also ${also.map(esc).join(', ')}</div>` : '';
     }
     $('apmSourceAdd').addEventListener('change', (ev) => {
-        if (!ev.target.value) return;
+        if (!ev.target.value || sources.some((p) => p.source_name === ev.target.value)) return;
         sources.push({ source_name: ev.target.value, is_public: false, allowed_groups: null });
         setDirty(true);
         renderSources();
