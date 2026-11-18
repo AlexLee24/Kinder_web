@@ -110,7 +110,7 @@ Kinder（Logo → /）
 | 頁面群組權限 | `auth.system_settings` key `page_perm:<page_key>`（JSON list） | `can_access_page(page_key)`：admin / GREAT_Lab / 額外群組 |
 | API key | `auth.users.api_key`（48 字元）；使用者申請 `api_key_requested_at`，admin 發放 | `X-API-Key` header 或 `?api_key=`；`get_user_by_api_key()` **不載入群組** |
 | 物件層級權限 | `transient.objects.permission ∈ public/login/groups` + `groups[]`；`check_object_access()` | 只在物件詳細頁部分 API 使用 |
-| 來源權限 | `transient.object_source_permissions`（phot/spec × source → allowed_groups / is_public）；`filter_by_source_permissions()` | 只套用在光度 JSON 與光度繪圖 |
+| 來源權限 | `transient.object_source_permissions`（phot/spec × source → allowed_groups / is_public）；`filter_by_source_permissions()`；沒有規則時名稱含 TNS / alerce 的來源公開，其餘只給登入的 user 帳號（roles ≥ 1，不含 guest；`login` 規則與 NULL 覆寫同樣不含 guest） | 只套用在光度 JSON 與光度繪圖 |
 
 ### 3.2 `session['user']` 的 key
 

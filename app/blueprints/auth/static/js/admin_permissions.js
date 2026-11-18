@@ -231,7 +231,7 @@
     let allSources = [];
     let dirty = false;
     const visOf = (p) => p._vis || (p.is_public ? 'public' : p.allowed_groups === null ? 'logged_in' : p.allowed_groups.length ? 'groups' : 'blocked');
-    const VIS = [['public', 'Everyone'], ['logged_in', 'Anyone signed in'], ['groups', 'Specific groups'], ['blocked', 'Nobody']];
+    const VIS = [['public', 'Everyone'], ['logged_in', 'Signed-in users'], ['groups', 'Specific groups'], ['blocked', 'Nobody']];
 
     function setDirty(v) {
         dirty = v;
@@ -252,7 +252,7 @@
     // the one named exactly like a source, else the longest, decides it. Same test as app/db/auth.py rule_covers.
     const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const covers = (rule, src) => !!rule && !!src &&
-        (rule === src || (!/tns/i.test(src) && new RegExp(`(?<![A-Za-z0-9])${reEsc(rule)}(?![A-Za-z0-9])`).test(src)));   // TNS reports: exact rules only
+        (rule === src || (!/tns|alerce/i.test(src) && new RegExp(`(?<![A-Za-z0-9])${reEsc(rule)}(?![A-Za-z0-9])`).test(src)));   // public data (TNS, ALeRCE): exact rules only
     const ruleFor = (src) => {
         const names = sources.map((p) => p.source_name);
         if (names.includes(src)) return src;
