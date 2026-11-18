@@ -92,3 +92,21 @@ def test_vizier_falls_back_to_a_mirror(runner, tmp_path, monkeypatch):
     assert os.environ['ASTROPY_CONFIG_DIR'] == str(cfg.parent)
     monkeypatch.delenv('ASTROPY_CONFIG_DIR', raising=False)
     assert runner.vizier_mirror(str(tmp_path / 'b'), ok=lambda h: False) is None
+
+
+def test_vizier_error_answers_leave_the_cache(runner, tmp_path):
+    import pickle
+    from types import SimpleNamespace as Resp           # what astroquery pickles has a .content, like this
+    answers = {
+        'html.pickle': b'<!doctype html>\n<html lang="en"><head><title>404</title></head></html>',
+        'down.pickle': b'<?xml version="1.0"?><VOTABLE><RESOURCE><INFO ID="Error" name="Error" value="The database is '
+                       b'not currently reachable."/><INFO name="QUERY_STATUS" value="ERROR">no connection</INFO></RESOURCE></VOTABLE>',
+        'table.pickle': b'<?xml version="1.0"?><VOTABLE><RESOURCE><TABLE name="V/154/sdss16"></TABLE></RESOURCE></VOTABLE>',
+        'none.pickle': b'<?xml version="1.0"?><VOTABLE><RESOURCE><INFO name="QUERY_STATUS" value="OK"/></RESOURCE></VOTABLE>',
+    }
+    for name, body in answers.items():
+        (tmp_path / name).write_bytes(pickle.dumps(Resp(content=body)))
+    (tmp_path / 'junk.pickle').write_bytes(b'not a pickle')
+    assert sorted(runner.purge_vizier_errors(str(tmp_path))) == ['down.pickle', 'html.pickle']
+    assert sorted(os.listdir(tmp_path)) == ['junk.pickle', 'none.pickle', 'table.pickle']
+    assert runner.purge_vizier_errors(str(tmp_path / 'nowhere')) == []
