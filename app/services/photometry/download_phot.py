@@ -130,6 +130,20 @@ def write_photometry_to_txt(object_name: str, lines: list[str], output_dir: str)
         logger.error('Error writing photometry for %s: %s', object_name, e)
         return False
 
+def tns_source_name(data: dict) -> str:
+    """The source name of a TNS discovery point: '<discovery group> (TNS)', as the TNS sync
+    (services/tns/auto_tns_download.py) names it, so both write the same point under one name.
+    The discovery data source decides, then the reporting group; with neither, '(TNS)'."""
+    for key in ('discovery_data_source', 'reporting_group'):
+        group = data.get(key)
+        if isinstance(group, dict):
+            group = group.get('group_name')
+        group = str(group or '').strip()
+        if group:
+            return f"{group} (TNS)"
+    return "(TNS)"
+
+
 def get_discover_mag_from_TNS(object_name: str, output_dir: str):
     """Write the TNS discovery magnitude as the object's only point (no survey name to query)."""
     data = _tns_request(object_name)
@@ -142,13 +156,10 @@ def get_discover_mag_from_TNS(object_name: str, output_dir: str):
         discovery_filter_obj = data.get('discmagfilter')
 
         discovery_filter = "Unknown"
-        discovery_site = "TNS_Discovery"
+        discovery_site = tns_source_name(data)
 
         if isinstance(discovery_filter_obj, dict):
             discovery_filter = discovery_filter_obj.get('name', 'Unknown')
-            family = discovery_filter_obj.get('family')
-            if family:
-                discovery_site = f"{family}(TNS)"
         elif isinstance(discovery_filter_obj, str):
             discovery_filter = discovery_filter_obj
 
