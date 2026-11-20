@@ -774,7 +774,7 @@ def delete_observation_log(log_id_or_name, obs_date: str | None = None,
 # ---------------------------------------------------------------------------
 
 _DIRECT_COLS = ("id, telescope, name, ra, dec, mag, priority, note, repeat_count, program, "
-                "auto_exp, filters, created_by, created_at, last_sent_at")
+                "auto_exp, filters, created_by, created_at, last_sent_at, note_gl")
 
 
 def _direct_row(row) -> dict:
@@ -804,12 +804,12 @@ def add_direct_trigger_target(t: dict) -> dict | None:
         cur = conn.cursor(cursor_factory=extras.RealDictCursor)
         cur.execute(
             "INSERT INTO obs.direct_trigger_targets "
-            "(telescope, name, ra, dec, mag, priority, note, repeat_count, program, auto_exp, filters, created_by) "
-            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {_DIRECT_COLS}",
+            "(telescope, name, ra, dec, mag, priority, note, repeat_count, program, auto_exp, filters, created_by, note_gl) "
+            f"VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {_DIRECT_COLS}",
             (t['telescope'], t['name'], t['ra'], t['dec'], t.get('mag') or None,
              t.get('priority') or 'Normal', t.get('note') or None, int(t.get('repeat_count') or 0),
              t.get('program') or None, bool(t.get('auto_exp')),
-             _json.dumps(t.get('filters') or []), t.get('created_by')))
+             _json.dumps(t.get('filters') or []), t.get('created_by'), t.get('note_gl') or None))
         row = cur.fetchone()
         conn.commit()
     return _direct_row(row) if row else None

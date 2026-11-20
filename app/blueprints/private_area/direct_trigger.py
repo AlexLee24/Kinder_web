@@ -101,6 +101,12 @@ def _validate_target(data):
     if not 0 <= repeat <= 20:
         return None, 'Repeat must be between 0 and 20.'
     note = str(data.get('note') or '').strip()[:200]
+    # Note for Lab (web only, never in the script): required so the lab knows what the target is and why
+    note_gl = str(data.get('note_gl') or '').strip()
+    if not note_gl:
+        return None, 'Write a Note for Lab: what the target is and why it is being observed.'
+    if len(note_gl) > 300:
+        return None, 'Note for Lab: max 300 characters.'
     program = str(data.get('program') or '').strip()[:32] if tel == 'LOT' else ''
 
     auto_exp = bool(data.get('auto_exp'))
@@ -128,7 +134,7 @@ def _validate_target(data):
             filters.append({'filter': f, 'exp': exp, 'count': count})
 
     return {'telescope': tel, 'name': name, 'ra': ra, 'dec': dec, 'mag': mag,
-            'priority': priority, 'repeat_count': repeat, 'note': note,
+            'priority': priority, 'repeat_count': repeat, 'note': note, 'note_gl': note_gl,
             'program': program, 'auto_exp': auto_exp, 'filters': filters}, None
 
 

@@ -8,6 +8,9 @@
 .dt-row-name { grid-template-columns: 1fr 96px; }
 .dt-page .kw-field input, .dt-page .kw-field select { font-variant-numeric: tabular-nums; }
 .dt-optional { color: var(--kw-text-faint); }
+.dt-required { color: var(--kw-accent); font-weight: 600; }
+#dtNoteGl { resize: vertical; min-height: 52px; }
+.dt-table .dt-note-gl { color: var(--kw-text-secondary); white-space: normal; max-width: 360px; }
 .dt-hint { margin: 2px 0 0; font-size: 0.76rem; color: var(--kw-text-muted); }
 .dt-exp-mode { align-self: flex-start; }
 

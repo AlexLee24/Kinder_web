@@ -671,6 +671,8 @@ def _ensure_extra_tables():
                 last_sent_at TIMESTAMPTZ
             )
         """)
+        # Note for Lab (GREATLab, web only — never in the script); required for new Direct Trigger targets
+        _run("ALTER TABLE obs.direct_trigger_targets ADD COLUMN IF NOT EXISTS note_gl TEXT")
 
         # transient.objects — name lookup used by _resolve_obj_id_with_prefix
         _run("""
