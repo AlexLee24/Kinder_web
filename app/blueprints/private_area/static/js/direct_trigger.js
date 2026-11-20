@@ -182,6 +182,7 @@
             repeat_count: $('dtRepeat').value,
             program: state.tel === 'LOT' ? $('dtProgram').value.trim() : '',
             note: $('dtNote').value.trim(),
+            note_gl: $('dtNoteGl').value.trim(),
             auto_exp: state.mode === 'auto',
             filters: state.mode === 'manual'
                 ? Array.from(document.querySelectorAll('.dt-filter-row')).map(r => {
@@ -191,6 +192,11 @@
                 : [],
         };
         if (!body.name || !body.ra || !body.dec) { setMsg(msg, 'Target, RA and Dec are required.', 'error'); return; }
+        if (!body.note_gl) {
+            setMsg(msg, 'Write a Note for Lab: what the target is and why it is being observed.', 'error');
+            $('dtNoteGl').focus();
+            return;
+        }
         const submit = $('dtSubmit');
         submit.disabled = true;
         setMsg(msg, 'Adding…');
@@ -198,7 +204,7 @@
             const data = await postJson('/api/direct_trigger/targets', body);
             state.lists[state.tel].push(data.target);
             setMsg(msg, `${data.target.name} added to ${state.tel}.`, 'ok');
-            ['dtName', 'dtMag', 'dtRa', 'dtDec', 'dtNote'].forEach(id => { $(id).value = ''; });
+            ['dtName', 'dtMag', 'dtRa', 'dtDec', 'dtNote', 'dtNoteGl'].forEach(id => { $(id).value = ''; });
             $('dtRepeat').value = '0';
             $('dtPriority').value = 'Normal';
             resetScript();
@@ -240,7 +246,8 @@
         }
         const rows = list.map(t => el('tr', {},
             el('td', {}, el('span', { class: 'dt-name', text: t.name }),
-                el('span', { class: 'dt-sub', text: [t.program, t.note].filter(Boolean).join(' · ') })),
+                el('span', { class: 'dt-sub', text: [t.program, t.note ? 'Lulin: ' + t.note : ''].filter(Boolean).join(' · ') }),
+                ...(t.note_gl ? [el('span', { class: 'dt-sub dt-note-gl', text: 'Lab: ' + t.note_gl })] : [])),
             el('td', {}, el('span', { text: t.ra }), el('span', { class: 'dt-sub', text: t.dec })),
             el('td', { text: exposureText(t) + (t.repeat_count ? ` · repeat ${t.repeat_count}` : '') }),
             el('td', {}, el('span', { class: `kw-chip dt-prio-${t.priority}`, text: t.priority })),
