@@ -110,3 +110,18 @@ def test_vizier_error_answers_leave_the_cache(runner, tmp_path):
     assert sorted(runner.purge_vizier_errors(str(tmp_path))) == ['down.pickle', 'html.pickle']
     assert sorted(os.listdir(tmp_path)) == ['junk.pickle', 'none.pickle', 'table.pickle']
     assert runner.purge_vizier_errors(str(tmp_path / 'nowhere')) == []
+
+
+def test_frames_are_grouped_in_time_order_per_visit():
+    import sys
+    sys.path.insert(0, 'scripts/pipeline')
+    import autophot_web_run as r
+    m = lambda h, mi: 61000 + (h * 60 + mi) / 1440   # noqa: E731
+    e = [('u0', 'up', 'n', m(13, 0)), ('u1', 'up', 'n', m(13, 6)), ('g1', 'gp', 'n', m(13, 12)),
+         ('u2', 'up', 'n', m(17, 0)), ('u3', 'up', 'n', m(17, 6)), ('u4', 'up', 'n', m(17, 12)), ('g2', 'gp', 'n', m(17, 18))]
+    g = r.group_frames(e, {'u': 2, '*': 1})
+    assert g[('up', 'n', '130000')] == ['u0', 'u1'] and g[('up', 'n', '170000')] == ['u2', 'u3', 'u4']
+    assert g[('gp', 'n', '131200')] == ['g1'] and g[('gp', 'n', '171800')] == ['g2']
+    assert r.group_frames(e)[('up', 'n', '')] == ['u0', 'u1', 'u2', 'u3', 'u4']        # no sizes: the whole night
+    four = [(f'u{i}', 'up', 'n', m(13, 6 * i)) for i in range(4)]
+    assert sorted(r.group_frames(four, {'u': 2}).values()) == [['u0', 'u1'], ['u2', 'u3']]
