@@ -7,12 +7,15 @@ Every morning (bot ``auto_phot``, after the reduction pipeline has calibrated th
 2. For each group, a Pipeline workspace AUTO_<target>_<TEL>_<yyyymmdd> (owner ``auto-photometry``; not in anyone's
    workspace list, admins can open it) gets copies of the frames and runs AutoPhOT with template subtraction (TS)
    against a downloaded survey template (Pan-STARRS where it covers the target, else Legacy, else SDSS), frames
-   of each filter stacked per night (if the stack gives nothing, the single frames instead), PSF photometry,
+   stacked in time order so a night with several visits gives several points (STACK_SIZE: u two frames per stack,
+   the other filters one frame each, never across visits; if that gives nothing, the single frames), PSF photometry,
    calibration catalog from the coverage check (Pan-STARRS where it covers the target); a band that catalog does
    not have (u in Pan-STARRS) is calibrated against one that does: SDSS where it covers the target, else Gaia XP.
    Each image's subtraction is checked (ts_ok): AutoPhOT subtracted it, its alignment did not fail, the flux scale
-   of the kernel agrees with the stars', and few artifacts were masked. Images that fail, or a TS run that fails
-   outright, are measured again without TS in AUTO_<…>_noTS and those points are used instead.
+   of the kernel agrees with the stars', and few artifacts were masked. Bands AutoPhOT could not align at all are
+   tried once more in AUTO_<…>_relaxTS with its alignment-verification gates off (sparse u frames, a template with
+   few stars); those subtractions must pass a stricter flux-scale check. Images that still fail, or a TS run that
+   fails outright, are measured again without TS in AUTO_<…>_noTS and those points are used instead.
 3. The points (detections, and 3σ limits for non-detections) go into the Kinder object's photometry with the
    telescope ``SLT(AUTO)`` / ``LOT(AUTO)``, or ``SLT(AUTO, w/o TS)`` / ``LOT(AUTO, w/o TS)`` for the points measured
    without TS. A re-run of the same night replaces them.
@@ -48,6 +51,20 @@ TS_MAX_FSCALE_DISC_PCT = 20.0   # kernel flux scale vs the stars' photometric sc
 TS_MAX_ARTIFACTS = 10           # dipole / residual regions masked in the difference (subtraction_artifact_regions)
 NO_TS_SUFFIX = '_noTS'          # the workspace of the fallback run
 ALT_SUFFIX = '_altTS'           # the same night subtracted with the other survey's templates
+RELAX_SUFFIX = '_relaxTS'       # bands AutoPhOT could not align, tried again with its verification gates off
+# AutoPhOT settings of the _relaxTS run: accept an alignment it cannot fully verify (too few / clustered stars)
+RELAX_OVERRIDES = {
+    'template_subtraction.alignment_require_verification': False,
+    'template_subtraction.alignment_fail_on_poor_coverage': False,
+    'template_subtraction.alignment_require_post_swarp_verification': False,
+    'template_subtraction.alignment_allow_non_scamp_fallback': True,
+}
+RELAX_MAX_FSCALE_DISC_PCT = 10.0   # a relaxed alignment's subtraction must agree with the stars this closely
+ALIGN_FAIL_NOTE = 'AutoPhOT could not align'
+# frames per stack, per band ('*' = any other band): u is faint in one Lulin frame, so two per point; the others one
+# per point. Stacks never span two visits (a gap > STACK_VISIT_GAP_MIN between frames of a filter).
+STACK_SIZE = {'u': 2, '*': 1}
+STACK_VISIT_GAP_MIN = 30
 ALT_SURVEY = {'panstarrs': 'legacy', 'legacy': 'panstarrs', 'sdss': 'skymapper', 'skymapper': 'sdss'}
 TEMPLATE_MARKER = 'kinder_template.json'   # written by scripts/pipeline/autophot_templates.py per band
 
@@ -208,20 +225,6 @@ def _from_targets(target):
     return None, None
 
 
-def is_repeat(target, telescope):
-    """The observation target has #REPEAT > 0: its frames are taken at different times through the night, so they
-    are measured frame by frame (a light curve within the night), never stacked."""
-    try:
-        from app.db.obs import get_observation_targets
-        for t in get_observation_targets(active_only=False):
-            if (str(t.get('name') or '').replace(' ', '') == target.replace(' ', '')
-                    and str(t.get('telescope') or '').upper() == telescope.upper()):
-                return int(t.get('repeat_count') or 0) > 0
-    except Exception as e:
-        logger.info('auto_phot: repeat lookup for %s %s failed: %s', target, telescope, e)
-    return False
-
-
 def _from_header(path):
     from astropy import units as u
     from astropy.coordinates import SkyCoord
@@ -314,11 +317,17 @@ def choose_template(ra, dec):
     return 'auto'
 
 
-def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None, force=None):
+def _suffix(template, force=None, relax=False):
+    return RELAX_SUFFIX if relax else ALT_SUFFIX if force else '' if template else NO_TS_SUFFIX
+
+
+def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, bands=None, template=None, force=None,
+                     relax=False):
     """The workspace of one run: with template subtraction from `template`, or without (template=None, the _noTS one
-    when it is the fallback of a TS run). force {band: survey}: the _altTS run, those bands tried with that survey."""
+    when it is the fallback of a TS run). force {band: survey}: the _altTS run, those bands tried with that survey.
+    relax: the _relaxTS run (AutoPhOT's alignment-verification gates off). stack: frames stacked by STACK_SIZE."""
     from app.services.pipeline import autophot as ap
-    tid = workspace_name(night, target, telescope, ALT_SUFFIX if force else '' if template else NO_TS_SUFFIX)
+    tid = workspace_name(night, target, telescope, _suffix(template, force, relax))
     if not (ap.runs_root() / tid / 'target.json').is_file():
         ap.create_workspace({'name': tid}, user=AUTO_USER, user_name=AUTO_NAME)
     ts = {'subtraction': True, 'sub_method': 'sfft', 'ts_download': template} if template else {'subtraction': False}
@@ -328,6 +337,12 @@ def ensure_workspace(night, target, telescope, ra, dec, catalog, stack=True, ban
     cfg['auto'] = {'night': night.isoformat(), 'target': target, 'telescope': telescope}
     cfg['catalog_bands'] = dict(bands or {})      # per band, where the main catalog has none (the runner maps them)
     cfg['ts_force'] = dict(force or {})
+    cfg['stack_size'] = dict(STACK_SIZE) if stack else None
+    cfg['stack_visit_gap_min'] = STACK_VISIT_GAP_MIN
+    ov = {k: v for k, v in (cfg.get('overrides') or {}).items() if k not in RELAX_OVERRIDES}
+    if relax:
+        ov.update(RELAX_OVERRIDES)
+    cfg['overrides'] = ov
     ap._write_json(ap.tdir(tid) / 'target.json', cfg)
     return tid
 
@@ -361,6 +376,25 @@ def better_ts(primary, alt, use):
                 p = q
         out.append(p)
     return out
+
+
+def _unaligned(tid, p):
+    """Was this point left unsubtracted because AutoPhOT could not align its template (not: no template, too little
+    template data, too few stars in the box)?"""
+    note = p.get('ts_note') or ''
+    if note in ('', 'not subtracted', 'template alignment failed'):
+        note = no_ts_reason(tid, p.get('filter')) or note
+        p['ts_note'] = note
+    return note.startswith(ALIGN_FAIL_NOTE) or note == 'template alignment failed'
+
+
+def relaxed_check(p):
+    """(ok, why) for a point of the _relaxTS run: passed ts_check there (in _points) and its kernel flux scale agrees
+    with the stars within RELAX_MAX_FSCALE_DISC_PCT."""
+    disc = p.get('fscale_disc')
+    if disc is not None and disc > RELAX_MAX_FSCALE_DISC_PCT:
+        return False, f'relaxed alignment: kernel flux scale off by {disc:.0f}%'
+    return bool(p.get('ts')), p.get('ts_note') or ''
 
 
 # ── run one workspace ────────────────────────────────────────────────────────
@@ -497,7 +531,8 @@ def _points(tid):
             why = no_ts_reason(tid, r['filter']) or why
         out.append({'filter': r['filter'], 'mjd': r['mjd'], 'mag': r['psf'] if r['det'] else None,
                     'err': r['psf_err'] if r['det'] else None, 'lim': lim, 'snr': r['snr'], 'det': bool(r['det']),
-                    'veto': r.get('veto') or '', 'image': r['name'], 'ts': ok, 'ts_note': why})
+                    'veto': r.get('veto') or '', 'image': r['name'], 'ts': ok, 'ts_note': why,
+                    'fscale_disc': r.get('fscale_disc')})
     return out
 
 
@@ -789,30 +824,28 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
         progress = lambda p: db.upsert(night, target, telescope, n_done=p['done'])   # noqa: E731
         outer = stop
         stop = lambda: bool(outer and outer()) or stop_requested(night, target, telescope)   # noqa: E731
-        # a repeat target: the single frames only (they are spread over the night); otherwise the page's Rerun /
-        # Retry / Measure now measure the stacks only, and the daily run falls back to the single frames
-        repeat = is_repeat(target, telescope)
-        if repeat:
-            logger.info('auto_phot: %s %s is a repeat target: measuring the single frames', target, telescope)
+        # frames are stacked in time order within each visit (STACK_SIZE), so a repeat target or a second visit gives
+        # its own points; the page's Rerun / Retry / Measure now measure those groups only, and the daily run falls
+        # back to the single frames when the groups give nothing
         template = choose_template(ra, dec)
         if not template:
             logger.info('auto_phot: %s %s: no template survey covers it; measuring without TS', target, telescope)
 
-        def measure(stack, tpl, force=None):
-            tid = workspace_name(night, target, telescope, ALT_SUFFIX if force else '' if tpl else NO_TS_SUFFIX)
+        def measure(stack, tpl, force=None, relax=False):
+            tid = workspace_name(night, target, telescope, _suffix(tpl, force, relax))
             if _still_running(tid):             # started before a restart: wait for it instead of starting another
                 logger.info('auto_phot: %s is still running from before; waiting for it', tid)
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _wait(tid, progress, stop)
             else:
                 tid = ensure_workspace(night, target, telescope, ra, dec, catalog, stack=stack, bands=bands, template=tpl,
-                                       force=force)
+                                       force=force, relax=relax)
                 ap.add_files(tid, [str(f) for f in frames], origin='auto')
                 db.upsert(night, target, telescope, status='running', workspace=tid)
                 job = _run_and_wait(tid, progress=progress, stop=stop)
             return tid, job, (_points(tid) if job.get('status') == 'done' else [])
 
-        for stack in ((False,) if repeat else (True,) if stack_only else (True, False)):
+        for stack in ((True,) if stack_only else (True, False)):
             if stop():
                 raise Stopped()
             tid, job, phot = measure(stack, template)
@@ -839,6 +872,23 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
                     phot = better_ts(phot, alt, use)
                     logger.info('auto_phot: %s %s %s: templates %s', night, target, telescope,
                                 ', '.join(f"{p['filter']} {p.get('template')}" for p in phot))
+            # bands AutoPhOT could not align at all: once more with its verification gates off (stricter check after)
+            unaligned = sorted({p['filter'] for p in phot if not p.get('ts') and _unaligned(tid, p)})
+            if template and unaligned:
+                if stop():
+                    raise Stopped()
+                logger.info('auto_phot: %s %s %s: %s not aligned; trying again with relaxed alignment checks',
+                            night, target, telescope, ' '.join(unaligned))
+                _, _, rel = measure(stack, template, relax=True)
+                relws = workspace_name(night, target, telescope, RELAX_SUFFIX)
+                chosen = template_choices(relws)
+                for p in rel:
+                    p['template'] = chosen.get(p.get('filter'))
+                    p['relaxed'] = True
+                    ok, why = relaxed_check(p)
+                    if p.get('ts') and not ok:
+                        p['ts'], p['ts_note'] = False, why
+                phot = better_ts(phot, rel, set(unaligned))
             # a subtraction that failed its check (or a TS run that gave nothing): measure without TS and use that
             bad = [p for p in phot if not p.get('ts')]
             if template and (bad or not phot):

@@ -110,8 +110,9 @@
     const TPL = { panstarrs: 'Pan-STARRS', legacy: 'Legacy Survey', sdss: 'SDSS', skymapper: 'SkyMapper' };
     function tsEl(p, long) {
         const src = TPL[p.template] || p.template || '';
+        const relaxed = p.relaxed ? ' (alignment not fully verified: too few stars; passed the flux-scale check)' : '';
         return p.ts
-            ? el('span', { class: 'dta-ts is-ts', text: long && src ? 'TS · ' + src : 'TS', title: 'Template-subtracted' + (src ? ' with ' + src + ' templates' : '') })
+            ? el('span', { class: 'dta-ts is-ts', text: (long && src ? 'TS · ' + src : 'TS') + (p.relaxed ? '*' : ''), title: 'Template-subtracted' + (src ? ' with ' + src + ' templates' : '') + relaxed })
             : el('span', { class: 'dta-ts', text: 'w/o TS', title: p.ts_note ? 'Without template subtraction: ' + p.ts_note : 'Without template subtraction' });
     }
     // Why the bands shown without template subtraction were not subtracted, one line per reason: "w/o TS · g r: why"
@@ -119,8 +120,8 @@
         const by = new Map();
         for (const p of best) {
             if (p.ts) continue;
-            const why = p.ts_note || 'not subtracted';
-            by.set(why, [...(by.get(why) || []), band(p.filter)]);
+            const why = p.ts_note || 'not subtracted', b = band(p.filter), list = by.get(why) || [];
+            if (!list.includes(b)) by.set(why, [...list, b]);
         }
         return [...by].map(([why, bands]) => el('div', { class: 'dta-note dta-tsnote', text: `w/o TS · ${bands.join(' ')}: ${why}` }));
     }
@@ -131,6 +132,19 @@
             if (!cur || (p.det && !cur.det) || (p.det === cur.det && (p.snr || 0) > (cur.snr || 0))) by[k] = p;
         }
         return Object.values(by).sort((a, b) => 'ugrizyocw'.indexOf(band(a.filter)) - 'ugrizyocw'.indexOf(band(b.filter)));
+    }
+    // Every point of the night per filter, in time order (stacks follow the visits: u two frames per point, the others one)
+    function pointsPerFilter(r) {
+        const by = {};
+        for (const p of r.phot || []) (by[band(p.filter)] = by[band(p.filter)] || []).push(p);
+        return Object.values(by).map(ps => ps.sort((a, b) => (a.mjd || 0) - (b.mjd || 0)))
+            .sort((a, b) => 'ugrizyocw'.indexOf(band(a[0].filter)) - 'ugrizyocw'.indexOf(band(b[0].filter)));
+    }
+    const utOf = mjd => mjd == null ? '' : new Date((mjd - 40587) * 864e5).toISOString().slice(11, 16) + ' UT';
+    function filterPoints(ps) {
+        const f = ps[0].filter;
+        return el('span', { class: 'dta-fpts' }, el('i', { class: 'dta-dot', style: `background:${col(f)}` }), el('span', { class: 'dta-muted', text: band(f) + ' ' }),
+            ps.map((p, i) => el('span', { class: 'dta-pt', title: utOf(p.mjd) }, i ? el('span', { class: 'dta-muted', text: ' → ' }) : null, magEl(p), ' ', tsEl(p))));
     }
     function deltaEl(r) {
         const ds = bestPerFilter(r).filter(p => p.det && p.mag != null);
@@ -259,8 +273,8 @@
                 el('div', { class: 'dta-sub' }, r.telescope, pri ? el('span', { class: 'dta-pri is-' + pri.toLowerCase(), text: ' · ' + pri }) : null)),
             el('td', { 'data-l': 'Frame' }, r.frames && r.frames.length ? thumb(r, r.frames.includes('r') ? 'r' : r.frames[0]) : el('span', { class: 'dta-muted', text: '—' })),
             el('td', { 'data-l': 'Magnitudes' }, best.length
-                ? el('div', {}, el('div', { class: 'dta-mags' }, best.map(p => el('span', {}, el('i', { class: 'dta-dot', style: `background:${col(p.filter)}` }), el('span', { class: 'dta-muted', text: band(p.filter) + ' ' }), magEl(p), tsEl(p)))),
-                    ...noTsNotes(best))
+                ? el('div', {}, el('div', { class: 'dta-mags' }, pointsPerFilter(r).map(filterPoints)),
+                    ...noTsNotes(r.phot || []))
                 : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
             el('td', { 'data-l': 'Status' }, stateBtn(r),
@@ -502,13 +516,13 @@
     }
 
     function lastNightTable(r) {
-        const best = r.phot || [];
+        const best = pointsPerFilter(r).flat();
         if (!best.length) return el('p', { class: 'dtw-small ' + (r.status === 'failed' ? 'dta-warn' : 'dta-muted'), text: r.reason || (r.status === 'skipped' ? 'EP targets are left to the EP pipeline' : `${r.n_frames} frames, measuring`) });
         return el('div', {},
             el('table', { class: 'dta-mini' },
-                el('thead', {}, el('tr', {}, ['Filter', 'Magnitude', 'TS', 'S/N', 'MJD'].map(h => el('th', { scope: 'col', text: h })))),
+                el('thead', {}, el('tr', {}, ['Filter', 'Magnitude', 'TS', 'S/N', 'MJD', 'Time'].map(h => el('th', { scope: 'col', text: h })))),
                 el('tbody', {}, best.map(p => el('tr', {}, el('th', { scope: 'row' }, fchip(p.filter)), el('td', {}, magEl(p), p.veto && !p.det ? el('div', { class: 'dta-note', text: p.veto }) : null),
-                    el('td', {}, tsEl(p, true)), el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }))))),
+                    el('td', {}, tsEl(p, true)), el('td', { class: 'mono', text: p.snr != null ? p.snr.toFixed(1) : '—' }), el('td', { class: 'mono dta-muted', text: p.mjd != null ? p.mjd.toFixed(3) : '' }), el('td', { class: 'mono dta-muted', text: utOf(p.mjd) }))))),
             el('p', { class: 'dtw-small dta-muted' }, r.obj_name ? ['On the Transient page as ', el('span', { class: 'mono', text: r.label }), ' · ', deltaEl(r)] : 'Not a Kinder object: not added to a Transient page',
                 r.pipeline ? [' · ', el('a', { href: r.pipeline, text: 'Pipeline run' })] : null));
     }

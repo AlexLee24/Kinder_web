@@ -141,19 +141,61 @@ def test_a_rerun_from_the_page_measures_the_stacks_only(tmp_path, fake, monkeypa
     assert stacks == [True] and fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]['status'] == 'failed'
 
 
-def test_a_repeat_target_is_measured_frame_by_frame(tmp_path, fake, monkeypatch):
-    _frame(tmp_path, 'AT2026aifu', '2026-11-16')
-    stacks = []
+def test_workspaces_stack_in_time_order(tmp_path, monkeypatch):
+    """u two frames per stack, the others one per point, never across visits; the _relaxTS run turns off AutoPhOT's
+    alignment-verification gates and the others do not."""
+    import json
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'runs_root', lambda: tmp_path)
+    monkeypatch.setattr(ap, 'tdir', lambda tid, must=True: tmp_path / tid)
+    monkeypatch.setattr(ap, 'create_workspace', lambda body, **k: (tmp_path / body['name']).mkdir())
+    monkeypatch.setattr(ap, 'save_target', lambda tid, cfg, **k: (tmp_path / tid / 'target.json').write_text(json.dumps(cfg)))
+    tid = svc.ensure_workspace(NIGHT, 'AT2026afqt', 'SLT', 1.0, 2.0, 'pan_starrs', template='auto')
+    cfg = json.loads((tmp_path / tid / 'target.json').read_text())
+    assert cfg['stack_size'] == {'u': 2, '*': 1} and cfg['stack_visit_gap_min'] == 30 and not cfg['overrides']
+    rid = svc.ensure_workspace(NIGHT, 'AT2026afqt', 'SLT', 1.0, 2.0, 'pan_starrs', template='auto', relax=True)
+    assert rid.endswith('_relaxTS')
+    rcfg = json.loads((tmp_path / rid / 'target.json').read_text())
+    assert rcfg['overrides']['template_subtraction.alignment_require_verification'] is False
+
+
+def test_unaligned_bands_are_tried_with_relaxed_alignment(tmp_path, fake, monkeypatch):
+    _frame(tmp_path, 'AT2026afqt', '2026-11-16')
+    runs = []
     monkeypatch.setattr(svc, 'position', lambda t, f: (None, 6.54, -0.32))
     monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
-    monkeypatch.setattr(svc, 'is_repeat', lambda t, tel: True)
-    monkeypatch.setattr(svc, 'ensure_workspace', lambda *a, stack=True, **k: stacks.append(stack) or 'AUTO_X')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'panstarrs')
+    monkeypatch.setattr(svc, 'template_choices', lambda tid: {})
+    monkeypatch.setattr(svc, 'no_ts_reason', lambda tid, b: 'AutoPhOT could not align the SkyMapper template' if b == 'u' else None)
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+
+    def ws(night, target, tel, ra, dec, cat, stack=True, bands=None, template=None, force=None, relax=False):
+        runs.append('relax' if relax else 'ts' if template else 'nots')
+        return svc.workspace_name(night, target, tel, svc._suffix(template, force, relax))
+    monkeypatch.setattr(svc, 'ensure_workspace', ws)
     import app.services.pipeline.autophot as ap
     monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
     monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
-    monkeypatch.setattr(svc, '_points', lambda tid: [])
-    svc.run_night(NIGHT, only=('AT2026aifu', 'SLT'), force=True, root=tmp_path, stack_only=True)   # even from the page
-    assert stacks == [False]
+    pt = lambda f, ts, **k: {'filter': f, 'mjd': 1, 'mag': 17.0, 'err': .05, 'lim': 21, 'snr': 20, 'det': True, 'veto': '',   # noqa: E731
+                             'image': f'stack_{f}', 'ts': ts, 'ts_note': '' if ts else 'not subtracted', **k}
+
+    def points(tid):
+        if tid.endswith('_relaxTS'):
+            return [pt('u', True, fscale_disc=4.0), pt('g', True)]
+        if tid.endswith('_noTS'):
+            return [pt('u', False), pt('g', False)]
+        return [pt('u', False), pt('g', True)]
+    monkeypatch.setattr(svc, '_points', points)
+    svc.run_night(NIGHT, root=tmp_path)
+    r = fake.rows[(NIGHT, 'AT2026afqt', 'SLT')]
+    u = next(p for p in r['phot'] if p['filter'] == 'u')
+    assert runs == ['ts', 'relax'] and u['ts'] and u.get('relaxed') and r['status'] == 'done'
+
+
+def test_a_relaxed_subtraction_needs_a_close_flux_scale():
+    ok, why = svc.relaxed_check({'ts': True, 'fscale_disc': 15.0})
+    assert not ok and 'relaxed alignment' in why
+    assert svc.relaxed_check({'ts': True, 'fscale_disc': 3.0})[0]
 
 
 def test_a_stopped_target_is_not_measured(tmp_path, fake, monkeypatch):
@@ -174,7 +216,7 @@ def test_points_from_the_photometry_table(monkeypatch):
                  {'filter': 'g', 'mjd': 61360.7, 'psf': 21.3, 'psf_err': 0.4, 'det': False, 'limits': [20.9, 20.5], 'snr': 1.2, 'veto': 'S/N 1.2 < 3.0', 'name': 'b'}]})
     pts = svc._points('t')
     assert pts[0] == {'filter': 'r', 'mjd': 61360.7, 'mag': 19.57, 'err': 0.09, 'lim': 21.1, 'snr': 12.3, 'det': True, 'veto': '',
-                      'image': 'a', 'ts': False, 'ts_note': 'not subtracted'}
+                      'image': 'a', 'ts': False, 'ts_note': 'not subtracted', 'fscale_disc': None}
     assert pts[1]['mag'] is None and pts[1]['lim'] == 20.9 and pts[1]['veto'].startswith('S/N')
 
 
@@ -361,7 +403,8 @@ def test_a_bad_subtraction_falls_back_to_no_ts_for_that_image(tmp_path, fake, mo
                      [_pt('stack_r', ts=False, mag=18.4), _pt('stack_g', 'g', ts=False, mag=18.9)])
     svc.run_night(NIGHT, root=tmp_path)
     r = fake.rows[(NIGHT, 'AT2026ajog', 'SLT')]
-    assert runs == [(True, 'panstarrs'), (True, None)]
+    # r's alignment failed: tried once with relaxed alignment (still failing here), then measured without TS
+    assert runs == [(True, 'panstarrs'), (True, 'panstarrs'), (True, None)]
     got = {p['image']: (p['mag'], p['ts']) for p in r['phot']}
     assert got == {'stack_r': (18.4, False), 'stack_g': (19.5, True)} and r['workspace'] == 'AUTO_X'
 

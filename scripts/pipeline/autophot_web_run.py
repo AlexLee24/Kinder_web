@@ -8,6 +8,7 @@ AutoPhOT 碰到不認得的望遠鏡、濾鏡會用 input() 問，網頁把回�
 """
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -40,8 +41,56 @@ def parse_coord(ra, dec):
 FITS_EXT = ('.fits', '.fit', '.fts', '.fits.fz', '.fits.gz')
 
 
+def _band_key(filt):
+    """'up_Astrodon_2018' / 'rp' / 'R' → 'u' / 'r' / 'r': the letter the stack_size map is keyed by."""
+    m = re.match(r'\s*([A-Za-z])', filt or '')
+    return m.group(1).lower() if m else ''
+
+
+def group_frames(entries, sizes=None, gap_min=30.0):
+    """[(rel, filter, night, mjd)] → {(filter, night, tag): [rel…]} in time order.
+
+    Without sizes: one group per filter and night (tag ''), the old behaviour. With sizes ({band: n, '*': n}, n ≥ 1):
+    a filter's frames of the night are split into visits (a gap of more than gap_min minutes between two of its frames)
+    and each visit into runs of n frames in time order; a remainder shorter than n joins the run before it in the
+    same visit (u ×5 in one visit with n=2 → 2 + 3). Groups of one frame are measured as they are. A band with n = 0
+    (or missing, with no '*') is stacked over the whole night as before. tag = the UT time of the group's first frame."""
+    by = {}
+    for rel, filt, night, mjd in entries:
+        by.setdefault((filt, night), []).append((mjd if mjd is not None else float('inf'), rel))
+    out = {}
+    for (filt, night), items in sorted(by.items()):
+        items.sort()
+        n = int((sizes or {}).get(_band_key(filt), (sizes or {}).get('*', 0)) or 0) if sizes else 0
+        if n <= 0:
+            out[(filt, night, '')] = [r for _, r in items]
+            continue
+        visits, cur = [], []
+        for t, r in items:
+            if cur and t != float('inf') and cur[-1][0] != float('inf') and (t - cur[-1][0]) * 1440 > gap_min:
+                visits.append(cur)
+                cur = []
+            cur.append((t, r))
+        if cur:
+            visits.append(cur)
+        for v in visits:
+            runs = [v[i:i + n] for i in range(0, len(v), n)]
+            if len(runs) > 1 and len(runs[-1]) < n:
+                runs[-2].extend(runs.pop())
+            for run in runs:
+                t0 = run[0][0]
+                tag = ''
+                if t0 != float('inf'):
+                    from astropy.time import Time
+                    tag = Time(t0, format='mjd').isot[11:19].replace(':', '')
+                out[(filt, night, tag)] = [r for _, r in run]
+    return out
+
+
 def make_stacks(cfg_in, tdir):
     """疊圖打勾時，執行前先疊：同一濾鏡、同一晚（UT 往前推 12 小時的日期）、至少兩張的組各疊成 stack_<濾鏡>_<日期>.fits。
+    設了 stack_size（{波段: 張數, '*': 張數}）時改成按時間分組（group_frames）：每個 visit 內每 N 張疊一張
+    stack_<濾鏡>_<日期>_<第一張的 UT 時分秒>.fits，一張的組直接量單張，這樣一晚可以量出好幾個時間點。
     組成、設定、檔案修改時間都沒變的組直接沿用上次的疊圖；組不存在了的疊圖移到 .removed/stacks/。回傳新的 stacks 記錄。"""
     import shutil
     from astropy.io import fits
@@ -53,7 +102,7 @@ def make_stacks(cfg_in, tdir):
     old = cfg_in.get('stacks') or {}
     opts = {'align': cfg_in.get('stack_align') or 'auto', 'combine': cfg_in.get('stack_combine') or 'mean',
             'sigma': float(cfg_in.get('stack_sigma') or 3.0)}
-    groups = {}
+    entries = []
     for root_dir, dirs, names in os.walk(top):
         rel_root = os.path.relpath(root_dir, top)
         if rel_root != '.' and (cfg_in.get('top_only', True) or rel_root.split(os.sep)[0] == 'templates'):
@@ -72,18 +121,23 @@ def make_stacks(cfg_in, tdir):
                 continue
             filt = str(h.get('FILTER') or h.get('FILTER1') or '').strip()
             try:
-                night = (Time(str(h.get('DATE-OBS', '')).replace(' ', 'T'), format='isot') - 0.5).isot[:10]
+                t_obs = Time(str(h.get('DATE-OBS', '')).replace(' ', 'T'), format='isot')
+                night, mjd = (t_obs - 0.5).isot[:10], float(t_obs.mjd)
             except ValueError:
-                night = str(h.get('DATE-OBS', ''))[:10] or 'unknown'
-            groups.setdefault((filt, night), []).append(rel)
+                night, mjd = str(h.get('DATE-OBS', ''))[:10] or 'unknown', None
+            entries.append((rel, filt, night, mjd))
+    sizes = cfg_in.get('stack_size') or None
+    groups = group_frames(entries, sizes, float(cfg_in.get('stack_visit_gap_min') or 30))
+    if sizes:
+        print('[web] stacking in time order: ' + ', '.join(f'{k} {v} per stack' for k, v in sorted(sizes.items())), flush=True)
 
     new = {}
-    for (filt, night), members in sorted(groups.items()):
+    for (filt, night, tag), members in sorted(groups.items()):
         if len(members) < 2:
-            print(f'[web] stacking: {filt} {night} has a single frame; measured as it is', flush=True)
+            print(f'[web] stacking: {filt} {night}{" " + tag if tag else ""} has a single frame; measured as it is', flush=True)
             continue
         safe = ''.join(c for c in filt if c.isalnum())[:16] or 'filter'
-        name = f'stack_{safe}_{night.replace("-", "")}.fits'
+        name = f'stack_{safe}_{night.replace("-", "")}{"_" + tag if tag else ""}.fits'
         mtime = max(os.path.getmtime(os.path.join(top, m)) for m in members)
         prev = old.get(name) or {}
         if (os.path.isfile(os.path.join(top, name)) and sorted(prev.get('members', [])) == sorted(members)
@@ -92,7 +146,7 @@ def make_stacks(cfg_in, tdir):
             print(f'[web] stacking: {name} is up to date ({len(members)} frames)', flush=True)
             new[name] = prev
             continue
-        print(f'[web] stacking {filt} {night}: {len(members)} frames → {name}', flush=True)
+        print(f'[web] stacking {filt} {night}{" " + tag if tag else ""}: {len(members)} frames → {name}', flush=True)
         try:
             r = stack({'files': [os.path.join(top, m) for m in members], 'out': os.path.join(top, name),
                        'telescope_yml': os.path.join(cfg_in['wdir'], 'telescope.yml'), **opts})
