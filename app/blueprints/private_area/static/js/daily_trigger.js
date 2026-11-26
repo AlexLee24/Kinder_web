@@ -798,13 +798,13 @@ async function addObservationTarget(event) {
     let plan = document.getElementById('obs-plan').value || '';
     let note_gl = document.getElementById('obs-note-gl') ? document.getElementById('obs-note-gl').value || '' : '';
     if (priority === 'Urgent' && !plan.trim()) {
-        alert('Urgent priority requires a note!');
+        alert('Urgent priority requires a note');
         return;
     }
 
     const lotProgram = document.getElementById('obs-program') ? document.getElementById('obs-program').value.trim() : '';
     if (telescope === 'LOT' && !lotProgram) {
-        alert('Program is required for LOT e.g. R01!');
+        alert('LOT needs a program, e.g. R01');
         return;
     }
 

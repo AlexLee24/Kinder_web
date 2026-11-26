@@ -11,7 +11,7 @@
 .dt-required { color: var(--kw-accent); font-weight: 600; }
 #dtNoteGl { resize: vertical; min-height: 52px; }
 .dt-table .dt-note-gl { color: var(--kw-text-secondary); white-space: normal; max-width: 360px; }
-.dt-hint { margin: 2px 0 0; font-size: 0.76rem; color: var(--kw-text-muted); }
+.dt-hint { margin: 2px 0 0; font-size: max(0.76rem, 11px); color: var(--kw-text-muted); }
 .dt-exp-mode { align-self: flex-start; }
 
 .dt-name-field { position: relative; }
@@ -36,7 +36,7 @@
 .dt-filter-rows { display: grid; gap: 6px; }
 .dt-filter-row { display: grid; grid-template-columns: 1fr 1fr 1fr 30px; gap: 6px; align-items: center; }
 .dt-filter-row :is(input, select) { min-height: 36px; font-variant-numeric: tabular-nums; }
-.dt-filter-head { display: grid; grid-template-columns: 1fr 1fr 1fr 30px; gap: 6px; font-size: 0.72rem; color: var(--kw-text-muted); }
+.dt-filter-head { display: grid; grid-template-columns: 1fr 1fr 1fr 30px; gap: 6px; font-size: max(0.72rem, 11px); color: var(--kw-text-muted); }
 
 .dt-submit { width: 100%; min-height: 44px; margin-top: 4px; }
 .dt-msg { min-height: 1.2em; margin: 0 0 8px; font-size: 0.82rem; color: var(--kw-text-secondary); }
@@ -47,7 +47,7 @@
 .dt-list-actions { display: flex; align-items: center; gap: 10px; }
 .dt-table td { font-variant-numeric: tabular-nums; }
 .dt-table .dt-name { font-weight: 500; color: var(--kw-text-white); }
-.dt-table .dt-sub { display: block; margin-top: 2px; font-size: 0.74rem; color: var(--kw-text-muted); }
+.dt-table .dt-sub { display: block; margin-top: 2px; font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
 .dt-table td:last-child { width: 1%; white-space: nowrap; text-align: right; }
 .dt-prio-Urgent { background: rgba(255, 69, 58, 0.14); color: #FF6B61; }
 .dt-prio-High { background: var(--kw-accent-dim); color: var(--kw-accent); }
