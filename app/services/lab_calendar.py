@@ -697,6 +697,31 @@ def lulin_sunset(day):
     return _sunset_cache[day]
 
 
+_dark_cache = {}
+
+
+def lulin_night(day):
+    """The night starting on ``day`` (Taiwan date) at Lulin, as aware datetimes (UTC+8): {'sunset', 'dark_start' (end of
+    the evening astronomical twilight, Sun 18° below the horizon), 'dark_end' (its start in the morning), 'sunrise'};
+    cached per day. Shown on the Daily Trigger bar."""
+    if day not in _dark_cache:
+        import ephem
+        obs = ephem.Observer()
+        obs.lon, obs.lat, obs.elevation = LULIN[1], LULIN[2], LULIN[3]
+        sun = ephem.Sun()
+        out = {}
+        for key, horizon, rising in (('sunset', '0', False), ('dark_start', '-18', False),
+                                     ('dark_end', '-18', True), ('sunrise', '0', True)):
+            obs.horizon = horizon
+            obs.date = ephem.Date(datetime(day.year, day.month, day.day, 4, 0))   # local noon (04:00 UTC)
+            t = (obs.next_rising if rising else obs.next_setting)(sun, use_center=horizon == '-18')
+            out[key] = t.datetime().replace(tzinfo=timezone.utc).astimezone(TZ)
+        if len(_dark_cache) > 30:
+            _dark_cache.clear()
+        _dark_cache[day] = out
+    return _dark_cache[day]
+
+
 def _slt_sent_tonight():
     """True when tonight's SLT trigger was already sent from Daily Trigger."""
     try:

@@ -397,6 +397,14 @@
 {% endblock %}
 
 {% block bar_right %}
+    {% if night %}
+    <span class="dt-night" title="Lulin tonight (UTC+8): sunset {{ night.sunset }} · astronomical night {{ night.dark_start }}–{{ night.dark_end }} (Sun 18° below the horizon) · sunrise {{ night.sunrise }}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <span class="dt-night-l">Astronomical night</span>
+        <b>{{ night.dark_start }} – {{ night.dark_end }}</b>
+        <span class="dt-night-sun">sunset {{ night.sunset }} · sunrise {{ night.sunrise }}</span>
+    </span>
+    {% endif %}
     <a href="/lab_calendar" class="dt-duty{% if on_duty %} is-me{% elif not duty %} is-none{% endif %}" title="Trigger duty tonight (Lab › Calendar)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
         {% if on_duty %}You are on duty tonight{% elif duty %}On duty: {{ duty|map(attribute='name')|join(', ') }}{% else %}No one on duty tonight{% endif %}
